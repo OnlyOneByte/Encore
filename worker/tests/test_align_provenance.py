@@ -28,7 +28,7 @@ from encore_worker.domain.lyrics import claimmap
 from encore_worker.domain.lyrics.generate import ONSET_LEAD_SEC, generate
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import Config
-from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
+from encore_worker.steps.align_steps import _REOPEN_MAX_SEC, Adapters, AlignStepsImpl
 from encore_worker.steps.records import AudioRef, JobRef, TextRef, TimedDoc, TimeRequest
 from tests.ctc_fixture import Decode, Matrix, char_frames, ctc_viterbi, misheard, sung_matrix
 
@@ -1418,3 +1418,270 @@ def test_the_report_relates_the_claims_by_the_LAST_reconcile_where_grading_reads
     assert scattered.verdict[3] == "unrelated"
     assert "after repairs unrelated, 0% of 8 lines agree" in scattered.verdict[4]
     assert scattered.timed.report.claims_related is False
+
+
+# ── W8a: a re-decode that opened past its claim ───────────────────────────────────────────────────────
+
+#: The sustained leading vowel, as a matrix: the sixth line is HEARD from 27.90 s where its cue opens at
+#: 27.00 s, and both close at 30.00 s. `Kinematic_-_Peyote`'s band lines in miniature (README, "W8a: the
+#: late half of the band, and the end that witnesses it").
+LATE_OPENING = [
+    (text, 27.9, 30.0) if i == 5 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
+]
+#: What the GLOBAL pass hears instead, so the line is 2 s out and `Reconciliation.disputed` hands it to R2.
+EARLY_BLIND = [
+    (text, 25.0, 28.0) if i == 5 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
+]
+
+
+#: The re-opening rule is behind `band-reopen` and OFF by default (it leaked a line on the corpus: README,
+#: "W8a: what the corpus said about the two band components"), so every test OF the rule and of the three
+#: guards that stand it down has to switch it on; the default is asserted where the rule itself is.
+REOPEN = frozenset({"band-reopen"})
+
+
+def _redecoded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    claims: Sequence[tuple[float, float | None]],
+    heard: Sequence[Phrase],
+    blind: Sequence[Phrase] = EARLY_BLIND,
+    experiments: frozenset[str] = REOPEN,
+) -> Outcome:
+    """One R2 pass over `claims`: `heard` is what each claim WINDOW decodes, `blind` what the global pass
+    does, so a test can place a line's two readings independently (`ctc_fixture.misheard`)."""
+    return align(
+        tmp_path,
+        monkeypatch,
+        phrases=UNIQUE,
+        duration=UNIQUE_DURATION,
+        claims=claims,
+        stem_matrix=sung_matrix(heard, DIC, UNIQUE_DURATION),
+        decoder=misheard(sung_matrix(blind, DIC, UNIQUE_DURATION), int(UNIQUE_DURATION / FRAME_SEC)),
+        experiments=experiments,
+    )
+
+
+def _late_opening(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cue: tuple[float, float | None],
+    heard: Sequence[Phrase] = LATE_OPENING,
+    experiments: frozenset[str] = REOPEN,
+) -> Outcome:
+    """R2 re-decoding the sixth line, whose own audio starts after `cue` opens. `cue` is that line's claim."""
+    return _redecoded(
+        tmp_path,
+        monkeypatch,
+        claims=[*truth(UNIQUE)[:5], cue, *truth(UNIQUE)[6:]],
+        heard=heard,
+        experiments=experiments,
+    )
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_repair_that_opened_past_its_claim_but_ended_with_it_is_reopened_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The claim's onset becomes the line's, and every word AFTER the first keeps what the decode measured.
+
+    Adoption was the other candidate and it costs the word metrics, so only the opening boundary moves
+    (`generate.reopened_line`); the first word's onset is then the SHEET'S, scores 0.0 and is marked
+    `CUE_OPENED` so nothing that counts aligned onsets counts it (review r1-spec-11). The default is asserted
+    here too, the rule being behind `band-reopen`: README, "W8a: what the corpus said about the two band
+    components".
+    """
+    got = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0))
+    why = got.verdict[4]
+    assert "disputed lines inside their claim windows" in why, "R2 is the stage under test"
+    line = got.line("morning light across the river")
+    assert abs(line["start"] - 27.0) < 0.05, f"published {line['start']:.2f}s, claimed 27.00s"
+    assert abs(line["words"][0]["start"] - 27.0) < 0.05, "the first word opens with the line"
+    assert line["words"][0]["score"] == 0.0, "its onset is the CUE's, so nothing may score it as measured"
+    assert all(word["score"] != 0.0 for word in line["words"][1:]), (
+        "and no OTHER word's measurement was thrown away, which is the whole reason this is not an adoption"
+    )
+    assert line["words"][1]["start"] > 27.9, "the SECOND word still sits where the decode heard it"
+    assert abs(line["end"] - 30.0) < 0.1, f"the measured END stands at {line['end']:.2f}s"
+    assert "re-opened 1 repaired line(s) at their claim's onset" in why and "[5]" in why
+    assert "ENDING within that of where this document's agreeing lines end" in why, (
+        "the trail names the reading that FIRED; both lead witnesses were measured and refused"
+    )
+    assert "a lead the matrix hears singing in" not in why, "and does not name one that never ran"
+    assert "every word after the first keeping its own measurement: [5]" in why, (
+        "[5] survived the clamp, so it may say so — and it is one word short of EVERY word, the first one's "
+        "onset being the cue's (review r2-correctness-6)"
+    )
+
+    default = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0), experiments=frozenset())
+    kept = default.line("morning light across the river")
+    assert abs(kept["start"] - (27.9 - ONSET_LEAD_SEC)) < 0.08, "the default keeps the decode's own opening"
+    assert "re-opened" not in default.verdict[4], "and says nothing it did not do"
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_repair_whose_claim_is_merely_DISPLACED_keeps_its_own_timing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """bad-guy's shape, and the reason the end is the witness: the same 0.90 s at the opening, but the cue
+    closes 0.90 s early too, so the sheet is displaced and nothing says the line's opening is missing.
+
+    This is the case the diagnosis forbids moving (PLAN 2026-10-03, W8a task 1): on four corpus songs the
+    sheet is EARLY of its own audio, and a rule that pulled every late opening back to its claim would
+    publish the sheet's error and be paid in ±500 for it. Measured on the corpus, 0 of bad-guy's 69 lines
+    pass the end test and 4 of `Kinematic_-_Peyote`'s 4 do.
+    """
+    got = _late_opening(tmp_path, monkeypatch, cue=(27.0, 29.1))
+    why = got.verdict[4]
+    line = got.line("morning light across the river")
+    assert abs(line["start"] - (27.9 - ONSET_LEAD_SEC)) < 0.08, (
+        f"published {line['start']:.2f}s, heard 27.90s"
+    )
+    assert "re-opened" not in why, "the cue's own end says the sheet is displaced, not truncated at the front"
+    assert "adopted" not in why, "and the decode heard the line perfectly well where it is"
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_reopening_onto_the_previous_lines_own_span_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cue opening 8 s before its decode, inside its predecessor's published span: REFUSED.
+
+    `_clamped_v2` resolves a repaired start against the previous line's end by RESCALING the line, so that
+    re-opening used to pay with every measured word onset in it (review r1-correctness-1, XA-07). The decode's
+    OWN span bounds nothing: this fixture's window decode reads 23.94-30.00 s against the cue's 20.00, so
+    `line.end - line.start` never bites. docs/arch/04-alignment.md §4.
+    """
+    got = _late_opening(tmp_path, monkeypatch, cue=(20.0, 30.0))
+    why = got.verdict[4]
+    line = got.line("morning light across the river")
+    before = got.line("stars are out")
+    assert line["start"] >= before["end"] - 1e-9, (
+        f"published {line['start']:.2f}s against a predecessor ending {before['end']:.2f}s"
+    )
+    assert line["start"] > 20.0 + 1e-9, f"the cue's 20.00s was not taken, published {line['start']:.2f}s"
+    assert "re-opened" not in why, "a start the clamp would have to rescale away is not an opening boundary"
+    assert line["words"][0]["score"] != 0.0, "and no word was marked cue-opened"
+    assert "clamp then re-fitted" not in why, "nothing was re-opened, so nothing was re-fitted"
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_an_envelope_that_cannot_read_the_sheet_stands_the_reopening_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard needs the audio's ABSOLUTION, not merely the absence of its conviction.
+
+    `sheet_displaced` is a conviction — True only above `claimmap.MIN_ENVELOPE_CORRELATION` — so reading it as
+    the whole guard ARMED the re-opening on exactly the sheets whose envelope cannot be read, which is the
+    corpus's most displaced song (bad-guy's lag is +0.78 s at r 0.19, under the 0.25 floor). Raising the floor
+    above what this fixture's envelope can reach is that third state (review r1-correctness-2); the truth
+    table is in docs/arch/04-alignment.md §4.
+    """
+    # Above 1.0, which a correlation cannot reach: this fixture's synthetic envelopes match almost perfectly,
+    # so nothing short of that puts it in the state the corpus's worst sheet is actually in.
+    monkeypatch.setattr(claimmap, "MIN_ENVELOPE_CORRELATION", 1.01)
+    got = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0))
+    why = got.verdict[4]
+    assert "re-opened" not in why, f"an unreadable envelope licenses no start to move: {why}"
+    line = got.line("morning light across the river")
+    assert abs(line["start"] - (27.9 - ONSET_LEAD_SEC)) < 0.08, (
+        f"the decode's own opening stands, published {line['start']:.2f}s"
+    )
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_cue_with_no_end_of_its_own_cannot_witness_a_reopening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The truncated cue every caption track is full of: `claim_windows` defaults its end to one second after
+    its start, so reading that end would answer the question with arithmetic.
+
+    The fixture makes the default AGREE — the line is heard 27.35-28.00 s and the default closes at 28.00 —
+    so the rule would fire on a number no human wrote. `claim_ends_given` is what stands it down.
+    """
+    heard = [
+        (text, 27.35, 28.0) if i == 5 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
+    ]
+    got = _late_opening(tmp_path, monkeypatch, cue=(27.0, None), heard=heard)
+    why = got.verdict[4]
+    line = got.line("morning light across the river")
+    assert line["start"] > 27.25, f"the fixture needs a late opening, got {line['start']:.2f}s"
+    assert "re-opened" not in why, "the cue carries no end, so it cannot witness one"
+
+
+#: The predecessor's cue, 2.6 s long, and the successor's: a MERGED cue opening at 24.00 s. Line [4] is heard
+#: 22.00-24.50 by its own window and 20.50-22.50 by the global pass, so its re-decode ends 0.42 s PAST the
+#: onset line [5] would be re-opened to, and both lines are disputed — one R2 batch, in index order.
+_SAME_BATCH_CLAIMS: list[tuple[float, float | None]] = [
+    *truth(UNIQUE)[:4],
+    (22.0, 24.6),
+    (24.0, 28.1),
+    *truth(UNIQUE)[6:],
+]
+_SAME_BATCH_HEARD = [
+    (text, 22.0, 24.5) if i == 4 else (text, 25.0, 28.0) if i == 5 else (text, start, end)
+    for i, (text, start, end) in enumerate(UNIQUE)
+]
+_SAME_BATCH_BLIND = [
+    (text, 20.5, 22.5) if i == 4 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
+]
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_the_free_time_a_reopening_needs_is_read_off_the_batch_being_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r2-correctness-1 / r2-spec-8 / r2-tests-15: the predecessor's end must be the one THIS BATCH
+    will publish, not the one it started from — `adopt_where_unheard` runs over the whole batch before
+    `generated` is rebound. Line [4]'s window re-decode ends 24.42 s where its blind decode ended 22.48, and
+    line [5]'s merged cue opens at 24.00: against the stale end that onset looks free, and the re-opening
+    lands inside its predecessor's span, costing line [4] 0.42 s of its measured end to the clamp (XA-07,
+    docs/arch/04-alignment.md §4).
+    """
+    got = _redecoded(
+        tmp_path,
+        monkeypatch,
+        claims=_SAME_BATCH_CLAIMS,
+        heard=_SAME_BATCH_HEARD,
+        blind=_SAME_BATCH_BLIND,
+    )
+    why = got.verdict[4]
+    assert "re-decoded 2 of 2 disputed lines" in why, "the exhibit needs both lines in ONE batch"
+    before = got.line("stars are out")
+    line = got.line("morning light across the river")
+    assert abs(before["end"] - 24.42) < 0.1, f"the predecessor's own end stands at {before['end']:.2f}s"
+    assert line["start"] >= before["end"] - 1e-9, (
+        f"published {line['start']:.2f}s against a predecessor ending {before['end']:.2f}s"
+    )
+    assert abs(line["start"] - (25.0 - ONSET_LEAD_SEC)) < 0.08, "its own measured opening stands"
+    assert "re-opened" not in why, "the onset is not free: the predecessor's own re-decode runs past it"
+    assert line["words"][0]["score"] != 0.0, "and no word was marked cue-opened"
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_reopening_further_back_than_the_band_is_refused_for_its_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r2-correctness-3: a merged cue 5.5 s long, opening 2.47 s before the decode it would re-open.
+
+    `skipped_opening`'s own bound was the re-decode's duration, which a merged caption cue outruns without
+    ever biting, so a long cue could pull a published start back by seconds onto an instrumental gap.
+    `_REOPEN_MAX_SEC` is the band the rule exists for, and every other guard here PASSES (the cue wrote its
+    end, it agrees with `end_bias`, the onset is free, the envelope absolves the sheet), so the size is the
+    only thing refusing it and the trail says so.
+    """
+    claims: list[tuple[float, float | None]] = [*truth(UNIQUE)[:5], (26.5, 32.0), *truth(UNIQUE)[6:]]
+    heard = [
+        (text, 29.0, 32.0) if i == 5 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
+    ]
+    got = _redecoded(tmp_path, monkeypatch, claims=claims, heard=heard)
+    why = got.verdict[4]
+    line = got.line("morning light across the river")
+    heard_at = 29.0 - ONSET_LEAD_SEC
+    assert abs(line["start"] - heard_at) < 0.08, f"published {line['start']:.2f}s against 29.00s heard"
+    assert f"refused to re-open 1 line(s) whose claim onset is further back than {_REOPEN_MAX_SEC}s" in why
+    assert "[5]" in why.split("refused to re-open")[1]
+    assert "re-opened" not in why, "a 2.47 s move is a different claim from a missing leading vowel"
+    assert line["words"][0]["score"] != 0.0, "and no word was marked cue-opened"

@@ -326,6 +326,67 @@ def test_line_metrics_keep_e2e2s_definitions() -> None:
     assert (metrics["published"], metrics["refused"], metrics["zero_gross_songs"]) == (1, 1, 0)
     assert metrics["w500_pct"] == 60.0 and metrics["missing"] == 10
     assert (metrics["in_text"], metrics["w500_text_pct"], metrics["w1000_text_pct"]) == (20, 30.0, 40.0)
+    # `band` is the 0.5-2 s population: strictly past ±500, no further than gross. Of the errors above that
+    # is 0.5000001, 2.0 and -1.0 — never 0.5 (inside ±500) and never 2.1 (gross).
+    assert metrics["band"] == 3
+
+
+def test_a_coherent_offset_and_a_symmetric_spread_differ_only_in_the_signed_metrics() -> None:
+    """W8a's blindness, as a test. Every ±N metric is symmetric, so a document every line of which is 0.86 s
+    LATE scores exactly like one whose lines are scattered ±0.86 s — which is how five songs sat in the
+    0.5-2 s band through eight waves. `bias_ms` separates them and `mad_ms` says which is coherent."""
+    song = song_of(TEN)
+    shifted = [line(i, t.start + 0.86) for i, t in enumerate(song.truth)]
+    scattered = [line(i, t.start + (0.86 if i % 2 else -0.86)) for i, t in enumerate(song.truth)]
+
+    def metrics(doc: list[Any], slug: str) -> Any:
+        of = song_of(TEN, slug=slug)
+        row = lib.row_of(
+            song=of, mode="truth", variant=0, claims=claims(of, "truth"), outcome=lib.PUBLISHED, doc=doc
+        )
+        return lib.line_metrics([row])
+
+    one, other = metrics(shifted, "shift"), metrics(scattered, "spread")
+    for key in ("scored", "gross", "band", "w500", "w1000", "w500_pct"):
+        assert one[key] == other[key], f"{key}: the symmetric metrics cannot tell these two documents apart"
+    assert (one["bias_ms"], one["mad_ms"]) == (860.0, 0.0), "a coherent shift: all of the error in the median"
+    assert other["bias_ms"] == 0.0 and other["mad_ms"] == 860.0, "a spread: none of it in the median"
+    assert one["band"] == 10, "and both are entirely inside the band no gate before this read"
+
+
+def test_a_signed_column_prints_its_delta_instead_of_taking_the_comparison_down() -> None:
+    """`bias_ms` is the first `--compare` column whose own format already asks for a sign, and a delta is
+    signed too: `format(x, "++.0f")` raises, so the first real comparison after W8a added the column died
+    with `Invalid format specifier` and printed NO gate verdicts at all.
+
+    Run against itself every delta is `=`, which is exactly why 2-3 hours of sweep had to be spent to see it.
+    """
+    assert gates._cell(-9.3, -9.3, "+.0f") == "-9 (=)"
+    assert gates._cell(370.0, -9.3, "+.0f") == "+370 (+379)"
+    assert gates._cell(-9.3, 370.0, "+.0f") == "-9 (-379)"
+    assert gates._cell(90.63, 90.45, ".1f") == "90.6 (+0.2)", "an unsigned spec still gains the sign"
+    assert gates._cell(None, 12.0, "+.0f") == "- (base +12)"
+    assert any(spec.startswith("+") for _, _, spec in gates.COMPARE_COLUMNS), "the column this test is for"
+
+
+def test_the_signed_bias_row_ranks_displacement_by_distance_from_zero_not_by_sign() -> None:
+    """`bias_ms` is the only per-song `--compare` column that is SIGNED with ZERO as its goal, so ranking it
+    by signed delta beside the higher-is-better shares called a song that ACQUIRED a coherent lag the "best"
+    mover. Here `alpha`'s 900 ms lag is fixed and `beta` acquires one; both deltas are +900.
+    """
+    run = {"alpha": {"bias_ms": 0.0}, "beta": {"bias_ms": 900.0}}
+    base = {"alpha": {"bias_ms": 900.0}, "beta": {"bias_ms": 0.0}}
+    rows = gates._song_moves(run, base)
+    toward = next(r for r in rows if "toward zero" in r)
+    assert "toward zero: alpha 900 -> 0" in toward, "the fix is ranked as the move toward zero"
+    assert "away: beta 0 -> 900" in toward, "the regression is ranked as the move away from it"
+    assert not any("best beta" in r or "worst alpha" in r for r in rows), (
+        "neither 'best' nor 'worst' may be said of a signed median whose target is zero"
+    )
+    direction = next(r for r in rows if "most late" in r)
+    assert "most late: beta +900" in direction and "most early: alpha +0" in direction, (
+        "the signed extremes print under their DIRECTION, the ITU-R asymmetry being the reason to know it"
+    )
 
 
 def test_the_summary_reports_jamendo_and_youtube_apart_and_together() -> None:
@@ -909,6 +970,11 @@ def test_the_flat_view_and_per_song_metrics_name_what_the_gates_read() -> None:
         "scored": 10.0,
         "missing": 0.0,
         "gross": 5.0,
+        "band": 0.0,
+        # Five lines exact and five 3 s out: the median sits between them and the MAD is the half-spread, so
+        # a large `bias_ms` ALONE is not a coherent offset — `mad_ms` is what separates the two shapes.
+        "bias_ms": 1500.0,
+        "mad_ms": 1500.0,
         "pm500": 50.0,
         "pm1000": 50.0,
         "text_pm500": 50.0,
@@ -916,6 +982,19 @@ def test_the_flat_view_and_per_song_metrics_name_what_the_gates_read() -> None:
         "unsung": 0.0,
     }
     assert "95% CI (song bootstrap)" in lib.format_summary(summary)
+
+
+def test_the_flat_view_names_interpolated_words_so_a_gate_can_read_the_whole_accounting() -> None:
+    """W8a round 1: a `generate.CUE_OPENED` word is paired but not aligned, so `word_aligned` FALLS where the
+    re-opening rule fires. `word_interpolated` is the other half of that accounting, and their sum is what the
+    `word-accounting-whole-*` rules in `gates/w8a-r1-reopen.yaml` assert nothing left."""
+    song = song_of([("one two", 0.0, 2.0)], words=[(0.0, 0.5), (1.0, 1.5)])
+    got = claims(song, "truth")
+    doc = [line(0, 0.0, words=(lib.DocWord(0.0, 0.45, False), lib.DocWord(1.0, 1.5, True)))]
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    flat = lib.flat_metrics(lib.summarize([row])["truth"]["all"])
+    assert (flat["word_aligned"], flat["word_interpolated"]) == (1.0, 1.0)
+    assert flat["word_aligned"] + flat["word_interpolated"] == flat["word_in_text"]
 
 
 def test_unsung_counts_the_published_lines_no_truth_line_pairs_with() -> None:
@@ -1534,22 +1613,24 @@ def test_the_detector_the_acquiring_steps_get_is_the_runs_own_setting(
 def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_recorded_one(
     tmp_path: Path,
 ) -> None:
-    """W7 review r2-spec-10: the disclosure was inoperative in BOTH directions, and the committed artefacts
-    are the proof — NO document under `results/` carries a `detector` key (the stamp landed after they were
-    written), so a `--compare` that only looked where both sides recorded it skipped the key against every
-    baseline that exists. A missing key now reads as `lib.RUN_DEFAULTS["detector"]`, which is what it meant.
+    """W7 review r2-spec-10: the disclosure was inoperative in BOTH directions, so a `--compare` that only
+    looked where both sides recorded the key skipped it against every baseline written before the stamp. A
+    missing key reads as `lib.RUN_DEFAULTS["detector"]`, which is what its absence always meant.
 
-    The two halves of the key's own plumbing are pinned beside it: `run.json` records the value
-    unconditionally (so an offline `--summarize` can stamp the run's real setting), and a directory started
-    before the key existed still resumes, because its absence IS the default rather than a setting change."""
+    Every committed document is in one of two states and never a third: silent (pre-stamp, read as the
+    default) or carrying one of `e2e.DETECTORS`. The key's own plumbing is pinned beside it: `run.json`
+    records the value unconditionally, and a directory started before the key existed still resumes."""
     assert lib.RUN_DEFAULTS["detector"] == e2e.DETECTOR_OFF, "one fact, not two literals"
     results = SCRIPTS.parent / "results"
-    recorded = [
-        path.name
+    recorded = {
+        path.name: (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})["detector"]
         for path in sorted(results.glob("*.json"))
         if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
-    ]
-    assert recorded == [], "every committed document predates the stamp; the default is how they are read"
+    }
+    assert set(recorded.values()) <= set(e2e.DETECTORS), f"unreadable detector stamp: {recorded}"
+    assert all(path.startswith("w8a-") for path in recorded), (
+        "W8a's sweeps are the first runs to carry the stamp; anything earlier is silent by construction"
+    )
 
     lingua = gates.View(modes={}, songs={}, meta={"detector": e2e.DETECTOR_LINGUA, "align_config": {}})
     silent = gates.View(modes={}, songs={}, meta={"align_config": {}})
@@ -3448,6 +3529,302 @@ def test_the_fitted_row_refuses_to_pick_a_threshold_when_the_populations_overlap
     )
 
 
+def test_the_band_gates_read_the_corpus_they_were_written_on() -> None:
+    """`gates/w8a-band.yaml` against its own committed baseline on BOTH sides: every rule evaluates, and every
+    ABSOLUTE threshold in it is a number the recorded corpus satisfies.
+
+    Run against itself the delta rules are trivial — the bench agent's run is what tests those — but the
+    absolute ones are not, so this is what stops a later wave loosening `coherent-songs-*` or the 250 ms
+    without a measurement, and it fails on any metric name the harness stops producing."""
+    rules = gates.parse_gates((GATES_DIR / "w8a-band.yaml").read_text(encoding="utf-8"))
+    baseline = json.loads(
+        (SCRIPTS.parent / "results" / "w8a-band-run_align.json").read_text(encoding="utf-8")
+    )
+    view = gates.view_of(baseline)
+    verdicts = gates.run_gates(rules, view, view)
+    assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
+    assert len(rules) == 110, "every rule in the file is scored here, so a new one has to be measured"
+    # Review r2-correctness-5: every per-song coherence count carries a companion forbidding the ESCAPE ROUTE
+    # it leaves open — a song drops out of the count by having its `mad_ms` rise past 250, which flipping the
+    # sign of half of its band-line errors does while every `abs(error)` metric in the file holds.
+    coherent = {g.name.removeprefix("coherent-songs-") for g in rules if g.name.startswith("coherent-songs-")}
+    scatter = {g.name.removeprefix("scatter-not-up-") for g in rules if g.name.startswith("scatter-not-up-")}
+    assert coherent == scatter and len(coherent) == 13, "both halves, for all thirteen gated modes"
+    # Review r2-spec-13: the demotion is read in every right-text mode, and in the sharp form that fails when
+    # a CORRECT `high` line is removed — the corpus's `offm1` false positive, which that file's own `high`
+    # floor cannot see, its 2% of slack being a small song's worth of lines.
+    changed = {g.name.removeprefix("docs-unchanged-") for g in rules if g.name.startswith("docs-unchanged-")}
+    assert changed == coherent, "the same thirteen modes as the per-song counts"
+    assert {"off05", "offm1"} <= {
+        g.name.removeprefix("demotion-removes-only-bad-high-")
+        for g in rules
+        if g.name.startswith("demotion-removes-only-bad-high-")
+    }, "the two modes the sweep found the conjunction firing in"
+    # Every `band` rule carries a denominator rule for the same mode. `band` is an absolute count over the
+    # scored lines of published cases, so without this pairing "fewer band lines" and "fewer published lines"
+    # read alike — review r1-tests-20, and `w7-star.yaml`'s `missing-not-up` is the precedent.
+    banded = {g.name.removeprefix("band-not-up-") for g in rules if g.name.startswith("band-not-up-")}
+    held = {g.name.removeprefix("band-missing-not-up-") for g in rules if "missing-not-up" in g.name}
+    assert banded == held and len(banded) == 14, "all fourteen right-text modes, band and denominator both"
+    bounds = {
+        gate.name.removeprefix("coherent-songs-"): int(gate.expr.rsplit("<=", 1)[1])
+        for gate in rules
+        if gate.name.startswith("coherent-songs-")
+    }
+    # The four early-truth songs, and the two modes whose pairing leaves one of them under the threshold.
+    assert set(bounds.values()) == {3, 4} and bounds["truth"] == 4
+    assert bounds["jit"] == 3 and bounds["drop20"] == 3
+    assert "drop50" not in bounds, "half the claims gone breaks the pairing: no per-song median means much"
+
+
+def test_the_fix_gates_read_the_corpus_they_were_written_on() -> None:
+    """`gates/w8a-fix.yaml` against the same committed baseline on BOTH sides.
+
+    ONE RULE IS EXPECTED TO FAIL HERE AND THAT IS THE POINT: `band-down-truth` asks the band population to
+    FALL, so against an unchanged corpus it reads 163 <= 162 and rejects. It is the gate that makes the file
+    say the fix did something rather than merely did no harm. Every other rule must hold on the recorded
+    corpus, which is what stops a later wave loosening the displaced-songs equality or the perfect-songs
+    floors without a measurement.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w8a-fix.yaml").read_text(encoding="utf-8"))
+    baseline = json.loads(
+        (SCRIPTS.parent / "results" / "w8a-band-run_align.json").read_text(encoding="utf-8")
+    )
+    view = gates.view_of(baseline)
+    verdicts = gates.run_gates(rules, view, view)
+    assert [r.gate.name for r in verdicts if r.status != "PASS"] == ["band-down-truth"], gates.format_gates(
+        verdicts
+    )
+    assert len(rules) == 93, "every rule in the file is scored here, so a new one has to be measured"
+    by_name = {gate.name: gate.expr for gate in rules}
+    # The gate that reads backwards on purpose, said by what it MEANS rather than by an equality: no sheet the
+    # REFERENCE reads as displaced may gain ±500, because on those four songs gaining it is publishing the
+    # reference's own error. Selected off the base, so re-anchoring their truth retires the rule instead of
+    # reddening it (review r1-spec-17) — and the upper bound still catches a FIFTH displaced song.
+    assert by_name["displaced-songs-at-most-four-truth"].endswith("<= 4")
+    assert "abs(truth.song.bias_ms) > 250" in by_name["displaced-songs-at-most-four-truth"]
+    pulled = by_name["displaced-songs-not-pulled-truth"]
+    assert "abs(base.truth.song.bias_ms) > 250" in pulled and pulled.endswith("== 0")
+    assert "truth.song.pm500 > base.truth.song.pm500" in pulled
+    assert not any(g.expr.rstrip().endswith("== 4") for g in rules), (
+        "no literal equality on a count a corrected reference will legitimately drive to zero"
+    )
+    # The arm's one measured regression was per-song, so every right-text mode carries a per-song rule, not
+    # the four this file first listed (review r1-correctness-7). `drop50` is out: half its claims gone breaks
+    # the pairing and one song refuses, which makes `min_song_delta` an ERROR rather than a reading.
+    loses = {g.name.removeprefix("no-song-loses-") for g in rules if g.name.startswith("no-song-loses-")}
+    assert len(loses) == 13 and "drop50" not in loses and "truth" in loses and "headers" in loses
+    # And the two the remedy was chosen for (adoption would have taken Jamendo words out of `aligned`). The
+    # re-opened FIRST word does leave `aligned` — round 1 made its onset the sheet's — so the rule is the
+    # accounting plus a bound of one word per re-opened line, never "`word_aligned` cannot fall", which was
+    # red against the shipped tree by construction (review r2-spec-10).
+    assert "word_aligned" in by_name["word-aligned-down-at-most-reopenings-truth"]
+    assert by_name["word-aligned-down-at-most-reopenings-truth"].endswith("- 4")
+    assert "word_interpolated" in by_name["word-accounting-whole-truth"]
+    assert not any(g.name.startswith("word-aligned-not-down-") for g in rules)
+    assert by_name["perfect-songs-held-truth"].endswith(">= 15")
+    # Review r2-correctness-5, as in `w8a-band.yaml`: the displaced-songs counts may not be satisfied by a
+    # song's `mad_ms` rising out of the selector.
+    displaced = {g.name.rsplit("-", 1)[1] for g in rules if g.name.startswith("displaced-songs-held-")} | {
+        "truth"
+    }
+    assert displaced == {g.name.removeprefix("scatter-not-up-") for g in rules if "scatter-not-up-" in g.name}
+
+
+def test_the_band_baseline_is_w7s_own_rows_re_summarised() -> None:
+    """`results/w8a-band-run_align.json` is W7's 1088 cases put back through `--summarize` on the W8a harness,
+    NOT a new sweep — `gates/w8a-band.yaml` cites this test for that claim, which only holds while every
+    metric W7 already carried reads the same number here, pooled and per song."""
+    results = SCRIPTS.parent / "results"
+    w7 = json.loads((results / "w7-run_align.json").read_text(encoding="utf-8"))
+    band = json.loads((results / "w8a-band-run_align.json").read_text(encoding="utf-8"))
+    for key in gates.SETUP_META:
+        assert band["meta"].get(key) == w7["meta"].get(key), f"{key}: a different setup is a different run"
+    moved = [
+        (mode, group, block, key)
+        for mode, groups in w7["summary"].items()
+        for group, entry in groups.items()
+        for block, values in entry.items()
+        if isinstance(values, dict)
+        for key, value in values.items()
+        if band["summary"][mode][group].get(block, {}).get(key) != value
+    ]
+    assert moved == [], "a re-summary of the same rows cannot move a metric those rows already carried"
+    per_song = [
+        (mode, song, key)
+        for mode, songs in w7["songs"].items()
+        for song, values in songs.items()
+        for key, value in values.items()
+        if band["songs"][mode][song].get(key) != value
+    ]
+    assert per_song == [], "nor a per-song one, including the `doc` and `onsets` digests"
+    # And it carries the three the gates need, which is the only reason the file exists.
+    added = set(band["summary"]["truth"]["all"]["lines"]) - set(w7["summary"]["truth"]["all"]["lines"])
+    assert added == {"band", "bias_ms", "mad_ms"}
+    # The reading the band gates are written on: four coherently shifted songs, and a 122 ms gap under them.
+    truth = band["songs"]["truth"]
+    coherent = {
+        song: values["bias_ms"]
+        for song, values in truth.items()
+        if abs(values["bias_ms"]) > 250 and values["mad_ms"] <= 250
+    }
+    assert sorted(coherent) == ["bad-guy", "believer", "numb", "tfr-chosen"]
+    rest = max(abs(v["bias_ms"]) for s, v in truth.items() if s not in coherent)
+    assert rest == 122.0 and min(abs(b) for b in coherent.values()) == 370.0, "250 ms sits in an empty gap"
+    # And the 15 songs at 100% +-500 have no band line between them, so no band rule can reach them.
+    perfect = [v for v in truth.values() if v["pm500"] >= 100.0]
+    assert len(perfect) == 15 and sum(v["band"] for v in perfect) == 0
+
+
+def test_the_wave_gates_read_both_levels_they_are_written_for() -> None:
+    """`gates/w8a.yaml` is read 2-3 HOURS after two sweeps start, and it serves BOTH, so a rule that is an
+    ERROR at one level has to fail here instead of there.
+
+    Run against each level's own baseline on both sides, exactly four rules may be red, and all four are the
+    ones that ask the wave's change to have happened: the band song that was ours rising over 80 % +-500, its
+    +-500 gain at `truth` and at `jit`, and the band population falling. Everything else must hold on the
+    recorded corpus, which is what stops a later wave loosening a floor without a measurement."""
+    rules = gates.parse_gates((GATES_DIR / "w8a.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 153, "every rule in the file is scored here, so a new one has to be measured"
+    owed = [
+        "sound-truth-songs-above-80-truth",
+        "best-song-gain-truth",
+        "best-song-gain-jit",
+        "band-down-truth",
+    ]
+    for name in ("w8a-band-run_align", "w8a-base-time_text"):
+        view = gates.view_of(json.loads((SCRIPTS.parent / "results" / f"{name}.json").read_text("utf-8")))
+        verdicts = gates.run_gates(rules, view, view)
+        red = [r.gate.name for r in verdicts if r.status != "PASS"]
+        assert red == owed, f"{name}: {gates.format_gates(verdicts)}"
+    by_name = {gate.name: gate.expr for gate in rules}
+    # Every `band` rule carries a denominator rule for the same mode, as `w8a-band.yaml` does: `band` is an
+    # absolute count over the scored lines of published cases, so without the pairing "fewer band lines" and
+    # "fewer published lines" read alike (review r1-correctness-8 / r1-spec-13 / r1-tests-20).
+    banded = {n.removeprefix("band-not-up-") for n in by_name if n.startswith("band-not-up-")}
+    held = {n.removeprefix("band-missing-not-up-") for n in by_name if "missing-not-up" in n}
+    assert banded | {"truth"} == held and len(held) == 14, "all fourteen modes, band and denominator both"
+    # The count that reads backwards on purpose, as `gates/w8a-fix.yaml`'s own displaced-songs rule does: no
+    # repair may pull the four sheets that precede their own singing onto their cues. Said by what it MEANS
+    # and selected off the BASE, so re-anchoring their truth retires the rule rather than reddening it
+    # (review r1-spec-17); the upper bound still catches a fifth displaced song.
+    assert by_name["coherent-songs-truth"].endswith("<= 4")
+    pulled = by_name["coherent-songs-not-pulled-truth"]
+    assert "abs(base.truth.song.bias_ms) > 250" in pulled and pulled.endswith("== 0")
+    # The three modes whose gross W7 left nonzero are the three gated against the baseline, not at zero.
+    relative = {n.removeprefix("gross-not-up-") for n in by_name if n.startswith("gross-not-up-")}
+    assert relative == {"blind", "drop20", "drop50"}
+    assert "high-gross-blind-at-most-three" in by_name, "the one `high` > 2 s residue, named"
+    # Gate 6 as a number: a demotion may only take `high` lines that were WRONG. `off_sheet`'s true positive
+    # (49 bad lines on bad-guy at off05) passes it and its false one (23 good lines on never-be-alone at
+    # offm1) does not, which a count of documents-whose-bytes-moved cannot tell apart.
+    assert len([n for n in by_name if n.startswith("demotion-removes-only-bad-high-")]) == 14
+    assert by_name["demotion-removes-only-bad-high-offm1"] == (
+        "base.offm1.high - offm1.high <= base.offm1.high_bad - offm1.high_bad"
+    )
+
+
+def test_the_shipped_tree_gates_are_an_identity_claim_both_baselines_satisfy() -> None:
+    """`gates/w8a-default.yaml` says the SHIPPED tree is byte-identical to W7, both band arms being off, and
+    it must therefore pass against W7's own rows on both sides at both levels — 103/103, with no rule red.
+
+    That is the whole point of the file: a default-off arm is only honest if the default path is measured, and
+    an arm leaking into the default is the one failure mode `ENCORE_ALIGN_EXPERIMENTS` has. Its red reading
+    lives in `gates/w8a.yaml` (136/139 on the arms-on sweep, three named failures)."""
+    rules = gates.parse_gates((GATES_DIR / "w8a-default.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 102, "every rule in the file is scored here, so a new one has to be measured"
+    for name in ("w8a-band-run_align", "w8a-base-time_text"):
+        view = gates.view_of(json.loads((SCRIPTS.parent / "results" / f"{name}.json").read_text("utf-8")))
+        verdicts = gates.run_gates(rules, view, view)
+        assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], (
+            f"{name}: {gates.format_gates(verdicts)}"
+        )
+    by_name = {gate.name: gate.expr for gate in rules}
+    # The two modes the arms-on sweep demoted a document in are the two this file pins `high` on by name.
+    assert by_name["high-identical-off05"] == "off05.high == base.off05.high"
+    assert by_name["high-identical-offm1"] == "offm1.high == base.offm1.high"
+    # And the arms exist to be flipped, so the names have to be real ones the CLI would accept.
+    from encore_worker.host.config import ALIGN_EXPERIMENTS
+
+    assert {"band-off-sheet", "band-reopen"} <= set(ALIGN_EXPERIMENTS)
+
+
+def test_the_line_sync_gates_read_the_rung_they_were_written_on() -> None:
+    """`gates/w8a-lines.yaml` against its own committed baseline on both sides: ALL of it holds, because at
+    the LINE_SYNC rung the wave's re-opening rule cannot fire and the prediction is identity.
+
+    The pair this file exists for is pinned here too. At that rung the document IS the served sheet, so in
+    `off05` the corpus publishes 0.5 s late and +-500 scores 99.88 % — the best pooled +-500 in the build, on
+    a document uniformly half a second out. One rule says the band metric SEES it, the other says +-500 does
+    not; a later wave that deletes the second has deleted the argument for the first."""
+    rules = gates.parse_gates((GATES_DIR / "w8a-lines.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 98, "every rule in the file is scored here, so a new one has to be measured"
+    baseline = json.loads(
+        (SCRIPTS.parent / "results" / "w8a-base-lines-run_align.json").read_text(encoding="utf-8")
+    )
+    view = gates.view_of(baseline)
+    verdicts = gates.run_gates(rules, view, view)
+    assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
+    by_name = {gate.name: gate.expr for gate in rules}
+    # The denominator pairing this rung needs MORE than the word rung, its gate being a refusal gate: every
+    # `band` rule carries a `missing` rule for the same mode (review r1-correctness-8 / r1-tests-20).
+    banded = {n.removeprefix("band-not-up-") for n in by_name if n.startswith("band-not-up-")}
+    held = {n.removeprefix("band-missing-not-up-") for n in by_name if "missing-not-up" in n}
+    assert banded == held and len(held) == 13, "every mode this rung scores, band and denominator both"
+    assert by_name["off05-displacement-is-seen"].endswith(">= 450")
+    assert by_name["off05-pm500-is-blind-to-it"].endswith(">= 99.0")
+    assert by_name["clock-moves-two-songs-truth"].endswith("== 2")
+    # And the reading those rules are written on: the clock slides two sheets RIGIDLY and leaves 30 alone.
+    truth = baseline["songs"]["truth"]
+    moved = {song: v["bias_ms"] for song, v in truth.items() if v["bias_ms"] != 0.0}
+    assert moved == {"bad-guy": 720.0, "numb": 620.0}
+    assert max(v["mad_ms"] for v in truth.values()) == 0.0, "a rigid slide, or nothing: no spread anywhere"
+    assert {v["pm500"] for song, v in truth.items() if song in moved} == {0.0}
+    off05 = baseline["songs"]["off05"]
+    assert max(v["mad_ms"] for v in off05.values()) == 0.0
+    assert baseline["summary"]["off05"]["all"]["lines"]["w500_pct"] >= 99.0
+
+
+def test_the_wave_baselines_are_w7s_own_rows_re_summarised() -> None:
+    """`results/w8a-base-time_text.json` and `results/w8a-base-lines-run_align.json` are W7's own rows put
+    back through `--summarize` on the W8a harness, as `w8a-band-run_align.json` is — 0 model seconds.
+
+    They exist because a `base.MODE.band` gate cannot read a metric that did not exist when W7 swept, so the
+    claim that has to hold is that nothing ELSE moved: every metric W7 recorded reads the same number here,
+    pooled and per song, and the only keys gained are the three the band gates need."""
+    results = SCRIPTS.parent / "results"
+    for old, new in (
+        ("w7-time_text", "w8a-base-time_text"),
+        ("w7-lines-run_align", "w8a-base-lines-run_align"),
+    ):
+        before = json.loads((results / f"{old}.json").read_text(encoding="utf-8"))
+        after = json.loads((results / f"{new}.json").read_text(encoding="utf-8"))
+        for key in gates.SETUP_META:
+            assert after["meta"].get(key) == before["meta"].get(key), f"{new}: {key} is a different run"
+        moved = [
+            (mode, group, block, key)
+            for mode, groups in before["summary"].items()
+            for group, entry in groups.items()
+            for block, values in entry.items()
+            if isinstance(values, dict)
+            for key, value in values.items()
+            if after["summary"][mode][group].get(block, {}).get(key) != value
+        ]
+        assert moved == [], f"{new}: a re-summary of the same rows cannot move a metric they already carried"
+        per_song = [
+            (mode, song, key)
+            for mode, songs in before["songs"].items()
+            for song, values in songs.items()
+            for key, value in values.items()
+            if after["songs"][mode][song].get(key) != value
+        ]
+        assert per_song == [], f"{new}: nor a per-song one, including the `doc` and `onsets` digests"
+        gained = set(after["summary"]["truth"]["all"]["lines"]) - set(
+            before["summary"]["truth"]["all"]["lines"]
+        )
+        assert gained == {"band", "bias_ms", "mad_ms"}
+
+
 def test_the_committed_unsung_rows_hold_the_never_sung_floors_record() -> None:
     """`results/w4b-unsung-gate.json` (192 song-modes) holds the never-sung floor's record to its rows.
 
@@ -4130,3 +4507,107 @@ def test_w7s_own_gate_files_replay_the_verdicts_the_wave_was_accepted_on() -> No
         ],
     )
     assert read("w7-star", "w7-run_align", "w7-run_align") == (36, ["pooled-gross-down"])
+
+
+def test_the_exact_frame_clock_took_the_offset_and_tempo_gross_down_not_up() -> None:
+    """The W8a review was handed "the clock put gross up in off3 / tempo098 / tempo102 / drop50" as its first
+    priority; on the committed rows three of the four fell by an order of magnitude and sit at zero.
+
+    Here so the refutation is a reading rather than a paragraph. README, "W8a review: the three bench
+    priorities, re-read on rows already on disk".
+    """
+    results = SCRIPTS.parent / "results"
+
+    def gross(row: str, mode: str) -> int:
+        body = json.loads((results / f"{row}.json").read_text(encoding="utf-8"))
+        return int(body["summary"][mode]["all"]["lines"]["gross"])
+
+    for mode, pre_clock, clock in (("off3", 28, 3), ("tempo098", 27, 4), ("tempo102", 28, 4)):
+        assert gross("w2-time_text", mode) == pre_clock, mode
+        assert gross("w4-time_text", mode) == clock, mode
+        assert gross("w8a-base-time_text", mode) == 0, f"{mode} is at zero on the shipped tree"
+    # `drop50` is the one mode that rose at all, and it has since more than halved.
+    assert (gross("w2-time_text", "drop50"), gross("w4-time_text", "drop50")) == (300, 305)
+    assert gross("w8a-base-time_text", "drop50") == 167
+
+
+def test_w2s_ratchet_is_green_on_the_shipped_tree_and_its_run_align_deficit_is_one_song() -> None:
+    """`gates/w2.yaml` read against the rebase target its own header names: 89/89 at `time_text`.
+
+    The "83/85 -> 50/85" the review was handed was a ratchet read against a STALE base — a default-on clock
+    swap replaces every emission matrix — and the remedy already in the file is to move the `--compare` base
+    without re-pricing an allowance. At `run_align` it is NOT green, and 12 of the 20 red rules are selected
+    by `numb` alone, on the WORKFLOW path only: the lead W8a task 3 left for the next wave.
+    """
+    results = SCRIPTS.parent / "results"
+    rules = gates.parse_gates((GATES_DIR / "w2.yaml").read_text(encoding="utf-8"))
+
+    def read(run: str, base: str) -> list[str]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        return sorted(r.gate.name for r in got if r.status != "PASS")
+
+    assert read("w8a-base-time_text", "w6-hubert-time_text") == [], "the shipped tree, at time_text"
+    assert read("w7-time_text", "w6-hubert-time_text") == [], "and W7's own row reads the same"
+    red = read("w7-run_align", "w6-hubert-run_align")
+    displacement = [name for name in red if name.startswith("no-worse-displacement-")]
+    assert len(red) == 20 and len(displacement) == 12, red
+
+    def worst(row: str, mode: str) -> tuple[str, float]:
+        songs = json.loads((results / f"{row}.json").read_text(encoding="utf-8"))["songs"][mode]
+        base = json.loads((results / "w6-hubert-run_align.json").read_text(encoding="utf-8"))["songs"][mode]
+        moves = sorted(
+            (songs[s]["text_pm500"] - base[s]["text_pm500"], s)
+            for s in songs
+            if songs[s].get("text_pm500") is not None and base[s].get("text_pm500") is not None
+        )
+        return moves[0][1], round(moves[0][0], 2)
+
+    for mode in ("truth", "off15", "credit", "jit"):
+        assert worst("w7-run_align", mode)[0] == "numb", mode
+    assert worst("w7-run_align", "truth") == ("numb", -34.29)
+    # The same 35 lines, read at the two levels: the workflow hands the step a different sheet.
+    at_level = {
+        row: json.loads((results / f"{row}.json").read_text(encoding="utf-8"))["songs"]["truth"]["numb"]
+        for row in ("w6-hubert-run_align", "w7-time_text", "w7-run_align")
+    }
+    assert {row: v["scored"] for row, v in at_level.items()} == dict.fromkeys(at_level, 35.0)
+    assert at_level["w6-hubert-run_align"]["text_pm500"] == 54.29
+    assert at_level["w7-time_text"]["text_pm500"] == 54.29
+    assert at_level["w7-run_align"]["text_pm500"] == 20.0
+
+
+def test_the_frame_clocks_jamendo_cost_is_paid_back_on_the_shipped_tree() -> None:
+    """The second priority: Jamendo `truth` line ±500 97.34 -> 96.42 and word ±300 95.16 -> 94.98.
+
+    Both are ABOVE their pre-clock values now. What is left is one song's WORD residue, which is the reading
+    this test exists to keep. README, "W8a review: the three bench priorities, re-read on rows already on
+    disk".
+    """
+    results = SCRIPTS.parent / "results"
+
+    def jamendo(row: str) -> tuple[float, float, float, float]:
+        truth = json.loads((results / f"{row}.json").read_text(encoding="utf-8"))["summary"]["truth"]
+        lines, words = truth["jamendo"]["lines"], truth["jamendo"]["words"]
+        return (lines["w500_pct"], words["w300_pct"], words["w100_pct"], words["aae_ms"])
+
+    assert jamendo("w2-time_text") == (97.34, 95.16, 82.37, 104.8)
+    assert jamendo("w4-time_text") == (96.42, 94.98, 83.25, 87.8)
+    assert jamendo("w8a-base-time_text") == (98.15, 97.16, 85.46, 71.1)
+
+    def song(row: str, name: str) -> tuple[float, float]:
+        songs = json.loads((results / f"{row}.json").read_text(encoding="utf-8"))["songs"]["truth"]
+        one = next(v for key, v in songs.items() if key.startswith(name))
+        return (one["word_pm300"], one["pm500"])
+
+    # Recovered: the clock cost it 2.80 pt of word ±300 and 6.67 of line ±500; both are back and better.
+    assert song("w2-time_text", "The.madpix") == (94.87, 96.67)
+    assert song("w4-time_text", "The.madpix") == (92.07, 90.0)
+    assert song("w8a-base-time_text", "The.madpix") == (96.72, 100.0)
+    # NOT recovered, and this is the whole residue of the item: 4.17 pt of word ±300 on perfect lines.
+    assert song("w2-time_text", "Tom_Orlando") == (99.46, 100.0)
+    assert song("w4-time_text", "Tom_Orlando") == (96.81, 98.61)
+    assert song("w8a-base-time_text", "Tom_Orlando") == (95.29, 100.0)

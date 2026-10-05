@@ -263,8 +263,15 @@ def test_as_claimed_reads_an_offset_as_the_error_it_publishes() -> None:
     assert abs(late.offset_sec - 1.2) < 1e-9 and "median lag +1.20 s" in late.why()
     close = rc.as_claimed(OURS, claims(OURS, offset=0.4))
     assert close is not None and close.near == 1.0, "within the coarse tolerance (1 s): the same place"
+    # EVERY FIELD SPELLED, none of them defaulted: `spread_sec` and `together` are what `off_sheet` gates on,
+    # so a constructor that may omit either can hand it "these lines moved perfectly together" (r2-spec-14).
     assert rc.as_claimed(OURS, claims(OURS, offset=0.4), tolerance_sec=0.25) == rc.AsClaimed(
-        near=0.0, pairs=len(OURS), tolerance_sec=0.25, offset_sec=close.offset_sec
+        near=0.0,
+        pairs=len(OURS),
+        tolerance_sec=0.25,
+        offset_sec=close.offset_sec,
+        spread_sec=0.0,
+        together=1.0,
     )
 
 

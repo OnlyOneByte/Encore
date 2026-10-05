@@ -201,22 +201,22 @@ async function stageASound(world: World): Promise<Stage> {
 		.click();
 	await returnHomeFromBrowse(phone); // the rotation is on home
 
-	// THE SONG IS IN THE ROTATION. Measured as rows OR the band, not as `.qrow` alone: an idle room auto-starts
+	// THE SONG IS IN THE ROTATION. Measured as rows OR the strip, not as `.qrow` alone: an idle room auto-starts
 	// the add and the phone's queue list renders only `queued` entries, so the FIRST song of the night is not a row
-	// at all — it is on the band. (The old flow asserted `.qrow > 0` against a long-lived room that already had
+	// at all — it is in the strip. (The old flow asserted `.qrow > 0` against a long-lived room that already had
 	// something playing, where the same add really did land in a row.)
 	await expect
 		.poll(
 			async () => {
 				const rows = await phone.locator(SEL.queueRow).count();
-				const band = (await phone.locator(SEL.bandTitle).allTextContents())
-					.map((t) => t.trim())
-					.filter((t) => t && t !== 'Nothing playing');
-				return rows + band.length;
+				// The strip's title element exists only with a current entry, so its count is the term — the old
+				// `!== 'Nothing playing'` filter screened out the band's idle copy, which no longer exists.
+				const playing = await phone.locator(SEL.npStripTitle).count();
+				return rows + playing;
 			},
 			{
 				timeout: 30_000,
-				message: `${song.title} never reached the rotation: no ${SEL.queueRow} and nothing on the band.`
+				message: `${song.title} never reached the rotation: no ${SEL.queueRow} and nothing in the strip.`
 			}
 		)
 		.toBeGreaterThan(0);
@@ -315,12 +315,14 @@ test('pause holds the playhead and resume continues from it', async ({ world }) 
 			})
 			.toBeGreaterThan(0.5);
 
-		// PAUSE. Pressed by accessible name on the phone's band — the transport is in the band row at both sheet
-		// heights, so it needs no gesture to reach, and the name IS the state.
+		// PAUSE. Pressed by accessible name in the phone's docked strip — there is no open state to reach, so the
+		// transport needs no gesture, and the name IS the state.
 		const before = pick(await readMedia(tv));
-		// ANCHORED, and it has to be: `getByRole`'s name option matches a case-insensitive SUBSTRING, and the band's
-		// expand button is labelled "<title> — now playing" — so a bare `Play` resolves to that button as well as to
-		// the disc and the click dies of strict mode instead of pressing the transport.
+		// STILL ANCHORED, though the collision it was written against is gone: `getByRole`'s name option matches a
+		// case-insensitive SUBSTRING, and the old band carried an expand button labelled "<title> — now playing", so a
+		// bare `Play` matched that too and the click died of strict mode. The strip's link to /queue has no accessible
+		// name of its own, so only the transport can match today — the anchor is kept as the cheaper habit, not as a
+		// live fix.
 		await phone.getByRole('button', { name: /^Pause$/ }).click();
 		let paused: MediaReading | undefined;
 		await expect

@@ -93,11 +93,13 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 
 	for (const vp of VIEWPORTS) {
 		await page.setViewportSize({ width: vp.w, height: vp.h });
-		// TWO phone surfaces, not one: `/` carries the queue's controls and the docked band, and the library
-		// rows are a screen further in. Measuring only one silently stops measuring the other.
+		// THE TABS ARE SEPARATE SURFACES, which is why there are three phone entries and not one. `/` is the Sing
+		// tab — its find field and the bottom chrome; `/queue` carries the live controls and the queue's grips;
+		// `/library` is the browse rows. They used to be one page, and measuring only `/` would now silently stop
+		// measuring two thirds of the phone.
 		await surface('/', async () => {
 			await page.goto('/');
-			await page.locator(SEL.homeReady).first().waitFor({ state: 'attached', timeout: 15_000 });
+			await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout: 15_000 });
 		});
 		await surface('/ (searched)', async () => {
 			await openBrowse(page);
@@ -110,14 +112,36 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 				.waitFor({ state: 'attached', timeout: 15_000 })
 				.catch(() => {});
 		});
-		// The browse page. Its controls are its own — a filter field, the clear control, and the empty state's
-		// button — and none of them is reachable from the two surfaces above, so without this entry they were
-		// measured nowhere. On a core with nothing processed this sweeps the EMPTY arm; the facet and sort chips
-		// need a ready library and are measured by p17 instead. `surface()` skips a label that yields no readings,
-		// so this cannot go vacuously green.
+		// AFTER THE SEARCHED ARM, not between it and `/`: that arm reaches the field through `openBrowse`, which waits
+		// on the find box rather than navigating, so it has to START on `/`. Putting a route change in front of it
+		// times the box out.
+		// THE LIVE CONTROLS, which this gate measured on `/` until they moved: the key row's two keycaps, the
+		// guiding track's slider and the queue rows' drag grips. Arrived on the route's heading rather than on
+		// `SEL.queueNowCard`, because the card renders only with a song playing and this drive has none — the
+		// controls inside it are then absent too, so what this entry sweeps on an idle room is the tab's own
+		// chrome and its empty state. `surface()` skips a label that yields no readings, so it cannot go
+		// vacuously green either way.
+		await surface('/queue', async () => {
+			await page.goto('/queue');
+			await page.locator(SEL.pageHeading).first().waitFor({ state: 'attached', timeout: 15_000 });
+		});
+		// The browse page. Its controls are its own and none of them is reachable from the two surfaces above, so
+		// without this entry they were measured nowhere. On a core with nothing processed this sweeps the EMPTY arm,
+		// which is the empty state's `Find a song` button. WHAT THIS ENTRY DOES NOT REACH, recorded so nobody reads
+		// its green as wider than it is: the filter field and its clear control need a non-empty library, and their
+		// hit extent and computed font-size ride `/`'s instance of the SAME `$lib/ui/FindField.svelte` — the route's
+		// `.field-slot` wrapper adds a margin and a max-width and nothing else, so neither a font-size nor a control's
+		// height can differ here. The facet and sort chips are measured NOWHERE: p17 drives this route in a browser
+		// but asserts behaviour only, never an extent, and its fixture carries no artist and no tags, so p17 asserts
+		// the facet chip rows ABSENT and their logic lives in the unit suite. The route HIDES its filter field
+		// once the library is proven empty — a filter over zero rows is dead chrome — which is why this arrives on
+		// `libraryReady` (the field OR the empty box) rather than on the field: the field alone never attaches here.
+		// `surface()` skips a label that yields no readings, so this cannot go vacuously green.
+		// This surface no longer contributes the header's back arrow either: `/library` is a tab root now, and a tab
+		// root carries no back affordance.
 		await surface('/library', async () => {
 			await page.goto('/library');
-			await page.locator(SEL.libraryFilter).waitFor({ state: 'attached', timeout: 15_000 });
+			await page.locator(SEL.libraryReady).first().waitFor({ state: 'attached', timeout: 15_000 });
 		});
 		await surface('/settings', async () => {
 			await page.goto('/settings');

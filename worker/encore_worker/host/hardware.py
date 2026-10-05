@@ -2,7 +2,7 @@
 
 `probe()` describes the machine for the dashboard and is best-effort; `resolve_backend()` and
 `capabilities()` are load-bearing, since a box that advertises work it cannot finish accepts it and then
-fails it. Import-free where possible, and what each capability gate is proving: docs/arch/05-worker.md §9
+fails it. Import-free where possible, and what each capability gate proves: XW-14, docs/arch/05-worker.md §9
 and §9.1.
 """
 

@@ -71,8 +71,8 @@ Five tokens carry a hard rule:
   as decoration.
 - **`--line` is a DECORATIVE hairline; a control boundary takes `--control-line`.** SC 1.4.11 wants 3:1 for the
   visual information that identifies a control, and a text field's border is the only thing that says "type
-  here". `--line` is 1.13:1 on the `--card2` field fill and exempt as decoration on the card, row, table,
-  spinner and skeleton edges of the 17 files that keep it; `--control-line` is 3.65:1 on `--card2`, 3.97:1 on
+  here". `--line` is 1.13:1 on the `--card2` field fill and exempt as decoration on the card, list-row, table-head,
+  tab-strip, chip, spinner and skeleton edges it keeps across the app; `--control-line` is 3.65:1 on `--card2`, 3.97:1 on
   `--card`, 4.53:1 on `--bg`, and clears 3:1 on every surface token `app.css` declares (the floor is
   `--track-bg` at 3.13, then `--ok-bg` at 3.20). Raising `--line` instead would brighten every card in the app.
   **A SLIDER'S RAIL is that boundary too, and it is where the floor above stops being hypothetical.** Only the
@@ -80,8 +80,8 @@ Five tokens carry a hard rule:
   while the unfilled `--track-bg` remainder, which is most of the rail at a low value and all of it at zero,
   measures 1.269:1 — so the rail takes a 1px `--control-line` ring, 3.972:1 on the `--card` outside it and
   3.131:1 on the `--track-bg` inside. Brightening `--track-bg` instead is the `--line` shortcut in miniature: it
-  is the ground under five OUTPUT sites (`Bars`, `TvProgress`, `/tv`'s process bar, the band's progress arc,
-  `SongRow`'s artwork placeholder) that 1.4.11 asks nothing of, and no rail FILL can reach 3:1 on `--card` at any
+  is the ground under five OUTPUT sites (`Bars`, `TvProgress`, `/tv`'s process bar, `NowPlayingStrip`'s progress
+  hairline, `SongRow`'s artwork placeholder) that 1.4.11 asks nothing of, and no rail FILL can reach 3:1 on `--card` at any
   hue without a mid-grey's LUMINANCE — on the neutral axis 3:1 lands between `#666` (2.99:1) and `#6a6a6a`
   (3.18:1), and contrast reads luminance only, so a tinted rail buys nothing. Both rails grew 2px with the ring
   rather than thinning the fill, because `*` carries `box-sizing: border-box`.
@@ -96,10 +96,16 @@ Five tokens carry a hard rule:
   on the `--line` family, and both are named rather than implicit: the vendored checkbox's `border-input`, still
   1.23:1 and a separate item; and `--line-strong` (1.57:1) on the dashed `keycap` and the slider thumb's
   `data-disabled:`, which are INERT — 1.4.11's exception list opens with inactive components. Enforced by
-  `tests/unit/lib/control-boundary-contrast.test.ts`, which pins the count, the floor surface, the checkbox
+  `tests/unit/lib/control-boundary-contrast.test.ts`, which pins the floor surface, the checkbox
   exception, the rail's four ratios and the `#666`/`#6a6a6a` bracket under them, the ring rule and the two
   heights it cost, the absence of any surviving `border-border`/`dark:border-input` in `button.svelte`, and the
-  tailwind-merge eviction the bordered variants depend on.
+  tailwind-merge eviction the bordered variants depend on — and asserts that the `--line`-family border
+  UTILITIES (`border-border`, `border-input`, `border-[var(--line)]`) appear only in the vendored registry files
+  named there, each with the reason it is not a control boundary. It also pins the `var(--line)` FILE COUNT exactly,
+  because what that count proxies is the premise of the whole ruling: `--line` is app-wide decoration, so brightening
+  it repaints everything. The figure is NOT repeated here — this document and that test each used to carry it in prose,
+  the two disagreed with each other and with the tree, and a number no test reads is a number nothing keeps true.
+  Read it off the assertion.
 - **`--ok` states a STATE, never an action, and states it once.** A song row used to spend it three ways at
   once — an `--ok` card border, the "Karaoke ready" pill, and an `iconReady` green ring on the add button — so
   the screen's primary action wore a status colour and read as a badge, while `/library` (every row
@@ -174,7 +180,7 @@ afterwards, and a site spending it is spending an accident, and a table of regis
 (14px, 14 rule sites) and `--space-3xl` (18px, 8 rule sites) are therefore RETIRED, each site moved to the neighbour
 that gave it a stated job, with the reason in place at the site and the summary in `app.css` beside the two holes the
 retirement leaves in the t-shirt sequence. The names are not renumbered: sliding `2xl` → `xl` would silently change
-what `var(--space-2xl)` MEANS at the 33 sites already spelling it. The worst pair is now 1.20, at `md` → `lg` and
+what `var(--space-2xl)` MEANS at every site already spelling it. The worst pair is now 1.20, at `md` → `lg` and
 `4xl` → `5xl`, and the next rung minted here owes that floor a check in both directions.
 
 That ladder carries four REGISTERS, and a site picks a REGISTER rather than a number:
@@ -234,16 +240,25 @@ outright; `--space-4xl` is one `gap:`, `--space-2xl` six), so the next one is mi
 refusal is also why the `/settings` inversion was fixed by lowering the nested boundary rather than raising the
 container: 28px nested would have needed a 32px container.
 
-**What retiring two rungs did NOT fix, recorded so the rung count is not read as the measure.** Of the 63
-`gap`/`row-gap`/`column-gap` declarations in `core/src` that spell a rung (a Tailwind `gap-[var(--space-*)]` under
-`components/ui` counts, since it compiles to a real gap), 54 — 85.7% — land wholly in 4–12px; before the retirement it
-was 53 of the same 63, 84.1%. The band did not thin and was never going to: this is a 480px-max phone column of
+**What retiring two rungs did NOT fix, recorded so the rung count is not read as the measure.** At least three
+quarters of the `gap`/`row-gap`/`column-gap` declarations in `core/src` that spell a rung (a Tailwind
+`gap-[var(--space-*)]` under `components/ui` counts, since it compiles to a real gap) land wholly in 4–12px, and
+`space-ladder.test.ts` holds that as a FLOOR rather than as a pair of tallies — the exact pair it used to hold
+reddened on every feature that added a gap rule, and had already gone stale here while the test stayed green,
+because each pinned its own private copy of the figure. READINGS TAKEN ALONG THE WAY, as history and not as a live
+claim: 85.1% once the now-playing sheet was deleted, 86.5% with it still in the tree, 85.7% before the phone shell
+grew a tab bar, a strip and a `/queue`, and 84.1% before the two rungs were retired. Deleting the drawer stack
+removed seven gap declarations and all seven were in-band, which is the whole of that last move.
+The in-band SHARE did not thin and was never going to — "the band" in this paragraph is the ratio band, never the
+deleted transport: this is a 480px-max phone column of
 8px-spaced `.list-row`s, so most gaps in it are SUPPOSED to be small. **And one crowded pair is left OPEN, not
-sanctioned:** `md` → `lg` (10 → 12) is still 1.20, and `md` is the ladder's second-busiest rung at 40 sites — mostly
-the cluster gap inside a control row (`/`'s `.topbar` and `.find-row`, `PageHeader`'s `.inner`, the band's `.tp`).
+sanctioned:** `md` → `lg` (10 → 12) is still 1.20, and `md` is the ladder's second-busiest rung — mostly
+the cluster gap inside a control row (`/`'s `.topbar` and `.find-row`, `PageHeader`'s `.inner`, the strip's own).
 Collapsing it into `lg` would put every one of those rows on the same 12px `.list-row` already hard-codes, which may
-well be right, but it is a visual ruling over 40 sites and it wants a live before/after that a static pass cannot
-take. It is an open item, not a register.
+well be right, but it is a visual ruling over most of the control rows in the app and it wants a live before/after
+that a static pass cannot take. It is an open item, not a register. The guard behind the clause is a RANK — `md`
+stays among the three busiest rungs by spend — because that is the claim, and it does not move when a component
+takes a padding.
 
 Dimming is a SURFACE or INK change, never an opacity on a subtree: an ancestor alpha flattens text and the
 surface behind it into one buffer, so a token-level contrast check keeps passing while the guest sees
@@ -272,9 +287,9 @@ carries the row grammar's layout and none of its colour for exactly this reason.
   `class="…"`, so a `class:` directive removes a control from the population. A vendored component renders no
   bare `button` tag for that scan at all, which is why `src/lib/components/ui/sonner/sonner.svelte` carries its
   own floor and a route-level guard holds it.
-- **One rule, two selectors, stays one rule.** Inserting anything between the two selectors sharing the page
-  measure in `src/lib/components/NowPlayingDrawer.svelte` silently drops the first out of the list and hands it
-  whatever follows.
+- **One rule, two selectors, stays one rule.** Inserting anything between two selectors that share one
+  declaration list silently drops the first out of the list and hands it whatever follows. The instance this was
+  written against was in the now-deleted now-playing sheet; the trap is a CSS one and survives the file.
 - **Source order settles equal specificity.** The single-class row states (`.mine`, then `.pending`, then
   `.dimmed`) are ordered deliberately in `src/lib/components/QueueRow.svelte` and
   `src/lib/components/ProcessingCard.svelte`.
@@ -295,9 +310,9 @@ consults the media query. Tailwind's motion utility NAMES are banned for the sam
 authored CSS, and the rules are:
 
 - It lives inside `@media (prefers-reduced-motion: no-preference)`. Opt-in is preferred over
-  declared-then-reset, because there is then no reset to lose the cascade to. `reduce` therefore survives in
-  exactly ONE stylesheet in the tree — `NowPlayingDrawer`, for the inline-style reason in the last bullet — so a
-  second CSS `reduce` block is a defect and not a style choice. A JS read of `reduce` (`MediaQuery`/`matchMedia` in
+  declared-then-reset, because there is then no reset to lose the cascade to. `reduce` therefore survives in NO
+  stylesheet in the tree at all now: the single exception was the now-playing sheet, for the inline-style reason in
+  the last bullet, and it went with the sheet. So a CSS `reduce` block is a defect and not a style choice. A JS read of `reduce` (`MediaQuery`/`matchMedia` in
   `VisualizerStage`, `tv/+page.svelte`, `tv/phrases.ts`) is a different mechanism and stays: those cancel a frame
   loop or pick a still, which no declaration can express.
 - Only `transform`, `opacity`, `background`, `color` and `box-shadow` may be animated. Revealing a control is a
@@ -310,10 +325,11 @@ authored CSS, and the rules are:
 - A 1:1 response to a pointer needs no gate and must not have one — nothing is interpolated, so there is no
   duration to zero out. The live-sort SHIFT does have a duration and is gated;
   `src/lib/components/QueueRow.svelte` holds both cases side by side.
-- A dependency that writes `transition` as an INLINE style is invisible to the motion guard and unreachable by
-  an author rule, so the reduced-motion override needs `!important`. `NowPlayingDrawer`'s sheet slide is the
-  one instance, and it sets `transition-duration: 0s` rather than `transition: none`, so the library's own
-  bookkeeping still sees a transition it can complete instantly.
+- A dependency that writes `transition` as an INLINE style is invisible to the motion guard and unreachable by an
+  author rule, so the reduced-motion override needs `!important`. **There is no such dependency left** — the one
+  instance was vaul, writing the sheet's slide inline, and the override that reached it set `transition-duration: 0s`
+  rather than `transition: none` so the library's own bookkeeping still saw a transition it could complete instantly.
+  Kept as the shape to recognise, because the next vendored component that animates inline will need exactly it.
 
 ## Svelte 5 and reactivity
 
@@ -331,18 +347,24 @@ can check. Two rules follow.
 effect tracking only that scalar does not re-run. `play` and `pause` write `isPlaying` and never touch
 `positionSec`, so a resume re-delivers the same number.
 
-**So capture an anchor in the effect that reads every signal it depends on.** The band extrapolates the
-progress ring between broadcasts from `positionSec` plus a wall clock. With the anchor in its own effect
-tracking `positionSec` alone, a resume did not re-run the capture while the interval effect did, and the
-ring extrapolated from the clock recorded at PAUSE time — one second after every resume it leapt forward
-by the whole pause and clamped full on a song still playing. Both reads now live in one effect in
-`src/routes/+layout.svelte`, which makes a stale anchor unrepresentable, and
-That shape is load-bearing.
+**So capture an anchor in the effect that reads every signal it depends on.** `src/routes/+layout.svelte`
+extrapolates the strip's progress rail between broadcasts from `positionSec` plus a wall clock, once a second
+rather than once a frame. With the anchor in its own effect tracking `positionSec` alone, a resume did not re-run
+the capture while the interval effect did, and the readout extrapolated from the clock recorded at PAUSE time —
+one second after every resume it leapt forward by the whole pause and clamped full on a song still playing. Both
+reads now live in ONE effect, which makes a stale anchor unrepresentable. That shape is load-bearing, and it is
+load-bearing TWICE: `src/routes/queue/+page.svelte` runs a second anchor of the same shape for its elapsed clock,
+and it too keeps both reads inside the effect.
 
-Note that the same two-effect arrangement is fine in `src/routes/+page.svelte`, because it reads
-`playback.positionSec` off an object `src/lib/stores/room.ts` REPLACES on every broadcast, so any playback
-change re-runs it. Mirroring those fields as scalars is what makes the band cheap and is also exactly what
-narrows the dependency set — a component that mirrors cannot borrow the route's shape.
+**The site that used to demonstrate the safe two-effect case is gone, so the principle is stated instead of
+pointed at.** Reading `playback.positionSec` off an object `src/lib/stores/room.ts` REPLACES wholesale on every
+broadcast makes the two-effect arrangement safe, because the replacement is a fresh identity and any playback
+change re-runs the dependent effect. `/queue` is exactly that case — it mirrors the whole `room.playback` object —
+and it STILL writes the one-effect shape, with its reason in its own comment, because an arrangement whose
+safety rests on a store's identity discipline breaks silently the day that store mutates in place instead. The
+root layout takes the opposite trade and mirrors NINE scalars, which is what narrows its dependency set: a
+library merge or a queue reorder touches none of them, and a component that mirrors cannot borrow the route's
+shape.
 
 ### The room link is a plain class, not a rune store
 
@@ -382,56 +404,45 @@ size. See [The mount rung](#the-mount-rung-and-the-rule-it-puts-on-size-bindings
 edit in it is a diff to re-apply and each one is pinned by a guard. `src/lib/ui/` and `src/lib/components/*.svelte`
 are authored. The rules below are the ones an innocent edit breaks.
 
-### The now-playing drawer: one surface at two heights
+### The now-playing strip, and the sheet it replaced
 
-The band IS snap point 0 of `src/lib/components/NowPlayingDrawer.svelte`, not a separate fixed element. A
-separate band cannot be dragged open: an outside element can START a pointer gesture but cannot hand the
-in-flight pointer to vaul, so the sheet jumps to its open height instead of tracking the thumb.
-`src/lib/components/NowPlayingBand.svelte` is COMPOSED inside it rather than absorbed, so it keeps its own file
-and surface and the gallery can still render several side by side.
+`src/lib/ui/NowPlayingStrip.svelte` is a fixed-height strip with **no open state at all**: no snap array, no
+drag, no geometry read. Its height is a function of nothing but whether it renders, and it renders only when
+`hasSong || canStart` — so an idle room shows no dead transport, which closes the design review's "the brightest
+element on screen does nothing". Everything the old sheet's expanded body held (the guiding track, the vocal
+range, key shift, the clock) is the now-playing card at the top of `/queue`, because that is the screen you are
+already on to see whose turn is next.
 
-**The snap array is only ever replaced while nothing points into it.** Two mechanisms in this version of vaul
-make that a correctness requirement, and both fail silently:
+**What was deleted, and why the account is kept.** `NowPlayingDrawer.svelte` (618 lines), `NowPlayingBand.svelte`
+(398) and `sheet-snap.ts` (57) are gone, with `src/lib/components/ui/drawer/` (263 lines across 13 files) and the
+`vaul-svelte` dependency. The thesis is a product fact rather than a simplification: Encore's now-playing surface
+is the TELEVISION, and the phone is a remote and a queue — a multi-snap sheet gave the phone a now-playing view
+it never needed. The owner reported the sheet expanding on its own and covering the page, and that class of
+defect was structural to the arrangement. The costs it imposed, recorded because each one is a shape to
+recognise rather than a line count:
 
-1. the active snap point is looked up by STRICT EQUALITY on its value, so replacing the array under a live
-   pointer yields index -1, no snap, and a dead handle;
-2. the seating watch writes a transform with no null guard, so seating before the content has bound its ref
-   lands the write on `null`, permanently.
+- **The snap array could only be replaced while nothing pointed into it.** vaul looked the active snap point up
+  by STRICT EQUALITY on its value, so replacing the array under a live pointer yielded index −1, no snap and a
+  dead handle; and the seating watch wrote a transform with no null guard, so seating before the content had
+  bound its ref landed the write on `null`, permanently. Both failed silently. Snap 0 therefore had to be a
+  CONSTANT reaching the stylesheet as `--snap-band`, snap 1 a derived value written `null` → tick → value, and a
+  resize had to re-lay the sheet out by hand because nothing in vaul did.
+- **Drag exclusion had to be an exclusion, not an allowlist.** `handleOnly` was all-or-nothing, so with it off the
+  body's sliders became drag surfaces and the guiding-track thumb and the dismiss were one gesture with the
+  drawer winning as ancestor. So the body carried `data-vaul-no-drag`, the transport group carried its own
+  (vaul set pointer CAPTURE on press, so a drag begun on the disc retargeted its `pointerup` to the button and
+  fired a click), and the metadata block had to record where a press started and disarm its own toggle past
+  vaul's swipe threshold.
+- **Three "optional" props were necessities.** `modal={false}`, because a permanently-mounted sheet whose
+  collapsed height is the docked band cannot put a scrim and a focus trap over the page in use;
+  `trapFocus={false}`, because the trap installs a document-level `focusin` capture listener for as long as it is
+  enabled and enabled was `open`, permanently true; and a hand-composed grab bar, because the vendored position
+  was the top of the content box rather than the row a thumb pulls.
 
-So snap 0 is a CONSTANT in `src/lib/sheet-snap.ts` rather than the band's measured height, and it reaches the
-stylesheet as `--snap-band` so the rendered strip and the snap point cannot drift. Snap 1 is derived, and every
-write to it goes `null` → tick → new value. Seating happens once in `onMount` plus a tick — never an `$effect` —
-because the write must land after the ref exists and must be a CHANGE for the lazy watch to see it. A resize
-must re-lay the sheet out by hand (nothing in vaul does it, so the sheet keeps the pixel translate it was given
-at the old height), debounced, and restoring by WHICH snap point was active rather than by its value.
-
-`src/lib/sheet-snap.ts` holds the arithmetic because it is the half that can be wrong and the drawer cannot be
-mounted to check it: snap 1 is the minimum of a viewport ceiling, a top-headroom clearance and the sheet's own
-measured content height, floored, with the floor applied AFTER the cap — two snap points resolving to one
-offset makes vaul's index lookup ambiguous. The content cap exists because a sheet that opens to several times
-its content is what an idle room sees first.
-
-**Drag exclusion is an exclusion, not a whitelist.** `handleOnly` is all-or-nothing: with it off the body's
-sliders become drag surfaces and the guiding-track thumb and the dismiss are one gesture, the drawer winning as
-the ancestor. So the band row drags and `.np-fit` carries `data-vaul-no-drag`, which vaul resolves with a
-`closest()` walk — one attribute covers every control ever added below the band row. The band's transport group
-carries its own, because vaul sets pointer CAPTURE on press, so a drag begun on the disc retargets its
-`pointerup` back to the button and fires a click. And a drag must not also count as a tap: the band's metadata
-block records where a press started and disarms its toggle past vaul's own swipe threshold, or dragging the
-sheet down ends in a click that reopens it.
-
-Three more drawer facts that look optional and are not. `modal={false}` is a necessity — a permanently-mounted
-sheet whose collapsed height is the docked band cannot put a scrim and a focus trap over the page in use — and
-because vaul gates the overlay on modality, `src/lib/components/ui/drawer/drawer-overlay.svelte` renders nowhere
-and carries no fade; those two facts belong together.
-`trapFocus={false}` is why you can type in the search box: the trap is a layer below vaul, in the dialog
-primitive, and its scope installs a document-level `focusin` capture listener for as long as it is enabled —
-enabled is `open`, permanently true here. And the GRAB BAR is composed at the call site, not by
-`src/lib/components/ui/drawer/drawer-content.svelte`: a real handle must exist somewhere in the tree or
-`handleOnly` has nothing to restrict dragging to, but the vendored position is the top of the content box
-rather than the row a thumb pulls, and a consumer cannot move a child a component renders for it.
-`src/lib/components/ui/drawer/drawer-handle.svelte` sizes the hit area vaul ships undimensioned, from `--tap`
-arithmetic on both sides, so the bar's height must stay a token rather than a Tailwind class.
+None of that applies to a strip. The replacement's own constraints are two lines of CSS: `.meta` keeps
+`min-width: 0` so the nowrap title ellipsises inside the flex item instead of sizing it (without it the transport
+is pushed off a 320px screen), and the TITLE is what gives up width rather than the singer's name — a truncated
+name reads as the wrong person where a truncated title still reads as the right song.
 
 ### The mount rung, and the rule it puts on size bindings
 
@@ -439,16 +450,18 @@ happy-dom has no layout engine, so the mount harness replaces every geometry rea
 letting a fabricated zero pass. A zero is not a measurement, and the
 two natural guard shapes around one are a permanent red nobody trusts or a permanent silent green.
 
-The consequence is a rule about markup, not about tests. `.band-slot` and `.np-fit` carry `bind:clientHeight`,
-so ANY reactive update in that part of the template re-runs its size binding — and on this rung that throws.
-So:
+The consequence is a rule about markup, not about tests. `.dock` in `src/routes/+layout.svelte` carries
+`bind:clientHeight`, so ANY reactive update in that part of the template re-runs its size binding — and on this
+rung that throws. So:
 
-> **A size binding must never be driven by a reactive prop or a `class:` directive.** No prop carrying SHEET STATE
-> into `NowPlayingBand` is a value: every handler is a callback, and `expanded` is a GETTER rather than the boolean
-> it reads, so neither ever changes value. State that needs to reach that subtree arrives as an ATTRIBUTE, because
-> an attribute write re-renders nothing and cannot change the measured height — `.np-fit`'s `inert` and the band
-> button's `aria-expanded` are both that shape. The band's `title` and `progress` DO change value; they are safe
-> only because neither can change its height, `.meta` being pinned at `min-height: var(--tap)` and `.title` nowrap.
+> **A size binding must never be driven by a reactive prop or a `class:` directive.** State that needs to reach a
+> measured subtree arrives as an ATTRIBUTE, because an attribute write re-renders nothing and cannot change the
+> measured height. The deleted sheet had two such boxes (`.band-slot` and `.np-fit`) and passed every piece of
+> sheet state as a callback or a getter to satisfy this; the dock has one, and the rule it has to satisfy is
+> harder rather than easier. **`.dock`'s own CONTENT is conditional** — `NowPlayingStrip` renders only on
+> `hasSong || canStart` — so the binding genuinely re-runs when the room changes, which is exactly the shape this
+> rung objects to. No unit test mounts the root layout today; one that does will need a layout engine, and that is
+> the constraint to honour rather than to work around. The layout's own comment says so at the binding.
 
 The same rung is why `src/lib/components/GuidingTrack.svelte` does not use the vendored Slider (the primitive
 reads `offsetWidth` to place its thumb, so it cannot be mounted at all), why
@@ -460,7 +473,8 @@ class-toggle restarted by an `offsetWidth` read.
 Two smaller rung-adjacent rules. A `$effect.pre` that records a previous value seeds it INSIDE the effect
 rather than from the prop at its declaration: `let prev = value` is a `state_referenced_locally` warning, and
 `bun run check` is held at 0 errors and 0 warnings. And pointer-event properties are not geometry — `pageY` is
-a property of the event, so the band's drag-cancel logic is safe on this rung.
+a property of the event, so the delta arithmetic in `src/lib/queue-drag.ts` (`ev.clientY - startY`) is safe on this
+rung where the same module's press-time `getBoundingClientRect` reads are not.
 
 ### The list rows
 
@@ -525,26 +539,44 @@ uppercase letterspaced one: `.grouphead` above a list of rows, and the `eyebrow`
 disclosure. They must not be swapped: `.control-label` WAS `.eyebrow`, dressed in the section register, and
 settings' You card ended up holding both — a sentence-case `Name` (it reads `Your name` now, see the wording rule
 below) over an uppercase `YOUR COLOR`, meeting across
-one 8px card gap. Exactly two `--ph-text-xs`/0.1em rows are neither register, and they are neither because they
-label no control: the song page's `.fact` list, and the drawer's `.key` row, which names two keycap buttons and
-keeps its bold reading in the `.key-head` row above. `GuidingTrack` was a third until its eyebrow was retired — it
-labels a slider AND it rendered that eyebrow inside a real `[data-slot='field-label']`, which is the whole evidence:
-no screen ever put the two dresses side by side the way the You card did, because `GuidingTrack`'s only hosts are the
-drawer and `/components` and neither renders a second field label (the gallery imports no `Field.*`, no `ColourRing`,
-no `CodeEntry`) — so this drift had nothing on screen to give it away. Its label text is the primitive's now; the row
+one 8px card gap. The rule is stated as ITSELF, not only as a list of the register's own rows: the register may
+dress a heading over a list or an eyebrow over a block as often as it likes, but it may never sit on or inside a
+field label. The row list is kept as well, as a second and narrower guard — it is the only thing that notices the
+register SPREADING, and it reddens when a surface legitimately grows a section heading, which for a tripwire is the
+point rather than the flaw. Keep it in the test, not in prose: the copy this paragraph used to carry went false twice
+over — it named a `.fact` row where the dressed class is `.lab`, and a now-playing sheet that no longer exists. One
+`--ph-text-xs`/0.1em row is neither register, and it is
+neither because it labels no control: the song page's `.lab`, the Key and Range labels in its `.facts` card.
+`GuidingTrack` was a second until its eyebrow was retired — it
+labels a slider AND it rendered that eyebrow inside a real `[data-slot='field-label']`, which was the whole evidence at
+the time: the row's hosts were then the now-playing sheet and `/components`, and no screen put the two dresses side by
+side the way the You card did. `/queue` replaced the sheet and DOES, so the comparison exists now — its now-playing card
+renders the key row's `.control-label` 8px above `GuidingTrack`'s box (the card's own `row-gap`) and 20px above
+`GuidingTrack`'s field label, which adds the Field primitive's 12px `margin-top`; measured at 390x844 — and the two
+labels agree, which is why the key row carries the shared class rather than re-declaring
+three of its four properties locally. (`/components` still renders no second field label: the gallery imports no
+`Field.*`, no `ColourRing`, no `CodeEntry`.) Its label text is the primitive's now; the row
 kept the value's rank by moving `.gt-val` UP to `--ph-text-md` rather than holding the label down, and `/settings`
 already labels the same knob at room scope as `Guiding track · <n>%` in that dress.
 
 ONE MORE LABEL DECISION, about the WORDS rather than the dress. A field label takes the second person exactly when
 the value is the singer's OWN — `Your name`, `Your color` — and stays a bare noun for anything the room or the box
-owns: `Guiding track`, `Font`, `Join address`, `Room code`. Of the 33 field labels in the tree, 4 are those two
-personal values on the two surfaces that edit them (`/settings`' You card and the join screen's identity pane) and
-29 are bare. The possessive is not decoration: the string is also the accessible NAME — `ColourRing` hands one
+owns: `Guiding track`, `Font`, `Join address`, `Room code`. Every field label in the tree is a bare noun except
+those two personal values, each of which appears on both surfaces that edit them (`/settings`' You card and the
+join screen's identity pane) — four labels, and `label-register.test.ts` holds that set exactly, in both
+directions, beside the census it sits in: 33 field labels, 4 possessive and 29 bare. The possessive set is the rule;
+the total is the proof the filter behind it found anything. The possessive is not decoration: the string is also the accessible NAME — `ColourRing` hands one
 `label` to both its heading and its disc's `aria-label` — so it has to say whose colour it is out of visual
 context, where the `You` card title is not read with it. It is the app's voice elsewhere (`Your library`,
 `Your lyrics`, `Your pick`, `Your profile`) and `ColourRing`'s own default prop, which `/settings` was the single
 site to override away — leaving one control under two names on two screens, `Color` here and `Your color` there.
-`tests/unit/lib/label-register.test.ts` pins both halves, the dress and the wording.
+`tests/unit/lib/label-register.test.ts` pins both halves, the dress and the wording. The dress half is checked per
+ELEMENT — no class dressed with `text-transform: uppercase` may sit on or inside a `<Field.Label>` or a
+`.control-label`, in markup or as an inline style — which is what makes it indifferent to the register growing, since
+the register is entitled to grow. Keying on the transform rather than on a tracking value is what reaches `app.css`'s
+own `.grouphead` at 0.14em, the television's rows at 0.16–0.2em and `/components`' inline `.1em` sites, none of
+which the old `0.1em` scan could see. It carries the retired defect's own shape as a FIXTURE, so the zero cannot go
+vacuous if the markup idiom changes.
 
 `src/lib/ui/icons.ts` ships path data and no codepoints: several transport codepoints default to colour emoji,
 the text-presentation selector is honoured unreliably on exactly those, and an emoji is a different drawing on
@@ -567,135 +599,206 @@ scrollport rather than from the shell's padding.
 `NOT_PHONE` in `src/routes/+layout.svelte` is the single list of surfaces that are not a phone, matched on
 the route or any descendant of it. It is the same set the phone inventory exempts
 from the phone route walk; do not fork a second opinion about what a phone is. The list gates two things
-that must agree: whether the layout opens a `role=phone` socket, and whether the band renders. An ungated
+that must agree: whether the layout opens a `role=phone` socket, and whether the dock renders. An ungated
 `room.connect()` in the root layout would give `/tv` a second socket and register the television as a
 singer present in the room.
 
-### The band and `--dock-h`
+### The dock and `--dock-h`
 
-`src/routes/+layout.svelte` is the only writer of `--dock-h`, the band's measured (never guessed) height,
+**ONE FIXED CONTAINER HOLDS BOTH ROWS.** `.dock` in `src/routes/+layout.svelte` stacks `NowPlayingStrip` on
+`TabBar` in normal flow; they are not two separately-fixed elements, because the tab bar composes the
+home-indicator inset and the strip composes none — two fixed siblings would each need their own inset arithmetic
+and would disagree the moment one of them changed height. The dock is NOT inside `.app-shell`: the shell is
+centred and width-capped, so on a tablet a dock inside it would float in the middle of the screen.
+
+**THE DOCK HAS TWO HEIGHTS, AND EVERY CHROME-RELATIVE READING IN THIS FILE HAS TO SAY WHICH.** The strip renders
+only when there is something to act on (`hasSong || canStart`), so an idle room — joined, nothing playing, nothing
+queued — gets the tab bar alone. Measured at both widths: with the strip up the dock is **91px** (strip 45 + tab
+bar 46) and columns reserve 119px; with it absent the dock is **46px** and columns reserve 74px. At 1440x900 that
+puts the dock's top edge at **809** or **854**; at 390x844, at **753** or **798**. `measured-dock.spec.ts` asserts
+both states and asserts the strip's absence in the idle one, which is the property the rebuild was for: no dead
+transport in a room that has nothing to transport. A gap quoted to "the dock" without its room state is ambiguous
+by 45px, and several readings in this file were written that way before this note existed.
+
+`src/routes/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
 published on `documentElement` so every scrolling column can reserve it in normal flow. Rules:
 
-- Exactly one element adds `env(safe-area-inset-bottom)` — the band. That inset reaches everything stacked
-  above it through `--dock-h`, so a second `env()` term anywhere else doubles the gap.
+- Exactly one element adds `env(safe-area-inset-bottom)` — the TAB BAR, because it is the app's bottom-most
+  element. That inset reaches everything stacked above it through `--dock-h`, so a second `env()` term anywhere
+  else doubles the gap. Measured: `padding-bottom` is 0px on `.dock` and on the strip at inset 0, which is why
+  `tests/playwright/specs/gate/measured-dock.spec.ts` reads the tab bar for that arm and nothing else.
 - The effect's teardown is contractual. An inline custom property on `:root` outlives its writer and
-  outranks any stylesheet rule, so a stale `--dock-h` would pad the television's stage by a band it has not
+  outranks any stylesheet rule, so a stale `--dock-h` would pad the television's stage by a dock it has not
   got, and no media query could override it.
 - No media query may set `--dock-h`; the measurement outranks it, so such a rule is silently dead.
-- `dockH` seeds at a plausible height, not 0: it is bound to the drawer's snap point 0, which a pushed-down
-  0 collapses for a frame.
-- The progress ring extrapolates between broadcasts, and its anchor is captured inside the effect that also
-  reads `isPlaying`. A resume re-delivers an equal `positionSec`, and writing an equal primitive into a
+- **The height is MEASURED, and a token-arithmetic version was tried and failed.** A tab renders 45px against a
+  declared 44, because its icon, gap and label outgrow the 32px that `min-height: var(--tap)` leaves inside
+  `padding-block` under border-box — the declared total came to 102px against a rendered 91. The content-driven
+  height is also the CORRECT one: the chrome holds text, and a frozen height would clip the label at the
+  browser's 200% text-only zoom. Do not re-attempt it; `src/app.css` records the same finding.
+- `dockH` seeds at a plausible height, not 0, so a column reserves roughly the right space on the frame before
+  the bind lands rather than jumping.
+- The strip's progress hairline extrapolates between broadcasts, and its anchor is captured inside the effect
+  that also reads `isPlaying`. A resume re-delivers an equal `positionSec`, and writing an equal primitive into a
   `$state` scalar notifies nothing, so a separate anchor effect never re-runs and the interval keeps
   extrapolating from the pause-time wall clock.
 
-### The home column
+### The three tabs
+
+The phone has one navigation and it is a tab bar: **Sing** (`/`), **Queue** (`/queue`), **Library** (`/library`),
+rendered by `src/lib/ui/TabBar.svelte`. Before it, every trip between surfaces went through the home page: the library
+behind an unlabelled icon door beside the search field, settings behind a gear, and every way back a `goto('/')`.
+`/settings`, `/stats`, `/metrics` and `/admin` are deliberately NOT tabs: they are not party-time surfaces, and a tab
+a guest never presses during the thing the app is for costs the same thumb-width as one they do. (`/stats` still has
+exactly one link into it, from `/settings`; that is a property of `/stats`, not a gap in this bar.)
+
+Three tabs because the home column already WAS three pages. It rendered six sections and branched all of them on
+`searchActive` — not searching gave `Queued` / `Making karaoke…` / `Your library`, searching gave `Ready to sing` /
+`Needs karaoke`. That branch was this split, wearing one URL.
+
+**The thesis the split rests on: Encore's now-playing surface is the TELEVISION.** The phone is a remote and a queue,
+so it never needed a multi-snap now-playing sheet. `src/lib/ui/NowPlayingStrip.svelte` is a fixed-height strip with no
+snap array, no drag and no geometry read, and it renders only when something is playing or something is queued, so an
+idle room shows no dead transport. Everything the sheet's body held — ± key, the guiding track, the range bar, a clock
+readout — is on the Queue tab, above the list it acts on, because those controls act on what is PLAYING and the
+playing song is not in the queued list. `vaul-svelte` is GONE: the `/components` gallery was its last importer, and
+once that section was replaced by the strip and the tab bar the dependency and the 13-file `components/ui/drawer/`
+wrapper were deleted with it. Measured on the build afterwards — `vaul` appears in no client artifact at all, and
+deleting the wrapper took 5,152 bytes out of the root stylesheet every surface downloads, /tv included (55,927 →
+50,775), 3,211 of them being 24 rules whose selector spelled `data-[vaul-drawer-direction=…]`.
+
+The strip and the tab bar sit inside ONE fixed `.dock` in `src/routes/+layout.svelte`, which is also the single writer
+of `--dock-h` (the section above holds that contract). The height is MEASURED, by `bind:clientHeight` on `.dock`. A
+token-arithmetic `--dock-h` was tried and failed, and app.css's `NO BOTTOM-DOCK TOKEN HERE` note is the record of why:
+a tab renders 45px against a declared 44, the declared total came to 102px against a rendered 91, and a frozen height
+would clip the labels at the browser's 200% text-only zoom — so the content-driven height is also the CORRECT one.
+Measured at 390×844: `--dock-h` is 91px, the rendered dock is 91px, each of the three tabs is 45px, and `/`'s `main`
+reserves 119px (91 + 28).
+
+The current tab is an INK change plus a second, non-colour channel, because colour alone may not be the only means of
+conveying it (SC 1.4.1). `/song/[mediaId]` lights NONE of the three: it is reached from the Queue tab's now-playing card — the only door
+to it in the tree, and the one the deleted sheet used to hold — and has its own back
+affordance, and lighting a tab the guest did not press is a lie about where they are.
+
+Reordering the queue lives with the rows it moves, on the Queue tab. It is a live sort with no mode, split in two:
+`liveSortTarget` in `src/lib/reorder-mode.ts` is the arithmetic — it both places the rows and decides what a release
+commits, so a drop cannot land somewhere the guest did not see — and `src/lib/queue-drag.ts` is the browser wiring.
+Geometry is measured once per gesture at press time (rows change height mid-flight), pointer listeners go on `window`
+because the pressed grip becomes a detached node as the list reorders, and focus is returned by attribute for the same
+reason; all three of those rules live in `queue-drag.ts`, and the route keeps only the reactive state they drive.
+Arrow Up/Down on the grip is the single-pointer alternative (SC 2.5.7 / 2.1.1). Queue changes the guest did not cause
+are announced through `queueAnnouncement` in `src/lib/phrasing/queue-announcement.ts`, which is silent with no
+baseline so joining a busy room does not read the whole queue aloud.
+
+### The Sing tab
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its
-own wordmark — the topbar is for joined singers only). Joined, it renders in this order:
+own wordmark — the topbar is for joined singers only). Joined, it is four things: the search field, the scope picker,
+the result groups, and one idle state. The rotation and the library rows it used to carry are the other two tabs now.
 
-1. the search field, first on the screen and in normal flow — nothing here is stuck to an edge, because the
-   band owns the bottom one and nothing else declares `position` either (the topbar is NOT sticky, despite an
-   earlier note in this file and in the route saying so);
-2. `Queued`, the rotation in play order, drawn as `QueueRow` or `ProcessingCard` per entry;
-3. `Making karaoke…`, which renders in BOTH views;
-4. with an empty field, `Your library` — a SHELF of four rows, not the library; at `--bp-lg`, where the row grid
-   is two tracks wide, eight. Neither number is `LIBRARY_SHELF` changing value: `LIBRARY_SHELF` is 4 at every
-   width and `LIBRARY_SHELF_WIDE` is 8, and the ROUTE picks between them off a `matchMedia('(min-width: 1200px)')`
-   read. With a query, `Ready to sing` then `Needs karaoke`.
+`searchActive` (a non-empty query) is still the SOLE switch, and it now switches between the idle state and the
+results rather than between two halves of an app — which is why the template body is a single
+`{#if searchActive} … {:else} … {/if}`. A surface with exactly two states should say so in its structure; the
+four-term boolean that used to gate the first-run screen named the queue, the library rows and the processing group,
+and two of those three terms no longer exist here. There is still no browse mode on this column, no `?browse=1` and
+no history entry for a search, so Back always means leave the room — and clearing the field now lands on the idle
+state rather than restoring a second view.
 
-`searchActive` (a non-empty query) is the sole switch between the queue view and the results view. There is
-no browse mode on this column, no `?browse=1`, and no history entry for a search — clearing the field restores
-the queue, so Back always means leave the room. Browsing is a separate route (`/library`, below) precisely so
-that stays true; the column reaches it from a door BESIDE THE SEARCH FIELD and from the shelf's `See all N songs`.
-The door sits on the field's LEADING edge: the trailing edge already carries a spinner while a search runs and the
-clear `×` whenever one is active, so a control after the box would be third in a cluster that changes size. It uses
-the `secondary` variant rather than `ghost` or `outline` — `outline` fills with `bg-background`, the page colour, so
-beside a `--card` field it reads as a hole rather than a control.
+With a query, in order: `Making karaoke…`, `Ready to sing`, `Needs karaoke`, the widen escape hatch, then at most one
+zero-state. Every heading is gated on having rows, because a group heading is a claim about what follows it. The
+escape hatch (`Not it? Search everything`) is deliberately NOT gated on an empty result: YouTube Music's `songs`
+filter never returns nothing, so a widen offered only inside the zero-state would be unreachable exactly when it is
+needed. The zero-state's way out is a LINK to `/library` printing the library count, not a `clearSearch()` — clearing
+would land on the idle state, which shows no songs, so the old label promised what the tap no longer delivers. **Any
+surface that prints a count prints its noun in agreement**: this label shipped as `Show my 1 songs` on a one-ready
+library — the ordinary state the first time a song finishes processing — while `/library`'s own count line, one tap
+away, read `1 song`. `showAllCount` carries a bare number, so agreement is the caller's to supply.
 
-The shelf caps at `LIBRARY_SHELF` (4) via `libraryShelf` in `src/lib/library-browse.ts`, which also reports how
-many it hid — 0 hides the `See all` door, because a control promising more than it has is worse than none. The
-whole library used to render here, under an unbounded queue, so a busy rotation put the songs you already own
-metres down the scroll. The cap lives in that module rather than inline because the Playwright fixture seeds
-exactly four demo tracks and so can never truncate it; the number is proved in the unit suite instead.
-At `--bp-lg` the cap is `LIBRARY_SHELF_WIDE` (8) — the SAME height budget the 4 was measured for, spent two
-tracks across, because the row grid is two columns wide from 1200px up. Measured at 900px tall **with ten ready
-songs**, the whole column ends at y=770.75 at BOTH 768 and 1440 — identical height, four songs against eight —
-so before the wide cap the desktop was spending half the phone's shelf budget to show the phone's shelf, and on
-that corpus the space between the last content and the dock at 1440×900 falls from ~246px to ~41px. The route
-picks the cap from a `matchMedia` read rather than from CSS: the extra rows do not exist in the DOM for a
-stylesheet to reveal, and rendering all eight and hiding four would leave them in the accessibility tree.
-`See all N songs` needs no special case — `hidden` follows whichever cap is live.
+With an empty box, the idle state is the whole screen. Its title names this tab's job
+(`What do you want to sing?`), and it is deliberately not `Nothing queued yet`: that is false on the Sing tab and is
+word for word `/queue`'s own idle headline, and two tabs wearing one zero-state headline is the same defect as one
+library counted three ways. The action is in the state — a button that focuses the field at the top of the same
+screen, not an `href`, because the destination is a control and not a route. No `/library` link here: the zero state
+never had one, and the Library tab is in the dock at the foot of the screen already.
 
-**Both of those readings are claims about a ten-ready library, and that is not the corpus this tree runs on.**
-`data/encore.sqlite` holds 123 media rows, of which 2 are `stem_status='ready'` (the other 121 are `none`), and
-`/api/library` serves `listReady()` only — so the shelf holds two rows, under the PHONE cap of four, let alone
-the wide eight. Re-measured in headless Chromium against that catalog at 1440×900, joined, queue empty and no
-query: the column's last content ends at y=403.4 and the band's top edge is 835, so 431.6px separate them — 496.6
-to the viewport floor, and the review's ~460px sits between the two. The wide cap moved none of it, because a cap
-cannot bind on two rows: `libraryShelf(rows, 8)` and `libraryShelf(rows, 4)` both return two shown and none
-hidden. The review's figure therefore stands in the state a real user of this tree is in. What the wide cap buys
-is real but CONDITIONAL: it is worth a screenful once the library has eight ready songs, and nothing before that.
+**The processing group is SEARCH-SCOPED, and that is the one behavioural ruling in the rebuild.** With a query, the
+server has already scoped `j.processing` to it, so each row is a RESULT — the row that tells a guest "this one is
+already being made" and stops a second tap on the app's one compound action. Without a query there is no group at
+all: `processingRows` returns `[]` before it calls anything, because the alternative is a statement about the LIBRARY,
+and `/queue` now draws every queued song still cooking; since `processAndQueue` always adds the turn alongside the
+process, a processing song is in practice always a queued song. `processingGroupIds` in `src/lib/readiness.ts` USED TO
+take the live status map, the whole catalog and a classifier and union them in that no-query case; with its only
+caller short-circuiting first, that branch was unreachable and those three arguments unreadable, so the branch, the
+arguments and the two unit tests that pinned it are **gone** — the function now takes the wire's `processing` list
+alone, which makes the search-scoping a property of its signature rather than of a branch. Deleting the group
+outright was rejected because two
+consumers would break silently: `showsNoRows` takes `processingCount`, so a query returning twelve cooking hits would
+print "Nothing matches"; and `unaccounted()` subtracts the processing ids, so a mid-process hit the server returned in
+its separate `processing` list would be subtracted and rendered nowhere at all. What the scoping trades away, recorded
+because it is real: a media processing with NO queue entry (an admin-side process, or an entry removed mid-cook) is
+visible only while a query matches it, because `/library` serves `listReady()` and paints every row ready. That is a
+`/library` gap, not a Sing-tab one.
 
-That residue is a CONTENT bound rather than a layout one, and the arithmetic is written down because it is what
-decides nothing further is owed: at 1440×900 the page has 762px between the topbar's bottom edge (73) and the
-band's top (835), and the entire joined column in this state is 324.4px tall (y=79 to y=403.4) — a find row, an
-empty rotation, two song rows. There is nothing to place in the remaining 437.6px. The queue is empty, nothing is
-processing, and the other 121 media rows are unprocessed search results this column shows only under a query. The
-one candidate was built and measured before being rejected: handing the empty rotation the leftover height
-(`min-height: 30vh` on `.queue-empty.tight` at `--bp-lg`) MOVED the void instead of removing it — the rotation's
-own block grew from 62px to 270px of centred emptiness and 223.6px still sat below the shelf, two voids where
-there had been one. `.queue-empty.tight` keeps `min-height: 0`, for the reason its own comment already gives.
+Two rulings make the wide column a layout rather than a stretched phone. **The field carries
+`max-width: var(--measure-prose)`** on both `/` and `/library` — unconditionally, because a `max-width` only ever
+takes space back and the cap cannot bite until the ROW reaches 692px (560 + this row's `--space-md` gap + the
+picker's 122px). Re-measured with the library door gone: the findbox is 284px at a 767px viewport and 560px at 768,
+because `--max-w` steps 480 → 760 there and the row steps 416 → 696 with it — so the cap binds exactly AT `--bp-md`
+and never between two widths. At 1440×900 the uncapped slot would be ~884px of caret to chase, well over a measure,
+with the placeholder adrift from the mark that labels it. `/library`'s twin is capped the same way at 768 (696 → 560)
+but from `--bp-lg` up it is bounded by the ROW GRID instead — see the library page's wide head.
 
-Two rulings make the wide column a layout rather than a stretched phone. The search field carries
-`max-width: var(--measure-prose)` on both `/` and `/library` — unconditionally, because a `max-width` only
-ever takes space back, and measurement confirms it: the findbox is 230px at a 767px viewport, 510px at 768, and
-reaches exactly 560 only once the row passes 746px, which is the cluster's own arithmetic (44px door + 560 +
-122px picker + two `--space-md` gaps). At 1440 the input had been ~770px, about 1.4 measures; it is now 508
-inside a 560px findbox. `/library`'s twin is capped the same way at 768 (696 → 560) but from `--bp-lg` up it is
-bounded by the ROW GRID instead — see the library page's wide head. And from
-`--bp-md` the topbar carries a `--line` bottom rule with `padding-bottom: var(--space-lg)`: the bounded-band
-form of the header surface every `PageHeader` route already wears, without the pill's fill and blur, which are
-earned by being sticky. The rule deliberately spans the shell's content box rather than the rows' column, so it
-reads as page structure and not as a row boundary. The wide gap between the wordmark and the identity cluster is
-NOT closed: leading brand / trailing account is a desktop header form, the cluster on the far edge leaves the way
-into `/settings` in the same corner every other route puts it, and the hairline is what makes that split read as
-the two ends of one surface rather than as two things floating in page. `PageHeader` is not the precedent for it —
-that component left-packs `.back-slot` then `h1` with `gap: var(--space-md)` and has no trailing slot. Nor is the
-gap a constant: `.me-cluster` is `margin-left: auto`, so its size is a function of the singer's display name —
-measured 91px at 390x844 and 781px at 1440x900 with an eight-character name.
+**And from `--bp-md` the topbar carries a `--line` bottom rule** with `padding-bottom: var(--space-lg)`: the
+bounded-band form of the header surface every `PageHeader` route already wears, without the pill's fill and blur,
+which are earned by being sticky. The rule deliberately spans the shell's content box rather than the rows' column,
+so it reads as page structure and not as a row boundary. The wide gap between the wordmark and the identity cluster
+is NOT closed: leading brand / trailing account is a desktop header form, the cluster on the far edge leaves the way
+into `/settings` in the same corner every other route puts it, and the hairline is what makes that split read as the
+two ends of one surface rather than as two things floating in page. `PageHeader` is not the precedent for it — that
+component left-packs `.back-slot` then `h1` with `gap: var(--space-md)` and has no trailing slot. Nor is the gap a
+constant: `.me-cluster` is `margin-left: auto`, so its size is a function of the singer's display name — measured
+80px at 390×844 and 770px at 1440×900 with the eight-character name `Theodora`. The name is part of the reading: a
+narrower eight characters opens the gap further, so a figure quoted without its name cannot be reproduced.
+
+Left alone for a harder reason, with the alternative built first: what the measure cap does NOT do is make the find
+row spend the column. At 1440×900 `.find-row` is 1016px (212 → 1228) and its two controls occupy 212 → 904, so 324px
+of row trails the picker empty under a hairline that spans the whole content box. Right-aligning `.source-slot`
+(`margin-left: auto` at `--bp-lg`) was tried and measured: it puts the scope picker at 1106 → 1228, 334px from the
+trailing edge of the field whose scope it sets, and reads as an orphaned control rather than as two ends of one
+surface. The topbar's split works because each end carries a whole thing — a wordmark, an identity cluster — and a
+`<select>` divorced from its field is not one. So the row stays a LEADING-ANCHORED CLUSTER, of TWO now rather than
+three: the field's leading edge sits on 212, where every row, eyebrow and empty state below it starts, and the picker
+stays within one `--space-md` of it. `/library`'s head could do better than that because it has a second thing to put
+in the width; this row does not. Below `--bp-sm` the picker takes its own line instead, and that arm is load-bearing
+rather than tidy: measured at 320px with it defeated, the search input's content box is 68px idle, 14px once a query
+puts the clear control in the row, and **zero** while the search is in flight and the spinner sits beside the clear.
+The three states are listed separately because they differ, and because the 14 was briefly attributed to "mid-search",
+which is the state that reads zero. With the arm, the input is 200px idle, 146px settled and 121px with the spinner up,
+and `.find-row` is 124px tall.
+
+**The wide-viewport void, re-measured on the corpus this tree runs on.** A desktop pixel reading of this page is
+worthless without the catalog it was taken against, and a READY row is the rare thing in every catalog here:
+`/library` serves `listReady()` only, `data/encore.sqlite` holds 384 media rows of which 5 are
+`stem_status='ready'`, and the `Encore-ui` copy the readings below were taken against holds 180 of which 2 are. (The
+figure in this paragraph was 123 rows and 2 ready when the shelf measurements were taken; it moves every time
+somebody uses the app, which is the reason the claim is dated to a catalog rather than stated flat.) The SUPERSEDED
+reading, kept so the before and after are both checkable: with a library shelf and an empty rotation on this page and
+two ready songs behind them, the column's last content ended at y=403.4 against a band top of 835 — **431.6px** of
+void — and the design review's ~460px sat just above that. That band top is a reading from the tree it was taken
+on and is no longer re-derivable: `NowPlayingBand` is deleted, and a later reading of the same chrome put its top
+at 813. Both blocks are gone. At 1440×900 with no query the Sing tab is a find row and the idle block: the block is
+`min-height: 32vh` (288px), starts at y=173 and ends at y=461, and what separates it from the chrome depends on
+which dock is up. With something playing or queued the dock is 91px, its top edge 809, and **348px** separate them;
+in an idle ROOM the strip does not render, the dock is 46px, its top edge 854, and the gap is **393px** — the
+larger of the two, and the one to quote for a room nobody has used yet. That residue is a CONTENT bound and
+nothing further is owed, which is the conclusion the old arithmetic reached for the old layout too: this is a tab
+whose whole job is "type a name", and there is nothing to place in the gap. The one candidate was built and measured
+before being rejected — handing the old empty rotation the leftover height (`min-height: 30vh` at `--bp-lg`) MOVED the
+void instead of removing it, growing one block to 270px of centred emptiness with 223.6px still below it.
 
 Left alone, on arithmetic rather than taste: the dock's title-to-transport gap, which the design review put at
-~1000px. `.meta` measures 884px at 1440x900 and it is the `nowrap`/`ellipsis` title's OWN box, so a long title
-uses it — the same refutation that file applies to tablet rows.
-
-Left alone for a harder reason, with the alternative built first: what the measure cap does NOT do is make the
-find row spend the column. At 1440×900 `.find-row` is 1016px and its three controls occupy 212→958, so 270px of
-row trails the picker empty, under a hairline that spans the whole content box. Moving `.source-slot` to the
-trailing edge (`margin-left: auto` at `--bp-lg`) was tried and measured: it puts the scope picker at 1106→1228,
-280px from the field whose scope it sets, and reads as an orphaned control rather than as two ends of one
-surface. The topbar's split works because each end carries a whole thing — a wordmark, an identity cluster — and
-a `<select>` divorced from its field is not one. So the row stays a LEADING-ANCHORED CLUSTER of three, which is a
-composition and not stretched space: the field's leading edge sits on 212, where every row, eyebrow and empty
-state below it starts, and the door and the picker stay within a gap of it. `/library`'s head could do better
-than that because it has a second thing to put in the width; this row does not.
-
-The processing group is deliberately ungated: its membership is
-query-scoped in `src/lib/readiness.ts` row by row, and it subtracts anything the queue above already draws
-a bar for so one job never gets two progress bars. A group heading is a claim about what follows it, so
-each is gated on having rows.
-
-Reordering is a live sort with no mode, split in two: `liveSortTarget` in `src/lib/reorder-mode.ts` is the
-arithmetic — it both places the rows and decides what a release commits, so a drop cannot land somewhere the
-guest did not see — and `src/lib/queue-drag.ts` is the browser wiring. Geometry is measured once per gesture
-at press time (rows change height mid-flight), pointer listeners go on `window` because the pressed grip
-becomes a detached node as the list reorders, and focus is returned by attribute for the same reason; all
-three of those rules live in `queue-drag.ts`, and the route keeps only the reactive state they drive. Arrow
-Up/Down on the grip is the single-pointer alternative. Queue changes the guest did not cause are announced
-through `queueAnnouncement` in `src/lib/phrasing/queue-announcement.ts`, which is silent with no baseline so
-joining a busy room does not read the whole queue aloud. The wait on a singer's own row comes from
-`waitShort` in `src/lib/phrasing/position-sentence.ts`, which omits an unknown estimate rather than zeroing
-it.
+~1000px. The strip's `.meta` measures 906px at 1440×900 and it is the `nowrap`/`ellipsis` title's OWN box, so a long
+title uses it — the same refutation that file applies to tablet rows.
 
 ### The library page
 
@@ -703,13 +806,29 @@ it.
 unbounded queue, and the home field cannot stand in for a library because it FETCHES from three resolvers and
 needs a name you already know. Browsing is for when you do not.
 
+**It is the LIBRARY TAB, and it carries NO back arrow.** The arrow it used to carry named the queue in its
+accessible label while its href pointed at `/`, which is the Sing tab — and a back arrow on a tab ROOT is wrong
+in kind regardless of destination, because tabs are siblings and the dock is the way between them. `PageHeader`'s
+own case for `back` is that a home-screen install with no back gesture still has an in-app exit; the tab bar
+supplies three. Measured at 390×844 on the 2-ready catalog: the `PageHeader` pill goes 64px to 41px — the 44px
+icon box was setting its height — and the whole head rises a uniform 23px, field 102→172 becoming 79→149, the
+count 180→196 becoming 157→173, the disclosure 206→250 becoming 183→227 and the first song row 250 becoming 227,
+identically at 768×900. Two counter-numbers are recorded rather than buried: 23px is not a row (the pitch is
+102.4px, a 94.4px row plus the 8px gap), and on a 2-song catalog nothing scrolls, so the void between the last
+row and the dock GROWS 306.1 → 329.1px. What the removal buys is the deletion of a false affordance, plus the
+title's leading edge, which moves x=86 → x=32 where `.field-slot` and every `.row` already start — with the
+arrow, the h1 was the only thing on the page beginning anywhere else. THE HEADER ITSELF STAYS: measured, it costs
+73px of 844 without the arrow against 96 with it and 0 with no header at all, and it holds the route's only h1 on
+a sticky surface, so deleting it would leave the page named only by a 0.75rem tab label 46px tall at the far end
+of the screen.
+
 **What "your library" is.** The READY catalog — `MediaRepository.listReady()`, served by `/api/library` and
 mirrored whole in `room.library`. It is NOT the `local` resolver, which searches audio FILES in the media
 directory: a processed YouTube song is in the library and absent from that list, so `/api/search?source=local`
 answers a different question and must not back this page.
 
 **The filter is a filter, not a search.** `browseLibrary` in `src/lib/library-browse.ts` narrows rows already in
-memory, with no request — the whole ready list is there, because the shelf and this page both read it. That is
+memory, with no request — `room.library` mirrors the whole ready list to every surface. That is
 also the one thing keeping the two fields distinguishable, so the page STATES it: the `N of M songs` count line
 is the only element that says this box hides rows rather than fetching them. Two fields that looked alike and did
 opposite things would be a worse problem than the reachability one this page fixes.
@@ -721,8 +840,8 @@ row was usable, the first two letters of a query blocked the main thread for 634
 widened the list again blocked it for 3.4s; one page is 1,328 nodes and 0.9s, with keystrokes at 85ms then ~31ms. The
 debounce holds `appliedQuery`, never `query`, so the box still echoes instantly and only the rows wait, and
 `clearFilters` cancels the pending timer or a cleared filter re-applies itself 150ms later. The window is a DOOR
-and never a cap — `/library` is where the shelf's `See all` leads, so a row it would not show is a song you own
-with nowhere left to reach it — and it resets to one page WITH THE ROWS rather than with the keystroke, so a
+and never a cap — this page is the only place every ready song is reachable now that the home shelf is gone, so a row
+it would not show is a song you own with nowhere left to reach it — and it resets to one page WITH THE ROWS rather than with the keystroke, so a
 revealed list is not truncated under a filter that has not landed yet.
 
 Matching folds through `foldForMatch` — NFD, marks stripped, punctuation collapsed to a space, so "beyonce"
@@ -749,36 +868,64 @@ track (728→1228, 500px wide) instead of a full-width row of its own, so the fi
 used to sit at 432. The TAP is not what got cheaper — opening still pushes the rows 174px against the old 182px —
 the head did: 70 of that 78px is the collapsed lift and 8 is the panel's placement. Below 1200px `.lib-meta` is
 `display: contents` and generates no box, and the
-collapsed head reads out identically at 390×844 and 768×900 to what it measured before the wrapper existed —
-field 102→172, count 180→196, disclosure 206→250, first row 250.
+collapsed head reads out identically at 390×844 and 768×900 — field 79→149, count 157→173, disclosure 183→227,
+first row 227.
+
+EVERY 1440×900 y IN THE PARAGRAPH ABOVE IS AN ARROW-ERA READING, kept because the pre-arm layout is no longer
+reproducible and that before/after pair is the only statement of what the arm did. Dropping the header's back
+arrow then lifted the whole column 23px, so today the same drive reads `main` 73, field 79→149 at 212→712, the
+count at x=732 and y 79→95, the disclosure at x=728 and y 105→149, the two rows 157→251.4 side by side at 212→712
+and 728→1228, the panel 149→323, and the first expanded row 331. Nothing the arm is ABOUT moved: the field is
+still 500 wide over the first row's own 212→712, the disclosure still on the second row's leading edge at 728,
+the count still 4px inboard at 732, the panel still 500 wide at 728→1228 and still 174px tall.
 
 Two consequences are stated rather than hidden. The field's `--measure-prose` cap goes INERT at these widths,
 because track one is 500px against a 560px cap — the grid bounds the field, and 500 is the song row's own width,
 so the field's two edges land on the first row's two edges (212→712) instead of overhanging its trailing edge by
 60px on one side and stopping 456px short of the column on the other. And lifting the head pushes the trailing
-space DOWN rather than away: re-measured in a browser on the 2-ready catalog at 1440×900, the last `.row` ends at
-274.4 and `.band-slot` starts at 813, so the gap is **538.6px** while the first row sits at y=180 — against y=309
-for the same two songs on `/`. That is the improvement and the residue in one reading: the songs moved 129px
-closer to the top, and the space they vacated reappeared underneath them.
+space DOWN rather than away: re-measured in a browser on the 2-ready catalog at 1440×900 with the strip up, the
+last `.row` ended at 274.4 and `.dock` starts at 809, so the gap was **534.6px** while the first row sat at y=180
+— against y=309 for the same two songs on `/`. That is the improvement and the residue in one reading: the songs
+moved 129px closer to the top, and the space they vacated reappeared underneath them. After the back arrow went,
+both numbers moved by the same 23px and the gap is **557.6px** (809 − 251.4) with the strip up, **602.6px**
+(854 − 251.4) in an idle room, which is the same residue read one lift higher.
 
-An earlier revision of this paragraph put that gap at 560.6px, derived as a 70px lift on a 490.6px base. The
-tree measures 538.6, so the two figures could not both be right; the y=180 reading they were quoted beside is
-correct. Recorded rather than silently corrected, because the lesson generalises: a number in prose is only as
-good as its last re-measurement, and this page's own numbers are pinned in tests wherever a test can hold them.
+That gap figure has now been wrong three times, in three different ways, and all three are recorded because the
+lesson is the point. An early revision put it at 560.6px, derived as a 70px lift on a 490.6px base rather than
+measured; the tree read 538.6, so the two could not both be right. Then the chrome changed under the corrected
+number: 813 was `.band-slot`'s top and the dock's with the strip up is 809, so the same 274.4 row bottom gives
+534.6 and not 538.6. Then the chrome acquired a SECOND height and the number was published without its room
+state, which is the ambiguity the dock section now names: the band rendered for anyone who had joined, the strip
+renders only for a room with something to act on, so the one figure the band needed became two. Arithmetic
+standing in for a measurement, a measurement outliving the thing it was taken against, and a measurement that
+never said which state it was taken in. A number in prose is only as good as its last re-measurement, which is
+why this page's numbers are pinned in tests wherever a test can hold them.
 
-NOT FIXABLE BY LAYOUT, and stated so nobody tries again: two rows cannot fill the 717px between this page's
-`main` at y=96 and the band at 813, however they are placed. The residual desktop void at low content is a
-CONTENT bound, not a composition one — it closes when the page has more to show (this catalog carries 123 media
-rows of which 121 are `stem_status='none'`, i.e. invisible here), and no `max-width`, `margin` or grid change
-touches it.
+NOT FIXABLE BY LAYOUT, and stated so nobody tries again: two rows cannot fill the 736px between this page's
+`main` at y=73 and a dock whose strip is up at 809 — 781px when the room is idle and the dock is 46px — however
+they are placed. The residual desktop void at low content is a CONTENT bound, not a composition one, and no
+`max-width`, `margin` or grid change touches it.
+
+Do NOT read the catalog's size as reassurance that the void closes on its own. What stands against those 2 `ready`
+rows is a far larger body of STEM-LESS ones, and their total is deliberately not quoted here — the same choice the
+route comment makes, for the same reason it gives: the total accumulates every search result ever materialised and
+drifts whenever a benchmark runs. An earlier draft of this paragraph did quote a flat figure, and it was stale
+before the ink dried: it disagreed with the dated reading in this page's own home-page section above, which is why
+that section states a catalog and a date rather than a bare number. The owner confirmed (2026-10-03) that the
+stem-less rows are **benchmarking junk, not a processing backlog** — so they will never become library members and
+the gap they appear to promise does not exist. A SMALL READY LIBRARY IS THE REAL STEADY STATE for this page, not a
+transitional one, which makes the low-content composition the case to design for rather than the case to wait out.
 
 **Sort & filter is collapsed by default, and that is the page's main design decision.** Expanded, the chip rows
 are ~420px of chrome on a nine-song library and put the first song row near y=650 on a 390×844 phone — the exact
 fault this route exists to fix, relocated. Scrolling songs is the default state. Opening it by default at
 `--bp-lg`, where the panel has its own track and the page has unused height, was considered and rejected on
-arithmetic: this tree's two-song library opens to 174px (172→346), but `FACET_CHIP_LIMIT` allows twelve artist
-chips and twelve tag chips in one 500px track, so a full library's panel can exceed the 739px the page has and
-would put the first row back under the band — the same fault at a different width. The trigger names the active
+arithmetic: this tree's two-song library opens to 174px (149→323) in that track, but `FACET_CHIP_LIMIT` allows
+twelve artist chips and twelve tag chips in one 500px track, so a full library's panel can exceed the 736px the
+page has with the strip up — the tighter of the dock's two budgets, which is the one a worst case has to clear —
+and would put the first row back under the dock, the same fault at a different width. 174px is the WIDE
+reading only: the SAME panel at 390×844 measures 202px (243→445) and puts the first song row at y=453, because the
+phone's narrower track wraps the chips further, and the phone is the case the collapse is for. The trigger names the active
 facet (`Sort & filter · Queen`) because the panel showing the pressed chip may be shut, and without it a guest
 reads `2 of 9 songs` as the page having lost their songs. It is the first caller of the `eyebrow` button variant,
 which was missing `bg-transparent` and so rendered as a grey `buttonface` slab — see the note on that variant.
@@ -788,8 +935,25 @@ ten characters are a base32 millisecond clock; it is the time the row was MATERI
 its stems finished. Ordering is applied explicitly rather than trusting `listReady()`'s own
 `orderBy(desc(media.id))`, so this page's order is not an undocumented side effect of a server query.
 
-Adding a song does NOT navigate: you came here to pick, and picking two is normal. The toast carries the way
-back (`View queue`) instead, so nothing strands you on a leaf route. Unjoined, the route renders `JoinLanding`
+**The empty library hides the filter field.** A filter over zero rows is dead chrome: measured on a 0-ready
+catalog at 390×844, `.field-slot` painted 102→172 directly above "No karaoke tracks yet", offering to narrow a
+list with nothing in it. The field is kept mounted while `libraryLoaded` is false, so in the common case it is
+there from the first frame rather than appearing late. The description names the SING tab — it used to say
+"Search from the queue screen", which named a surface that no longer exists under that name, since `/` is the Sing
+tab and the queue is its own route. The `Find a song` button STAYS, because `/queue`'s twin empty state carries one
+too and two sibling tabs disagreeing about whether an empty state offers an action is exactly the incoherence the
+tab rebuild is removing; it is also free either way, `min-height: 40vh` measuring `.lib-empty` at 337.6px on an
+844px viewport with the button and 337.6px with it taken out of the live DOM. This is the state where the dock is
+THINNEST: with no ready song nothing can be playing, so the strip's `hasSong || canStart` gate keeps it off the
+page and `--dock-h` measures 46px — the tab bar alone. That is why the description has to name the tab in words.
+
+Adding a song does NOT navigate: you came here to pick, and picking two is normal. The toast no longer offers
+`View queue` either. That action was labelled for the queue and landed on `/`, the Sing tab, and it was the app's
+one direct `window.location` write — every other programmatic navigation under `src/` goes through `goto`, and the
+rest are real anchors. Driven in a browser, clicking it recorded two main-frame navigations and
+wiped a sentinel set on `window`, so it was a full document replacement: the socket closed, `/api/library`
+re-fetched and the shell re-parsed to cross one tab. The dock carries a Queue tab on every surface now, so the
+toast names the destination in its text instead. Unjoined, the route renders `JoinLanding`
 exactly as `/` does — `refreshLibrary` never runs for a guest, so there would be nothing to browse. `libraryLoaded`
 on the room link is what separates "not fetched yet" from "you own nothing", so a full library is never accused of
 being empty for one frame.

@@ -21,11 +21,18 @@ Four homes, in the order you should test a new file against:
 | Is it a Svelte component?                                              | `src/lib/components/`, or a surface folder | —                                                                   |
 | Otherwise: pure, client-only, non-component logic                      | `src/lib/` root                            | —                                                                   |
 
-The fourth case is the one that reads like a dump and is not. Ten pure
-client-only modules sit directly in `src/lib/` because they are the residue
-after the other three homes take their share. They are all DOM-free and all
-unit-tested without a browser. **That is a category, and this row is its
-name.** A file there is correctly placed; it is not waiting to be filed.
+The fourth case is the one that reads like a dump and is not. The pure
+client-only modules that sit directly in `src/lib/` are the residue after the
+other three homes take their share. They are all DOM-free and all unit-tested
+without a browser. **That is a category, and this row is its name.** A file
+there is correctly placed; it is not waiting to be filed.
+
+The population is `ls core/src/lib/*.ts | wc -l`, which reads **15** today, or
+14 once `utils.ts` is set aside — §3 pins that one for a different reason and it
+is not residue. A count was written here as "ten" and rotted both ways: the
+category grew, then `sheet-snap.ts` left it when the now-playing sheet was
+deleted. Re-derive it rather than reading it here; the claim this row makes is
+the CATEGORY, and a tally of it was never load-bearing.
 
 ### The rule that governs `ui`
 
@@ -51,10 +58,67 @@ the repo: 23 files, two consumers outside itself, nothing else reaching in.
 The phone surface does the opposite — its components live under
 `src/lib/components/` while its logic sits in the `src/lib/` root. **That
 asymmetry is the largest genuine structural inconsistency in the codebase**,
-and it is deliberately left alone: the component half is the most
-path-pinned set of files in the repo (83 hard path literals across 36 files),
-so mirroring `tv/` would be the most expensive change available. Revisit only
-if the phone surface is being reworked for another reason.
+and it is deliberately left alone: the component half is the most path-pinned
+set of files in the repo, so mirroring `tv/` would be the most expensive change
+available. The pinning is re-derivable rather than tallied here — count every
+`$lib/components/` import specifier plus every `src/lib/components/`
+repo-relative literal, across the `.ts`, `.js` and `.svelte` files of `core/src`
+and `core/tests`, and compare the same count for a rival tree. (A path named
+inside a comment counts: it rots the same way an import does, which is the thing
+this figure is measuring.) Today that reads 129 literals over 31 files for
+`lib/components` against 109 over 51 for `lib/server/media`, 70 over 32 for
+`lib/tv`, 43 over 27 for `lib/ui` and 36 over 22 for `lib/contract`. 129 over 31
+is 4.2 literals per file against the 2.2 of the densest rival, `lib/tv`, so the
+superlative is about literal DENSITY and survives the comparison; a figure of
+"83 across 36 files" stood here under a definition this document never recorded,
+which is why the definition is now spelled out and the rival readings with it.
+
+Run the same recipe against `HEAD` and the dock rebuild's shape falls out:
+`lib/components` was 139 over 32 and FELL a net ten — sixteen literals went,
+seven of them inside `NowPlayingDrawer.svelte` itself and nine from files that
+survived it, and the new `/queue` route brought six back;
+`lib/ui` was 35 over 24 and ROSE, because `TabBar`, `NowPlayingStrip`, the
+`/queue` route that imports both and the guards that pin their paths all name it; and
+`lib/server/media`, `lib/tv` and `lib/contract` did not move at all. The
+asymmetry the ruling is about therefore narrowed slightly and the ruling is
+unchanged. Do not requote these five pairs as facts about the tree you are
+reading — they are a snapshot of the tree the paragraph was written on, and the
+recipe above is the durable half.
+
+### The revisit condition fired, and the ruling held
+
+**It fired.** The phone surface was reworked for another reason entirely: the
+now-playing sheet was replaced by a fixed bottom dock holding a strip and a tab
+bar, which is as squarely "the phone surface is being reworked" as the condition
+can get. So the asymmetry was reconsidered on its merits rather than inherited.
+
+**And the ruling held, because the rework did not change the trade.** The two
+new chrome components went to `src/lib/ui/` — `NowPlayingStrip.svelte` and
+`TabBar.svelte`, authored primitives, which is the home §1's third row already
+gives them — and the new tab went to `src/routes/queue/`. No `src/lib/phone/`
+was created. Two reasons, both of which are about these files specifically:
+
+1. The path-literal cost mirroring `tv/` would pay is still the highest in the
+   repo. The rework DID retire some of it — deleting the sheet stack took
+   `NowPlayingDrawer.svelte`, `NowPlayingBand.svelte` and the thirteen-file
+   vendored `ui/drawer/` directory out of the tree, and every literal naming
+   them with it — but the remaining count is the one measured above and it is
+   still first on literal count, 129 against `lib/server/media`'s 109. A cost
+   that shrank and stayed the largest is not a reason to pay it.
+2. There is no logic half to colocate. `tv/` earns its folder because its
+   components sit beside modules only they use. The strip and the tab bar are
+   chrome: they render props and raise events, and what logic they reach for
+   (`clock.ts`'s `progressFraction`, `icons.ts`) is shared with surfaces that
+   are not the phone. A `phone/` folder would hold two components and nothing
+   else, which is a rename rather than a colocation.
+
+The honest reading is that the asymmetry is now smaller than this section
+described it: the phone's newest components are NOT under
+`src/lib/components/`, so the surface is split three ways rather than two. That
+is a cost of the rule in §1 winning over the rule in §2, and it is the right
+cost — `src/lib/ui/` vs `src/lib/components/` is a vendored-vs-authored
+distinction (§1's `ui` note), which is a stronger boundary than surface
+membership.
 
 ---
 
@@ -94,8 +158,10 @@ Each was proposed during the review and each is a net loss.
   additionally pinned _outside_ `contract/` by a guard whose mutation arm
   asserts that its alias is forbidden, annotated in three places against
   exactly this re-litigation.
-- **Surface subfolders for the root components.** 83 hard path literals across
-  36 files, most serving the same route.
+- **Surface subfolders for the root components.** The most path-pinned tree in
+  the repo, most of it serving the same route — the count and its definition are
+  in §2, which is also where the rival trees are measured so the superlative can
+  be checked rather than taken.
 - **Splitting the 25-file media directory** under `src/lib/server/`. It is the
   one directory whose name does not predict its contents, and splitting it is
   still the worst trade in the report: highest file count, a large share of the
@@ -153,10 +219,29 @@ found files, not that it found the right ones.
 Every move uses `git mv` — guards enumerate via `git ls-files`, and an
 index/worktree disagreement surfaces as a missing file.
 
-One trap specific to this document: the doc-citation guard checks every
-`src`/`worker`/`tests` path in `docs/` that ends in a file extension. Proposed
-paths that do not exist yet would fail it, which is why §4 names target
-_directories_ rather than target files.
+One trap specific to this document, **and the guard behind it runs in only one
+direction, which was looked for rather than assumed.** §4 names target
+_directories_ rather than target files so that a proposed path cannot be read as
+a claim that the file exists. Keep doing that. But the enforcement is asymmetric:
+
+- **Code → docs is GUARDED, on the Python side only.** `worker/tests/test_docs_pointers.py`
+  collects every `docs/…` path cited by the worker package, both bench harnesses
+  and the worker's own tests, and fails when one does not resolve. It also checks
+  that a cited `path §N` names a heading that exists. Its roots are Python
+  directories, so it sees no `core/` source at all.
+- **Docs → code is a CONVENTION on the core side, not a guard.** No test walks
+  `docs/` extracting `src`/`tests` paths and resolving them. Every core test that
+  opens a document — `comment-pointers.test.ts`, `library-wide-head.test.ts`,
+  `type-ladder.test.ts` — reads it for PINNED SUBSTRINGS, and
+  `comment-pointers.test.ts` scans `src/` for line-number pointers rather than
+  `docs/` for paths. So a `src/…` path in a core-side document can rot silently,
+  and deleting a source file does not red anything that cites it in prose.
+
+That asymmetry is why a source deletion has to sweep the docs by hand, and why
+the convention is worth more than it looks: it is the only thing holding those
+citations up. The gap is a known one, not a finding — a walk over `docs/` for
+`core/src/…` and `core/tests/…` paths would close it and would be cheap, and the
+Python guard is the working model to copy.
 
 ---
 

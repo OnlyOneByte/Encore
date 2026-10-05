@@ -891,9 +891,12 @@ token the prose used to carry and fails on a `LOST` row.
 
 **Why bounds per KIND of prose.** W7b measured the package at 48% prose (3 685 comment lines and 7 577
 docstring lines against 12 252 of code) and moved ~3 800 lines out, under one bound: "no prose block over 40
-lines". That bound was satisfied by 101 blocks of 12 lines or more, the largest of them 28-to-40-line MODULE
-docstrings — documentation essays, still in code. A single block bound cannot see the difference between an
-essay and three legitimate paragraphs, so W7c replaced it with one number per kind, in
+lines". That bound was satisfied by **144** blocks of 12 lines or more — counted by kind over the `w7c-start`
+snapshot of `worker/encore_worker` with the ratchet's own helpers: 130 docstrings, 8 own-line `#` runs and 6
+`#:` runs, or **145** under rule 5's bridged definition, the largest a **40-line** module docstring in
+`domain/lyrics/parts.py`. (The wave brief said 101; no threshold or kind filter reproduces that figure, and
+the measurement is what this row records.) A single block bound cannot see the difference between an essay and
+three legitimate paragraphs, so W7c replaced it with one number per kind, in
 `worker/tests/test_prose_shape.py`:
 
 | rule | bound | what sat on it when it was set |
@@ -905,20 +908,46 @@ essay and three legitimate paragraphs, so W7c replaced it with one number per ki
 | 5. bridged prose BLOCK | 18 lines | Exactly what rules 1 and 3 allow back to back, i.e. the worst legal combination: a BACKSTOP that catches a THIRD paragraph, not a bound anything sits on (the worst block measured 13). |
 | 6. per-module prose/code | 0.55 at >= 100 code lines | The package's worst module is `domain/lyrics/policy.py`. Below 100 lines of code the ratio measures a module's INTERFACE — a Protocol or a table of constants is one line of code per declaration — so rules 1-5 and 7 carry those. |
 | 7. per-layer prose/code | 0.55 | Read over all 11 package directories RECURSIVELY: a top-level-only list left `domain/audio` above the bound and invisible behind `domain/`'s average. The worst layer is `artifacts/`. |
-| 8. package prose/code | 0.52 | Below the layer bound on purpose: every layer sitting at its own bound would be a different package from this one. 1.21 before W7b, 0.745 before W7c, 0.49 after. |
-| 9. root aggregates | tests 0.33, harness 0.28 | `worker/tests` measured 0.3124 and the committed bench harness 0.2580 when the rules were extended to them. |
+| 8. package prose/code | 0.52 | Below the layer bound on purpose: every layer sitting at its own bound would be a different package from this one. 1.21 before W7b, **0.82** at the `w7c-start` snapshot, **0.49** after. |
+| 9. root aggregates | tests 0.33, forced-alignment harness 0.28, stem-separation harness 0.30 | Measured on the shipped tree: `worker/tests` **0.32** (0.3114 at the `w7c-start` snapshot; W8a's own tests moved it to 0.3158, inside the 0.33 bound), `docs/benchmarks/forced-alignment/scripts` **0.26**, `docs/benchmarks/stem-separation/scripts` **0.22** (and the package **0.49**). Each quote is held by `test_the_quoted_root_ratios_still_measure_what_they_say`, because the two figures this row first carried (0.3124 and 0.2580) were already stale when they shipped. |
+| 10. consecutive comment overlap | 0.6 Jaccard on content words | `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' `#:` block verbatim: three index claims that were false of its own tuple, and the arms' real semantics deleted. Set in the gap the tree measures — the one real pair **0.889**, the next **0.436** over **773** adjacent disjoint pairs — so a pasted block fails and two comments about related constants do not (review r2-correctness-1). |
+
+**Where the package's own ratio was read.** Rule 8's row quotes **0.82** for the `w7c-start` snapshot, measured
+with the ratchet's `_counts` over the tree extracted from the shadow repo (7 840 prose / 9 593 code = 0.8173;
+`_tools/prose_scan.py`'s different convention reads 0.801 on the same tree). The figure the row first carried,
+**0.745**, is the same measure taken MID-WAVE — after the first pass over the largest blocks had already landed
+— so it was never the pre-wave baseline it was quoted as (review r1-tests-11). For the same reason the 1.21 is
+`w7b-start`'s, which this measure reproduces exactly, which is how the method was checked.
 
 **Blocks are BRIDGED across blank lines.** A block ends only at a line of code, so neither two touching
 docstrings nor `#` continuation nor a bare blank line splits an essay into passing halves — which an
 adjacency-only rule allowed, and a blank line every 30 lines defeated.
 
-**Which roots the rules bind on.** All five shape rules and the block rule read three roots: the package
-`worker/encore_worker`, the worker's own tests, and the committed bench harness
-`docs/benchmarks/forced-alignment/scripts`. W7b swept the package only and W7c extended the per-kind rules
-outwards, which cost 239 edits across 68 test modules and 12 harness scripts. The ratio rules stay the
+**Which roots the rules bind on, and the LOSSLESS gate with them.** All five shape rules, the block rule and
+the comment-overlap rule read **four** roots: the package
+`worker/encore_worker`, the worker's own tests, and BOTH committed bench harnesses —
+`docs/benchmarks/forced-alignment/scripts` and `docs/benchmarks/stem-separation/scripts`. W7b swept the package
+only; W7c extended the per-kind rules outwards, which cost 239 edits across 68 test modules and 12
+forced-alignment scripts, plus 4 in the three stem-separation scripts (three module docstrings of 24, 23 and 23
+lines and one 12-line def docstring, all of whose narrative the stem-separation README already carried — the
+first pass left that root out of `ROOTS` silently, which is review r1-correctness-2). The ratio rules stay the
 package's, with each other root held to an aggregate instead: a test file is many small functions each
 honestly carrying two lines of WHAT, and a gate script is a measurement argument with a `main()` attached, so
-a per-module 0.55 there would delete short docstrings that are exactly the right length.
+a per-module 0.55 there would delete short docstrings that are exactly the right length. The roots are a claim
+about coverage, so `test_the_shape_rules_say_where` and `test_every_root_has_modules_to_measure` assert the
+tuple, the per-root module floors and that no two roots share a label (both harness directories are called
+`scripts`, and one label for two roots would merge their worst prose), and `test_the_shape_rules_say_where`
+also holds the root COUNT this module's own prose spells, rule 2's docstring having gone on saying three for a
+whole wave after the fourth arrived (review r2-correctness-6).
+
+The LOSSLESS gate must bind on the same four, and did not: `_tools/prose_scan.py`'s `ROOTS` and
+`_tools/verify_numbers.py`'s `CODE_GLOBS` both omitted the stem-separation harness, so the ~50 docstring lines
+the sweep deleted there were never scanned into the manifest and "0 LOST" said nothing about them (review
+r2-spec-8, r2-tests-14). Both now list all four and the manifest is re-frozen from the `w7c-start` TREE over
+them: **4 139 → 4 179 numbers, 2 889 → 2 922 strict-substantive rows** (the fourth root contributing 40 and 33
+respectively, over 3 files and 30 blocks), verified **0 LOST** — 2 611 code, 311 doc, under Python 3.12.
+`verify_numbers.main` now asserts the manifest's own `roots` equals `prose_scan.ROOTS` and that `CODE_GLOBS`
+can read every one of them, so the two scopes cannot drift apart again silently.
 
 **What a test docstring keeps.** The claim it pins, and the WHY that makes the claim worth pinning — commonly
 the mutation that used to survive, named in one clause. What it does not keep is a re-derivation of a
@@ -926,13 +955,98 @@ measurement, a re-argued review finding, or a narrative of the wave that produce
 measurement README or to a design document. A harness script's docstring keeps the COMMAND LINES that run it,
 which is why its module bound holds two or three of them plus one paragraph and a pointer.
 
-**EXCEPTIONS is empty, and that is the finished state.** W7c cleared 271 package violations and 239 in the
-other two roots without granting one. An exception is a judgement about a particular docstring; raising a
-bound is a judgement about every docstring in the tree, which is how the 40-line bound came to allow 101
-essays. `TIGHTEST` names the module or layer sitting closest to each bound and a test fails when that claim
-goes stale, so the next wave moves a paragraph instead of raising a number.
+**EXCEPTIONS is empty, and that is the finished state.** W7c cleared 271 package violations and 243 in the
+other three roots without granting one. An exception is a judgement about a particular docstring; raising a
+bound is a judgement about every docstring in the tree, which is how the 40-line bound came to allow the 144
+blocks above. `TIGHTEST` names the module or layer sitting closest to each bound and a test fails when that
+claim goes stale, so the next wave moves a paragraph instead of raising a number. The MEASURE itself is held
+too: `test_the_measure_still_sees_prose` floors what `_prose_lines` and `_longest_block` return and pins the
+bridging rule on a synthetic module, because zeroing the measure used to leave all 24 tests green — rules 5 to
+9 all read it, and `TIGHTEST`'s own check passes on a tie at zero (review r1-spec-8).
 
-**The pointers are checked too.** `worker/tests/test_docs_pointers.py` resolves every `docs/` path the code
-cites, every `§N`, every cited README section title and every `XA-`/`XW-` invariant id, and fails a citation
-that leads to a gitignored working document — because a pointer to nothing loses exactly what the cleanup
-moved.
+**What a grant can reach.** Rules 1-4 are keyed `"<label>::<qualname>"` and rule 5 by `"<label>::<block>"`, a
+block spanning whatever docstrings and comment runs touch it and so having no qualname of its own. Rule 5 read
+`EXCEPTIONS` not at all until W7c's review: the hatch could sanction a 9-line def docstring and not a 19-line
+one, i.e. not the length it exists for, and nobody could learn that except by mutating the tree (review
+r2-tests-13). Rules 3 and 4 still have no route — a comment run has no stable name, so shorten it or make it a
+docstring and argue there — and `test_every_named_exception_is_still_needed` deletes any grant, block or
+docstring, whose target has come back inside its bound.
+
+**A quoted ratio is a CEILING, not a pin.** `MEASURED_ROOT_RATIO` shipped as an equality at ±0.005, and the
+stem-separation root had **0.9 lines** of headroom: deleting three docstring lines from it failed the suite,
+which is the 2026-10-01 directive's own remedy breaking the ratchet that enforces it (review r2-tests-12). The
+rule is now one-sided — a reading that rounds ABOVE the quote fails at once, since that direction claims less
+prose than the root carries, and a reading below it costs a re-quote only past `QUOTE_STALE_ABOVE` = **0.05**.
+A retracted figure is held too: `RETRACTED_RATIOS` names each one and
+`test_a_retracted_ratio_is_never_republished_as_a_reading` fails a paragraph of this document or of the
+measurement README that quotes one outside a retraction, which is how **0.745** came to be published here as
+withdrawn and in the README as a reading, in the same wave (review r2-correctness-2).
+
+**What the layers measured, before and after.** At the directive the orchestration layer `steps/` read **1.80**
+prose lines per line of code and **0.78** after W7b; `domain/` and `adapters/` read **1.02** and **0.89** before
+W7b's third task and **0.92** and **0.84** after it. On the shipped tree they read **0.48**, **0.51** and **0.49** (`_layer_ratio`,
+recursive), and the worst layer of all is `artifacts/` at **0.545** — the only one anywhere near rule 7's 0.55,
+which is why `TIGHTEST["layer"]` names it. The W7b-era figures are history, kept labelled: a number quoted as
+today's reading has to be re-measured, which is the defect review r1-tests-12 found in this paragraph (0.78 is
+above the bound a layer at 0.78 would fail).
+
+**The pointers are checked too, over the same roots.** `worker/tests/test_docs_pointers.py` resolves every
+`docs/` path the code cites, every `path §N`, every cited README section title and every `XA-`/`XW-` invariant
+id, and fails a citation that leads to a gitignored working document — because a pointer to nothing loses
+exactly what the cleanup moved. Its roots are the package, both bench harnesses and `worker/tests`: until W7c
+only the invariant-id rule read the tests, so the pointers the sweep left in test prose were unchecked
+(review r1-correctness-5). That population, read off the shipped tree as the rules read it and as OCCURRENCES
+— the denominator the first figure never stated — is **72** `docs/` paths over **19** distinct, **26**
+`path §N` and **8** README titles; it is a FLOOR in `MIN_TEST_POINTERS`, so widening the roots cannot be undone
+quietly. The 57 and 11 this paragraph first carried reproduce on no tree and under no reading (review
+r2-correctness-5). The invariant-id rule runs both ways now: every cited id must be a row (so a deleted row
+breaks the suite) and every DECLARED row must be cited from code, which 9 of the 14 `XW` rows were not —
+`XW-12`'s only citation was `test_docs_pointers.py`'s own `#:` example, so the module that holds it never named
+it. W7c put each id at the site its "Where held" column names, `UNCITED_INVARIANTS` is EMPTY, and a citation
+from the declaring module does not count (review r2-tests-15). The floor moved with the population too:
+**143** citations over all **31** ids, so `MIN_INVARIANT_CITATIONS` is **110** rather than the 50 it was left at
+while the wave tripled the count (review r2-correctness-4). **One open item, named rather than
+silent.** The ANCHOR rule — every `§N` in prose must sit near a committed document path, or it means the
+gitignored review — still skips `worker/tests`, which carries **29** bare `review §N` marks across 14 modules
+(W7c re-pointed 7 of 36 at the committed section they meant). `UNANCHORED_IN_TESTS` ratchets that count
+downwards, a new one fails the suite, and reaching zero fails it too, with the instruction to delete the
+exclusion.
+
+## 13. What the worker's fixtures measure
+
+The same rule as [`04-alignment.md`](04-alignment.md) §17, for the parts of the worker outside alignment: the
+numbers that explain why a fixture has its shape live here, and the test keeps one line saying what it pins.
+
+**Stem roles, verified by hand once** (`tests/test_audiosep.py`). A real zoo separation is a 200 MB download
+and a minute of inference, so what the suite exercises is everything around the model call — which is where
+the safety lives. The happy path was verified by hand on a 20 s excerpt of `tfr-flyaway` with
+`bs-roformer-instrumental-resurrection-by-unwa`: it wrote two files, and role detection named `(other)` the
+instrumental at **86.73% low-frequency energy against the vocals stem's 2.64%** — a **32.9x** margin, on the
+very model whose filenames `bs-roformer-infer` reports inverted. That margin is the evidence for §2.2's rule
+that roles are measured from the audio and never read off a filename.
+
+**A model that declares nothing is undescribed, not unsafe** (`tests/test_zoo.py`). 62 of the catalogue's 169
+entries declare no stems, and dropping them was a real mistake: it hid `bs-roformer-vocals-by-gabox`, which
+carries the highest published instrumental SDR in the whole catalogue (**17.21 dB**), and
+`bs-roformer-instrumental-resurrection-by-unwa`, the one roformer this project has measured itself. They are
+offered as `unknown` because runtime role detection does not need the declaration — which is the entire point
+of measuring (§2.3).
+
+**Why there is a suite against REAL models** (`tests/test_ml_real.py`). Everything else fakes `Transcriber`
+and `Aligner` behind their Protocols, which proves the state machine and says nothing about whether the
+adapters work. It found two bugs that **375 passing tests** could not: `device_for()` returns `mps` on Apple
+Silicon and whisperx's transcriber is CTranslate2, which raises `ValueError: unsupported device mps`, so ASR
+would have hard-failed on every Mac in the mandatory fallback; and torch 2.6 flipped `torch.load`'s
+`weights_only` default to True, breaking the pyannote VAD checkpoint whisperx loads on the way to a
+transcriber, so `load_model` failed on EVERY device. The audio is synthesised with macOS `say`, so the expected
+words are known exactly and an assertion can be about accuracy rather than about whatever a committed fixture
+happened to contain. Marked `ml` and slow: models download on first use (~150 MB for whisper tiny, ~360 MB for
+the wav2vec2 aligner), so `-m 'not ml'` gives the fast suite.
+
+**Why the bench harness has unit tests of its own** (`tests/test_lang_gate.py`, `tests/test_pool_gate.py`,
+`tests/test_bench_e2e.py`). `lang_gate.py` was **651 lines with no test at all**, referenced only from
+docstrings and loaded by nothing, while carrying the decisive numbers of W7: the 59-song fr/de/es reading that
+ships `lang-route-mix` default-off, the `--folds` census that licenses the NFKD fold as a byte-level no-op on
+every row under `results/`, and review M9's live blank proof. A defect in `score`'s truth pairing, in
+`pooled`'s arithmetic or in `fold_census`' alphabet would move those verdicts silently — and one of them
+(`pooled`'s AAE) was in fact live. A harness that grades the project needs the same gates as the project.

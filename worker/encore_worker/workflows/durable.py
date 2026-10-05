@@ -3,7 +3,7 @@
 A DBOS step only checkpoints inside a workflow CONTEXT, so `dbos_align.py`'s step decorators alone recorded
 nothing — this is the wrapper that gives them one. Only `JobRef` crosses the boundary, because workflow
 arguments are serialised into the system database and a steps object holds loaded models, a socket and
-subprocess handles; the steps are resolved INSIDE the workflow from a provider registered at startup.
+subprocess handles; the steps are resolved INSIDE the workflow from a provider registered at startup (XW-11).
 
 See docs/arch/05-worker.md §8.
 """

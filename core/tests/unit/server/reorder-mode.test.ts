@@ -1,6 +1,10 @@
 // The reorder mode's pure predicates, tested where the logic lives. `bunfig.toml` cannot mount a component
-// importing `$app`, so a predicate inlined in `routes/+page.svelte` could only be tested by RECONSTRUCTING it
-// here — pinning the copy rather than the code the page runs. Every assertion imports the function it calls.
+// importing `$app`, so a predicate inlined in a route could only be tested by RECONSTRUCTING it here — pinning
+// the copy rather than the code the page runs. Every assertion imports the function it calls.
+//
+// THE CALLER IS /queue, NOT `/`. The machinery moved with its rows when the phone grew tabs: a queue is the Queue
+// tab's subject, and leaving the reorder state on a page that renders no queue is how a drag quietly stops working.
+// The non-vacuity test at the bottom is what holds this file to the surface that actually runs it.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import {
@@ -14,7 +18,7 @@ import {
 } from '$lib/reorder-mode';
 import { at } from '$test';
 
-const PAGE = at('src/routes/+page.svelte');
+const PAGE = at('src/routes/queue/+page.svelte');
 
 const OK = { queuedCount: 2, reorderMeaningful: true };
 
@@ -201,9 +205,9 @@ test('the moving song can be ANY guest\u2019s now, not only the actor\u2019s', (
 	expect(modeInvalidation([{ id: 'x' }, { id: 'y' }, { id: 'z' }], 'z', 'queued')).toBeNull();
 });
 
-test('non-vacuity · +page.svelte imports and calls every predicate asserted here', () => {
-	// Without this, all of the above could pass against a module the page had stopped using. Each name is checked
-	// as a CALL, not just an import.
+test('non-vacuity · the Queue tab imports and calls every predicate asserted here', () => {
+	// Without this, all of the above could pass against a module no surface had left. Each name is checked as a
+	// CALL, not just an import — and it is pointed at /queue, which is where the rows are.
 	const src = readFileSync(PAGE, 'utf8');
 	expect(src).toContain("from '$lib/reorder-mode'");
 	for (const fn of [

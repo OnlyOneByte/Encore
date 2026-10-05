@@ -20,7 +20,7 @@
 //
 // THE 2500ms SETTLE IS GONE. It covered "fonts, the socket's first frame, and any mount-time style write
 // (--dock-h etc.)" — three real conditions, so each is now waited for as a condition: `document.fonts.ready`,
-// a per-surface readiness anchor, and for the socket-driven surfaces the anchor IS the socket (`.band` on the
+// a per-surface readiness anchor, and for the socket-driven surfaces the anchor IS the socket (`.dock` on the
 // phone, `.status.on` on the TV). A duration could only ever be too short or too long.
 //
 // RUN_TAG IS GONE TOO. It existed because several surfaces join, singer names are unique per room, and one
@@ -168,9 +168,10 @@ const SURFACES: Surface[] = [
 		url: '/',
 		vp: PHONE,
 		join: true,
-		// The docked band is chrome the joined home renders and the join screen does not, so it is both the
-		// readiness signal and the proof the session took.
-		ready: (page) => page.locator(SEL.homeReady)
+		// The dock is chrome the joined home renders and the join screen does not, so it is both the readiness
+		// signal and the proof the session took. NOT the strip inside it, which renders only when the room has
+		// something to play — a virgin room here has nothing.
+		ready: (page) => page.locator(SEL.dock)
 	},
 	{ name: 'phone-join', url: '/', vp: PHONE, ready: (page) => page.locator(SEL.pageHeading) },
 	{

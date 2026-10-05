@@ -33,7 +33,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openNowPlaying } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import {
 	armGraphHook,
 	awaitMaster,
@@ -359,10 +359,10 @@ test('[MOVED] a guide at the digital floor still offers the control and still pl
 		await tv.locator(SEL.mediaEl).first().waitFor({ state: 'attached', timeout: 30_000 });
 		await awaitMixSrc(tv, media);
 
-		// The phone still OFFERS the control. `.gt.disabled` is the anchor the component's own source names for
-		// this state; the old probe read the range input's `disabled` property, which bits-ui no longer exposes as
-		// one.
-		await openNowPlaying(phone);
+		// The phone still OFFERS the control, on /queue's now-playing card. `.gt.disabled` is the anchor the
+		// component's own source names for this state; the old probe read the range input's `disabled` property,
+		// which bits-ui no longer exposes as one.
+		await openQueue(phone);
 		await expect(phone.locator(SEL.guidingTrackRoot)).toBeAttached();
 		await expect(
 			phone.locator(`${SEL.guidingTrackRoot}.disabled`),

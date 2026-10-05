@@ -49,17 +49,6 @@ function filesSpelling(needle: string): string[] {
 		.filter((p) => readFileSync(at(`src/${p}`), 'utf8').includes(needle));
 }
 
-/** LINES under `src/` that spell a needle, comments included — the count a reader gets from a bare `grep -rn`,
- *  which is the number a census has to reconcile against rather than quietly differ from. */
-function linesSpelling(needle: string): number {
-	let n = 0;
-	for (const p of readdirSync(at('src'), { recursive: true, encoding: 'utf8' })) {
-		if (!/\.(css|svelte|ts)$/.test(p)) continue;
-		for (const line of readFileSync(at(`src/${p}`), 'utf8').split('\n')) if (line.includes(needle)) n++;
-	}
-	return n;
-}
-
 /** A RULE SITE sets an element's size: a `font-size` declaration, or a Tailwind `text-[length:…]` under
  *  `components/ui/` (which compiles to a real `font-size`). Comments are stripped first — this file's own prose
  *  quotes `var(--ph-text-sm)` and `var(--ph-text-3xl)`, and a census that counts its own commentary is how the
@@ -80,6 +69,9 @@ function ruleSites(name: string): string[] {
 	return out;
 }
 
+/* EVERY FIGURE IN THIS TEST IS READ FROM `app.css`'S OWN DECLARATIONS, so no component can red it — only an edit to
+   the ladder, which is a design ruling that should stop the build. That is why the whole of it survived the
+   count-to-invariant conversion untouched while the per-rung spend tally did not. */
 test('the ladder is eight rungs, opens on the 12px floor, and no adjacent pair is closer than 1.09', () => {
 	const rungs = ladder();
 	expect(rungs.map((r) => r.name)).toEqual(['xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl']);
@@ -113,8 +105,10 @@ test('`--ph-text-2xs` is retired: no declaration, no @theme alias, and no rule s
 	// A caller would resolve to nothing and fall back to the inherited size, silently.
 	expect(filesSpelling('var(--ph-text-2xs)')).toEqual([]);
 	expect(ruleSites('2xs')).toEqual([]);
-	// The only place the name survives is app.css's own prose, which is the file's record that the rung existed —
-	// the same idiom the two retired `--space-*` rungs use. Deleting that history is a separate (and worse) loss.
+	/* A ONE, KEPT, and no ratio carries it: it says the retired name survives ONLY as `app.css`'s record that the
+	   rung existed — the same idiom the two retired `--space-*` rungs use, and deleting that history is a separate
+	   (and worse) loss. Any OTHER file naming it is either a resurrection or a stale copy of the history, and both
+	   want a diff. Structurally this is a zero (zero files outside app.css), not a tally. */
 	expect(filesSpelling('--ph-text-2xs')).toEqual(['app.css']);
 });
 
@@ -136,8 +130,11 @@ test("the hole above 2xl is the ladder's only wide step, and 3xl still has the O
 	expect(upTo2xl).toHaveLength(7);
 	expect(upTo2xl[6]!.px - upTo2xl[0]!.px).toBe(12);
 
-	// THE FACT THE DECLINE RESTS ON. One font-size site in the whole app, and it is /stats' hero tile, sitting
-	// over that page's own secondary tiles at `2xl`. A second caller would make the hole a real reading step.
+	/* THE FACT THE DECLINE RESTS ON, and A ONE THAT A RULING RESTS ON stays an exact list rather than a bound:
+	   finding 3's declined half is declined BECAUSE `3xl` is a display size with a single caller — /stats' hero tile,
+	   sitting over that page's own secondary tiles at `2xl`. A SECOND caller makes the 24 -> 41.6px hole a real
+	   reading step, so it must red here and send the reader back to the PARTIAL note rather than pass quietly.
+	   Structurally a zero (zero second callers), which is why it is not the kind of count this file retired. */
 	expect(ruleSites('3xl')).toEqual(['routes/stats/+page.svelte']);
 	const stats = readFileSync(at('src/routes/stats/+page.svelte'), 'utf8');
 	expect(stats).toContain('.primary .n {\n\t\tfont-size: var(--ph-text-3xl);');
@@ -164,19 +161,30 @@ test('both records carry finding 3 as PARTIAL, naming the declined half and its 
 	expect(frontend).toContain('and that gap is deliberately left open');
 });
 
-test('the `--ph-text-sm` census app.css quotes is the one the tree produces', () => {
-	// 20, not the 21 that moved when `sm` was renumbered 0.8 -> 0.82: GuidingTrack's `.gt-val` has since gone up
-	// to `md`. Pinned because that comment was left behind once already, and a census is exactly the kind of
-	// number nobody re-derives while editing the file it sits in.
-	expect(ruleSites('sm')).toHaveLength(20);
-	// The mentions that are NOT rule sites, so the grep-versus-count gap the prose describes stays accounted for.
-	// There are THREE, not the two the comment used to name: the `@theme` alias (which sizes nothing), the
-	// declaration ITSELF, and GuidingTrack's comment recording the move away. 20 + 3 is the 23 lines a literal
-	// grep returns, and that total is asserted below so the arithmetic cannot close on paper only.
-	expect(appCss).toContain('--text-ph-sm: var(--ph-text-sm);');
-	expect(appCss).toMatch(/--ph-text-sm:\s*0\.82rem;/);
+test("every rung on the ladder is read, and `sm`'s three non-sites are each accounted for", () => {
+	const rungs = ladder();
+	/* A RUNG NOTHING READS is the `--shadow-md` defect this file's prose and `app.css`'s both refuse by name, and it
+	   is the ground the 2rem rung was removed on. Asserted over the WHOLE ladder rather than as `sm`'s tally, which
+	   is what used to sit here: `expect(ruleSites('sm')).toHaveLength(20)` reddened on every component that
+	   legitimately took a secondary line, and the comment beside it reasoned about a leading term it described as
+	   having already moved three times. */
+	expect(rungs.filter((r) => ruleSites(r.name).length === 0)).toEqual([]);
+	// AND THE CONVERSE: a `var(--ph-text-*)` naming no declaration falls back to the inherited size, silently.
+	const spelled = new Set<string>();
+	for (const p of readdirSync(at('src'), { recursive: true, encoding: 'utf8' })) {
+		if (!/\.(css|svelte|ts)$/.test(p)) continue;
+		const body = readFileSync(at(`src/${p}`), 'utf8')
+			.replace(/\/\*[\s\S]*?\*\//g, '')
+			.replace(/<!--[\s\S]*?-->/g, '');
+		for (const m of body.matchAll(/var\(--ph-text-([a-z0-9]+)\)/g)) spelled.add(m[1]!);
+	}
+	expect([...spelled].filter((n) => !rungs.some((r) => r.name === n))).toEqual([]);
+
+	/* `sm`'s THREE non-sites, named as FACTS rather than closed as arithmetic. The old form asserted
+	   `linesSpelling === ruleSites + 3`, which held only while nobody added a comment mentioning the token or spelled
+	   it outside a `font-size` — and it bought nothing the three facts below do not state directly. */
+	expect(appCss).toContain('--text-ph-sm: var(--ph-text-sm);'); // the @theme bridge, which sizes nothing
+	expect(appCss).toMatch(/--ph-text-sm:\s*0\.82rem;/); // the declaration itself
 	expect(filesSpelling('--ph-text-sm')).toContain('lib/components/GuidingTrack.svelte');
-	expect(ruleSites('sm')).not.toContain('lib/components/GuidingTrack.svelte');
-	expect(linesSpelling('ph-text-sm')).toBe(23);
-	expect(linesSpelling('ph-text-sm')).toBe(ruleSites('sm').length + 3);
+	expect(ruleSites('sm')).not.toContain('lib/components/GuidingTrack.svelte'); // ...recording the move AWAY from it
 });

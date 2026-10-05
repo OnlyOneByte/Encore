@@ -34,7 +34,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import type { World } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
 // `ws`, not Node's global, for the reason world/presence.ts gives: one WebSocket implementation per suite.
@@ -304,15 +304,15 @@ async function driveFourPlays(world: World, phoneA: Page): Promise<number> {
 		await add.click();
 		// EITHER signal counts, because which one arrives depends on whether the room was idle: `inQueue` is
 		// `queued.some(…)` and a turn that starts PLAYING immediately leaves `queued`, so the control re-enables
-		// and the band names the song instead.
+		// and the strip names the song instead.
 		await expect
 			.poll(
 				async () => {
 					if (await add.isDisabled()) return true;
-					const band = (await page.locator(SEL.bandTitle).first().textContent()) ?? '';
-					return band.toLowerCase().includes(query);
+					const strip = (await page.locator(SEL.npStripTitle).first().textContent()) ?? '';
+					return strip.toLowerCase().includes(query);
 				},
-				{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the band never named it` }
+				{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the strip never named it` }
 			)
 			.toBe(true);
 	}
@@ -322,17 +322,25 @@ async function driveFourPlays(world: World, phoneA: Page): Promise<number> {
 	// `.qrow` at all, and the first of the four is already playing.
 	await openBrowseFromHome(phoneA);
 	await phoneA.locator(SEL.clearSearch).click();
+	// ASSERTED POSITIVELY, where this used to read `.not.toHaveText(/Nothing playing/)`. That string was the old
+	// band's permanent idle copy; the strip has no idle copy at all, because it does not render without something
+	// to play — so the negative was vacuous and the PRESENCE of the title element is now the whole claim. Read from
+	// `/`, because the strip is chrome on every phone surface.
 	await expect(
-		phoneA.locator(SEL.bandTitle).first(),
+		phoneA.locator(SEL.npStripTitle),
 		'the first turn into an idle room must already be playing, or there is no first play to count'
-	).not.toHaveText(/Nothing playing/);
+	).toHaveCount(1);
+	// ON /queue, AND THAT IS A ROUTE CHANGE RATHER THAN A SELECTOR SWAP. `/` used to render a Queued section; it is
+	// the Sing tab now and renders no `.qrow` at all, so this count was 0 wherever it was asserted from. The queue
+	// is its own tab.
+	await openQueue(phoneA);
 	await expect(
 		phoneA.locator(SEL.queueRow),
 		'one turn playing and three waiting is the settled state after four adds'
 	).toHaveCount(3);
 
 	// `SEL.skip` is a ROLE + accessible name, not a CSS selector: the transport is addressed the way a screen
-	// reader sees it, and all three controls are in the band row at both sheet heights.
+	// reader sees it, and all three controls are in the dock, on every phone surface.
 	//
 	// WAITING ON A NEW currentEntryId, not on the rotation shrinking: a SKIPPED turn is recycled to the back of
 	// the rotation rather than dropped, so the waiting count is 3 before and after every skip. The play row is
@@ -830,7 +838,9 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 		await openBrowseFromHome(phone);
 		await phone.locator(SEL.search).fill('caroline');
 		await rowFor(phone, 'caroline').locator(SEL.addAction).click();
-		await expect(phone.locator(SEL.bandTitle).first()).not.toHaveText(/Nothing playing/);
+		// The song is known here, so the claim is the title itself rather than the absence of the old band's idle
+		// copy ("Nothing playing"), which no longer exists anywhere to be absent.
+		await expect(phone.locator(SEL.npStripTitle).first()).toHaveText(/caroline/i);
 
 		const stats = await settledStats(world.baseURL);
 		await page.setViewportSize({ width: 1440, height: 900 });

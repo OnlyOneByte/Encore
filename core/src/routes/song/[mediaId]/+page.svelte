@@ -42,8 +42,11 @@
 	   the `onMount` fetch never ran a second time and the PREVIOUS song's key, range and lyric candidates stayed on
 	   screen under the new URL. Measured at 390x844 on the built app: arriving at a second song page left the
 	   heading and the artist reading the FIRST song and fired exactly ONE `/api/audit/` request — permanently, with
-	   no spinner to say so. That path is one tap and it is the only route here: the drawer's details button lives in
-	   the root layout, so it is still on this page, and it re-targets as the television advances. `mediaId` is read
+	   no spinner to say so. THERE IS NO LONGER A SECOND WAY IN, and that is worth stating rather than quietly dropping:
+	   this page used to be reachable mid-song from the now-playing sheet's details button, which lived in the root
+	   layout and so was on this page too, re-targeting as the television advances. The sheet is deleted and the door
+	   did not move to /queue (measured: `.more-slot a` resolves nowhere in the app), so /queue's now-playing card is the only route
+	   here — which makes the stale-data defect above the only arrival case left to get right. `mediaId` is read
 	   HERE and passed in rather than read inside `load()`, so the dependency sits at the effect site where it can be
 	   seen — an `await` added in front of the fetch would otherwise silently unkey it. */
 	$effect(() => {
@@ -77,7 +80,8 @@
 
 	const display = $derived(songDisplay(media ?? undefined));
 	const profile = $derived(media?.songProfile ?? null);
-	/* Same one call the drawer makes — these two surfaces state the same facts and must agree word for word. */
+	/* The same one call /queue's now-playing card makes — these two surfaces state the same facts and must agree word
+	   for word. */
 	const facts = $derived(songFacts(profile, keyShift));
 	const keyOriginal = $derived(facts.keyOriginal);
 	const keySounding = $derived(facts.keySounding);
@@ -92,7 +96,7 @@
 
 <!-- PageHeader is a SIBLING of `main`, so `--page-measure` has to live on this wrapper to reach it. -->
 <div class="song-page">
-	<PageHeader title={heading} back={{ href: '/', label: 'Back to the queue' }} />
+	<PageHeader title={heading} back={{ href: '/queue', label: 'Back to the queue' }} />
 
 	<main>
 		<!-- Offline, the range readout may describe a transpose the TV has moved off, so say so. -->
@@ -186,7 +190,7 @@
 		margin-inline: auto;
 		width: 100%;
 		box-sizing: border-box;
-		/* Reserves the band in normal flow; no env() term — the band carries the only one. */
+		/* Reserves the dock in normal flow; no env() term — the tab bar inside it carries the only one. */
 		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	.offline-note {

@@ -40,11 +40,11 @@ async function silentTelevision(world: import('../../world/fixtures').World) {
 	await openBrowseFromHome(phone);
 	const media = await singTrack(phone, world.baseURL, TRACKS.caroline);
 	// The old probe's first check — "a singer can join and queue the processed song" — asserted through its
-	// waits: a `.qrow`, or the band naming the song once the server auto-started it. A PLAYING entry renders
-	// no `.qrow` at all, so the band's title is the reading that covers both.
+	// waits: a `.qrow`, or the now-playing chrome naming the song once the server auto-started it. A PLAYING
+	// entry renders no `.qrow` at all, so the strip's title is the reading that covers both.
 	await expect(
-		phone.locator(SEL.bandTitle),
-		'the phone never showed the queued song in its now-playing band'
+		phone.locator(SEL.npStripTitle),
+		'the phone never showed the queued song in its now-playing strip'
 	).toHaveText(new RegExp(media.title, 'i'));
 
 	const tv = await world.openTv();

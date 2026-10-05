@@ -9,7 +9,7 @@ The inversion and what it was worth: `docs/arch/04-alignment.md` §1, §10 and �
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from encore_worker.domain.lyrics.language import fold_to_base
@@ -17,6 +17,10 @@ from encore_worker.domain.lyrics.language import fold_to_base
 #: A word whose every character is out-of-dictionary gets its span INTERPOLATED from its neighbours and
 #: this confidence, so a non-Latin token or a run of digits degrades one word rather than failing the line.
 OOV_CONFIDENCE = "low"
+
+#: A word whose ONSET came from its cue rather than from the decode (`reopened_line`); its own span is still
+#: measured, unlike `OOV_CONFIDENCE`. Nothing that scores onsets may score it. docs/arch/04-alignment.md §4.
+CUE_OPENED = "cue-opened"
 
 #: Seconds every char span's START is pulled back toward the true acoustic onset, clamped at the previous
 #: span's end. MEASURED and not tuned, on STARTS only (README, "Re-fitting `ONSET_LEAD_SEC`").
@@ -160,8 +164,9 @@ def star_of(emissions: Any) -> int | None:
     """The STAR id this matrix names, or None — the token `generate(stars=True)` emits BEFORE EVERY LINE (the
     `star` arm).
 
-    None, and so an INERT arm, for `separator_of`'s first reason only: a star id that IS the blank cannot
-    happen through `ml.starred`, whose id is the matrix's width (docs/arch/04-alignment.md §14.1).
+    None, and so an INERT arm, for either of `separator_of`'s two reasons — no star named, or a star id that
+    IS the blank. The second cannot arise through `ml.starred`, whose id is the matrix's width, which is why
+    it is refused here rather than trusted upstream (docs/arch/04-alignment.md §14.1).
     """
     named: Mapping[str, int] = getattr(emissions, "specials", None) or {}
     code = named.get(_STAR_NAME)
@@ -439,6 +444,26 @@ def adopted_line(text: str, index: int, start: float, end: float) -> Line | None
         for i, word in enumerate(words)
     )
     return Line(text=text, start=start, end=end, words=spread, score=0.0, index=index)
+
+
+def reopened_line(line: Line, start: float) -> Line | None:
+    """`line` re-opened at `start`, its first word and that word's first syllable with it. None if it cannot.
+
+    For a decode that heard the line but not its OPENING — a sustained leading vowel the forced path absorbs
+    into blank. Only the opening boundary moves; the first word's onset is the SHEET'S, so it is CUE_OPENED
+    and scores 0.0. REFUSED when no OTHER word is aligned: that leaves the line unmeasured and graded `low`,
+    which is an adoption with a kept end (docs/arch/04-alignment.md §4, review r2-spec-12).
+    """
+    if not line.words or not start < line.words[0].end or start >= line.start:
+        return None
+    if not any(word.provenance == "aligned" for word in line.words[1:]):
+        return None
+    first = line.words[0]
+    syllables = first.syllables
+    if syllables:
+        syllables = (replace(syllables[0], start=min(syllables[0].start, start)), *syllables[1:])
+    opened = replace(first, start=start, syllables=syllables, score=0.0, provenance=CUE_OPENED)
+    return replace(line, start=start, words=(opened, *line.words[1:]))
 
 
 @dataclass(frozen=True, slots=True)

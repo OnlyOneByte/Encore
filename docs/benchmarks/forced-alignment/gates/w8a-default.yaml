@@ -1,0 +1,170 @@
+# W8a's SHIPPED TREE: both band arms OFF, and the claim is IDENTITY with W7 — not one document byte moves
+# (PLAN-alignment-v3 W8a; `band-off-sheet` and `band-reopen` in `host/config.ALIGN_EXPERIMENTS`,
+# docs/arch/04-alignment.md §14).
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --tag w8a-def-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8a-band-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8a-default.yaml
+#   # and the same at --level time_text against results/w8a-base-time_text.json, and with
+#   # --sync-mode lines against results/w8a-base-lines-run_align.json.
+#
+# WHY A GATE FOR "NOTHING CHANGED". W8a built two things that move a published document: a coherence DEMOTION
+# (task 2, `reconcile.off_sheet`) and a re-opening REPAIR (task 3, `align_steps.skipped_opening`). The corpus
+# sweep rejected both on their own gate files (`gates/w8a.yaml` 151/154 at BOTH levels, the same three rules;
+# the readings are `results/w8a-arms-{time_text,run_align}.json`), so each ships behind its own
+# `ENCORE_ALIGN_EXPERIMENTS` name, default off. A default-off arm is only honest if the default path is
+# measured, and "measured" here means BYTE-IDENTICAL to the row W7 recorded — an arm that leaks into the
+# default is the one failure mode this whole mechanism has.
+#
+# ONE FILE, THREE LEVELS: every rule below is either a `base.` comparison (level-correct by construction) or
+# an absolute that reads the same at `time_text` and `run_align`. The `lines` rung has no words and no graded
+# line, so run it there with `--modes all,wrongtext+ownclock` and expect the four word/highlight rules in §3
+# and the `high` rules in §4 to be ERRORs — use `gates/w8a-lines.yaml` for that rung instead, which is
+# written for it.
+#
+# MEASURED, the two arms' price if a later wave flips them on (README, "W8a: what the corpus said about the
+# two band components"):
+#   `band-reopen`  WITH the review's `opening_is_free` guard (README, "W8a round 1: the `band-reopen` arm,
+#                  re-read with the free-time guard"): 36 line moves of the 56 it made unguarded, +15 lines at
+#                  +-500 and NONE lost, `band` -15, `gross` 0 everywhere, and 4 re-opened first words leaving
+#                  `word_aligned` for `word_interpolated` at `truth`. Unguarded it was +16 / -1, the -1 being
+#                  `Explosive_Ear_Candy_-_Like_The_Sun` at `jit` with Jamendo word +-300 95.86 -> 95.79; the
+#                  guard refuses exactly that line, and `tfr-chosen`'s one win at `off05` with it.
+#   `band-off-sheet` -49 `high` lines on `bad-guy` at `off05`, ALL of them more than 500 ms from truth (the
+#                  rule working), and -23 on `never-be-alone` at `offm1`, ALL of them correct (the rule
+#                  failing, its envelope witness being 0.80 s out on that song).
+#
+# Gates are the CONDITION THAT MUST HOLD; see e2e_gates.py.
+
+# ── 1) MUST: not one published document's bytes move, in any mode ──────────────────────────────────────
+# The sharpest form of "the arms are off": `doc` is the sha256 of the file the TV reads, so a grade, a timing
+# or a word's provenance moving all fail here. The wrong-text modes are included and read "-" on both sides,
+# a refusal publishing nothing.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+docs-unchanged-off15: count(off15.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-offm1: count(offm1.song.doc_changed) == 0
+docs-unchanged-tempo098: count(tempo098.song.doc_changed) == 0
+docs-unchanged-tempo102: count(tempo102.song.doc_changed) == 0
+docs-unchanged-drop20: count(drop20.song.doc_changed) == 0
+docs-unchanged-drop50: count(drop50.song.doc_changed) == 0
+docs-unchanged-extraverse: count(extraverse.song.doc_changed) == 0
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-headers: count(headers.song.doc_changed) == 0
+docs-unchanged-credit: count(credit.song.doc_changed) == 0
+docs-unchanged-wrongtext: count(wrongtext.song.doc_changed) == 0
+docs-unchanged-ownclock: count(mode("wrongtext+ownclock").song.doc_changed) == 0
+# And the onsets alone, at full precision, so one ulp of a line or word START fails: W4's rule, which is the
+# half of `doc` that a display-only change cannot hide behind.
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed) == 0
+onsets-unchanged-off05: count(off05.song.onsets_changed) == 0
+onsets-unchanged-offm1: count(offm1.song.onsets_changed) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed) == 0
+onsets-unchanged-drop20: count(drop20.song.onsets_changed) == 0
+onsets-unchanged-extraverse: count(extraverse.song.onsets_changed) == 0
+
+# ── 2) MUST: every pooled line metric reads W7's number to the digit ───────────────────────────────────
+# Equality is the claim; `<= 0.005` is equality in a field rounded to 0.01. `band` and `bias_ms` are the NEW
+# metrics, so pinning them here is what makes the identity claim cover the thing this wave added rather than
+# only the thing it inherited.
+pm500-identical-truth: abs(truth.pm500 - base.truth.pm500) <= 0.005
+pm500-identical-jit: abs(jit.pm500 - base.jit.pm500) <= 0.005
+pm500-identical-off05: abs(off05.pm500 - base.off05.pm500) <= 0.005
+pm500-identical-off15: abs(off15.pm500 - base.off15.pm500) <= 0.005
+pm500-identical-off3: abs(off3.pm500 - base.off3.pm500) <= 0.005
+pm500-identical-offm1: abs(offm1.pm500 - base.offm1.pm500) <= 0.005
+pm500-identical-tempo098: abs(tempo098.pm500 - base.tempo098.pm500) <= 0.005
+pm500-identical-tempo102: abs(tempo102.pm500 - base.tempo102.pm500) <= 0.005
+pm500-identical-drop20: abs(drop20.pm500 - base.drop20.pm500) <= 0.005
+pm500-identical-drop50: abs(drop50.pm500 - base.drop50.pm500) <= 0.005
+pm500-identical-extraverse: abs(extraverse.pm500 - base.extraverse.pm500) <= 0.005
+pm500-identical-blind: abs(blind.pm500 - base.blind.pm500) <= 0.005
+pm500-identical-headers: abs(headers.pm500 - base.headers.pm500) <= 0.005
+pm500-identical-credit: abs(credit.pm500 - base.credit.pm500) <= 0.005
+band-identical-truth: truth.band == base.truth.band
+band-identical-jit: jit.band == base.jit.band
+band-identical-off05: off05.band == base.off05.band
+band-identical-off15: off15.band == base.off15.band
+band-identical-off3: off3.band == base.off3.band
+band-identical-offm1: offm1.band == base.offm1.band
+band-identical-tempo098: tempo098.band == base.tempo098.band
+band-identical-tempo102: tempo102.band == base.tempo102.band
+band-identical-drop20: drop20.band == base.drop20.band
+band-identical-drop50: drop50.band == base.drop50.band
+band-identical-extraverse: extraverse.band == base.extraverse.band
+band-identical-blind: blind.band == base.blind.band
+band-identical-headers: headers.band == base.headers.band
+band-identical-credit: credit.band == base.credit.band
+bias-identical-truth: abs(truth.jamendo.bias_ms - base.truth.jamendo.bias_ms) <= 0.05
+bias-identical-jit: abs(jit.jamendo.bias_ms - base.jit.jamendo.bias_ms) <= 0.05
+bias-identical-blind: abs(blind.jamendo.bias_ms - base.blind.jamendo.bias_ms) <= 0.05
+bias-identical-offm1: abs(offm1.jamendo.bias_ms - base.offm1.jamendo.bias_ms) <= 0.05
+bias-identical-off05: abs(off05.jamendo.bias_ms - base.off05.jamendo.bias_ms) <= 0.05
+
+# ── 3) MUST: the floors the wave was handed, as absolutes ──────────────────────────────────────────────
+# Gross: ZERO in eleven of the fourteen right-text modes, and W7's own number in the three it is not
+# (`blind` 61 at `run_align` / 68 at `time_text`, `drop50` 82 / 167, `drop20` 0 / 12).
+gross-zero-truth: truth.gross == 0
+gross-zero-jit: jit.gross == 0
+gross-zero-off05: off05.gross == 0
+gross-zero-off15: off15.gross == 0
+gross-zero-off3: off3.gross == 0
+gross-zero-offm1: offm1.gross == 0
+gross-zero-tempo098: tempo098.gross == 0
+gross-zero-tempo102: tempo102.gross == 0
+gross-zero-extraverse: extraverse.gross == 0
+gross-zero-headers: headers.gross == 0
+gross-zero-credit: credit.gross == 0
+gross-identical-blind: blind.gross == base.blind.gross
+gross-identical-drop20: drop20.gross == base.drop20.gross
+gross-identical-drop50: drop50.gross == base.drop50.gross
+high-gross-zero-truth: truth.high_gross == 0
+high-gross-zero-jit: jit.high_gross == 0
+high-gross-zero-drop50: drop50.high_gross == 0
+high-gross-blind-at-most-three: blind.high_gross <= 3
+# Jamendo words and the highlight, at `truth`: the numbers the wave's reject-if names.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
+word-aae-truth: truth.jamendo.word_aae_ms <= 71.1
+highlight-truth: truth.jamendo.highlight >= 81.4
+word-pm300-identical-jit: abs(jit.jamendo.word_pm300 - base.jit.jamendo.word_pm300) <= 0.005
+word-aligned-identical-truth: truth.jamendo.word_aligned == base.truth.jamendo.word_aligned
+
+# ── 4) MUST: the grade did not move either ─────────────────────────────────────────────────────────────
+# `band-off-sheet` is a DEMOTION, so the proof it is off is that the `high` count is W7's exactly — in
+# `off05` and `offm1` above all, the two modes where the arm-on sweep demoted a document.
+high-identical-truth: truth.high == base.truth.high
+high-identical-jit: jit.high == base.jit.high
+high-identical-off05: off05.high == base.off05.high
+high-identical-offm1: offm1.high == base.offm1.high
+high-identical-blind: blind.high == base.blind.high
+high-identical-extraverse: extraverse.high == base.extraverse.high
+high-bad-identical-truth: truth.high_bad == base.truth.high_bad
+high-bad-identical-off05: off05.high_bad == base.off05.high_bad
+high-bad-identical-offm1: offm1.high_bad == base.offm1.high_bad
+
+# ── 5) MUST: the band metrics still read the four displaced sheets, and the 15 perfect songs still perfect ─
+# An identity run must reproduce the READINGS as well as the timings, or the metric has moved under the gate.
+# AGAINST THE BASE, NOT AGAINST A LITERAL: identity is what this file asserts, and `== 4` asserts identity
+# only for as long as 4 is the right answer. Re-anchoring the four displaced songs' `truth-lines.json` — this
+# wave's own highest-value next step — makes both sides 0, which an identity rule should PASS and a literal
+# would fail. The counts on the baseline are 4 at `truth` and 3 at `jit`.
+coherent-songs-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) == count((abs(base.truth.song.bias_ms) > 250) * (base.truth.song.mad_ms <= 250))
+coherent-songs-jit: count((abs(jit.song.bias_ms) > 250) * (jit.song.mad_ms <= 250)) == count((abs(base.jit.song.bias_ms) > 250) * (base.jit.song.mad_ms <= 250))
+perfect-songs-held-truth: count(truth.song.pm500 >= 100) >= 15
+perfect-songs-held-off3: count(off3.song.pm500 >= 100) >= 16
+perfect-songs-held-blind: count(blind.song.pm500 >= 100) >= 5
+
+# ── 6) MUST: wrong-text protection, unchanged ──────────────────────────────────────────────────────────
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-scores-no-line: wrongtext.scored == 0
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-commits-nothing: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+ownclock-scores-no-line: mode("wrongtext+ownclock").scored == 0

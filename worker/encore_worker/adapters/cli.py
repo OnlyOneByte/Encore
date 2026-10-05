@@ -317,9 +317,9 @@ _INLINE_ONSET = re.compile(r"<(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})>")
 #: keeps it until `clean_line` decides what is format.
 _TAG_SPAN = re.compile(r"</?[a-zA-Z][^<>]*>")
 
-#: Seconds below which a cue is a roll-up MARKER rather than a caption — two decoder frames at the 20 ms hop
-#: `adapters/ml` runs, in an empty band three orders of magnitude wide (README, "Caption cues: the two
-#: populations a duration floor separates").
+#: Seconds below which a cue is a roll-up MARKER rather than a caption: placed in the EMPTY band the two
+#: populations leave, 10 ms markers against 1.15 s captions. NOT a frame count — it is 2.5 of `adapters/ml`'s
+#: 20 ms hops (README, "Caption cues: the two populations a duration floor separates").
 MIN_CUE_SEC = 0.05
 
 #: How many cues must overlap their predecessor before OVERLAP ALONE proves a roll-up. One pair is not a

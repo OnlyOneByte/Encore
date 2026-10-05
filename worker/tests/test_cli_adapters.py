@@ -298,6 +298,16 @@ def test_a_ten_millisecond_roll_up_marker_is_not_a_cue() -> None:
     assert 21.79 not in [start for start, _end in spans]
 
 
+def test_the_cue_floor_sits_in_the_empty_band_rather_than_on_a_frame_count() -> None:
+    """The `#:` comment derived `MIN_CUE_SEC` as "two decoder frames at the 20 ms hop", which is 0.04 s: the
+    value is 2.5 frames and only the measured band justifies it (W7c review r2-spec-11)."""
+    from encore_worker.adapters import ml
+
+    assert ml.FRAME_SEC == 0.02, "the hop the comment's arithmetic is read at"
+    assert cli.MIN_CUE_SEC / ml.FRAME_SEC == 2.5, "not a whole frame count, so no frame count may justify it"
+    assert 0.01 < cli.MIN_CUE_SEC < 1.15, "it must sit inside the band the two cue populations leave empty"
+
+
 def test_only_the_new_line_of_a_rolling_cue_survives() -> None:
     """Rule 3. The carry is identified by TEXT IDENTITY against what the previous KEPT cue published, with
     the inline onsets taken off — not by a guess about line counts, which is what keeps a line-WRAPPED

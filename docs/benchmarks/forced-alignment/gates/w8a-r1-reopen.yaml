@@ -1,0 +1,209 @@
+# W8a ROUND 1: the `band-reopen` ARM re-read with the review's free-time guard, on the 182 cases that hold
+# every move it makes (PLAN-alignment-v3 W8a; `align_steps.opening_is_free` / `skipped_opening`,
+# `generate.reopened_line`; docs/arch/04-alignment.md §4, §14).
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --model HUBERT_ASR_LARGE --tag w8a-r1-reopen-ra \
+#       --modes truth,jit,credit,drop20,drop50,extraverse,headers,off05,off15,off3,offm1,tempo098,tempo102 \
+#       --songs Avercage_-_Embers,Explosive_Ear_Candy_-_Like_The_Sun,HILA_-_Give_Me_the_Same,\
+# Kinematic_-_Peyote,Lower_Loveday_-_Is_It_Right_,Quentin_Hannappe_-_Keep_On,Ridgway_-_Fire_Inside,bad-guy,\
+# bohemian-rhapsody,feel-my-heart,never-be-alone,rap-god,tfr-chosen,tfr-flyaway
+#   # with ENCORE_ALIGN_EXPERIMENTS=band-reopen, and the same command WITHOUT it for the base
+#   # (`_runs/w8a-r1-ctl-ra`); then --summarize the arm's rows --compare the base's --gates this file.
+#
+# WHY A SUBSET IS A COMPLETE READING HERE, which is the one thing this file has to justify. `opening_is_free`
+# is a CONJUNCT added to `skipped_opening`, so the guarded rule re-opens a subset of what the unguarded one
+# did: no case can start differing from the default because of it. Over the recorded full corpus (1088 cases,
+# `_runs/w8a-ra` against `_runs/w8a-def-ra`) the unguarded arm changed a document in 35 cases, and those 35
+# fall inside 14 songs x 13 modes — every one of them. The two further cases the full-corpus diff shows
+# (bad-guy `off05`, never-be-alone `offm1`, grade-only, identical onsets) belong to the OTHER arm,
+# `band-off-sheet`, and both songs are in the selection anyway. `time_text` is the same 13 songs and the same
+# 13 modes, which is why the companion run exists at that level too.
+#
+# THE BASE IS A FRESH DEFAULT RUN ON THIS TREE, not `results/w8a-run_align.json`, because the review changed
+# `align_steps.py` and `generate.py` after that sweep. Measured: the fresh default run is identical to the
+# recorded one on all 182 shared cases over 20 identity columns including `doc_sha256` and `onsets_sha256`
+# (`_review-scratch/w8a-r1-reopen/strict_identity.py`), so the recorded corpus rows stand and the base below
+# is the default path.
+#
+# MEASURED, at `run_align` (README, "W8a round 1: the `band-reopen` arm, re-read with the free-time guard"):
+# the guard REFUSES 20 of the 56 line moves the unguarded arm made and keeps 36; the arm's ±500 reach is
+# +15 lines and NO line lost (it was +16 / −1), `band` −15 (unchanged), `gross` 0 in every mode. The leak
+# that rejected the arm is GONE — `Explosive_Ear_Candy_-_Like_The_Sun` [15] at `jit` is refused, so the song
+# returns to 42/46 and Jamendo word ±300 at `jit` rises instead of falling — and the price is
+# `tfr-chosen` [26] at `off05`, a 0.36 s pull the guard also refuses, so that song's one gain is gone.
+#
+# Gates are the CONDITION THAT MUST HOLD; see e2e_gates.py.
+
+# ── 1) MUST: no song loses a line, in any mode ─────────────────────────────────────────────────────────
+# THE RULE THE UNGUARDED ARM FAILED, and the reason this re-read exists: pooled ±500 hid a per-song loss of
+# 2.17 points at `jit`. The allowance is a float epsilon, not a budget.
+no-song-loses-truth: min_song_delta(truth.song.pm500) >= -0.001
+no-song-loses-jit: min_song_delta(jit.song.pm500) >= -0.001
+no-song-loses-credit: min_song_delta(credit.song.pm500) >= -0.001
+no-song-loses-drop20: min_song_delta(drop20.song.pm500) >= -0.001
+no-song-loses-drop50: min_song_delta(drop50.song.pm500) >= -0.001
+no-song-loses-extraverse: min_song_delta(extraverse.song.pm500) >= -0.001
+no-song-loses-headers: min_song_delta(headers.song.pm500) >= -0.001
+no-song-loses-off05: min_song_delta(off05.song.pm500) >= -0.001
+no-song-loses-off15: min_song_delta(off15.song.pm500) >= -0.001
+no-song-loses-off3: min_song_delta(off3.song.pm500) >= -0.001
+no-song-loses-offm1: min_song_delta(offm1.song.pm500) >= -0.001
+no-song-loses-tempo098: min_song_delta(tempo098.song.pm500) >= -0.001
+no-song-loses-tempo102: min_song_delta(tempo102.song.pm500) >= -0.001
+# Pooled too, because a per-song rule reads only the songs both runs scored.
+pm500-not-down-truth: truth.pm500 >= base.truth.pm500
+pm500-not-down-jit: jit.pm500 >= base.jit.pm500
+pm500-not-down-credit: credit.pm500 >= base.credit.pm500
+pm500-not-down-drop20: drop20.pm500 >= base.drop20.pm500
+pm500-not-down-drop50: drop50.pm500 >= base.drop50.pm500
+pm500-not-down-extraverse: extraverse.pm500 >= base.extraverse.pm500
+pm500-not-down-headers: headers.pm500 >= base.headers.pm500
+pm500-not-down-off05: off05.pm500 >= base.off05.pm500
+pm500-not-down-off15: off15.pm500 >= base.off15.pm500
+pm500-not-down-off3: off3.pm500 >= base.off3.pm500
+pm500-not-down-offm1: offm1.pm500 >= base.offm1.pm500
+pm500-not-down-tempo098: tempo098.pm500 >= base.tempo098.pm500
+pm500-not-down-tempo102: tempo102.pm500 >= base.tempo102.pm500
+
+# ── 2) MUST: the arm still wins what it was built to win ───────────────────────────────────────────────
+# The guard may only refuse, so the risk it carries is refusing the gain. `Kinematic_-_Peyote` is the song the
+# arm exists for: +21.43 at `truth`, `headers` and `extraverse` (3 lines of 14), +14.28 at `jit`, `drop20` and
+# `credit` (2). The floors below are those measurements, one point low.
+best-song-gains-truth: max_song_delta(truth.song.pm500) >= 21.4
+# `headers` is the ONE mode whose reach differs by level — 3 lines at `run_align`, 2 at `time_text`, where the
+# document R4's mix repair fixes is not the one `time_text` publishes. The floor is the lower of the two, so
+# this file reads true at both levels (`gates/w8a-default.yaml`'s header states the same convention).
+best-song-gains-headers: max_song_delta(headers.song.pm500) >= 14.2
+best-song-gains-extraverse: max_song_delta(extraverse.song.pm500) >= 21.4
+best-song-gains-jit: max_song_delta(jit.song.pm500) >= 14.2
+best-song-gains-drop20: max_song_delta(drop20.song.pm500) >= 14.2
+best-song-gains-credit: max_song_delta(credit.song.pm500) >= 14.2
+
+# ── 3) MUST: no gross line is invented, in any mode ────────────────────────────────────────────────────
+# A re-opening moves a start EARLIER by less than the cue's own span, so a gross line here would mean the cue
+# was wrong and every guard read it as right.
+gross-not-up-truth: truth.gross <= base.truth.gross
+gross-not-up-jit: jit.gross <= base.jit.gross
+gross-not-up-credit: credit.gross <= base.credit.gross
+gross-not-up-drop20: drop20.gross <= base.drop20.gross
+gross-not-up-drop50: drop50.gross <= base.drop50.gross
+gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+gross-not-up-headers: headers.gross <= base.headers.gross
+gross-not-up-off05: off05.gross <= base.off05.gross
+gross-not-up-off15: off15.gross <= base.off15.gross
+gross-not-up-off3: off3.gross <= base.off3.gross
+gross-not-up-offm1: offm1.gross <= base.offm1.gross
+gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+high-gross-not-up-truth: truth.high_gross <= base.truth.high_gross
+high-gross-not-up-jit: jit.high_gross <= base.jit.high_gross
+high-gross-not-up-drop20: drop20.high_gross <= base.drop20.high_gross
+high-gross-not-up-off05: off05.high_gross <= base.off05.high_gross
+
+# ── 4) MUST: the band population falls and never rises, over a denominator that does not fall ──────────
+# `band` is an absolute count over the SCORED lines of PUBLISHED cases, so `missing` is read beside every
+# `band` rule: fewer band lines because fewer lines were published is not this arm working (review
+# r1-correctness-8 / r1-spec-13). The unguarded arm RAISED `band` at `jit` by one, the leak; the guard's
+# claim is that nothing rises anywhere.
+band-down-truth: truth.band <= base.truth.band - 3
+band-down-headers: headers.band <= base.headers.band - 2
+band-down-extraverse: extraverse.band <= base.extraverse.band - 3
+band-not-up-jit: jit.band <= base.jit.band
+band-not-up-credit: credit.band <= base.credit.band
+band-not-up-drop20: drop20.band <= base.drop20.band
+band-not-up-drop50: drop50.band <= base.drop50.band
+band-not-up-off05: off05.band <= base.off05.band
+band-not-up-off15: off15.band <= base.off15.band
+band-not-up-off3: off3.band <= base.off3.band
+band-not-up-offm1: offm1.band <= base.offm1.band
+band-not-up-tempo098: tempo098.band <= base.tempo098.band
+band-not-up-tempo102: tempo102.band <= base.tempo102.band
+band-missing-not-up-truth: truth.missing <= base.truth.missing
+band-missing-not-up-jit: jit.missing <= base.jit.missing
+band-missing-not-up-credit: credit.missing <= base.credit.missing
+band-missing-not-up-drop20: drop20.missing <= base.drop20.missing
+band-missing-not-up-drop50: drop50.missing <= base.drop50.missing
+band-missing-not-up-extraverse: extraverse.missing <= base.extraverse.missing
+band-missing-not-up-headers: headers.missing <= base.headers.missing
+band-missing-not-up-off05: off05.missing <= base.off05.missing
+band-missing-not-up-off15: off15.missing <= base.off15.missing
+band-missing-not-up-off3: off3.missing <= base.off3.missing
+band-missing-not-up-offm1: offm1.missing <= base.offm1.missing
+band-missing-not-up-tempo098: tempo098.missing <= base.tempo098.missing
+band-missing-not-up-tempo102: tempo102.missing <= base.tempo102.missing
+
+# ── 5) MUST: the words keep their own measurements, and the one that does not says so ──────────────────
+# The review also changed `reopened_line`: the re-opened first word's onset is the SHEET'S, so it is marked
+# `generate.CUE_OPENED`, scores 0.0 and is counted INTERPOLATED rather than aligned. So `word_aligned` FALLS
+# by design here — `gates/w8a-fix.yaml` §5's `word-aligned-not-down-*` was written on the opposite claim and
+# is red against this tree by construction, which is a fact about that file and not about this arm.
+# What must hold instead is accounting: every word still lands in exactly one bucket, so the sum is fixed.
+word-accounting-whole-truth: truth.jamendo.word_aligned + truth.jamendo.word_interpolated == base.truth.jamendo.word_aligned + base.truth.jamendo.word_interpolated
+word-accounting-whole-jit: jit.jamendo.word_aligned + jit.jamendo.word_interpolated == base.jit.jamendo.word_aligned + base.jit.jamendo.word_interpolated
+word-accounting-whole-drop20: drop20.jamendo.word_aligned + drop20.jamendo.word_interpolated == base.drop20.jamendo.word_aligned + base.drop20.jamendo.word_interpolated
+word-accounting-whole-extraverse: extraverse.jamendo.word_aligned + extraverse.jamendo.word_interpolated == base.extraverse.jamendo.word_aligned + base.extraverse.jamendo.word_interpolated
+word-accounting-whole-headers: headers.jamendo.word_aligned + headers.jamendo.word_interpolated == base.headers.jamendo.word_aligned + base.headers.jamendo.word_interpolated
+word-accounting-whole-credit: credit.jamendo.word_aligned + credit.jamendo.word_interpolated == base.credit.jamendo.word_aligned + base.credit.jamendo.word_interpolated
+# And the fall is ONE WORD PER RE-OPENED LINE and not a word more. The bounds are the measured Jamendo
+# re-openings in each mode (truth 4, jit 6, drop20 4, extraverse 4, headers 4, credit 3; README, "W8a round 1:
+# the `band-reopen` arm, re-read with the free-time guard"), so a second word leaving a line's measurement —
+# the failure `adopted_line` would have been — fails here.
+word-aligned-down-at-most-reopenings-truth: truth.jamendo.word_aligned >= base.truth.jamendo.word_aligned - 4
+word-aligned-down-at-most-reopenings-jit: jit.jamendo.word_aligned >= base.jit.jamendo.word_aligned - 6
+word-aligned-down-at-most-reopenings-drop20: drop20.jamendo.word_aligned >= base.drop20.jamendo.word_aligned - 4
+word-aligned-down-at-most-reopenings-extraverse: extraverse.jamendo.word_aligned >= base.extraverse.jamendo.word_aligned - 4
+word-aligned-down-at-most-reopenings-headers: headers.jamendo.word_aligned >= base.headers.jamendo.word_aligned - 4
+word-aligned-down-at-most-reopenings-credit: credit.jamendo.word_aligned >= base.credit.jamendo.word_aligned - 3
+word-aligned-unchanged-off05: off05.jamendo.word_aligned == base.off05.jamendo.word_aligned
+word-aligned-unchanged-tempo098: tempo098.jamendo.word_aligned == base.tempo098.jamendo.word_aligned
+# THE SECOND RULE THE UNGUARDED ARM FAILED (95.86 -> 95.79 at `jit`, the same leak).
+word-pm300-not-down-truth: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+word-pm300-not-down-jit: jit.jamendo.word_pm300 >= base.jit.jamendo.word_pm300
+word-pm300-not-down-credit: credit.jamendo.word_pm300 >= base.credit.jamendo.word_pm300
+word-pm300-not-down-drop20: drop20.jamendo.word_pm300 >= base.drop20.jamendo.word_pm300
+word-pm300-not-down-extraverse: extraverse.jamendo.word_pm300 >= base.extraverse.jamendo.word_pm300
+word-pm300-not-down-headers: headers.jamendo.word_pm300 >= base.headers.jamendo.word_pm300
+word-pm300-not-down-off05: off05.jamendo.word_pm300 >= base.off05.jamendo.word_pm300
+word-pm300-not-down-off15: off15.jamendo.word_pm300 >= base.off15.jamendo.word_pm300
+word-pm300-not-down-off3: off3.jamendo.word_pm300 >= base.off3.jamendo.word_pm300
+word-pm300-not-down-offm1: offm1.jamendo.word_pm300 >= base.offm1.jamendo.word_pm300
+word-pm300-not-down-tempo098: tempo098.jamendo.word_pm300 >= base.tempo098.jamendo.word_pm300
+word-pm300-not-down-tempo102: tempo102.jamendo.word_pm300 >= base.tempo102.jamendo.word_pm300
+
+# ── 6) MUST: no grade moves and the word wipe stays on ────────────────────────────────────────────────
+# A re-opened line is a window repair, so XA-02's grading rule covers it and no confidence should change.
+# `band-off-sheet` is OFF in this run, which is why `high` may be read as held rather than bounded.
+high-held-truth: truth.high >= base.truth.high
+high-held-jit: jit.high >= base.jit.high
+high-held-drop20: drop20.high >= base.drop20.high
+high-held-off05: off05.high >= base.off05.high
+high-held-offm1: offm1.high >= base.offm1.high
+bad-among-high-not-up-truth: truth.high_bad <= base.truth.high_bad
+bad-among-high-not-up-jit: jit.high_bad <= base.jit.high_bad
+bad-among-high-not-up-off05: off05.high_bad <= base.off05.high_bad
+highlight-not-down-truth: truth.highlight >= base.truth.highlight
+highlight-not-down-jit: jit.highlight >= base.jit.highlight
+highlight-not-down-drop20: drop20.highlight >= base.drop20.highlight
+
+# ── 7) MUST: the four displaced sheets are still not "fixed" ───────────────────────────────────────────
+# bad-guy, numb, believer and tfr-chosen hold a reference that PRECEDES their own singing (W8a task 1), so a
+# repair pulling their lines onto their cues publishes the reference's error. Two of the four are in this
+# selection; `tfr-chosen` is the song whose single gain the guard refuses, which is the right direction here
+# and is why the rule is `not_pulled` and not an equality (`gates/w8a-fix.yaml` §4 states the reasoning).
+displaced-songs-not-pulled-truth: count((abs(base.truth.song.bias_ms) > 250) * (base.truth.song.mad_ms <= 250) * (truth.song.pm500 > base.truth.song.pm500)) == 0
+displaced-songs-not-pulled-off05: count((abs(base.off05.song.bias_ms) > 250) * (base.off05.song.mad_ms <= 250) * (off05.song.pm500 > base.off05.song.pm500)) == 0
+displaced-songs-not-pulled-jit: count((abs(base.jit.song.bias_ms) > 250) * (base.jit.song.mad_ms <= 250) * (jit.song.pm500 > base.jit.song.pm500)) == 0
+
+# ── 8) MUST: nothing is refused, dropped or ERRORed that was not before ───────────────────────────────
+# The arm is a timing rule and cannot reach a refusal; stated because "cannot" is the kind of sentence this
+# build measures. `drop50` carries the corpus's one standing refusal in this selection.
+refusals-unchanged-truth: truth.refused == base.truth.refused
+refusals-unchanged-jit: jit.refused == base.jit.refused
+refusals-unchanged-drop50: drop50.refused == base.drop50.refused
+published-unchanged-truth: truth.published == base.truth.published
+published-unchanged-jit: jit.published == base.jit.published
+published-unchanged-drop50: drop50.published == base.drop50.published
+scored-unchanged-truth: truth.scored == base.truth.scored
+scored-unchanged-jit: jit.scored == base.jit.scored
+scored-unchanged-off05: off05.scored == base.off05.scored

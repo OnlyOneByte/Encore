@@ -83,6 +83,11 @@ unused** — for `tfr-flyaway` the dry vocal must be excluded or the vocal is co
 the 24 individual stems were measured NOT to reconstruct the references (max difference 3.28) and are
 therefore unusable rather than merely redundant.
 
+**Ground truth is always the vocal as it appears in the mixture**, reverb and delay included. A separator
+pulling vocals out of a real mix recovers the wet signal, so scoring against a dry source would penalise
+every model for correctly leaving the effects on the vocal — which is why `05 Vocals Dry` is an excluded
+file and not an alternative ground truth.
+
 `scripts/prepare.py` builds the inputs. It produces **two different mixes on purpose**:
 
 | file                | used for    | why not the other one                                                                                                                                                                      |

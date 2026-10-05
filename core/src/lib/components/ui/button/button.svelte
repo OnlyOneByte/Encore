@@ -38,7 +38,8 @@
 				   state upgraded by `enabled:` rather than a `disabled:` override, so it does not depend on utility order.
 				   --control-line and NOT --line on the ENABLED state: this is the one variant with `bg-transparent`, so the
 				   border is the entire control — SC 1.4.11's 3:1 applies to it exactly as it does to a text field, and --line
-				   was 1.23:1 on the drawer's --card (--popover) surface. It also fixes an inversion that fell out of the old
+				   was 1.23:1 on the --card (--popover) surface the keycaps sat on when this was measured, inside the now-deleted
+				   now-playing sheet. It also fixes an inversion that fell out of the old
 				   pair: the live keycap's border (--line, 1.23:1) was DIMMER than its own inert one (--line-strong, 1.57:1),
 				   so the enabled control read as the weaker of the two. --control-line is 3.97:1 there. The dashed inert state
 				   KEEPS --line-strong: 1.4.11 exempts inactive components by name, and it now sits correctly below the live

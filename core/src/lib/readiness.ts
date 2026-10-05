@@ -54,13 +54,16 @@ export function canProcess(m: Media, r: Readiness): boolean {
  * nothing-FOUND is the only state that warrants a sentence. */
 export interface NoRowsState {
 	message: string;
-	/** When set, the UI offers a one-tap way back to the library (clears the search).
+	/** How many songs the library holds, when there is a library to point at — `null` when there is not.
 	 *
-	 * A PRESENCE SIGNAL, and no longer a label. The control it gates clears the search, which reveals the
-	 * home column's SHELF, itself capped (at four rows on a phone, eight at --bp-lg) — so a label reading
-	 * "Show all 13" promised rows that tap does not
-	 * produce. The number stays here because "is there anything to go back to" is exactly what the caller
-	 * needs, and callers that want the real library size read it from the same place /library does. */
+	 * BOTH A PRESENCE SIGNAL AND A LABEL. `null` is the gate ("only promise the way back when there is
+	 * something to go back TO"), and the one caller PRINTS the number on the control it gates: a link to
+	 * /library reading `Show my 1 song` / `Show my 5 songs`. Printing it is safe here in a way it was not when the control
+	 * cleared the search and revealed a CAPPED shelf on this same page — a count the shelf would then
+	 * truncate promised rows the tap did not produce. The shelf is gone and /library shows every row, so the
+	 * count and the destination now agree. A caller that prints it OWNS SINGULAR/PLURAL AGREEMENT, because a
+	 * bare number carries no noun; `noRowsState`'s own message and /library's count line both agree too, and
+	 * a surface disagreeing with either is the defect. */
 	showAllCount: number | null;
 }
 
@@ -133,24 +136,20 @@ export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
 	return entries.find((e) => entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
 }
 
-/** The media ids that belong in the "Processing" group, as an ORDER-INDEPENDENT set. THE QUERY IS A LOAD-BEARING
- * INPUT: with a search active this restricts to the server's query-matched group, because re-deriving from the whole
- * status map lets someone else's processing song appear under an unrelated search. With no search it is the full
- * union, which guarantees a process you started is visible; `failed` is included, `ready` and `canceled` are not. */
-export function processingGroupIds(opts: {
-	searchActive: boolean;
-	processingResults: Media[];
-	mediaStatus: ReadonlyMap<string, { status: MediaStatus }>;
-	mediaCatalog: ReadonlyMap<string, Media>;
-	readiness: (m: Media) => Readiness;
-}): Set<string> {
-	const { searchActive, processingResults, mediaStatus, mediaCatalog, readiness } = opts;
-	if (searchActive) {
-		// The server already scoped this to the query. Trust the wire; do NOT re-scan the catalog.
-		return new Set(processingResults.map((m) => m.id));
-	}
-	const ids = new Set<string>();
-	for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'canceled') ids.add(id);
-	for (const [id, m] of mediaCatalog) if (readiness(m) === 'processing') ids.add(id);
-	return ids;
+/** The media ids that belong in the "Processing" group, as an ORDER-INDEPENDENT set — de-duplicated because a set is
+ * what the caller then resolves against the catalog, and one media must never draw two progress bars.
+ *
+ * THE WIRE IS THE ONLY SOURCE, and that is now structural rather than a branch: the server already scoped
+ * `j.processing` to the query, so there is nothing to re-derive. It took a catalog and a live status map once and
+ * unioned them whenever no search was active, which is the branch that let someone else's processing song appear
+ * under an unrelated query — and the fix for that was to trust the wire while searching.
+ *
+ * THE UNION IS RETIRED (2026-10-03), not merely unused. The Processing group is SEARCH FEEDBACK: its sole caller
+ * returns `[]` before reaching this function when no query is active, so the union was unreachable and the catalog,
+ * status and classifier arguments could not be read. Nor is there another surface wanting it — /queue's own
+ * processing group is derived from QUEUE ENTRIES, which is the narrower set on purpose, and `processAndQueue` adds
+ * the turn alongside the process so a cooking song is in practice a queued song. What that trades away is recorded
+ * at the caller: a media processing with no queue entry is visible only while a query matches it. */
+export function processingGroupIds(processingResults: Media[]): Set<string> {
+	return new Set(processingResults.map((m) => m.id));
 }

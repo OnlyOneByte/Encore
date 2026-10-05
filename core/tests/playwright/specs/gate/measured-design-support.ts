@@ -178,7 +178,9 @@ export function fieldId(label: string, r: Reading): string {
  * names which half is missing.
  */
 export async function openBrowse(page: Page, timeout = 15_000): Promise<void> {
-	await page.locator(SEL.homeReady).first().waitFor({ state: 'attached', timeout });
+	// The dock, not the strip inside it: the strip renders only when the room has something to play, so a wait on
+	// it never resolves for a drive that has not queued anything.
+	await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout });
 	await page.locator(SEL.findBox).first().waitFor({ state: 'attached', timeout });
 	await page.locator(SEL.search).first().waitFor({ state: 'attached', timeout });
 }

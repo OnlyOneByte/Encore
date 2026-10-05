@@ -3,7 +3,10 @@
 	import * as Field from '$lib/components/ui/field';
 	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental. PRESENTATIONAL: throttling,
 	// the websocket command and the override-versus-room-default resolution belong to the caller, because those are room
-	// state. It must stay in the sheet's BODY: a range input inside a drag surface fights the sheet's own gesture.
+	// state. ITS HOSTS ARE /queue's now-playing card and the /components gallery. It used to carry a constraint worth
+	// recording as REMOVED: inside the now-playing sheet it had to sit in the body, because a range input inside a drag
+	// surface fights the sheet's own gesture — the thumb and the dismiss were one gesture with the sheet winning as the
+	// ancestor. There is no drag surface under it now, so that conflict died with the sheet.
 	interface Props {
 		/** The level currently shown, 0..100. */
 		pct: number;

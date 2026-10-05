@@ -1,9 +1,10 @@
 """The 2026-10-01 directive as a test: a docstring is a few lines of WHAT and WHY; prose lives in `docs/`.
 
-Nine rules over three roots — the package, the worker's own tests and the committed bench harness. Five are
+Ten rules over four roots — the package, the worker's own tests and BOTH committed bench harnesses. Five are
 SHAPE (module docstring, def docstring, comment run, `#:` comment, and the bridged BLOCK that catches them in
-combination) and four are RATIO, which stops prose the shape rules allow accumulating module by module, layer
-by layer and root by root.
+combination), four are RATIO, which stops prose the shape rules allow accumulating module by module, layer by
+layer and root by root, and the tenth reads two comments against EACH OTHER: a pasted block is short enough
+for every bound and still says nothing true about the value under it.
 
 docs/arch/05-worker.md §12 carries each bound, what sat on it when it was set, and why the ratio rules bind
 per module in the package and per ROOT elsewhere. The remedy for a failure is always the same: move the
@@ -14,7 +15,9 @@ from __future__ import annotations
 
 import ast
 import io
+import re
 import tokenize
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -39,8 +42,8 @@ MAX_ATTRIBUTE_COMMENT = 3
 #: `test_each_bound_still_names_what_sits_on_it` asserts that headroom instead of pretending it away.
 MAX_BLOCK_LINES = MAX_MODULE_DOCSTRING + MAX_COMMENT_RUN
 
-#: Prose lines per line of code, for a module rule 6 reaches. W7b's bound was 1.1; the package measured 0.745
-#: when W7c started and 0.489 when it finished.
+#: Prose lines per line of code, for a module rule 6 reaches. W7b's bound was 1.1; the package measured 0.82
+#: at the `w7c-start` snapshot and 0.49 now (`MEASURED_ROOT_RATIO`).
 MAX_PROSE_RATIO = 0.55
 
 #: Below this many lines of code the ratio measures a module's INTERFACE rather than its prose, so rule 6
@@ -53,26 +56,25 @@ RATIO_MIN_CODE = 100
 MAX_LAYER_RATIO = 0.55
 MAX_PACKAGE_RATIO = 0.52
 
-#: Rule 9: the other two roots, each held to an aggregate rather than per module (docs/arch/05-worker.md §12 —
-#: a test file is many small functions each honestly carrying two lines, a gate script a measurement argument
-#: with a `main()`). Measured 0.3124 and 0.2580 when W7c extended the shape rules to them.
-MAX_TESTS_RATIO = 0.33
-MAX_HARNESS_RATIO = 0.28
-
-#: Named exceptions, `"<label>::<qualname>": "the reason"`. EMPTY, and that is the finished state: W7c cleared
-#: 271 package violations and 239 in the other two roots without granting one, which is the point.
-#: `test_every_named_exception_is_still_needed` deletes a stale entry for whoever adds one.
+#: Named exceptions, `"<label>::<qualname>": "the reason"`, with `<qualname>` = `BLOCK_KEY` for rule 5.
+#: EMPTY, and that is the finished state: W7c cleared 271 package violations and 243 in the other three roots
+#: without granting one. `test_every_named_exception_is_still_needed` deletes a stale entry.
 EXCEPTIONS: dict[str, str] = {}
 
+#: The `<qualname>` a rule 5 grant is keyed under: a block spans every docstring and comment run that touches
+#: it, so it has no qualname and the grant is per MODULE. Rule 5 read `EXCEPTIONS` not at all before this
+#: (W7c review r2-tests-13; docs/arch/05-worker.md §12).
+BLOCK_KEY = "<block>"
+
 #: The module or layer sitting CLOSEST to each bound, checked by
-#: `test_each_bound_still_names_what_sits_on_it`, which also asserts that rule 5's headroom still exists: a
-#: comment claiming headroom it has not got sends the next wave to raise a number (05-worker.md §12).
+#: `test_each_bound_still_names_what_sits_on_it`, which also asserts rule 5's headroom still exists: a comment
+#: claiming headroom it has not got sends the next wave to raise a number (docs/arch/05-worker.md §12).
 TIGHTEST = {
     "module": "encore_worker/adapters/audiosep.py",
     "def": "encore_worker/adapters/cli.py",
     "comment": "encore_worker/__main__.py",
     "attribute": "encore_worker/adapters/ml.py",
-    "block": "scripts/e2e.py",
+    "block": "forced-alignment/e2e.py",
     "ratio": "encore_worker/domain/lyrics/policy.py",
     "layer": "encore_worker/artifacts",
 }
@@ -94,12 +96,61 @@ LAYERS = (
     "encore_worker/workflows",
 )
 
-#: The three roots every shape rule reads, worker-root-relative. An essay is no more checkable in a test file
-#: or in a gate script than in the package, and W7c is the wave that stopped exempting them.
+#: The four roots every shape rule reads, worker-root-relative. An essay is no more checkable in a test file
+#: or in a gate script than in the package, and W7c is the wave that stopped exempting them — the
+#: stem-separation harness included, which the first pass left out silently (W7c review r1-correctness-2).
 PACKAGE_ROOT = "encore_worker"
 TESTS_ROOT = "tests"
 HARNESS_ROOT = "../docs/benchmarks/forced-alignment/scripts"
-ROOTS = (PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT)
+SEPARATION_ROOT = "../docs/benchmarks/stem-separation/scripts"
+ROOTS = (PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT, SEPARATION_ROOT)
+
+#: A spelled claim about how many roots there are IN TOTAL, held to `len(ROOTS)` by
+#: `test_the_shape_rules_say_where`. The lead-in is required, or "the other three roots" and "two roots share
+#: a label" — both true, neither a total — would read as the claim.
+_ROOT_COUNT_WORD = re.compile(r"\b(?:all|over|[Tt]he) (one|two|three|four|five|six|seven|eight) roots\b")
+
+#: Counts the tree spells rather than writes, so a test can check one. Prose is where a count goes stale.
+_SPELLED = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven")
+
+#: Rule 9: every root but the package, each held to an aggregate rather than to rule 6 per module
+#: (docs/arch/05-worker.md §12 — a test file is many small functions each honestly carrying two lines of WHAT,
+#: a gate script a measurement argument with a `main()`). Per root, the roots being of very different sizes.
+MAX_ROOT_RATIO = {TESTS_ROOT: 0.33, HARNESS_ROOT: 0.28, SEPARATION_ROOT: 0.30}
+
+#: What each root MEASURES, to the two decimals it is quoted in to here and in docs/arch/05-worker.md §12 and
+#: held there by `test_the_quoted_root_ratios_still_measure_what_they_say`: two quoted root ratios were stale
+#: on the day they shipped (W7c review r1-spec-10) and no test could see it.
+MEASURED_ROOT_RATIO = {PACKAGE_ROOT: 0.49, TESTS_ROOT: 0.32, HARNESS_ROOT: 0.26, SEPARATION_ROOT: 0.22}
+
+#: How far a quoted ratio may sit ABOVE the tree's reading before it is stale rather than merely conservative.
+#: Below the reading it is stale at once: that direction claims less prose than the root carries. One-sided,
+#: because the equality this replaced failed the suite when prose was DELETED (W7c review r2-tests-12).
+QUOTE_STALE_ABOVE = 0.05
+
+#: Ratio figures a document has RETRACTED, `"figure": "why"`. A retracted figure may still be quoted — never
+#: delete a measured number — but only in a paragraph that retracts it, which is the defect
+#: `test_a_retracted_ratio_is_never_republished_as_a_reading` closes (W7c review r2-correctness-2).
+RETRACTED_RATIOS = {
+    "0.745": "the package read MID-WAVE, published as its pre-W7c baseline (review r1-tests-11)",
+    "0.3124": "worker/tests read before the wave's last edits, where w7c-start reads 0.3114",
+    "0.2580": "the forced-alignment harness, stale on the day rule 9's row shipped (review r1-spec-10)",
+}
+
+#: What marks a paragraph as retracting rather than republishing: any of these words near the figure.
+_RETRACTION = ("retract", "stale", "mid-wave", "was never", "already", "before the wave")
+
+#: Where a root ratio is quoted outside the code, repo-relative. Both are read by the test above, since the
+#: defect was the README re-publishing what the design document had already withdrawn.
+RATIO_DOCS = ("docs/arch/05-worker.md", "docs/benchmarks/forced-alignment/README.md")
+
+#: The smallest honest population per root, for `test_every_root_has_modules_to_measure`: a glob that silently
+#: matched nothing would make every rule below vacuously green, and one floor cannot serve both a 68-module
+#: root and a three-script one.
+ROOT_MODULE_FLOOR = {PACKAGE_ROOT: 60, TESTS_ROOT: 50, HARNESS_ROOT: 10, SEPARATION_ROOT: 3}
+
+#: The least code a root may hold before rule 9's ratio is measuring something other than that root.
+ROOT_CODE_FLOOR = {TESTS_ROOT: 10_000, HARNESS_ROOT: 5_000, SEPARATION_ROOT: 250}
 
 
 def _worker_root() -> Path:
@@ -231,14 +282,21 @@ def _modules(worker: Path) -> list[str]:
     return sorted(str(path.relative_to(worker)) for path in (worker / "encore_worker").rglob("*.py"))
 
 
+def _label_of(root: str) -> str:
+    """The prefix a root's modules are reported under: its own directory name, except that BOTH bench
+    harnesses are directories called `scripts`, and one label for two roots would merge them."""
+    path = Path(root)
+    return path.parent.name if path.name == "scripts" else path.name
+
+
 def _root_modules(worker: Path, roots: tuple[str, ...] = ROOTS) -> list[tuple[str, Path]]:
-    """`(label, path)` for every module of `roots`, labelled by the root's own directory name."""
+    """`(label, path)` for every module of `roots`, labelled by `_label_of`."""
     found: list[tuple[str, Path]] = []
     for root in roots:
         base = (worker / root).resolve()
         assert base.is_dir(), f"the shape rules' root {root} is not a directory"
         for path in sorted(base.rglob("*.py")):
-            found.append((f"{Path(root).name}/{path.relative_to(base)}", path))
+            found.append((f"{_label_of(root)}/{path.relative_to(base)}", path))
     return found
 
 
@@ -265,18 +323,99 @@ def _shape_violations(worker: Path) -> dict[str, list[tuple[str, str]]]:
     return found
 
 
+def _essays(modules: list[tuple[str, Path]], exceptions: Mapping[str, str] = EXCEPTIONS) -> list[str]:
+    """Rule 5's violations, `EXCEPTIONS` applied under `BLOCK_KEY` as rules 1-4 apply it under a qualname."""
+    found: list[str] = []
+    for label, path in modules:
+        length, first = _longest_block(path.read_text(encoding="utf-8"))
+        if length > MAX_BLOCK_LINES and f"{label}::{BLOCK_KEY}" not in exceptions:
+            found.append(f"{label}:{first} ({length} lines, bound {MAX_BLOCK_LINES})")
+    return found
+
+
+def _quote_stale(prose: int, code: int, quoted: float) -> str:
+    """Why a quoted root ratio no longer measures the tree, or `""` when it still does.
+
+    One-sided on purpose: a reading that has DROPPED below the quote is the 2026-10-01 directive being
+    obeyed, so it costs a re-quote only once it drops `QUOTE_STALE_ABOVE` (W7c review r2-tests-12).
+    """
+    reading = prose / code
+    if round(reading, 2) > quoted:
+        return f"measures {prose}/{code} = {reading:.4f}, ABOVE the {quoted} quoted: prose has been ADDED"
+    if quoted - reading > QUOTE_STALE_ABOVE:
+        return (
+            f"measures {prose}/{code} = {reading:.4f}, {quoted - reading:.4f} under the {quoted} quoted, "
+            f"past the {QUOTE_STALE_ABOVE} a conservative quote may keep"
+        )
+    return ""
+
+
+#: Rule 10: how much of two CONSECUTIVE comment runs' content words may coincide (Jaccard) before the second
+#: reads as a copy of the first rather than a comment of its own. Set in the gap the tree measures — the one
+#: real pair 0.889, the next 0.436 over 773 pairs (docs/arch/05-worker.md §12; W7c review r2-correctness-1).
+MAX_COMMENT_OVERLAP = 0.6
+
+#: What rule 10 compares: lowercase words of four letters or more, so two runs sharing only `the`/`and`/a
+#: backticked short name are not a duplicate pair.
+_CONTENT_WORD = re.compile(r"[a-z][a-z_]{3,}")
+
+
+def _comment_blocks(source: str) -> list[tuple[int, int, str]]:
+    """`(first line, last line, text)` for every own-line comment run of 2+ lines, at most one per start line.
+
+    A `# ── banner ──` BRIDGES into the `#:` block below it, so `_comment_runs` reports the pair twice: once
+    as the whole run and once as the `#:` part. Both are kept and rule 10 drops the overlap, since a run
+    nested inside another shares every word with it by construction.
+    """
+    lines = source.splitlines()
+    longest: dict[int, int] = {}
+    for first, length, _kind in _comment_runs(source):
+        longest[first] = max(longest.get(first, 0), length)
+    blocks: list[tuple[int, int, str]] = []
+    for first, length in sorted(longest.items()):
+        if length < 2:
+            continue
+        taken: list[str] = []
+        number = first
+        while len(taken) < length and number <= len(lines):
+            if lines[number - 1].lstrip().startswith("#"):
+                taken.append(lines[number - 1])
+            number += 1
+        blocks.append((first, number - 1, " ".join(taken)))
+    return blocks
+
+
+def _duplicate_comments(modules: list[tuple[str, Path]], limit: float = MAX_COMMENT_OVERLAP) -> list[str]:
+    """Rule 10's violations: consecutive DISJOINT comment runs whose content words overlap past `limit`."""
+    found: list[str] = []
+    for label, path in modules:
+        blocks = _comment_blocks(path.read_text(encoding="utf-8"))
+        for (first, last, one), (second, _end, two) in zip(blocks, blocks[1:], strict=False):
+            if second <= last:
+                continue
+            left, right = set(_CONTENT_WORD.findall(one)), set(_CONTENT_WORD.findall(two))
+            if not left or not right:
+                continue
+            overlap = len(left & right) / len(left | right)
+            if overlap > limit:
+                found.append(f"{label}:{first} and :{second} share {overlap:.2f} of their content words")
+    return found
+
+
 @pytest.fixture(scope="module")
 def worker() -> Path:
     return _worker_root()
 
 
-def test_the_three_roots_have_modules_to_measure(worker: Path) -> None:
+def test_every_root_has_modules_to_measure(worker: Path) -> None:
     """A glob that silently matched nothing would make every rule below vacuously green."""
     labels = [label for label, _path in _root_modules(worker)]
-    assert len(labels) > 150, f"expected all three roots, found {len(labels)} modules"
+    assert len(labels) > 150, f"expected all four roots, found {len(labels)} modules"
     for root in ROOTS:
-        prefix = f"{Path(root).name}/"
-        assert sum(1 for label in labels if label.startswith(prefix)) > 10, f"{root} matched almost nothing"
+        prefix = f"{_label_of(root)}/"
+        found = sum(1 for label in labels if label.startswith(prefix))
+        assert found >= ROOT_MODULE_FLOOR[root], f"{root} matched {found} modules, under its own floor"
+    assert len(set(labels)) == len(labels), "two roots share a label, so their worst prose would be merged"
     assert "encore_worker/steps/align_steps.py" in labels
     assert len(_modules(worker)) > 60, "the ratio rules have stopped seeing the package"
 
@@ -287,7 +426,37 @@ def test_the_shape_rules_say_where(worker: Path) -> None:
     read = sum(len(_docstrings(path.read_text(encoding="utf-8"))) for _label, path in _root_modules(worker))
     assert read > 1500, f"rules 1-2 read only {read} docstrings; a root has stopped matching"
     assert set(counted) == {"module", "def", "comment", "attribute"}
-    assert set(ROOTS) == {PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT}
+    assert set(ROOTS) == {PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT, SEPARATION_ROOT}
+    assert set(MAX_ROOT_RATIO) == set(ROOTS) - {PACKAGE_ROOT}, "rule 9 must bind on every non-package root"
+    assert set(MEASURED_ROOT_RATIO) == set(ROOTS), "every root's measured ratio is quoted and checked"
+    # And the TOTAL spelled in this module's own prose: rule 2's docstring went on claiming a count one short
+    # of `ROOTS` for a whole wave after the fourth was added (W7c review r2-correctness-6).
+    said = set(_ROOT_COUNT_WORD.findall(re.sub(r"\s+", " ", Path(__file__).read_text(encoding="utf-8"))))
+    assert said == {_SPELLED[len(ROOTS)]}, (
+        f"this module's prose spells the root count as {sorted(said)} where ROOTS holds {len(ROOTS)}"
+    )
+
+
+def test_the_measure_still_sees_prose(worker: Path) -> None:
+    """The non-vacuity floor rules 5-9 all lacked: zeroing the MEASURE left 24 of 24 tests green.
+
+    `_longest_block` and `_counts` both read `_prose_lines`, and nothing asserted that it returns anything, so
+    `_prose_lines = lambda _: set()` passed the whole file — `_worst` returning every key at a tie of 0 even
+    kept `TIGHTEST` happy (W7c review r1-spec-8).
+    """
+    sources = [path.read_text(encoding="utf-8") for _label, path in _root_modules(worker)]
+    seen = sum(len(_prose_lines(source)) for source in sources)
+    assert seen > 4_000, f"the measure sees only {seen} prose lines across the roots; it has gone blind"
+    counted = sum(_counts(source)[0] for source in sources)
+    assert counted == seen, f"`_counts` reads {counted} prose lines where `_prose_lines` reads {seen}"
+    longest = max(_longest_block(source)[0] for source in sources)
+    assert longest >= 10, f"the longest block measures {longest} lines: the block walk has gone blind"
+    # And the bridging rule itself, on a synthetic module rather than on whatever the tree happens to hold: a
+    # docstring, two blank lines, a comment run, then code — one block of five, not two of three and two.
+    bridged = '"""one\ntwo\n"""\n\n\n# three\n# four\n\nx = 1\n'
+    assert _longest_block(bridged) == (5, 1), "a blank line must not split a block (rule 5's whole reason)"
+    assert _counts(bridged) == (5, 1)
+    assert _longest_block("x = 1\n") == (0, 0), "and code alone is no block at all"
 
 
 def test_a_module_docstring_says_what_it_is_and_points_at_the_rest(worker: Path) -> None:
@@ -301,7 +470,7 @@ def test_a_module_docstring_says_what_it_is_and_points_at_the_rest(worker: Path)
 
 
 def test_a_def_docstring_is_what_and_why_and_nothing_longer(worker: Path) -> None:
-    """Rule 2, over every function, method and class of all three roots.
+    """Rule 2, over every function, method and class of all four roots.
 
     A TEST's docstring keeps the claim it pins and the mutation that used to survive; what it does not keep is
     a re-derivation of a measurement or a re-argued review finding (docs/arch/05-worker.md §12).
@@ -337,16 +506,57 @@ def test_no_prose_block_is_an_essay(worker: Path) -> None:
     """Rule 5, over every module of every root: the combination bound rules 1-4 cannot see."""
     modules = _root_modules(worker)
     assert len(modules) > 150, f"rule 5 read only {len(modules)} modules; a root has stopped matching"
-    essays: list[str] = []
-    for label, path in modules:
-        length, first = _longest_block(path.read_text(encoding="utf-8"))
-        if length > MAX_BLOCK_LINES:
-            essays.append(f"{label}:{first} ({length} lines, bound {MAX_BLOCK_LINES})")
+    essays = sorted(_essays(modules))
     assert not essays, (
         f"these carry a prose run over the {MAX_BLOCK_LINES}-line bound: {essays}. Measurement narratives, "
         "threshold derivations, rejected alternatives and failure accounts belong in docs/ with the code "
         "citing the path (see tests/test_docs_pointers.py)."
     )
+
+
+def test_rule_5_honours_a_grant_as_rules_1_to_4_do(tmp_path: Path) -> None:
+    """`EXCEPTIONS` was read by `_shape_violations` alone, so the only sanctioned route could not sanction a
+    docstring over `MAX_BLOCK_LINES` — the one length it exists for (W7c review r2-tests-13)."""
+    module = tmp_path / "essay.py"
+    body = "\n".join(f"line {n}" for n in range(MAX_BLOCK_LINES + 1))
+    module.write_text(f'"""{body}"""\nx = 1\n', encoding="utf-8")
+    modules = [("encore_worker/essay.py", module)]
+    assert _essays(modules, {}), f"a {MAX_BLOCK_LINES + 1}-line docstring must violate rule 5 ungranted"
+    granted = {f"encore_worker/essay.py::{BLOCK_KEY}": "a reason long enough to satisfy the hatch's own test"}
+    assert not _essays(modules, granted), "a rule 5 grant must suppress the violation it names"
+    assert _essays(modules, {f"encore_worker/essay.py::{'<module>'}": "wrong key"}), (
+        "a grant on the DOCSTRING's qualname must not silently serve as a block grant"
+    )
+
+
+def test_a_comment_is_not_a_copy_of_the_one_above_it(worker: Path) -> None:
+    """Rule 10. `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' block verbatim — three index claims that were
+    false of its own tuple, and the arms' real semantics deleted (W7c review r2-correctness-1)."""
+    copies = sorted(_duplicate_comments(_root_modules(worker)))
+    assert not copies, (
+        f"these read as copies rather than as comments of their own: {copies}. A pasted block describes the "
+        f"value above it, not the one below: write the second constant's own ({MAX_COMMENT_OVERLAP} Jaccard "
+        "bound, docs/arch/05-worker.md §12)."
+    )
+
+
+def test_rule_10_reads_the_pair_it_was_written_for(tmp_path: Path) -> None:
+    """Rule 10 compares DISJOINT runs only: a `# ── banner ──` bridges into the `#:` block below it, so
+    `_comment_runs` reports that pair twice and the nested copy shares every word by construction."""
+    head = "ZERO = 0\n"  # line 1 is never prose: `_comment_runs` skips it, a shebang not being a comment
+    one_line = "#: alpha bravo charlie delta echo foxtrot indexes the surviving cue\n"
+    two_line = "#: alpha bravo charlie delta echo\n#: foxtrot indexes the surviving cue\n"
+    cases = {
+        "pasted": (f"{head}{one_line}FIRST = 1\n{one_line}SECOND = 2\n", False),
+        "pair": (f"{head}{two_line}FIRST = 1\n{two_line}SECOND = 2\n", True),
+        "nested": (f"{head}# -- banner --\n\n{two_line}FIRST = 1\n", False),
+        "distinct": (f"{head}{two_line}FIRST = 1\n#: golf hotel\n#: india juliett\nSECOND = 2\n", False),
+    }
+    for name, (source, caught) in cases.items():
+        module = tmp_path / f"{name}.py"
+        module.write_text(source, encoding="utf-8")
+        found = _duplicate_comments([(f"tests/{name}.py", module)])
+        assert bool(found) is caught, f"rule 10 read {name} as {found}, expecting caught={caught}"
 
 
 def test_a_module_with_real_code_carries_half_as_much_prose_as_code(worker: Path) -> None:
@@ -406,34 +616,71 @@ def test_the_whole_package_carries_half_as_much_prose_as_code(worker: Path) -> N
     prose, code = _root_ratio(worker, PACKAGE_ROOT)
     assert prose / code <= MAX_PACKAGE_RATIO, (
         f"encore_worker is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
-        f"{MAX_PACKAGE_RATIO} bound. It was 1.21 before W7b, 0.745 before W7c and 0.49 after."
+        f"{MAX_PACKAGE_RATIO} bound. It was 1.21 before W7b, 0.82 before W7c and 0.49 after."
     )
 
 
-def test_the_worker_tests_carry_less_prose_than_their_own_bound(worker: Path) -> None:
-    """Rule 9 for `tests/`, which W7b left out of scope entirely and W7c swept (239 edits with the harness).
+@pytest.mark.parametrize("root", sorted(MAX_ROOT_RATIO))
+def test_a_root_outside_the_package_carries_less_prose_than_its_own_bound(worker: Path, root: str) -> None:
+    """Rule 9: the tests W7b left out of scope entirely, and both committed bench harnesses.
 
     An aggregate rather than rule 6 per module, for docs/arch/05-worker.md §12's reason: a test file is many
     small functions each honestly carrying two lines of WHAT, so a per-module bound would delete the right
     length of docstring. "No narrative here either" still has to be checkable, and this is how.
     """
-    prose, code = _root_ratio(worker, TESTS_ROOT)
-    assert code > 10_000, f"the tests root matched only {code} lines of code; it has moved"
-    assert prose / code <= MAX_TESTS_RATIO, (
-        f"worker/tests is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
-        f"{MAX_TESTS_RATIO} bound. A test docstring says what it pins and why, and the measurement it was "
-        "read off goes to docs/benchmarks/forced-alignment/README.md."
+    prose, code = _root_ratio(worker, root)
+    assert code >= ROOT_CODE_FLOOR[root], f"{root} matched only {code} lines of code; it has moved"
+    assert prose / code <= MAX_ROOT_RATIO[root], (
+        f"{root} is {prose} prose lines to {code} of code ({prose / code:.2f}), over its "
+        f"{MAX_ROOT_RATIO[root]} bound. A test docstring says what it pins and why, and a harness's argument "
+        "belongs in the README it measures for."
     )
 
 
-def test_the_bench_harness_carries_less_prose_than_its_own_bound(worker: Path) -> None:
-    """Rule 9 for the committed bench harness, the PLAN's second cleanup root."""
-    prose, code = _root_ratio(worker, HARNESS_ROOT)
-    assert code > 5_000, f"the bench harness matched only {code} lines of code; the root has moved"
-    assert prose / code <= MAX_HARNESS_RATIO, (
-        f"the bench harness is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
-        f"{MAX_HARNESS_RATIO} bound. A harness's argument belongs in the README it measures for."
+@pytest.mark.parametrize("root", sorted(MEASURED_ROOT_RATIO))
+def test_the_quoted_root_ratios_still_measure_what_they_say(worker: Path, root: str) -> None:
+    """A quoted ratio is a measurement, so it is read off the tree rather than believed (r1-spec-10).
+
+    Rule 9's own `#:` comment and docs/arch/05-worker.md §12's rule-9 row both shipped quoting 0.3124 and
+    0.2580 where the tree read 0.3114 and 0.2578. `TIGHTEST`'s test holds the module and layer NAMES to the
+    same standard and could not see these, there being no name in them.
+    """
+    prose, code = _root_ratio(worker, root)
+    stale = _quote_stale(prose, code, MEASURED_ROOT_RATIO[root])
+    assert not stale, (
+        f"{root} {stale}. Re-measure and correct MEASURED_ROOT_RATIO and docs/arch/05-worker.md §12 together."
     )
+
+
+def test_a_retracted_ratio_is_never_republished_as_a_reading(worker: Path) -> None:
+    """The measurement README quoted 0.745 as the package's pre-W7c figure in the same wave that 05-worker.md
+    §12 retracted it, so the measurement-of-record and the design document contradicted each other and no
+    test could see it. A figure stays in the repo; it may only appear where it is withdrawn."""
+    repo = worker.parent
+    republished: list[str] = []
+    for doc in RATIO_DOCS:
+        for paragraph in repo.joinpath(doc).read_text(encoding="utf-8").split("\n\n"):
+            flat = re.sub(r"\s+", " ", paragraph).lower()
+            retracts = any(word in flat for word in _RETRACTION)
+            republished += [
+                f"{doc}: {figure} without a retraction — {why}"
+                for figure, why in RETRACTED_RATIOS.items()
+                if figure in flat and not retracts
+            ]
+    assert not republished, (
+        f"these republish a retracted ratio as a reading: {republished}. Quote it only where withdrawn, "
+        f"or drop it from RETRACTED_RATIOS once no document carries it. Marks: {_RETRACTION}."
+    )
+
+
+def test_a_quoted_root_ratio_is_a_ceiling_so_prose_can_still_be_deleted() -> None:
+    """The quote was pinned by EQUALITY at +-0.005, and the stem-separation root had under one line of slack:
+    deleting three docstring lines from it failed the suite, i.e. the 2026-10-01 directive's own remedy broke
+    the ratchet that enforces it (W7c review r2-tests-12). Read on that root's own measurement, 72/324."""
+    assert not _quote_stale(72, 324, 0.22), "the shipped reading must satisfy its own quote"
+    assert not _quote_stale(69, 324, 0.22), "deleting three prose lines must not fail the suite"
+    assert _quote_stale(85, 324, 0.22), "ADDING a module docstring must fail: the quote would understate"
+    assert _quote_stale(55, 324, 0.22), "and a sweep past QUOTE_STALE_ABOVE must ask for the re-quote"
 
 
 def _layer_ratio(worker: Path, layer: str) -> float:
@@ -504,9 +751,9 @@ def test_each_bound_still_names_what_sits_on_it(worker: Path) -> None:
 def test_every_named_exception_is_still_needed(worker: Path) -> None:
     """An exception nobody needs reads as a defect that is still open, so a stale one fails.
 
-    The route is deliberately narrow: only a docstring can be excepted, by `label::qualname`, and only with a
-    reason. A comment run has no stable name and so has no route at all — shorten it, or make it a docstring
-    and argue for the exception there.
+    The route is deliberately narrow: only a docstring or a module's longest BLOCK can be excepted, by
+    `label::qualname` or `label::<block>`, and only with a reason. A comment run has no stable name and so has
+    no route at all — shorten it, or make it a docstring and argue for the exception there.
     """
     paths = dict(_root_modules(worker))
     for key, reason in EXCEPTIONS.items():
@@ -514,6 +761,12 @@ def test_every_named_exception_is_still_needed(worker: Path) -> None:
         assert qualname, f"{key} is not a `label::qualname` exception key"
         assert len(reason) > 20, f"{key}'s exception gives no reason: {reason!r}"
         assert label in paths, f"{key} excepts a module that no longer exists"
+        if qualname == BLOCK_KEY:
+            length, _first = _longest_block(paths[label].read_text(encoding="utf-8"))
+            assert length > MAX_BLOCK_LINES, (
+                f"{key}'s block is {length} lines, inside the {MAX_BLOCK_LINES}-line bound: delete it."
+            )
+            continue
         lengths = {
             name: length
             for kind, name, _, length in _docstrings(paths[label].read_text(encoding="utf-8"))
@@ -541,3 +794,13 @@ def test_every_layer_of_the_package_is_listed(worker: Path) -> None:
     }
     assert found <= listed, f"these package directories are not in LAYERS: {sorted(found - listed)}"
     assert listed <= found, f"these LAYERS entries no longer exist: {sorted(listed - found)}"
+    # And the package's FRONT DOOR, which spelled seven layers and listed seven of the eight for a whole wave,
+    # beside an invariant id about stem roles (W7c review r2-spec-7). A count in prose is a measurement.
+    door = (package / "__init__.py").read_text(encoding="utf-8")
+    front = re.sub(r"\s+", " ", ast.get_docstring(ast.parse(door)) or "")
+    top = sorted(name.split("/")[1] for name in listed if name.count("/") == 1)
+    unnamed = [name for name in top if f"`{name}/`" not in front]
+    assert not unnamed, f"encore_worker/__init__.py's docstring does not name these layers: {unnamed}"
+    assert f"{_SPELLED[len(top)]} layers" in front.lower(), (
+        f"the package has {len(top)} top-level layers; its docstring spells a different count: {front[:120]}"
+    )

@@ -6,8 +6,8 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
-	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
-	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
+	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
+	import TabBar from '$lib/ui/TabBar.svelte';
 	import { Button } from '$lib/components/ui/button';
 	/* THE PRIMITIVES, imported so the gallery can show them. See the `Primitives` section below for why
 	   their ABSENCE was the defect: `ui/README.md` closes with "Look at it. The four worst defects of the
@@ -63,10 +63,10 @@
 	// Ask the SAME resolver the TV asks: passing `highlight`/`ball` by hand makes the card a picture of a decision.
 	const lineOnlyResolved = $derived(resolveLyricsPresentation(wordLevelDeployment, lineOnlyCandidate.timing));
 
-	// The gallery's two interactive fixtures: a portalled overlay can only show one state at a time, so the drawer
-	// gets triggers, and the picker's preset-vs-rail agreement can only be exercised by binding a real value.
-	let drawerOpen = $state(false);
-	let drawerHasSong = $state(true);
+	// The gallery's one interactive fixture: the picker's preset-vs-rail agreement can only be exercised by binding
+	// a real value. There used to be a second — two triggers for the now-playing drawer, because a portalled
+	// overlay can only show one state at a time. The strip that replaced it is an inline element with no open
+	// state, so every state is a stacked frame like the rest of this file.
 
 	// The demo clock every word-sweep card reads, so one loop drives them all.
 	let demoPos = $state(0);
@@ -384,46 +384,6 @@
 	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
-	<!-- Triggers, not stacked frames: the drawer is portalled and fixed, so two open would share the same 82dvh. -->
-	<h2 class="section">NowPlayingDrawer</h2>
-	<div class="row-demo">
-		<Button
-			variant="secondary"
-			size="tap"
-			onclick={() => {
-				drawerHasSong = true;
-				drawerOpen = true;
-			}}>Open · playing, full profile</Button
-		>
-		<Button
-			variant="secondary"
-			size="tap"
-			onclick={() => {
-				drawerHasSong = false;
-				drawerOpen = true;
-			}}>Open · nothing playing</Button
-		>
-	</div>
-	<!-- A real-shaped `mediaId` so the door renders; it is gated on `hasSong && mediaId`, so the empty state has none. -->
-	<NowPlayingDrawer
-		bind:open={drawerOpen}
-		title={drawerHasSong ? "Livin' on a Prayer" : null}
-		artist={drawerHasSong ? 'Bon Jovi' : null}
-		singerName={drawerHasSong ? 'Maya' : null}
-		singerColor={GREEN}
-		profile={drawerHasSong ? profileFull : null}
-		keyShift={drawerHasSong ? -2 : 0}
-		keyShiftEnabled={drawerHasSong}
-		guideServerPct={20}
-		guideEnabled={drawerHasSong}
-		elapsedSec={drawerHasSong ? 104 : 0}
-		durationSec={drawerHasSong ? 249 : 0}
-		isPlaying={drawerHasSong}
-		hasSong={drawerHasSong}
-		canStart
-		mediaId={drawerHasSong ? '01M2H2FVB5P1W0G7BCHC29BYFJ' : null}
-	/>
-
 	<h2 class="section">QueueRow</h2>
 	<!-- singerColor is fixture DATA throughout: a person's accent, never a token, even where the hex matches one. -->
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
@@ -508,57 +468,122 @@
 		grip
 	/>
 
-	<h2 class="section">NowPlayingBand · every state</h2>
-	<!-- Inline here, so the band's top border reads as a seam rather than a lift — the gallery's cost, not a defect.
-			`progress={null}` must draw an EMPTY ring, and a long title must ellipsise while `.meta` keeps min-width:0. Held to
-			390px: the band's controls are pinned right, so at gallery width a long title proves nothing. -->
+	<h2 class="section">NowPlayingStrip · every state</h2>
+	<!-- Inline here, so the strip's top border reads as a seam rather than a lift — the gallery's cost, not a defect.
+			A long title must ellipsise while `.meta` keeps `min-width: 0`, which the component's own comment calls
+			load-bearing: without it the nowrap title sizes the flex item and the transport is pushed off a 320px screen.
+			Held to 390px, because the transport is pinned right and at gallery width a long title proves nothing.
+			NO `progress` FRAME: the band took `progress` as a prop and `progress={null}` had to draw an EMPTY ring rather
+			than a zeroed one. The strip derives its fraction from `elapsedSec`/`durationSec` through `progressFraction`,
+			so there is no null state to show — a duration of 0 is simply a fraction of 0. -->
 	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
 		<div>
 			<p class="caption">Playing, mid-song — the canonical state</p>
-			<NowPlayingBand
+			<NowPlayingStrip
 				title="Sweet Caroline"
 				singerName="Maya"
 				singerColor={SINGER_COLORS[0]}
-				artist="Neil Diamond"
-				progress={0.38}
 				isPlaying
+				elapsedSec={95}
+				durationSec={250}
+				hasSong
+				canStart
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
 			/>
 		</div>
 		<div>
-			<p class="caption">Duration unknown (progress=null) — empty ring, NOT a zeroed one</p>
-			<NowPlayingBand
-				title="Africa"
-				singerName="Ada"
-				singerColor={SINGER_COLORS[2]}
-				artist="Toto"
-				progress={null}
-				isPlaying
-			/>
-		</div>
-		<div>
-			<p class="caption">Paused — the glyph swaps, the ring holds its position</p>
-			<NowPlayingBand
+			<p class="caption">Paused — the glyph swaps, the hairline holds its position</p>
+			<NowPlayingStrip
 				title="Mr. Brightside"
 				singerName="Liam"
 				singerColor={SINGER_COLORS[3]}
-				artist="The Killers"
-				progress={0.72}
+				isPlaying={false}
+				elapsedSec={166}
+				durationSec={231}
+				hasSong
+				canStart
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
 			/>
 		</div>
 		<div>
-			<p class="caption">Nothing playing — the disc is disabled and states why in words</p>
-			<NowPlayingBand />
-		</div>
-		<div>
-			<p class="caption">Long title + long name — both ellipsise, the band does not grow</p>
-			<NowPlayingBand
+			<p class="caption">Long title + long name — the TITLE gives up width, the name never truncates</p>
+			<NowPlayingStrip
 				title="Don't Stop Believin' (Live at the Budokan, Remastered)"
 				singerName="Bartholomew"
 				singerColor={SINGER_COLORS[1]}
-				artist="Journey featuring absolutely everybody"
-				progress={0.11}
 				isPlaying
+				elapsedSec={27}
+				durationSec={251}
+				hasSong
+				canStart
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
 			/>
+		</div>
+		<div>
+			<p class="caption">A queue but nothing playing yet — "Ready when you are", restart and skip disabled</p>
+			<NowPlayingStrip
+				title={null}
+				singerName={null}
+				singerColor={null}
+				isPlaying={false}
+				elapsedSec={0}
+				durationSec={0}
+				hasSong={false}
+				canStart
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
+			/>
+		</div>
+		<div>
+			<!-- BLANK ON PURPOSE, and the caption is the frame: the strip's whole top-level condition is
+					`hasSong || canStart`, so an idle room renders NOTHING and the tab bar alone holds the bottom. The band
+					it replaced showed "Nothing playing" beside a disabled transport whose play button was the brightest
+					thing on the screen. -->
+			<p class="caption">Nothing playing and nothing queued — renders NOTHING, by design</p>
+			<NowPlayingStrip
+				title={null}
+				singerName={null}
+				singerColor={null}
+				isPlaying={false}
+				elapsedSec={0}
+				durationSec={0}
+				hasSong={false}
+				canStart={false}
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
+			/>
+		</div>
+	</div>
+
+	<h2 class="section">TabBar · each tab current</h2>
+	<!-- FOUR FRAMES FOR THREE TABS. The fourth is the one a source read gets wrong: `isCurrent` is an EXACT match for
+			`/` and a prefix match for the rest, because `startsWith('/')` is true of every path and would light Sing
+			everywhere. `/settings` is not a tab at all, so NO tab lights — and `/song/[mediaId]`, reached only from /queue's now-playing card,
+			is deliberately the same. Held to 390px for the same reason as the strip: the tracks are `1fr` each. -->
+	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
+		<div>
+			<p class="caption">On the Sing tab</p>
+			<TabBar pathname="/" />
+		</div>
+		<div>
+			<p class="caption">On the Queue tab</p>
+			<TabBar pathname="/queue" />
+		</div>
+		<div>
+			<p class="caption">On the Library tab</p>
+			<TabBar pathname="/library" />
+		</div>
+		<div>
+			<p class="caption">On /settings — a non-tab surface, so no tab lights at all</p>
+			<TabBar pathname="/settings" />
 		</div>
 	</div>
 
@@ -810,12 +835,6 @@
 </main>
 
 <style>
-	.row-demo {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-sm);
-		margin-bottom: var(--space-md);
-	}
 	/* Gallery-only layout. Not a product surface, so these are plain and local. */
 	.note {
 		margin: var(--space-xs) 0 var(--space-md);

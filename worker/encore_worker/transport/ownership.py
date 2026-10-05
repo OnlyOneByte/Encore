@@ -2,7 +2,7 @@
 
 Where the pushed and the pulled half of the ownership guard both land: pure, no sockets and no clock, fed
 frames by `client.py` and asked questions by `steps`. It FAILS CLOSED — an unknown job is not ours. Why both
-halves are needed and what each of the rules below closes: docs/arch/05-worker.md §7 and §7.1.
+halves are needed and what each of the rules below closes: XW-09, docs/arch/05-worker.md §7 and §7.1.
 """
 
 from __future__ import annotations

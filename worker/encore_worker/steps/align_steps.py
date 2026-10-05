@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     from encore_worker.domain.audio.activity import ShiftFit
     from encore_worker.domain.lyrics.generate import Generated, Line
-    from encore_worker.domain.lyrics.reconcile import AsClaimed
+    from encore_worker.domain.lyrics.reconcile import AsClaimed, OffSheet
 
 from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
@@ -448,8 +448,11 @@ class AlignStepsImpl:
     async def _time_line_sync(self, req: TimeRequest) -> TimedDoc | Refused | None:
         """The LINE_SYNC rung: the text's own line timings, placed on this clock — IF they describe it.
 
-        Two gates must pass, with the clock voted on BEFORE either, and ON A STEM ONLY. `None` rather than
-        `Refused` when no gate could be MEASURED (XA-05; docs/arch/04-alignment.md §5.3, §5.1, §7, §5.4).
+        A SHEET on a stem passes two gates: the WORDS, then — after the claim-clock vote — the TIMINGS, so a
+        sheet refused for its words pays for neither decode nor vote. Two exits publish on less: the ASR tier
+        on its own spans with no gate at all, and a sheet whose decode cannot be read on the sheet-span
+        envelope alone, unvouched where the words went unlifted (XA-14). `None` rather than `Refused` when no
+        gate could be MEASURED (XA-05; docs/arch/04-alignment.md §5.3, §5.1, §7, §5.4).
         """
         claimed = _sheet_spans(req.text.segments)
         if not claimed:
@@ -657,6 +660,7 @@ class AlignStepsImpl:
             alignable_chars,
             generate,
             regenerate,
+            reopened_line,
             separator_named,
             separator_of,
             star_of,
@@ -860,19 +864,8 @@ class AlignStepsImpl:
             return overlap(env, start, end)
 
         # ── claims as evidence ── (read before the never-sung rule, which tests a claimed line on them)
-        claimed: dict[int, float] = {}
-        claim_windows: dict[int, tuple[float, float]] = {}
-        if req.text.has_own_timings:
-            for index, segment in enumerate(req.text.segments):
-                start, end = segment.get("start"), segment.get("end")
-                if isinstance(start, (int, float)) and not isinstance(start, bool):
-                    claimed[index] = float(start)
-                    stop = (
-                        float(end)
-                        if isinstance(end, (int, float)) and not isinstance(end, bool)
-                        else float(start) + 1.0
-                    )
-                    claim_windows[index] = (float(start), max(stop, float(start)))
+        served = _claims_as_served(req.text.segments if req.text.has_own_timings else ())
+        claimed, claim_windows, claim_ends_given = served.starts, served.windows, served.ends_given
 
         # Read at most once, and only when a claimed line's window is silent on the target (under
         # `m6-mix-spare`): an ffmpeg decode of the whole mix is not free.
@@ -1043,6 +1036,31 @@ class AlignStepsImpl:
         # `l1-blind-median` (default-off): the adoption test's reference is the BLIND decode's median rather
         # than the series as repaired so far (README, "The L1 arms").
         blind_median = median(line.score for line in blind_decode.lines)
+        #: Seconds a DECODED end sits from its cue's own end, over the lines whose OPENINGS the blind decode
+        #: agrees with (XA-03); None under `rc.MIN_FITTED_PAIRS` of them, which is what a displaced sheet has.
+        #: The scale `skipped_opening` reads an end against: README, "W8a: the late half of the band".
+        agreeing_end_gaps = [
+            line.end - claim_windows[line.index][1]
+            for line in blind_decode.lines
+            if line.index in claim_ends_given
+            and line.index in claim_windows
+            and abs(line.start - claim_windows[line.index][0]) <= rc.AGREE_TOLERANCE_SEC
+        ]
+        end_bias = median(agreeing_end_gaps) if len(agreeing_end_gaps) >= rc.MIN_FITTED_PAIRS else None
+        #: The envelope's lag for this sheet, or None when it could not READ the sheet at all (under
+        #: `claimmap.MIN_ENVELOPE_CORRELATION`). `reconcile.off_sheet`'s second witness, read in the step.
+        sheet_lag = (
+            claim_lag.seconds
+            if claim_lag is not None and claim_lag.correlation >= claimmap.MIN_ENVELOPE_CORRELATION
+            else None
+        )
+        #: Does the AUDIO say this whole sheet is displaced, so none of its onsets is a measurement a repair
+        #: may take? A CONVICTION, so abstention is not displacement and this is False under the floor.
+        sheet_displaced = sheet_lag is not None and abs(sheet_lag) > rc.AGREE_TOLERANCE_SEC
+        #: Does the audio ABSOLVE the sheet — the singing is where these cues put it? The two are not each
+        #: other's negation, an unreadable envelope being neither, and that third state is why a GRADE and a
+        #: REPAIR must read different ones of them: docs/arch/04-alignment.md §4 carries the truth table.
+        sheet_settled = sheet_lag is not None and not sheet_displaced
         adoption_medians: list[str] = []
         #: Lines whose repair `adopt_where_unheard` dropped because the claim span could not hold them: the
         #: trail says so, since "no repair" and "no repair needed" read alike otherwise. Empty unless the
@@ -1149,8 +1167,53 @@ class AlignStepsImpl:
                 sung_mass[id(matrix)] = median(known) if known else None
             reference, got = sung_mass[id(matrix)], _speech_mass(matrix, *window)
             if reference is None or reference < _SPOKEN_FLOOR:
-                return False  # a matrix that barely hears the voice over the song's own lines cannot testify
+                return False
             return got is not None and got >= _SPOKEN_RATIO * reference
+
+        def opening_is_free(index: int, onset: float, pending: Mapping[int, Line]) -> bool:
+            """Is `onset` clear of the line published before this one, as THIS BATCH will publish it?
+
+            `_clamped_v2` resolves a repaired start against its predecessor's end by RESCALING the whole line,
+            so re-opening onto occupied time pays with every measured word onset in it (XA-07,
+            docs/arch/04-alignment.md §4). The end is read off `pending`, the batch being built: `generated`
+            still carries the end this batch is about to replace (review r2-correctness-1). An index not in
+            the document is NOT free — nothing can be checked against a line that is not there.
+            """
+            lines = generated.lines
+            position = next((i for i, line in enumerate(lines) if line.index == index), None)
+            if position is None:
+                return False
+            if position == 0:
+                return True
+            previous = lines[position - 1]
+            return pending.get(previous.index, previous).end <= onset
+
+        #: Re-openings refused for the SIZE of the move: a merged or mistimed cue whose onset is further back
+        #: than the band this rule exists for. On the trail, "refused" and "never considered" reading alike.
+        oversized: list[int] = []
+
+        def skipped_opening(
+            index: int, line: Line, claim: tuple[float, float], pending: Mapping[int, Line]
+        ) -> bool:
+            """Did this re-decode open past its claim while ENDING where this document's agreeing lines end?
+            Then the two disagree about the line's OPENING alone, which is what a forced path does to a
+            sustained leading vowel: it absorbs it into blank and keeps the rest.
+
+            ONE-SIDED; it needs the envelope's ABSOLUTION, not the absence of its conviction; the move is
+            capped at `_REOPEN_MAX_SEC`; and it may only re-open into free time. Each guard, the rejected
+            witnesses and the per-song reach: README, "W8a: the late half of the band, and the end that
+            witnesses it"; docs/arch/04-alignment.md §4 has the truth table."""
+            if end_bias is None or not sheet_settled or index not in claim_ends_given:
+                return False
+            move = line.start - claim[0]
+            if move > _REOPEN_MAX_SEC:
+                oversized.append(index)
+                return False
+            return (
+                rc.AGREE_TOLERANCE_SEC < move <= line.end - line.start
+                and abs((line.end - claim[1]) - end_bias) <= rc.AGREE_TOLERANCE_SEC
+                and opening_is_free(index, claim[0], pending)
+            )
 
         async def redecode(
             stage: str, runs: list[tuple[tuple[Line, ...], tuple[float, float]]], *, matrix: object
@@ -1201,13 +1264,20 @@ class AlignStepsImpl:
             return repaired
 
         repaired_all: set[int] = set()
+        #: Lines whose re-decode opened past its claim over singing, so only the opening moved back.
+        reopened_all: set[int] = set()
 
         def record(stage: _Source, repaired: Mapping[int, Line], adopted: Collection[int] = ()) -> None:
             repaired_all.update(repaired)
             for index in repaired:
                 provenance[index] = _Source.ADOPTED if index in adopted else stage
 
-        def adopt_where_unheard(stage: str, repaired: dict[int, Line]) -> tuple[dict[int, Line], set[int]]:
+        def adopt_where_unheard(
+            stage: str, repaired: dict[int, Line]
+        ) -> tuple[dict[int, Line], set[int], set[int]]:
+            """What a claim-anchored re-decode may publish: its own span, the claim's wholesale, or its own
+            span RE-OPENED at the claim (docs/arch/04-alignment.md §4).
+            """
             # A window decode that cannot HEAR the line sticks to the window's LEFT EDGE or scores far below
             # the song's median, and either way a human's claim beats it; `m5-adopt-floor` (default OFF)
             # refuses that unless the claim span can HOLD the line. NOT ON A SHEET THE AUDIO SAYS IS SECONDS
@@ -1228,17 +1298,35 @@ class AlignStepsImpl:
             adoption_medians.append(f"{reference:.2f} ({stage})")
             out = dict(repaired)
             adopted: set[int] = set()
+            reopened: set[int] = set()
             for index, fixed in repaired.items():
                 window = claim_windows.get(index)
                 if window is None:
                     continue
                 flat = fixed.score < reference - _ADOPT_SCORE_GAP
-                if not (edge_stuck(fixed) or flat):
+                unheard = edge_stuck(fixed) or flat
+                # A decode that DID hear the line but opened past its claim over singing keeps every word it
+                # measured and only its opening boundary moves — the cheaper half of the same surrender, and
+                # the one an adoption cannot make (`generate.reopened_line`).
+                # BEHIND `band-reopen`, default off: on a sheet whose timings are noisy rather than displaced
+                # the claim it re-opens onto can itself be 0.8 s wrong (docs/arch/04-alignment.md §14).
+                late = (
+                    not unheard
+                    and "band-reopen" in experiments
+                    and skipped_opening(index, fixed, window, out)
+                )
+                if not (unheard or late):
                     continue
                 if off_clock:
                     # The re-decode's timing stays, whatever it heard: it is at least measured on THIS
                     # audio, where the claim is a stamp from a clock we have evidence does not fit it.
                     unmapped.append(index)
+                    continue
+                if late:
+                    opened = reopened_line(fixed, window[0])
+                    if opened is not None:
+                        out[index] = opened
+                        reopened.add(index)
                     continue
                 if "m5-adopt-floor" in experiments and not holds(fixed.text, window):
                     out.pop(index)
@@ -1248,7 +1336,7 @@ class AlignStepsImpl:
                 if claim_span is not None:
                     out[index] = claim_span
                     adopted.add(index)
-            return out, adopted
+            return out, adopted, reopened
 
         def mix_kept(index: int) -> bool:
             """`l1-mix-kept`: is this a line R4 timed on the MIX, which R1 / R2 then leave alone? Their decode
@@ -1367,9 +1455,10 @@ class AlignStepsImpl:
                     for line in generated.lines
                     if line.index in claim_windows and not mix_kept(line.index) and line.index not in returned
                 ]
-                repaired, adopted_here = adopt_where_unheard(
+                repaired, adopted_here, reopened_here = adopt_where_unheard(
                     "R1", await redecode("R1", runs, matrix=emissions)
                 )
+                reopened_all |= reopened_here
                 if repaired:
                     record(_Source.WINDOW, repaired, adopted_here)
                     generated = _with_lines(generated, repaired)
@@ -1395,9 +1484,10 @@ class AlignStepsImpl:
                 and line.index not in returned
             ]
             if disputed_lines:
-                repaired, adopted_here = adopt_where_unheard(
+                repaired, adopted_here, reopened_here = adopt_where_unheard(
                     "R2", await redecode("R2", [claim_run(line) for line in disputed_lines], matrix=emissions)
                 )
+                reopened_all |= reopened_here
                 if repaired:
                     record(_Source.WINDOW, repaired, adopted_here)
                     generated = _with_lines(generated, repaired)
@@ -1447,6 +1537,56 @@ class AlignStepsImpl:
                 + ", ".join(f"[{i}] {spared[i][0].text[:40]!r}" for i in unplaced)
             )
 
+        #: Of each re-opened line, did the CLAMP leave its published start on the claim's onset? The clamp
+        #: resolves a re-opened start against the previous line's end by rescaling the line, so "re-opened"
+        #: and "published where it was re-opened to" are two different claims (XA-07).
+        claim_onsets_published = {
+            line.index: line.index in claim_windows and abs(line.start - claim_windows[line.index][0]) <= 1e-9
+            for line in generated.lines
+            if line.index in reopened_all
+        }
+        if reopened_all:
+            # NAMES THE READING THAT ACTUALLY FIRED: the cue's own written END against `end_bias`, never the
+            # lead, both lead witnesses having been measured and refused (docs/arch/04-alignment.md §4).
+            #
+            # THREE OUTCOMES, NAMED APART (review r2-correctness-6): published at the claim, re-fitted by the
+            # clamp, or never published at all — a run `m2-order-clamp` reverted has its BLIND timing back, so
+            # calling it re-fitted says words were rescaled when the re-opening did not happen.
+            kept = sorted(index for index in reopened_all if claim_onsets_published.get(index))
+            withdrawn = sorted(
+                index for index in reopened_all if index in reverted or index not in published_now
+            )
+            refitted = sorted(set(reopened_all) - set(kept) - set(withdrawn))
+            repairs.append(
+                f"re-opened {len(reopened_all)} repaired line(s) at their claim's onset, the decode having "
+                f"started more than {rc.AGREE_TOLERANCE_SEC}s past it while ENDING within that of where this "
+                f"document's agreeing lines end: " + ", ".join(f"[{i}]" for i in sorted(reopened_all))
+            )
+            if kept:
+                # EVERY WORD AFTER THE FIRST: the first word's onset is the cue's, marked `CUE_OPENED` and
+                # scored 0.0, so claiming every word's measurement was kept overstated it by one word.
+                repairs.append(
+                    "re-opened lines publishing their claim's onset, every word after the first keeping its "
+                    "own measurement: " + ", ".join(f"[{i}]" for i in kept)
+                )
+            if refitted:
+                # The clamp resolves a re-opened start against the previous line's end by rescaling the whole
+                # line (`remapped`), so on these the words' onsets are NOT the ones the decode measured.
+                repairs.append(
+                    "re-opened lines the clamp then re-fitted, so their words were rescaled off their own "
+                    "measurements: " + ", ".join(f"[{i}]" for i in refitted)
+                )
+            if withdrawn:
+                repairs.append(
+                    "re-opened lines that did not publish their repair at all, so the re-opening is not in "
+                    "the document: " + ", ".join(f"[{i}]" for i in withdrawn)
+                )
+        if oversized:
+            repairs.append(
+                f"refused to re-open {len(set(oversized))} line(s) whose claim onset is further back than "
+                f"{_REOPEN_MAX_SEC}s, the band this rule exists for: "
+                + ", ".join(f"[{i}]" for i in sorted(set(oversized)))
+            )
         adopted = {index for index, source in provenance.items() if source == _Source.ADOPTED}
         if adopted:
             repairs.append(
@@ -1522,6 +1662,35 @@ class AlignStepsImpl:
         # timings.
         claims_disagree = bool(claimed) and blind_verdict.verdict in rc.DISAGREE
 
+        # THE COHERENCE CHECK, on the document ABOUT TO PUBLISH against the claims AS SERVED and the activity
+        # envelope — its own two witnesses, no truth (docs/arch/04-alignment.md §6.1). `reconcile` fits the
+        # claims' common offset out before judging a line, so a uniformly shifted document corroborates line
+        # for line and grades `high`; this is the one reading that removes nothing. A DEMOTION only.
+        sheet_reading = rc.as_claimed(generated.lines, claimed_as_given, tolerance_sec=rc.AGREE_TOLERANCE_SEC)
+        sheet_coherent = rc.off_sheet(
+            sheet_reading,
+            # THE MAP'S OWN DISPLACEMENT, so the rule can say whether the claims witness anything or merely
+            # restate it: a document that published on the MAPPED sheet sits exactly this far from the sheet
+            # as served, whatever the audio says (review r2-spec-7, docs/arch/04-alignment.md §6.1).
+            clock_lag_sec=(
+                median(claim_clock.at(start) - start for start in claimed_as_given.values())
+                if claim_clock.applied and claimed_as_given
+                else 0.0
+            ),
+            # The envelope's own floor, spelled as `claimmap.consensus` spells it: under it the fit buys no
+            # vote anywhere, and here it abstains rather than demoting on a reading nobody trusts.
+            envelope_lag_sec=(
+                claim_lag.seconds
+                if claim_lag is not None and claim_lag.correlation >= claimmap.MIN_ENVELOPE_CORRELATION
+                else None
+            ),
+        )
+        # READ ALWAYS, DEMOTES ONLY BEHIND `band-off-sheet` (default off): the corpus sweep measured one FALSE
+        # POSITIVE this conjunction cannot tell from its true one, so the reading goes on the trail and the
+        # grade does not move. Which song, which mode and the price of flipping it on: README, "W8a: what the
+        # corpus said about the two band components"; docs/arch/04-alignment.md §14.
+        off_sheet = sheet_coherent if "band-off-sheet" in experiments else None
+
         # THE PLACEMENT-AMBIGUITY DEMOTION (`margin.low_lines`), a DEMOTION only, with THE WHOLE RULE as its
         # control — which is why "no margins" is the one spelling of "do not read the rule". THE NEAR-REPEAT
         # HALF IS NOT GATED ON THE MARGIN'S ABSTENTION, having no emission scale; what stands it down is the
@@ -1555,6 +1724,10 @@ class AlignStepsImpl:
             if doubted:
                 # The lexical doubt band of this bundle's own calibration row: the words may not be the sung
                 # ones.
+                return "low"
+            if off_sheet is not None:
+                # The whole document is coherently off the sheet it was given and the audio sides with the
+                # sheet, so no line of it can be trusted to the word — whatever any per-line witness says.
                 return "low"
             if index in interpolated_lines:
                 # This line's words were held OUT of the lead decode and apportioned across the gap its host
@@ -1659,7 +1832,9 @@ class AlignStepsImpl:
         graded_high = sum(1 for line in generated.lines if line_confidence(line.index) == "high")
         confidence = (
             "low"
-            if unvouched is not None
+            # A document whose every line is off its sheet by one coherent lag is a TIMING failure, which is
+            # this axis (XA-14) — not a doubt about the words, which is `vouched`'s.
+            if unvouched is not None or off_sheet is not None
             else "medium"
             if doubted
             else "high"
@@ -1695,6 +1870,14 @@ class AlignStepsImpl:
             # left after the map. Printed whether or not it applied, "the map lost the vote" being an answer
             # a wrong-sync report needs just as much.
             + (f"{claim_clock.why}; " if claimed else "")
+            # THE DISTANCE FROM THE SHEET THE VIEWER HOLDS, printed whether or not it demoted: every other
+            # clause reads a residual with the claims' common offset already fitted out, so without this one
+            # nothing on the trail of a coherently shifted document names how far it moved.
+            + (
+                f"{_sheet_why(sheet_reading, sheet_coherent, demoted=off_sheet is not None)}; "
+                if claimed
+                else ""
+            )
             + (
                 f"after repairs {verdict.verdict}, {verdict.agreement:.0%} of {verdict.pairs} lines agree "
                 "(steers the repairs, never the grade); "
@@ -2632,6 +2815,46 @@ _ADOPT_SCORE_GAP = 0.5
 #: claim span is the same line measured twice, further away is a second hypothesis.
 _REPAIR_PAD_SEC = 1.0
 
+#: The widest BACKWARD move a re-opening may make, seconds. The rule exists for the 0.5-2 s band, and 2 s is
+#: where a gross line begins (the bench's own `GROSS_SEC`); `skipped_opening`'s other bound is the re-decode's
+#: own duration, which a merged cue outruns without ever biting (review r2-correctness-3).
+_REOPEN_MAX_SEC = 2.0
+
+#: Window a cue with no end of its own is given, seconds: enough to ANCHOR a re-decode, never a reading.
+_CLAIM_DEFAULT_END_SEC = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class _Claims:
+    """The sheet AS SERVED, read off the segments by position: before any clock maps it onto ours."""
+
+    starts: dict[int, float]
+    #: One window per claimed line. A cue whose end is missing gets `_CLAIM_DEFAULT_END_SEC`; one whose end is
+    #: at or before its start keeps its own zero length, which is what `ClaimMap.windows` preserves too.
+    windows: dict[int, tuple[float, float]]
+    #: Lines whose cue wrote a USABLE end of its own — after its start, so neither a defaulted end nor a
+    #: zero-length or reversed one. Only such an end may be READ (`skipped_opening`, `end_bias`): README,
+    #: "Caption cues: the two populations a duration floor separates"; review r2-correctness-4.
+    ends_given: set[int]
+
+
+def _claims_as_served(segments: Sequence[Segment]) -> _Claims:
+    """The claimed onsets, windows and written ends of `segments`. Untimed or malformed rows are skipped."""
+    starts: dict[int, float] = {}
+    windows: dict[int, tuple[float, float]] = {}
+    ends_given: set[int] = set()
+    for index, segment in enumerate(segments):
+        start, end = segment.get("start"), segment.get("end")
+        if not isinstance(start, (int, float)) or isinstance(start, bool):
+            continue
+        first = float(start)
+        written = float(end) if isinstance(end, (int, float)) and not isinstance(end, bool) else None
+        starts[index] = first
+        windows[index] = (first, max(first + _CLAIM_DEFAULT_END_SEC if written is None else written, first))
+        if written is not None and written > first:
+            ends_given.add(index)
+    return _Claims(starts=starts, windows=windows, ends_given=ends_given)
+
 
 class _Source(StrEnum):
     """Where a line's published timing came from: the repair ladder's per-line provenance (XA-02), carried
@@ -2654,6 +2877,29 @@ class _Source(StrEnum):
 #: How many lines of one source the trail names by index before it only counts the rest: R1 re-decodes
 #: every claimed line, and a 90-line index list would bury the rest of the verdict note.
 _SOURCES_NAMED = 12
+
+
+def _sheet_why(reading: AsClaimed | None, off: OffSheet | None, *, demoted: bool) -> str:
+    """The trail's line for the coherence check: how far the published document sits from the sheet a viewer
+    holds, whether both witnesses convicted it, and whether that was allowed to demote it.
+
+    Printed on every claimed job, because "we checked and it is close" and "nobody checked" must not read
+    alike — that silence is what let a document 0.86 s off its captions publish `high` for eight waves. The
+    reading is AS CLAIMED: no offset removed, so this is the error a room would see. `demoted` is false
+    whenever `band-off-sheet` is off, which is the default: the conviction is still reported."""
+    from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
+
+    if reading is None:
+        return f"against the sheet as served: fewer than {rc.MIN_PAIRS} paired lines, not read"
+    if off is not None:
+        verdict = "every line graded low" if demoted else "not demoted (band-off-sheet is off)"
+        return f"against the sheet as served: {off.why()} — {verdict}"
+    return (
+        f"against the sheet as served: {reading.near:.0%} of {reading.pairs} lines within "
+        f"{reading.tolerance_sec:.2f} s of their own claim (median lag {reading.offset_sec:+.2f} s, spread "
+        f"{reading.spread_sec:.2f} s, {reading.together:.0%} of them carrying that lag), no coherent "
+        "displacement both witnesses confirm"
+    )
 
 
 def _ends_why(

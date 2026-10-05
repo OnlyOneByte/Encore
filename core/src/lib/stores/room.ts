@@ -166,7 +166,8 @@ export class RoomLink {
 	}
 
 	/** Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. It lives on the link because the
-	 * control that calls it is app chrome — the drawer, mounted by the layout — and the layout should not be making
+	 * control that calls it lives on /song/[mediaId], reached from the Queue tab's now-playing card (it was the
+	 * drawer, mounted by the layout, until the sheet was deleted) — and the layout should not be making
 	 * fetches. A human edit must produce a NEW candidate rather than mutate one; this only reports the choice. */
 	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<void> {
 		try {

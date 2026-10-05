@@ -12,16 +12,26 @@
  * that has come BACK on another surface, so it resolves — against the wrong thing, silently.
  *   `.hero`, `.hero .song`, `.tools-toggle`, `.tools-peek`  — the drawer replaced the hero and its
  *     disclosure; `.hero` still RESOLVES, but only against TV markup, which is why the ban is by value.
- *   `.band .handle`, key `bandExpand`, hooks `bandExpand` / `bandExpandWired` — the band's own pull
- *     handle is gone; the successors are `bandOpen` + `bandOpenWired`.
- *   hook `drawerHandleOnly` — vaul's `handleOnly` was replaced by `data-vaul-no-drag` on `.np-fit`.
  *   `SEL.play` — it named an `aria-label="play/pause"` nothing carries, so it would resolve against
- *     nothing while reading as though the old flow worked. The whole transport is in the band row.
+ *     nothing while reading as though the old flow worked. The whole transport is in the bottom chrome.
+ *   THE WHOLE NOW-PLAYING SHEET, banned BY VALUE, which matters more here than anywhere else above:
+ *     `.band`, `.band-slot`, `.band .title`, `.disc`, `.meta-btn`, `.np-drawer`,
+ *     `[data-slot='drawer-handle']`, `.np-fit`, `.more-slot a`, `.tools-body`, `.tools-note`,
+ *     `.seekrow .time`, `.seekrow .track > i`, `.key-cell button`, `.key .lab`, and the hooks
+ *     `bandExpand` / `bandExpandWired` / `drawerHandleOnly`. NowPlayingStrip.svelte reuses `.strip`, `.tp`,
+ *     `.btn`, `.meta` and `.dot` from the old band's inner markup, so a revived `.band .title` reads as
+ *     "absent" (safe) while a revived bare `.strip` RESOLVES — against the TV lobby's roster or the new
+ *     chrome, depending on the surface. The successors are the `.dock`-scoped keys below.
  *   no HOOK may name NowPlayingHero.svelte — the component is deleted.
  *   `swatch(name)`, `hueSlider` — ColourPicker is deleted, so the eight-preset swatches and the hue rail they
  *     named exist nowhere. `hueSlider` is the dangerous one to revive: `input[type="range"]` now resolves ONLY
  *     against /settings' sliders, which are a different control, so a revived key would pass against the wrong
  *     element. The identity control on every surface is `colourRing`.
+ *   key `librarySeeAll`, value `.showall-row a[href="/library"]` — it named the labelled door under the home
+ *     SHELF, and the Sing tab has no shelf. THE VALUE IS THE HAZARD, which is why it is banned by value: both
+ *     `.showall-row` and an `a[href="/library"]` inside one still exist on `/`, as the widen button's row and as
+ *     the search-found-nothing state's way to the library — so a revived key resolves, against a control that
+ *     appears only under a failed query. The phone's standing route to /library is the TabBar's Library tab.
  */
 
 export const SEL = {
@@ -44,12 +54,69 @@ export const SEL = {
 	joinCta: '.submit-slot button',
 
 	// phone remote
+	/* ── the bottom chrome (+layout.svelte → NowPlayingStrip.svelte · TabBar.svelte) ───────────────────────
+	   ONE key for the readiness anchor AND the row `--dock-h` is bound from, where there used to be two
+	   (`homeReady: '.band'`, `dockRow: '.band-slot'`): after the rebuild they are the same element, and two
+	   names for one thing in a contract whose purpose is one-name-per-thing is a lie waiting to rot.
+	   THE `np*` KEYS ARE ALL SCOPED UNDER `.dock`, and that is correctness rather than tidiness: the strip reuses
+	   the old band's inner class names, and `.strip` / `.strip .person` are ALREADY taken further down by the
+	   TV lobby's roster. An unscoped `npStrip: '.strip'` would resolve against the wrong element on /tv.
+	   THE THREE TAB KEYS ARE DELIBERATELY NOT, which is the one asymmetry here and it is load-bearing both ways.
+	   `.tabs` is declared in exactly one file (TabBar.svelte), so it needs no scope to be unambiguous — but the
+	   reason it must not HAVE one is that `/components` renders four `<TabBar>` frames and is in `NOT_PHONE`, so
+	   it has no `.dock` at all: `.dock .tabs` would resolve ZERO on the one surface that shows every tab state.
+	   The cost is that on `/components` these three match four elements, so a driver there must pick a frame
+	   first; on a phone surface each matches exactly one. */
 	/** The post-join readiness signal — but chrome on EVERY phone surface, so a caller that also needs "and
-	 *  on home" must pair it with `location.pathname === '/'`. */
-	homeReady: '.band',
-	/** The row `--dock-h` is bound from — NOT `.band`. Handle plus strip is 80px; `.band` alone is the 56px
-	 *  strip inside it, and a scrolling column must clear the WHOLE row. */
-	dockRow: '.band-slot',
+	 *  on home" must pair it with `location.pathname === '/'`. Absent on the join screen (the layout gates the
+	 *  dock on a joined singer), which is what makes it a join signal, and SOUNDER than the `.band` it replaced
+	 *  because it does not depend on a song existing.
+	 *  IT CARRIES NO BORDER AND NO PADDING, so its `clientHeight` and its `getBoundingClientRect().height` agree
+	 *  and either may be compared to `--dock-h`. TWO HEIGHTS, both measured at 390x844: 91/91 with the strip up
+	 *  (the strip's 45 plus the tab bar's 46), and 46/46 in a virgin room, where the strip does not render at all
+	 *  and the tab bar alone is the chrome. A driver expecting 91 unconditionally is expecting a queued song. */
+	dock: '.dock',
+	/** THE SAFE-AREA ELEMENT, and it needs its own key: the tab bar is the app's bottom-most element and the
+	 *  sole declarer of `padding-block-end: env(safe-area-inset-bottom)`. Measured padding-bottom 0px on both
+	 *  `.dock` and `.dock .strip` at inset 0, so a probe pointed at either of those reports a composed term as
+	 *  missing at every inset. */
+	tabBar: '.tabs',
+	/** The three tabs — Sing, Queue, Library — in source order. `/settings`, `/stats`, `/metrics` and `/admin`
+	 *  are deliberately not among them. */
+	tab: '.tabs .tab',
+	/** The lit tab, by the accessible half of the pair: `aria-current="page"` and a `.current` class are both
+	 *  set, and exactly one tab carries them — none on `/song/[mediaId]`, which is a push from any tab. */
+	tabCurrent: '.tabs [aria-current="page"]',
+	/** THE STRIP RENDERS ONLY WHEN `hasSong || canStart`, so its ABSENCE on an idle room is the contract and
+	 *  not a missing hook — the old band was permanently present and showed "Nothing playing" beside a
+	 *  disabled transport. Wait on `dock` for readiness and on this only when the room has something to do. */
+	npStrip: '.dock .strip',
+	/** "What is playing", present with no gesture — and a PLAYING entry renders no `.qrow` at all, so this is
+	 *  the only place on the phone the current title is spelled outside /queue. Rendered only on the `hasSong`
+	 *  branch: with a queue but nothing playing the strip shows `npStripWho` alone. */
+	npStripTitle: '.dock .strip .song',
+	/** The singer's name, or "Ready when you are" on the queued-but-not-playing branch. */
+	npStripWho: '.dock .strip .who',
+	/** The strip's ONLY filled control, which is why `.btn.primary` identifies it: play/pause is the one
+	 *  control whose state a resting fill encodes. The old `.disc` — artwork, progress ring and glyph in one
+	 *  element — has no successor; the progress is a separate `aria-hidden` hairline. */
+	npPlayPause: '.dock .strip .btn.primary',
+	/** THREE buttons, in source order: restart, play/pause, skip. Not the old band's flanking PAIR — the strip has
+	 *  no separate `.disc`, so all three of its controls are `.btn` inside `.tp` and a driver expecting two would
+	 *  reject a correct tree. */
+	npTransport: '.dock .strip .tp .btn',
+	/** The whole metadata block is the link to /queue, so the target is the width the transport leaves. */
+	npStripLink: '.dock .strip a[href="/queue"]',
+	/* ── /queue ───────────────────────────────────────────────────────────────
+	   The live-controls card above the queue list, which holds what the sheet's expanded body held. */
+	/** The now-playing card. Rendered only with a current entry, like the strip's `hasSong` branch. */
+	queueNowCard: '.now',
+	queueElapsed: '.clock .elapsed',
+	queueRemain: '.clock .remain',
+	/** QueueRow's own accessible name, lower-case as the markup spells it. The only way to drive the dock from the
+	 *  strip-PRESENT state back to ABSENT, which is half of the measured gate's cross-state claim: measured exactly
+	 *  one on /queue with one entry, and clicking it drops --dock-h from 91px to 46px at 390x844. */
+	queueRemove: '[aria-label="remove from queue"]',
 	/** The measured gate reads its padding-bottom to prove the docked row is RESERVED, not overlapping. */
 	mainColumn: 'main',
 	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — the subject. */
@@ -68,20 +135,30 @@ export const SEL = {
 	 *  A spec that needs a query to match NOTHING must narrow this to `local` first — the default reaches
 	 *  YouTube Music, which fuzzy-matches, so no string is reliably empty against it. */
 	searchSource: 'select[aria-label="Where to search"]',
-	/** Empties the query, restoring queue and library in place — the whole way "back" from a search. */
+	/** Empties the query, which lands the Sing tab on its idle state. It no longer restores a queue-and-library
+	 *  view — those are tabs — so a spec asserting rows after a clear is asserting the old architecture. */
 	clearSearch: '[aria-label="Clear the search"]',
 	/* ── /library ─────────────────────────────────────────────────────────────
 	   The browse page. Its field FILTERS rows already in memory where `search` above FETCHES, so the two carry
 	   separate aria-labels and separate keys on purpose — a test that mixed them would pass against the wrong
 	   surface. See docs/FRONTEND.md#the-library-page. */
-	libraryLink: 'a[aria-label="Your library"]',
+	/** The phone's route to /library, which is the TabBar and nothing else now. It used to be an icon door beside
+	 *  the home search field (`a[aria-label="Your library"]`), deleted with the shelf it labelled — that value
+	 *  resolves nowhere today, so a spec still spelling it would only ever report "absent". Scoped by the nav's
+	 *  accessible name, because `a[href="/library"]` alone also matches the one inside `/`'s no-results state. */
+	libraryLink: 'nav[aria-label="Sections"] a[href="/library"]',
 	libraryFilter: 'input[aria-label="Filter your library"]',
+	/** WHAT TO ARRIVE ON, because `libraryFilter` is no longer on every arm of this route: the field is hidden once
+	 *  the library is PROVEN empty (a filter over zero rows is dead chrome), so a core with nothing processed settles
+	 *  on the empty box. Waiting on the field alone there is a RACE rather than a clean failure, which is the worse
+	 *  outcome of the two — it attaches only if the poll lands inside the brief `!libraryLoaded` window where the
+	 *  field is still mounted beside the skeleton. Driven against a 0-ready core, five arrivals each: the field alone
+	 *  attached 2/5 and timed out 3/5; this union attached 5/5. Either branch satisfies it, so it says "/library has
+	 *  finished deciding what it is" without asserting which arm answered. */
+	libraryReady: 'input[aria-label="Filter your library"], .lib-empty',
 	clearLibraryFilter: '[aria-label="Clear the filter"]',
 	/** "N of M songs", the line that tells a guest this box hides rows rather than fetching them. */
 	libraryCount: '.count',
-	/** The labelled door under the home shelf. Present only while the shelf actually hides rows. Scoped by the
-	 *  WRAPPER, because `<Button href>`'s own classes come from tailwind-variants and can be re-vendored. */
-	librarySeeAll: '.showall-row a[href="/library"]',
 	songRow: '.row',
 	songTitle: '.row .t',
 	addTurn: '.row [data-testid="song-add"]',
@@ -109,26 +186,7 @@ export const SEL = {
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
-	// the now-playing band (+layout.svelte → NowPlayingDrawer.svelte → NowPlayingBand.svelte)
-	bandTransport: '.disc',
-	/** The metadata block in its `<button>` form, and the ONLY way into the sheet for a keyboard or a screen
-	 *  reader: `drawerHandle` is a `<div aria-hidden="true">` with no tabindex and no role. */
-	bandOpen: '.meta-btn',
-	/** Reach for this first for "what is playing": present with no gesture, where the sheet's own title is
-	 *  below the fold — and a PLAYING entry renders no `.qrow` at all. */
-	bandTitle: '.band .title',
-
-	// the now-playing sheet (NowPlayingDrawer.svelte, which also composes the band as snap point 0)
-	/** PRESENCE DOES NOT MEAN OPEN — see docs/E2E.md#presence-is-not-visibility. Encore's own class, not the
-	 *  vendored `data-slot='drawer-content'`: that is sturdier but not UNIQUE to THIS drawer. */
-	npDrawer: '.np-drawer',
-	drawerHandle: "[data-slot='drawer-handle']",
-	/** Renders only with a playing song, so its absence on an idle room is correct, not a missing hook. */
-	songDoor: '.more-slot a',
-	toolsBody: '.tools-body',
-	toolsNote: '.tools-note',
-
-	// transport. All three are in the band row at both sheet heights, so none needs a gesture first.
+	// transport. All three sit in the strip, which needs no gesture — there is no open state to reach.
 	skip: { role: 'button' as const, name: 'skip' },
 	/** Capitalised, unlike `skip` — the two accessible names do not share a convention. */
 	restart: { role: 'button' as const, name: 'Restart' },
@@ -172,9 +230,6 @@ export const SEL = {
 	slotVisible: '.slot.visible',
 	/** Scoped past the pre-warm slot's paused <audio>, which is why p4 cannot just query `audio`. */
 	slotVisibleAudio: '.slot.visible audio',
-	seekTime: '.seekrow .time',
-	/** p4 reads this element's scaleX transform for fractional progress. */
-	seekFill: '.seekrow .track > i',
 	upLabel: '.up-label',
 	upName: '.up-name',
 	upSong: '.up-song',
@@ -203,10 +258,17 @@ export const SEL = {
 	/** position:absolute above the lobby roster strip, so the roster must not paint a chip UNDER it — the
 	 *  measured gate and lobby-overlap both sweep the roster against this. */
 	fsBtn: '.fs-btn',
+	/* ── the key row (/queue's now-playing card) ──────────────────────────────
+	   Both keys keep their names, because a keycap is still a keycap — only the markup around them moved. */
 	/** Wrapper plus tag, so both keycaps are addressed without depending on a class a `<Button
-	 *  variant="keycap">` would have to carry for the test's benefit. */
-	keyBtn: '.key-cell button',
-	keyLabel: '.key .lab',
+	 *  variant="keycap">` would have to carry for the test's benefit. Two of them, in source order: Lower by
+	 *  one semitone, then Raise. */
+	keyBtn: '.keys button',
+	/** "Key", the row's own label. SCOPED BY THE ROW, because the label itself is app.css's shared
+	 *  `.control-label` and that class is global — on /queue the key row is its only carrier, but `.ctl` says so
+	 *  rather than relying on it. NOT uppercased by CSS the way the sheet's `.key .lab` was — see the note on
+	 *  `readKeyLabel` in p3-key-shift.spec.ts. */
+	keyLabel: '.ctl .control-label',
 	/** p10 measures its width to catch a capped grid leaving a void. */
 	appShell: '.app-shell',
 	/** By ALT TEXT: what a user is promised moves far less often than the class beside it. */

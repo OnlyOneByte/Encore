@@ -1,14 +1,8 @@
 """The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache (6a/M9/M10).
 
-Everything the review found wrong about the evidence layer's clock was arithmetic — a 30 s chunk yields 1499
-frames and not 1500, so a `duration / frames` ratio stretched every frame and stamped words up to 20 ms late by
-the end of each chunk, and the final sliver was dropped while its seconds still counted, drifting odd-length
-songs 50-60 ms late after 2:30. `test_ml_contract.py` holds the REAL pass; this file is what stays fast.
-
-The chunk-boundary test is exact rather than statistical: a stand-in model whose every frame is a LOCAL
-function of the samples it saw cannot have an opinion about which pass computed it, so the chunked pass must
-equal a SINGLE whole-file pass. Each fixture length is chosen for a reading of the grid's own arithmetic, in
-README, "The emission frame grid, as `test_ml_grid.py`'s fixtures state it".
+A stand-in model makes every assertion exact and fast; `test_ml_contract.py` holds the real pass.
+The clock bugs these pin: README, "The clock was wrong twice over"; why each fixture length was
+chosen: README, "The emission frame grid, as `test_ml_grid.py`'s fixtures state it".
 """
 
 from __future__ import annotations

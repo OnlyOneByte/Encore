@@ -1020,8 +1020,8 @@
 		/* Kept in sync with --page-measure above, so the header aligns with this column. */
 		max-width: var(--measure-grid);
 		margin: 0 auto;
-		/* Reserves the band. No env() term: the band carries the only home-indicator inset, and it reaches this column
-			   through --dock-h, so a second one here is the doubled gap. */
+		/* Reserves the dock. No env() term: `TabBar`, the bottom-most element inside the dock, carries the only
+			   home-indicator inset, and it reaches this column through --dock-h, so a second one here is the doubled gap. */
 		padding: var(--space-md) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 

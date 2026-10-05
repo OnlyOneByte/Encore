@@ -26,12 +26,28 @@ impression that wasn't checked against a number or a frame.
 > finding's trailing clause is left OPEN and named · **2** the spacing ladder — a 1.20 ratio FLOOR replaced the
 > flat 2px run and the section rung exists, but there is no 32 or 48, and the histogram half did not move ·
 > **3** the type scale — crowding closed, the top hole open by ruling · **5** desktop composition — the prose
-> measure and the wide shelf/head landed; the four remaining stretches were re-measured and argued, two of them
-> with the alternative built and rejected. Each carries its own note below, and each says which half did not land.
+> measure and `/library`'s wide head landed and the wide SHELF has since been deleted with the home column it sat
+> in; the four remaining stretches were re-measured and argued, two of them with the alternative built and
+> rejected, and the void was re-measured a second time after the phone rebuild and is still open. Each carries its
+> own note below, and each says which half did not land.
 >
-> **The evidence base is dated, and this block is the only place that says so.** `data/encore.sqlite` now holds
-> **123** media rows, **121** `stem_status='none'` and **2** `ready` — so the "104-song library" above, and the
-> "102 rows" in the refuted bullet, describe the catalog as reviewed. Finding 1's ratio table is a different
+> **The evidence base is dated, and this block is the only place that says so — and there are TWO databases, which
+> is the part that kept getting miscopied.** The owner's live catalog, `data/encore.sqlite`, holds **384** media
+> rows, **379** `stem_status='none'` and **5** `ready`. The desktop px readings in finding 5 and in
+> `docs/FRONTEND.md` were NOT taken against it: they were taken against the measurement copy at
+> `../Encore-ui/data/encore.sqlite`, which holds **180** / **178** / **2**. **Quote neither number as durable —
+> quote the SHAPE.** An earlier version of this block said to quote the ratio because it was the only durable half,
+> and that is backwards: the stem-less rows accumulate every time somebody searches while `ready` barely moves, so
+> the total is the fast-moving term and the ratio inherits all of its motion. The ratio has in fact already moved
+> twice. 5 of 384 is 1.3%, about one song in seventy-seven; 2 of 180 is 1.1%, about one in ninety — and that same
+> 2 of 180 was 2 of 135, about one in seventy, when this block was first written. What is durable is the shape: the
+> READY count is single digits and stays there, the stem-less count grows without bound, and no px reading in either
+> file depends on anything but the ready count — a cap of 4 or 8 cannot bind on two rows. The "104-song library"
+> above and the "102 rows"
+> in the refuted bullet describe the catalog as reviewed. The owner confirmed (2026-10-03) those stem-less rows are
+> **benchmarking junk rather than a processing backlog**, so every "only N of M are ready" reading in this file is
+> about a corpus that is mostly noise: the real ready library is small, and that is its
+> steady state, not a stage it grows out of. Finding 1's ratio table is a different
 > case: its tokens have not changed, so it should still reproduce, and two of its three rows do not. That
 > finding says which.
 
@@ -83,14 +99,17 @@ review's named symptom and they are not form primitives at all — they are `cla
 `core/tests/unit/lib/control-boundary-contrast.test.ts` holds all of it, including the ranking across every
 surface `app.css` declares.
 
-*Why `--line` was NOT brightened, which is what this review's own cost line prescribes.* 17 files spell
-`var(--line)` for a card edge, a list-row rule, a table rule, the spinner and the skeleton; raising it to clear
-3:1 repaints all of them to fix six borders. That guard now asserts `--line` is still `#2a2a3e` and still under
+*Why `--line` was NOT brightened, which is what this review's own cost line prescribes.* `var(--line)` is the card
+edge, the list-row rule, the table-head rule, the tab strip, the chip, the spinner and the skeleton shimmer across
+the app; raising it to clear 3:1 repaints all of that to fix six borders. The file count this sentence used to
+print is gone: it disagreed with the one `docs/FRONTEND.md` printed for the same set, and the guard now holds the
+premise as a floor rather than as a tally. That guard now asserts `--line` is still `#2a2a3e` and still under
 3:1 on `--card2`, so **the fix this document recommends would red a test.** See the Ranked table below, where
 that cell is corrected in place.
 
 *The two trailing tokens, separately.* `--track-bg` keeps its value and its **1.27:1** on `--card`, because it
-is a SURFACE at five output sites (`Bars`, `TvProgress`, the band's ring stroke, `SongRow`'s gradient, `/tv`)
+is a SURFACE at five output sites (`Bars`' bar, `TvProgress`' bar, `/tv`'s process bar, `NowPlayingStrip`'s progress
+hairline, `SongRow`'s artwork-placeholder gradient)
 and repainting it would recolour all five to bound one control. The one control it did bound — `ui/slider`'s
 rail — took a `--control-line` RING instead, which clears 3:1 against both neighbours: **3.97:1** on the `--card`
 outside and **3.13:1** on the `--track-bg` inside. A rail FILL could not have served: on `--card`, 3:1 arrives
@@ -99,12 +118,31 @@ its value (**1.57:1** on `--card`, **1.44:1** on `--card2`) and now bounds only 
 exempts by name — `Button`'s dashed `keycap` resting state, upgraded by `enabled:border-[var(--control-line)]`,
 and the slider thumb's `data-disabled:` arm.
 
-*THE RESIDUE, recorded rather than claimed closed.* `NowPlayingBand`'s `.btn` — the two live transport buttons —
-still declares `border: 1px solid var(--line-strong)` over `background: var(--card2)`, which is **1.44:1**. It is
-not a disabled state, so the inert exemption above does not reach it. The available argument is that these are
-icon buttons whose glyph carries the identification at `--ink` on `--card2` (**14.30:1**), which is exactly the
-distinction this finding draws when it says the only thing identifying a text field is its border — but no file
-in the tree states that ruling for this site, and the guard's boundary list does not cover it. Open.
+*THE RESIDUE, recorded rather than claimed closed — and it CHANGED SHAPE when the transport did, rather than
+closing.* As reviewed, the open site was `NowPlayingBand`'s `.btn`: two live transport buttons declaring
+`border: 1px solid var(--line-strong)` over `background: var(--card2)`, which is **1.44:1** and not a disabled
+state, so the inert exemption above did not reach it. That file is deleted. Its successor,
+`src/lib/ui/NowPlayingStrip.svelte`, declares `border: 0` and `background: none` on `.btn`, so the under-strength
+boundary is gone — **by having no boundary at all.** The three strip buttons sit on the strip's `--card` fill, and
+what is left to identify them is:
+
+- the glyph, at `--ink` on `--card` — **15.56:1**, and `--ink-dim` on `--card` when disabled, **6.27:1**;
+- for play/pause ONLY, the `--accent` fill, which is **3.38:1** on `--card` and therefore clears 1.4.11's 3:1 on
+  its own.
+
+So the strongest form of the open question is now about the two FLANKING buttons, restart and skip, which carry
+shape and nothing else. The argument available for them is the same one as before — an icon button whose glyph
+carries the identification is not a text field, whose border is the only thing saying "type here" — and it is a
+better argument here than it was against the band, because there is no weak border inviting the reader to measure
+it. **Still open, and for the same reason: no file in the tree states that ruling for this site.** It is a design
+ruling for the strip's owner, and it must not be settled by a test picking whichever assertion passes — against
+`border: 0` there is nothing to assert. Recorded where the row used to sit, in the `BOUNDARIES` list inside
+`core/tests/unit/lib/control-boundary-contrast.test.ts` — as a note and not as a row, since every row in that list is a
+NEEDLE to find in a source file and `border: 0` offers none. The seven tests that follow the list still hold the rule
+everywhere else, and the three above it — the per-surface contrast sweep, the hsl rounding of `--control-line`, and
+`--line` still failing 3:1 — are arithmetic on the tokens and are unaffected either way. Note also that `.btn.primary` stacks `--accent-ink` on `--accent` for the play glyph, which is **2.54:1** —
+below 3:1 — but that pair is certified as a pair by the design system's own token rule, so it is a palette
+question and not this finding's.
 
 *One correction to the table above, which should still reproduce and does not.* `--bg`, `--card`, `--card2` and
 `--line` are unchanged since the review, so the three rows were re-derived rather than re-measured:
@@ -145,9 +183,9 @@ now written beside the declarations in `core/src/app.css` and in `docs/FRONTEND.
 RATIO**, not "no 2px step": 2px is a perceptible 1.5× at the bottom of this ladder and an invisible 1.111× at
 the top, so 8 → 10 stays. Re-derived, exactly two pairs sit on that floor (`md` → `lg`, 10 → 12, and `4xl` →
 `5xl`, 20 → 24), and `md` → `lg` is recorded in `docs/FRONTEND.md` as an OPEN item rather than as doctrine —
-`md` is the second-busiest rung at 40 declarations, mostly the cluster gap inside a control row, so collapsing
+`md` is the second-busiest rung, mostly the cluster gap inside a control row, so collapsing
 it is a visual ruling and not a cleanup. The names are addresses, not indices: the two holes stay rather than
-renumbering, because sliding `2xl` → `xl` would silently change what `var(--space-2xl)` means at the 33 sites
+renumbering, because sliding `2xl` → `xl` would silently change what `var(--space-2xl)` means at every site
 already spelling it.
 
 *The section rung exists, and it is 24 rather than 32 or 48.* `--space-5xl`/24px is the ladder's one
@@ -158,19 +196,24 @@ this repo's standing rule rather than taste: the widest phone column is `--max-w
 that nothing spells is a defect in its own right (`--shadow-md`; the 2rem type rung that was written and
 removed). The next rung is minted WITH its first caller.
 
-*The histogram did NOT thin, and both figures are on the record so the rung count is not read as the measure.*
-Re-derived here under the method `core/tests/unit/lib/space-ladder.test.ts` states — comments stripped first,
-`gap` / `row-gap` / `column-gap` declarations that spell a rung, plus Tailwind `gap-[var(--space-*)]` under
-`src/lib/components/ui/` since that tree is scanned and compiles to a real gap — **54 of 63 (85.7%)** land
-wholly in 4–12px, against **53 of the same 63 (84.1%)** before the retirement. So the band moved 1.6 points the
-WRONG way, because one 14px gap came down to 12. It cannot thin: this is a 480px-max phone column of 8px-spaced
-rows, and most gaps in it are supposed to be small. What did move is the other clause of this finding — "the
-three largest rungs are used **twice** in the whole codebase" is now **47** declarations across the top three
-(16 at 33, 20 at 10, 24 at 4), out of 239 `var(--space-*)` spends in `src`.
+*The histogram did NOT thin, and the reason is on the record so the rung count is not read as the measure.* At the
+time of the retirement, **54 of 63 (85.7%)** rung-spelling `gap` / `row-gap` / `column-gap` declarations landed
+wholly in 4–12px, against **53 of the same 63 (84.1%)** before it — so the band moved 1.6 points the WRONG way,
+because one 14px gap came down to 12. That pair is a reading taken on THAT tree and is not recomputable on this one:
+the phone-shell rebuild changed the denominator, and deleting the now-playing sheet changed it again.
+`core/tests/unit/lib/space-ladder.test.ts` therefore holds a FLOOR instead — at least three quarters of those
+declarations land wholly in 4–12px, under the method it states (comments stripped first, plus Tailwind
+`gap-[var(--space-*)]` under `src/lib/components/ui/` since that tree is scanned and compiles to a real gap). It
+cannot thin: this is a 480px-max phone column of 8px-spaced rows, and most gaps in it are supposed to be small.
+What DID move is the other clause of this finding — "the three largest rungs are used **twice** in the whole
+codebase" is long dead; the three largest now carry a substantial share of the ladder's spends. No tally is printed
+for that any more, because the tally was the thing that rotted: the guard asserts no declared rung goes unread, and
+no spelled rung is undeclared, which is what the sentence was reaching for.
 
-Pinned by `core/tests/unit/lib/space-ladder.test.ts` (5 tests): the rung list and values, the 1.20 floor plus
-the fact that exactly two pairs sit on it, both retirements having no declaration / no caller / no `@theme`
-alias, the bridge being 1:1, and both censuses above.
+Pinned by `core/tests/unit/lib/space-ladder.test.ts`: the rung list and values, the 1.20 floor plus the two NAMED
+pairs that sit on it (`md` → `lg` and `4xl` → `5xl`), both retirements having no declaration / no caller / no
+`@theme` alias, the bridge being 1:1, that nothing spells a rung the ladder does not declare and no declared rung
+goes unread, that `md` stays among the busiest rungs by spend, and the 4–12px gap floor.
 
 ### 3. The type scale is crowded at the bottom and has a hole at the top
 
@@ -265,12 +308,31 @@ Nothing re-composes as width grows; elements just get further apart. A 770px sin
 past any sane measure — and `--measure-prose: 560px` already exists as a token and is not applied to it.
 
 **As FIXED — PARTIAL, and this is the finding where the split matters most. The headline charge — "nothing
-re-composes as width grows" — is answered: two rules now re-compose at `--bp-lg`. Of the four table rows, ONE
-closed with a rule (the search input) and three were re-measured and LEFT with the reason written down; a fifth
-stretch not in the table (`/`'s find row) was left the same way. Two of those four leave-it rulings had the
-alternative BUILT and measured before being rejected. The readings live in `docs/FRONTEND.md` under "The home
-column" and "The library page" — this note quotes token arithmetic and names that file for anything in px,
+re-composes as width grows" — is answered: one rule now re-composes at `--bp-lg`, where it was two. Of the four
+table rows, ONE closed with a rule (the search input) and three were re-measured and LEFT with the reason written
+down; a fifth stretch not in the table (`/`'s find row) was left the same way. Two of those four leave-it rulings
+had the alternative BUILT and measured before being rejected. The readings live in `docs/FRONTEND.md` under "The
+Sing tab" and "The library page" — this note quotes token arithmetic and names that file for anything in px,
 rather than reprinting a browser reading it cannot re-derive.**
+
+> **READ THIS FINDING AGAINST THE REBUILD, which landed after the fixes below.** The single-column home this
+> finding measured is gone: `/` is now the Sing tab of three, and the bottom chrome is a fixed `.dock` holding a
+> strip and a tab bar where it was an 87px `.band-slot`. Three consequences, and only one of them is good news:
+>
+> 1. **The chrome went from ONE height to TWO, which is the whole of the geometric change — and the direction
+>    depends on which.** The band rendered for anyone who had joined, at an 87px `.band-slot` whose top edge was
+>    813 at 1440×900. The strip renders only when there is something to act on, so the dock is 91px with its top
+>    edge at **809** in a room with a song playing or queued, and 46px with its top edge at **854** in an idle
+>    one — both measured, and both asserted by `measured-dock.spec.ts`. So a gap to the chrome shrank 4px in a
+>    live room and GREW 41px in an idle one. No content moved for this reason in either: the floor moved, twice.
+> 2. **One of the two `--bp-lg` re-compositions was deleted with the shelf it served.** See the re-composition
+>    note below, which now describes one rule rather than two.
+> 3. **The void did not close by a pixel.** See the void note, re-measured on the rebuilt tab.
+>
+> What the rebuild did NOT touch is the desktop charge itself. A tab bar is phone chrome: it adds no desktop
+> track, re-composes nothing as width grows, and at 1440×900 the dock is 1440px wide with 1080px rows
+> (`--max-w`) — so it inherits the same centred cap the shell already had. Nothing in this finding is answered by
+> the rebuild and nothing in it is made worse.
 
 *The search input closed, and unconditionally.* `--measure-prose` now has its first caller: `.field-slot` on `/`
 and its twin on `/library` both carry `max-width: var(--measure-prose)`, with **no** `@media` — a `max-width`
@@ -279,14 +341,23 @@ no breakpoint to get wrong. The cap cannot bind until the row passes the cluster
 from three tokens and one reading: `--tap` 44 door + `--measure-prose` 560 findbox + the picker's measured 122 +
 two `--space-md` gaps = **746px**.
 
-*Something does re-compose now, which is the finding's actual charge.* Two rules, both keyed to a `--bp-*`
-member. `LIBRARY_SHELF_WIDE` (= `LIBRARY_SHELF * 2` = 8) replaces the phone's 4 at `--bp-lg`, spending the SAME
-height budget two tracks across because the row grid is two columns wide from 1200px up — picked from a
-`matchMedia` read rather than from CSS, because the extra rows do not exist in the DOM for a stylesheet to
-reveal and rendering eight to hide four would leave them in the accessibility tree. And `/library`'s head
-adopts the row grid from `--bp-lg` through a `.lib-meta` wrapper: the field lands on track one, the count and
-the refine disclosure on track two, so both halves sit over the songs they describe. Below the arm the wrapper is
-`display: contents` and charges nothing.
+*Something does re-compose now, which is the finding's actual charge — ONE rule, where this note used to claim
+two.* `/library`'s head adopts the row grid from `--bp-lg` through a `.lib-meta` wrapper: the field lands on track
+one, the count and the refine disclosure on track two, so both halves sit over the songs they describe. Below the
+arm the wrapper is `display: contents` and charges nothing. That rule is live and pinned.
+
+*The second rule is GONE, and this is the one place that says so rather than leaving a fixed claim standing over a
+deleted feature.* The home column's library shelf took `LIBRARY_SHELF_WIDE` (= `LIBRARY_SHELF * 2` = 8) in place of
+the phone's 4 at `--bp-lg`, spending the same height budget two tracks across, picked from a `matchMedia` read
+rather than from CSS because the extra rows did not exist in the DOM for a stylesheet to reveal. The rebuild
+deleted the shelf: browsing is the Library tab's job, the Sing tab reads no viewport width in JS at all, and the
+`matchMedia` call went with the shelf. So **this finding's wide-shelf fix no longer exists**, and the honest
+accounting is that it was obsoleted rather than reverted — the charge it answered ("nothing re-composes") is now
+answered by one rule instead of two, and the same width it was spending is spent by `/library`'s two-column row
+grid, which is where eight ready rows actually land now. The loose end this note recorded — `libraryShelf`,
+`LIBRARY_SHELF` and `LIBRARY_SHELF_WIDE` surviving in `core/src/lib/library-browse.ts` with unit tests and **no
+production consumer** — has since been **closed by deleting all three**, along with the four tests that had become
+assertions about `slice` alone. `libraryWindow` is the survivor in that module and has a real caller.
 
 *The header gap was argued and LEFT, on a reason this document will recognise.* Leading brand / trailing account
 is a desktop header form, and from `--bp-md` the topbar carries a `--line` bottom rule so the split reads as the
@@ -294,20 +365,47 @@ two ends of one surface rather than as two things floating in page. Nor is the g
 `margin-left: auto`, so its width is a function of the singer's display name — which is the same refutation this
 review applies to itself in the tablet section below.
 
-*The dock gap was LEFT on the same arithmetic this review used to refute its own dead-space error.* `.meta` is
-the `nowrap`/ellipsis title's OWN box and it measures well under the ~1000px stated here, so a long title uses
-that width — there is no structural gap to close, which is exactly the refutation the "401px of dead space"
-bullet below makes against itself.
+*The dock gap was LEFT on the same arithmetic this review used to refute its own dead-space error, and the
+refutation got STRONGER when the band became the strip.* `.meta` is still `flex: 1 1 auto; min-width: 0` holding a
+`nowrap`/ellipsis title, so the width is the title's OWN box: re-measured at 1440×900 it is **906px**, well under
+the ~1000px stated here, and a long title uses all of it. There is no structural gap to close — exactly the
+refutation the "401px of dead space" bullet below makes against itself. `min-width: 0` is the load-bearing half:
+without it the nowrap title refuses to shrink below its content, which is how the dock overflowed its own 320px
+box before the grid track was fixed.
 
-*The void was re-measured and NOT reduced, and the reason is that it is CONTENT-bound.* Re-measured against this
-tree's catalog — 123 media rows, 121 `none`, 2 `ready`, and `/api/library` serves `listReady()` only — the shelf
-holds two rows, under the PHONE cap of four, so `libraryShelf(rows, 8)` and `libraryShelf(rows, 4)` both return
-two shown and none hidden and the wide cap provably moved none of it. With an empty queue and nothing processing
-there is a find row, an empty rotation and two song rows to place in the room between the topbar and the band.
-The one candidate — handing the empty rotation the leftover height at `--bp-lg` — was BUILT and measured and
-made it worse: two voids where there had been one, so `.queue-empty.tight` keeps `min-height: 0`. The review's
-~460px figure stands in the state a real user of this tree is in; what the wide cap buys is conditional on the
-library having eight ready songs.
+*The void was re-measured TWICE — once against the fix, once against the rebuild — and NOT reduced either time,
+because it is CONTENT-bound.* As fixed, against the measurement copy's catalog (then 123 media rows, 2 `ready`, and
+`/api/library` serving `listReady()` only): the shelf held two rows, under the PHONE cap of four, so
+`libraryShelf(rows, 8)` and `libraryShelf(rows, 4)` both returned two shown and none hidden and the wide cap
+provably moved none of it. The one candidate — handing the empty rotation the leftover height at `--bp-lg` — was
+BUILT and measured and made it worse: two voids where there had been one.
+
+**And after the rebuild, re-measured in a browser at 1440×900 on the Sing tab, joined, no query: NOT ONE PIXEL
+CLOSED.** The shelf and the empty rotation are both gone; what is left above the fold is a find row and one idle
+block, which is `min-height: 32vh` (**288px** at this height), starts at y=173 and ends at **y=461**. The gap above
+the chrome now has TWO readings, because the dock does: with a song playing or queued the dock is 91px, its top
+edge **809**, and **348px** separate the last content from it; in an idle ROOM the strip does not render, the dock
+is 46px, its top edge **854**, and the gap is **393px**. The earlier version of this paragraph said "queue empty"
+and quoted 348, which is the strip-PRESENT figure — the two states differ by exactly the strip's 45px and the doc
+has to name which. Compare the fixed reading, which was 403.4 to a band top of 835 — 431.6px. (835 and the 813 in
+the blockquote above are two readings of the same chrome taken on different trees, the band having changed height
+between them; neither is re-derivable now, because `NowPlayingBand` is deleted. They are kept as the history they
+are, not as a live measurement.) The shape of the
+answer is unchanged: a void of a few hundred pixels, measured against a floor that moved and content that moved
+because the page was rebuilt, not because the void was addressed. **The ~460px headline is now an OVERSTATEMENT and
+this is the correction:** the three bounds it has to sit between are the gap to a 91px dock, **348px**, the gap to a
+46px one, **393px**, and the gap to the viewport floor, **439px** (900 − 461) — which is the only one of the three
+the dock's state does not move. 460 is above all three. It was a fair reading of the page it was taken on — 431.6px
+to the band, with a viewport-floor gap larger still — and it is 21px past the loosest bound on the page that exists
+now. Read the finding as "a void of 350–440px depending on which floor you measure to"; the charge is unaffected,
+because nothing in that range is defensible as composition, but the specific number should not be requoted.
+
+**The void is a CONTENT bound and it does not close on its own, which the rebuild makes harder to wish away rather
+than easier.** The owner confirmed (2026-10-03) that the stem-less rows are benchmarking junk, so a small ready
+library is the STEADY STATE and not a backlog that drains: the low-content composition is the case to design for,
+not an edge case to wait out. The Sing tab also makes the gap honest in a way the home column did not — its whole
+job is "type a name", so there is nothing being withheld from the space. That is a defensible answer to this
+finding, and it is a different answer from the one the fix gave; what is NOT defensible is calling the void closed.
 
 *And one thing the measure cap does NOT do, recorded because the alternative was built:* `/`'s find row does not
 spend the column — a stretch of it trails the picker empty under a hairline that spans the whole content box.
@@ -376,8 +474,11 @@ string is also the accessible NAME (one `label` prop feeds both the visible head
 which is why the direction was possessive rather than stripping both to bare nouns.
 
 Pinned by `core/tests/unit/lib/label-register.test.ts`: the dress, the absence of `text-transform` /
-`letter-spacing` / `class="lab"` in that file, the exact surviving `--ph-text-xs`/0.1em pairs elsewhere, and
-"nothing the room owns takes `Your`".
+`letter-spacing` / `class="lab"` in that file, the rule that no class dressed with `text-transform: uppercase` may
+sit on or inside a `<Field.Label>` or a `.control-label` anywhere in the tree — checked per ELEMENT, in markup and
+inline styles, with this defect's own shape as a fixture so the check cannot go vacuous — and "nothing the room owns
+takes `Your`". It no longer enumerates the register's surviving rows: that list reddened whenever the app grew a
+section heading, and it had already gone false.
 
 ### 8. Dual commit with no stated difference
 
@@ -401,25 +502,42 @@ Recorded because the reasons are load-bearing, and two of them were my own error
   and ships `--accent-ink` as its text pair *precisely because* it fails. My check re-derived the existing
   rule. The text palette is genuinely clean: **56 of 63 pairs pass AA**.
 - **"401px of dead space inside tablet rows" — wrong, my error.** I measured from the end of the *glyphs*.
-  The title **box** does grow with the container: 144px at 390 → **514px at 768/900** → 321px at 1200 (two
-  columns). Long titles use that width. There is no structural dead space.
+  The title **box** does grow with the container. Re-measured in a browser on `/library` after the rebuild, the
+  `.title-line` box is **148px** at 390 → **518px** at 768/900 → **322px** at 1200 and at 1440 (two columns). Long
+  titles use that width. There is no structural dead space. The reading that produced the error is the one to keep
+  hold of: the glyph run itself (`.t`) is **124.97px** at every one of those widths, because the seeded title is the
+  same string and `white-space: normal` lets it wrap rather than ellipsise. Box grows, glyphs do not — measuring the
+  second and reporting it as the first is the whole of the mistake. (These are 4px above the figures first published
+  here, which were 144 / 514 / 321; `SongRow` took a padding change in the rebuild wave. The shape of the curve is
+  what the refutation rests on and the shape is identical.)
 - **"Only 2 of 104 songs in the library" — correct behaviour.** 102 rows have `stem_status=none`; no worker
   has processed them. `/library` honestly reports "2 songs". (As re-derived: the catalog has grown and the ratio
-  has not. `data/encore.sqlite` holds **123** media rows, **121** `none` and **2** `ready`. The refutation is
-  unaffected — `/api/library` serves `listReady()` only — but two of it is now two of 123, and finding 5's void
-  reading above depends on exactly that, since a cap of 4 or 8 cannot bind on two rows.)
+  has not grown with it. The owner's `data/encore.sqlite` holds **384** media rows, **379** `none` and **5**
+  `ready`; the measurement copy every px reading was taken against holds **180** / **178** / **2**. The refutation
+  is unaffected — `/api/library` serves `listReady()` only — but "2 of 104" is now 5 of 384 on the live box, and
+  finding 5's void reading above depends only on the READY half, since a cap of 4 or 8 cannot bind on two rows.
+  The ready counts are the stable term; both totals and therefore both ratios are snapshots, as the status block
+  at the top of this file says at length.)
 
 ## The tablet question, revised
 
 `UI-REVIEW.md` left the 768–1199px single-column stretch open, and I had put the choice as *centre the 440px
 track* vs *accept ~339px columns*. **Both were premised on my dead-space error.** With the title box
-measured growing to 514px, the stretch costs nothing structural — the width goes to the text, which long
+measured growing to 518px, the stretch costs nothing structural — the width goes to the text, which long
 titles need and which the 440px floor exists to protect.
 
 **Recommendation: leave it.** Squeezing to two ~339px columns would truncate titles to buy density the room
 doesn't need, and it would overturn a measured decision. The only residual cost is that a *short* title
 leaves a wide gap before its `+` button — an argument for moving the action nearer the content, not for
 reflowing the grid.
+
+**THE REBUILD DOES NOT REACH THIS RULING, stated explicitly because the rebuild touched almost everything else.**
+This section's premise is `SongRow`'s title box growing with its container, and that premise was re-derived above
+on the post-rebuild tree: 148 → 518 → 322 across 390 / 768 / 1200, with the row itself going 326 → 696 → 500 as the
+`--bp-lg` two-column grid arrives and NARROWS each track. The three tabs are phone chrome and add no track at this
+width; `SongRow` itself was not restructured. So "leave it" holds on its original reasoning, unamended. The one
+thing worth re-reading when somebody next opens this question is the narrowing at 1200: a reader who measures only
+768 sees a box that grows monotonically, and the actual curve peaks at tablet and falls.
 
 ## Ranked, with cost
 
@@ -429,10 +547,10 @@ differed from what was costed.
 
 | # | finding | cost |
 | --- | --- | --- |
-| 1 | form-control contrast (1.4.11) | ~~one token, `--line` → ≥3:1 on `--card2`~~ — **WRONG, and now a red test.** `--line` is 17 files' card edge, list-row rule, table rule, spinner and skeleton; brightening it repaints all of them to fix six borders, and `control-boundary-contrast.test.ts` asserts `--line` stays `#2a2a3e` and stays under 3:1. It was one token, but a NEW one: `--control-line`. See finding 1. |
+| 1 | form-control contrast (1.4.11) | ~~one token, `--line` → ≥3:1 on `--card2`~~ — **WRONG, and now a red test.** `--line` is the card edge, list-row rule, table-head rule, tab strip, chip, spinner and skeleton across the app; brightening it repaints all of that to fix six borders, and `control-boundary-contrast.test.ts` asserts `--line` stays `#2a2a3e` and stays under 3:1. It was one token, but a NEW one: `--control-line`. See finding 1. |
 | 4 | one action, two identities | pick one treatment; delete the duplicate ready signals |
 | 2 | spacing ladder | respace rungs, add a section rung; mechanical but touches many files — *landed as a 1.20 ratio FLOOR plus `--space-5xl`/24 as the one section rung; the 32 and 48 this finding names were refused, and the "many files" was 22 rule sites* |
-| 5 | desktop composition | real design work — the only item here that is not a small diff — *and correctly priced: one of its four rows closed with a rule, three were re-measured and left, and the re-composition it asked for arrived as two `--bp-lg` rules rather than as a respacing* |
+| 5 | desktop composition | real design work — the only item here that is not a small diff — *and correctly priced: one of its four rows closed with a rule, three were re-measured and left, and the re-composition it asked for arrived as `--bp-lg` rules rather than as a respacing. Since re-priced by events: the phone rebuild deleted one of those two rules along with the home shelf it served, so the landed answer is now one rule. The desktop charge itself is untouched — see the note under the finding* |
 | 3 | type scale | respace the bottom four rungs, raise the 10.9px floor — *this line prices only the bottom end, which is why what landed is the whole of what was costed and half of what was named* |
 | 6 | join gate placement | one alignment rule — *plus the `:has()`/specificity stack that stops the host absorbing what it distributes, and a gate, because the equality alone could not fail* |
 | 7 | two label styles | pick one — *it was two rules: one dress and one wording register* |

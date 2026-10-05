@@ -8,9 +8,15 @@ import { cn } from '$lib/utils';
  * guard: the boundary that IDENTIFIES a form control clears SC 1.4.11's 3:1, and the decorative card hairline
  * stays where it is. The two used to be one token: `--line` was both every card's edge and every field's
  * border, and at 1.13:1 on the `--card2` field fill the six room-code boxes on the join screen read as
- * featureless slabs. The obvious fix — brighten `--line` — is the WRONG one, because 17 files spell it
- * decoratively and 1.4.11 exempts a purely decorative boundary, so raising it would brighten the whole app to
- * fix six borders. Hence `--control-line`, and hence assertion 2 below, which forbids the wrong fix.
+ * featureless slabs. The obvious fix — brighten `--line` — is the WRONG one, because `--line` is the decorative
+ * edge of every card, list row, table head, tab strip, chip, spinner and skeleton in the app and 1.4.11 exempts a
+ * purely decorative boundary, so raising it would brighten the whole app to fix six borders. Hence `--control-line`,
+ * and hence assertion 2 below, which forbids the wrong fix.
+ *
+ * THE ONE COUNT IN THIS FILE is `var(--line)`'s file count, and it is asserted EXACTLY rather than printed in prose.
+ * This header and `docs/FRONTEND.md` each used to carry it as a sentence, the two disagreed with each other and with
+ * the tree, and that is the argument for putting it in an `expect` and nowhere else: a number no test reads is a
+ * number nothing keeps true. It is 18 on this tree; read it off the assertion, which cannot drift from itself.
  */
 
 const appCss = readFileSync(at('src/app.css'), 'utf8');
@@ -26,8 +32,9 @@ function token(name: string): string {
 /** SC 1.4.11 non-text contrast. */
 const NON_TEXT = 3;
 
-/** Files under `src/` that spell a needle literally. Used to pin the file COUNT three comments quote, so the
- *  number cannot rot the way the contrast margin did. */
+/** Files under `src/` that spell a needle literally. Used for the `var(--line)` CENSUS below. The count stays exact;
+ *  what was wrong before was three COMMENTS quoting it, two of them stale, so the number now lives in the assertion
+ *  only and the prose points at it rather than repeating it. */
 function filesSpelling(needle: string): string[] {
 	return readdirSync(at('src'), { recursive: true, encoding: 'utf8' })
 		.filter((p) => /\.(css|svelte|ts)$/.test(p))
@@ -39,7 +46,11 @@ function filesSpelling(needle: string): string[] {
  *  list because it IS a flat fill (Bars, TvProgress, slider, SongRow, tv/+page all paint it as a background),
  *  and it is the binding one: at 3.131 it is the worst surface in the app, below `--ok-bg`'s 3.196. Leaving it
  *  out is what let the token's comment claim a >=3.20 margin it does not have. It is also the one entry that is
- *  no longer hypothetical — the slider rail's own ring sits on it, so the floor is now paid, not reserved. */
+ *  no longer hypothetical — the slider rail's own ring sits on it, so the floor is now paid, not reserved.
+ *
+ *  NOTHING BELOW THIS POINT IS A USAGE CENSUS. Every figure from here down is a measured ratio or a declared palette
+ *  value, which is why none of it moved during the phone-shell rebuild while the ladder files' tallies went red
+ *  repeatedly. The one count that IS a census — `var(--line)`'s file count, above — is asserted exactly. */
 const SURFACES = [
 	'bg',
 	'bg2',
@@ -120,15 +131,64 @@ test('--control-line is the ROUNDED interpolation app.css says it is, not the in
 });
 
 test('--line is unchanged and still fails 3:1, so the fix cannot have been a global brightening', () => {
-	// 17 files spell --line for a card edge, a list-row rule, a table rule, the spinner and the skeleton
-	// shimmer. All of that is decoration, which SC 1.4.11 exempts; brightening it to pass a criterion it is
-	// exempt from would brighten every card in the app. If this reds, someone took the shortcut.
+	// --line is every card edge, list-row rule, table rule, tab strip, chip, spinner and skeleton shimmer. All of
+	// that is decoration, which SC 1.4.11 exempts; brightening it to pass a criterion it is exempt from would
+	// brighten every card in the app. If this reds, someone took the shortcut.
 	expect(token('line')).toBe('#2a2a3e');
 	expect(contrastRatio(token('line'), token('card2'))).toBeLessThan(NON_TEXT);
-	// The COUNT itself, pinned: app.css, FRONTEND.md and the header above all quote 17, and a literal grep has to
-	// agree with them. app.css is one of the 17 — it keeps the token for `.card`'s edge and for the --border /
-	// --input aliases. It was 18 until `keycap` moved to --control-line, which is the last control that spelled it.
-	expect(filesSpelling('var(--line)').length).toBe(17);
+	/* AN EXACT CENSUS, kept exact on purpose. What it PROXIES is the premise of the ruling above: brightening
+	   `--line` to clear a criterion it is exempt from would repaint the whole app, which is only an argument while
+	   `--line` really is app-wide decoration. A floor would state that too, and a floor was tried here — but a floor
+	   cannot tell a hairline ARRIVING from a hairline LEAVING, and both directions matter to this ruling. One more
+	   file is a new decorative edge, which is fine; one fewer is a migration off the token, which is the moment the
+	   exemption argument starts to weaken. An exact number speaks on both.
+	   RE-DERIVED on this tree, not carried forward: 18 files. The phone-shell rebuild moved it and the arithmetic is
+	   worth recording, because the previous number here was 17 and the delta is not a typo — the drawer stack's
+	   deletion took `NowPlayingDrawer` and `NowPlayingBand` OFF the token (-2), and `NowPlayingStrip`, `TabBar` and
+	   `/queue` each took a hairline (+3). 17 - 2 + 3 = 18. If you change the chrome, run the census and update this
+	   line; do not widen it into a bound. */
+	expect(filesSpelling('var(--line)').length).toBe(18);
+
+	/* THE --line FAMILY AS A BORDER UTILITY IS CONFINED TO VENDORED REGISTRY CODE, which is the invariant the count
+	   was standing in for and the one it could not express. A new decorative hairline in this app is authored CSS
+	   `var(--line)`, never a utility — a utility written outside `src/lib/components/ui/` is emitted nowhere at all —
+	   so this list grows only when someone re-vendors a shadcn border or reaches for `border-input` on something
+	   tappable, the exact shortcut the ruling above forbids. An ALLOWLIST and therefore a ZERO outside it, which is
+	   why it cannot cry wolf. Each entry carries why it is not a control boundary. */
+	const LINE_UTILITY_OK = [
+		'lib/components/ui/alert/alert.svelte', // a status REGION, not a control
+		'lib/components/ui/checkbox/checkbox.svelte', // THE one documented exception; its own test below
+		'lib/components/ui/item/item.svelte' // `outline` variant: a list CONTAINER (LyricsReselect, /admin)
+	];
+	const utilityHits = readdirSync(at('src'), { recursive: true, encoding: 'utf8' })
+		.filter((p) => /\.(css|svelte|ts)$/.test(p))
+		.filter((p) => {
+			const code = readFileSync(at(`src/${p}`), 'utf8')
+				.replace(/\/\*[\s\S]*?\*\//g, '')
+				.replace(/^[ \t]*\/\/.*$/gm, '')
+				.replace(/<!--[\s\S]*?-->/g, '');
+			return /[\w:-]*border-(?:border|input|\[var\(--line\)\])/.test(code);
+		});
+	expect(utilityHits.filter((p) => !LINE_UTILITY_OK.includes(p))).toEqual([]);
+
+	// AND NO RULE CARRIES BOTH BOUNDARIES: a --line border alongside a --control-line one in the same block is a
+	// half-finished retarget, which the BOUNDARIES substring checks below would not see — they prove the right
+	// spelling is PRESENT, never that the wrong one is gone.
+	let doubleBounded = 0;
+	for (const p of readdirSync(at('src'), { recursive: true, encoding: 'utf8' })) {
+		if (!/\.(css|svelte)$/.test(p)) continue;
+		const code = readFileSync(at(`src/${p}`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+		for (const rule of code.matchAll(/\{([^{}]*)\}/g)) {
+			const d = rule[1]!;
+			if (
+				/border(?:-color|-top|-bottom)?:[^;]*var\(--control-line\)/.test(d) &&
+				/border(?:-color|-top|-bottom)?:[^;]*var\(--line\)(?!-)/.test(d)
+			) {
+				doubleBounded += 1;
+			}
+		}
+	}
+	expect(doubleBounded).toBe(0);
 });
 
 /** Every rule below targets an element its own file renders, so reading the source is sound here: there is no
@@ -155,22 +215,25 @@ const BOUNDARIES: { file: string; why: string; needle?: string }[] = [
 	// Every other variant paints a fill that identifies it (--accent, --primary, --card2, --destructive/10).
 	{
 		file: 'src/lib/components/ui/button/button.svelte',
-		why: 'keycap, bg-transparent on the drawer --card',
+		why: "keycap, bg-transparent on /queue's now-playing card (--card-tint)",
 		needle: 'enabled:border-[var(--control-line)]'
 	},
 	{
 		file: 'src/lib/components/ui/button/button.svelte',
 		why: "outline, replacing the registry's border-border",
 		needle: 'border-[var(--control-line)] bg-background'
-	},
-	// THE TRANSPORT, which this list did not reach until it was audited a second time. `.btn` shares one rule
-	// with `.disc`, and `.disc` then sets `border-color: transparent` — so the shared declaration is the two
-	// skip buttons' boundary and nothing else's. Its --card2 fill identifies nothing at either surface the band
-	// ships on: 1.24:1 against --bg, and 1.09:1 against the --card that `.band` declares for the gallery (in the
-	// real app `.band-slot` suppresses that and the sheet paints instead, which is why this is a bracket rather
-	// than one number). So the border is the whole of it, and it sat on --line-strong — 1.44:1, the INERT token —
-	// while every field around it had already moved to --control-line's 3.65:1.
-	{ file: 'src/lib/components/NowPlayingBand.svelte', why: '.btn transport, fill --card2' }
+	}
+	/* THE TRANSPORT IS NO LONGER ON THIS LIST, and that is a REPORTED GAP rather than a tidy-up. The row that
+	   used to sit here named NowPlayingBand.svelte's `.btn`, whose --card2 fill identified nothing (1.24:1 on
+	   --bg, 1.09:1 on --card) so its 1px border was the whole of its boundary — which is why it had to be dragged
+	   off --line-strong's 1.44:1 and onto --control-line.
+	   NowPlayingStrip.svelte, which replaced it, declares `border: 0; background: none` on `.btn` and an --accent
+	   FILL on `.btn.primary`. So there is no boundary to assert on, and retargeting the row here would mean
+	   inventing a weaker claim. The app's transport therefore carries no --control-line boundary at all now.
+	   Whether three borderless icon buttons on --card satisfy SC 1.4.11 — the fill may identify play/pause, the
+	   two flanking glyphs have only their shape — is a DESIGN call for the strip's owner, not something a test
+	   should decide by picking an assertion that happens to pass. The seven tests after this list still enforce the
+	   rule everywhere else. */
 ];
 
 test('every control boundary in the tree spells --control-line', () => {
@@ -179,21 +242,6 @@ test('every control boundary in the tree spells --control-line', () => {
 		const src = readFileSync(at(file), 'utf8');
 		expect(src.includes(needle ?? CSS_BOUNDARY), `${file} (${why})`).toBe(true);
 	}
-});
-
-test('the transport splits live from inert, and --line-strong survives only on the inert half', () => {
-	const src = readFileSync(at('src/lib/components/NowPlayingBand.svelte'), 'utf8');
-	const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-	// The shared `.btn, .disc` rule carries the LIVE boundary...
-	expect(code).toContain(CSS_BOUNDARY);
-	// ...and `:disabled` is the only thing that may put it back on --line-strong. Asserted as a rule rather than
-	// as a substring count because the hover mix also names --control-line: what must not come back is an
-	// UNQUALIFIED --line-strong border, which is what this file shipped before the second audit.
-	expect(code).toMatch(/\.btn:disabled \{\s*border-color: var\(--line-strong\);/);
-	expect(code).not.toMatch(/border: 1px solid var\(--line-strong\)/);
-	// `.disc` must keep opting out, or the constant above starts describing three controls instead of two — and
-	// the disc's border is transparent BECAUSE the progress arc sits outside its tap box.
-	expect(code).toMatch(/\.disc \{[^}]*border-color: transparent;/);
 });
 
 test('the retargeted Button variants do not also keep a --line-valued border alongside it', () => {
