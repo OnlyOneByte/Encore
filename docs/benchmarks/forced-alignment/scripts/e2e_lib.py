@@ -44,6 +44,11 @@ DEFAULT_BENCH_ROOT = "/Volumes/workplace/personal/encore-align-bench"
 #: `stem-separation/scripts/prepare.py`), not in the bench root.
 REPO_SONGS = HERE.parent.parent / "benchmark-songs"
 
+#: Each corpus song's MEASURED truth displacement, and which songs that disqualifies as accuracy references
+#: (`truth_displacement.py` writes it, `load_corpus_truth` reads it). In the repo rather than in the bench
+#: root: it decides which songs score, so it is version-controlled with the gates it feeds.
+CORPUS_TRUTH = HERE.parent / "corpus-truth.json"
+
 #: The 9 YouTube songs with AUTHORED caption truth, in e2e2's order (order only affects the printout).
 YOUTUBE_SLUGS = (
     "never-be-alone",
@@ -76,8 +81,12 @@ RUN_DEFAULTS: Mapping[str, str] = {"detector": "off"}
 
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
 #: captions whose own per-song bias runs −147 to +430 ms — so the two are never averaged silently.
-JAMENDO, YOUTUBE, ALL = "jamendo", "youtube", "all"
-GROUPS = (JAMENDO, YOUTUBE, ALL)
+#: `scored` is `all` minus `corpus-truth.json`'s accuracy exclusions: 28 of the 32 songs today.
+JAMENDO, YOUTUBE, SCORED, ALL = "jamendo", "youtube", "scored", "all"
+GROUPS = (JAMENDO, YOUTUBE, SCORED, ALL)
+
+#: The two groups that POOL songs of both truth kinds, so neither prints word or highlight figures.
+POOLED_GROUPS = (SCORED, ALL)
 
 # ── claim modes ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -213,6 +222,277 @@ class TruthWord:
     end: float
 
 
+#: The id of the measurement `corpus-truth.json` records, spelled out in README, "W8b: the corpus's own truth,
+#: measured, and the 28 songs that score".
+DISPLACEMENT_METHOD = "silent-start-onset+envelope-lag"
+
+#: Where a reader of a results file goes for the measurement behind an `accuracy_excluded` reason.
+CORPUS_TRUTH_DOC = "docs/benchmarks/forced-alignment/README.md"
+
+#: A truth sheet leading its own audio by this much cannot score the aligner that places words where they are
+#: sung. 250 ms is W8a's own coherence cut (`gates/w8a.yaml` `coherent-songs-not-pulled-truth`), reused rather
+#: than re-derived; both readings must reach it.
+DISPLACEMENT_LIMIT_MS = 250.0
+
+#: Below this, an envelope cross-correlation lag is not a reading anyone acts on: it is the worker's own
+#: `claimmap.MIN_ENVELOPE_CORRELATION`, the bar under which `align_steps` refuses to even OFFER a lag as a
+#: clock candidate, reused rather than re-derived (pinned equal in `test_bench_truth_displacement.py`).
+MIN_LAG_CORRELATION = 0.25
+
+#: The median stem level at a truth start at or above which the silence arbiter has nothing to read: the start
+#: is already inside singing. `truth_displacement.SINGING_LEVEL`, reused rather than re-derived; a PRE-
+#: CONDITION on the `continuous-vocal` ground, never evidence of displacement (`unsupported_ground`).
+CONTINUOUS_VOCAL_LEVEL = 0.30
+
+#: Silent-start evidence a displacement needs to be `measured` rather than `thin`: this many timed onsets, and
+#: this share of the song's truth lines. The share is what separates believer (0.21) from bohemian-rhapsody
+#: (0.14), whose few early lines are breaths rather than a displaced sheet.
+MIN_DISPLACEMENT_ONSETS, MIN_DISPLACEMENT_SHARE = 5, 0.15
+
+#: Confidence tiers for a displacement reading: enough silent starts to have a median, too few, or none.
+MEASURED, THIN, NO_EVIDENCE = "measured", "thin", "none"
+
+#: Grounds OTHER than a measured displacement on which a song may leave accuracy scoring. A closed set: an
+#: exclusion nobody can name is a hidden song list. The one entry is numb's — README, "numb is excluded on a
+#: displacement the silence arbiter cannot see". `TruthQuality.unsupported_ground` is its precondition.
+UNUSABLE_REASONS = frozenset({"continuous-vocal"})
+
+
+@dataclass(frozen=True, slots=True)
+class TruthQuality:
+    """One song's measured truth displacement, and whether it may score accuracy.
+
+    `median_ms` is the delay to first singing over truth starts that land in stem silence; `lag_ms` the
+    sheet/stem envelope cross-correlation lag, positive when the sheet is EARLY, which corroborates only at
+    `MIN_LAG_CORRELATION` and above; `starts_level_median` is the stem's own level at a truth start, which
+    says whether the silence arbiter could read this song at all. README, "W8b: the corpus's own truth,
+    measured, and the 28 songs that score".
+    """
+
+    slug: str
+    truth_lines: int
+    silent_starts: int
+    onsets: int
+    median_ms: float | None
+    mad_ms: float | None
+    max_ms: float | None
+    lag_ms: float
+    correlation: float
+    starts_level_median: float | None
+    method: str
+    unusable: str | None = None
+    note: str | None = None
+
+    @property
+    def onset_share(self) -> float:
+        return self.onsets / self.truth_lines if self.truth_lines else 0.0
+
+    @property
+    def confidence(self) -> str:
+        if not self.onsets:
+            return NO_EVIDENCE
+        thin = self.onsets < MIN_DISPLACEMENT_ONSETS or self.onset_share < MIN_DISPLACEMENT_SHARE
+        return THIN if thin else MEASURED
+
+    @property
+    def lag_corroborates(self) -> bool:
+        """The envelope lag reaches the limit AND is a fit the worker itself would act on."""
+        return self.lag_ms >= DISPLACEMENT_LIMIT_MS and self.correlation >= MIN_LAG_CORRELATION
+
+    @property
+    def silence_stands_alone(self) -> bool:
+        """The silence arbiter at TWICE each of its own bars — what a sheet with no second witness needs.
+
+        bad-guy is the case the branch exists for: 27 of 79 starts in silence at a median of 834 ms, on a
+        +780 ms lag that reads r 0.19 and so cannot corroborate anything.
+        """
+        return (
+            self.onsets >= 2 * MIN_DISPLACEMENT_ONSETS
+            and self.onset_share >= 2 * MIN_DISPLACEMENT_SHARE
+            and self.median_ms is not None
+            and self.median_ms >= 2 * DISPLACEMENT_LIMIT_MS
+        )
+
+    @property
+    def displaced(self) -> bool:
+        """The silence arbiter over the limit, with a usable lag agreeing or at twice its own bars alone."""
+        if self.confidence != MEASURED:
+            return False
+        if self.median_ms is None or self.median_ms < DISPLACEMENT_LIMIT_MS:
+            return False
+        return self.lag_corroborates or self.silence_stands_alone
+
+    @property
+    def exclusion(self) -> str | None:
+        """Why this song leaves accuracy scoring, as `results/` carries it, or None when it scores.
+
+        NUMBERS, not the operator's `note`: the note is prose for a human reading `CORPUS_TRUTH`, and it used
+        to be copied into every row, every per-song entry and the meta of every results file, where it then
+        drifted from the file it was copied from (W8b review r2-tests-15).
+        """
+        if self.displaced:
+            silence = (
+                f"truth leads its audio by {self.median_ms:.0f} ms (median over {self.onsets} of "
+                f"{self.truth_lines} line starts landing in stem silence"
+            )
+            if self.lag_corroborates:
+                return (
+                    f"{silence}), corroborated by an envelope lag of {self.lag_ms:+.0f} ms "
+                    f"at r {self.correlation:.2f}"
+                )
+            return (
+                f"{silence}, twice every bar of the rule); its envelope lag of {self.lag_ms:+.0f} ms reads "
+                f"r {self.correlation:.2f}, under the {MIN_LAG_CORRELATION} a lag needs to corroborate"
+            )
+        if self.unusable is not None:
+            level = "-" if self.starts_level_median is None else f"{self.starts_level_median:.3f}"
+            return (
+                f"{self.unusable}: the stem sings at the median truth start (level {level} against the "
+                f"{CONTINUOUS_VOCAL_LEVEL:.2f} bar), so the silence arbiter has {self.silent_starts} of "
+                f"{self.truth_lines} starts to read and cannot establish the sheet; envelope lag "
+                f"{self.lag_ms:+.0f} ms at r {self.correlation:.2f}. The `note` in {CORPUS_TRUTH.name} and "
+                f"{CORPUS_TRUTH_DOC} carry the rest"
+            )
+        return None
+
+    def unsupported_ground(self) -> list[str]:
+        """Which of its own numbers refuse this entry's recorded `unusable`; [] when the ground holds.
+
+        `unusable` is an operator's word for "there is no silence here to measure", so it is checked against
+        the measurement exactly as `displaced` is — otherwise it is a one-way exclusion no re-measurement can
+        ever clear (W8b review r2-correctness-1). The preconditions are `UNUSABLE_REASONS`' one ground's.
+        """
+        if self.unusable is None:
+            return []
+        out: list[str] = []
+        if self.confidence == MEASURED:
+            out.append(
+                f"the arbiter times {self.onsets} of {self.truth_lines} starts, enough to measure a "
+                "displacement instead of asserting one"
+            )
+        if self.starts_level_median is None or self.starts_level_median < CONTINUOUS_VOCAL_LEVEL:
+            level = self.starts_level_median
+            said = "was not measured" if level is None else f"is {level:.3f}"
+            out.append(f"the median level at a truth start {said}, under the {CONTINUOUS_VOCAL_LEVEL} bar")
+        if self.lag_ms < DISPLACEMENT_LIMIT_MS:
+            out.append(
+                f"the envelope lag is {self.lag_ms:+.0f} ms, under the {DISPLACEMENT_LIMIT_MS:.0f} ms limit"
+            )
+        if self.correlation < MIN_LAG_CORRELATION:
+            out.append(f"the lag reads r {self.correlation:.2f}, under {MIN_LAG_CORRELATION}")
+        return out
+
+
+#: Keys `CORPUS_TRUTH` records that are the RULE's output rather than a measurement, so `load_corpus_truth`
+#: re-derives and checks them instead of reading them.
+DERIVED_KEYS = ("confidence", "displaced")
+
+
+def derived_of(quality: TruthQuality) -> dict[str, object]:
+    """The verdict the rule reads off a measurement, written into the file so a human reads it too."""
+    return {"confidence": quality.confidence, "displaced": quality.displaced}
+
+
+#: Set to "1" to run with no `corpus-truth.json` at all: every song scores, and the harness fingerprint says
+#: so (`corpus_truth_bytes`). Without it an absent file RAISES — see `corpus_truth_entries`.
+SCORE_ALL_ENV = "ENCORE_BENCH_SCORE_ALL"
+
+#: What `corpus_truth_bytes` hashes when the file is legitimately absent, so "no metadata" fingerprints
+#: differently from a file that has some.
+NO_CORPUS_TRUTH = b"corpus-truth: absent"
+
+
+def score_all_requested() -> bool:
+    return os.environ.get(SCORE_ALL_ENV) == "1"
+
+
+def _no_corpus_truth(target: Path, said: str = "is missing") -> ValueError:
+    return ValueError(
+        f"{target} {said}, so nothing says which songs score; write it with "
+        f"scripts/truth_displacement.py --out {target}, or set {SCORE_ALL_ENV}=1 to score every song"
+    )
+
+
+def _unmeasured_song(slug: str) -> ValueError:
+    return ValueError(
+        f"{CORPUS_TRUTH} has no entry for {slug}, so nothing says whether it scores; measure it with "
+        f"scripts/truth_displacement.py --songs {slug} --out {CORPUS_TRUTH}, or set {SCORE_ALL_ENV}=1 to "
+        "score every song"
+    )
+
+
+def corpus_truth_entries(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """`CORPUS_TRUTH`'s `songs` block as recorded, so a partial rewrite keeps the entries it did not measure.
+
+    An absent — or present-but-empty — file RAISES unless `SCORE_ALL_ENV` asks for it: defaulting to "nothing
+    is excluded" would score all 32 songs under a 28-song label.
+    """
+    target = path or CORPUS_TRUTH
+    if not target.is_file():
+        if score_all_requested():
+            return {}
+        raise _no_corpus_truth(target)
+    raw = json.loads(target.read_text(encoding="utf-8")).get("songs") or {}
+    if not raw:
+        if score_all_requested():
+            return {}
+        raise _no_corpus_truth(target, "names no song")
+    return {str(slug): dict(entry) for slug, entry in raw.items()}
+
+
+def corpus_truth_bytes() -> bytes:
+    """What the harness fingerprint hashes for the corpus metadata. Refuses rather than hash empty bytes."""
+    if CORPUS_TRUTH.is_file():
+        return CORPUS_TRUTH.read_bytes()
+    if score_all_requested():
+        return NO_CORPUS_TRUTH
+    raise _no_corpus_truth(CORPUS_TRUTH)
+
+
+def load_corpus_truth(path: Path | None = None) -> dict[str, TruthQuality]:
+    """`CORPUS_TRUTH` as `{slug: TruthQuality}`.
+
+    An unreadable entry RAISES rather than defaulting to "scores": a corpus file the harness half-understands
+    would drop or admit songs silently, which is the failure this file exists to prevent. The recorded
+    `confidence` / `displaced` are the rule's own output, so they are checked and never trusted, and so is the
+    operator's `unusable` ground (`TruthQuality.unsupported_ground`).
+    """
+    target = path or CORPUS_TRUTH
+    raw = corpus_truth_entries(target)
+    out: dict[str, TruthQuality] = {}
+    for slug, entry in raw.items():
+        measured = dict(entry)
+        claimed = {key: measured.pop(key) for key in DERIVED_KEYS if key in measured}
+        try:
+            quality = TruthQuality(slug=str(slug), **measured)
+        except TypeError as bad:
+            raise ValueError(f"{target}: {slug} is not a truth-quality entry ({bad})") from bad
+        if quality.unusable is not None and quality.unusable not in UNUSABLE_REASONS:
+            raise ValueError(
+                f"{target}: {slug} is unusable for {quality.unusable!r}, which is not one of "
+                f"{', '.join(sorted(UNUSABLE_REASONS))}"
+            )
+        if refuses := quality.unsupported_ground():
+            raise ValueError(
+                f"{target}: {slug} is recorded {quality.unusable!r}, which its own numbers no longer support "
+                f"({'; '.join(refuses)}) — re-run truth_displacement.py"
+            )
+        derived = derived_of(quality)
+        wrong = {key: (said, derived[key]) for key, said in claimed.items() if said != derived[key]}
+        if wrong:
+            raise ValueError(
+                f"{target}: {slug} records {wrong} as (recorded, derived) — re-run truth_displacement.py"
+            )
+        out[str(slug)] = quality
+    return out
+
+
+def accuracy_exclusions(path: Path | None = None) -> dict[str, str]:
+    """`{slug: why it does not score}` over the whole corpus — the one place the exclusion is decided."""
+    found = ((slug, quality.exclusion) for slug, quality in load_corpus_truth(path).items())
+    return {slug: reason for slug, reason in found if reason is not None}
+
+
 @dataclass(frozen=True, slots=True)
 class Song:
     slug: str
@@ -225,6 +505,9 @@ class Song:
     #: Measured word onsets (Jamendo), positional against the truth lines' whitespace tokens. None when
     #: the song has none or its token count disagrees with its line texts (bench.py skips those too).
     words: tuple[TruthWord, ...] | None = None
+    #: Why this song's accuracy does not count, from `CORPUS_TRUTH` — None for the 28 that score. It stays in
+    #: every run for robustness: its refusals, its gross lines and its documents are measured as ever.
+    accuracy_excluded: str | None = None
 
     def missing_files(self) -> list[str]:
         return [str(p) for p in (self.mix, self.vocals) if not p.is_file()]
@@ -272,11 +555,22 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
 
     A Jamendo song without a separated vocals stem is skipped (as e2e2 did); a YouTube/tfr song is always
     listed, and `Song.missing_files` says whether its audio is there, so a missing file fails loudly at
-    selection instead of shrinking the corpus silently. The Jamendo MIX is read from the dataset checkout
-    under the bench root when present: the per-song `mix.mp3` is a symlink into the review's /tmp copy, which
-    dies on reboot and would move the emissions cache key with it."""
+    selection instead of shrinking the corpus silently. The Jamendo MIX comes from the dataset checkout under
+    the bench root when present: the per-song `mix.mp3` symlinks into a /tmp copy that dies on reboot, moving
+    the emissions cache key with it. A song `CORPUS_TRUTH` never measured RAISES: it is measured first.
+    """
     if tfr_audio not in TFR_AUDIO:
         raise ValueError(f"tfr audio {tfr_audio!r}; expected one of {', '.join(TFR_AUDIO)}")
+    measured = load_corpus_truth()
+
+    def excluded_for(slug: str) -> str | None:
+        quality = measured.get(slug)
+        if quality is None:
+            if score_all_requested():
+                return None
+            raise _unmeasured_song(slug)
+        return quality.exclusion
+
     songs: list[Song] = []
     jamendo = root / "jamendo"
     for directory in sorted(jamendo.iterdir()) if jamendo.is_dir() else []:
@@ -293,6 +587,7 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
                 vocals=vocals,
                 truth=truth,
                 words=load_truth_words(directory / "truth-words.json", truth),
+                accuracy_excluded=excluded_for(directory.name),
             )
         )
     for slug in YOUTUBE_SLUGS:
@@ -304,6 +599,7 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
                 mix=directory / "mix.wav",
                 vocals=directory / "mix" / "vocals.wav",
                 truth=load_truth_lines(directory / "truth-lines.json"),
+                accuracy_excluded=excluded_for(slug),
             )
         )
     for slug in TFR_SLUGS:
@@ -316,6 +612,7 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
                 mix=directory / ("youtube-mix.wav" if youtube else "reference-mix.wav"),
                 vocals=tfr_stem(root, slug) if youtube else directory / "reference-vocals.wav",
                 truth=load_truth_lines(directory / "truth-lines.json"),
+                accuracy_excluded=excluded_for(slug),
             )
         )
     return songs
@@ -698,6 +995,10 @@ class WordScore:
     #: ends Jamendo really measures (its non-final ends are mostly the next word's onset).
     end_errors: tuple[float, ...] = ()
     final_end_errors: tuple[float, ...] = ()
+    #: `errors`' counterpart for the paired words that were NOT aligned, read off the start the document
+    #: publishes. The two together are every paired word, which is what `word_published_*` scores — README,
+    #: "W8b: re-judging `word-aligned-not-down`".
+    unaligned_errors: tuple[float, ...] = ()
 
 
 #: An END is scored only for a word whose ONSET is within this of truth — the review's `exp_ends.py`
@@ -743,6 +1044,7 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
         return None
     counts, offsets = _word_offsets(song)
     errors: list[float] = []
+    unaligned: list[float] = []
     ends: list[float] = []
     finals: list[float] = []
     interpolated = mismatched = 0
@@ -762,6 +1064,7 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
             truth = song.words[offsets[claim.truth] + k]
             if not word.aligned:
                 interpolated += 1
+                unaligned.append(word.start - truth.start)
                 continue
             onset = word.start - truth.start
             errors.append(onset)
@@ -770,7 +1073,9 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
                 if k == expected - 1:
                     finals.append(word.end - truth.end)
     in_text = sum(counts[i] for i in claims.truth_indexes())
-    return WordScore(tuple(errors), in_text, interpolated, mismatched, tuple(ends), tuple(finals))
+    return WordScore(
+        tuple(errors), in_text, interpolated, mismatched, tuple(ends), tuple(finals), tuple(unaligned)
+    )
 
 
 # ── the highlight, as the TV shows it ────────────────────────────────────────────────────────────────
@@ -1062,6 +1367,9 @@ def row_of(
     return {
         "song": song.slug,
         "group": song.group,
+        # In the ROW, so a re-summarise of rows measured before `corpus-truth.json` existed still splits the
+        # pool: `_excluded_of` falls back to the file by slug when a row is silent (every baseline is).
+        "accuracy_excluded": song.accuracy_excluded,
         "mode": mode,
         "variant": variant,
         "donor": claims.donor,
@@ -1079,6 +1387,7 @@ def row_of(
             "interpolated": words.interpolated,
             "mismatched": words.mismatched,
             "errors": list(words.errors),
+            "unaligned_errors": list(words.unaligned_errors),
             "end_errors": list(words.end_errors),
             "final_end_errors": list(words.final_end_errors),
         },
@@ -1177,6 +1486,8 @@ def word_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     The ±N / AAE / MedAE / bias figures are over ALIGNED words, so only published cases add to them. The
     PCO denominator (`in_text`) counts every truth word every case's text asked for, a refused or ERROR
     case's too (`unpublished` of them), as MIREX's PCO does: a word nobody timed is not a correct onset.
+    The `published*` family scores the SAME onsets with the provenance flag ignored, so a word cannot leave
+    the scoring by being re-labelled: README, "W8b: re-judging `word-aligned-not-down`".
     """
     carried = [r for r in rows if r.get("words")]
     if not carried:
@@ -1205,6 +1516,33 @@ def word_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     # Rows written before ends were scored carry no end lists; they read as "no ends", never as zero.
     out.update(_end_metrics("end", [float(e) for w in scored for e in w.get("end_errors") or []]))
     out.update(_end_metrics("final_end", [float(e) for w in scored for e in w.get("final_end_errors") or []]))
+    out.update(_published_metrics(errors, scored))
+    return out
+
+
+def _published_metrics(
+    aligned: Sequence[float], scored: Sequence[Mapping[str, Any]]
+) -> dict[str, float | None]:
+    """±N and AAE over EVERY paired word's published onset, aligned or not — or Nones if unreadable.
+
+    Rows written before `unaligned_errors` existed carry the list only implicitly: a row with no
+    interpolated word has none, and one with interpolated words cannot be reconstructed, so the whole family
+    reads None there rather than silently scoring the aligned half twice.
+    """
+    unaligned: list[float] = []
+    for w in scored:
+        if (listed := w.get("unaligned_errors")) is not None:
+            unaligned.extend(float(e) for e in listed)
+        elif int(w["interpolated"]):
+            return dict.fromkeys(
+                (*(f"published{int(t * 1000)}_pct" for t in WORD_TOLERANCES_SEC), "published_aae_ms")
+            )
+    onsets = [*aligned, *unaligned]
+    out: dict[str, float | None] = {
+        f"published{int(tol * 1000)}_pct": pct(sum(1 for e in onsets if abs(e) <= tol), len(onsets))
+        for tol in WORD_TOLERANCES_SEC
+    }
+    out["published_aae_ms"] = round(statistics.fmean(abs(e) for e in onsets) * 1000.0, 1) if onsets else None
     return out
 
 
@@ -1373,14 +1711,43 @@ def group_entry(
     return entry
 
 
+def excluded_of(row: Mapping[str, Any], excluded: Mapping[str, str] | None = None) -> str | None:
+    """Why this row's song does not score, or None. The row's own answer, else `CORPUS_TRUTH` by slug."""
+    if "accuracy_excluded" in row:
+        reason = row["accuracy_excluded"]
+        return None if reason is None else str(reason)
+    table = accuracy_exclusions() if excluded is None else excluded
+    return table.get(str(row["song"]))
+
+
+def exclusions_of(rows: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    """`{slug: why it did not score}` over these rows, so a document records the pool it was summarised on.
+
+    The same read as `per_song`'s, frozen into `meta.accuracy_excluded`: a reader (and `e2e_gates.view_of`)
+    must not have to re-derive a committed file's pool from today's `CORPUS_TRUTH`.
+    """
+    table = accuracy_exclusions()
+    found = {str(row["song"]): excluded_of(row, table) for row in rows}
+    return {slug: reason for slug, reason in found.items() if reason is not None}
+
+
+def in_group(row: Mapping[str, Any], group: str, excluded: Mapping[str, str] | None = None) -> bool:
+    if group == ALL:
+        return True
+    if group == SCORED:
+        return excluded_of(row, excluded) is None
+    return bool(row["group"] == group)
+
+
 def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
-    """`{mode: {group: {"lines", "words", "highlight", "ci", ...}}}` — Jamendo, YouTube(+tfr), all."""
+    """`{mode: {group: {"lines", "words", "highlight", "ci", ...}}}` — Jamendo, YouTube(+tfr), scored, all."""
     out: dict[str, dict[str, dict[str, Any]]] = {}
+    excluded = accuracy_exclusions()
     for mode in dict.fromkeys(r["mode"] for r in rows):
         of_mode = [r for r in rows if r["mode"] == mode]
         out[mode] = {}
         for group in GROUPS:
-            members = [r for r in of_mode if group == ALL or r["group"] == group]
+            members = [r for r in of_mode if in_group(r, group, excluded)]
             if members:
                 out[mode][group] = group_entry(members, mode, label=f"{mode}|{group}")
     return out
@@ -1430,6 +1797,13 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "w250_pct", "word_pm250"),
     ("words", "w300_pct", "word_pm300"),
     ("words", "pco300_pct", "word_pco300"),
+    #: The same onsets with the provenance flag ignored — what a reclassification cannot move. A gate reads
+    #: these BESIDE `word_aligned` so "fewer words are called aligned" and "a published word moved further
+    #: from truth" are separate verdicts (README, "W8b: re-judging `word-aligned-not-down`").
+    ("words", "published100_pct", "word_published_pm100"),
+    ("words", "published250_pct", "word_published_pm250"),
+    ("words", "published300_pct", "word_published_pm300"),
+    ("words", "published_aae_ms", "word_published_aae_ms"),
     ("words", "aae_ms", "word_aae_ms"),
     ("words", "medae_ms", "word_medae_ms"),
     ("words", "bias_ms", "word_bias_ms"),
@@ -1501,6 +1875,8 @@ SONG_METRICS = (
     "word_pm100",
     "word_pm300",
     "word_pco300",
+    "word_published_pm100",
+    "word_published_pm300",
     "word_bias_ms",
     "end_pm100",
     "final_end_pm100",
@@ -1564,12 +1940,14 @@ def _combined_digest(digests: Sequence[str | None]) -> str:
 
 
 def per_song(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
-    """`{mode: {song: {"group": ..., <SONG_METRICS>, <SONG_DIGESTS>}}}`; a song's variants pool together.
+    """`{mode: {song: {"group", "accuracy_excluded"?, <SONG_METRICS>, <SONG_DIGESTS>}}}`; variants pool.
 
     A digest is kept only when the rows carry it (the `generate` level writes no document, and rows from
-    before digests existed carry none), so `song.doc_changed` errors instead of comparing nothing.
+    before digests existed carry none), so `song.doc_changed` errors instead of comparing nothing. The
+    exclusion reason is written only for a song that has one, so the file reads as a list of what scored.
     """
     out: dict[str, dict[str, dict[str, Any]]] = {}
+    exclusions = accuracy_exclusions()
     for mode in dict.fromkeys(r["mode"] for r in rows):
         of_mode = [r for r in rows if r["mode"] == mode]
         out[mode] = {}
@@ -1583,7 +1961,12 @@ def per_song(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, dict[str,
             for key, field in SONG_DIGESTS:
                 if all(field in r for r in mine):
                     values[key] = _combined_digest([r[field] for r in mine])
-            out[mode][song] = {"group": str(mine[0]["group"]), **values}
+            excluded = excluded_of(mine[0], exclusions)
+            out[mode][song] = {
+                "group": str(mine[0]["group"]),
+                **({"accuracy_excluded": excluded} if excluded is not None else {}),
+                **values,
+            }
     return out
 
 
@@ -1625,7 +2008,7 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
                     + (f" ({wt['errors']} ERROR rows left out)" if wt.get("errors") else "")
                 )
             w = entry.get("words")
-            if w and w["in_text"] and group != ALL:
+            if w and w["in_text"] and group not in POOLED_GROUPS:
                 out.append(
                     f"  {'':<8} words {w['aligned']}/{w['in_text']}  ±100 {_fmt(w['w100_pct'], 0, '.1f')}"
                     f"  ±250 {_fmt(w['w250_pct'], 0, '.1f')}  ±300 {_fmt(w['w300_pct'], 0, '.1f')}"
@@ -1635,7 +2018,7 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
                     f"  >2s {w['gross']}"
                     + (f"  (unpublished {w['unpublished']})" if w.get("unpublished") else "")
                 )
-            if w and w.get("end_scored") and group != ALL:
+            if w and w.get("end_scored") and group not in POOLED_GROUPS:
                 out.append(
                     f"  {'':<8} ends {w['end_scored']}  ±100 {_fmt(w.get('end100_pct'), 0, '.1f')}"
                     f"  ±250 {_fmt(w.get('end250_pct'), 0, '.1f')}"
@@ -1646,7 +2029,7 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
                     f"  bias {_fmt(w.get('final_end_bias_ms'), 0, '+.0f')}ms"
                 )
             lit = entry.get("highlight")
-            if lit and group != ALL:
+            if lit and group not in POOLED_GROUPS:
                 # The SHIPPED TV's reading sits beside the alignment one, never instead of it (W6 review
                 # r1-tests-20): the first is "when a word is lit, is it the right one", the second is what
                 # the room gets once `low` rows stop wiping. A run written before it carries None.
@@ -1661,7 +2044,7 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
             # Word and highlight intervals print on Jamendo's row only, as their point estimates do.
             shown = (
                 ("pm500", "text_pm500", "gross")
-                if group == ALL
+                if group in POOLED_GROUPS
                 else ("pm500", "text_pm500", "gross", "word_pm300", "word_pco300", "highlight")
             )
             spans = [
@@ -1718,7 +2101,7 @@ def rows_document(path: Path) -> dict[str, Any]:
         # has no acquiring step and therefore no detector.
         for key, default in RUN_DEFAULTS.items():
             meta.setdefault(key, default)
-    meta.update(rows=str(path), row_codes=row_codes(rows))
+    meta.update(rows=str(path), row_codes=row_codes(rows), accuracy_excluded=exclusions_of(rows))
     return {"meta": meta, "summary": summarize(rows), "songs": per_song(rows)}
 
 
@@ -1726,6 +2109,7 @@ def rows_document(path: Path) -> dict[str, Any]:
 COMPACT_KEEP = (
     "song",
     "group",
+    "accuracy_excluded",
     "mode",
     "variant",
     "donor",
@@ -1800,6 +2184,8 @@ def compact_row(row: Mapping[str, Any]) -> dict[str, Any]:
     words = row.get("words")
     if words:
         errors = [float(e) for e in words.get("errors") or []]
+        unaligned = words.get("unaligned_errors")
+        published = errors + [float(e) for e in unaligned or []]
         out["words"] = {
             "aligned": len(errors),
             "in_text": words.get("in_text"),
@@ -1807,6 +2193,12 @@ def compact_row(row: Mapping[str, Any]) -> dict[str, Any]:
             "pm300": sum(abs(e) <= 0.3 for e in errors),
             "gross": sum(abs(e) > GROSS_SEC for e in errors),
             "bias_ms": round(statistics.median(errors) * 1000, 1) if errors else None,
+            # Provenance-blind, so a case that re-labelled a word still shows where it landed.
+            **(
+                {}
+                if unaligned is None
+                else {"published_pm100": sum(abs(e) <= 0.1 for e in published), "published": len(published)}
+            ),
         }
     for key in ("highlight", "highlight_wiped"):
         lit = row.get(key)

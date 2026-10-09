@@ -124,9 +124,9 @@ test('the join surface reflows at 320px with the text doubled', async ({ world, 
 
 /**
  * JOINED FIRST, because `/settings` answers 303 to an unjoined guest: this surface is only reachable from inside
- * the room. The DEFAULT tab is what gets measured, as the old driver intended — `Tabs.Content` mounts only the
- * open panel, and that panel is `party` rather than `you` (DEFAULT_SETTINGS_TAB). Its own `#queue-order` control
- * is the readiness signal, where the old driver slept.
+ * the room. What gets measured is the ROOM SCOPE, which is what `/settings` resolves to now that the three scopes
+ * are three routes — the deepest of the three and the one the gear opens, so it is still the worst case this claim
+ * has to hold for. Its own `#queue-order` control is the readiness signal, where the old driver slept.
  */
 test('/settings reflows at 320px with the text doubled', async ({ world, page }) => {
 	await world.joinAs(page, 'ReflowSettings');
@@ -135,6 +135,47 @@ test('/settings reflows at 320px with the text doubled', async ({ world, page })
 		'/settings',
 		await measure(page, '/settings', '/settings', () =>
 			page.locator(SEL.setting('queue-order')).waitFor({ state: 'attached' })
+		)
+	);
+});
+
+/**
+ * THE YOU SCOPE, because a surface this claim does not visit is a surface it says nothing about — and that is not
+ * hypothetical here: the room scope's door into the machine scope carried a second `Badge` for one build, and the
+ * test above caught it overflowing by 9px. You was never measured at 320px before the settings split, because it
+ * lived on a `Tabs.Content` the driver never opened; it carries the colour ring and the destructive confirm.
+ *
+ * THE MACHINE SCOPE IS DELIBERATELY NOT HERE, and that absence is a recorded finding rather than an oversight: it
+ * fails BOTH ARMS of this claim today, on two rows that predate the split and belong to the Button primitive rather
+ * than to the route. `Button`'s base is `whitespace-nowrap`, so at a doubled root font-size the `Advanced` trigger
+ * and the `Processing metrics` out-link overflow their own `size="block"` boxes. EVERY FIGURE HERE IS
+ * `scrollWidth` AGAINST `clientWidth` — the padding box, which is 2px inside the bounding rect these rows report —
+ * because a reader reaching for `getBoundingClientRect().width` measures 158 and 256 instead and the pairs do not
+ * reproduce: the trigger is 239 against 156, the out-link 312 against 254.
+ *
+ * AND THE SECOND ARM IS NOT CLEAN, which is what an earlier revision of this comment claimed. `justify-content:
+ * center` does split the ink either side — each row's leading icon renders at a negative left, measured −1.36 on the
+ * trigger and −25.47 on the out-link — but splitting it does not keep the right half inside 320, and `scrollWidth`
+ * hides that because it clips start-side overflow: the real ink is `clientWidth` plus TWICE the right overflow, so
+ * 322.7px in the trigger's 156px box and 370.9px in the out-link's 254px one. Driven at 320x480 DPR 2 with the root
+ * at 32px, `/settings/server` reads documentElement `scrollWidth` 345 against `clientWidth` 320 — arm one over by
+ * 25 — and TWO offenders past the right edge for arm two: `span.disclose-now` at right=321.36 inside the trigger,
+ * and `span.encore-chip` (the `internal` Badge) at right=345.48 inside the out-link, which is the element that sets
+ * the document's 345. Adding this route would therefore red on both arms, not one.
+ *
+ * `/stats`' `Party stats · safe to share` row is in the same state on the room scope (287 against 254) and passes
+ * above — but by 0.25px, not by principle: 33px of right overflow puts its Badge's right edge at 320.25, inside this
+ * file's 0.5px tolerance. Treat it as a row that has not failed YET. Cancelling the nowrap is a change to a variant
+ * every surface in the app shares, which is not a settings decision — the two rows and the primitive need one
+ * deliberate fix, and then this test.
+ */
+test('/settings/you reflows at 320px with the text doubled', async ({ world, page }) => {
+	await world.joinAs(page, 'ReflowYou');
+	await page.goto('/settings/you');
+	assertReflows(
+		'/settings/you',
+		await measure(page, '/settings/you', '/settings/you', () =>
+			page.locator(SEL.setting('profile-name')).waitFor({ state: 'attached' })
 		)
 	);
 });

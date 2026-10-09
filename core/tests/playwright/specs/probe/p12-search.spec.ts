@@ -370,13 +370,40 @@ test('a whitespace-only query is treated as empty', async ({ world }) => {
 	).toBe(true);
 });
 
-test('a query with no matches returns three empty buckets', async ({ world }) => {
-	// Asserted at the API level; the phone's "No results" COPY is its own test below.
+test('a query with no matches returns three empty buckets — against a source that CAN be empty', async ({ world }) => {
+	/* SCOPED TO `local`, and that is the finding rather than a convenience. Unscoped, this asserted something the
+	   default source cannot deliver: YouTube Music's `songs` filter NEVER returns empty — it substitutes a catalog
+	   entity for nonsense, so `zzzzzzznotasongzzzzzz` came back with "A Million Laughing Emoji's" by Cut Onkill and
+	   the test failed on real, correct behaviour. The same property had already silently disabled three assertions
+	   in measured-dock.spec.ts, which is why it is worth a named guard rather than a scoped query alone.
+	   Asserted at the API level; the phone's zero-match COPY is its own test below. */
 	const phone = await world.openPhone('P12-S4c');
-	const { body } = await search(phone, 'zzzzzzznotasongzzzzzz');
+	// NOT through `search()`: that helper runs its argument through `encodeURIComponent`, so a second parameter
+	// appended to the query STRING arrives as part of the query VALUE (`q=…%26source%3Dlocal`) and the source is
+	// never scoped at all. The parameter is `source`, NOT `only` — `only` is the server's local variable name
+	// for what it reads out of `source`, and guessing it from the handler's code cost two red runs here.
+	const { body } = await apiGet<SearchBody>(
+		phone,
+		`/api/search?q=${encodeURIComponent('zzzzzzznotasongzzzzzz')}&source=local`
+	);
 	expect(
 		body.ready.length === 0 && body.processing.length === 0 && body.results.length === 0,
-		`a query with no matches must return three empty arrays. body=${JSON.stringify(body).slice(0, 200)}`
+		`a local query with no matches must return three empty arrays. body=${JSON.stringify(body).slice(0, 200)}`
+	).toBe(true);
+});
+
+test('the default source never returns empty, and that is recorded rather than asserted away', async ({ world }) => {
+	/* THE NEGATIVE CONTROL for the test above, and for every future "no results" assertion. YouTube Music is the
+	   default source and its `songs` filter always substitutes something, so a zero-match UI state is UNREACHABLE
+	   through it. Pinned so that a later change to the default — or to the filter — shows up here as a red test and
+	   a decision, rather than as three gate assertions quietly ceasing to run. */
+	const phone = await world.openPhone('P12-S4d');
+	const { body } = await search(phone, 'zzzzzzznotasongzzzzzz');
+	expect(
+		body.results.length > 0,
+		'the ytmusic songs filter is expected to substitute a result for nonsense. If this is now EMPTY the ' +
+			'substitution behaviour has changed, and the scoped test above plus the dock gate can both be widened. ' +
+			`body=${JSON.stringify(body).slice(0, 200)}`
 	).toBe(true);
 });
 
@@ -635,11 +662,14 @@ test('every song row exposes exactly one queueing action, and it matches the row
 	).toBe(true);
 });
 
-// KNOWN LIVE DEFECT. The copy is only correct for a broken install, but it shows for any legitimate zero-match
-// query: src/routes/+page.svelte renders "No results. YouTube search needs yt-dlp on the server." whenever both
-// result groups are empty, with no test of whether yt-dlp is actually missing. REMOVE THE ANNOTATION once the
-// notice is conditioned on the resolver's real state.
-test.fail(
+/* ANNOTATION REMOVED, the defect is gone. It read: "The copy is only correct for a broken install, but it shows
+   for any legitimate zero-match query — src/routes/+page.svelte renders 'No results. YouTube search needs yt-dlp
+   on the server.' whenever both result groups are empty, with no test of whether yt-dlp is actually missing."
+   The phone rebuild rewrote that zero state when `/` became the Sing tab, and the string is now absent from the
+   route entirely (`grep -c 'needs yt-dlp' src/routes/+page.svelte` → 0). Playwright reported this as "Expected to
+   fail, but passed", which is the only reason a stale `test.fail` ever surfaces — it is otherwise a permanent
+   green that asserts nothing. */
+test(
 	'the no-results copy must not blame yt-dlp for a legitimate zero-match query',
 	{
 		annotation: {

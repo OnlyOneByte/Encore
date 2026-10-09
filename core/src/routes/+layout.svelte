@@ -49,6 +49,8 @@
 	let durationSec = $state(0);
 	let hasSong = $state(false);
 	let canStart = $state(false);
+	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
+	let queueCount = $state(0);
 
 	onMount(() => {
 		const sync = () => {
@@ -72,6 +74,7 @@
 			   told the truth about the same entry ("Making karaoke…" with a progress bar) and the dock contradicted it.
 			   `nextPlayableEntryId` is the SAME predicate the server's `nextPlayable` uses, so the strip can no longer
 			   promise a turn the server will skip. */
+			queueCount = room.entries.filter((e) => e.status === 'queued').length;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -87,7 +90,7 @@
 	   remounted across a client-side navigation — `onMount` therefore ran exactly once, on the surface first loaded.
 	   Arriving at a phone surface from a non-phone one left `connect()` never called and the remote DEAD (no socket,
 	   no queue, no band) until a hard reload. Both paths are real and shipped: `/admin`'s back link goes to `/`, and
-	   `/metrics`'s goes to `/settings`. Keyed on `isPhoneSurface`, which is derived from the pathname, so the arrival
+	   `/metrics`'s goes to the machine scope of settings. Keyed on `isPhoneSurface`, which is derived from the pathname, so the arrival
 	   itself is what triggers it. Still gated, for the original reason: an ungated connect would open a second
 	   `role=phone` socket on /tv. `connect()` is idempotent, so re-running on any navigation within the phone
 	   surfaces is a no-op rather than a second socket. */
@@ -174,6 +177,7 @@
 			durationSec={durationSec}
 			hasSong={hasSong}
 			canStart={canStart}
+			queueCount={queueCount}
 			onrestart={() => room.command({ cmd: 'restart' })}
 			ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
 			onskip={() => room.command({ cmd: 'skip' })}

@@ -34,7 +34,12 @@ function strip(source: string): string {
 }
 
 const guidingTrack = strip(read('src/lib/components/GuidingTrack.svelte'));
-const settings = strip(read('src/routes/settings/+page.svelte'));
+/* `/settings` IS THREE SCOPE ROUTES — the room scope at `/settings`, plus `/settings/you` and `/settings/server` —
+   so the surface's labels are read as the three files joined. `read` throws when a subject is gone, so a renamed or
+   deleted scope reds here rather than quietly shrinking the census below. */
+const settings = ['+page.svelte', 'you/+page.svelte', 'server/+page.svelte']
+	.map((f) => strip(read(`src/routes/settings/${f}`)))
+	.join('\n');
 const joinLanding = strip(read('src/lib/components/JoinLanding.svelte'));
 const colourRing = strip(read('src/lib/components/ColourRing.svelte'));
 const codeEntry = strip(read('src/lib/components/CodeEntry.svelte'));
@@ -49,14 +54,15 @@ function fieldLabelTexts(source: string): string[] {
 				.replace(/\s+/g, ' ')
 				.trim()
 		)
-		.filter((text) => text !== '{label}'); // the `selectField` snippet's own hole, counted through its callers
+		.filter((text) => text !== '{label}'); // `SelectField`'s own hole, were this ever pointed at that component
 }
 
-/** The label argument of every `{@render selectField(id, label, …)}` — the second quoted string in the call. */
+/** The `label` of every `<SelectField>` — `$lib/ui/SelectField.svelte` is the one registry-backed select shape, and
+ *  it renders a real `<Field.Label>` whose text its caller supplies. */
 function selectFieldLabels(source: string): string[] {
-	return [...source.matchAll(/@render selectField\(([\s\S]{0,300}?)\)/g)].map(
-		(m) => [...m[1]!.matchAll(/'([^']*)'/g)].map((q) => q[1]!)[1]!
-	);
+	return [...source.matchAll(/<SelectField\b[\s\S]{0,400}?\/>/g)]
+		.map((m) => m[0].match(/label="([^"]*)"/)?.[1])
+		.filter((label): label is string => label !== undefined);
 }
 
 test("GuidingTrack's rail label wears the field primitive's own dress, with no eyebrow inside it", () => {
@@ -140,7 +146,8 @@ test('the section register never lands on a field label, in CSS or inline', () =
 	}
 	// A ZERO IS ONLY WORTH SOMETHING IF THE SCAN FOUND ANYTHING, so the carrier count is asserted as a FLOOR and not
 	// as a tally. A markup idiom change that made `labelSubtrees` match nothing would otherwise pass silently
-	// forever. Measured on this tree: 19 carriers across five files, /settings holding fifteen of them.
+	// forever. Re-derived on this tree: 20 carriers across nine files, the three /settings scope routes holding
+	// fourteen of them and `SelectField` — the one shape all fourteen selects render through — holding one.
 	expect(carriers).toBeGreaterThanOrEqual(5);
 	expect(offenders).toEqual([]);
 
@@ -204,7 +211,7 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 });
 
 test("the second person marks the singer's own two values, on both surfaces that edit them", () => {
-	// `/settings`' You card, which was the divergent site on both strings.
+	// The You scope's card, which was the divergent site on both strings.
 	expect(settings).toContain('<Field.Label for="profile-name">Your name</Field.Label>');
 	expect(settings).toMatch(/<ColourRing[\s\S]{0,80}label="Your color"/);
 	// The join screen's identity pane, which already read this way.
@@ -224,18 +231,19 @@ test("the second person marks the singer's own two values, on both surfaces that
 test('the field-label census is 33: 4 possessive, 29 bare, on exactly the two surfaces that edit them', () => {
 	// Every label the app renders through either carrier, counted where it is WRITTEN.
 	const census = [
-		...fieldLabelTexts(settings), // every label /settings spells inline
-		...selectFieldLabels(settings), // every label it renders through its `selectField` snippet
+		...fieldLabelTexts(settings), // every label the three scope routes spell inline
+		...selectFieldLabels(settings), // every label they render through `SelectField`
 		...fieldLabelTexts(guidingTrack), // the rail label, now the primitive's own text
 		'Your name', // JoinLanding's `.control-label` over its wrapped Input
 		'Room code', // CodeEntry's `.control-label`, its one call site passing the default's own wording
-		'Your color', // ColourRing on /settings
+		'Your color', // ColourRing on the You scope
 		'Your color' // ColourRing on the join screen
 	];
 
-	// THE TOTAL, re-derived on this tree and unmoved by the phone rebuild: 14 spelled inline on /settings, 14 more
-	// through its `selectField` snippet, GuidingTrack's rail label, and the four written below. The drawer carried no
-	// field label, so deleting it could not move this — which is why the figure is the same 33 it was before.
+	// THE TOTAL, re-derived on this tree and unmoved by either the phone rebuild or the settings split: 14 spelled
+	// inline across the three scope routes, 14 more through `SelectField`, GuidingTrack's rail label, and the four
+	// written below. Splitting one route into three moved labels between FILES and added none, which is why the
+	// figure is the same 33 it was before — and why this census reads the three as one surface.
 	expect(census).toHaveLength(33);
 
 	const possessive = census.filter((text) => /^Your\b/.test(text));
@@ -244,10 +252,10 @@ test('the field-label census is 33: 4 possessive, 29 bare, on exactly the two su
 	   change that should force this rule to be re-read.
 	   WHICH DIRECTION THIS ASSERTION ACTUALLY HOLDS, measured rather than assumed: the last four census entries are
 	   WRITTEN here, not read from the tree, because neither `ColourRing` nor `JoinLanding`'s wrapped `Input` nor
-	   `CodeEntry` renders a `<Field.Label>` or the `selectField` snippet, so the two readers above cannot reach them.
+	   `CodeEntry` renders a `<Field.Label>` or a `<SelectField>`, so the two readers above cannot reach them.
 	   So this test proves only the OUTWARD direction — nothing else in the two readable carriers is possessive. The
 	   inward direction (those four strings really being what the four sites pass) is held by the test ABOVE, which
-	   reads each site's source; changing `/settings`' `label="Your color"` to `"Color"` reds that one and not this
+	   reads each site's source; changing the You scope's `label="Your color"` to `"Color"` reds that one and not this
 	   one. Two tests, one rule, and neither alone is the whole of it. */
 	expect(possessive).toEqual(['Your name', 'Your name', 'Your color', 'Your color']);
 	// And the bare remainder, which is also the non-vacuity check: the census has to have found the bare labels too,

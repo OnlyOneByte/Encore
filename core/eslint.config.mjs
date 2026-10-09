@@ -84,6 +84,30 @@ export default tseslint.config(
 		}
 	},
 
+	// RUNE MODULES (`*.svelte.ts`), which `svelte.configs.recommended` above claims with the Svelte parser alone — so
+	// the first one in the tree failed to parse at its first `interface`, before any rule ran. The fix is the nested
+	// TypeScript parser, the same pairing the `.svelte` block uses, plus the type-aware rules that block drops: the
+	// typed-source block at the top of this file matches these files too, but flat config applies every matching block
+	// and the LAST `languageOptions` wins, so the rules have to be restated here rather than inherited.
+	// NOTE FOR ANYONE EDITING THESE COMMENTS: a glob holding `*` followed by `/` cannot go in a `/* */` comment — it
+	// closes it, and eslint then dies with a parse error in its own config.
+	{
+		files: ['**/*.svelte.ts'],
+		languageOptions: {
+			parser: svelteParser,
+			parserOptions: {
+				parser: tseslint.parser,
+				projectService: true,
+				extraFileExtensions: ['.svelte']
+			},
+			globals: { ...globals.browser, ...globals.node }
+		},
+		rules: {
+			'@typescript-eslint/no-floating-promises': 'error',
+			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
+		}
+	},
+
 	// The test tree has its own tsconfig, so type-aware rules apply exactly as they do to source — an
 	// unawaited promise in a test is as real a defect as one in production. It needs its own block to
 	// carry the repo's `^_` convention for a deliberately-unused binding.

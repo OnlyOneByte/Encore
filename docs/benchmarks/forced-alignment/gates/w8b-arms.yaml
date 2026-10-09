@@ -1,0 +1,168 @@
+# W8b's ARMS RATCHET: the rule that `word-aligned-not-down` was standing in for. Read on any sweep whose rows
+# carry `words.unaligned_errors` (W8b onward) — the DEFAULT, to hold the floors, and an arms-on A/B, to judge it.
+# Narrative, every number below and the four words that decided the re-judgement: README, "W8b: re-judging
+# `word-aligned-not-down`". The per-word instrument is `scripts/word_provenance.py`.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --tag w8b-arms-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8b-arms.yaml
+#
+# THE COMPARE BASE IS THE MATCHING LEVEL'S W8b DEFAULT ROW (`results/w8b-{run_align,time_text}.json`), which is
+# the first default sweep whose rows carry the published onsets on BOTH sides of the comparison. Section 4 reads
+# the baseline's `word_published_*`, so a pre-W8b base cannot serve it: against `w8a-band-run_align` /
+# `w8a-base-time_text` the file reads 69 PASS, 8 ERROR, 0 FAIL — the same fail-loud direction section 2 has on a
+# pre-W8b RUN, and not a regression.
+#
+# WHY THIS FILE EXISTS. `gates/w8a.yaml`'s `word-aligned-not-down-{truth,jit}` rejects `band-reopen` on a COUNT
+# of labels: 5378 -> 5373 words called aligned at `truth`, 5102 -> 5096 at `jit`, with `aligned + interpolated`
+# identical in every mode and every aligned-word accuracy column rising. The owner's call was to treat that as
+# provenance bookkeeping IF the words themselves were no worse. They are not all no worse. Of the 30 words the
+# two sweeps disagree about, 24 land on exactly 0.0 ms in the six modes whose claimed times ARE the truth times
+# (so an adoption cannot score worse there, whatever the audio says), 2 are real `jit` gains (783.9 -> 85.8 and
+# 908.8 -> 186.5 ms), and **4 at `jit` moved from inside +-100 ms to outside +-300**: +317, +322, +342 and
+# +273 ms. Better by mode: truth 5, headers 5, extraverse 5, credit 4, drop20 4, drop50 1, jit 2 = 26, against
+# 4 worse. The rules below judge that directly, so a future arm is read on where its words landed and not on
+# what they were called.
+#
+# ONE FILE, BOTH LEVELS: every floor in section 2 reads the same on `run_align` and `time_text`. `headers` and
+# `drop50` are the two modes that do NOT (their paired-word denominators differ between levels), so section 4
+# holds them against the baseline instead, which needs no per-level constant; their per-level numbers are in
+# section 4's header and in the README.
+#
+# MEASURED READINGS, 76 rules (77 with `run_gates`' built-in no-error-rows), scored on `_runs/w8a-def-ra` and
+# `_runs/w8ar2-arms-ra` re-read with `words.unaligned_errors` derived from their own recorded documents — every
+# cell's aligned half reproducing its run's committed `word_aligned` / +-100 / +-300 / AAE exactly, and every
+# row's derived count equal to its recorded `word_interpolated`. THE DEFAULT READS 69/69 on sections 1-3 (the
+# floors ARE its reading, against the committed W7 base and against itself).
+# CONFIRMED ON A LIVE SWEEP, 2026-10-05: W8b's corpus sweep is the first whose rows carry the onsets, and the
+# shipped default reads **77/77 at BOTH forced levels** against the matching level's own W8b row
+# (`results/w8b-{run_align,time_text}.json`, code `4804fae43eb43d7c`, 1088 cases each) — and 69 PASS / 8 ERROR
+# against the pre-W8b bases, the ERRORs being section 4 reading a baseline that recorded no published onsets.
+# So the floors did not move; pinned in
+# `test_the_w8b_arms_floors_are_read_on_the_first_live_rows_that_carry_the_onsets`.
+# THE ARMS READ 66/69 on sections 1-3 — `published-pm100-jit` 76.59
+# against 76.64, `published-pm250-jit` 89.37 against 89.40, `published-pm300-jit` 90.51 against 90.54, and
+# nothing else. Four words, named in the README; the arm's `headers` (5 words) and `drop50` (1) moves are all
+# BETTER, which is what section 4 would have read had an arms row carried the onsets. A pre-W8b run reads 21
+# PASS and 48 ERROR, which is the fail-loud direction: no row carries the onsets, so no floor may be called
+# clear.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 1) MUST: no word left the accounting ───────────────────────────────────────────────────────────────
+# `aligned + interpolated` is every truth word a published line paired, however it was timed, so a change may
+# move words between the two columns and may not lose one. Jamendo reads 5689 in 12 of the 14 timed modes
+# (4555 at `drop20`, 2572 at `drop50` and 5683 at `extraverse`), and read the same in W7, in W8a's default and
+# with both arms on — so this is a real invariant and not a restatement of one sweep.
+word-accounting-whole-truth: truth.jamendo.word_aligned + truth.jamendo.word_interpolated == base.truth.jamendo.word_aligned + base.truth.jamendo.word_interpolated
+word-accounting-whole-jit: jit.jamendo.word_aligned + jit.jamendo.word_interpolated == base.jit.jamendo.word_aligned + base.jit.jamendo.word_interpolated
+word-accounting-whole-headers: headers.jamendo.word_aligned + headers.jamendo.word_interpolated == base.headers.jamendo.word_aligned + base.headers.jamendo.word_interpolated
+word-accounting-whole-credit: credit.jamendo.word_aligned + credit.jamendo.word_interpolated == base.credit.jamendo.word_aligned + base.credit.jamendo.word_interpolated
+word-accounting-whole-extraverse: extraverse.jamendo.word_aligned + extraverse.jamendo.word_interpolated == base.extraverse.jamendo.word_aligned + base.extraverse.jamendo.word_interpolated
+word-accounting-whole-drop20: drop20.jamendo.word_aligned + drop20.jamendo.word_interpolated == base.drop20.jamendo.word_aligned + base.drop20.jamendo.word_interpolated
+word-accounting-whole-drop50: drop50.jamendo.word_aligned + drop50.jamendo.word_interpolated == base.drop50.jamendo.word_aligned + base.drop50.jamendo.word_interpolated
+word-accounting-whole-off05: off05.jamendo.word_aligned + off05.jamendo.word_interpolated == base.off05.jamendo.word_aligned + base.off05.jamendo.word_interpolated
+word-accounting-whole-off15: off15.jamendo.word_aligned + off15.jamendo.word_interpolated == base.off15.jamendo.word_aligned + base.off15.jamendo.word_interpolated
+word-accounting-whole-off3: off3.jamendo.word_aligned + off3.jamendo.word_interpolated == base.off3.jamendo.word_aligned + base.off3.jamendo.word_interpolated
+word-accounting-whole-offm1: offm1.jamendo.word_aligned + offm1.jamendo.word_interpolated == base.offm1.jamendo.word_aligned + base.offm1.jamendo.word_interpolated
+word-accounting-whole-tempo098: tempo098.jamendo.word_aligned + tempo098.jamendo.word_interpolated == base.tempo098.jamendo.word_aligned + base.tempo098.jamendo.word_interpolated
+word-accounting-whole-tempo102: tempo102.jamendo.word_aligned + tempo102.jamendo.word_interpolated == base.tempo102.jamendo.word_aligned + base.tempo102.jamendo.word_interpolated
+word-accounting-whole-blind: blind.jamendo.word_aligned + blind.jamendo.word_interpolated == base.blind.jamendo.word_aligned + base.blind.jamendo.word_interpolated
+
+# ── 2) MUST: no mode's published onsets moved away from truth ──────────────────────────────────────────
+# `word_published_*` scores the SAME onsets as `word_pm100` / `word_pm300` / `word_aae_ms` with the provenance
+# flag ignored, over the fixed `aligned + interpolated` denominator — so re-labelling a word cannot move it, and
+# a published start that moved 300 ms shows up whether or not its label changed. Every floor is the shipped
+# DEFAULT's own reading (`_runs/w8a-def-ra`, verified identical in `_runs/w8a-def-tt`), so these are ratchets:
+# the default sits exactly on them. One Jamendo word is 0.018 points of a +-N rule, which is the resolution
+# these are read at; the AAE caps round to 0.1 ms and are a coarse backstop, not the sensitive rule.
+# ERROR IS THE POINT on a pre-W8b run: rows without `words.unaligned_errors` read the family as None, and an
+# unreadable floor fails rather than passing.
+published-pm100-truth: truth.jamendo.word_published_pm100 >= 82.79
+published-pm250-truth: truth.jamendo.word_published_pm250 >= 94.43
+published-pm300-truth: truth.jamendo.word_published_pm300 >= 95.36
+published-aae-truth: truth.jamendo.word_published_aae_ms <= 86.6
+published-pm100-jit: jit.jamendo.word_published_pm100 >= 76.64
+published-pm250-jit: jit.jamendo.word_published_pm250 >= 89.40
+published-pm300-jit: jit.jamendo.word_published_pm300 >= 90.54
+published-aae-jit: jit.jamendo.word_published_aae_ms <= 116.0
+published-pm100-credit: credit.jamendo.word_published_pm100 >= 82.25
+published-pm250-credit: credit.jamendo.word_published_pm250 >= 94.04
+published-pm300-credit: credit.jamendo.word_published_pm300 >= 94.96
+published-aae-credit: credit.jamendo.word_published_aae_ms <= 89.5
+published-pm100-extraverse: extraverse.jamendo.word_published_pm100 >= 82.00
+published-pm250-extraverse: extraverse.jamendo.word_published_pm250 >= 93.61
+published-pm300-extraverse: extraverse.jamendo.word_published_pm300 >= 94.55
+published-aae-extraverse: extraverse.jamendo.word_published_aae_ms <= 88.8
+published-pm100-drop20: drop20.jamendo.word_published_pm100 >= 77.63
+published-pm250-drop20: drop20.jamendo.word_published_pm250 >= 90.08
+published-pm300-drop20: drop20.jamendo.word_published_pm300 >= 91.26
+published-aae-drop20: drop20.jamendo.word_published_aae_ms <= 162.9
+published-pm100-off05: off05.jamendo.word_published_pm100 >= 82.91
+published-pm250-off05: off05.jamendo.word_published_pm250 >= 94.48
+published-pm300-off05: off05.jamendo.word_published_pm300 >= 95.36
+published-aae-off05: off05.jamendo.word_published_aae_ms <= 86.8
+published-pm100-off15: off15.jamendo.word_published_pm100 >= 82.91
+published-pm250-off15: off15.jamendo.word_published_pm250 >= 94.48
+published-pm300-off15: off15.jamendo.word_published_pm300 >= 95.36
+published-aae-off15: off15.jamendo.word_published_aae_ms <= 86.8
+published-pm100-off3: off3.jamendo.word_published_pm100 >= 82.91
+published-pm250-off3: off3.jamendo.word_published_pm250 >= 94.48
+published-pm300-off3: off3.jamendo.word_published_pm300 >= 95.36
+published-aae-off3: off3.jamendo.word_published_aae_ms <= 86.8
+published-pm100-offm1: offm1.jamendo.word_published_pm100 >= 82.91
+published-pm250-offm1: offm1.jamendo.word_published_pm250 >= 94.48
+published-pm300-offm1: offm1.jamendo.word_published_pm300 >= 95.36
+published-aae-offm1: offm1.jamendo.word_published_aae_ms <= 86.7
+published-pm100-tempo098: tempo098.jamendo.word_published_pm100 >= 82.88
+published-pm250-tempo098: tempo098.jamendo.word_published_pm250 >= 94.53
+published-pm300-tempo098: tempo098.jamendo.word_published_pm300 >= 95.39
+published-aae-tempo098: tempo098.jamendo.word_published_aae_ms <= 86.2
+published-pm100-tempo102: tempo102.jamendo.word_published_pm100 >= 82.88
+published-pm250-tempo102: tempo102.jamendo.word_published_pm250 >= 94.55
+published-pm300-tempo102: tempo102.jamendo.word_published_pm300 >= 95.39
+published-aae-tempo102: tempo102.jamendo.word_published_aae_ms <= 86.2
+published-pm100-blind: blind.jamendo.word_published_pm100 >= 82.81
+published-pm250-blind: blind.jamendo.word_published_pm250 >= 93.74
+published-pm300-blind: blind.jamendo.word_published_pm300 >= 94.38
+published-aae-blind: blind.jamendo.word_published_aae_ms <= 253.6
+
+# ── 3) MUST: the aligned-word columns hold, and the re-labelling stays small ───────────────────────────
+# Section 2 is blind to provenance ON PURPOSE. What it cannot see alone is a change that buys a published-onset
+# gain by declaring most of the corpus interpolated, so the aligned-word floors are re-stated here (W8a's own,
+# `gates/w8a.yaml` §3, so this file can be read alone) and the re-labelling itself is BOUNDED rather than
+# forbidden: the owner's W8b decision is that a small reclassification is bookkeeping, and the bound says how
+# small. 28 words is 0.5 % of Jamendo's 5689 paired words; `band-reopen`, the arm this was written for, moves 5
+# at `truth` and 6 at `jit`, and a change past this bound is a different timing policy, not a provenance edit.
+# `word_pco300` is deliberately NOT floored here: it counts an unaligned word as not-correct, so it falls on a
+# re-labelling that moved nothing (the arm reads 91.78 -> 91.76 at `truth`), which is the verdict W8b refused.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
+word-aae-truth: truth.jamendo.word_aae_ms <= 71.1
+highlight-truth: truth.jamendo.highlight >= 81.4
+relabelled-at-most-truth: truth.jamendo.word_interpolated <= base.truth.jamendo.word_interpolated + 28
+relabelled-at-most-jit: jit.jamendo.word_interpolated <= base.jit.jamendo.word_interpolated + 28
+
+# ── 4) MUST: the two modes section 2 cannot floor are held against the BASELINE ────────────────────────
+# `headers` and `drop50` are the modes whose paired-word denominators differ between the two forced levels —
+# `headers` aligns 5378 Jamendo words at `run_align` and 5240 at `time_text`, `drop50` 2172 and 2459 — so one
+# absolute floor is either dead at one level or wrong at the other. The lower of the two readings is no ratchet
+# either: at `headers` it is 2.58 points of slack (82.79 against 80.21 at +-100), 147 Jamendo words, where the
+# arm this file judges moves FIVE. And these are two of the seven modes the README's table shows the arm firing
+# in, so leaving them to section 1's accounting — which a pure retime never violates — is the blindness this
+# file exists to close (review r2-correctness-4). A base-relative rule needs no per-level constant, holds at
+# both levels and bites at one word. BOTH SIDES MUST CARRY THE FAMILY: read against a baseline recorded before
+# W8b these eight are ERROR, the same fail-loud direction section 2 has on a pre-W8b run.
+# MEASURED: the default's `headers` 82.79 / 94.43 / 95.36 / 86.6 ms at `run_align` and 80.21 / 92.09 / 92.99 /
+# 103.7 at `time_text`; `drop50` 66.80 / 77.99 / 79.47 / 657.5 and 64.85 / 75.31 / 76.67 / 931.9. Both are
+# identities against their own level's row; the teeth are pinned in
+# `test_the_w8b_arms_file_judges_where_words_landed_and_not_what_they_were_called`.
+published-held-pm100-headers: headers.jamendo.word_published_pm100 >= base.headers.jamendo.word_published_pm100
+published-held-pm250-headers: headers.jamendo.word_published_pm250 >= base.headers.jamendo.word_published_pm250
+published-held-pm300-headers: headers.jamendo.word_published_pm300 >= base.headers.jamendo.word_published_pm300
+published-held-aae-headers: headers.jamendo.word_published_aae_ms <= base.headers.jamendo.word_published_aae_ms
+published-held-pm100-drop50: drop50.jamendo.word_published_pm100 >= base.drop50.jamendo.word_published_pm100
+published-held-pm250-drop50: drop50.jamendo.word_published_pm250 >= base.drop50.jamendo.word_published_pm250
+published-held-pm300-drop50: drop50.jamendo.word_published_pm300 >= base.drop50.jamendo.word_published_pm300
+published-held-aae-drop50: drop50.jamendo.word_published_aae_ms <= base.drop50.jamendo.word_published_aae_ms

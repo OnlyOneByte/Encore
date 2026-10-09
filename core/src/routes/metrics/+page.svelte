@@ -90,7 +90,10 @@
 
 <section class="metrics">
 	<!-- Keep `title="Processing metrics"` a literal here and on <main>: tests/playwright/world/selectors.ts anchors it. -->
-	<PageHeader title="Processing metrics" back={{ href: '/settings', label: 'Back to settings' }} />
+	<!-- Back to the SCOPE that links here, not to `/settings`: this page's one door is on the machine scope, and a bare
+		`/settings` resolved to the room scope — so leaving from the machine settings and tapping back landed somewhere
+		else, measured. -->
+	<PageHeader title="Processing metrics" back={{ href: '/settings/server', label: 'Back to settings' }} />
 
 	<main aria-label="Processing metrics">
 		{#if failed}

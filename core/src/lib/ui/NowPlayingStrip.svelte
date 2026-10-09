@@ -30,6 +30,7 @@
 		durationSec,
 		hasSong,
 		canStart,
+		queueCount,
 		onrestart,
 		ontoggleplay,
 		onskip
@@ -42,14 +43,28 @@
 		durationSec: number;
 		hasSong: boolean;
 		canStart: boolean;
+		queueCount: number;
 		onrestart: () => void;
 		ontoggleplay: () => void;
 		onskip: () => void;
 	} = $props();
 
 	const fraction = $derived(progressFraction(elapsedSec, durationSec));
-	// `hasSong` is a current entry; `canStart` is a queue with nothing playing yet. Either is something to act on.
-	const live = $derived(hasSong || canStart);
+	/* THREE STATES, not two, and getting this to two cost a real defect in each direction.
+	   PRESENCE is `hasSong || queueCount > 0`: anything in the rotation means the dock has something to say. The
+	   first version keyed presence on `canStart` instead — a PLAYABLE queued song — which fixed the dead-bright-button
+	   half and broke the other: queueing a song starts its stem separation, so for the minute that takes the dock
+	   went BLANK immediately after the guest's one action, and the gate that drives exactly that state measured no
+	   strip at all.
+	   ENABLEMENT is separate and is `hasSong || canStart`. `canStart` is the server's own `nextPlayable` predicate,
+	   so the play button is live only when a tap will actually start something. Before, it was always enabled: with
+	   a queued-but-cooking song the server's `play` handler sets `isPlaying: false`, emits no error and raises no
+	   toast, so the brightest element on the screen silently did nothing — the exact fault this component's header
+	   claims to have removed.
+	   And the COPY follows enablement rather than presence, because a strip that says "Ready when you are" over a
+	   song that is still cooking is the same lie told in words. */
+	const live = $derived(hasSong || queueCount > 0);
+	const canPlay = $derived(hasSong || canStart);
 </script>
 
 {#if live}
@@ -73,7 +88,7 @@
 				<span class="sep" aria-hidden="true">·</span>
 				<span class="song">{title ?? 'Untitled'}</span>
 			{:else}
-				<span class="who">Ready when you are</span>
+				<span class="who">{canPlay ? 'Ready when you are' : 'Making karaoke…'}</span>
 			{/if}
 		</a>
 
@@ -81,7 +96,7 @@
 			<button class="btn" onclick={onrestart} disabled={!hasSong} aria-label="Restart">
 				<Icon name="restart" />
 			</button>
-			<button class="btn primary" onclick={ontoggleplay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+			<button class="btn primary" onclick={ontoggleplay} disabled={!canPlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
 				<Icon name={isPlaying ? 'pause' : 'play'} />
 			</button>
 			<button class="btn" onclick={onskip} disabled={!hasSong} aria-label="Skip">

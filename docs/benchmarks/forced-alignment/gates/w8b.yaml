@@ -1,0 +1,282 @@
+# W8b's WAVE GATE: the 28-SONG ACCURACY BASELINE, ratcheted — the first gate file in this build whose accuracy
+# rules are counted over the songs whose truth its own audio corroborates (PLAN-alignment-v3 W8b; owner decision
+# 1 of the wave). `gates/w8a.yaml` keeps working untouched over all 32; this file is the other half of the same
+# sweep. Narrative, the measurement behind the exclusion and the per-song numbers: README, "W8b: the corpus's
+# own truth, measured, and the 28 songs that score" and "What the four carried, and what the exclusion does NOT
+# move". The exclusion itself is DATA, not a song list in a gate file: `corpus-truth.json` + `e2e_lib`'s
+# `TruthQuality.exclusion`, re-derived and checked on every load.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --tag w8b-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-base-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8b.yaml
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --tag w8b-tt \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-base-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8b.yaml
+#
+# THE BASELINE IS W8a's SHIPPED DEFAULT RE-SUMMARISED, not a re-run: `results/w8b-base-{run_align,time_text}
+# .json` are `_runs/w8a-def-{ra,tt}/rows.jsonl` put back through the W8b harness, **0 model seconds**, which is
+# the only way a `base.MODE.scored.X` rule can read a group that did not exist when W8a swept. Their `all`
+# column reproduces `results/w8a-{run_align,time_text}.json` exactly. The committed pre-W8b rows KEEP THEIR
+# BYTES, so every earlier recorded gate reading stays reproducible.
+#
+# ONE FILE, BOTH LEVELS, as `w8a.yaml` is: every absolute floor below is the LOWER of the two levels' readings
+# and every cap the HIGHER, so a rule that bites bites on both. Where the two differ the pair is named in the
+# comment above it. `--sync-mode lines` needs its own file (`w8b-lines.yaml`): at that rung no line is graded
+# and no word is scored, so half of what is below would be an ERROR there.
+#
+# WHY THE 28-SONG BASIS IS THE HONEST ONE, in one measurement. Four `truth-lines.json` files lead their own
+# audio: bad-guy by 834 ms (median over 27 of 79 line starts landing in stem silence; envelope lag +780),
+# tfr-chosen 540 (11 of 37; +460), believer 460 (15 of 73; +360), and numb by +620 ms of envelope lag at r 0.702
+# — the reading that does not come from the aligner — corroborated by the forced rung's own blind decode at
+# +690 ms (that one IS the aligner's median residual against the sheet), on a ground the silence arbiter cannot
+# take (`unusable: continuous-vocal`; its stem is never quiet at a truth start). An aligner that
+# places those words where they are actually SUNG scores badly against those sheets while being right about the
+# recording, so the four are excluded from ACCURACY and kept in the corpus for ROBUSTNESS. They carried 119 of
+# the 163 `truth` band lines (73 %), 21 of the 53 missing, and 94 of 94 `high`-but-wrong lines — every one.
+# bad-guy's +780 lag reads r 0.19 and corroborates nothing, so its exclusion rests on the silence arbiter at
+# TWICE each of its own bars (`TruthQuality.silence_stands_alone`); believer's and tfr-chosen's lags do
+# corroborate, at r 0.47 and 0.61. README, "The rule, and what each conjunct refuses".
+#
+# MEASURED READINGS, 153 rules (154 with `run_gates`' built-in no-error-rows). The W8b sweep reads **154/154 at
+# BOTH forced levels** (`results/w8b-{run_align,time_text}.json`, 2026-10-05, code `4804fae43eb43d7c`), and so
+# does each level's own baseline — the floors are its reading. NOT VACUOUS: on the ARMS-ON rows the identity half
+# goes red on seven rules (`docs-unchanged-{truth,jit,drop50}`, `onsets-unchanged-{truth,jit}`,
+# `no-song-gains-{truth,jit}`) while every accuracy floor passes, which is the shape of change this file is for;
+# pinned in `test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved`. Readings and the per-song
+# table: README, "W8b: the sweep, read both ways". Those two readings were taken OFFLINE
+# (`_tools/offline_gates.py w8b.yaml results/w8b-LEVEL.json results/w8b-base-LEVEL.json`) because one sweep
+# takes one `--compare` and `gates/w8a.yaml` was read inline against ITS base on the same rows.
+#
+# NOTHING IS HIDDEN BY THE EXCLUSION, and §1 is the rule that says so rather than the claim: all 32 songs still
+# run, their lines still pool into `all`, `gross` is still gated over 32, and the published documents are still
+# compared song by song against the baseline's digests. A wave that crashed on bad-guy, refused it, or moved its
+# bytes is still caught.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 1) MUST: the exclusion removes songs from SCORING and from nothing else ─────────────────────────────
+# `MODE.X` with no group is the 32-song `all` pool; `MODE.scored.X` is the 28. Both are gated, which is the
+# point of the wave: coverage and accuracy are separate readings of one sweep.
+all-songs-still-run-truth: truth.cases == 32
+all-songs-still-run-blind: blind.cases == 32
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-blind: blind.scored.cases == 28
+# ... and the four excluded songs still SCORE INTO `all`: `all` lines minus `scored` lines is what they
+# contribute, 203 at `run_align` and 209 at `time_text`. A floor, not an equality, because the two levels
+# publish different line counts on them; 0 would mean they had stopped being measured.
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 203
+excluded-still-measured-jit: jit.scored - jit.scored.scored >= 203
+excluded-still-measured-blind: blind.scored - blind.scored.scored >= 203
+# ... and no published document moved. W8b changed NO file under `worker/encore_worker` (the wave's three tasks
+# are a corpus measurement, a re-judgement and a diagnosis), so every one of the 32 songs must re-publish the
+# baseline's bytes. This is the rule that makes the whole file a comparison of SCORING and not of behaviour.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-drop50: count(drop50.song.doc_changed) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed) == 0
+
+# ── 2) MUST: the 28-song accuracy baseline, as absolute floors ──────────────────────────────────────────
+# THE NUMBER THIS WAVE EXISTS TO STATE: `truth` ±500 **97.07 %** over **1504 scored lines** at `run_align`
+# (97.12 over 1526 at `time_text`), gross 0, band 44, `high_bad` 0 — against 90.45 / 1707 / band 163 /
+# `high_bad` 94 over all 32. Every floor is the shipped default's own reading, so these are ratchets and the
+# default sits exactly on them. Per-level pairs (run_align, time_text) are in each comment; the floor is the
+# lower of the two.
+pm500-scored-truth: truth.scored.pm500 >= 97.07          # 97.07 / 97.12
+pm500-scored-jit: jit.scored.pm500 >= 92.69              # 92.69 / 92.73
+pm500-scored-off05: off05.scored.pm500 >= 96.81          # 96.81 / 96.85
+pm500-scored-off15: off15.scored.pm500 >= 96.81          # 96.81 / 96.85
+pm500-scored-off3: off3.scored.pm500 >= 96.81            # 96.81 / 96.85
+pm500-scored-offm1: offm1.scored.pm500 >= 96.81          # 96.81 / 96.85
+pm500-scored-tempo098: tempo098.scored.pm500 >= 96.07    # 96.14 / 96.07
+pm500-scored-tempo102: tempo102.scored.pm500 >= 96.13    # 96.21 / 96.13
+pm500-scored-drop20: drop20.scored.pm500 >= 96.28        # 96.28 / 96.33
+pm500-scored-drop50: drop50.scored.pm500 >= 73.16        # 84.40 / 73.16
+pm500-scored-extraverse: extraverse.scored.pm500 >= 97.43  # 97.43 / 97.45
+pm500-scored-blind: blind.scored.pm500 >= 87.29          # 87.97 / 87.29
+pm500-scored-headers: headers.scored.pm500 >= 96.08      # 97.07 / 96.08
+pm500-scored-credit: credit.scored.pm500 >= 97.14        # 97.14 / 97.25
+#
+# AND THE DENOMINATOR EVERY PERCENTAGE ABOVE IS COUNTED OVER (`w8a.yaml` §4's `band-missing-not-up` precedent,
+# stated as a floor because this file's base is the default itself). A change that refuses a case or drops a
+# line as never-sung raises ±500 without placing anything better.
+scored-lines-truth: truth.scored.scored >= 1504          # 1504 / 1526
+scored-lines-jit: jit.scored.scored >= 1504
+scored-lines-off05: off05.scored.scored >= 1504
+scored-lines-off15: off15.scored.scored >= 1504
+scored-lines-off3: off3.scored.scored >= 1504
+scored-lines-offm1: offm1.scored.scored >= 1504
+scored-lines-tempo098: tempo098.scored.scored >= 1504
+scored-lines-tempo102: tempo102.scored.scored >= 1504
+scored-lines-drop20: drop20.scored.scored >= 1209        # 1209 / 1226
+scored-lines-drop50: drop50.scored.scored >= 718         # 718 / 760
+scored-lines-extraverse: extraverse.scored.scored >= 1515  # 1515 / 1530
+scored-lines-blind: blind.scored.scored >= 1504
+scored-lines-headers: headers.scored.scored >= 1504      # 1504 / 1529
+scored-lines-credit: credit.scored.scored >= 1504
+
+# ── 3) MUST: gross lines, over all 32 — robustness is not accuracy ──────────────────────────────────────
+# Deliberately counted over the WHOLE corpus and not over the 28: a line published more than a second wrong is
+# a failure whatever the reference's quality, and gating it over 28 would stop watching bad-guy. The honest
+# reading of "pooled gross stays 0 in every right-text mode" is 0 IN ELEVEN OF THE FOURTEEN, with blind /
+# drop20 / drop50 ratcheted against the baseline — `w8a.yaml` §3's own finding, carried forward unchanged.
+gross-zero-truth: truth.gross == 0
+gross-zero-jit: jit.gross == 0
+gross-zero-off05: off05.gross == 0
+gross-zero-off15: off15.gross == 0
+gross-zero-off3: off3.gross == 0
+gross-zero-offm1: offm1.gross == 0
+gross-zero-tempo098: tempo098.gross == 0
+gross-zero-tempo102: tempo102.gross == 0
+gross-zero-extraverse: extraverse.gross == 0
+gross-zero-headers: headers.gross == 0
+gross-zero-credit: credit.gross == 0
+gross-not-up-blind: blind.gross <= base.blind.gross
+gross-not-up-drop20: drop20.gross <= base.drop20.gross
+gross-not-up-drop50: drop50.gross <= base.drop50.gross
+# ... and the same count on the 28 that score, which is the new reading: `truth` 0 of 1504, and drop50's 69
+# (run_align) / 124 (time_text) are the sparse-sheet modes, ratcheted rather than floored at zero.
+gross-zero-scored-truth: truth.scored.gross == 0
+gross-zero-scored-jit: jit.scored.gross == 0
+gross-zero-scored-off05: off05.scored.gross == 0
+gross-zero-scored-tempo098: tempo098.scored.gross == 0
+gross-zero-scored-extraverse: extraverse.scored.gross == 0
+gross-zero-scored-headers: headers.scored.gross == 0
+gross-zero-scored-credit: credit.scored.gross == 0
+gross-not-up-scored-drop50: drop50.scored.gross <= base.drop50.scored.gross
+gross-not-up-scored-blind: blind.scored.gross <= base.blind.scored.gross
+
+# ── 4) MUST: the confidence grade over-claims on NOTHING that scores ────────────────────────────────────
+# A reading W8a could not state and the exclusion makes available: `high_bad` (a `high` line over 500 ms off)
+# is **0 on the 28 in twelve of the fourteen modes**, where over all 32 it is 94 at `truth` — and all 94 were
+# the four excluded songs'. What is left is `jit` (7 at run_align, 13 at time_text) and `blind` (43 at both),
+# which are pipeline readings and not truth quality. `high_gross` (over 2 s) is 0 everywhere but `blind`'s 2.
+high-bad-zero-scored-truth: truth.scored.high_bad == 0
+high-bad-zero-scored-off05: off05.scored.high_bad == 0
+high-bad-zero-scored-off15: off15.scored.high_bad == 0
+high-bad-zero-scored-off3: off3.scored.high_bad == 0
+high-bad-zero-scored-offm1: offm1.scored.high_bad == 0
+high-bad-zero-scored-tempo098: tempo098.scored.high_bad == 0
+high-bad-zero-scored-tempo102: tempo102.scored.high_bad == 0
+high-bad-zero-scored-drop20: drop20.scored.high_bad == 0
+high-bad-zero-scored-drop50: drop50.scored.high_bad == 0
+high-bad-zero-scored-extraverse: extraverse.scored.high_bad == 0
+high-bad-zero-scored-headers: headers.scored.high_bad == 0
+high-bad-zero-scored-credit: credit.scored.high_bad == 0
+high-bad-at-most-scored-jit: jit.scored.high_bad <= 13
+high-bad-at-most-scored-blind: blind.scored.high_bad <= 43
+high-gross-zero-scored-truth: truth.scored.high_gross == 0
+high-gross-zero-scored-jit: jit.scored.high_gross == 0
+high-gross-zero-scored-off05: off05.scored.high_gross == 0
+high-gross-zero-scored-off3: off3.scored.high_gross == 0
+high-gross-zero-scored-drop20: drop20.scored.high_gross == 0
+high-gross-zero-scored-drop50: drop50.scored.high_gross == 0
+high-gross-zero-scored-extraverse: extraverse.scored.high_gross == 0
+high-gross-zero-scored-headers: headers.scored.high_gross == 0
+high-gross-zero-scored-credit: credit.scored.high_gross == 0
+high-gross-at-most-scored-blind: blind.scored.high_gross <= 2
+# ... over the denominator, so "fewer bad `high` lines" cannot be bought by grading fewer lines `high`.
+high-lines-scored-truth: truth.scored.high >= 1253       # 1253 / 1260
+high-lines-scored-jit: jit.scored.high >= 672            # 672 / 770
+high-lines-scored-credit: credit.scored.high >= 1208     # 1208 / 1217
+
+# ── 5) MUST: the band still reads, and a displaced sheet still fails — on the 28-song basis ─────────────
+# W8a's blindness fix, re-read where it is now counted. `bias_ms` is the per-song MEDIAN SIGNED residual and
+# `mad_ms` its spread, so `|bias| > 250 at MAD <= 250` is "this song is coherently shifted" — the thing eight
+# waves of pooled ±500 could not see. MEASURED: over all 32 at `truth` it is **4** (believer, numb, bad-guy,
+# tfr-chosen — exactly the excluded set, which is what `w8a.yaml`'s `coherent-songs-not-pulled-truth <= 4`
+# was absorbing); over the 28 it is **0**, so this gate can be an equality and not a budget.
+# NOT VACUOUS, and the proof is the second block below: the SAME expression over all 32 songs is an EQUALITY on
+# 4 (3 at `drop20`, which has no tfr-chosen line left to shift), so a counter that silently stopped counting
+# would fail here instead of passing everywhere. `drop50` is deliberately not gated this way at all: a song can
+# finish that mode with no scored line and therefore no `bias_ms`, and a reduction over a missing value is an
+# ERROR by design (`HILA_-_Give_Me_the_Same` at `run_align`).
+coherent-shift-none-scored-truth: count((abs(truth.scored.song.bias_ms) > 250) * (truth.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-jit: count((abs(jit.scored.song.bias_ms) > 250) * (jit.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-off05: count((abs(off05.scored.song.bias_ms) > 250) * (off05.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-off15: count((abs(off15.scored.song.bias_ms) > 250) * (off15.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-off3: count((abs(off3.scored.song.bias_ms) > 250) * (off3.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-offm1: count((abs(offm1.scored.song.bias_ms) > 250) * (offm1.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-tempo098: count((abs(tempo098.scored.song.bias_ms) > 250) * (tempo098.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-tempo102: count((abs(tempo102.scored.song.bias_ms) > 250) * (tempo102.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-drop20: count((abs(drop20.scored.song.bias_ms) > 250) * (drop20.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-extraverse: count((abs(extraverse.scored.song.bias_ms) > 250) * (extraverse.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-headers: count((abs(headers.scored.song.bias_ms) > 250) * (headers.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-credit: count((abs(credit.scored.song.bias_ms) > 250) * (credit.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-blind: count((abs(blind.scored.song.bias_ms) > 250) * (blind.scored.song.mad_ms <= 250)) == 0
+#
+# ... and the same count over all 32, as an EQUALITY on the excluded four — the rule that keeps the block above
+# from being a gate that counts nothing. believer, numb, bad-guy and tfr-chosen at `truth` / `off05` /
+# `extraverse` / `credit`; `drop20` drops tfr-chosen's shifted lines and reads 3. Both levels agree on these
+# five modes; the others differ by a song and their per-level numbers are in the README.
+coherent-shift-four-over-all-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) == 4
+coherent-shift-four-over-all-off05: count((abs(off05.song.bias_ms) > 250) * (off05.song.mad_ms <= 250)) == 4
+coherent-shift-four-over-all-extraverse: count((abs(extraverse.song.bias_ms) > 250) * (extraverse.song.mad_ms <= 250)) == 4
+coherent-shift-four-over-all-credit: count((abs(credit.song.bias_ms) > 250) * (credit.song.mad_ms <= 250)) == 4
+coherent-shift-three-over-all-drop20: count((abs(drop20.song.bias_ms) > 250) * (drop20.song.mad_ms <= 250)) == 3
+#
+# AND THE POOLED BAND COUNT, capped at the higher of the two levels. 44 at `truth` over the 28, against 163
+# over the 32 — the build's remaining line error stated honestly.
+band-at-most-scored-truth: truth.scored.band <= 44           # 44 / 44
+band-at-most-scored-jit: jit.scored.band <= 111              # 110 / 111
+band-at-most-scored-off05: off05.scored.band <= 48           # 48 / 48
+band-at-most-scored-off15: off15.scored.band <= 48
+band-at-most-scored-off3: off3.scored.band <= 48
+band-at-most-scored-offm1: offm1.scored.band <= 48
+band-at-most-scored-tempo098: tempo098.scored.band <= 60     # 58 / 60
+band-at-most-scored-tempo102: tempo102.scored.band <= 59     # 57 / 59
+band-at-most-scored-drop20: drop20.scored.band <= 45         # 45 / 45
+band-at-most-scored-drop50: drop50.scored.band <= 80         # 43 / 80
+band-at-most-scored-extraverse: extraverse.scored.band <= 39  # 39 / 39
+band-at-most-scored-blind: blind.scored.band <= 139          # 132 / 139
+band-at-most-scored-headers: headers.scored.band <= 60       # 44 / 60
+band-at-most-scored-credit: credit.scored.band <= 43         # 43 / 42
+
+# ── 6) MUST: the Jamendo floors, which the exclusion does not touch ─────────────────────────────────────
+# Jamendo is MEASURED truth (the dataset's own word annotations), all 20 of its songs score, and the four
+# excluded songs have no word truth — so `words 5378/5693`, ±100 85.46, ±300 97.16, AAE 71.1 ms, PCO@.3 91.76
+# and highlight 81.40 % of 2432.77 s read IDENTICALLY in `jamendo`, in `scored` and in `all`. These are the
+# honest accuracy floor of the build and they are the SAME numbers `gates/w8a.yaml` §3 holds, restated here so
+# this file can be read alone. The provenance-blind companion (`word_published_*`) is `gates/w8b-arms.yaml`.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
+word-aae-truth: truth.jamendo.word_aae_ms <= 71.1
+highlight-truth: truth.jamendo.highlight >= 81.4
+word-pm100-scored-equals-jamendo-truth: truth.scored.word_pm100 == truth.jamendo.word_pm100
+word-pm300-scored-equals-jamendo-truth: truth.scored.word_pm300 == truth.jamendo.word_pm300
+highlight-scored-equals-jamendo-truth: truth.scored.highlight == truth.jamendo.highlight
+word-pm100-jit: jit.jamendo.word_pm100 >= 83.46
+word-pm300-jit: jit.jamendo.word_pm300 >= 95.86
+word-pm100-credit: credit.jamendo.word_pm100 >= 84.95
+word-pm100-extraverse: extraverse.jamendo.word_pm100 >= 85.09
+
+# ── 7) MUST: no song that was right stays right, and none pays for the re-basing ────────────────────────
+# Per song against the baseline, over all 32 — the 15 songs at 100 % ±500 at `truth` and every other song
+# alike. The wave moved no shipped code, so the honest bound is ZERO movement in either direction.
+no-song-loses-truth: min_song_delta(truth.song.pm500) >= -0.001
+no-song-loses-jit: min_song_delta(jit.song.pm500) >= -0.001
+no-song-loses-blind: min_song_delta(blind.song.pm500) >= -0.001
+no-song-loses-off05: min_song_delta(off05.song.pm500) >= -0.001
+no-song-loses-drop20: min_song_delta(drop20.song.pm500) >= -0.001
+no-song-loses-drop50: min_song_delta(drop50.song.pm500) >= -0.001
+no-song-loses-extraverse: min_song_delta(extraverse.song.pm500) >= -0.001
+no-song-loses-headers: min_song_delta(headers.song.pm500) >= -0.001
+no-song-loses-credit: min_song_delta(credit.song.pm500) >= -0.001
+no-song-gains-truth: max_song_delta(truth.song.pm500) <= 0.001
+no-song-gains-jit: max_song_delta(jit.song.pm500) <= 0.001
+
+# ── 8) MUST: wrong-text protection is untouched ─────────────────────────────────────────────────────────
+# 320 cases each, nothing published, nothing line-synced, nothing scored, on BOTH wrong-text modes — the
+# 0/640 the wave's reject-if names. The exclusion cannot reach this (it removes songs from an accuracy pool,
+# not texts from a refusal), and the four excluded songs are cross-paired like every other.
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-scores-no-line: wrongtext.scored == 0
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-commits-nothing: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+ownclock-scores-no-line: mode("wrongtext+ownclock").scored == 0

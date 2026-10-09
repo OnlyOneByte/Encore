@@ -49,6 +49,7 @@
 
 <section class="stats">
 	<!-- Keep `title="Party stats"` a literal here and on <main>: tests/playwright/world/selectors.ts anchors that exact text. -->
+	<!-- `/settings` IS the room scope, which is the one scope that links here. -->
 	<PageHeader title="Party stats" back={{ href: '/settings', label: 'Back to settings' }} />
 
 	<main aria-label="Party stats">

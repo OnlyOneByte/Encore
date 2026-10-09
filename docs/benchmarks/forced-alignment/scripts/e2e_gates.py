@@ -14,6 +14,7 @@ the limit it states".
 from __future__ import annotations
 
 import ast
+import functools
 import json
 import math
 import operator
@@ -25,7 +26,7 @@ from typing import Any
 
 import e2e_lib as lib
 
-GROUPS = ("jamendo", "youtube", "all")
+GROUPS = lib.GROUPS
 
 
 class GateError(ValueError):
@@ -41,17 +42,27 @@ class View:
     #: {mode: {song: {"group": ..., metric: number}}} — `e2e_lib.per_song`.
     songs: Mapping[str, Mapping[str, Mapping[str, Any]]]
     meta: Mapping[str, Any]
+    #: The document's OWN `{slug: reason}`, which is what its frozen `scored` summary was pooled on; None for
+    #: a document written before the exclusion existed, whose pool can only come from `corpus-truth.json`.
+    exclusions: Mapping[str, str] | None = None
 
 
 def view_of(document: Mapping[str, Any]) -> View:
     summary: Mapping[str, Mapping[str, Mapping[str, Any]]] = document.get("summary") or {}
+    meta: Mapping[str, Any] = document.get("meta") or {}
+    recorded = meta.get("accuracy_excluded")
     return View(
         modes={
             mode: {group: lib.flat_metrics(entry) for group, entry in groups.items()}
             for mode, groups in summary.items()
         },
         songs=document.get("songs") or {},
-        meta=document.get("meta") or {},
+        meta=meta,
+        exclusions=(
+            {str(slug): str(reason) for slug, reason in recorded.items()}
+            if isinstance(recorded, Mapping)
+            else None
+        ),
     )
 
 
@@ -89,6 +100,7 @@ COMPARE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("refused", "refused", ".0f"),
     ("error", "ERROR", ".0f"),
     ("word_pm300", "word±300", ".1f"),
+    ("word_published_pm300", "pub±300", ".1f"),
     ("word_pco300", "PCO@.3", ".1f"),
     ("final_end_pm100", "final-end±100", ".1f"),
     ("highlight", "highlight", ".1f"),
@@ -209,6 +221,19 @@ def format_compare(run: View, base: View) -> str:
         out.append(
             f"  modes only in run: {', '.join(only_run) or '-'}; only in base: {', '.join(only_base) or '-'}"
         )
+    # A group the baseline predates is SKIPPED in the table below, so it is named here: a `scored` pool read
+    # against a base written before `corpus-truth.json` existed would otherwise go missing without a word.
+    gained = sorted(
+        {
+            group
+            for mode, groups in run.modes.items()
+            if mode in base.modes
+            for group in groups
+            if group not in base.modes[mode]
+        }
+    )
+    if gained:
+        out.append(f"  groups only in run: {', '.join(gained)} — not in the table, the baseline having none")
     for mode, groups in run.modes.items():
         if mode not in base.modes:
             continue
@@ -265,6 +290,7 @@ def _song_moves(run: Mapping[str, Mapping[str, Any]], base: Mapping[str, Mapping
         ("pm500", "±500"),
         ("text_pm500", "±500/text"),
         ("word_pm300", "word ±300"),
+        ("word_published_pm300", "published ±300"),
         ("highlight", "highlight"),
     ):
         deltas = [
@@ -727,6 +753,11 @@ class _Walker:
         value = flat[address.metric]
         if value is None:
             raise GateError(f"{address} has no value (no data for this metric here)")
+        pool = _song_set(view, address.mode, address.group or "all")
+        if pool is not None:
+            # EVERY pooled read, run side included: a document whose frozen aggregate and per-song entries
+            # describe different song sets may not certify a floor, with or without a baseline to compare.
+            _pools_its_own_songs(address, "the baseline" if address.base else "the run", view, pool)
         if address.base:
             self._same_pool(address)
         return value
@@ -752,6 +783,8 @@ class _Walker:
                 f"(not measured: {', '.join(missing[:5]) or '-'}; only in the run: "
                 f"{', '.join(extra[:5]) or '-'}); re-run the baseline's songs"
             )
+        # The baseline's own pool was cross-checked by the `scalar` read that got here; this is the run's.
+        _pools_its_own_songs(address, "the run", self.run, run)
 
     def songs(self, address: _Address) -> Songs:
         self.read_metrics.add(address.metric)
@@ -796,7 +829,7 @@ class _Walker:
             (mode, song): entry
             for mode in modes
             for song, entry in view.songs[mode].items()
-            if address.group in (None, "all", entry.get("group"))
+            if address.group is None or _entry_in_group(song, entry, address.group, view)
         }
 
     def changed(self, address: _Address, key: str) -> Songs:
@@ -1003,4 +1036,41 @@ def _song_set(view: View, mode: str, group: str) -> frozenset[str] | None:
     entries = view.songs.get(mode)
     if entries is None:
         return None
-    return frozenset(song for song, entry in entries.items() if group == "all" or entry.get("group") == group)
+    return frozenset(song for song, entry in entries.items() if _entry_in_group(song, entry, group, view))
+
+
+def _pools_its_own_songs(address: _Address, side: str, view: View, pool: frozenset[str]) -> None:
+    """ERROR when a summary's frozen pooled `cases` is not the one its per-song entries add up to.
+
+    The pooled number was computed at run time and the membership is re-derived at gate time, so the two can
+    describe different song sets — the mismatch this refuses instead of certifying.
+    """
+    assert address.mode is not None
+    group = address.group or "all"
+    frozen = (view.modes.get(address.mode) or {}).get(group, {}).get("cases")
+    entries = view.songs.get(address.mode) or {}
+    counted: list[Any] = [entries[song].get("cases") for song in sorted(pool)]
+    if frozen is None or any(n is None for n in counted):
+        return
+    if int(frozen) != (held := sum(int(n) for n in counted)):
+        raise GateError(
+            f"{address}: {side} records {int(frozen)} pooled cases under {address.mode}/{group} but its "
+            f"{len(pool)} per-song entries hold {held}; the summary and the pool disagree"
+        )
+
+
+def _entry_in_group(song: str, entry: Mapping[str, Any], group: str, view: View) -> bool:
+    """`lib.in_group` over a per-song summary entry, which keys its slug instead of carrying it.
+
+    A document that records its own exclusions is filtered by THEM, so a live `corpus-truth.json` edited after
+    the run cannot re-pool a frozen summary. One written before the exclusion existed has no such record, and
+    only then does `lib.excluded_of` fall back to the live file by slug.
+    """
+    table = _exclusions() if view.exclusions is None else view.exclusions
+    return lib.in_group({**entry, "song": song}, group, table)
+
+
+@functools.cache
+def _exclusions() -> Mapping[str, str]:
+    """`corpus-truth.json`'s exclusions, read once per process: every per-song gate asks for them."""
+    return lib.accuracy_exclusions()

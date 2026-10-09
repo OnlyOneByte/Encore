@@ -27,6 +27,10 @@
  *     named exist nowhere. `hueSlider` is the dangerous one to revive: `input[type="range"]` now resolves ONLY
  *     against /settings' sliders, which are a different control, so a revived key would pass against the wrong
  *     element. The identity control on every surface is `colourRing`.
+ *   `settingsTab(id)`, value `#tab-<id>` — the in-page settings tablist is gone (three scopes, three routes), so
+ *     nothing in the app carries that id. SAFE TO REVIVE ONLY IN THE SENSE THAT IT RESOLVES AGAINST NOTHING, which
+ *     is still a spec that waits forever on a page that is fine; the successor is a navigation to `/settings`,
+ *     `/settings/you` or `/settings/server` followed by a wait on `SEL.setting(<a control on it>)`.
  *   key `librarySeeAll`, value `.showall-row a[href="/library"]` — it named the labelled door under the home
  *     SHELF, and the Sing tab has no shelf. THE VALUE IS THE HAZARD, which is why it is banned by value: both
  *     `.showall-row` and an `a[href="/library"]` inside one still exist on `/`, as the widen button's row and as
@@ -275,13 +279,15 @@ export const SEL = {
 	qrImage: 'img[alt="QR code to join Encore"]',
 	activeWord: '.lyrics .word.active',
 
-	// settings (capture drives the room variants through these)
+	// settings
 	/** By id, because a settings page has many controls with similar visible labels ("Off" appears in four
-	 *  different pickers). */
+	 *  different pickers). It resolves a settings CARD too, since each of the eleven carries an id of its own.
+	 *
+	 *  `SEL.settingsTab` ('#tab-<scope>') RETIRED WITH THE IN-PAGE TABLIST: the three scopes are three ROUTES now, so
+	 *  a spec navigates to `/settings`, `/settings/you` or `/settings/server` and waits on a control rather than
+	 *  clicking a trigger. Its own comment claimed `contract.test.ts` asserted its format; no such assertion existed
+	 *  in the tree. */
 	setting: (id: string) => `#${id}`,
-	/** Capture drives the real tab rather than navigating to `?tab=`, so the control gating every setting
-	 *  below it is exercised too. No id list is kept here: contract.test.ts asserts this helper's FORMAT. */
-	settingsTab: (id: string) => `#tab-${id}`,
 	SETTING_IDS: [
 		'join-origin',
 		'sync-mode',

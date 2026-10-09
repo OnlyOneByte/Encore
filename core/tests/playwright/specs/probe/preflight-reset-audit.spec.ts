@@ -179,7 +179,9 @@ const SURFACES: Surface[] = [
 		url: '/settings',
 		vp: PHONE,
 		join: true,
-		ready: (page) => page.locator(SEL.settingsTab('party'))
+		// `/settings` IS the room scope — there is no tablist to wait on any more — so the readiness signal is the
+		// first control of its first card, which is also what p15 waits on.
+		ready: (page) => page.locator(SEL.setting('queue-order'))
 	},
 	// The tiles exist only once /api/stats has landed, so one of them is the ready signal.
 	{ name: 'stats', url: '/stats', vp: PHONE, ready: (page) => page.locator(SEL.dashTileNumber).first() },

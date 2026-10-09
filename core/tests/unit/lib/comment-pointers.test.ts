@@ -47,7 +47,9 @@ test('the four hosts of the landscape claw-back are named by RULE, and all four 
 	const hosts = [
 		'routes/+page.svelte',
 		'routes/library/+page.svelte',
-		'routes/settings/+page.svelte',
+		// The settings host is the SHELL, not a route: `/settings` is three scope routes now and the grid the arm acts
+		// on is declared once, in the component all three wear.
+		'lib/ui/SettingsScope.svelte',
 		'routes/song/[mediaId]/+page.svelte'
 	];
 	for (const h of hosts) {
@@ -58,14 +60,15 @@ test('the four hosts of the landscape claw-back are named by RULE, and all four 
 	// confirm. `/library` needs `.refine .grouphead` beside it on specificity grounds; that is asserted too,
 	// because dropping it silently restores the portrait margin inside the disclosure.
 	const CLAWBACK = 'margin: var(--space-sm) var(--space-2xs) var(--space-2xs);';
-	for (const h of hosts.filter((f) => !f.includes('settings'))) {
+	const SETTINGS_SHELL = 'lib/ui/SettingsScope.svelte';
+	for (const h of hosts.filter((f) => f !== SETTINGS_SHELL)) {
 		expect(readFileSync(at(`src/${h}`), 'utf8')).toContain(CLAWBACK);
 	}
 	const library = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
 	expect(library).toContain('.refine .grouphead');
-	// `/settings` is the exception the notes call out: it spends the rung as a grid gap, so its arm moves
-	// `.panel`'s row-gap instead of a `.grouphead` margin.
-	const settings = readFileSync(at('src/routes/settings/+page.svelte'), 'utf8');
+	// Settings is the exception the notes call out: it spends the rung as a grid gap, so its arm moves `.panel`'s
+	// row-gap instead of a `.grouphead` margin.
+	const settings = readFileSync(at(`src/${SETTINGS_SHELL}`), 'utf8');
 	expect(settings).toContain('row-gap: var(--space-lg);');
 	expect(settings).not.toContain(CLAWBACK);
 	// And app.css, which owns the shared base, points at the mechanism rather than at a line.
