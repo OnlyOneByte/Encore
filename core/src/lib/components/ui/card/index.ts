@@ -3,6 +3,7 @@ import Content from './card-content.svelte';
 import Description from './card-description.svelte';
 import Footer from './card-footer.svelte';
 import Header from './card-header.svelte';
+import Scope from './card-scope.svelte';
 import Title from './card-title.svelte';
 import Root from './card.svelte';
 
@@ -12,6 +13,7 @@ export {
 	Description,
 	Footer,
 	Header,
+	Scope,
 	Title,
 	Action,
 	//
@@ -20,6 +22,7 @@ export {
 	Description as CardDescription,
 	Footer as CardFooter,
 	Header as CardHeader,
+	Scope as CardScope,
 	Title as CardTitle,
 	Action as CardAction
 };

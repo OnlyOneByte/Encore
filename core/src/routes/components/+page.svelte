@@ -488,6 +488,7 @@
 				durationSec={250}
 				hasSong
 				canStart
+				queueCount={2}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}
@@ -504,6 +505,7 @@
 				durationSec={231}
 				hasSong
 				canStart
+				queueCount={2}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}
@@ -520,6 +522,7 @@
 				durationSec={251}
 				hasSong
 				canStart
+				queueCount={2}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}
@@ -536,6 +539,7 @@
 				durationSec={0}
 				hasSong={false}
 				canStart
+				queueCount={1}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}
@@ -543,7 +547,7 @@
 		</div>
 		<div>
 			<!-- BLANK ON PURPOSE, and the caption is the frame: the strip's whole top-level condition is
-					`hasSong || canStart`, so an idle room renders NOTHING and the tab bar alone holds the bottom. The band
+					`hasSong || queueCount > 0`, so an idle room renders NOTHING and the tab bar alone holds the bottom. The band
 					it replaced showed "Nothing playing" beside a disabled transport whose play button was the brightest
 					thing on the screen. -->
 			<p class="caption">Nothing playing and nothing queued — renders NOTHING, by design</p>
@@ -556,6 +560,7 @@
 				durationSec={0}
 				hasSong={false}
 				canStart={false}
+				queueCount={0}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}

@@ -12,7 +12,8 @@
 	let {
 		title,
 		icon,
-		back
+		back,
+		note
 	}: {
 		/** The page name. Rendered as the single h1 landmark the route paints. */
 		title: string;
@@ -20,6 +21,13 @@
 		icon?: IconName;
 		/** Optional back affordance. Omit on a root page. `label` is the anchors accessible name. */
 		back?: { href: string; label: string };
+		/**
+		 * One short line under the title, in the description register. Its one caller is `/settings`' three scope
+		 * routes, which state who a change there reaches ("Everyone in this room") — and they state it HERE, in the
+		 * sticky header, because that is the only place on a 2.5-screen column that cannot scroll away from a control.
+		 * Keep it to a phrase: it shares the pill with the title and a 44px back box.
+		 */
+		note?: string;
 	} = $props();
 </script>
 
@@ -38,9 +46,20 @@
 				</Button>
 			</div>
 		{/if}
-		<h1>
-			{#if icon}<Icon name={icon} />{/if}{title}
-		</h1>
+		<!-- A COLUMN ONLY WHEN THERE IS A SECOND LINE: with no `note` this renders the h1 as the row's own child, so a
+			header without one keeps the box it has always had to the pixel. -->
+		{#if note}
+			<div class="titles">
+				<h1>
+					{#if icon}<Icon name={icon} />{/if}{title}
+				</h1>
+				<p class="note">{note}</p>
+			</div>
+		{:else}
+			<h1>
+				{#if icon}<Icon name={icon} />{/if}{title}
+			</h1>
+		{/if}
 	</div>
 </header>
 
@@ -110,5 +129,20 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-sm);
+	}
+	/* The title and its note read as one block, so they share the row's single gap with the back box rather than
+	   adding a second one. `min-width: 0` because the note is prose beside a nowrap-ish heading in a flex row. */
+	.titles {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	/* THE DESCRIPTION REGISTER, not the section one: this is a sentence about the page, so it stays sentence case
+	   with no tracking — the uppercase letterspaced dress belongs to a heading over a block, which this is not. No
+	   top margin: the line sits inside the title block, and the pill's symmetric inset is what frames the pair. */
+	.note {
+		margin: 0;
+		font-size: var(--ph-text-xs);
+		color: var(--ink-dim);
 	}
 </style>

@@ -83,6 +83,8 @@ interface DockReading {
 	stripsInDock: number;
 	stripsOutsideDock: number;
 	transportButtons: number;
+	/** Is the play control actually tappable? A bright-but-dead primary is the defect this file exists to catch. */
+	playEnabled: boolean | null;
 	tabsHeight: number;
 	tabsPadBottom: number;
 	/** Max computed padding-bottom on the chain `main` → `.app-shell`, inclusive. See the note on the walk. */
@@ -205,6 +207,10 @@ async function readDock(page: Page, state: string, insetBottom: number): Promise
 				stripPadBottom: strip ? padBottom(strip) : null,
 				stripsInDock: dock.querySelectorAll(bareStrip).length,
 				stripsOutsideDock: [...document.querySelectorAll(bareStrip)].filter((e) => !dock.contains(e)).length,
+				playEnabled: (() => {
+					const play = dock.querySelector('.strip .tp .btn.primary');
+					return play ? !(play as HTMLButtonElement).disabled : null;
+				})(),
 				// THROUGH THE REGISTRY, `SEL.npTransport`. It is already `.dock`-scoped by value, so it is the one
 				// reading here that needs none of the `dock.querySelectorAll` scoping the bare `.strip` above does.
 				transportButtons: document.querySelectorAll(transportSel).length,
@@ -419,6 +425,21 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 					'name is an unnamed region in the landmark list'
 			)
 			.toBeTruthy();
+		/* THE DEAD-BRIGHT-BUTTON ARM, and it is the one this file most nearly shipped without. The queued song here
+		   is a seeded WAV with NO STEMS, so it cannot play yet — the server's `play` handler finds no `nextPlayable`,
+		   writes `isPlaying: false`, emits no error and raises no toast. A play control that is enabled in this state
+		   is the brightest element on the screen doing nothing silently, which is the defect the strip replaced a
+		   whole vaul sheet to be rid of.
+		   DISABLED, NOT ABSENT, and both halves are asserted — keying the strip's PRESENCE on playability was tried
+		   and was worse: the dock went blank for the whole minute of separation, immediately after the guest's one
+		   action. The strip stays, the copy reads "Making karaoke…", and the control is dim. */
+		expect
+			.soft(
+				live.playEnabled,
+				'CLAIM 3 a queued song that cannot play yet leaves the play control DISABLED — present, dim, and not ' +
+					`a promise the server will break: playEnabled=${live.playEnabled} with one stem-less entry queued`
+			)
+			.toBe(false);
 		// EXACTLY ONE, AND IT IS INSIDE. `.strip` is genuinely ambiguous unscoped — the TV lobby's roster carries
 		// the same class, which is why `SEL.npStrip` is dock-scoped and `SEL.strip`/`SEL.stripPerson` name that
 		// other element. Measured on a phone surface: 1 inside the dock, 0 outside it.
@@ -513,8 +534,10 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.soft(
 				beforeDrag.sheetMachinery,
 				'CLAIM 3 no sheet machinery exists on a phone surface at all — not closed, ABSENT: ' +
-					`${beforeDrag.sheetMachinery} element(s) matching ${SHEET_MACHINERY}. Every one of those values is in ` +
-					"selectors.ts' RETIRED block; this is the arm that proves the ban"
+					`${beforeDrag.sheetMachinery} element(s) matching ${SHEET_MACHINERY}. FOUR of those seven values are ` +
+					"also in selectors.ts' RETIRED block (drawer-handle, .np-drawer, .band-slot, .band); the three vaul " +
+					'attributes are not in that file at all, and this arm is the stronger check either way — RETIRED ' +
+					'warns about a NAME being revived, this measures that the MARKUP is absent from the rendered page'
 			)
 			.toBe(0);
 		expect

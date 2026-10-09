@@ -70,8 +70,8 @@ interface Frame {
 
 /** A 390x844 phone. shot.mjs's own default size, and `world.openPhone`'s. */
 const PHONE: Viewport = { width: 390, height: 844 };
-/** shot-settings.mjs's size, kept with its reason: /settings is eleven cards, and 430x1500 at DPR 1 is what
- *  fits the LONGEST tab whole while staying inside the 2000px an agent can read back. */
+/** shot-settings.mjs's size, kept with its reason: settings is eleven cards over three scope routes, and 430x1500
+ *  at DPR 1 is what fits the LONGEST of them whole while staying inside the 2000px an agent can read back. */
 const SETTINGS: Viewport = { width: 430, height: 1500 };
 /** /metrics is an operator page with a 900px measure, so it is shot at desktop width; 1400 tall keeps the
  *  other axis under 2000. shot-metrics.mjs exposed these as SHOT_W/SHOT_H; the narrowing is now its own
@@ -83,15 +83,21 @@ const METRICS_NARROW: Viewport = { width: 390, height: 1400 };
 // ── the moves a frame is reached by ───────────────────────────────────────────────────────────────────────
 
 /**
- * Switch settings scope through the REAL tab, not `?tab=`, so the control gating every setting under it is
- * exercised too — and wait on `aria-selected`, which flips only once the panel has swapped. shot-settings.mjs
- * and capture.mjs both did this rather than sleeping, because a fixed wait shoots the OUTGOING tab.
+ * Open a settings SCOPE, which is a navigation now that the three are three routes — and wait on a control inside
+ * the scope, not on the URL, because a route that has answered is not yet a panel that has rendered. The old form
+ * clicked a tablist trigger and waited on `aria-selected`; there is no tablist to click.
  */
-async function scope(page: Page, id: string): Promise<void> {
-	const trigger = page.locator(SEL.settingsTab(id));
-	await trigger.click();
-	await expect(trigger).toHaveAttribute('aria-selected', 'true');
+async function scope(page: Page, path: string, ready: string): Promise<void> {
+	await page.goto(path);
+	await expect(page.locator(ready)).toBeVisible();
 }
+
+/** The three scope routes, with the control each one is ready at. `/settings` IS the room scope. */
+const SCOPE = {
+	you: { path: '/settings/you', ready: SEL.setting('profile-name') },
+	room: { path: '/settings', ready: SEL.setting('queue-order') },
+	server: { path: '/settings/server', ready: SEL.setting('engine') }
+} as const;
 
 /** Bring a control into the frame and wait until it is actually there, rather than for a duration. */
 async function reveal(page: Page, selector: string): Promise<void> {
@@ -165,12 +171,6 @@ async function openMetrics(page: Page): Promise<void> {
 async function openIdentityPane(page: Page, world: World): Promise<void> {
 	await page.goto(`/?room=${encodeURIComponent(world.code)}`);
 	await expect(page.locator(SEL.nameInput)).toBeVisible();
-}
-
-/** /settings on a joined phone, on the tab the page defaults to. */
-async function openSettings(page: Page): Promise<void> {
-	await page.goto('/settings');
-	await expect(page.locator(SEL.settingsTab('party'))).toBeVisible();
 }
 
 // ── the table ────────────────────────────────────────────────────────────────────────────────────────────
@@ -290,12 +290,12 @@ const FRAMES: Frame[] = [
 		setup: async (page, world) => {
 			const phone = await world.openPhone('Maya');
 			await expect(page.locator(SEL.lobby)).toBeVisible();
-			await openSettings(phone);
+			// The join address is a MACHINE setting, so this is the machine scope.
 			// Driven through the real control rather than staged: the notice on `tv-attract` names this field as
 			// the fix, so this frame is that fix being applied. A LAN-shaped address nothing answers is enough —
 			// the TV decides on the address's SHAPE (loopback or single-label hosts cannot be reached by a phone),
 			// never by trying it. The field commits on change, so the fill is followed by a blur.
-			await scope(phone, 'server');
+			await scope(phone, SCOPE.server.path, SCOPE.server.ready);
 			await phone.locator(SEL.setting('join-origin')).fill('http://192.168.7.42:3000');
 			await phone.locator(SEL.setting('join-origin')).blur();
 			// The TV reloads its own data when the join address MOVES, so the QR appearing is the settled state.
@@ -308,18 +308,16 @@ const FRAMES: Frame[] = [
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			await scope(page, 'you');
+			await scope(page, SCOPE.you.path, SCOPE.you.ready);
 		}
 	},
 	{
 		name: 'settings-party',
-		what: 'this room: the house rule for who sings next, TV progress, and the stage look',
+		what: 'this room: the house rule for who sings next, the guiding track, and the stage look',
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			await scope(page, 'party');
+			await scope(page, SCOPE.room.path, SCOPE.room.ready);
 			await reveal(page, SEL.setting('queue-order'));
 		}
 	},
@@ -329,19 +327,17 @@ const FRAMES: Frame[] = [
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			await scope(page, 'party');
+			await scope(page, SCOPE.room.path, SCOPE.room.ready);
 			await reveal(page, SEL.setting('lyrics-highlight'));
 		}
 	},
 	{
 		name: 'settings-server',
-		what: 'the deployment scope: splitter, lyrics engine, the join address, who may join',
+		what: 'the machine scope: splitter, lyrics engine, the join address, re-processing',
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			await scope(page, 'server');
+			await scope(page, SCOPE.server.path, SCOPE.server.ready);
 			await reveal(page, SEL.setting('sync-mode'));
 		}
 	},
@@ -351,9 +347,10 @@ const FRAMES: Frame[] = [
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			// The one disclosure left, and it is on the server scope: the upgrade chain is a fleet property.
-			await scope(page, 'server');
+			// The one disclosure left, and it is on the machine scope: the upgrade chain is a fleet property. It
+			// really closes now — the shell's `[data-slot='collapsible-content'][hidden]` rule is what closes it —
+			// so this click is the difference between three hidden controls and three visible ones.
+			await scope(page, SCOPE.server.path, SCOPE.server.ready);
 			const trigger = page.getByRole('button', { name: /Advanced/ });
 			await trigger.click();
 			// Collapsible owns `aria-expanded`, so the trigger reports the panel's state. NOT `#advanced-body`:
@@ -371,14 +368,14 @@ const FRAMES: Frame[] = [
 		surface: 'phone',
 		viewport: SETTINGS,
 		setup: async (page) => {
-			await openSettings(page);
-			// TWO SCOPES, in order, because the cause and the effect live on different ones: server timing decides
-			// whether per-word timings EXIST, the room only decides how they are drawn. capture.mjs put the
-			// deployment back afterwards because thirty later frames shared its server; a core per test makes that
-			// restore dead code.
-			await scope(page, 'server');
+			// TWO SCOPES, in order, because the cause and the effect live on different ones: machine timing decides
+			// whether per-word timings EXIST, the room only decides how they are drawn. Each hop is a real
+			// navigation now, and the room scope re-reads the settings object on arrival, which is why the warning
+			// below is on screen rather than one frame behind. capture.mjs put the deployment back afterwards
+			// because thirty later frames shared its server; a core per test makes that restore dead code.
+			await scope(page, SCOPE.server.path, SCOPE.server.ready);
 			await choose(page, 'sync-mode', 'lines');
-			await scope(page, 'party');
+			await scope(page, SCOPE.room.path, SCOPE.room.ready);
 			await choose(page, 'lyrics-highlight', 'word');
 			await choose(page, 'lyrics-ball', 'bounce');
 			await expect(page.getByText(/No word timings on this server/)).toBeVisible();

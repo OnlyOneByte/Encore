@@ -28,7 +28,7 @@
 				   over SC 1.4.11's 3:1 for a control boundary, and --on-accent on --accent is 5.09:1. */
 				iconPrimary:
 					'bg-[var(--accent)] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35',
-				/* The phone home's identity control (name + colour dot to /settings?tab=you). `min-w-0 shrink` cancels the
+				/* The phone home's identity control (name + colour dot to /settings/you). `min-w-0 shrink` cancels the
 				   base's `shrink-0`, which is what the name's ellipsis depends on — a non-shrinking button cannot narrow.
 				   `min-h-tap` because it declares no height and would otherwise inherit the 36px default. */
 				identity:

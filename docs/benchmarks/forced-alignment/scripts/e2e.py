@@ -1324,9 +1324,11 @@ def git_state() -> dict[str, object]:
 
 
 def harness_digest() -> str:
+    """The three harness modules AND the corpus metadata that decides which songs score."""
     digest = hashlib.sha256()
     for path in (HERE / "e2e.py", HERE / "e2e_lib.py", HERE / "e2e_gates.py"):
         digest.update(path.read_bytes())
+    digest.update(lib.corpus_truth_bytes())
     return digest.hexdigest()[:16]
 
 
@@ -1674,6 +1676,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         **({"uncalibrated": True} if banner is not None else {}),
         "modes": modes,
         "songs": [song.slug for song in songs],
+        #: Which of them did NOT score accuracy, and why, so the exclusion is the first thing a reader of
+        #: this file sees. The measurement is `docs/benchmarks/forced-alignment/corpus-truth.json`.
+        "accuracy_excluded": {s.slug: s.accuracy_excluded for s in songs if s.accuracy_excluded},
         "bench_root": str(root),
         "git": git_state(),
         "harness": harness_digest(),

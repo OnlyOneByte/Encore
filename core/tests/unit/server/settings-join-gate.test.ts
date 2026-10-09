@@ -30,7 +30,10 @@ afterEach(() => {
 
 test('an unjoined visitor to /settings is redirected to / (not /join), carrying ?next=', async () => {
 	installApp();
-	const url = new URL('http://x/settings?tab=you');
+	/* A SCOPE ROUTE AND ITS SEARCH STRING, because that is what the `?next=` has to survive: the gate builds the
+	   destination from `url.pathname` + `url.search`, so a guest sent to fix their NAME comes back to the You scope
+	   rather than to the room scope the bare `/settings` resolves to. */
+	const url = new URL('http://x/settings/you?next=/');
 	const request = new Request(url);
 	// No session cookie means no singer, and SvelteKit's `redirect()` THROWS rather than returning.
 	let thrown: unknown;
@@ -41,14 +44,16 @@ test('an unjoined visitor to /settings is redirected to / (not /join), carrying 
 	}
 	const redir = thrown as { status?: number; location?: string };
 	expect(redir.status).toBe(303);
-	expect(redir.location).toBe(`/?next=${encodeURIComponent('/settings?tab=you')}`);
+	expect(redir.location).toBe(`/?next=${encodeURIComponent('/settings/you?next=/')}`);
 	expect(redir.location).not.toContain('/join');
 });
 
 test('leaving the room sends the guest to / (the landing page), not the retired /join', () => {
-	// Scanned rather than driven, because mounting the settings page needs its full load data. `read`
-	// throws when the subject is gone, so the two assertions cannot pass over an empty string.
-	const page = read('src/routes/settings/+page.svelte')
+	/* Scanned rather than driven, because mounting the page needs its full load data. `read` throws when the subject
+	   is gone, so the two assertions cannot pass over an empty string. The subject is the YOU scope: `leaveRoom` lives
+	   with the identity it forgets, and it is the one `goto` on that page that is NOT resolved through `?next=` —
+	   the cookie is gone, so `/` is the only honest destination. */
+	const page = read('src/routes/settings/you/+page.svelte')
 		.replace(/<!--[\s\S]*?-->/g, ' ')
 		.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	expect(page).toMatch(/await goto\(\s*['"`]\/['"`]\s*\)/);

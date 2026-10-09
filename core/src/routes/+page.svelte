@@ -327,7 +327,7 @@
 		{#if me}
 			<div class="me-cluster">
 				<div class="me-slot">
-					<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
+					<Button variant="identity" href="/settings/you" aria-label="Your profile">
 						<span class="me-name">{me.displayName}</span>
 						<span class="me-dot" style="--singer:{me.color};"></span>
 					</Button>
@@ -671,6 +671,27 @@
 		padding: 0 0 var(--space-sm);
 	}
 
+	/* THE 320px REFLOW CLAUSE for this control, and it needs `:global()` for the documented reason: a class handed to
+	   a component is stripped at the caller, so the only way to reach the vendored button is its own `data-slot`,
+	   ANCHORED under `.showall-row` so it cannot match every button in the app.
+	   The Button base carries `whitespace-nowrap`, which is right for a one-word control and wrong for a sentence:
+	   measured at 320px with the root at 32px (the browser's 200% text-only zoom), "Not it? Search everything" laid
+	   out 384.69px wide inside a 320px viewport and CLIPPED — elements past the right edge with a clean
+	   `scrollWidth`, which is the shape p15 exists to catch and is an SC 1.4.10 failure. Wrapping is the fix rather
+	   than shortening the copy, because the copy is doing real work: it names what the widen actually does. */
+	.showall-row :global([data-slot='button']) {
+		white-space: normal;
+		/* The label has spaces to break at, so `anywhere` is belt-and-braces for a future translation that does not. */
+		overflow-wrap: anywhere;
+		/* AND THE FLEX HALF, which is the actual cause and the one `white-space` alone did not fix: the Button base
+		   carries `shrink-0`, so as a flex item it refuses to shrink below its content width and stayed 384.69px wide
+		   in a 320px viewport even once the text was allowed to wrap. `min-width: 0` is the documented companion —
+		   an item's automatic minimum is its min-content width, which an unbreakable run would otherwise re-impose. */
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 100%;
+	}
+
 	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
 	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-2xl (the size the title
 	   rule below actually resolves) and 200% text one unbreakable word is wider than the viewport. The size reaches
@@ -741,6 +762,11 @@
 	/* Declared here, never inline: an inline style outranks the short-viewport rule below and defeats it. */
 	.topbar {
 		display: flex;
+		/* WRAPS, for the same reason `.find-row` does: at 320px with the root at 32px the wordmark alone takes most of
+		   the line, and `.me-cluster`'s `margin-left: auto` then pushed the identity dot to right=341.3 in a 320px
+		   viewport — off-screen, clipped rather than reflowed. Wrapping lets the cluster take its own line instead.
+		   `align-items: center` stays correct once wrapped: each line centres its own items. */
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-md);
 		padding: var(--space-2xl) var(--space-2xl) var(--space-sm);

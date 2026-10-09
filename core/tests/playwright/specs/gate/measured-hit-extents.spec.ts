@@ -143,15 +143,18 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 			await page.goto('/library');
 			await page.locator(SEL.libraryReady).first().waitFor({ state: 'attached', timeout: 15_000 });
 		});
+		/* THREE SETTINGS SURFACES, one per scope ROUTE, where this used to be one `goto` plus two clicks on an in-page
+			tab strip — and the middle of those three clicked the tab it was already on, so the YOU scope's controls
+			(the name field, the colour ring and the destructive confirm) were swept NOWHERE. They are swept here.
+			`/settings` IS the room scope. */
 		await surface('/settings', async () => {
 			await page.goto('/settings');
 		});
-		// BY TEXT, as the old gate clicked them: the tab strip's labels are what a guest reads.
-		await surface('/settings#party', async () => {
-			await page.getByText('Party').first().click();
+		await surface('/settings/you', async () => {
+			await page.goto('/settings/you');
 		});
-		await surface('/settings#server', async () => {
-			await page.getByText('Server').first().click();
+		await surface('/settings/server', async () => {
+			await page.goto('/settings/server');
 		});
 		await surface('/metrics', async () => {
 			await page.goto('/metrics');

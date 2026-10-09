@@ -193,8 +193,8 @@ That ladder carries four REGISTERS, and a site picks a REGISTER rather than a nu
 | section     | `5xl` (24)          | two sibling SECTIONS of a surface (`.grouphead`'s top margin)       |
 
 A DELTA SITE SPELLS THE RUNG THAT MAKES THE RENDERED BOUNDARY LAND IN ITS REGISTER, not the register's own rung, so
-checking a declared token against this table is the wrong check. The app has three such rules, all on `/settings`,
-all margins on a `card-content` child: they spell `lg` (a GROUP rung) and render 8 + 12 = 20px, which is inter-group.
+checking a declared token against this table is the wrong check. The app has three such rules, all on the settings
+surface — two in its shell, one on the You scope — all margins on a `card-content` child: they spell `lg` (a GROUP rung) and render 8 + 12 = 20px, which is inter-group.
 The standing rule below says the compared boundary is the rendered one; this is that rule reaching the table.
 
 And one standing rule: **a boundary must out-rank every boundary nested inside it — and the boundary that gets
@@ -216,15 +216,17 @@ above, group rung below, so a 12px dim label is 3× closer to the list it owns t
 
 **The section rung is a PORTRAIT ruling, and every surface that spends it owes a `@media (max-height: 480px)` arm.**
 A phone held sideways has ~390px of height and spends most of it on chrome, so the rung is pure cost there. Three
-rules spend the rung — `.grouphead`'s top margin in `app.css`, `/`'s `.find-row` bottom margin, and `/settings`'
-`.panel` row gap — and each renders on a surface that now carries the arm at the same 480px threshold: `/` (both of
-its two), the song page's Lyrics eyebrow, and `/settings`. `/library` is the exception that proves the register rule
+rules spend the rung — `.grouphead`'s top margin in `app.css`, `/`'s `.find-row` bottom margin, and the settings
+shell's `.panel` row gap — and each renders on a surface that now carries the arm at the same 480px threshold: `/`
+(both of its two), the song page's Lyrics eyebrow, and all three settings scopes, whose arm is declared once in
+`src/lib/ui/SettingsScope.svelte` because the grid is. `/library` is the exception that proves the register rule
 rather than a fourth spend site: every one of its groupheads sits inside the `.refine` disclosure and is pinned back
 to the inter-group rung, so it never renders the section rung at all — it carries the arm anyway, naming
 `.refine .grouphead` explicitly, because at 0,3,0 that pin would otherwise out-cascade the 0,2,0 claw-back.
-`/settings`' arm has to move BOTH ends again — row gap back to 12px and the intra-card margin to `3xs`, rendering
-8 + 2 = 10px — because clawing only the container back would re-invert the surface; it reclaims a measured 72px on
-the Party panel at 844×390, 60px on Server and 12px on You. A new spend site without that arm is an unconditional
+The settings arm has to move BOTH ends again — row gap back to 12px and the intra-card margin to `3xs`, rendering
+8 + 2 = 10px — because clawing only the container back would re-invert the surface; RE-DERIVED on the three scope
+routes at 844×390, with both portrait rungs forced back on, it reclaims 112px on the room scope's panel, 88px on the
+machine scope and 22px on You — 28.7% of that viewport's height on the worst one. A new spend site without that arm is an unconditional
 height charge on the smallest viewport the app ships to.
 
 The rendered figure also depends on the HOST'S DISPLAY, which is the trap a shared `.grouphead` sets: on a block
@@ -648,9 +650,11 @@ published on `documentElement` so every scrolling column can reserve it in norma
 The phone has one navigation and it is a tab bar: **Sing** (`/`), **Queue** (`/queue`), **Library** (`/library`),
 rendered by `src/lib/ui/TabBar.svelte`. Before it, every trip between surfaces went through the home page: the library
 behind an unlabelled icon door beside the search field, settings behind a gear, and every way back a `goto('/')`.
-`/settings`, `/stats`, `/metrics` and `/admin` are deliberately NOT tabs: they are not party-time surfaces, and a tab
-a guest never presses during the thing the app is for costs the same thumb-width as one they do. (`/stats` still has
-exactly one link into it, from `/settings`; that is a property of `/stats`, not a gap in this bar.)
+The three settings scopes, `/stats`, `/metrics` and `/admin` are deliberately NOT tabs: they are not party-time
+surfaces, and a tab a guest never presses during the thing the app is for costs the same thumb-width as one they do.
+(`/stats` still has exactly one link into it, from the ROOM scope — `/settings` — and `/metrics` exactly one, from
+the machine scope; that is a property of those two pages, not a gap in this bar. Settings' own three scopes are
+three routes precisely so that this bar is the phone's only tablist.)
 
 Three tabs because the home column already WAS three pages. It rendered six sections and branched all of them on
 `searchActive` — not searching gave `Queued` / `Making karaoke…` / `Your library`, searching gave `Ready to sing` /
@@ -1048,14 +1052,43 @@ only way to override the primitive reaches settings' own descriptions too.
 
 ### Settings
 
-`/settings` is three scopes in a real tablist — You (one person), Party (this room), Server (this machine
-and its worker fleet). The scope list has ONE home, `src/lib/settings-tabs.ts`, because both halves read it:
-`src/routes/settings/+page.server.ts` narrows `?tab=` through it so the first paint is already on the right
-tab, and the page renders a trigger and a panel per id. `party` is the default — server-wide settings are set
-once and left alone, while the rotation is changed mid-song. Tab switches use `replaceState`, so Back leaves
-the page instead of walking tabs. There is no socket: every write is a per-field patch the server re-normalizes over
-current values, applied optimistically and rolled back to `committed` (the last server-confirmed snapshot)
-if refused — never to an intermediate drag frame.
+Settings is THREE SCOPES AND THREE ROUTES — You (one person, `/settings/you`), The party (this room, `/settings`)
+and This machine (this server and its worker fleet, `/settings/server`). The in-page tablist is gone, and that is
+the point: the phone has a persistent tab bar at the bottom of every surface, so a second row of tabs inside a page
+is a navigation that is not one. The scope is now a property of the ADDRESS, of the page's heading, and of every
+card header.
+
+`/settings` IS the room scope, not an index over the three. The gear in the Sing tab's topbar is the door a host
+reaches for mid-party, so it stays ONE tap; an index would spend that tap teaching a model each destination states
+in its own heading on arrival. It is also the parent `/settings/server`'s back arrow names, and the path five unit
+guards resolve by name.
+
+The scope list has ONE home, `src/lib/settings-scopes.ts` — `{ label, blastRadius, href }` per scope, KEYED rather
+than ordered, because nothing renders the three in a row any more. `blastRadius` carries no terminal stop: the same
+string is a sentence under the page heading ("Everyone in this room.") and an uppercase eyebrow on every card
+("EVERYONE IN THIS ROOM"), and a stop reads as a typo in the second register. `?tab=`, `settingsTabFromParam`,
+`DEFAULT_SETTINGS_TAB` and `replaceState` all retired with the tablist. Back walks scopes now, which is what Back
+is for once a scope is a page.
+
+Each scope route loads FOR ITSELF, through `settingsSinger` in `src/lib/server/settings-gate.ts`, and there is
+deliberately no `settings/+layout.server.ts`: a layout load does not re-run when a client-side navigation moves
+between its children, so a hop from the room scope to the machine scope and back would re-mount against the
+layout's stale snapshot and show a value the server no longer holds. A page load re-runs on every navigation and
+costs one SQLite read on the same box. Each route then loads only what its own controls read — `me` for You,
+`settings` for the room, `settings` plus the join-address fallback, the request scheme and the worker catalogue for
+the machine — so the You scope no longer serialises a settings object and a model catalogue it never reads. The
+gate builds its `?next=` from `url.pathname` + `url.search`, so a guest bounced to the join screen comes back to
+the scope they asked for; `safeNextPath` on `/` is what keeps that from becoming an open redirect.
+
+There is no socket here: every write is a per-field patch the server re-normalizes over current values, applied
+optimistically and rolled back to `committed` (the last server-confirmed snapshot) if refused — never to an
+intermediate drag frame, and only the fields THAT write sent, because restoring a whole pre-request snapshot
+silently undid a concurrent success. That model lives in `src/lib/settings-writes.svelte.ts`, once, because two
+scopes perform it; each route aliases `settings` off it so every control reads the name it always read.
+
+`src/lib/ui/SettingsScope.svelte` is the shell all three wear: the heading and its scope line, the one destructive
+Alert a refused write raises, the card grid, and the whole card-rhythm cascade. Those are properties of the
+SURFACE rather than of a scope, and three copies of that cascade would be three places for it to drift.
 
 The reactive grid, and its three measure tokens:
 
@@ -1065,42 +1098,183 @@ The reactive grid, and its three measure tokens:
 | card column | `--settings-col` | `420px`          | the `minmax()` floor `.panel` pairs cards at                |
 | row         | —                | none             | controls fill their card; no cap, or each card shows a void |
 
-`.panel` is a grid, not a flex column: `repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr))`
-spends extra width on a SECOND COLUMN OF CARDS rather than on wider controls, and `auto-fit` collapses the
-empty track so one column is the plain stack. `align-items: start` is required — `stretch` pads the shorter
-card out to its neighbour. `--settings-col` is 420 and not `--measure-prose` (560) because two prose columns
-plus the gap need 1132, more than the widest shell, so a prose threshold would never pair anything; at 420
-the panel pairs from 852 up. Anything in a panel that is not a `[data-slot='card']` spans the full row.
-Card rhythm is fixed in the cascade, not by restructuring rows into `Field.Root` wrappers: the card gap is
-the intra-group distance, and a label that FOLLOWS a control takes the inter-group distance back as a
-margin, so a card's first label is untouched. A composed control whose label is `.control-label` rather than a
-`[data-slot='field-label']` takes that margin on its WRAPPER instead — `ColourRing`'s `.ring-field` — or the card
-draws one boundary two ways: 20px above a second `Field.Label` — `card-content`'s 8px flex gap plus a `lg`
-margin — against 8px above the ring. The third margin on that card, `.save-slot`'s, is the same rung for the same
-reason: a commit control is an inter-group boundary, not a section one.
+`.panel` is a grid, not a flex column: `repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr))` spends extra
+width on a SECOND COLUMN OF CARDS rather than on wider controls, and `auto-fit` collapses the empty track so one
+column is the plain stack. `align-items: start` is required — `stretch` pads the shorter card out to its neighbour.
+`--settings-col` is 420 and not `--measure-prose` (560) because two prose columns plus the gap need 1132, more than
+the widest shell, so a prose threshold would never pair anything.
 
-Other rules a change here must respect: a slider's range must match the server clamp exactly, or the UI
-silently refuses values the server accepts; `id="tab-<scope>"` and `id="max-processes"` are spelled
-explicitly because `tests/playwright/world/selectors.ts` and the shot specs resolve those literals; `.panel` carries
-no `role="tabpanel"` of its own, because `Tabs.Content` already renders one and a second nests two; the
-identity ring gets `taken={[]}` because this page's load carries no room occupancy, and inventing one would
-draw pips at colours nobody holds. `PROCESSES_UNCAPPED` is `0` and means uncapped, so it must be tested
-before any count comparison and is rendered in words. The You scope has exactly ONE commit control and it lives
-INSIDE the You card, because the save's refusals name the name field; it reads `Save and close` with an edit
-pending and `Done` without one, and that tab carries no second panel-level `Done` the way Party and Server do —
-a `Done` that did not save silently discarded a typed name.
+**852 IS A PANEL WIDTH, AND IT WAS READ HERE AS A VIEWPORT ONE.** At 420 plus the 12px column gap the panel pairs
+from 852px OF PANEL, and a panel is `--max-w` less 64px (the shell's gutter plus this column's own inset, at every
+width) — so pairing needs `--max-w` ≥ 916, which only the `--bp-lg` step to 1080 delivers. Measured on the live
+panel, one track at a time: 256px at 320, 316 at 380 and 326 at 390 (viewport-bound, under the cap), then **416px
+from 520 through 767**, 696px from 768 through 1199, and `502px 502px` from 1200. The step is at `--bp-md` and not at
+`--bp-sm`: 416 at 520 is the same `--max-w` 480 → 760 rung this document records for the findbox above, and an
+earlier revision of this line claimed 696 at 520, which contradicted it. **No phone and no tablet in portrait ever
+pairs**; the second column is desktop-only relief. Anything in a panel that is not a `[data-slot='card']` spans the
+full row.
 
-That in-card placement has a consequence that is KEPT ON PURPOSE: the You panel's last control is `Leave the room`
-in the Leaving card below, where Party and Server both end on their panel-level `Done`. The destructive action is
-last because last is the end of the scope, after everything a guest came to this tab for; it is the only BUTTON in
-the panel that is not an `--accent` fill, and the only control anywhere in settings behind an `alertdialog` confirm,
-so arriving at it by reaching for the bottom of the other two tabs costs a dismissal rather than a room. Both alternatives are worse.
-Restoring a panel-level exit for position parity re-mints the pair this scope was fixed to remove — two identical
-`--accent` block buttons, one of which did not save. Lifting Leaving above the You card moves the destructive card
-into the panel's FIRST position — top-left of the paired grid from 852 up — to protect its last. A refusal on this
-pane is also keyed to the draft it refused (`{ name, colour, message }`, read back through a `$derived`) rather
-than held as a bare string: a stated reason must not outlive an edit to the field it names, or an empty-name
-refusal goes on sitting under a button that has gone back to reading `Done`.
+Card rhythm is fixed in the cascade, not by restructuring rows into `Field.Root` wrappers: the card gap is the
+intra-group distance, and a label that FOLLOWS a control takes the inter-group distance back as a margin. A composed
+control whose label is `.control-label` rather than a `[data-slot='field-label']` takes that margin on its WRAPPER
+instead — `ColourRing`'s `.ring-field` — or the card draws one boundary two ways: 20px above a second `Field.Label` —
+`card-content`'s 8px flex gap plus a `lg` margin — against 8px above the ring. The third margin, `.save-slot`'s on the
+You scope, is the same rung for the same reason: a commit control is an inter-group boundary, not a section one.
+
+**BOTH BASE RULES NAME TWO HOSTS**, `[data-slot='card-content']` and `[data-slot='collapsible-content']`, because the
+machine scope's Collapsible spreads its own slot over the nested `Card.Content`'s literal — the same spread documented
+below for the `hidden` attribute. Keyed on card-content alone, the whole cascade missed the three controls behind the
+disclosure: measured, that column kept `Card.Content`'s vendored 24px `gap-6` against 8 everywhere else, rendering
+36px between groups and 28px inside one. Naming both hosts took the open disclosure from 318.2px of content to 254.2.
+
+**THE LADDER, RE-DERIVED AS RENDERED SIBLING DISTANCES** at 390x844 rather than as declared values, because an
+earlier revision stated it as "8 inside a group, 20 between groups, 24 between cards" and the surface does not draw
+that. `field-label.svelte` declares `margin: var(--space-lg) 0 var(--space-2xs)` on every field label in the app, so
+the portrait `* + [data-slot='field-label']` rule re-declares a 12px that is already there — a no-op whose only job
+is to buy the specificity the landscape claw-back needs — and a card's first label is NOT untouched: it carries that
+same 12px, measured on all seven cards whose first child is a label. What renders is **12px inside a group** (the 8px
+gap plus the label's own 4px `margin-bottom`), **14px** from a control to a `Field.Description` (8 plus its own 6),
+**20px between groups** that lead with a label, `.ring-field` or `.save-slot`, and **24px card to card**. Sideways,
+where the claw-back reaches `margin-top` only, it is 12 / 10 / 12 — so the landscape ladder is NOT monotone, a group
+reading looser than the boundary between two groups. The one rung that would fix that is the 4px `margin-bottom`
+inside `field-label.svelte`, which every surface in the app renders, so it is not a settings decision.
+
+**AND AN INVERSION, RECORDED NOT FIXED.** Where the next group leads with a wrapper carrying no label of its own —
+`.pair` or `.check` — nothing adds a margin and the boundary renders at the bare 8px gap, tighter than the 12px
+inside a group. Four measured sites: `#sound` slider → `.check`, `#tv` `.pair` → `.check`, `#lyrics` `.pair` →
+`.pair` and slider → `.pair`. It is the same defect the `.ring-field` arm exists to fix and wants the same shape of
+fix — adding those wrappers to that arm — but it moves four rendered boundaries by 12px each and with them every card
+height, scrollHeight, reach and co-visibility figure recorded below, so it wants its own measured pass.
+
+**THE SCOPE MARK.** Every one of the eleven cards carries `Card.Scope` inside its header, above the title: one line
+naming who a change in that card reaches. It is the SECTION register — `--ph-text-xs`, 0.14em, uppercase, weight
+700, `--ink-dim` — which app.css reserves for a heading over a list or an eyebrow over a BLOCK, and a card is a
+block; it is a sibling of `Card.Title` and never sits on or inside a `<Field.Label>` or a `.control-label`, which
+was finding F7. It lives in `src/lib/components/ui/card/card-scope.svelte` because it is one dress read by three
+routes, and because a utility class is only emitted for sources under `src/lib/components/ui/`.
+
+It is there because of a measurement, not for decoration. Under the tablist, 0 of 17 field labels on the room panel
+named their scope, and at the bottom of that panel the strip that named it was 1157px off-screen, the sticky header
+read "Settings", the bottom TabBar lit no tab, and the one card title on screen read "Sound" — the distance from
+the scope strip to `#guide-default` was 1614.8px. The mark makes the answer a property of the card the control is
+in: measured at 390x844, the worst distance from a card's mark to the deepest control inside that card is 493px on
+the room scope, 421.2px on the machine scope and 528.2px on You. That is a CEILING for every control rather than a
+figure for the deepest one, and it is sufficient because co-visibility is provable: the tallest card is Making
+karaoke at 640.2px against the 753px above the dock, so for every card there EXISTS a scroll position holding its
+mark and all of its controls at once. The one exception, measured and recorded rather than hidden: at 320px the
+Lyrics card is 857.6px, over that budget, so on the narrowest phone that card's mark can leave the screen before
+its last slider arrives.
+
+Every card also carries an `id`, so all eleven are addressable. There is deliberately NO `scroll-margin-block-start`
+yet: nothing in the tree links to a card fragment, and the offset needed is the sticky header's rendered bottom at
+rest, which is content-driven rather than a rung — the first real fragment link should bring that number, measured,
+with it.
+
+CARD ORDER, and the two moves that are not alphabetical. The room scope runs Rotation, Sound, The TV, Lyrics on the
+TV, Process quality. Rotation is first because it holds the one room setting changed mid-song (four code sites say
+so). **Sound is second, up from last**, because `GuidingTrack.svelte` records that this room DEFAULT and `/queue`'s
+per-turn override wear the same label in the same register, which makes it the control most likely to be
+mis-scoped — and it was the deepest control on the deepest panel. Measured: `#guide-default` moves from an absolute
+top of 1734.8 to 575.2, and from 1025.8px of scrolling to **zero**, at the same one tap from the Sing tab. **Process
+quality is last**, immediately above the one door into the machine scope, because `capAboveDefault` compares the
+room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel` — putting the cap beside the door to
+what it caps is the only place that relation can be read without changing page. That move costs `#quality-ceiling`
+its place on the first screen (0 → 1116.7px of scrolling), which is the price of the adjacency and is paid once per
+party rather than once per turn. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
+You scope runs You then Leaving.
+
+**THE ELEVENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
+card, and a scope page cannot mark a card that has no heading to mark — it is `Re-processing` now, with
+`role="heading" aria-level={2}` like the other ten. The disclosure itself did not work: measured closed, it
+reported `aria-expanded="false"` and carried the `hidden` attribute while computing `display: flex` over 318.2px of
+content (that figure is the 24px-gap column; the same state measures 254.2 now that the gap rule names both hosts)
+with `#upgrade-model` a live 228x44 box, and `document.scrollHeight` was identical in both states — a door
+reading "Re-process off" directly above the three controls it claimed to hide, announced as collapsed to a screen
+reader. THE CAUSE, because an earlier diagnosis named the wrong rule: `Collapsible.Content`'s `{...props}` spread
+lands on the nested `Card.Content` AFTER that component's own literal, so the element carrying `hidden` reports
+`data-slot="collapsible-content"`; app.css imports `tailwindcss/theme.css` and `tailwindcss/utilities.css` only, so
+Preflight — where Tailwind's own `[hidden]` reset lives — is never loaded; and `Card.Content`'s `flex` utility is
+AUTHOR origin, which out-ranks the UA sheet's `[hidden] { display: none }`. One rule in the shell,
+`main :global([data-slot='collapsible-content'][hidden]) { display: none }`, closes it, and closing it reclaims
+**255px** of the machine scope (measured: `scrollHeight` 1720 closed, 1975 open). It was 319px against an open 2039
+until the gap rule above learned the second host name: tightening that column from 24px to 8 is 64px of the height
+the door used to be hiding, so the door now hides less because the room behind it is no longer over-spaced.
+
+THE EXIT MODEL IS ONE THING IN ONE PLACE. There is exactly ONE commit control in all of settings — the You card's,
+inside the card, because the save's refusals name the name field — and it reads `Saving…` / `Save and close`.
+There are ZERO exit buttons on any scope: the room and machine panels' `Done` buttons, and the two `goto('/')`
+calls inside them, are DELETED.
+
+That sentence was FALSE for one revision and the correction is the interesting part. The You commit control used to
+render unconditionally and read `Done` whenever the draft was clean — an `--accent` block button whose only action
+was a navigation, which is exactly the thing the paragraph above calls "a worse copy of the dock". So the rebuild
+deleted two instances of the pattern and left a third, in the state a guest ARRIVES in, while the doc claimed zero.
+It now renders only while `profileDirty || saving`, so the rule actually holds across all three scopes: the back
+arrow is the exit everywhere, and a commit control appears only where there is a draft to commit. A `Done` whose whole job is a navigation is a worse copy of the dock,
+which is `position: fixed` and therefore on screen at every scroll position on every settings route, and which
+offers three real destinations where `Done` offered one; forcing every exit through the Sing tab is the regression
+the TabBar was built to end. The asymmetry the old pair created is resolved by SUBTRACTION rather than by minting a
+third instance: restoring a panel-level exit for position parity would re-mint the two identical `--accent` block
+buttons this scope was fixed to remove, one of which did not save.
+
+Three `goto` sites survive, and each is a destination rather than an exit affordance. `leaveRoom`'s is `/`
+UNCONDITIONALLY and must be: the cookie is gone, so the landing page is the only honest destination and anywhere
+else 401s. The commit's two are resolved through `safeNextPath(page.url.searchParams.get('next'), '/')` — the same
+hardened allowlist `/` uses — and the You scope's back anchor reads the SAME expression, so the arrow and the
+button cannot disagree about where "done" is, which is the class of defect the dual-commit fix was about one level
+up. `/` is today's only answer (the identity chip is that route's one door), so the `?next=` exists to keep a second
+door from needing a second rule.
+
+THE GAP THIS CREATES, named rather than hidden: the dock is gated on `showChrome` (`isPhoneSurface && me !== null`,
+with `me` arriving from the socket), so on a COLD load of a settings route there is a frame with no dock. PageHeader's
+back anchor covers it — a real `<a>`, so it works before any JS state lands, and it is also the keyboard-reachable
+exit — and every back target names a single real door: You → `/` (or its `?next=`), the room scope → `/`, the
+machine scope → `/settings`. `/metrics` and `/stats` name doors too: `/metrics` goes back to `/settings/server` and
+`/stats` to `/settings`, where both used to go to a bare `/settings` that resolved through the default tab — so
+leaving from the machine scope and tapping back landed on the room scope.
+
+That in-card commit has a consequence that is KEPT ON PURPOSE: the You scope's last control is `Leave the room` in
+the Leaving card below it. The destructive action is last because last is the end of the scope, after everything a
+guest came for; it is the only BUTTON in settings that is not an `--accent` fill, and the only control anywhere here
+behind an `alertdialog` confirm, so arriving at it by reaching for the bottom costs a dismissal rather than a room.
+Lifting Leaving above the You card would move the destructive card into the panel's FIRST position — top-left of
+the paired grid, which is desktop-only but real — to protect its last. A refusal on this pane is also keyed to the
+draft it refused (`{ name, colour, message }`, read back through a `$derived`) rather than held as a bare string: a
+stated reason must not outlive an edit to the field it names, or an empty-name refusal goes on sitting under a
+button that has gone back to reading `Done`.
+
+Other rules a change here must respect. IDS ARE A CONTRACT: all ten `SEL.SETTING_IDS` plus `id="max-processes"` are
+spelled explicitly because `tests/playwright/world/selectors.ts` and the probe and shot specs resolve those
+literals; `#tab-<scope>` is gone with the tablist and `SEL.settingsTab` retired with it, so a spec navigates to a
+scope route and waits on a control. A slider's range must match the server clamp exactly, or the UI silently
+refuses values the server accepts. The fourteen registry-backed selects all render through
+`src/lib/ui/SelectField.svelte`, which renders a label and a select as SIBLINGS with no wrapper, because the card
+rhythm above keys on the label being a direct child of `card-content`. Every form control keeps a 16px minimum
+font-size, because iOS zooms a focused sub-16px field and never zooms back and this surface is almost entirely form
+controls — measured on all three scopes: ZERO sub-16px form controls, the selects at 16px, `#join-origin` at 16px
+and `#profile-name` at 16.8px. The
+identity ring gets `taken={[]}` because these loads carry no room occupancy, and inventing one would draw pips at
+colours nobody holds. `PROCESSES_UNCAPPED` is `0` and means uncapped, so it must be tested before any count
+comparison and is rendered in words. `--control-line` and not `--line` identifies the colour input and the field
+boxes; `.err` on `--danger-ink` is a refusal and `.warn` on `--warn` is an advisory, and the six advisories here
+are the reason a refusal may not wear amber.
+
+WHY SETTINGS IS NOT TREATED AS A PARTY-TIME SURFACE, from this install's own database rather than from taste:
+`room_settings` has ZERO rows — a room write upserts, so no room-scope setting has ever been written here — and
+`global_settings` differs from the defaults in exactly one field. A first screen assembled from inferred frequency
+would be a guess in a measurement's voice; what the three scopes optimise instead is that a guest can always tell
+whose setting they are about to change.
+
+WHAT THE SPLIT COST, measured at 390x844 with `--dock-h` at 91px (its strip-present value; it is 46px on an idle
+room). `document.scrollHeight`: the room scope 2111 → 2150 (+39, five scope marks at 23.4px each against the 78px
+the tablist and its offset gave back), You 1041 → 1010 (−31, two marks cannot spend the same 78), the machine scope
+2043 → 1720 (−323: the disclosure now closes, and the panel-level `Done` and its row gap are gone). The first
+control on every scope rises from y=300.8 to y=246.2 — 35.6% of the viewport spent before the first control, down to
+29.2% — and the panel top from 184 to 106. Controls fully above the dock on arrival: the room scope 3 of 19 → 4 of
+19, the machine scope 4 of 13 → 4 of 9 (the closed door accounts for three of those four fewer, the deleted `Done`
+for the last), You 3 of 4 unchanged. Taps from the Sing tab are unchanged for all three: the room scope 1, You 1,
+the machine scope 2. The scope line in the sticky header costs ZERO height, measured: the header's box is 64px with
+and without it, because the 44px back button already sets that row's height.
 
 ### The song page
 

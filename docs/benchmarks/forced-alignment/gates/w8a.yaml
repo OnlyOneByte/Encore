@@ -134,10 +134,12 @@ high-gross-zero-extraverse: extraverse.high_gross == 0
 high-gross-zero-headers: headers.high_gross == 0
 high-gross-zero-credit: credit.high_gross == 0
 high-gross-blind-at-most-three: blind.high_gross <= 3
-# The Jamendo word and highlight floors the wave was handed, as absolutes. A re-opened line moves the line's
-# start, its first word's start and that word's first syllable and NOTHING else (`generate.reopened_line`,
-# never `adopted_line`), which is why `word_aligned` cannot fall: an adoption would have flagged every word
-# of the line interpolated and cost ~60 Jamendo words.
+# The Jamendo word and highlight floors the wave was handed, as absolutes. `word_aligned` CAN fall and did:
+# the round-1 review made a re-opened line's first word declare itself interpolated, so `band-reopen` reads
+# 5373 at `truth` and 5096 at `jit`. W8b re-judged the two rules below rather than waiving them and they
+# stand — 4 of the 6 words the arm re-labels at `jit` paid for the new label with a published start 273-342 ms
+# FURTHER from truth. `gates/w8b-arms.yaml` is the rule that says that directly, over a denominator a
+# reclassification cannot move; README, "W8b: re-judging `word-aligned-not-down`".
 word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
 word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
 word-aae-truth: truth.jamendo.word_aae_ms <= 71.1

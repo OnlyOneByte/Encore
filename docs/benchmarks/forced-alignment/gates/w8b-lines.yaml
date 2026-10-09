@@ -1,0 +1,162 @@
+# W8b's LINE_SYNC gate: the 28-SONG accuracy baseline at the rung where the CLAIM CLOCK is the only thing that
+# can move a line (PLAN-alignment-v3 W8b; `--sync-mode lines` = every text's only attempt is the gated LINE_SYNC
+# rung). Companion to `w8b.yaml`, which serves `time_text` and `run_align`/forced; this rung needs its own file
+# because it grades NO line (`high` 0 by construction) and scores no word, so half of that file would be an
+# ERROR here. Narrative: README, "W8b: the corpus's own truth, measured, and the 28 songs that score".
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --sync-mode lines --modes all,wrongtext+ownclock --tag w8b-lines \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-base-lines-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8b-lines.yaml
+#
+# THE BASELINE is `_runs/w8a-def-lines/rows.jsonl` re-summarised on the W8b harness
+# (`results/w8b-base-lines-run_align.json`, **0 model seconds**), whose `all` column reproduces
+# `results/w8a-lines-run_align.json` exactly; the committed pre-W8b row keeps its bytes.
+#
+# WHY THIS RUNG IS WHERE THE EXCLUSION IS MOST LEGIBLE. At LINE_SYNC the document IS the served sheet: no
+# decode, no repair, no window. So (published − truth) is the claim clock's shift and nothing else, and in
+# `truth` mode the served sheet IS the truth. **Over the 28 songs that score, the rung reads ±500 100.00 % with
+# `band` 0** — it publishes the truth verbatim and the scoring agrees, which is the tautology that says the
+# harness is sound. Over all 32 it reads 94.16 % with `band` 100, and those 100 lines are bad-guy's 65 and
+# numb's 35 moved by ONE constant each (+720.0 and +620.0 ms at MAD **0.0**): the clock is acoustically right
+# about songs whose captions are early, and metrically wrong against them. That is the whole W8b argument in one
+# measurement, and it is the reason the exclusion is a statement about four REFERENCES.
+#
+# AND THE MIRROR, which is why ±500 alone can never be the gate again: in `off05` the served sheet is 0.5 s
+# late, the rung publishes it verbatim, and ±500 scores **99.87 %** on the 28 — the best reading in the build on
+# a document uniformly half a second late. §4 gates the band metric that sees it: 16 of the 28 scored songs sit
+# past 250 ms there at MAD 0.
+#
+# `blind` has NO accuracy rule here: with no claims there is no sheet to line-sync, so the rung publishes
+# nothing (0 lines, 32 cases). §1 gates that it stays that way.
+#
+# MEASURED READING, 93 rules (94 with `run_gates`' built-in no-error-rows): the W8b sweep reads **94/94**
+# (`results/w8b-lines-run_align.json`, 2026-10-05, code `4804fae43eb43d7c`, 1088 cases, 904 s, 0 matrices
+# computed), and so does the baseline — the floors are its reading. README, "W8b: the sweep, read both ways".
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 1) MUST: the exclusion removes songs from SCORING and from nothing else ─────────────────────────────
+all-songs-still-run-truth: truth.cases == 32
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 206
+excluded-still-measured-jit: jit.scored - jit.scored.scored >= 206
+blind-publishes-nothing: blind.published + blind.scored == 0
+blind-cases-thirty-two: blind.cases == 32
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+# This rung grades nothing, so the grade must be absent and not merely small — `w3-lines.yaml`'s
+# `lines-never-high`, restated on the scored pool as well so the exclusion cannot hide a graded line.
+lines-never-high-scored: truth.scored.high + jit.scored.high + off05.scored.high + off15.scored.high + off3.scored.high + offm1.scored.high + tempo098.scored.high + tempo102.scored.high + drop20.scored.high + drop50.scored.high + extraverse.scored.high + headers.scored.high + credit.scored.high == 0
+
+# ── 2) MUST: the 28-song baseline at the rung, as absolute floors ───────────────────────────────────────
+# THE NUMBER: `truth` ±500 **100.00 %** over **1506 scored lines**, `band` **0**, gross 0 — against 94.16 % /
+# 1712 / band 100 over all 32.
+pm500-scored-truth: truth.scored.pm500 >= 100.0
+pm500-scored-off15: off15.scored.pm500 >= 100.0
+pm500-scored-off3: off3.scored.pm500 >= 100.0
+pm500-scored-tempo102: tempo102.scored.pm500 >= 100.0
+pm500-scored-drop20: drop20.scored.pm500 >= 100.0
+pm500-scored-drop50: drop50.scored.pm500 >= 100.0
+pm500-scored-extraverse: extraverse.scored.pm500 >= 100.0
+pm500-scored-headers: headers.scored.pm500 >= 100.0
+pm500-scored-off05: off05.scored.pm500 >= 99.87
+pm500-scored-credit: credit.scored.pm500 >= 99.60
+pm500-scored-tempo098: tempo098.scored.pm500 >= 99.40
+pm500-scored-offm1: offm1.scored.pm500 >= 99.07
+pm500-scored-jit: jit.scored.pm500 >= 89.77
+#
+# ... over their denominators, which at this rung is also the statement that the gate on `drop50` means
+# something: 525 of the 28 songs' lines survive a half-text drop, against 1506 unperturbed.
+scored-lines-truth: truth.scored.scored >= 1506
+scored-lines-jit: jit.scored.scored >= 1506
+scored-lines-off05: off05.scored.scored >= 1506
+scored-lines-off15: off15.scored.scored >= 1506
+scored-lines-off3: off3.scored.scored >= 1506
+scored-lines-offm1: offm1.scored.scored >= 1506
+scored-lines-tempo098: tempo098.scored.scored >= 1506
+scored-lines-tempo102: tempo102.scored.scored >= 1506
+scored-lines-drop20: drop20.scored.scored >= 1210
+scored-lines-drop50: drop50.scored.scored >= 525
+scored-lines-extraverse: extraverse.scored.scored >= 1517
+scored-lines-headers: headers.scored.scored >= 1506
+scored-lines-credit: credit.scored.scored >= 1506
+
+# ── 3) MUST: gross lines, over all 32 and over the 28 ──────────────────────────────────────────────────
+# Zero in every mode at this rung, on both pools: the claim clock shifts a sheet, it does not scatter one.
+gross-zero-truth: truth.gross == 0
+gross-zero-jit: jit.gross == 0
+gross-zero-off05: off05.gross == 0
+gross-zero-off15: off15.gross == 0
+gross-zero-off3: off3.gross == 0
+gross-zero-offm1: offm1.gross == 0
+gross-zero-tempo098: tempo098.gross == 0
+gross-zero-tempo102: tempo102.gross == 0
+gross-zero-drop20: drop20.gross == 0
+gross-zero-drop50: drop50.gross == 0
+gross-zero-extraverse: extraverse.gross == 0
+gross-zero-headers: headers.gross == 0
+gross-zero-credit: credit.gross == 0
+gross-zero-scored-truth: truth.scored.gross == 0
+gross-zero-scored-jit: jit.scored.gross == 0
+gross-zero-scored-drop50: drop50.scored.gross == 0
+gross-zero-scored-extraverse: extraverse.scored.gross == 0
+
+# ── 4) MUST: the band metrics read the claim clock, on the 28 that score ───────────────────────────────
+# `truth` 0 band lines over the 28 and a pooled `bias_ms` of 0.0 at MAD 0.0 — the rung publishes the sheet it
+# was served. The two displaced songs the exclusion removes carried ALL 100 of the 32-song band lines, which
+# the second block gates as an equality so the counter cannot go quiet.
+band-zero-scored-truth: truth.scored.band == 0
+band-zero-scored-off15: off15.scored.band == 0
+band-zero-scored-off3: off3.scored.band == 0
+band-zero-scored-tempo102: tempo102.scored.band == 0
+band-zero-scored-drop20: drop20.scored.band == 0
+band-zero-scored-drop50: drop50.scored.band == 0
+band-zero-scored-extraverse: extraverse.scored.band == 0
+band-zero-scored-headers: headers.scored.band == 0
+band-at-most-scored-off05: off05.scored.band <= 2
+band-at-most-scored-credit: credit.scored.band <= 6
+band-at-most-scored-tempo098: tempo098.scored.band <= 9
+band-at-most-scored-offm1: offm1.scored.band <= 14
+band-at-most-scored-jit: jit.scored.band <= 154
+band-one-hundred-over-all-truth: truth.band == 100
+band-one-hundred-over-all-headers: headers.band == 100
+band-one-hundred-over-all-off15: off15.band == 100
+#
+# THE COHERENT SHIFT, which at this rung is the claim clock's own displacement. Over the 28 it is **0** at
+# `truth`; over all 32 it is bad-guy and numb, every line of each moved by one constant. And `off05` is the
+# measurement that keeps ±500 honest: 16 of the 28 scored songs sit past 250 ms at MAD 0 on a sheet the rung
+# publishes verbatim and ±500 scores 99.87 % on.
+coherent-shift-none-scored-truth: count((abs(truth.scored.song.bias_ms) > 250) * (truth.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-off15: count((abs(off15.scored.song.bias_ms) > 250) * (off15.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-off3: count((abs(off3.scored.song.bias_ms) > 250) * (off3.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-headers: count((abs(headers.scored.song.bias_ms) > 250) * (headers.scored.song.mad_ms <= 250)) == 0
+coherent-shift-none-scored-tempo102: count((abs(tempo102.scored.song.bias_ms) > 250) * (tempo102.scored.song.mad_ms <= 250)) == 0
+coherent-shift-two-over-all-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) == 2
+coherent-shift-two-over-all-headers: count((abs(headers.song.bias_ms) > 250) * (headers.song.mad_ms <= 250)) == 2
+coherent-shift-sixteen-scored-off05: count((abs(off05.scored.song.bias_ms) > 250) * (off05.scored.song.mad_ms <= 250)) == 16
+off05-pm500-is-blind-to-it: off05.scored.pm500 >= 99.0
+
+# ── 5) MUST: no song moved, in either direction ────────────────────────────────────────────────────────
+# W8b changed no file under `worker/encore_worker`, so this rung — which publishes the served sheet and nothing
+# else — must reproduce the baseline song for song.
+no-song-loses-truth: min_song_delta(truth.song.pm500) >= -0.001
+no-song-gains-truth: max_song_delta(truth.song.pm500) <= 0.001
+no-song-loses-jit: min_song_delta(jit.song.pm500) >= -0.001
+no-song-gains-jit: max_song_delta(jit.song.pm500) <= 0.001
+no-song-loses-off05: min_song_delta(off05.song.pm500) >= -0.001
+no-song-loses-credit: min_song_delta(credit.song.pm500) >= -0.001
+
+# ── 6) MUST: wrong-text protection is untouched at this rung too ───────────────────────────────────────
+# 0/640, and at LINE_SYNC the refusal has to hold the extra way: `line_sync` must be 0 as well, because the
+# rung's only attempt IS the gated line-sync one.
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-scores-no-line: wrongtext.scored == 0
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-commits-nothing: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+ownclock-scores-no-line: mode("wrongtext+ownclock").scored == 0

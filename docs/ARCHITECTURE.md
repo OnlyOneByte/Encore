@@ -11,10 +11,12 @@
 
 Encore is a self-hosted karaoke server with two surfaces:
 
-- **Phone remote:** QR join (name + color, no signup), then two surfaces under one persistent
-  now-playing band: home at `/` — a search field, the queue, what is being made, and the saved library in
-  one column — and one song's detail at `/song/[mediaId]`. One-tap queue, singer-owned reordering, and the
-  live controls — transport, ±key, guiding track, lyrics re-pick — in the drawer the band pulls up into.
+- **Phone remote:** QR join (name + color, no signup), then THREE TABS under one persistent bottom chrome —
+  Sing at `/` (search and add), Queue at `/queue` (who is up, and the live controls), Library at `/library`
+  (what this room can already sing) — plus one song's detail pushed at `/song/[mediaId]`. One-tap queue,
+  singer-owned reordering, and the live controls — transport, ±key, guiding track, lyrics re-pick — on the
+  Queue tab's now-playing card. The chrome is a fixed-height now-playing strip above a tab bar; it has no
+  expandable state.
 - **TV/stage:** attract → lobby → waiting → playing, gapless two-player playback, lower-third,
   lyrics, persistent join card.
 
@@ -127,9 +129,10 @@ Three properties of the owner are deliberate:
   leak waiting to happen; plain fields that only ever move in the browser cannot leak that way.
   `src/lib/stores/queue.ts` beside it already established subscribe-and-mirror and is tested that way,
   so a second idiom in one directory is a thing every reader learns twice. And mirroring per component
-  means the band does not re-render on a library merge it does not read.
+  means the strip does not re-render on a library merge it does not read.
 - **The socket lives for the DOCUMENT, not the route.** `connect()` is idempotent and browser-only, and
-  nothing closes the connection on navigation — the band and the drawer have to survive it. `close()`
+  nothing closes the connection on navigation — the bottom chrome has to survive it, and so does a tab switch.
+  `close()`
   exists for a test; the document closing takes the socket with it. A guest who has not joined settles
   with no socket at all.
 - **The root layout gates connecting on a not-a-phone list.** `src/routes/+layout.svelte` is the ROOT
@@ -150,68 +153,94 @@ replaces the catalog and wipes the very row the scar exists to survive a reload.
 ### The phone's surfaces
 
 Chrome first, because it is what the ownership above bought.
-`src/lib/components/NowPlayingBand.svelte` is mounted by the layout as the bottom-most chrome of every
-phone surface: the title, who is singing, a search button, and a transport disc whose progress **ring**
-replaced both an elapsed number and a separate thumbnail — the transport button can BE the artwork.
-`progress` is a fraction **or null**, and null draws an EMPTY ring rather than one pinned at zero,
-because a 0% ring reads as a stalled song (the same null-not-zero rule the queue peek applies). The
-band is presentational — no socket, no store, no `$app/*` import — and `position: fixed` lives on the
-layout's `.dock` wrapper instead of on the component, because `/components` renders five bands to show
-every state and a fixed one would collapse all five onto the same strip. Its **measured** height is
-published as `--dock-h` on documentElement so every scrolling column reserves it in normal flow, and
-`env(safe-area-inset-bottom)` lives on the band alone and reaches everything stacked above it through
-that token — a second `env()` term higher up doubles the gap.
 
-Pulling the band up opens `src/lib/components/NowPlayingDrawer.svelte`, which holds the live controls:
-the seek row, the transport, ±key with the vocal range directly beneath it, the guiding-track level, and
-lyrics re-selection. `handleOnly` is the load-bearing prop: vaul drags to dismiss from anywhere in its
-content, and this drawer's body is sliders, so a drag surface underneath them would make the two
-gestures one gesture and the ancestor would win. Dragging is restricted to the handle — a whitelist,
-chosen over a blacklist of opt-out elements because a whitelist cannot be forgotten when a control is
-added later. The container also satisfies a mount constraint that used to be a condition someone had to
-remember: `src/lib/components/GuidingTrack.svelte` wraps a slider that reads `offsetWidth` and must not
-mount hidden, and a drawer portals its content on open and destroys it on close, where a collapsible
-renders its content always and merely hides it.
+`src/lib/ui/NowPlayingStrip.svelte` and `src/lib/ui/TabBar.svelte` are mounted together by the layout, inside
+one fixed `.dock` wrapper, as the bottom-most chrome of every joined phone surface. The strip carries who is
+singing, the song, and the transport; the tab bar carries the three tabs. `position: fixed` lives on the
+wrapper rather than on either component, because `/components` renders them standalone to show every state and
+a fixed one would collapse those onto the real chrome.
+
+**THE STRIP HAS NO OPEN STATE, and that is the whole point of its shape.** Its height is a function of nothing
+but whether it renders, which it does when `hasSong || canStart` — so an idle room shows the tab bar alone
+rather than a dead transport. There is no snap array, no drag, and no geometry read inside it.
+
+`--dock-h` is the wrapper's **measured** height, published on documentElement so every scrolling column
+reserves it in normal flow. Measured and not derived, and the attempt is recorded because it looked obviously
+right: a tab renders 45px against a declared 44, because its icon, gap and label outgrow the 32px that
+`min-height: var(--tap)` leaves inside `padding-block` under border-box. The content-driven height is also the
+CORRECT behaviour — the chrome holds text, so a height frozen at one tap floor would clip the label at the
+browser's 200% text-only zoom. `env(safe-area-inset-bottom)` lives on the TAB BAR alone, the app's bottom-most
+element, and reaches everything stacked above it through `--dock-h`; a second `env()` term higher up doubles
+the gap.
+
+The live controls — ±key with the vocal range beneath it, the guiding-track level, and the door to lyrics
+re-selection — sit on the **Queue tab's now-playing card**, above the queue list. They act on what is PLAYING,
+and the playing song is not in the queued list, so putting them below the list would separate a control from
+its subject by the whole scroll height of a party's queue. `src/lib/components/GuidingTrack.svelte` wraps a
+slider that reads `offsetWidth` and must not mount hidden; a route that renders its content unconditionally
+satisfies that without the portal-on-open dance a sheet needed.
 
 The routes then divide by the question each answers:
 
 | Surface           | Answers                              | Notes                                                                                                                                                                     |
 | ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`               | who is up, and what can I sing       | one column: the search field, the queue, what is being made, and the **saved library** as the zero-query state. A guest who has not joined gets the landing state instead |
-| `/song/[mediaId]` | can I sing THIS, are the words right | reached from the drawer's "···"; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]`                                                                              |
+| `/` (Sing)        | what can I sing                      | the search field and its results. A guest who has not joined gets the landing state instead                                                                               |
+| `/queue` (Queue)  | who is up, and the live controls      | the now-playing card (±key, guiding track, the song-detail door) over ONE list of the rotation — a cooking song still holds its turn, so processing cards interleave        |
+| `/library`        | what can this room already sing       | one flat list of ready songs, with sort and facets behind a collapsed disclosure                                                                                          |
+| `/song/[mediaId]` | can I sing THIS, are the words right | reached from `/queue`'s now-playing card, the only door to it; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]`                                                 |
 
-Two of those are reversals worth recording rather than quietly dropping.
+Three of those are reversals worth recording rather than quietly dropping.
+
+**The now-playing SHEET is gone, and it is the largest reversal in this file.** A persistent band pulled up
+into a vaul drawer holding the live controls — 1073 lines across `NowPlayingBand`, `NowPlayingDrawer` and
+`sheet-snap`, plus `vaul-svelte` and `bits-ui` as a 201.72 kB raw / 57.97 kB gzip chunk the root layout went to
+real lengths to defer and then warm. The reason it went is a PRODUCT fact rather than a budget: Encore's
+now-playing surface is the TELEVISION, so the phone never needed one. A phone that is a remote and a queue
+needs a line of text and three buttons, and the sheet's whole apparatus — a constant snap 0 because the array
+cannot be replaced under a live pointer, a lazy watch written through `null` on every re-seat, pointer-capture
+workarounds so a drag does not fire a click, drag exclusion, a hand-rolled debounced resize re-seat — existed
+to make a third-party sheet behave. The owner reported it expanding on its own and covering the page; that
+class of defect was structural to the arrangement, not a bug in it. Its controls moved to `/queue`, which is a
+change of PLACE and not of content.
 
 **The hero is gone.** Home used to open with a card for a song someone else is singing, which spent the
 top third of the screen on the one thing a guest cannot act on, pushed the rotation down the page, and —
-once the band existed — said "Nothing playing" twice on one screen. Its content moved into the drawer,
+once the band existed — said "Nothing playing" twice on one screen. Its content moved into the sheet, and
+from there to `/queue`'s now-playing card when the sheet went,
 which is a change of PLACE and not of content: the same song identity, seek row, transport and live
 controls, none of it occupying the queue any more.
 
-**Search is a section of home, not a place you go.** Three placements, and each was right about something.
+**Search is a PLACE you go again — the Sing tab.** FOUR placements now, and each was right about something.
 It was a box docked in the thumb zone whose results expanded UPWARD in place over the queue, with no browse
 mode and no `?browse=1`, because there was nothing to navigate back out of. The band then took the bottom
 edge, so the box moved to a route of its own (`/find`) — once search is somewhere you GO, a route is what
 makes the phone's own back gesture the way back. And a route turned out to be the cost: the songs already on
 disk, the whole point of persisting the catalog, were invisible from the screen a guest actually sits on.
 
-So the field moved to the TOP of home and the library under the queue (2026-09-22), which keeps both
-readings: nothing competes with the band for the bottom edge, and there is no navigation to back out of
-because a query simply replaces the queue with the results. The band's magnifier FOCUSES the field now
-rather than navigating (`$lib/stores/search-focus`, since app chrome cannot reach into a route's locals).
+Then the field moved to the TOP of home and the library under the queue (2026-09-22), which kept both
+readings: nothing competed with the band for the bottom edge, and there was no navigation to back out of
+because a query simply replaced the queue with the results.
+
+And the fourth placement is the third one's argument taken seriously (2026-10-04). A query replacing the queue
+meant the two things a guest does at a party — add a song, check when I am up — fought for one 390x844 viewport
+minus the chrome. The tab bar gives search its own place without the `/find` cost, because the library and the
+queue are now tabs rather than sections that search had to displace. `$lib/stores/search-focus` is DELETED, not
+re-pointed: it existed so the band's magnifier could focus a field inside a route it could not reach into, and
+the strip that replaced the band carries no magnifier — the Sing tab is one tap away on the tab bar instead.
 
 Note what did not come back through any of it: there is still no browse TOGGLE, because the library IS the
 default content, and results read DOWNWARD, so the best match is first and the scroll-to-the-end
 orchestration is gone rather than re-pointed.
 
-`/song/[mediaId]` is a route rather than a second sheet stacked on the drawer, on a forward-looking
+`/song/[mediaId]` is a route rather than a sheet, on a forward-looking
 argument: lyrics timing and editing are becoming a comprehensive system, and a sheet that grows into a
 workspace is the wrong container to start one in — a chooser is not an editor. It **fetches** instead of
 reading the link, because the client catalog only holds songs the room has touched and this page is
 reachable for any id, including a song processed on an earlier night. It reads the link for exactly the
 live fact the audit row cannot know: the room's current `keyShift`, so its range readout describes what
-the TV is sounding rather than the song at concert pitch. The drawer closes itself as it navigates,
-since it lives in the layout and would otherwise cover the page it just opened.
+the TV is sounding rather than the song at concert pitch. Nothing has to close itself as it navigates any more:
+the chrome it is reached from is a fixed strip that covers nothing, where the sheet it used to live in had to
+dismiss or it would have covered the page it had just opened.
 
 ## 4. Rotation, presence, and room state
 

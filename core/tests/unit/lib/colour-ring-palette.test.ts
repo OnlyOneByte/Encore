@@ -24,7 +24,9 @@ import {
 const SRC = srcDir;
 const RING = readFileSync(join(SRC, 'lib/components/ColourRing.svelte'), 'utf8');
 const LANDING = readFileSync(join(SRC, 'lib/components/JoinLanding.svelte'), 'utf8');
-const SETTINGS = readFileSync(join(SRC, 'routes/settings/+page.svelte'), 'utf8');
+// The YOU scope, which is where the singer's own two values are edited: /settings is three scope ROUTES, and the
+// identity pane is the only one of them that holds a colour at all.
+const SETTINGS = readFileSync(join(SRC, 'routes/settings/you/+page.svelte'), 'utf8');
 // The preset picker's remaining surface, now the ring holds both identity panes.
 const GALLERY = readFileSync(join(SRC, 'routes/components/+page.svelte'), 'utf8');
 

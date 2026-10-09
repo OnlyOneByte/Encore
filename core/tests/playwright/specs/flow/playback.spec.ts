@@ -25,7 +25,7 @@
 import { test, expect } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
 import type { World } from '../../world/fixtures';
@@ -199,7 +199,13 @@ async function stageASound(world: World): Promise<Stage> {
 		.getByRole('button', { name: /^Add a turn/ })
 		.first()
 		.click();
-	await returnHomeFromBrowse(phone); // the rotation is on home
+	// ONTO THE QUEUE TAB, because that is where the rotation is. Going back to `/` instead left the `.qrow` term of
+	// the poll below permanently zero — the Sing tab renders no QueueRow at all — so the check rested entirely on the
+	// strip and only happened to hold because a fresh room auto-starts its first add. The parenthetical below names
+	// the very case that would then have read an empty rotation. The transport this flow presses afterwards is in the
+	// dock on every phone surface, and /queue's own now-playing card carries no play/pause, so `Pause` stays
+	// unambiguous from here.
+	await openQueue(phone);
 
 	// THE SONG IS IN THE ROTATION. Measured as rows OR the strip, not as `.qrow` alone: an idle room auto-starts
 	// the add and the phone's queue list renders only `queued` entries, so the FIRST song of the night is not a row

@@ -20,8 +20,9 @@ import os
 import random
 import sys
 import zlib
+from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -306,6 +307,93 @@ def test_word_scores_follow_bench_py() -> None:
     assert words["aligned"] == 3 and words["gross"] == 1
     assert words["w250_pct"] == pytest.approx(66.67) and words["pco300_pct"] == pytest.approx(40.0)
     assert words["medae_ms"] == pytest.approx(200.0) and words["bias_ms"] == pytest.approx(200.0)
+
+
+def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() -> None:
+    """`word_published_*` reads the start the document publishes, whatever the word's provenance.
+
+    The aligned-only family is one word short of the paired set here, and that word is on its truth to the
+    millisecond — so the two families disagree by construction, which is the point. W8b's re-judgement of
+    `word-aligned-not-down` turned on exactly this gap: README, "W8b: re-judging `word-aligned-not-down`"."""
+    song = song_of(
+        [("one two", 0.0, 2.0), ("three four", 3.0, 5.0)],
+        words=[(0.0, 0.5), (1.0, 1.5), (3.0, 3.5), (4.0, 4.5)],
+    )
+    got = claims(song, "truth")
+    doc = [
+        line(0, 0.0, words=(lib.DocWord(0.05, 0.4, True), lib.DocWord(1.0, 1.4, False))),
+        line(1, 3.0, words=(lib.DocWord(3.4, 3.8, True), lib.DocWord(4.0, 4.4, True))),
+    ]
+    score = lib.score_words(song, got, doc)
+    assert score.errors == pytest.approx((0.05, 0.4, 0.0)) and score.unaligned_errors == pytest.approx((0.0,))
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    words = lib.word_metrics([row])
+    assert (words["aligned"], words["interpolated"]) == (3, 1)
+    assert words["w100_pct"] == pytest.approx(66.67) and words["published100_pct"] == pytest.approx(75.0)
+    assert words["aae_ms"] == pytest.approx(150.0) and words["published_aae_ms"] == pytest.approx(112.5)
+    compact = lib.compact_row(row)["words"]
+    assert (compact["aligned"], compact["pm100"]) == (3, 2) and (
+        compact["published"],
+        compact["published_pm100"],
+    ) == (4, 3)
+    del row["words"]["unaligned_errors"]
+    assert "published" not in lib.compact_row(row)["words"], "a pre-W8b case claims no published count"
+
+
+def test_the_published_family_cannot_be_moved_by_relabelling_a_word_that_did_not_move() -> None:
+    """The owner's W8b question, as a metric: re-label a word and leave its start alone.
+
+    Every aligned-only column moves (the word leaves both numerator and denominator); every
+    `word_published_*` column is identical, because the denominator is `aligned + interpolated`."""
+    song = worded("j")
+    got = claims(song, "truth")
+    doc = exact_doc(song, got)
+    late = doc[0].words[0]
+    moved = lib.DocWord(late.start + 0.4, late.end, True, late.text)
+    before = [replace(doc[0], words=(moved, *doc[0].words[1:])), doc[1]]
+    after = [replace(doc[0], words=(replace(moved, aligned=False), *doc[0].words[1:])), doc[1]]
+
+    def metrics(published: list[Any]) -> dict[str, Any]:
+        row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=published)
+        return dict(lib.word_metrics([row]) or {})
+
+    kept, relabelled = metrics(before), metrics(after)
+    assert (kept["aligned"], relabelled["aligned"]) == (6, 5)
+    assert kept["w100_pct"] == pytest.approx(83.33) and relabelled["w100_pct"] == pytest.approx(100.0)
+    for name in ("published100_pct", "published250_pct", "published300_pct", "published_aae_ms"):
+        assert kept[name] == relabelled[name], name
+    assert kept["published100_pct"] == pytest.approx(83.33)
+
+
+def test_a_row_from_before_the_published_family_reads_none_unless_nothing_was_interpolated() -> None:
+    """An old `rows.jsonl` carries `words.unaligned_errors` only implicitly, so the family fails loud.
+
+    A row with no interpolated word has an empty list by arithmetic and is read; one with interpolated words
+    cannot be reconstructed, and reading it as "no unaligned onsets" would score the aligned half twice and
+    flatter the run. `gates/w8b-arms.yaml` is written knowing a pre-W8b baseline ERRORs on it."""
+    song = worded("j")
+    got = claims(song, "truth")
+    doc = exact_doc(song, got)
+    clean = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    first = doc[0].words[0]
+    with_interp = lib.row_of(
+        song=song,
+        mode="truth",
+        variant=0,
+        claims=got,
+        outcome=lib.PUBLISHED,
+        doc=[replace(doc[0], words=(replace(first, aligned=False), *doc[0].words[1:])), doc[1]],
+    )
+    for row in (clean, with_interp):
+        del row["words"]["unaligned_errors"]
+    assert (lib.word_metrics([clean]) or {})["published100_pct"] == pytest.approx(100.0)
+    old = lib.word_metrics([with_interp]) or {}
+    assert [old[name] for name in ("published100_pct", "published300_pct", "published_aae_ms")] == [
+        None,
+        None,
+        None,
+    ]
+    assert lib.flat_metrics(lib.summarize([with_interp])["truth"]["all"])["word_published_pm100"] is None
 
 
 def test_line_metrics_keep_e2e2s_definitions() -> None:
@@ -1209,6 +1297,92 @@ def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_ri
     assert [r.gate.name for r in short if r.status != "PASS"] == ["committed-not-down-truth"]
 
 
+#: `gates/w8b-arms.yaml`'s published-onset floors as the W8b measurement recorded them — the default's reading
+#: over Jamendo, identical at `run_align` and `time_text`: mode -> (±100, ±250, ±300, AAE ms). README, "W8b:
+#: re-judging `word-aligned-not-down`" carries the table and the two modes left out of the file.
+W8B_PUBLISHED_FLOORS: Mapping[str, tuple[float, float, float, float]] = {
+    "truth": (82.79, 94.43, 95.36, 86.6),
+    "jit": (76.64, 89.40, 90.54, 116.0),
+    "credit": (82.25, 94.04, 94.96, 89.5),
+    "extraverse": (82.00, 93.61, 94.55, 88.8),
+    "drop20": (77.63, 90.08, 91.26, 162.9),
+    "off05": (82.91, 94.48, 95.36, 86.8),
+    "off15": (82.91, 94.48, 95.36, 86.8),
+    "off3": (82.91, 94.48, 95.36, 86.8),
+    "offm1": (82.91, 94.48, 95.36, 86.7),
+    "tempo098": (82.88, 94.53, 95.39, 86.2),
+    "tempo102": (82.88, 94.55, 95.39, 86.2),
+    "blind": (82.81, 93.74, 94.38, 253.6),
+}
+
+
+def published_run(mode: str | None = None, *, relabel: bool = False, move: float = 0.0) -> list[Any]:
+    """Rows for all 14 timed modes with every word on its truth, then `mode`'s first two words nudged."""
+    song, donor = worded("j"), worded("d")
+    rows = []
+    for name in (m for m in lib.ALL_MODES if "wrongtext" not in m):
+        got = claims(song, name, [song, donor])
+        doc = exact_doc(song, got)
+        if name == mode and doc:
+            head = tuple(
+                lib.DocWord(w.start + move, w.end + move, w.aligned and not relabel, w.text)
+                for w in doc[0].words[:2]
+            )
+            doc = [replace(doc[0], words=(*head, *doc[0].words[2:])), *doc[1:]]
+        rows.append(lib.row_of(song=song, mode=name, variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc))
+    return rows
+
+
+def published_view(mode: str | None = None, **nudge: Any) -> Any:
+    """`published_run` as a gate view, with the `SETUP_META` a base-reading rule needs on both sides."""
+    setup = dict(level="run_align", seed=0, wrong_k=10, language="en", tfr_audio="youtube", asr="off")
+    return gates.view_of(document(published_run(mode, **nudge), **setup))
+
+
+def test_the_w8b_arms_file_judges_where_words_landed_and_not_what_they_were_called() -> None:
+    """`gates/w8b-arms.yaml`: the ratchet W8b put beside `word-aligned-not-down` after re-judging it.
+
+    The owner's decision was that a small aligned/interpolated reclassification is bookkeeping when the words
+    did not move, so this file must PASS that and FAIL a move — identically whether or not the moved word was
+    re-labelled, which is the half `word_aligned` misses. Every floor is pinned to the measurement, because a
+    floor typed one digit off cannot bite. README, "W8b: re-judging `word-aligned-not-down`"."""
+    rules = gates.parse_gates((GATES_DIR / "w8b-arms.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 76, "run_gates adds the built-in no-error-rows on top"
+    floors = {
+        rule.name: float(rule.expr.rsplit(" ", 1)[1])
+        for rule in rules
+        if rule.name.startswith("published-") and not rule.name.startswith("published-held-")
+    }
+    assert floors == {
+        f"published-{metric}-{mode}": value
+        for mode, values in W8B_PUBLISHED_FLOORS.items()
+        for metric, value in zip(("pm100", "pm250", "pm300", "aae"), values, strict=True)
+    }
+    exact = published_view()
+    assert [r.gate.name for r in gates.run_gates(rules, exact, exact) if r.status != "PASS"] == []
+    relabelled = published_view("jit", relabel=True)
+    assert relabelled.modes["jit"]["jamendo"]["word_aligned"] == 4, "two words left the aligned column"
+    assert [r.gate.name for r in gates.run_gates(rules, relabelled, exact) if r.status != "PASS"] == [], (
+        "a reclassification that moved nothing is bookkeeping, which is the owner's W8b decision"
+    )
+    moved = ["published-pm100-jit", "published-pm250-jit", "published-pm300-jit", "published-aae-jit"]
+    for relabel in (True, False):
+        broken = published_view("jit", relabel=relabel, move=0.4)
+        failed = [r.gate.name for r in gates.run_gates(rules, broken, exact) if r.status != "PASS"]
+        assert failed == moved, f"relabel={relabel}: {failed}"
+    # Section 4: `headers` and `drop50` carry no absolute floor (their paired-word denominators differ between
+    # the two levels), so a change that moves published starts ONLY under label injection or a half-dropped
+    # sheet used to pass the whole file — section 1's accounting never sees a retime (r2-correctness-4).
+    assert not {name for name in floors if name.endswith(("-headers", "-drop50"))}
+    held = {rule.name for rule in rules if rule.name.startswith("published-held-")}
+    assert len(held) == 8 and {n.rsplit("-", 1)[1] for n in held} == {"headers", "drop50"}
+    for mode in ("headers", "drop50"):
+        broken = published_view(mode, move=0.4)
+        red = {r.gate.name for r in gates.run_gates(rules, broken, exact) if r.status != "PASS"}
+        held_for = {f"published-held-{metric}-{mode}" for metric in ("pm100", "pm250", "pm300", "aae")}
+        assert red == held_for, f"{mode}: {sorted(red)}"
+
+
 def test_the_hubert_reject_if_file_resolves_every_name_and_is_not_vacuous() -> None:
     """`gates/w4b-hubert.yaml` is read 2-3 HOURS after the model flip's sweeps start, so a mistyped mode or
     metric must not read as a clean run: an unmeasured (mode, metric) key is an ERROR by design.
@@ -1628,7 +1802,7 @@ def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_reco
         if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
     }
     assert set(recorded.values()) <= set(e2e.DETECTORS), f"unreadable detector stamp: {recorded}"
-    assert all(path.startswith("w8a-") for path in recorded), (
+    assert all(path.startswith(("w8a-", "w8b-")) for path in recorded), (
         "W8a's sweeps are the first runs to carry the stamp; anything earlier is silent by construction"
     )
 
@@ -2086,6 +2260,33 @@ def test_a_label_stripped_line_scores_as_the_lyric_it_is() -> None:
     assert lib.score_words(song, got, two_extra).mismatched == 3, "any other count is still mismatched"
 
 
+def test_a_head_label_moves_the_LINE_start_even_though_the_word_metrics_ignore_it() -> None:
+    """The asymmetry `lead_words` does NOT cover, deliberately: a published line starts where its first word
+    is lit, label included, so a label held across the gap before the singing scores as an early line.
+
+    This is the whole of numb's 54.29 % vs 20.00 % ±500 — 12 of 35 lines scored off a `CHORUS:` token's start
+    at the raw-claims level. README, "W8b: numb's three levels, closed"."""
+    song = worded("s")
+    got = lib.Claims(
+        lines=(
+            lib.ClaimLine("CHORUS: fly away home", 1.0, 2.0, truth=0, lead_words=1),
+            lib.ClaimLine("come back soon", 3.0, 4.0, truth=1),
+        ),
+        timed=True,
+    )
+    stripped = exact_doc(song, got)
+    label = lib.DocWord(0.2, 1.0, True, "CHORUS:")
+    kept = [
+        lib.DocLine("CHORUS: fly away home", label.start, 1.9, "high", 0, (label, *stripped[0].words)),
+        stripped[1],
+    ]
+    assert [round(e.error, 2) for e in lib.score_lines(song, got, stripped)[0]] == [0.0, 0.0]
+    assert [round(e.error, 2) for e in lib.score_lines(song, got, kept)[0]] == [-0.8, 0.0]
+    # The same two documents, unchanged on every word: the label costs the line metric 0.8 s and nothing else.
+    for doc in (stripped, kept):
+        assert len(lib.score_words(song, got, doc).errors) == 6
+
+
 def test_a_documents_source_lines_do_not_read_as_a_changed_document() -> None:
     """W1 r1: the worker records a document's whole text (`sourceLines`) when its lines lost some of it, for
     a later re-pick. The TV never reads it, so the digest is of the bytes the worker writes WITHOUT it — a
@@ -2148,23 +2349,29 @@ def dataclasses_replace(obj: Any, **changes: Any) -> Any:
     return dataclasses.replace(obj, **changes)
 
 
+def row_at(slug: str, err: float, mode: str, outcome: str = lib.PUBLISHED) -> Any:
+    """One row for `slug` under `mode`, every fifth line published `err` late."""
+    s = song_of(TEN, slug=slug)
+    doc = [line(k, t.start + (err if k % 5 == 0 else 0.0)) for k, t in enumerate(s.truth)]
+    return lib.row_of(
+        song=s,
+        mode=mode,
+        variant=0,
+        claims=claims(s, mode),
+        outcome=outcome,
+        doc=doc if outcome == lib.PUBLISHED else [],
+    )
+
+
 def lost_views() -> tuple[Any, Any]:
     """BASE: songs a (90) and b (80) under truth and off15. RUN: b refused under truth; off15 not run."""
-
-    def at(slug: str, err: float, mode: str, outcome: str = lib.PUBLISHED) -> Any:
-        s = song_of(TEN, slug=slug)
-        doc = [line(k, t.start + (err if k % 5 == 0 else 0.0)) for k, t in enumerate(s.truth)]
-        return lib.row_of(
-            song=s,
-            mode=mode,
-            variant=0,
-            claims=claims(s, mode),
-            outcome=outcome,
-            doc=doc if outcome == lib.PUBLISHED else [],
-        )
-
-    base = [at("a", 0.9, "truth"), at("b", 3.0, "truth"), at("a", 0.9, "off15"), at("b", 3.0, "off15")]
-    run = [at("a", 0.9, "truth"), at("b", 3.0, "truth", lib.REFUSED)]
+    base = [
+        row_at("a", 0.9, "truth"),
+        row_at("b", 3.0, "truth"),
+        row_at("a", 0.9, "off15"),
+        row_at("b", 3.0, "off15"),
+    ]
+    run = [row_at("a", 0.9, "truth"), row_at("b", 3.0, "truth", lib.REFUSED)]
     return gates.view_of(document(run)), gates.view_of(document(base))
 
 
@@ -2205,9 +2412,14 @@ def test_per_song_gates_still_read_what_was_measured() -> None:
 
 
 def test_a_pooled_baseline_comparison_needs_the_same_songs() -> None:
-    """A `--songs` run against the full baseline pooled 1 song against 2 and gated on the difference."""
+    """A `--songs` run against the full baseline pooled 1 song against 2 and gated on the difference.
+
+    `fewer` is a REAL one-song summary — pooled over song a alone, so its own aggregate and per-song table
+    agree. A hand-thinned songs table would be refused one step earlier now, by the cross-check every pooled
+    read makes (`_pools_its_own_songs`), and would never reach the comparison this is about.
+    """
     run, base = lost_views()
-    fewer = gates.View(modes=run.modes, songs={"truth": {"a": run.songs["truth"]["a"]}}, meta={})
+    fewer = gates.view_of(document([row_at("a", 0.9, "truth")]))
     with pytest.raises(gates.GateError, match=r"not measured: b"):
         gates.evaluate("truth.pm500 >= base.truth.pm500 - 1", fewer, base)
     with pytest.raises(gates.GateError, match="only in the run: b"):
@@ -3730,7 +3942,7 @@ def test_the_shipped_tree_gates_are_an_identity_claim_both_baselines_satisfy() -
 
     That is the whole point of the file: a default-off arm is only honest if the default path is measured, and
     an arm leaking into the default is the one failure mode `ENCORE_ALIGN_EXPERIMENTS` has. Its red reading
-    lives in `gates/w8a.yaml` (136/139 on the arms-on sweep, three named failures)."""
+    lives in `gates/w8a.yaml` (151/154 on the arms-on sweep, three named failures)."""
     rules = gates.parse_gates((GATES_DIR / "w8a-default.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 102, "every rule in the file is scored here, so a new one has to be measured"
     for name in ("w8a-band-run_align", "w8a-base-time_text"):
@@ -4611,3 +4823,264 @@ def test_the_frame_clocks_jamendo_cost_is_paid_back_on_the_shipped_tree() -> Non
     assert song("w2-time_text", "Tom_Orlando") == (99.46, 100.0)
     assert song("w4-time_text", "Tom_Orlando") == (96.81, 98.61)
     assert song("w8a-base-time_text", "Tom_Orlando") == (95.29, 100.0)
+
+
+def test_the_twenty_eight_song_gates_read_both_levels_they_are_written_for() -> None:
+    """`gates/w8b.yaml`: the accuracy baseline counted over the 28 songs whose truth their own audio
+    corroborates, read against each level's own baseline on both sides.
+
+    ALL of it holds there, unlike `gates/w8a.yaml`, because W8b changed no file under `encore_worker` and the
+    file's prediction is therefore IDENTITY. The reading it would reject is pinned below on the arms-on rows,
+    so "this file has teeth" is a test and not a sentence in its header.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 153, "every rule in the file is scored here, so a new one has to be measured"
+    results = SCRIPTS.parent / "results"
+    for name in ("w8b-base-run_align", "w8b-base-time_text"):
+        view = gates.view_of(json.loads((results / f"{name}.json").read_text(encoding="utf-8")))
+        verdicts = gates.run_gates(rules, view, view)
+        assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
+    by_name = {gate.name: gate.expr for gate in rules}
+    # Every `scored` percentage rule carries the denominator it is counted over, as `w8a.yaml`'s band
+    # rules do: a change that refuses a case or drops a line raises ±500 without placing anything better.
+    scored = {n.removeprefix("pm500-scored-") for n in by_name if n.startswith("pm500-scored-")}
+    held = {n.removeprefix("scored-lines-") for n in by_name if n.startswith("scored-lines-")}
+    assert scored == held and len(held) == 14, "all fourteen scored modes, ratio and denominator both"
+    # The band count over the 28 is an equality at zero, and the SAME expression over all 32 is an equality at
+    # four — the second is what stops the first from being a counter that counts nothing.
+    assert by_name["coherent-shift-none-scored-truth"].endswith("== 0")
+    assert by_name["coherent-shift-four-over-all-truth"].endswith("== 4")
+    assert "truth.scored.song.bias_ms" in by_name["coherent-shift-none-scored-truth"]
+    assert "truth.song.bias_ms" in by_name["coherent-shift-four-over-all-truth"]
+    # And the exclusion is gated as a change of POOL, never of coverage: all 32 run, the four still score into
+    # `all`, and every published document is still compared song by song.
+    assert by_name["all-songs-still-run-truth"].endswith("== 32")
+    assert by_name["scored-songs-twenty-eight-truth"].endswith("== 28")
+    assert by_name["docs-unchanged-truth"].endswith("== 0")
+
+
+def test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved() -> None:
+    """`gates/w8b.yaml` WHOLE, read on a tree that is NOT the default: the W8a band arms.
+
+    The header's claim is that the identity half goes red on seven rules while every accuracy floor passes, so
+    all 153 are scored here — on `results/w8b-arms-run_align.json`, W8a's own arms rows re-summarised on the
+    W8b harness (0 model seconds) so the `scored` group its 86 accuracy rules read exists at all. On the
+    committed `w8a-r2-arms-run_align.json` those 86 ERROR for want of it, which is fail-loud and not a reading
+    (review r2-tests-13). README, "W8b: re-judging `word-aligned-not-down`".
+    """
+    results = SCRIPTS.parent / "results"
+    rules = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 153
+    arms = gates.view_of(json.loads((results / "w8b-arms-run_align.json").read_text(encoding="utf-8")))
+    default = gates.view_of(json.loads((results / "w8b-base-run_align.json").read_text(encoding="utf-8")))
+    verdicts = gates.run_gates(rules, arms, default)
+    assert Counter(r.status for r in verdicts) == {"PASS": 147, "FAIL": 7}, gates.format_gates(verdicts)
+    assert {r.gate.name for r in verdicts if r.status == "FAIL"} == {
+        "docs-unchanged-truth",
+        "docs-unchanged-jit",
+        "docs-unchanged-drop50",
+        "onsets-unchanged-truth",
+        "onsets-unchanged-jit",
+        "no-song-gains-truth",
+        "no-song-gains-jit",
+    }, sorted(r.gate.name for r in verdicts if r.status != "PASS")
+    # The accuracy half does not merely pass, it IMPROVES — which is the owner's open question about reading
+    # `word_aligned` as a ratchet, now priced on the metric the wave scores: 97.07 -> 97.27 over the 28.
+    scored = arms.modes["truth"][lib.SCORED]
+    assert (scored["pm500"], scored["band"]) == (97.27, 41)
+    assert default.modes["truth"][lib.SCORED]["pm500"] == 97.07
+    # ... and all of them are GREEN on the default's own row, so the set above is the arm, not the file.
+    assert [r.gate.name for r in gates.run_gates(rules, default, default) if r.status != "PASS"] == []
+    stale = gates.view_of(json.loads((results / "w8a-r2-arms-run_align.json").read_text(encoding="utf-8")))
+    errors = [r for r in gates.run_gates(rules, stale, default) if r.status == "ERROR"]
+    assert len(errors) == 86 and all("has no songs in this summary" in str(r.detail) for r in errors)
+
+
+def test_the_twenty_eight_song_line_sync_gates_read_the_rung_they_were_written_on() -> None:
+    """`gates/w8b-lines.yaml` against its own committed baseline on both sides: ALL of it holds.
+
+    The rung is where the exclusion is most legible, and the pair that says so is pinned here. In `truth` the
+    rung publishes the served sheet verbatim, so over the 28 songs that score it reads ±500 100.00 % with
+    `band` 0; over all 32 it reads 94.16 % with `band` 100, and those 100 lines are bad-guy's 65 and numb's 35
+    moved by ONE constant each. A later wave that deletes either rule has deleted the W8b argument.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w8b-lines.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 93, "every rule in the file is scored here, so a new one has to be measured"
+    baseline = json.loads(
+        (SCRIPTS.parent / "results" / "w8b-base-lines-run_align.json").read_text(encoding="utf-8")
+    )
+    view = gates.view_of(baseline)
+    verdicts = gates.run_gates(rules, view, view)
+    assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
+    by_name = {gate.name: gate.expr for gate in rules}
+    assert by_name["pm500-scored-truth"].endswith(">= 100.0")
+    assert by_name["band-zero-scored-truth"].endswith("== 0")
+    assert by_name["band-one-hundred-over-all-truth"].endswith("== 100")
+    # The ±500 blindness the band metric exists to see, now on the scored pool: 16 of the 28 songs sit past
+    # 250 ms at MAD 0 in `off05`, on a sheet the rung publishes verbatim and ±500 scores 99.87 % on.
+    assert by_name["coherent-shift-sixteen-scored-off05"].endswith("== 16")
+    assert by_name["off05-pm500-is-blind-to-it"].endswith(">= 99.0")
+    # And the reading they are written on, re-measured off the baseline rather than quoted.
+    truth = baseline["songs"]["truth"]
+    moved = {song: v["bias_ms"] for song, v in truth.items() if v["bias_ms"] != 0.0}
+    assert moved == {"bad-guy": 720.0, "numb": 620.0}
+    excluded = lib.accuracy_exclusions()
+    assert set(moved) <= set(excluded), "the only two songs the clock moves are excluded from accuracy"
+    scored = baseline["summary"]["truth"]["scored"]["lines"]
+    assert (scored["w500_pct"], scored["band"], scored["gross"]) == (100.0, 0, 0)
+    everything = baseline["summary"]["truth"]["all"]["lines"]
+    assert (everything["w500_pct"], everything["band"]) == (94.16, 100)
+
+
+def test_the_twenty_eight_song_baselines_are_w8as_own_default_rows_re_summarised() -> None:
+    """`results/w8b-base-{run_align,time_text,lines-run_align}.json` are `_runs/w8a-def-*`'s own rows put back
+    through the W8b harness — 0 model seconds, so the only keys gained are the `scored` group's.
+
+    They exist because a `base.MODE.scored.X` rule cannot read a group that did not exist when W8a swept, and
+    the claim that has to hold is that nothing ELSE moved: the `all` column must reproduce the committed W8a
+    row metric for metric, pooled and per song.
+    """
+    results = SCRIPTS.parent / "results"
+    for old, new in (
+        ("w8a-run_align", "w8b-base-run_align"),
+        ("w8a-time_text", "w8b-base-time_text"),
+        ("w8a-lines-run_align", "w8b-base-lines-run_align"),
+    ):
+        before = json.loads((results / f"{old}.json").read_text(encoding="utf-8"))
+        after = json.loads((results / f"{new}.json").read_text(encoding="utf-8"))
+        for key in gates.SETUP_META:
+            assert after["meta"].get(key) == before["meta"].get(key), f"{new}: {key} is a different run"
+        for mode, by_group in before["summary"].items():
+            for block, numbers in by_group["all"].items():
+                if not isinstance(numbers, Mapping):
+                    continue
+                for metric, value in numbers.items():
+                    now = after["summary"][mode]["all"][block].get(metric)
+                    assert now == value, f"{new}: {mode}/all/{block}/{metric} {value} -> {now}"
+            for song, numbers in before["songs"][mode].items():
+                for metric, value in numbers.items():
+                    now = after["songs"][mode][song].get(metric)
+                    assert now == value, f"{new}: {mode}/{song}/{metric} {value} -> {now}"
+        # ... and the group that is new is present, on 28 of the 32 songs.
+        assert after["summary"]["truth"]["scored"]["lines"]["cases"] == 28
+        assert before["summary"]["truth"].get("scored") is None, f"{old} predates the group, by design"
+
+
+def test_the_w8b_arms_floors_are_read_on_the_first_live_rows_that_carry_the_onsets() -> None:
+    """`gates/w8b-arms.yaml`'s own open question: its `word_published_*` floors were derived off recorded runs
+    re-read, so the first SWEEP whose rows carry the onsets is the first that can read them directly.
+
+    W8b's corpus sweep is that sweep. Its DEFAULT must read 77/77 against the matching level's own W8b row by
+    construction — the floors ARE the default's numbers — so a delta here is the thing to look at. Section 4
+    reads the BASELINE's published onsets, so against the pre-W8b bases its eight rules ERROR: no row recorded
+    before W8b carries the family, and an unreadable rule may not be called clear.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w8b-arms.yaml").read_text(encoding="utf-8"))
+    results = SCRIPTS.parent / "results"
+
+    def jamendo_words(name: str) -> Mapping[str, Any]:
+        document = json.loads((results / f"{name}.json").read_text(encoding="utf-8"))
+        words: Mapping[str, Any] = document["summary"]["truth"]["jamendo"]["words"]
+        return words
+
+    for row, baseline in (
+        ("w8b-run_align", "w8a-band-run_align"),
+        ("w8b-time_text", "w8a-base-time_text"),
+    ):
+        run = gates.view_of(json.loads((results / f"{row}.json").read_text(encoding="utf-8")))
+        own = gates.run_gates(rules, run, run)
+        assert [r.gate.name for r in own if r.status != "PASS"] == [], gates.format_gates(own)
+        assert len(own) == 77, "every rule of the file is scored on the row it was measured on"
+        base = gates.view_of(json.loads((results / f"{baseline}.json").read_text(encoding="utf-8")))
+        verdicts = gates.run_gates(rules, run, base)
+        statuses = Counter(r.status for r in verdicts)
+        assert statuses == {"PASS": 69, "ERROR": 8}, gates.format_gates(verdicts)
+        assert {r.gate.name for r in verdicts if r.status == "ERROR"} == {
+            f"published-held-{metric}-{mode}"
+            for mode in ("headers", "drop50")
+            for metric in ("pm100", "pm250", "pm300", "aae")
+        }
+        # ... and the family really is there on the run side, which is what a pre-W8b row ERRORs for want of.
+        assert jamendo_words(row)["published300_pct"] is not None
+        absent = jamendo_words(baseline).get("published300_pct")
+        assert absent is None, f"{baseline} predates the family, by design"
+
+
+def test_a_committed_document_is_pooled_on_its_own_recorded_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A results file's `scored` summary is frozen at run time, so its MEMBERSHIP must come from the file too.
+
+    Re-deriving it from today's `corpus-truth.json` let one document describe two pools: the frozen aggregate
+    over 28 songs and a live filter over 27, with `_same_pool` comparing the two live filters and passing.
+    Here the live table gains a song the committed baselines do not exclude; nothing they say may move.
+    """
+    results = SCRIPTS.parent / "results"
+    documents = [
+        json.loads((results / f"{name}.json").read_text(encoding="utf-8"))
+        for name in ("w8b-run_align", "w8b-base-run_align")
+    ]
+    for document in documents:
+        assert sorted(document["meta"]["accuracy_excluded"]) == [
+            "bad-guy",
+            "believer",
+            "numb",
+            "tfr-chosen",
+        ], "the pool a reader of this file sees first"
+    pools = [gates._song_set(gates.view_of(d), "truth", lib.SCORED) for d in documents]
+    monkeypatch.setattr(gates, "_exclusions", lambda: {**lib.accuracy_exclusions(), "hello": "invented"})
+    assert [gates._song_set(gates.view_of(d), "truth", lib.SCORED) for d in documents] == pools
+    assert all(len(pool) == 28 and "hello" in pool for pool in pools)
+    rules = gates.parse_gates("scored-lines: truth.scored.scored >= base.truth.scored.scored")
+    run, base = (gates.view_of(d) for d in documents)
+    verdicts = gates.run_gates(rules, run, base)
+    assert [v.status for v in verdicts if v.gate.name == "scored-lines"] == ["PASS"]
+
+
+def test_a_summary_whose_frozen_pool_is_not_its_per_song_pool_is_an_error() -> None:
+    """The cross-check behind the fix above: a document may not describe two different song sets.
+
+    If a frozen pooled `cases` disagrees with the entries it was supposedly pooled over, every number read
+    under that address is between numbers nobody can reconcile. It used to be reachable only through
+    `_same_pool`, i.e. only for an address carrying `base.` — so the absolute floors, which are most of a wave
+    file and the only rules a run with no baseline has, were never checked (review r2-correctness-3).
+    """
+    document = json.loads(
+        (SCRIPTS.parent / "results" / "w8b-base-run_align.json").read_text(encoding="utf-8")
+    )
+    pair = gates.parse_gates("scored-lines: truth.scored.scored >= base.truth.scored.scored")
+    alone = gates.parse_gates("scored-floor: truth.scored.pm500 >= 97.07")
+    honest = gates.view_of(document)
+    for rules in (pair, alone):
+        verdicts = gates.run_gates(rules, honest, honest)
+        assert [v.status for v in verdicts if v.gate.name.startswith("scored-")] == ["PASS"]
+    document["summary"]["truth"]["scored"]["lines"]["cases"] = 27
+    broken = gates.view_of(document)
+    for rules, other in ((pair, broken), (alone, None)):
+        named = [v for v in gates.run_gates(rules, broken, other) if v.gate.name.startswith("scored-")]
+        assert [v.status for v in named] == ["ERROR"], gates.format_gates(named)
+        assert "the summary and the pool disagree" in str(named[0].detail)
+    # The whole wave file over the same document: the pooled reads go ERROR together rather than one of them.
+    whole = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
+    errors = [v for v in gates.run_gates(whole, broken, honest) if v.status == "ERROR"]
+    assert len(errors) == 12 and all("pool disagree" in str(v.detail) for v in errors)
+
+
+def test_every_results_file_that_excluded_a_song_says_so_in_its_meta() -> None:
+    """`meta.accuracy_excluded` is where the README says a reader looks first, so a file whose per-song
+    entries carry reasons and whose meta does not would hide a 28-song pool behind a 32-song label — and it
+    is also what `view_of` pools the file on."""
+    for path in sorted((SCRIPTS.parent / "results").glob("*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        songs = document.get("songs")
+        if not isinstance(songs, Mapping):
+            continue
+        per_song = {
+            song for mode in songs.values() for song, entry in mode.items() if entry.get("accuracy_excluded")
+        }
+        recorded = document.get("meta", {}).get("accuracy_excluded")
+        if not per_song:
+            assert recorded in (None, {}), f"{path.name}: meta excludes songs its rows do not"
+            continue
+        assert recorded is not None, f"{path.name}: its rows exclude {sorted(per_song)}, its meta is silent"
+        assert set(recorded) == per_song, f"{path.name}: {sorted(recorded)} against {sorted(per_song)}"
