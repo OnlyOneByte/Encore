@@ -84,7 +84,7 @@ Important events:
 | `queue:sync`         | core → one    | full state on connect/resync, including presence snapshot  |
 | `playback:state`     | core → all    | current entry, position, playing state                     |
 | `nowplaying:changed` | core → all    | current + up-next; drives TV preload                       |
-| `media:status`       | core → all    | processing stage/progress/readiness                        |
+| `media:status`       | core → all    | processing stage/progress/readiness; `requestedBy` names who asked |
 | `singer:presence`    | core → all    | ref-counted online transition                              |
 | `player:command`     | phone → core  | play/pause/skip/seek/restart                               |
 | `tv:telemetry`       | TV → core     | actual playback position/end/buffering                     |

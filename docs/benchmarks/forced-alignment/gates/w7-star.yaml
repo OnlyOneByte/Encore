@@ -1,6 +1,11 @@
 # W7 §3.10 / D3 — THE STAR, phase A: one filler target before every line over a matrix one column wider
 # (`ENCORE_ALIGN_EXPERIMENTS=star`, `ml.starred` + `generate.star_of`), against the same code without it.
 #
+# HISTORICAL. Every number in this header is at P = 1.0, the IN-SAMPLE value; `ml.STAR_PENALTY_NATS` is 0.3
+# since W9 re-fitted it out of sample, and this file's pooled rules are on the 32-song `all` pool rather than
+# the 28 that score. To read the arm as it ships now, use `w9-star.yaml`. Kept, and still worth running, as
+# W7's verdict: `tests/test_bench_e2e.py` replays its 32/36 on the committed summaries.
+#
 # WHAT THE ARM CLAIMS, and it is a claim about ONE decode: a forced CTC path must label every frame, so audio
 # the text does not cover — an intro, an instrumental break, the verse a partial sheet dropped — is charged to
 # whichever of the text's own letters are least implausible there, and the lines around it are dragged. A star

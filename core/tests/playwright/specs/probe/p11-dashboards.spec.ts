@@ -845,7 +845,8 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 		const stats = await settledStats(world.baseURL);
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto('/stats');
-		// The tiles exist only once the fetch has landed, so one of them IS the ready signal.
+		// /stats loads in `+page.ts`, so the tiles ship with the document: this waits out hydration rather than a
+		// fetch, and is a positive ready signal either way.
 		await expect(page.locator(SEL.dashTileNumber).first()).toBeVisible();
 		const tiles = await page.locator(SEL.dashTileNumber).allTextContents();
 
@@ -864,4 +865,217 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 	} finally {
 		await worker.stop();
 	}
+});
+
+// ── 7 · the dashboards' claims must be true at the moment they are read ──────────────────────────────────
+//
+// THESE FOUR STUB THE ENDPOINT instead of driving a worker, and that is the point: the subject is what the
+// PAGE does with a payload, so the payload has to be chosen rather than earned. The drives above own the
+// arithmetic; these own the wording and the liveness.
+
+/** Every field the /metrics client reads, with nothing in it. Overridden per test — a partial literal would
+ *  only prove the page tolerates a short payload, which the real endpoint never sends. */
+function emptyMetricsBody(sample: Partial<MetricsSample> = {}, workers: unknown[] = []) {
+	return {
+		sample: { attempts: 0, total: 0, windowDays: 7, clipped: false, processes: 0, provisional: false, ...sample },
+		steps: [],
+		e2e: { n: 0, meanMs: null, p50Ms: null, p95Ms: null },
+		models: [],
+		asr: [],
+		stages: [],
+		slowestProcesses: [],
+		workers
+	};
+}
+interface MetricsSample {
+	attempts: number;
+	total: number;
+	windowDays: number;
+	clipped: boolean;
+	processes: number;
+	provisional: boolean;
+}
+
+const NO_WORKER = /No worker connected/;
+
+test('/metrics corrects its worker claim in both directions without being touched', async ({ world, page }) => {
+	// The banner and the Workers card are PRESENT-TENSE claims. A single mount-time fetch froze both: measured
+	// 1 request on mount and 0 over the next 8s, so the page said "no worker connected" through a worker's whole
+	// life and kept listing a dead one after it stopped.
+	expect(world.baseURL).toContain('http');
+	let workers: unknown[] = [];
+	let served = 0;
+	await page.route('**/api/metrics', (route) => {
+		served += 1;
+		void route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(emptyMetricsBody({}, workers))
+		});
+	});
+
+	await page.goto('/metrics');
+	const banner = page.getByText(NO_WORKER);
+	await expect(banner, 'with no worker in the payload /metrics must lead with the warning').toBeVisible();
+	const afterMount = served;
+
+	// Direction A — says dead while alive.
+	workers = [{ workerId: 'probe-fake-1', capabilities: ['fetch', 'stems', 'align'], slotsFree: 1, host: null }];
+	await expect(
+		banner,
+		'a worker connected and the page still claimed none was — the reading never refreshed'
+	).toBeHidden();
+	await expect(page.getByText('probe-fake-1')).toBeVisible();
+
+	// Direction B — says alive while dead.
+	workers = [];
+	await expect(banner, 'the worker stopped and the page still listed it — the reading never refreshed').toBeVisible();
+	await expect(page.getByText('probe-fake-1')).toHaveCount(0);
+
+	expect(
+		served,
+		`/metrics served ${served} payloads in total but only ${afterMount} by mount — it must keep polling`
+	).toBeGreaterThan(afterMount + 1);
+});
+
+test('/metrics keeps the last reading when a poll fails, and never blanks the page', async ({ world, page }) => {
+	// A poll that misses is transient; swapping the whole page for "Could not load metrics." on one blip would
+	// take an operator's screen away for seconds at a time. The HARD state is for having nothing at all.
+	expect(world.baseURL).toContain('http');
+	let mode: 'ok' | 'dead' = 'ok';
+	await page.route('**/api/metrics', (route) => {
+		if (mode === 'dead') return route.abort();
+		void route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(emptyMetricsBody({ attempts: 12, processes: 3 }))
+		});
+	});
+
+	await page.goto('/metrics');
+	const headline = page.getByText('12 attempts in the last 7 days');
+	await expect(headline).toBeVisible();
+
+	mode = 'dead';
+	await expect(page.getByText(/Couldn.t refresh/), 'a failed poll must say the reading is old').toBeVisible();
+	await expect(headline, 'a failed poll must not discard the reading already on screen').toBeVisible();
+	await expect(page.getByText('Could not load metrics.')).toHaveCount(0);
+
+	mode = 'ok';
+	await expect(page.getByText(/Couldn.t refresh/), 'a successful poll must clear the stale notice').toBeHidden();
+});
+
+test('/metrics names the window it counted and declares a partial sample', async ({ world, page }) => {
+	// "0 runs across 0 songs" over an unnamed span reads as "nothing has ever been processed" while thousands of
+	// attempts sit in the ledger; and when the server's row backstop bites, `attempts` IS the backstop rendered as
+	// a measurement. `total`, `windowDays` and `clipped` are sent for exactly this and were dropped by the client.
+	expect(world.baseURL).toContain('http');
+	await page.route('**/api/metrics', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify(
+				emptyMetricsBody({ attempts: 2000, total: 4763, windowDays: 14, clipped: true, processes: 134 })
+			)
+		})
+	);
+	await page.goto('/metrics');
+
+	const main = page.locator('main[aria-label="Processing metrics"]');
+	await expect(main.locator('p.note[role="status"]')).toHaveText(
+		'2000 attempts in the last 14 days, across 134 finished songs.'
+	);
+	const body = await main.innerText();
+	expect(body, 'the page must say its sample is partial when the server flagged it clipped').toContain(
+		'Partial sample: not every run in this window is counted.'
+	);
+	expect(body, 'the lifetime ledger size must be visibly separate from the window figure').toContain(
+		'4763 attempts recorded in all, including before this window.'
+	);
+	// The lifetime count must never be read as the window's population.
+	expect(body).not.toContain('4763 attempts in the last');
+});
+
+test('the per-song audit agrees with its own play count, separator and plural', async ({ world, page }) => {
+	// Measured on a real one-play row: `3:36 long ·sung 1 times` — a missing space, because the separator's only
+	// whitespace was the block's trailing newline, which Svelte trims; and a hardcoded "times".
+	expect(world.baseURL).toContain('http');
+	let plays: { at: number; entryId: string }[] = [];
+	let media: unknown = { id: 'probe-media', title: 'A Song', durationSec: 216 };
+	await page.route('**/api/audit/**', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ media, processes: [], plays, hasHistory: false })
+		})
+	);
+	const note = page.locator('main p.note[role="status"]');
+
+	for (const [n, expected] of [
+		[1, '3:36 long · sung 1 time'],
+		[3, '3:36 long · sung 3 times'],
+		[0, '3:36 long · sung 0 times']
+	] as const) {
+		plays = Array.from({ length: n }, (_, i) => ({ at: 1_700_000_000_000 + i, entryId: `e${i}` }));
+		await page.goto('/metrics/probe-media');
+		await expect(note, `${n} plays must read "${expected}"`).toHaveText(expected);
+	}
+
+	// No media row — there is nothing to separate, so no leading separator may be printed.
+	media = null;
+	plays = [{ at: 1_700_000_000_000, entryId: 'e0' }];
+	await page.goto('/metrics/probe-media');
+	await expect(note).toHaveText('sung 1 time');
+});
+
+// ── 8 · /stats keeps the reader's place across a Back ────────────────────────────────────────────────────
+
+test('/stats restores its scroll offset on Back, because it ships with the document', async ({ world, page }) => {
+	// MECHANISM, not cosmetics. SvelteKit applies a restored scroll offset after `root.$set` plus two
+	// `tick()`s — a DOM-COMMIT deadline, which an `onMount` fetch cannot beat. The document was therefore one
+	// viewport tall at that moment and the offset clamped to 0: measured /stats restoring 0 where /library and
+	// /settings (which has a server load) both restored 500 in the same session. A load function's data is
+	// already in the navigation result at commit, so the page has its height before the restore runs.
+	const html = await (await fetch(`${world.baseURL}/stats`)).text();
+	expect(html, '/stats must ship its tiles in the HTML — with the fetch in onMount it shipped an empty page').toContain(
+		'songs sung'
+	);
+
+	// THE DOCUMENTED DOOR: `/settings` is the one scope that links here, and the restore needs real history.
+	await page.setViewportSize({ width: 390, height: 844 });
+	await world.joinAs(page, 'P11-Scroll');
+	await page.goto('/settings');
+	await page.locator('a[href="/stats"]').click();
+	await expect(page.locator(SEL.dashTileNumber).first()).toBeVisible();
+
+	// Derived, not a literal 500: a virgin core's /stats is shorter than the owner's 135-song one, and a target
+	// past the scrollable extent would clamp and make the claim vacuous either way.
+	const extent = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+	const target = Math.min(500, extent);
+	expect(target, `/stats must be scrollable for this claim to mean anything (extent ${extent}px)`).toBeGreaterThan(150);
+
+	await page.evaluate((y) => window.scrollTo(0, y), target);
+	await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(target);
+
+	await page.locator(SEL.tab).nth(1).click();
+	await expect(page).toHaveURL(/\/queue$/);
+	await page.goBack();
+	await expect
+		.poll(() => page.evaluate(() => Math.round(window.scrollY)), {
+			message: `Back into /stats must restore ${target}px; with the fetch in onMount the document was one viewport tall at restore time and the offset clamped to 0`
+		})
+		.toBe(target);
+	// And it STAYS there: a reading that lands later cannot be what put it back.
+	await page.waitForTimeout(1_000);
+	expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(target);
+
+	// The honesty branch survives the move. Driven on the CLIENT-SIDE leg on purpose: `page.route` cannot
+	// intercept the server-side half of a universal load, so a cold goto would answer from the real endpoint.
+	await page.route('**/api/stats*', (route) =>
+		route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
+	);
+	await page.goto('/settings');
+	await page.locator('a[href="/stats"]').click();
+	await expect(page.getByText('Could not load stats.')).toBeVisible();
+	await expect(page.locator(SEL.dashTileNumber), 'a failed load must say so rather than render zeros').toHaveCount(0);
 });

@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import {
+		count,
 		decidedLabel,
 		dur,
 		localStamp,
@@ -104,8 +105,12 @@
 				{#if !audit}
 					Loading…
 				{:else}
-					{#if audit.media}{formatClock(audit.media.durationSec)} long ·
-					{/if}sung {audit.plays.length} times
+					<!-- The separator is an EXPRESSION, the same idiom the Run card's note uses below: written as literal text it
+						 was the block's trailing whitespace, which Svelte trims, so the line read "3:36 long ·sung". -->
+					{#if audit.media}{formatClock(audit.media.durationSec)}{' long · '}{/if}sung {count(
+						audit.plays.length,
+						'time'
+					)}
 				{/if}
 			</p>
 

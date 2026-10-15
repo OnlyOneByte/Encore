@@ -8,6 +8,10 @@ with a legible message (see `test_cli_adapters`).
 
 from __future__ import annotations
 
+import ast
+import inspect
+import textwrap
+
 import pytest
 
 from encore_worker.adapters import registry as reg
@@ -145,23 +149,56 @@ def test_capability_is_the_gate_not_the_hardware() -> None:
     assert not any(t.startswith("melband") for t in tokens)
 
 
-def test_every_capability_used_is_one_the_host_probe_can_prove() -> None:
-    """A spec needing a capability nothing ever advertises is unreachable: it would sit in the registry
-    looking available and never be dispatched to anything."""
+def _tokens_the_probe_can_emit() -> set[str]:
+    """Every capability string `hardware.capabilities` is able to add, read off its own source.
+
+    Read rather than restated here: a hand-kept copy would go stale, and a list the probe no longer agrees
+    with is exactly the typo this is looking for.
+    """
     from encore_worker.host import hardware
 
-    provable = set()
+    tree = ast.parse(textwrap.dedent(inspect.getsource(hardware.capabilities)))
+    return {
+        argument.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add"
+        for argument in node.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+    }
+
+
+def test_every_capability_used_is_one_the_host_probe_can_prove() -> None:
+    """A spec needing a capability nothing ever advertises is unreachable: it would sit in the registry
+    looking available and never be dispatched to anything.
+
+    A capability the probe CAN emit but THIS box cannot prove is an absent runtime rather than a registry
+    defect, so that half skips (docs/arch/05-worker.md §9.1).
+    """
+    from encore_worker.host import hardware
+
+    emittable = _tokens_the_probe_can_emit()
+    provable: set[str] = set()
     for backend in ("torch", "mlx"):
         provable |= set(hardware.capabilities(backend=backend))
+    assert provable <= emittable, (
+        f"the probe emitted {sorted(provable - emittable)}, which reading its source did not find: "
+        "`_tokens_the_probe_can_emit` no longer sees how capabilities are added and proves nothing."
+    )
+
     # Only the tokens this registry actually needs, and only the stems family — `align`/`fetch` are other
     # actions' concerns.
     needed = {c for c in reg.capabilities_used() if c.startswith("stems")}
-    unreachable = {c for c in needed if c not in provable and c != "stems:melband-mlx"}
+    unreachable = sorted(needed - emittable)
     assert not unreachable, (
-        f"these capabilities are needed by a spec but cannot be proven on this box: {sorted(unreachable)}. "
-        "That is expected for a runtime this machine lacks — but a capability NO probe can ever emit is a "
+        f"these capabilities are needed by a spec and NO probe can ever emit them: {unreachable}. That is a "
         "typo, and the spec would be permanently unreachable."
     )
+    unprovable = sorted(needed - provable)
+    if unprovable:
+        pytest.skip(
+            f"this box cannot prove {unprovable}, so the specs needing them are correctly withheld here. "
+            "Every one of those tokens IS emittable, which is what this test can check anywhere."
+        )
 
 
 # ── measured costs stay honest ────────────────────────────────────────────────────────────────────

@@ -54,7 +54,19 @@ export type ServerEvent =
 	| { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
 	// `unservable` separates "processing soon" from "stuck forever" — no connected worker advertises the
 	// capability. See docs/SERVER.md#idempotency-and-the-process-cap.
-	| { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
+	// `requestedBy` is the singer who ASKED for this work, when one did. The STATUS stays room-wide — every phone
+	// needs it to draw the right row — but a notice whose imperative is "try again" belongs to the guest who asked,
+	// and without this field every phone in the room was told to retry a song it had never heard of. ABSENT means
+	// nobody in particular asked (an internal or admin-side process), which clients read as "tell everyone".
+	| {
+			type: 'media:status';
+			mediaId: string;
+			status: MediaStatus;
+			pct: number;
+			etaSec?: number;
+			unservable?: boolean;
+			requestedBy?: string;
+	  }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }
 	| { type: 'singer:left'; singerId: string }

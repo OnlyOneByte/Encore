@@ -90,3 +90,122 @@ test('the admin list offers a Delete that arms a confirm', async ({ world, page 
 		await worker.stop();
 	}
 });
+
+/** What the keyboard is actually on. `<body>` is the failure this test exists for, so the tag is reported too. */
+async function focused(page: Page): Promise<{ tag: string; label: string | null; connected: boolean }> {
+	return page.evaluate(() => ({
+		tag: document.activeElement?.tagName ?? 'NONE',
+		label: document.activeElement?.getAttribute('aria-label') ?? null,
+		connected: document.activeElement?.isConnected ?? false
+	}));
+}
+
+/**
+ * THE PROMPT'S EXITS. This one DOES press `Yes, delete`, which the test above deliberately does not — but
+ * against a STUBBED /api/delete-media, so it still makes no claim about the endpoint. The subject is only
+ * where the keyboard ends up, and the two failures were: Escape did nothing at all (no keydown handler exists
+ * anywhere in src/), and every exit dropped focus to `<body>` because arming DESTROYS the button that was
+ * clicked, so the captured reference `.focus()` ran against a detached node.
+ */
+test('the armed prompt is dismissible, and no exit drops focus to <body>', async ({ world, page }) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const phone = await world.openPhone('Admin-Focus');
+		await processToReady(phone, 'caroline');
+		await processToReady(phone, 'believin');
+
+		await page.setViewportSize(OPERATOR_VIEWPORT);
+		await page.goto('/admin');
+		const arm = page.locator(SEL.adminDelete);
+		const confirm = page.locator(SEL.adminConfirmDelete);
+		await expect(arm, '/admin must list the two processed songs for this test to have a row 2').toHaveCount(2);
+
+		// Nothing armed: Escape must be a no-op, not a swallowed key.
+		await page.keyboard.press('Escape');
+		await expect(arm).toHaveCount(2);
+		await expect(confirm).toHaveCount(0);
+
+		const secondLabel = await arm.nth(1).getAttribute('aria-label');
+		const firstLabel = await arm.nth(0).getAttribute('aria-label');
+
+		// ── Escape cancels, keyboard only ────────────────────────────────────────────────────────────────
+		await arm.nth(1).focus();
+		await page.keyboard.press('Enter');
+		await expect(confirm, 'Enter on the row 2 Delete button must arm the prompt').toHaveCount(1);
+		expect(await focused(page)).toMatchObject({ label: `Confirm delete ${secondLabel?.slice('Delete '.length)}` });
+		await page.keyboard.press('Escape');
+		await expect(confirm, 'Escape must cancel the armed prompt — it did nothing at all before').toHaveCount(0);
+		await expect(page.locator('[role="alert"]')).toHaveCount(0);
+		expect(await focused(page), 'Escape must return focus to the control that armed it, never <body>').toEqual({
+			tag: 'BUTTON',
+			label: secondLabel,
+			connected: true
+		});
+
+		// ── Cancel, by mouse ─────────────────────────────────────────────────────────────────────────────
+		await arm.nth(1).click();
+		await page.locator('button[aria-label^="Cancel deleting"]').click();
+		expect(await focused(page), 'Cancel must return focus to the row own Delete button, never <body>').toEqual({
+			tag: 'BUTTON',
+			label: secondLabel,
+			connected: true
+		});
+
+		// ── A FAILED delete stays armed ──────────────────────────────────────────────────────────────────
+		// Disarming on both outcomes made a failure look like a cancellation and cost the operator a re-arm.
+		await page.route('**/api/delete-media', (route) =>
+			route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({ error: 'disk on fire' })
+			})
+		);
+		await arm.nth(1).click();
+		await confirm.click();
+		await expect(page.getByText('Could not delete: disk on fire')).toBeVisible();
+		await expect(confirm, 'a failed delete must leave the prompt armed so a retry costs one keypress').toHaveCount(1);
+		await expect(confirm).toBeEnabled();
+		expect(await focused(page), 'a failed delete must put focus back on the confirm button that failed').toMatchObject({
+			tag: 'BUTTON',
+			connected: true
+		});
+		await page.keyboard.press('Escape');
+		await expect(confirm).toHaveCount(0);
+
+		// ── Escape must NOT pretend to cancel an in-flight DELETE ────────────────────────────────────────
+		// Once the request is away it cannot be called off, and both buttons are already disabled.
+		await page.unroute('**/api/delete-media');
+		await page.route('**/api/delete-media', () => {
+			/* hangs on purpose: the prompt must stay up and armed while the request is in flight */
+		});
+		await arm.nth(1).click();
+		await confirm.click();
+		await expect(confirm).toHaveText('Deleting…');
+		await page.keyboard.press('Escape');
+		await expect(confirm, 'Escape must not disarm a delete that is already in flight').toHaveCount(1);
+		await expect(confirm).toHaveText('Deleting…');
+
+		// ── A SUCCESSFUL delete keeps the operator's place ───────────────────────────────────────────────
+		// The row that takes the deleted one's index, so a long list does not send them back to the top.
+		await page.reload();
+		await page.unroute('**/api/delete-media');
+		await page.route('**/api/delete-media', (route) =>
+			route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ wasPlaying: false }) })
+		);
+		await expect(arm).toHaveCount(2);
+		await arm.nth(0).click();
+		await confirm.click();
+		await expect(arm).toHaveCount(1);
+		await expect(page.getByText(/^Deleted "/)).toBeVisible();
+		expect(await focused(page), 'after a delete, focus belongs on the row that took its place').toEqual({
+			tag: 'BUTTON',
+			label: secondLabel,
+			connected: true
+		});
+		expect(secondLabel, 'the two rows must be distinguishable for the claim above to mean anything').not.toBe(
+			firstLabel
+		);
+	} finally {
+		await worker.stop();
+	}
+});

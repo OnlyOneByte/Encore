@@ -27,6 +27,13 @@ export interface LiveMediaStatus {
 	status: MediaStatus;
 	pct: number;
 	etaSec?: number;
+	/** THE SERVER SAYING NOBODY CAN RUN THIS JOB: no connected worker advertises the capability it needs. It is on
+	 * the wire already (`media:status` in contract/core/events.ts), `#sweepUnservable` in jobs/worker-hub.ts sets it
+	 * only when the stall actually blocks singing (`if (media?.instrumentalRef) continue`), and the TV's
+	 * `processIsTerminal` has read it all along — the PHONE was the surface throwing it away, so it drew
+	 * "Making karaoke… 0%" with a live bar for the whole 120s TTL on a job the room had already given up on.
+	 * Carrying it is plumbing, not protocol: `queueCardKind` turns it into a stalled card. */
+	unservable?: boolean;
 }
 
 export class RoomLink {
@@ -59,6 +66,12 @@ export class RoomLink {
 	 * an empty `library` before the first response is a loading skeleton, and after it is "you own no karaoke tracks",
 	 * and showing the second while the first is true accuses a full library of being empty for one frame. */
 	libraryLoaded = false;
+	/** Whether the last attempt DIED — a transport failure or a non-2xx status — against `libraryLoaded`'s "it
+	 * RETURNED". The two are not the same question and /library needs both: loaded-and-empty is "you own no karaoke
+	 * tracks", loaded-and-failed is "we could not ask", and rendering the first for the second accuses a full library
+	 * of being empty with no way back short of a reload (nothing re-fetches on a client-side tab arrival). Named for
+	 * `/`'s `searchFailed`, the same defect in the same shape one route over. */
+	libraryFailed = false;
 	/** The optimistic queue. Undefined until a joined singer connects. */
 	queue: QueueStore | undefined;
 	entries: QueueEntry[] = [];
@@ -168,8 +181,11 @@ export class RoomLink {
 	/** Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. It lives on the link because the
 	 * control that calls it lives on /song/[mediaId], reached from the Queue tab's now-playing card (it was the
 	 * drawer, mounted by the layout, until the sheet was deleted) — and the layout should not be making
-	 * fetches. A human edit must produce a NEW candidate rather than mutate one; this only reports the choice. */
-	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<void> {
+	 * fetches. A human edit must produce a NEW candidate rather than mutate one; this only reports the choice.
+	 * RESOLVES TRUE ONLY WHEN THE WRITE LANDED, because the caller has to tell a landed write from a refused one:
+	 * a refusal's only trace is `#fail` on a channel this method cannot see, and the page has to re-read itself
+	 * after a 200 and release its own pending flag after anything else. */
+	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<boolean> {
 		try {
 			const res = await fetch('/api/lyrics-reselect', {
 				method: 'POST',
@@ -177,15 +193,24 @@ export class RoomLink {
 				body: JSON.stringify({ mediaId, ...choice })
 			});
 			const body = await res.json().catch(() => ({}));
-			if (!res.ok) this.#fail(body.error ?? 'Could not re-time the lyrics');
+			if (!res.ok) {
+				this.#fail(body.error ?? 'Could not re-time the lyrics');
+				return false;
+			}
+			return true;
 		} catch {
 			this.#fail('Could not re-time the lyrics — check your connection');
+			return false;
 		}
 	}
 
 	/** Send a player command (play/pause/skip/key/guide/seek). No-op before the socket is up. */
-	command(command: PlayerCommand): void {
-		this.#ws?.send({ type: 'player:command', command });
+	/** Did the command actually reach the wire? `false` means the socket was absent or not open, so the server
+	 *  never heard it — a PLAYER command is fire-and-forget and is NOT resent on resync the way a queue add is,
+	 *  so a dropped one is simply lost. Callers that move something optimistically must check this, or they show
+	 *  the guest a state the room does not have. `ws.send()` has always returned this; this method discarded it. */
+	command(command: PlayerCommand): boolean {
+		return this.#ws?.send({ type: 'player:command', command }) ?? false;
 	}
 
 	#onServerEvent(e: ServerEvent): void {
@@ -225,14 +250,19 @@ export class RoomLink {
 			this.singers = nextSingers;
 		}
 		if (e.type === 'playback:state') this.playback = e.state;
-		if (e.type === 'media:status') this.#onMediaStatus(e.mediaId, e.status, e.pct, e.etaSec);
+		// The WHOLE event, not four unpacked fields: the failure arm needs `requestedBy` as well, and a fifth
+		// positional argument on a five-line signature is how the next one gets dropped on the way in.
+		if (e.type === 'media:status') this.#onMediaStatus(e);
 		this.queue?.onServerEvent(e);
 		this.#emit();
 	}
 
-	#onMediaStatus(mediaId: string, status: MediaStatus, pct: number, etaSec?: number): void {
+	#onMediaStatus(e: Extract<ServerEvent, { type: 'media:status' }>): void {
+		const { mediaId, status, pct, etaSec, unservable } = e;
 		const next = new Map(this.mediaStatus);
-		next.set(mediaId, { status, pct, etaSec });
+		// `unservable` is carried verbatim, including the absent case: it is only ever SET by the unservable sweep,
+		// and a later real progress report for the same job arrives without it, which must clear the stall.
+		next.set(mediaId, { status, pct, etaSec, unservable });
 		this.mediaStatus = next;
 		// The catalog copy follows, so readiness agrees without a full sync: a failed or canceled process settles back to
 		// un-processed server-side, and preserving the mid-flight status here leaves a row reading as processing.
@@ -255,10 +285,30 @@ export class RoomLink {
 		if (status === 'failed') {
 			const failedMedia = this.mediaCatalog.get(mediaId);
 			if (failedMedia) {
+				/* THE SCAR STAYS ROOM-WIDE, deliberately, and it is NOT what made the reported defect. It renders on no
+				   persistent surface — it only re-reads as failed-with-retry if THIS phone searches that exact song
+				   again — its statement is room-TRUE (the process really did die in this room), and it expires in
+				   PROCESS_SCAR_TTL_MS, 30 minutes. Scoping it to the requester as well is a taste call for the owner,
+				   so it is reported rather than taken. */
 				recordScar(failedMedia);
 				if (!this.#scarred.some((s) => s.id === mediaId)) this.#scarred = [...this.#scarred, failedMedia];
 			}
-			this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
+			/* THE NOTICE IS PERSONAL. `media:status` is a room-wide broadcast by design — worker-hub records why —
+			   but this arm used to toast on EVERY connected phone, so one guest's dead job told seven other people
+			   to "try again" for a song they had never heard of, and it spent the one channel a guest's OWN refusals
+			   arrive on. The room is not left ignorant: every phone's /queue row for that entry already reads
+			   "Couldn't make karaoke".
+			   SERVER-SIDE ATTRIBUTION, not a client-side "did I tap this?" set: `me.id` comes from the session
+			   cookie, so the notice still finds the requester after they reload mid-wait, which a local set would
+			   not survive.
+			   ABSENT `requestedBy` KEEPS TODAY'S BEHAVIOUR, which is the conservative direction — an internal or
+			   admin-side process nobody asked for is news for whoever is looking.
+			   THE ONE TRADE, recorded because it is real: `enqueue` dedupes, and a reused job keeps its ORIGINAL
+			   requester, so a second singer who taps the same song gets no toast. Their row still reads
+			   failed-with-retry and their /queue row still says "Couldn't make karaoke". */
+			if (!e.requestedBy || e.requestedBy === this.me?.id) {
+				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
+			}
 		}
 	}
 
@@ -298,11 +348,59 @@ export class RoomLink {
 		this.mediaStatus = new Map([...this.mediaStatus].filter(([id]) => id !== mediaId));
 		this.#emit();
 	}
+
+	/** "MAKE KARAOKE" — ask the server to separate one song's stems, optimistically.
+	 *
+	 * HOISTED OFF THE SING TAB, where it was an inline `processMedia` and the ONLY client caller of /api/process.
+	 * It has a second caller now: the retry on a STALLED queue card, which is the one affordance that can recover a
+	 * turn whose process half never landed. Copying it would have copied the optimistic-set / rollback / notice
+	 * triple, and those three are the whole correctness of the call.
+	 *
+	 * THE OPTIMISTIC SET HAPPENS BEFORE THE AWAIT, and that ordering is load-bearing in two places: the tapping
+	 * phone's row reads as processing in the same tick as the tap rather than after a round trip, and on /queue it
+	 * is what keeps the card off `queueCardKind`'s stalled arm during the window before the first broadcast.
+	 *
+	 * THE NOTICE GOES THROUGH `#fail`, not a toast — this class holds no opinion about how a failure is shown, and
+	 * both surfaces that can reach this register a sink (`/` and `/queue` both route `onError` to `toast.error`). */
+	async requestProcess(mediaId: string): Promise<void> {
+		this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
+		try {
+			const res = await fetch('/api/process', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				/* THE ROLLBACK IS THE OPTIMISTIC MARK, NEVER THE TURN. A refusal here leaves the entry standing on
+				   purpose: the add rides the offline-tolerant `QueueStore` and is resent on resync, so rolling the
+				   turn back on a transient refusal would delete a turn the guest genuinely asked for. What the guest
+				   is left holding is exactly the state the stalled card exists to name. */
+				this.clearMediaStatus(mediaId);
+				this.#fail(body.error ?? 'Could not start process');
+				return;
+			}
+			// The stems were already on disk (processed on an earlier night) — nothing to wait for.
+			if (body.alreadyReady) void this.refreshLibrary();
+		} catch {
+			this.clearMediaStatus(mediaId);
+			this.#fail("Couldn't start that.");
+		}
+	}
 	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
-	 * Failure is deliberately SILENT: the library is an accelerator, never a blocker. */
+	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
+	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so
+	 * /library can say it could not ask instead of claiming the room owns nothing. */
 	async refreshLibrary(): Promise<void> {
 		try {
-			const snapshot = await (await fetch('/api/library')).json();
+			// Reset wherever a new attempt BEGINS, the idiom `/`'s runSearch states: cleared on the retry rather than
+			// only on the next success, so a retry that fails again is not read against the previous failure.
+			this.libraryFailed = false;
+			// SPLIT from one nested `await (await fetch(…)).json()` so the status is checkable at all. A 500 whose body
+			// happens to parse — `{}`, an error envelope — otherwise became `library: []`, i.e. an empty library.
+			const res = await fetch('/api/library');
+			if (!res.ok) throw new Error(`library failed: ${res.status}`);
+			const snapshot = await res.json();
 			this.library = snapshot.library ?? [];
 			this.libraryTags = snapshot.tags ?? {};
 			this.mergeMedia(this.library);
@@ -314,10 +412,12 @@ export class RoomLink {
 			}
 			this.#emit();
 		} catch {
-			/* ignore — the library is an accelerator, never a blocker */
+			/* No toast — see above. The flag is the record, and `library` is deliberately left ALONE: a refresh that
+			   fails must not replace a shelf of working rows with nothing, so the surface reads the two together. */
+			this.libraryFailed = true;
 		} finally {
 			// In `finally`, so a failed fetch still RESOLVES the loading state: left false, /library would spin forever
-			// on a dropped request rather than saying it has nothing to show.
+			// on a dropped request. What it must not then render is the EMPTY state — that is `libraryFailed`'s job.
 			this.libraryLoaded = true;
 			this.#emit();
 		}

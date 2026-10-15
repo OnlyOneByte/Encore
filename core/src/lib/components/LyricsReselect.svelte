@@ -20,10 +20,14 @@
 		overrideRef?: string;
 		/** True when the ranker now prefers a candidate other than the pinned one (Q2=C hint). */
 		newerExists?: boolean;
+		/** A re-time is already running for this song, so another pick would cancel the one in flight. */
+		pending?: boolean;
 		onpick?: (ref: string) => void;
-		onpaste?: (text: string) => void;
+		/** Resolves FALSE when the server refused the paste, so the draft and the open disclosure survive it. A caller
+		 * that reports nothing back (or nothing at all) is treated as acceptance, which is what `void` covers. */
+		onpaste?: (text: string) => void | Promise<boolean | void>;
 	}
-	let { candidates, chosenRef, overrideRef, newerExists = false, onpick, onpaste }: Props = $props();
+	let { candidates, chosenRef, overrideRef, newerExists = false, pending = false, onpick, onpaste }: Props = $props();
 
 	let open = $state(false);
 	let pasting = $state(false);
@@ -40,15 +44,31 @@
 
 	// A single candidate still counts as a choice, because the paste path is always available: the auto text may be wrong.
 	const hasChoice = $derived(candidates.length > 0);
-	const peek = $derived(newerExists ? 'A better match is available' : overrideRef ? 'Your pick' : 'Auto-selected');
+	/* THE PENDING STATE OUTRANKS THE PROVENANCE ONES, because it is the only confirmation the guest gets that the tap
+	   landed: a re-time outlives any toast (the job broadcasts `aligning` for the whole wait), and the peek is the
+	   label on the control they actually touched. The wording avoids "your pick" on purpose — the caller feeds
+	   `pending` from the live `aligning` status too, which a song's FIRST processing run also produces, so only a
+	   statement about the WORDS is true in both cases. */
+	const peek = $derived(
+		pending
+			? 'Re-timing the words…'
+			: newerExists
+				? 'A better match is available'
+				: overrideRef
+					? 'Your pick'
+					: 'Auto-selected'
+	);
 
-	function submitPaste() {
+	/* A REFUSAL MUST NOT LOOK LIKE ACCEPTANCE. This used to collapse the disclosure and drop the draft whatever the
+	   server said, so a 409 read as faint success AND threw away the verse the guest had just pasted. `open` is now
+	   never closed from here at all — the guest opened it, the guest closes it — and the draft only clears once the
+	   caller has not told us it was refused. */
+	async function submitPaste() {
 		const text = draft.trim();
 		if (!text) return;
-		onpaste?.(text);
+		if ((await onpaste?.(text)) === false) return;
 		pasting = false;
 		draft = '';
-		open = false;
 	}
 </script>
 
@@ -74,6 +94,8 @@
 								<button
 									{...props}
 									class={['reselect-opt', props.class, { current: c.ref === chosenRef }]}
+									disabled={pending}
+									aria-busy={pending || undefined}
 									aria-current={c.ref === chosenRef}
 									onclick={() => onpick?.(c.ref)}
 								>

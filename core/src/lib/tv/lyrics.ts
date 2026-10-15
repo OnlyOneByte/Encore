@@ -98,7 +98,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 			words.push(word);
 			flat.push(word);
 		}
-		const text = typeof l.text === 'string' && l.text.trim() ? l.text : words.map((w) => w.word).join(' ');
+		const text = typeof l.text === 'string' && l.text.trim() ? l.text : joinWords(words);
 		if (!text.trim() && words.length === 0) continue;
 		const line: LyricLine = { start: num(l.start), end: num(l.end), text, words };
 		if (typeof l.romanization === 'string' && l.romanization.trim()) line.romanization = l.romanization;
@@ -135,11 +135,44 @@ const COVERAGE_MIN = 0.8;
 // into its own row, which flashes past unreadably and costs the reel a row the sung words need.
 export const ORPHAN_MAX_SEC = 1.0;
 
+// CHARACTERS THAT WRITE NO SPACE BESIDE THEIR OWN KIND: Han, kana, and — through `scx`, Script_Extensions —
+// the CJK punctuation and the prolonged-sound mark the UCD files under "Common", plus the fullwidth
+// punctuation block with its Latin letters and digits left out. HANGUL IS DELIBERATELY ABSENT: Korean spaces
+// its words like Latin does, so it is only "CJK" typographically.
+const CJK_JOINS = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}！-／：-＠［-｀｛-･]/u;
+
+const lastChar = (s: string | undefined): string | undefined => (s ? [...s].at(-1) : undefined);
+const firstChar = (s: string | undefined): string | undefined => (s ? [...s][0] : undefined);
+
+/**
+ * Does a space belong between these two characters? `undefined` on either side is the edge of a line.
+ *
+ * ONE RULE FOR BOTH RENDERERS — the reel's inter-word gap and the text `lineFromWords` rebuilds — because a
+ * Japanese line joined with spaces in one and without in the other would read as two different songs. A
+ * CJK/Latin boundary KEEPS its space: the two scripts mix in lyrics ("光年之外 oh my love") and running them
+ * together is unreadable either way.
+ */
+function spaceBetweenChars(before: string | undefined, after: string | undefined): boolean {
+	if (before === undefined) return false;
+	if (!CJK_JOINS.test(before)) return true; // Latin and Hangul space their words, end of line included
+	return after !== undefined && !CJK_JOINS.test(after);
+}
+
+/** The separator rendered AFTER word `i` of a line: '' where the next CJK character joins straight on. */
+export function wordGap(words: readonly Pick<LyricWord, 'word'>[], i: number): string {
+	return spaceBetweenChars(lastChar(words[i]?.word), firstChar(words[i + 1]?.word)) ? ' ' : '';
+}
+
+/** A line's words as one string, spaced by the same rule the reel renders them with. */
+export function joinWords(words: readonly Pick<LyricWord, 'word'>[]): string {
+	return words.map((w, i) => (i === 0 ? '' : wordGap(words, i - 1)) + w.word).join('');
+}
+
 function lineFromWords(words: LyricWord[]): LyricLine {
 	return {
 		start: words[0]!.start,
 		end: words[words.length - 1]!.end,
-		text: words.map((w) => w.word).join(' '),
+		text: joinWords(words),
 		words
 	};
 }
@@ -159,8 +192,9 @@ export function resegmentLine(
 ): LyricLine[] {
 	if (line.text.trim().length <= splitAboveChars) return [line];
 	if (line.words.length < 2) return [line];
-	const joined = line.words.map((w) => w.word).join(' ');
-	if (joined.length < line.text.trim().length * COVERAGE_MIN) return [line];
+	// Measured with `joinWords`, not with one space everywhere: on a CJK line the spaces are characters the
+	// text does not have, which inflates the coverage this refusal reads and lets a partial sheet split.
+	if (joinWords(line.words).length < line.text.trim().length * COVERAGE_MIN) return [line];
 
 	const out: LyricLine[] = [];
 	let cur: LyricWord[] = [];
@@ -168,7 +202,7 @@ export function resegmentLine(
 		const prev = cur[cur.length - 1];
 		if (prev) {
 			const gap = w.start - prev.end;
-			const chars = cur.reduce((n, x) => n + x.word.length + 1, 0) + w.word.length;
+			const chars = joinWords([...cur, w]).length;
 			if (gap >= gapSec || chars > maxChars) {
 				out.push(lineFromWords(cur));
 				cur = [];

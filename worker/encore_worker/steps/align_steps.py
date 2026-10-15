@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from encore_worker.domain.audio.activity import ShiftFit
     from encore_worker.domain.lyrics.generate import Generated, Line
     from encore_worker.domain.lyrics.reconcile import AsClaimed, OffSheet
+    from encore_worker.domain.lyrics.viterbi import Graph
 
 from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
@@ -44,6 +45,8 @@ from encore_worker.domain.lyrics import (
     measure,
     place,
     presplit,
+    romanize,
+    units,
 )
 from encore_worker.domain.lyrics.clean import clean_segments
 from encore_worker.domain.lyrics.policy import Knob, Tier, normalised_words
@@ -84,6 +87,9 @@ class Adapters:
     #: LATIN-SCRIPT language detection (lingua-py), built once at the composition root. None without the
     #: `text` extra, and the SCRIPT half needs no adapter at all (docs/arch/04-alignment.md §9).
     detector: language.Detector | None = None
+    #: A language -> its DISPLAY-ONLY romaniser, or None where this box has no backend for it. None here
+    #: romanises nothing, which is every document this worker published before W8 (XA-19).
+    romanizer: Callable[[str], romanize.Romanizer | None] | None = None
 
 
 class Reporter(Protocol):
@@ -124,6 +130,28 @@ class AlignStepsImpl:
         return language.detect(
             texts, declared=job.param_str("language"), heard=heard, detector=self._a.detector
         )
+
+    def _unit_rules(self, language_code: str) -> units.Rules:
+        """How THIS text becomes words, syllables and vocabulary lookups, under the three W8 arms.
+
+        One object per attempt, read by the decode, the repair, the lift and the margin alike, so no two of
+        them can group one text differently (docs/arch/04-alignment.md §9.1, §14).
+        """
+        experiments = self._cfg.align_experiments
+        return units.rules(
+            language_code,
+            script_units="nonlatin-units" in experiments,
+            simplify="zh-simplify" in experiments,
+            transliterate="mms-roman" in experiments,
+        )
+
+    def _romanizer(self, language_code: str) -> romanize.Romanizer | None:
+        """This box's DISPLAY-ONLY romaniser for `language_code`, where it has a backend for it.
+
+        Asked per published document rather than held, the factory caching the built backend; a box with no
+        backend answers None and the document is the one it always was (XA-19).
+        """
+        return self._a.romanizer(language_code) if self._a.romanizer is not None else None
 
     async def _bundle_language(self, req: TimeRequest, *, on_mix: bool) -> str:
         """The language whose BUNDLE must produce these frames, noted when it is not the text's own.
@@ -423,6 +451,25 @@ class AlignStepsImpl:
         target = req.audio.align_target(on_mix=req.on_mix)
         spans = self._placed_spans(req, segments)
         bundle_language = await self._bundle_language(req, on_mix=req.audio.targets_mix(on_mix=req.on_mix))
+        # A ROUTED BUNDLE MAY NOT TIME WORDS HERE EITHER, and this engine has no witness to offer: it reads
+        # no emission matrix, so no lift can be measured, and every `lexical.CALIBRATED` row is an English
+        # bundle's. English keeps the behaviour this engine was measured with; a routed language publishes
+        # LINES at most (XA-06; docs/arch/04-alignment.md §5.4).
+        routed = bundle_language != language.ENGLISH
+        gateless = not lexical.may_time_words(None, heard_on_this_audio=req.text.tier is Tier.ASR)
+        if routed and gateless and "h3-ungated-words" not in self._cfg.align_experiments:
+            await self._out.state(
+                req.job.job_id,
+                "align-windowed",
+                0,
+                "declined",
+                lexical.words_ungated(
+                    f"this aligner reads no emission matrix, and the {bundle_language!r} bundle it aligns on "
+                    f"has no calibration row ({', '.join(sorted(lexical.CALIBRATED))} do)"
+                ),
+                None,
+            )
+            return None
         try:
             aligned = await asyncio.to_thread(self._a.aligner.align, spans, target, bundle_language)
         except InfraFault:
@@ -464,7 +511,7 @@ class AlignStepsImpl:
             # A TRANSCRIPT is not a sheet: its spans were measured on THIS recording, so neither thing this
             # gate detects can be true of it — and read as a sheet it FAILS (README, the rung's four
             # candidate rules).
-            doc = _line_doc(self._placed_by(req, None), req.language)
+            doc = _line_doc(self._placed_by(req, None), req.language, self._romanizer(req.language))
             report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
             timed = self._write(req, doc, TIMING_LINE, "low", report=report)
             why = f"a transcript of this recording, on its own spans (no sheet gate); {report.summary()}"
@@ -581,7 +628,7 @@ class AlignStepsImpl:
             )
         else:
             gate_note = f"{verdict}{clock_note}; {lexical_note}; no decode check: {unchecked}"
-        doc = _line_doc(placed, req.language)
+        doc = _line_doc(placed, req.language, self._romanizer(req.language))
         report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
         # VOUCHED ONLY WHERE THE WORDS WERE READ. `heard is None` is not a pass: several reasons reach here
         # having checked the TIMINGS alone, and this rung's own hazard is a text whose timings are perfect and
@@ -623,7 +670,7 @@ class AlignStepsImpl:
             raise  # the machinery, not this text: fails the job (XA-17)
         except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
             return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None, None)
-        lifted, bands, unlifted = await _measured_lift(texts, emissions)
+        lifted, bands, unlifted = await _measured_lift(texts, emissions, self._unit_rules(req.language))
         return _LineEvidence(lifted, unlifted, bands, emissions)
 
     async def _word_lift(
@@ -638,7 +685,7 @@ class AlignStepsImpl:
         """
         if req.text.tier is Tier.ASR:
             return None, None, "a transcript of this recording (its words were heard on this audio)"
-        return await _measured_lift(line_texts, emissions)
+        return await _measured_lift(line_texts, emissions, self._unit_rules(req.language))
 
     async def _time_text_global(self, req: TimeRequest) -> TimedDoc | Refused | None:
         """Generate our own timings from TEXT ALONE, then reconcile every other measurement INTO them.
@@ -648,16 +695,26 @@ class AlignStepsImpl:
         docs/arch/04-alignment.md §4, §5, §6).
         """
         from encore_worker.adapters.ml import (  # noqa: PLC0415
+            STAR_PENALTY_NATS,
+            Emissions,
             forced_align_decoder,
             load_audio_mono_16k,
+            log_probs_like,
             starred,
         )
         from encore_worker.domain.audio import activity  # noqa: PLC0415
-        from encore_worker.domain.lyrics import parts  # noqa: PLC0415
+        from encore_worker.domain.lyrics import (  # noqa: PLC0415
+            parts,  # noqa: PLC0415
+            prior,
+            viterbi,
+        )
         from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
         from encore_worker.domain.lyrics.generate import (  # noqa: PLC0415
+            Decoder,
             adopted_line,
             alignable_chars,
+            blank_of,
+            char_targets,
             generate,
             regenerate,
             reopened_line,
@@ -668,10 +725,28 @@ class AlignStepsImpl:
 
         aligner = self._a.aligner
         assert aligner is not None  # guarded by time_text; restated for the type checker
-        # The two DECODE ARMS, both default-off, read ONCE here: each belongs to every decode that produces
-        # THIS document and to none of the GATE decodes (XA-12; docs/arch/04-alignment.md §14, §14.1).
+        # THE DECODE ARMS, all default-off, read ONCE here: each belongs to every decode that produces THIS
+        # document and to none of the GATE decodes (XA-12; docs/arch/04-alignment.md §14, §14.1).
         separate_lines = "linesep" in self._cfg.align_experiments
+        # W8's non-Latin lane: `plain` unless an arm is on, and then the SAME object for every decode of
+        # this attempt (docs/arch/04-alignment.md §9.1).
+        unit_rules = self._unit_rules(req.language)
         star_arm = "star" in self._cfg.align_experiments
+        # W9's research track (docs/arch/04-alignment.md §3.2). `priors-decide` IS the other three: the
+        # review's deciding arm is priors plus fusion plus optional lines with the ladder bypassed, and
+        # measuring it under three separate names would be measuring three different arms.
+        deciding_arm = "priors-decide" in self._cfg.align_experiments
+        star_b_arm = "star-b" in self._cfg.align_experiments
+        skip_arcs_arm = deciding_arm or "skip-arcs" in self._cfg.align_experiments
+        priors_arm = deciding_arm or "claim-priors" in self._cfg.align_experiments
+        fusion_arm = deciding_arm or "claim-fusion" in self._cfg.align_experiments
+        # The vendored decoder is what the three arms above are expressed in, so any of them implies it; on
+        # its own the name is the CONTROL, and a control that moved a byte would not be one (XA-18).
+        vendored_arm = star_b_arm or skip_arcs_arm or priors_arm or "vendored" in self._cfg.align_experiments
+        stars_wanted = star_arm or star_b_arm
+        #: What the vendored graph DID on this attempt, in the order it happened — the trail's only account
+        #: of a decode that is not the kernel's. Empty under the bare `vendored` control, which is the point.
+        decode_note: list[str] = []
 
         async def decline(why: str) -> None:
             # EVERY refusal is a trail note: a silent one is indistinguishable from the step never running.
@@ -746,12 +821,12 @@ class AlignStepsImpl:
         # here measured the text. A PIN publishes anyway, all-`low`; `h3-ungated-words` is the CONTROL.
         # Invariants XA-05, XA-06; docs/arch/04-alignment.md §5.4.
         ungated_words_arm = "h3-ungated-words" in self._cfg.align_experiments
-        if bands is None and req.text.tier is not Tier.ASR and not ungated_words_arm:
-            ungated = (
-                f"no wrong-text gate can read this text: {unmeasured} — and the envelope gate it would fall "
-                f"back to passed 189 of 380 of the bench's wrong texts, so this bundle may time LINES but "
-                f"not WORDS"
-            )
+        heard_on_this_audio = req.text.tier is Tier.ASR
+        if (
+            not lexical.may_time_words(bands, heard_on_this_audio=heard_on_this_audio)
+            and not ungated_words_arm
+        ):
+            ungated = lexical.words_ungated(unmeasured)
             if pin_of(req.job) is None:
                 await decline(ungated)
                 return None
@@ -815,20 +890,49 @@ class AlignStepsImpl:
         # on the mix under either `h3-mix-*` arm.
         envelope_gates = lifted is None or mix_envelope_only or mix_both_gates
 
-        # ── THE STAR COLUMN: the `star` arm, default-off ──
+        # ── THE STAR COLUMN: the `star` and `star-b` arms, both default-off ──
         # ONE MATRIX, WIDENED ONCE, AFTER THE GATE, so each reader sees the matrix it was calibrated on
         # (XA-12; docs/arch/04-alignment.md §14.1).
-        decode_matrix = await asyncio.to_thread(starred, emissions) if star_arm else emissions
+        decode_matrix = await asyncio.to_thread(starred, emissions) if stars_wanted else emissions
+
+        def global_decoder(
+            texts: Sequence[str], matrix: Any, bonus: Mapping[int, Any] | None = None
+        ) -> Decoder:
+            """The decoder a GLOBAL decode of `texts` runs on: torchaudio's kernel, or the vendored graph.
+
+            Rebuilt per text list because a graph's states are target POSITIONS and the never-sung rule
+            changes the texts under it. A repair window is never given one: its targets are a different
+            sequence over a slice (docs/arch/04-alignment.md §3.2).
+            """
+            if not vendored_arm:
+                return forced_align_decoder
+            stars: tuple[int, ...] = ()
+            if star_b_arm:
+                flat = char_targets(
+                    texts, matrix, separate_lines=separate_lines, stars=True, units=unit_rules
+                )
+                stars = _star_positions(flat, matrix)
+            if not stars and not bonus:
+                return viterbi.decoder()
+            graph = viterbi.Graph(stars=stars, star_penalty=STAR_PENALTY_NATS, bonus=dict(bonus or {}))
+            # THE TRAIL'S ONLY ACCOUNT OF A NON-EMPTY GRAPH, and `_graph_why` reports the empty one as
+            # torchaudio's own path, so without this an armed decode reads exactly like the control.
+            # Said once per shape: two decodes of the same graph are one fact about this attempt.
+            built = _built_why(graph)
+            if built not in decode_note:
+                decode_note.append(built)
+            return viterbi.decoder(graph)
 
         try:
             generated = await asyncio.to_thread(
                 generate,
                 adlibs.lead_texts,
                 decode_matrix,
-                decoder=forced_align_decoder,
+                decoder=global_decoder(adlibs.lead_texts, decode_matrix),
                 language=req.language,
                 separate_lines=separate_lines,
-                stars=star_arm,
+                stars=stars_wanted,
+                units=unit_rules,
             )
         except InfraFault:
             raise  # a model / kernel / device / audio fault fails the JOB, not this attempt (XA-17)
@@ -896,6 +1000,71 @@ class AlignStepsImpl:
         # MIX for the mix's under `m6-mix-spare`, WINDOW for the target's own matrix under `m6-window-spare`).
         # Empty by default: every never-sung candidate is binned, as v2 binned it.
         spared: dict[int, tuple[Line, _Source]] = {}
+
+        async def decode_active() -> Generated | None:
+            """The global decode of `line_texts_active` as it now stands, or None having DECLINED."""
+            try:
+                out = await asyncio.to_thread(
+                    generate,
+                    line_texts_active,
+                    decode_matrix,
+                    decoder=global_decoder(line_texts_active, decode_matrix),
+                    language=req.language,
+                    separate_lines=separate_lines,
+                    stars=stars_wanted,
+                    units=unit_rules,
+                )
+            except InfraFault:
+                raise  # the machinery, not this text (XA-17)
+            except Exception as exc:  # noqa: BLE001 - the decode refused THIS text: one attempt failing
+                await decline(f"re-decode after drop failed: {type(exc).__name__}: {exc}")
+                return None
+            out = parts.restored(out, adlibs, until=req.audio.duration_sec)
+            if not out.lines:
+                await decline("every line graded never-sung; nothing left to publish")
+                return None
+            return out
+
+        #: What roadmap item 15's skip arcs left unsung, as the trail names them. A COMPLEMENT and never a
+        #: replacement: the arcs run FIRST, on the blind decode, and the three-signal never-sung rule below
+        #: then runs on what is left (docs/arch/04-alignment.md §3.2).
+        dropped_skip_arcs: list[str] = []
+        if skip_arcs_arm:
+            said = [" ".join(text.lower().split()) for text in line_texts_active]
+            # A REPEAT IS EXEMPT (the review's roadmap item 15): the arc cannot tell which occurrence
+            # is which, so bypassing one is as likely to drop the sung chorus as the unsung one.
+            exempt = frozenset(at for at, text in enumerate(said) if text and said.count(text) > 1)
+            unsung = await asyncio.to_thread(
+                _skipped_lines,
+                decode_matrix,
+                line_texts_active,
+                separate_lines=separate_lines,
+                stars=stars_wanted,
+                # THE PUBLISHER'S OWN GRAPH: under `star-b` the star states the publishing decode may
+                # bypass for free are mandatory targets in any graph that does not price them, and a
+                # detector on that trellis names lines about a decode nobody ran (review W9 r2-correctness-4).
+                star_penalty=STAR_PENALTY_NATS if star_b_arm else None,
+                exempt=exempt,
+                units=unit_rules,
+            )
+            for index in sorted(unsung or ()):
+                dropped_skip_arcs.append(f"[{index}] {line_texts_active[index][:40]!r}")
+                line_texts_active[index] = ""
+            # A SEPARATE GRAPH FROM THE ONE THAT PUBLISHES, so the trail has to say the detector read one at
+            # all — a run that found nothing is otherwise silent about having looked — and which topology it
+            # read it on, the stars being the publisher's.
+            decode_note.append(
+                f"a detector graph offered a skip arc at "
+                f"{viterbi.SKIP_LINE_NATS:g} + {viterbi.SKIP_CHAR_NATS:g} nats/char"
+                f"{' over the stars the publisher bypasses' if star_b_arm else ''}, "
+                f"{len(exempt)} repeat(s) exempt: {len(dropped_skip_arcs)} line(s) bypassed"
+            )
+            if dropped_skip_arcs:
+                after_arcs = await decode_active()
+                if after_arcs is None:
+                    return None
+                generated = after_arcs
+
         for _round in range(2):
             if len(generated.lines) < 4:
                 break  # medians over a couple of lines grade nothing
@@ -926,25 +1095,10 @@ class AlignStepsImpl:
                     spared[line.index] = (line, _Source.MIX)
                 else:
                     dropped_never_sung.append(f"[{line.index}] {line.text[:40]!r}")
-            try:
-                generated = await asyncio.to_thread(
-                    generate,
-                    line_texts_active,
-                    decode_matrix,
-                    decoder=forced_align_decoder,
-                    language=req.language,
-                    separate_lines=separate_lines,
-                    stars=star_arm,
-                )
-            except InfraFault:
-                raise  # the machinery, not this text (XA-17)
-            except Exception as exc:  # noqa: BLE001 - the decode refused THIS text: one attempt failing
-                await decline(f"re-decode after drop failed: {type(exc).__name__}: {exc}")
+            after_drop = await decode_active()
+            if after_drop is None:
                 return None
-            generated = parts.restored(generated, adlibs, until=req.audio.duration_sec)
-            if not generated.lines:
-                await decline("every line graded never-sung; nothing left to publish")
-                return None
+            generated = after_drop
 
         # Gate the BLIND series, once, before any repair: an unrelated sheet cannot be forced into the right
         # shape by the audio, so its blind envelope fit is what refuses. Re-gating the REPAIRED series
@@ -972,6 +1126,11 @@ class AlignStepsImpl:
             placement = _Placement(silence="arm")
         elif margin_nats is None:
             placement = _Placement(silence="uncalibrated")
+        elif star_b_arm:
+            # `margin.placement_margins` KNOWS ONLY THE PLAIN TOPOLOGY, and under `star-b` the decode that
+            # published ran with every star bypassable — so a margin read here would describe a trellis no
+            # decode of this document used (XA-12). Abstaining says the rule was not read; it does not lie.
+            placement = _Placement(silence="graph")
         elif unvouched is not None or doubted:
             # NOT PAID FOR A GRADE THAT IS ALREADY FIXED: `line_confidence` is unconditionally `low` for an
             # unvouched pin and for the lexical doubt band. The trail still says the rule was not read.
@@ -982,7 +1141,8 @@ class AlignStepsImpl:
                 decode_matrix,
                 line_texts_active,
                 separate_lines=separate_lines,
-                stars=star_arm,
+                stars=stars_wanted,
+                units=unit_rules,
             )
 
         # ── THE CLAIM CLOCK (docs/arch/04-alignment.md §7) ──
@@ -1074,6 +1234,8 @@ class AlignStepsImpl:
         provenance: dict[int, _Source] = {line.index: _Source.BLIND for line in generated.lines}
 
         repairs: list[str] = []
+        if dropped_skip_arcs:
+            repairs.append(f"skip arcs left unsung: {', '.join(dropped_skip_arcs)}")
         if dropped_never_sung:
             repairs.append(f"dropped never-sung: {', '.join(dropped_never_sung)}")
         if spared:
@@ -1138,7 +1300,7 @@ class AlignStepsImpl:
             cue instead. `generate.alignable_chars` is imported rather than restated, and read with the
             MATRIX's blank (XA-10), so the two floors cannot be read off different texts.
             """
-            return 2 * alignable_chars(text, emissions) * float(emissions.frame_sec)
+            return 2 * alignable_chars(text, emissions, unit_rules) * float(emissions.frame_sec)
 
         def holds(text: str, span: tuple[float, float]) -> bool:
             """Could `span` hold `text` at all? `needs`' floor asked of a span about to be PUBLISHED rather
@@ -1245,8 +1407,10 @@ class AlignStepsImpl:
                 faults=faults,
                 # The arm belongs to every decode that produces a PUBLISHED timing, repairs included: a window
                 # re-decoded without the separator the global decode used would put a repaired line on a
-                # different token stream from the lines around it.
+                # different token stream from the lines around it. The unit rules are the same object for the
+                # same reason, one text having one tokenisation per attempt.
                 separate_lines=separate_lines,
+                units=unit_rules,
             )
             if machinery:
                 raise machinery[0]
@@ -1308,11 +1472,12 @@ class AlignStepsImpl:
                 # A decode that DID hear the line but opened past its claim over singing keeps every word it
                 # measured and only its opening boundary moves — the cheaper half of the same surrender, and
                 # the one an adoption cannot make (`generate.reopened_line`).
-                # BEHIND `band-reopen`, default off: on a sheet whose timings are noisy rather than displaced
-                # the claim it re-opens onto can itself be 0.8 s wrong (docs/arch/04-alignment.md §14).
+                # DEFAULT ON since W9 (owner decision, PLAN 2026-10-09): it buys coverage, and the four
+                # Jamendo words it costs are a recorded waiver, not a loosened bound
+                # (docs/arch/04-alignment.md §14; `gates/w8b-arms.yaml` §2). `band-late-kept` is the control.
                 late = (
                     not unheard
-                    and "band-reopen" in experiments
+                    and "band-late-kept" not in experiments
                     and skipped_opening(index, fixed, window, out)
                 )
                 if not (unheard or late):
@@ -1347,16 +1512,136 @@ class AlignStepsImpl:
         # REPAIR ORDER: evidence-first, then reconcile-driven (docs/arch/04-alignment.md §4). R3 and R4 need
         # no reconcile verdict, so running them first lets the verdict PROMOTE when they succeed.
 
+        async def fuse_in_the_mix() -> Any:
+            """`emissions` with the mix's frames where the TARGET's envelope hears nothing inside a claim
+            window (the review's roadmap item 14), or `emissions` itself when no second witness is owed or
+            none can be had."""
+            if mix_target == stem_target:
+                decode_note.append("no fusion: the target IS the mix")
+                return emissions
+            mask = prior.mute_in_window(
+                env,
+                list(claim_windows.values()),
+                frames=int(emissions.frames),
+                frame_sec=float(emissions.frame_sec),
+                hop_sec=activity.HOP_SEC,
+                floor=_NEVER_SUNG_ENV,
+            )
+            owed = int(mask.sum())
+            if not owed:
+                decode_note.append("no fusion: no claim window is silent on the target")
+                return emissions
+            try:
+                heard = await asyncio.to_thread(
+                    aligner.emissions,  # type: ignore[attr-defined]
+                    mix_target,
+                    await self._bundle_language(req, on_mix=True),
+                )
+                # ONE BUNDLE OR NO FUSION. `prior.fused` swaps whole ROWS, so a row of one has to be a row of
+                # the other — and it can only compare WIDTHS. The mix is emitted under its own language
+                # routing (`_bundle_language(on_mix=True)`), which `lang-route-mix` can resolve elsewhere, so
+                # the dictionary and the blank are checked HERE, where both bundles are in hand.
+                if dict(heard.dictionary) != dict(emissions.dictionary) or blank_of(heard) != blank_of(
+                    emissions
+                ):
+                    decode_note.append("no fusion: the mix was emitted by another bundle's vocabulary")
+                    return emissions
+                merged = await asyncio.to_thread(prior.fused, emissions.log_probs, heard.log_probs, mask)
+                # BACK AS THE KIND THE EMITTER PRODUCED. This arm changes the evidence and not the decoder,
+                # so the fused matrix is decoded by torchaudio's kernel — which `prior.fused`' numpy answer
+                # cannot be handed to (review W9 r2-spec-6).
+                merged = log_probs_like(emissions.log_probs, merged)
+            except InfraFault:
+                raise  # the model, the kernel or the device: the JOB's fault, not this text's (XA-17)
+            except Exception as exc:  # noqa: BLE001 - no second witness is a REASON, not a failed attempt
+                decode_note.append(f"no fusion: the mix raised {type(exc).__name__}")
+                return emissions
+            decode_note.append(f"fused the mix into {owed} of {emissions.frames} frames")
+            return Emissions(
+                log_probs=merged,
+                frame_sec=float(emissions.frame_sec),
+                dictionary=dict(emissions.dictionary),
+                model=str(getattr(emissions, "model", "") or ""),
+                blank_id=blank_of(emissions),
+                specials=dict(getattr(emissions, "specials", None) or {}),
+            )
+
+        async def decode_primed(matrix: Any, bonus: Mapping[int, Any]) -> Generated | None:
+            """The primed global decode, or None having KEPT what the ladder's input already was: a prior
+            that cannot be decoded is a reason to drop the arm, never to decline a measured document."""
+            try:
+                out = await asyncio.to_thread(
+                    generate,
+                    line_texts_active,
+                    matrix,
+                    decoder=global_decoder(line_texts_active, matrix, bonus),
+                    language=req.language,
+                    separate_lines=separate_lines,
+                    stars=stars_wanted,
+                    units=unit_rules,
+                )
+            except InfraFault:
+                raise  # the machinery, not this text (XA-17)
+            except Exception as exc:  # noqa: BLE001 - see the docstring
+                decode_note.append(f"the primed re-decode raised {type(exc).__name__} and was dropped")
+                return None
+            out = parts.restored(out, adlibs, until=req.audio.duration_sec)
+            if not out.lines:
+                decode_note.append("the primed re-decode placed no line and was dropped")
+                return None
+            return out
+
+        # ── ROADMAP ITEM 14: THE PRIMED RE-DECODE (`claim-priors`, `claim-fusion`, `priors-decide`) ──
+        # AFTER the clock, since a prior centred on a RAW claim is centred on the sheet's own offset (XA-04),
+        # and after the BLIND verdict, which grading reads and which must stay claim-free (XA-03). This is the
+        # only decode in the step a claim reaches, and under `priors-decide` it stands in for the ladder
+        # (docs/arch/04-alignment.md §3.2).
+        if (priors_arm or fusion_arm) and claimed:
+            evidence: Any = emissions
+            if fusion_arm:
+                evidence = await fuse_in_the_mix()
+            primed_matrix = await asyncio.to_thread(starred, evidence) if stars_wanted else evidence
+            primed_flat = char_targets(
+                line_texts_active,
+                primed_matrix,
+                separate_lines=separate_lines,
+                stars=stars_wanted,
+                units=unit_rules,
+            )
+            bonus = (
+                prior.onset_bonus(
+                    primed_flat.first_char_target,
+                    claimed,
+                    frames=int(primed_matrix.frames),
+                    frame_sec=float(primed_matrix.frame_sec),
+                )
+                if priors_arm
+                else {}
+            )
+            primed = await decode_primed(primed_matrix, bonus)
+            if primed is not None:
+                record(_Source.PRIMED, {line.index: line for line in primed.lines})
+                generated = primed
+                verdict = steer(generated)
+                fit = await asyncio.to_thread(fit_of, generated)
+                decode_note.append(
+                    f"re-decoded all {len(primed.lines)} lines with {len(bonus)} claim onset prior(s)"
+                )
+                repairs.append(f"primed re-decode replaced all {len(primed.lines)} lines")
+
         # ── R3: blind repeats, anchored between unique neighbours. With no claim to say WHICH chorus an
         # occurrence is, the unique lines around a repeated block are the best anchors available, so the block
         # is re-decoded jointly in the gap between them, constraining the misbinding to that gap.
-        corroborated_now = {j.index for j in verdict.lines if j.corroborated}
+        # THE BLIND VERDICT AND NOT `verdict` (XA-03), which the primed arms have re-read on a claim-primed
+        # document: `line_confidence`'s ANCHORED branch grades R3's output on BLIND corroboration, so a
+        # claim-contaminated input set would grade those lines against a precondition that no longer held.
+        corroborated_now = {j.index for j in blind_verdict.lines if j.corroborated}
         normalized = [" ".join(text.lower().split()) for text in line_texts]
         repeats = {i for i, text in enumerate(normalized) if text and normalized.count(text) > 1}
         blind = {
             ln.index for ln in generated.lines if ln.index in repeats and ln.index not in corroborated_now
         }
-        if blind:
+        if blind and not deciding_arm:
             runs = _anchored_runs(generated.lines, blind, req.audio.duration_sec)
             repaired = await redecode("R3", runs, matrix=emissions)
             if repaired:
@@ -1385,7 +1670,7 @@ class AlignStepsImpl:
 
         # ── R4: MIX AS A SECOND WITNESS, and under `m6-mix-spare` the home of a claimed line the stem is
         # silent in. Put back only if the mix HEARD it, its envelope being the band as much as a voice.
-        if claim_windows and mix_target != stem_target:
+        if claim_windows and mix_target != stem_target and not deciding_arm:
             stem_invisible = [
                 line
                 for line in generated.lines
@@ -1441,7 +1726,7 @@ class AlignStepsImpl:
         # answered by the AUDIO; when the claims win they become the anchors. ON UNRELATED ALONE, never on
         # `rc.TOO_FEW_PAIRS`: this is the widest repair in the step and three disagreeing pairs are not
         # evidence of anything.
-        if verdict.verdict == rc.UNRELATED and len(claim_windows) >= rc.MIN_PAIRS:
+        if verdict.verdict == rc.UNRELATED and len(claim_windows) >= rc.MIN_PAIRS and not deciding_arm:
             # OFF THE EVENT LOOP like every other fit in this step: bounded-lag correlation makes it tens of
             # milliseconds on an hour-long recording, and that still stalls the keepalive the reaper reads.
             claim_fit = await asyncio.to_thread(
@@ -1474,7 +1759,7 @@ class AlignStepsImpl:
         # (XA-03). WHICH LINES is `Reconciliation.disputed`'s to say; a line R4 heard on the mix reads as
         # disputed, so R2's stem decode would adopt the claim over it unless `l1-mix-kept` keeps it.
         disputed_indexes = set(verdict.disputed)
-        if disputed_indexes:
+        if disputed_indexes and not deciding_arm:
             disputed_lines = [
                 line
                 for line in generated.lines
@@ -1904,9 +2189,15 @@ class AlignStepsImpl:
                 if separate_lines
                 else ""
             )
+            # ONLY UNDER A W8 ARM, and then ALWAYS: a run whose words are per-hanzi and one whose words are
+            # whole lines publish different documents off the same text (docs/arch/04-alignment.md §9.1).
+            + (f"{_units_why(unit_rules, req.language)}; " if unit_rules.name != "plain" else "")
             # ONLY UNDER THE ARM — and under it ALWAYS, so an arm that acted and an arm that went inert on a
             # matrix with no star column cannot read alike.
-            + (f"{_star_why(star_of(decode_matrix))}; " if star_arm else "")
+            + (f"{_star_why(star_of(decode_matrix))}; " if stars_wanted else "")
+            # `claim-fusion` changes the EVIDENCE and not the decoder, so it owns no graph — and still has
+            # to report, or a run that fused the mix into a third of the song reads like one that did not.
+            + (f"{_graph_why(decode_note, vendored=vendored_arm)}; " if vendored_arm or fusion_arm else "")
             # ONLY UNDER THE ARM — and under it ALWAYS, including when neither rule fired: an arm that found
             # no ad-lib and an arm that was never set must not read alike.
             + (f"{adlibs.why()}; " if "adlibs" in experiments else "")
@@ -2573,7 +2864,7 @@ def _in_claim_order(segments: Sequence[Segment]) -> tuple[tuple[Segment, ...], i
 
 
 async def _measured_lift(
-    texts: Sequence[str], emissions: Any
+    texts: Sequence[str], emissions: Any, rules: units.Rules | None = None
 ) -> tuple[lexical.Lift | None, lexical.Bands | None, str]:
     """`lexical.lift` of `texts` on `emissions`, off the event loop, THE ROW it must be judged against, and
     why it could not be measured.
@@ -2588,7 +2879,9 @@ async def _measured_lift(
     if bands is None:
         return None, None, lexical.uncalibrated(str(getattr(emissions, "model", "") or ""))
     try:
-        got = await asyncio.to_thread(partial(lexical.lift, decoder=forced_align_decoder), texts, emissions)
+        got = await asyncio.to_thread(
+            partial(lexical.lift, decoder=forced_align_decoder, units=rules), texts, emissions
+        )
     except InfraFault:
         raise  # the machinery, not this text: fails the job (XA-17)
     except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
@@ -2621,20 +2914,27 @@ def _sheet_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
     return out
 
 
-def _line_doc(segments: Sequence[Segment], language: str) -> dict[str, object]:
+def _line_doc(
+    segments: Sequence[Segment], language: str, romanizer: romanize.Romanizer | None = None
+) -> dict[str, object]:
     """A line-synced document: each segment becomes a line with no per-word spans.
 
     One implementation for both the `LINE_SYNC` knob and any other line fallback, the ORDER of the starts
     included, so no caller can publish a stray backwards claim by forgetting to normalise. Idempotent, and a
-    sheet `_in_claim_order` REFUSES to normalise keeps its inversions on purpose.
+    sheet `_in_claim_order` REFUSES to normalise keeps its inversions on purpose. `romanization` is an
+    OPTIONAL extra field, written only where there is a second script to show (XA-19,
+    docs/arch/04-alignment.md §11.2).
     """
     ordered, _held, _unheld = _in_claim_order(segments)
-    return {
-        "language": language,
-        "lines": [
-            {"text": str(s.get("text") or ""), "start": s.get("start"), "end": s.get("end")} for s in ordered
-        ],
-    }
+    lines: list[dict[str, object]] = []
+    for s in ordered:
+        text = str(s.get("text") or "")
+        line: dict[str, object] = {"text": text, "start": s.get("start"), "end": s.get("end")}
+        said = romanize.romanization_of(text, romanizer)
+        if said is not None:
+            line["romanization"] = said
+        lines.append(line)
+    return {"language": language, "lines": lines}
 
 
 #: The never-sung rule's three thresholds, ALL required (the drop block in `_time_text_global`). ABSOLUTE on
@@ -2681,7 +2981,7 @@ def _speech_mass(matrix: Any, start: float, end: float) -> float | None:
 #: WHY the placement-ambiguity rule said nothing, one name per reason, because the reasons lead to DIFFERENT
 #: next steps and all of them used to print one sentence: `arm`, `uncalibrated`, `already-low`, `fault` and
 #: `unreadable`, each spelled out in `_margin_why`.
-_MarginSilence = Literal["arm", "uncalibrated", "already-low", "fault", "unreadable"]
+_MarginSilence = Literal["arm", "uncalibrated", "graph", "already-low", "fault", "unreadable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -2703,22 +3003,27 @@ class _Placement:
 
 
 def _placement_margins(
-    matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False, stars: bool = False
+    matrix: Any,
+    line_texts: Sequence[str],
+    *,
+    separate_lines: bool = False,
+    stars: bool = False,
+    units: units.Rules | None = None,
 ) -> _Placement:
     """How ambiguous each line's placement was on `matrix`, in nats (`domain.lyrics.margin`).
 
-    THE SAME TARGETS THE DECODE RAN ON, so the margin describes the path that produced these timings: the
-    texts must be the BLIND decode's and `matrix` the STARRED one under that arm (XA-12). NO MARGINS ON ANY
-    FAULT, which is a DIFFERENT ANSWER FROM `{}` — that would still apply the rule's SCORE half — and EVERY
-    fault, a wrong guess at numpy's exception reinstating the bug. `InfraFault` is re-raised, and the numpy
-    conversion is here because `domain/` may not import torch (XA-15; docs/arch/04-alignment.md §6).
+    THE SAME TARGETS AND TOPOLOGY THE DECODE RAN ON: the texts must be the BLIND decode's, `matrix` the
+    STARRED one under that arm (XA-12), and the graph PLAIN — hence the caller's abstention under `star-b`.
+    NO MARGINS ON ANY FAULT, and every fault: a wrong guess at numpy's exception reinstates the bug, and `{}`
+    would still apply the rule's SCORE half. `InfraFault` is re-raised; numpy is converted here because
+    `domain/` may not import torch (XA-15; docs/arch/04-alignment.md §6).
     """
     import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
 
     from encore_worker.domain.lyrics import margin  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import blank_of, char_targets  # noqa: PLC0415
 
-    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars)
+    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars, units=units)
     if not flat.targets:
         return _Placement(silence="unreadable")
     try:
@@ -2745,8 +3050,8 @@ def _margin_why(placement: _Placement, doubted: Collection[int], lines: int, *, 
     """The placement-margin clause of the trail note: the signal, its threshold, and what it doubts.
 
     `doubted` is what the RULE flags and not what published `low`, which is why the wording says "doubts".
-    ONE SENTENCE PER SILENCE, FIVE OF THEM, because the reasons lead to different next steps and two used to
-    be byte-identical; the `fault` one is a BUG REPORT, so it names the exception type. `floor` comes off this
+    ONE SENTENCE PER SILENCE, because the reasons lead to different next steps and two used to be
+    byte-identical; the `fault` one is a BUG REPORT, so it names the exception type. `floor` comes off this
     bundle's own calibration row. The trail names the RULE rather than a section number, an operator having no
     document to resolve a citation against (docs/arch/04-alignment.md §6).
     """
@@ -2758,6 +3063,10 @@ def _margin_why(placement: _Placement, doubted: Collection[int], lines: int, *, 
         "uncalibrated": (
             "placement margins: not read, this alignment bundle has no calibrated margin floor "
             "(`lexical.Bands.margin_floor_nats`), so grading is as it was before the placement-margin rule"
+        ),
+        "graph": (
+            "placement margins: not read, `star-b` decoded through a graph whose stars are bypassable and "
+            "the margin rule knows only the plain topology, so grading is as it was before the rule"
         ),
         "already-low": (
             "placement margins: not read, every line of this document is graded low before the rule is "
@@ -2872,6 +3181,9 @@ class _Source(StrEnum):
     MIX = "mix"
     #: The claim's own span, adopted because no window decode heard the line.
     ADOPTED = "adopted"
+    #: The primed re-decode of the review's roadmap item 14: one global Viterbi in which the clock-mapped
+    #: claims are a BONUS at each line's first state. A claim chose nothing, but it tipped the path.
+    PRIMED = "primed"
 
 
 #: How many lines of one source the trail names by index before it only counts the rest: R1 re-decodes
@@ -2958,6 +3270,15 @@ def _bundle_why(emissions: object) -> str:
     return f"bundle {named or 'unnamed'}"
 
 
+def _units_why(rules: units.Rules, language_code: str) -> str:
+    """One trail sentence naming the W8 unit arms this attempt decoded under, and on which language."""
+    return (
+        f"units {rules.name} for {language_code!r} "
+        f"(domain.lyrics.units: words, syllables and vocabulary spelling are this script's, "
+        f"not the whitespace rule every recorded row was measured on)"
+    )
+
+
 def _linesep_why(separator: int | None, *, named: int | None) -> str:
     """The trail's clause for the line separator, printed only under the `linesep` arm.
 
@@ -2986,6 +3307,90 @@ def _star_why(star: int | None) -> str:
     from encore_worker.adapters.ml import STAR_PENALTY_NATS  # noqa: PLC0415 - the arm's own constant
 
     return f"star: one per line, id {star} = frame max − {STAR_PENALTY_NATS:g} nats, its frames blank (star)"
+
+
+def _built_why(graph: Graph) -> str:
+    """What a non-empty `viterbi.Graph` holds, for `_graph_why`'s decode note: the arcs, and their price."""
+    held: list[str] = []
+    if graph.stars:
+        held.append(f"{len(graph.stars)} star state(s) bypassable at {graph.star_penalty:g} nats")
+    if graph.bonus:
+        held.append(f"an onset prior on {len(graph.bonus)} first-character state(s)")
+    return "decoded through a graph of " + " and ".join(held)
+
+
+def _graph_why(notes: Sequence[str], *, vendored: bool) -> str:
+    """The trail's clause for W9's decode arms: what the graph did, or what the fusion did (XA-18).
+
+    `vendored` names the DECODER, which `claim-fusion` alone does not change — it changes the evidence —
+    so the clause has to say which of the two the reader is looking at. Under the bare `vendored` control
+    there is nothing to report, and saying so is the control's whole claim: the graph was empty, so the
+    kernel's own path is what published.
+    """
+    what = "vendored decoder" if vendored else "claim fusion"
+    if notes:
+        return f"{what}: " + "; ".join(notes)
+    if vendored:
+        return "vendored decoder: an empty graph, so this is torchaudio's own path (vendored)"
+    return "claim fusion: no claim to fuse inside (claim-fusion)"
+
+
+def _star_positions(flat: Any, matrix: Any) -> tuple[int, ...]:
+    """Which of `flat.targets` are `matrix`'s STAR token: the states phase B's graph bypasses for free.
+
+    Read the same way for the publishing decode and for the skip-arc detector, which have to decode one
+    topology (docs/arch/04-alignment.md §3.2).
+    """
+    from encore_worker.domain.lyrics.generate import star_of  # noqa: PLC0415
+
+    named = star_of(matrix)
+    return () if named is None else tuple(at for at, token in enumerate(flat.targets) if token == named)
+
+
+def _skipped_lines(
+    matrix: Any,
+    line_texts: Sequence[str],
+    *,
+    separate_lines: bool = False,
+    stars: bool = False,
+    star_penalty: float | None = None,
+    exempt: frozenset[int] = frozenset(),
+    units: units.Rules | None = None,
+) -> frozenset[int] | None:
+    """Which lines roadmap item 15's skip arcs leave unsung on `matrix` — the never-sung rule's COMPLEMENT.
+
+    A detector and not the publishing decode: the lines it names are blanked and the shipped decode runs
+    again without them, exactly as the never-sung rule drops a line. None where nothing could be read, which
+    the caller treats as no drop at all. `star_penalty` is phase B's, and makes the star targets bypassable
+    here as they are in the decode that publishes (docs/arch/04-alignment.md §3.2).
+    """
+    import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
+
+    from encore_worker.domain.lyrics import viterbi  # noqa: PLC0415
+    from encore_worker.domain.lyrics.generate import blank_of, char_targets, line_blocks  # noqa: PLC0415
+
+    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars, units=units)
+    if not flat.targets:
+        return None
+    indexes, arcs = viterbi.line_skips(line_blocks(flat), exempt)
+    if not arcs:
+        return frozenset()
+    try:
+        got = viterbi.align(
+            np.asarray(matrix.log_probs),
+            flat.targets,
+            blank_of(matrix),
+            graph=viterbi.Graph(
+                skips=arcs,
+                stars=_star_positions(flat, matrix) if star_penalty is not None else (),
+                star_penalty=float(star_penalty or 0.0),
+            ),
+        )
+    except InfraFault:
+        raise
+    except Exception:  # noqa: BLE001 - a detector that cannot read the matrix detects nothing
+        return None
+    return frozenset(indexes[at] for at in got.skipped)
 
 
 def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> str:

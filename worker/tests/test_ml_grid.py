@@ -471,19 +471,32 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
 
     seen: dict[str, Any] = {}
 
-    def spy(*, device: str, jobs: int = 1, model: str | None = None) -> Any:
-        seen.update(device=device, jobs=jobs, model=model)
+    def spy(
+        *,
+        device: str,
+        jobs: int = 1,
+        model: str | None = None,
+        nonlatin_model: str | None = None,
+    ) -> Any:
+        seen.update(device=device, jobs=jobs, model=model, nonlatin_model=nonlatin_model)
         return _Rigged(_LocalModel(), jobs=jobs)
 
     monkeypatch.setattr(adapters_ml, "build_aligner", spy)
     monkeypatch.setattr(adapters_ml, "build_transcriber", lambda **_k: None)
     monkeypatch.setattr(adapters_ml, "build_diarizer", lambda **_k: None)
     adapters = entry.build_adapters(Config(concurrency=3), device="cpu")
-    assert seen == {"device": "cpu", "jobs": 3, "model": adapters_ml.default_align_model("cpu")}, (
-        "the host must hand the factory its own concurrency and its own bundle"
-    )
+    assert seen == {
+        "device": "cpu",
+        "jobs": 3,
+        "model": adapters_ml.default_align_model("cpu"),
+        # W8 stage 2: a non-Latin language keeps whisperx's per-language table unless `mms-roman` is on,
+        # those weights being CC-BY-NC (docs/arch/04-alignment.md §9.1).
+        "nonlatin_model": None,
+    }, "the host must hand the factory its own concurrency and its own bundle"
     entry.build_adapters(Config(align_model="HUBERT_ASR_XLARGE"), device="cpu")
     assert seen["model"] == "HUBERT_ASR_XLARGE", "and an operator's name reaches it unchanged"
+    entry.build_adapters(Config(align_experiments=frozenset({"mms-roman"})), device="cpu")
+    assert seen["nonlatin_model"] == adapters_ml.MMS_ALIGN_MODEL, "and the arm's bundle reaches it too"
     built = adapters.aligner
     assert isinstance(built, ml.WhisperXAligner)
     assert built._matrices == ml._emission_cache_size(3), "and the LRU is sized from it"

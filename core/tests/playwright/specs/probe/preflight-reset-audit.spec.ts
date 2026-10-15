@@ -183,7 +183,8 @@ const SURFACES: Surface[] = [
 		// first control of its first card, which is also what p15 waits on.
 		ready: (page) => page.locator(SEL.setting('queue-order'))
 	},
-	// The tiles exist only once /api/stats has landed, so one of them is the ready signal.
+	// /stats loads in `+page.ts`, so the tiles ship with the document; one of them is still the ready signal,
+	// it just marks hydration rather than a landed fetch.
 	{ name: 'stats', url: '/stats', vp: PHONE, ready: (page) => page.locator(SEL.dashTileNumber).first() },
 	// The whole page body is keyed on the fetched payload (`{#if !metrics} Loading… {:else}`), so the absence
 	// of that word is precisely "the fetch landed".

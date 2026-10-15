@@ -157,6 +157,14 @@ capability token**, which makes model-aware routing free: core's dispatch matche
 against a worker's list, so a job naming a checkpoint only one box has is routed to that box by machinery that
 already exists.
 
+**The suite's own probe of that listing is cached for the same reason the catalogue is.**
+`tests/zoo_fixture.upstream_listing_is_readable` constructs a `Separator` to tell "upstream's listing cannot
+be read on this box" apart from "the filter rejected every entry", and `catalogue_or_skip` asks it at each of
+the suite's eight call-through sites where the catalogue comes back empty. Measured on this project's Mac
+with the socket open and `/tmp` cold, the first probe took **901.7 s** — it fetches upstream's model metadata
+— against **0.0 s** for the second, so the answer is a `functools.cache`d per-process environment fact rather
+than a question asked eight times (review W9 r2-spec-10; `tests/test_zoo.py` pins the one construction).
+
 A catalogue entry therefore falls into one of **three** role cases, and the middle one is why the role
 measurement exists at all. **Declared** — the metadata names a vocals side and a backing side, still verified
 from the audio before publication, a declaration being a hint. **Unknown** — the metadata declares no stems,
@@ -943,11 +951,45 @@ whole wave after the fourth arrived (review r2-correctness-6).
 The LOSSLESS gate must bind on the same four, and did not: `_tools/prose_scan.py`'s `ROOTS` and
 `_tools/verify_numbers.py`'s `CODE_GLOBS` both omitted the stem-separation harness, so the ~50 docstring lines
 the sweep deleted there were never scanned into the manifest and "0 LOST" said nothing about them (review
-r2-spec-8, r2-tests-14). Both now list all four and the manifest is re-frozen from the `w7c-start` TREE over
+r2-spec-8, r2-tests-14). Both now list all four, and W7c re-froze the manifest from the `w7c-start` TREE over
 them: **4 139 → 4 179 numbers, 2 889 → 2 922 strict-substantive rows** (the fourth root contributing 40 and 33
 respectively, over 3 files and 30 blocks), verified **0 LOST** — 2 611 code, 311 doc, under Python 3.12.
 `verify_numbers.main` now asserts the manifest's own `roots` equals `prose_scan.ROOTS` and that `CODE_GLOBS`
 can read every one of them, so the two scopes cannot drift apart again silently.
+
+**THOSE TWO PAIRS ARE W7c's HISTORY, NOT THE LIVE MANIFEST'S** (review W9 r2-correctness-5). The
+pre-widening pair is the preserved `$ENCORE_BENCH_ROOT/_prose/numbers.three-roots.w7c-start.json`, which still
+names its own tree (`frozen_from: "shadow tag w7c-start (2026-10-02 15:58:51 -0500), all three roots,
+STRICT"`); the four-root file the arrow points at has since been superseded. The manifest the gate actually
+reads — `_prose/numbers.json`, re-frozen 2026-10-05 — holds **4 081** numbers and **2 894** strict-substantive
+rows over all four roots, and reports `frozen_from: "UNRECORDED — this manifest cannot say which tree it
+speaks for"`, because that freeze was run without `--frozen-from`. The 2 894 is the figure the paragraph below
+quotes, and `prose_scan.py` now REQUIRES `--frozen-from`, so no later freeze can leave its counts
+unattributable to a tree.
+
+**A FIXTURE'S OWN NUMBERS ARE TERMINAL, and the gate now says so (W9).** Widening the scan to `worker/tests`
+left a contradiction behind it. W7b ruled that a fixture's numbers belong BESIDE the fixture and kept the
+worker's tests out of the lossless gate's strict scope on that basis; W7c put them in without revisiting the
+ruling and gave the 29 rows that first surfaced doc homes here and in [`04-alignment.md`](04-alignment.md)
+§17 — relocating what W7b had called terminal. That did not hold: the gate then reported eleven more `LOST`
+rows as the tests changed, every one of them a number still standing, in the prose of
+`tests/test_align_provenance.py` (nine, at its `_late_opening` and `_SAME_BATCH_CLAIMS` fixtures),
+`tests/test_coherent_offset.py` (one) and `tests/test_prose_shape.py` (one). W9 resolves it in W7b's
+direction: the tests stay in scope for every shape rule and for the scan, and prose in a
+`verify_numbers.TERMINAL_PROSE_ROOTS` root is itself a durable home, reported as `fixture`. What `--durable`
+refuses is prose the cleanup is RELOCATING out of the package into `docs/`, which is why package prose is
+still not a home; a line like "line [4] is heard … by its own window and … by the global pass" describes the
+three lines of setup under it, is committed, and has no document it could move to that would not make the
+fixture unreadable. (The eleven magnitudes are deliberately NOT quoted here: a doc home would be the one
+thing the ruling says they do not need, and quoting them would make the count below stale on the day it
+shipped.) The reading on the shipped tree, Python 3.12: 2 894 strict-substantive rows, **0 LOST**, 11 of them
+terminal fixture prose. The `code` / `doc` split of the other 2 883 is NOT quoted, because one doc edit moves
+a row across it and the gate checks magnitudes rather than homes, so it cannot catch the drift: it read
+2 695 / 188 when this paragraph was written and 2 696 / 187 two doc edits later (review W9 r1-tests-17). Run
+the gate for the live split. It is not a blanket pass, which was checked on a throwaway tree: deleting the
+number from the test's prose turns the row `LOST` again, and a number in package prose stays `LOST`.
+`TERMINAL_PROSE_ROOTS` is also asserted to be a subset of `prose_scan.ROOTS`, so a typo in it grants nothing
+rather than silently excusing a root.
 
 **What a test docstring keeps.** The claim it pins, and the WHY that makes the claim worth pinning — commonly
 the mutation that used to survive, named in one clause. What it does not keep is a re-derivation of a

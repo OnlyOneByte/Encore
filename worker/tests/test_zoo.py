@@ -8,15 +8,11 @@ file that is not a backing track.
 
 from __future__ import annotations
 
-import importlib.util
-
 import pytest
 
 from encore_worker.adapters import zoo
-
-zoo_installed = importlib.util.find_spec("audio_separator") is not None
-needs_zoo = pytest.mark.skipif(not zoo_installed, reason="the `audiosep` extra is not installed here")
-
+from tests import zoo_fixture
+from tests.zoo_fixture import catalogue_or_skip, needs_zoo
 
 # ── the filter, which is the safety-relevant half ────────────────────────────────────────────────
 
@@ -94,9 +90,65 @@ def test_an_absent_extra_yields_an_empty_catalogue_rather_than_an_import_error()
     assert isinstance(zoo.catalogue(), tuple)
 
 
+def test_the_upstream_listing_is_probed_once_per_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`catalogue_or_skip` asks it on every call where the catalogue is empty — 8 call-through sites in this
+    suite — and the probe builds a `Separator`, which is exactly what `zoo.catalogue` is cached to pay once
+    (docs/arch/05-worker.md §2.3; review W9 r2-spec-10).
+
+    The probe is faked here rather than run: a cold one is minutes of wall clock.
+    """
+    import sys
+    import types
+
+    built: list[str] = []
+
+    class Fake:
+        def __init__(self, **_options: object) -> None:
+            built.append("separator")
+
+        def list_supported_model_files(self) -> dict[str, object]:
+            return {"model": {}}
+
+    separator = types.ModuleType("audio_separator.separator")
+    separator.Separator = Fake  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "audio_separator", types.ModuleType("audio_separator"))
+    monkeypatch.setitem(sys.modules, "audio_separator.separator", separator)
+
+    zoo_fixture.upstream_listing_is_readable.cache_clear()
+    try:
+        assert zoo_fixture.upstream_listing_is_readable() is True
+        assert zoo_fixture.upstream_listing_is_readable() is True
+    finally:
+        zoo_fixture.upstream_listing_is_readable.cache_clear()
+    assert built == ["separator"], f"the listing was probed {len(built)} times in one process"
+
+
+def test_a_catalogue_that_was_read_and_is_empty_fails_where_an_unreadable_one_skips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE DISTINCTION THE HELPER EXISTS FOR, and the reason a blanket skip was not acceptable: `catalogue()`
+    answers `()` both when upstream's listing could not be fetched — the suite blocks the socket and the
+    library caches it under `/tmp` — and when the filter rejected every entry, which is the defect the tests
+    below are for. Only the first is an environment fact.
+
+    THE POSITIVE HALF TURNS A SKIP INTO A FAILURE. Called bare, a reversion to the blanket skip this helper
+    replaced raises `skip.Exception` out of the test body and pytest reports the GUARD as skipped — green,
+    and reporting the regression as an environment fact (review W9 r1-tests-13)."""
+    monkeypatch.setattr(zoo, "catalogue", lambda: ())
+    monkeypatch.setattr(zoo_fixture, "upstream_listing_is_readable", lambda: True)
+    try:
+        assert zoo_fixture.catalogue_or_skip() == ()
+    except pytest.skip.Exception as skipped:
+        pytest.fail(f"a listing that WAS read must not skip: {skipped}")
+
+    monkeypatch.setattr(zoo_fixture, "upstream_listing_is_readable", lambda: False)
+    with pytest.raises(pytest.skip.Exception, match="cannot be read here"):
+        zoo_fixture.catalogue_or_skip()
+
+
 @needs_zoo
 def test_the_catalogue_is_not_empty_and_every_entry_can_be_looked_up() -> None:
-    models = zoo.catalogue()
+    models = catalogue_or_skip()
     assert len(models) > 50, f"only {len(models)} usable models; the filter may have over-tightened"
     for model in models[:20]:
         assert zoo.by_token(model.token) is model
@@ -107,7 +159,7 @@ def test_tokens_are_unique() -> None:
     """Two upstream labels can slug to one token. A duplicate would make `by_token` return whichever came
     first, silently separating with the wrong model — the same failure the registry's uniqueness test
     guards."""
-    tokens = [m.token for m in zoo.catalogue()]
+    tokens = [m.token for m in catalogue_or_skip()]
     assert len(tokens) == len(set(tokens))
 
 
@@ -115,7 +167,9 @@ def test_tokens_are_unique() -> None:
 def test_the_catalogue_is_ranked_so_the_list_means_something_unmeasured() -> None:
     """An operator browsing 130+ models needs the order to carry information before they have run any of
     them. Best published instrumental SDR first, unscored last."""
-    scored = [m.upstream_instrumental_sdr for m in zoo.catalogue() if m.upstream_instrumental_sdr is not None]
+    scored = [
+        m.upstream_instrumental_sdr for m in catalogue_or_skip() if m.upstream_instrumental_sdr is not None
+    ]
     assert scored == sorted(scored, reverse=True)
 
 
@@ -128,7 +182,7 @@ def test_upstream_scores_are_never_labelled_as_our_own_measurement() -> None:
     than the plain SDR `docs/benchmarks/stem-separation` reports. So the word `measured` must not appear,
     and the incomparability must be stated where a reader will see it.
     """
-    for model in zoo.catalogue():
+    for model in catalogue_or_skip():
         if model.upstream_instrumental_sdr is None:
             continue
         assert "upstream" in model.provenance
@@ -141,7 +195,9 @@ def test_the_models_this_project_has_measured_are_present() -> None:
     """Consolidating onto audio-separator must not lose the checkpoint we benchmarked ourselves at 17.37 dB
     instrumental SI-SDR. It is in the zoo — under `unknown` roles, which is why an early version of the
     filter appeared to show zero overlap between the two libraries."""
-    assert zoo.by_token("roformer-model-bs-roformer-instrumental-resurrection-by-unwa") is not None
+    models = catalogue_or_skip()
+    wanted = "roformer-model-bs-roformer-instrumental-resurrection-by-unwa"
+    assert any(m.token == wanted for m in models), f"{wanted} is not among the {len(models)} offered"
 
 
 @needs_zoo
@@ -149,5 +205,5 @@ def test_no_offered_model_is_a_four_stem_one() -> None:
     """The exclusion has to hold on the real catalogue, not just on the predicate: a Demucs entry reaching a
     two-stem publication path would have its instrumental read from one of four files."""
     four = {"vocals", "drums", "bass", "other"}
-    for model in zoo.catalogue():
+    for model in catalogue_or_skip():
         assert not four.issubset({s.lower() for s in model.stems}), model.token

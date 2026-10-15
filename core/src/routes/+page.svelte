@@ -17,18 +17,17 @@
 	import { processAndQueue } from '$lib/process-and-queue';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
-	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
+	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
-	let connected = $state(false);
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
@@ -52,7 +51,6 @@
 	onMount(() => {
 		const sync = () => {
 			me = room.me;
-			connected = room.connected;
 			mediaCatalog = room.mediaCatalog;
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
@@ -105,9 +103,36 @@
 	let rawResults = $state<Media[]>([]);
 	let processingResults = $state<Media[]>([]);
 	let searching = $state(false);
+	/* A FAILED SEARCH IS A THIRD STATE, not an empty one. Without this the catch below wiped the rows and the
+	   zero-state then asserted `Nothing matches "<query>"` — the review's only blocks-the-party finding. Reset
+	   wherever a new attempt begins, so the failure cannot outlive the query it belongs to. */
+	let searchFailed = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
 	const searchActive = $derived(query.trim().length > 0);
+
+	/* HOW MUCH OF EACH GROUP IS IN THE DOM. One counter per group, because the three answer different questions and
+	   a shared counter would let a long `Needs karaoke` tail decide how many READY songs you can see.
+	   THE SERVER IS UNCHANGED and so is the wire: /api/search still answers with every hit, and nothing here is a
+	   cap — the reveal control is a DOOR, exactly as /library's note says of the same arithmetic. The payload is a
+	   separate decision for the owner (see proposedNotImplemented in this group's report).
+	   WHY: `partitionSearch`'s catalog arm walks the WHOLE persisted catalog with no limit (only the resolvers are
+	   bounded, at PER_SOURCE_LIMIT = 12), and /api/search MATERIALISES AND PERSISTS every hit, so this column is
+	   sized by the install's lifetime catalog rather than by the query.
+	   MEASURED AT 390x844 AGAINST THE SAME SERVER, windowed and un-windowed. EVERY READING HERE DRIFTS A LITTLE
+	   between runs, and that drift is the defect talking: /api/search persists what it resolves, so this copy's
+	   catalog gained rows while it was being measured — it is past 3,700 now. Figures are one session's pair.
+	   `q=a`: 3,412 rows / 56,260 DOM nodes / 320,120px of scroll / 1,235ms for the first `+` to read `queued`, with
+	   `Not it? Search everything` at y=319,949 — 379 viewports down — became 120 rows / ~2,030 nodes / ~12,500px /
+	   53ms, with the widen at y≈12,350. `queen` went 294 rows / 5,054 nodes / 94ms to 61 / 1,164 / 43ms.
+	   `wonderwall` is 68 rows and UNCHANGED at 1,230 nodes and 7,280px — under one page per group, so no door paints
+	   and nothing moves. That 68-row query confirming its tap in 47ms against the 3,412-row query's 1,235ms on the
+	   same server is what makes that second the column's render cost rather than the queue round-trip.
+	   LIBRARY_PAGE (60) is reused rather than re-chosen: /library measured it, and two surfaces windowing the same
+	   way is one rule a guest learns once. */
+	let revealedProcessing = $state(LIBRARY_PAGE);
+	let revealedReady = $state(LIBRARY_PAGE);
+	let revealedRaw = $state(LIBRARY_PAGE);
 
 	/* ALL THREE GROUPS TOGETHER, in one place: each is scoped to the query that produced it, so a group left behind
 	   renders under whatever the box shows next. Dropping them one site at a time is how `processingResults` was
@@ -116,6 +141,13 @@
 		readyResults = [];
 		rawResults = [];
 		processingResults = [];
+		/* THE WINDOWS RESET WITH THE ROWS, and only here — the rule /library's own `applyQuery` states. This is the
+		   one seam where all three groups are already dropped, so a guest who revealed 180 rows never watches them
+		   collapse on a keystroke that has not resolved into an answer yet; they collapse with the rows they belong
+		   to. Resetting on input instead would also hand the next query a DOM the previous one grew. */
+		revealedProcessing = LIBRARY_PAGE;
+		revealedReady = LIBRARY_PAGE;
+		revealedRaw = LIBRARY_PAGE;
 	}
 
 	function onQueryInput() {
@@ -164,6 +196,7 @@
 		   different search than the rows above it. The `Searching…` skeleton is what belongs here, and it
 		   already has a gate waiting for exactly this state. */
 		clearResults();
+		searchFailed = false;
 		try {
 			// `music` is the route's own default, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
@@ -195,10 +228,16 @@
 					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`;
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
+				/* `clearResults()` STAYS. Keeping the previous query's rows was considered and is worse — it puts
+				   "bohemian"'s ten rows under a box reading "bohemian rhapsody", which is the documented reason
+				   clearResults runs at the TOP of this function. The fix is the `searchFailed` term, which stops the
+				   empty result set being READ as "nothing matched". */
 				clearResults();
-				showError('Search failed.');
-				// The toast is visual only; the same failure has to reach the region a screen reader is on.
-				liveMsg = 'Search failed.';
+				searchFailed = true;
+				showError("Couldn't reach the server.");
+				// The toast is visual only, and it is also 4 seconds against a permanent screen. Both audiences now
+				// get the same sentence, where the pill said "Reconnecting…" and the copy said "Nothing matches".
+				liveMsg = "Couldn't reach the server — your search didn't run.";
 			}
 		} finally {
 			if (inflight === ctrl) searching = false;
@@ -262,6 +301,18 @@
 	function unaccounted(list: Media[]): Media[] {
 		return list.filter((m) => !accountedFor.has(m.id));
 	}
+	/* HOISTED OUT OF THE TEMPLATE. It was an `{@const}` inside the `{#if searchActive}` block with three readers
+	   (the group, the widen gate and `showsNoRows`); the window below is a fourth, and an `{@const}` cannot be read
+	   by the script. */
+	const rawRows = $derived(unaccounted(rawResults));
+
+	/* WHAT IS RENDERED, against what the reveal control still has behind it. DE-DUPLICATION AND THE ZERO-STATE READ
+	   THE FULL LISTS, not these: `accountedFor`/`unaccounted` decide which group OWNS a song, and `showsNoRows`
+	   decides whether the search found anything at all — both would start answering about the WINDOW if they read
+	   `.shown`, so a 200-row answer whose first 60 happened to be ready would print "Nothing matches". */
+	const processingView = $derived(libraryWindow(processingRows, revealedProcessing));
+	const readyView = $derived(libraryWindow(readyResults, revealedReady));
+	const rawView = $derived(libraryWindow(rawRows, revealedRaw));
 
 	function addSong(mediaId: string) {
 		store?.addSong(mediaId);
@@ -280,29 +331,15 @@
 			hasQueuedTurn: inMyQueue(mediaId)
 		});
 	}
-	/** Request stem-separation ("make karaoke"). The live media:status broadcasts drive the row's bar. */
+	/** Request stem-separation ("make karaoke"). The live media:status broadcasts drive the row's bar.
+	 *
+	 * THE REQUEST ITSELF MOVED TO `RoomLink.requestProcess`, where /queue's stalled-card retry can reach it: the
+	 * optimistic set, the rollback-the-mark-not-the-turn rule and the refusal notice are the correctness of that
+	 * call, and a second copy of the three is how they drift. What stays here is the haptic, which is a DOM read
+	 * the link may not make, and the refusal still lands on this page's toast through `room.onError` above. */
 	async function processMedia(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
-		// optimistic: the row reads as processing before the request lands
-		room.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
-		try {
-			const res = await fetch('/api/process', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ mediaId })
-			});
-			const body = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				room.clearMediaStatus(mediaId);
-				showError(body.error ?? 'Could not start process');
-				return;
-			}
-			// the stems were already on disk (processed on an earlier night) — nothing to wait for
-			if (body.alreadyReady) void room.refreshLibrary();
-		} catch {
-			room.clearMediaStatus(mediaId);
-			showError("Couldn't start that.");
-		}
+		await room.requestProcess(mediaId);
 	}
 
 	function showError(msg: string) {
@@ -318,12 +355,10 @@
 {#if me}
 	<header class="topbar">
 		<h1 class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></h1>
-		<!-- The store keeps accepting taps while offline (they resend on resync), so a dead socket must not look live. -->
-		{#if me && !connected}
-			<span class="offline-pill" role="status" aria-live="polite">
-				<Icon name="warning" /> Reconnecting…
-			</span>
-		{/if}
+		<!-- THE OFFLINE PILL MOVED TO THE DOCK. It lived here, in a deliberately non-sticky topbar, where it measured
+			`top: -2420px, inViewport: false` on a 59-row list — in the DOM and 2.4k pixels above the fold. The dock is
+			fixed and on every surface, so the cue is now visible at every scroll position on every route, and `/queue`
+			and `/library` gain one they never had. See the banner at `.offline-bar` in +layout.svelte. -->
 		{#if me}
 			<div class="me-cluster">
 				<div class="me-slot">
@@ -390,7 +425,7 @@
 					answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
 			{#if processingRows.length}
 				<h2 class="grouphead">Making karaoke…</h2>
-				{#each processingRows as c (c.id)}
+				{#each processingView.shown as c (c.id)}
 					{@const r = displayReadiness(c.media, liveOf(c.id))}
 					<SongRow
 						{...rowMeta(c.media)}
@@ -403,20 +438,42 @@
 						onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
 					/>
 				{/each}
+				<!-- WINDOWED FOR UNIFORMITY, and in practice this control never paints: a query matches 0-3 songs that
+						are being made right now, so `hidden` is 0 and the control is gone. Three groups that window the
+						same way is one rule; one group that silently does not is a bug waiting for the night somebody
+						queues sixty songs at once. -->
+				{#if processingView.hidden > 0}
+					<div class="reveal">
+						<Button variant="secondary" size="tap" onclick={() => (revealedProcessing += LIBRARY_PAGE)}>
+							Show {Math.min(LIBRARY_PAGE, processingView.hidden)} more
+							<span class="chip-n">{processingView.hidden} left</span>
+						</Button>
+					</div>
+				{/if}
 			{/if}
 
 			<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
 			{#if readyResults.length}
 				<h2 class="grouphead">Ready to sing</h2>
-				{#each readyResults as m (m.id)}
+				{#each readyView.shown as m (m.id)}
 					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 				{/each}
+				<!-- The same door /library ships, down to the copy: the remaining count rides ON the control so a
+						paused list is distinguishable from a finished one, and focus stays on it across the tap, so the
+						changed label is what announces the reveal. -->
+				{#if readyView.hidden > 0}
+					<div class="reveal">
+						<Button variant="secondary" size="tap" onclick={() => (revealedReady += LIBRARY_PAGE)}>
+							Show {Math.min(LIBRARY_PAGE, readyView.hidden)} more
+							<span class="chip-n">{readyView.hidden} left</span>
+						</Button>
+					</div>
+				{/if}
 			{/if}
 
-			{@const rawRows = unaccounted(rawResults)}
 			{#if rawRows.length}
 				<h2 class="grouphead">Needs karaoke</h2>
-				{#each rawRows as m (m.id)}
+				{#each rawView.shown as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow
 						{...rowMeta(m)}
@@ -429,6 +486,19 @@
 						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
 					/>
 				{/each}
+				<!-- THE LONGEST TAIL ON THE TAB, and the one the window was really written for: on `q=a` this control
+						reads "Show 60 more" against a four-figure remaining count — ~3,300 on the shared copy when
+						this was last measured, and climbing session to session for the reason the note on the
+						`revealed*` counters gives — and every one of those rows used to be in the DOM. -->
+
+				{#if rawView.hidden > 0}
+					<div class="reveal">
+						<Button variant="secondary" size="tap" onclick={() => (revealedRaw += LIBRARY_PAGE)}>
+							Show {Math.min(LIBRARY_PAGE, rawView.hidden)} more
+							<span class="chip-n">{rawView.hidden} left</span>
+						</Button>
+					</div>
+				{/if}
 			{/if}
 
 			<!-- ONE zero-state, and only when the search found NOTHING AT ALL. It used to be two blocks, and
@@ -453,7 +523,21 @@
 				</div>
 			{/if}
 
-			{#if showsNoRows( { searching, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
+			<!-- THE FAILURE STATE, checked BEFORE the no-rows state so the "nothing matched" copy and its /library
+					link are unreachable on this path. A retry rather than a bare apology: the query is still in the box,
+					so re-running it is one tap and needs no retyping. -->
+			{#if searchFailed}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>Couldn't reach the server — your search didn't run.</Empty.Description>
+					</Empty.Header>
+					<div class="showall-row">
+						<Button variant="secondary" size="tap" onclick={() => runSearch(query.trim())}>
+							<Icon name="restart" /> Try again
+						</Button>
+					</div>
+				</Empty.Root>
+			{:else if showsNoRows( { searching, failed: searchFailed, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
 				{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
 				<Empty.Root>
 					<Empty.Header>
@@ -513,7 +597,6 @@
 </main>
 
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
-<Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
@@ -671,13 +754,53 @@
 		padding: 0 0 var(--space-sm);
 	}
 
+	/* THE REVEAL DOOR'S BOX, mirroring /library's rule of the same name rather than reusing `.showall-row`: the two
+	   controls are adjacent in the column (a reveal can sit directly above `Not it? Search everything`) and they
+	   want opposite spacing — the widen carries padding BELOW it because it ends a group, this carries margin ABOVE
+	   it because it follows one. Scoped, not a utility: Tailwind emits nothing authored outside components/ui. */
+	.reveal {
+		display: flex;
+		justify-content: center;
+		margin-top: var(--space-md);
+	}
+	/* THE 320px REFLOW CLAUSE, and it is NOT belt-and-braces here — it is a clip I measured on this control before
+	   writing the rule. The Button base carries `whitespace-nowrap` AND `shrink-0`, and this label is long because
+	   the remaining count rides on it: at 320px with the root at 32px (the browser's 200% text-only zoom) the
+	   `Needs karaoke` door laid out 344.56px wide with its right edge at 332.28 in a 320px viewport. BOTH OF p15's
+	   ARMS SEE THAT, which an earlier revision of this comment got wrong by calling the `scrollWidth` clean:
+	   re-measured by neutralising exactly these five declarations, documentElement `scrollWidth` reads 332 against
+	   `clientWidth` 320 — over by 12 — and that same button is the one element past the right edge. It is an SC
+	   1.4.10 failure either way. With these five declarations it measures 256px with right=288 and `main` has no
+	   overflowing descendant at all — the same reading the identical clause on
+	   `.showall-row :global([data-slot='button'])` produces for the widen control.
+	   `:global()` with the `data-slot` anchor for the documented reason: a class handed to a component is stripped
+	   at the caller, so the vendored button is only reachable through its own attribute — anchored under `.reveal`
+	   so it cannot match every button in the app. */
+	.reveal :global([data-slot='button']) {
+		white-space: normal;
+		overflow-wrap: anywhere;
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 100%;
+	}
+	/* The remaining count, dim so the LABEL is what reads as the control. Tabular, so the number does not shift the
+	   button's width as the window grows. Same three declarations as /library's `.chip-n`, which this deliberately
+	   matches glyph for glyph — the same affordance on two surfaces must not look like two affordances. */
+	.chip-n {
+		margin-left: var(--space-xs);
+		color: var(--ink-dim);
+		font-variant-numeric: tabular-nums;
+	}
+
 	/* THE 320px REFLOW CLAUSE for this control, and it needs `:global()` for the documented reason: a class handed to
 	   a component is stripped at the caller, so the only way to reach the vendored button is its own `data-slot`,
 	   ANCHORED under `.showall-row` so it cannot match every button in the app.
 	   The Button base carries `whitespace-nowrap`, which is right for a one-word control and wrong for a sentence:
 	   measured at 320px with the root at 32px (the browser's 200% text-only zoom), "Not it? Search everything" laid
-	   out 384.69px wide inside a 320px viewport and CLIPPED — elements past the right edge with a clean
-	   `scrollWidth`, which is the shape p15 exists to catch and is an SC 1.4.10 failure. Wrapping is the fix rather
+	   out 384.69px wide with its right edge at 352.34 inside a 320px viewport — an element past the right edge AND
+	   documentElement `scrollWidth` at 352 against `clientWidth` 320, so p15 reds on both of its arms rather than
+	   only the offender sweep (this sentence used to claim a clean `scrollWidth`; neutralising this clause and the
+	   `.reveal` one above it measures 352). An SC 1.4.10 failure either way. Wrapping is the fix rather
 	   than shortening the copy, because the copy is doing real work: it names what the widen actually does. */
 	.showall-row :global([data-slot='button']) {
 		white-space: normal;
@@ -737,26 +860,6 @@
 		font-weight: 700;
 		color: var(--ink);
 		overflow-wrap: anywhere;
-	}
-	/* --warn, not --danger: a dropped socket self-heals on the next backoff tick. */
-	.offline-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-xs);
-		color: var(--warn);
-		border: 1px solid var(--line-strong);
-		border-radius: var(--radius-pill);
-		padding: var(--space-2xs) var(--space-md);
-		font-size: var(--ph-text-sm);
-		white-space: nowrap;
-		/* NOWRAP WITHOUT A FLOOR IS UNSHRINKABLE, and this pill sits in the topbar flex beside the singer's
-		   identity and the settings gear. With min-content == max-content == 133px, flexbox had nothing to
-		   take: measured at 320px with the pill showing, `scrollWidth` was 334 against a 320 viewport — a
-		   horizontal scrollbar on the home screen (SC 1.4.10) with the gear's right edge at 334, i.e. off the
-		   display. It fires exactly when the wifi is flaky at a party, which is when the pill exists at all. */
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	/* Declared here, never inline: an inline style outranks the short-viewport rule below and defeats it. */

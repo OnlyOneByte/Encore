@@ -2,13 +2,19 @@
 # every move it makes (PLAN-alignment-v3 W8a; `align_steps.opening_is_free` / `skipped_opening`,
 # `generate.reopened_line`; docs/arch/04-alignment.md §4, §14).
 #
+# W9 (2026-10-14): THE NAME IS RETIRED AND THE RULE IS THE DEFAULT. `band-reopen` is no longer in
+# `host.config.ALIGN_EXPERIMENTS`, so asking the knob for it now exits before any model work ("names
+# 'band-reopen', which is not an alignment experiment"). The replay is the same comparison read from the
+# other side: UNSET for the arm cell, `ENCORE_ALIGN_EXPERIMENTS=band-late-kept` for the base. The owner
+# decision and its price: PLAN 2026-10-09 and README, "W9: `band-reopen` flipped default-on".
+#
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --model HUBERT_ASR_LARGE --tag w8a-r1-reopen-ra \
 #       --modes truth,jit,credit,drop20,drop50,extraverse,headers,off05,off15,off3,offm1,tempo098,tempo102 \
 #       --songs Avercage_-_Embers,Explosive_Ear_Candy_-_Like_The_Sun,HILA_-_Give_Me_the_Same,\
 # Kinematic_-_Peyote,Lower_Loveday_-_Is_It_Right_,Quentin_Hannappe_-_Keep_On,Ridgway_-_Fire_Inside,bad-guy,\
 # bohemian-rhapsody,feel-my-heart,never-be-alone,rap-god,tfr-chosen,tfr-flyaway
-#   # with ENCORE_ALIGN_EXPERIMENTS=band-reopen, and the same command WITHOUT it for the base
+#   # since W9: UNSET for the arm cell, and ENCORE_ALIGN_EXPERIMENTS=band-late-kept for the base
 #   # (`_runs/w8a-r1-ctl-ra`); then --summarize the arm's rows --compare the base's --gates this file.
 #
 # WHY A SUBSET IS A COMPLETE READING HERE, which is the one thing this file has to justify. `opening_is_free`

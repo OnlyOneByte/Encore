@@ -63,6 +63,7 @@ def song_of(
     slug: str = "song",
     group: str = "jamendo",
     words: Sequence[tuple[float, float]] | None = None,
+    syllables: Sequence[tuple[int, int, str, float, float]] | None = None,
     audio: Path = Path("/nonexistent.wav"),
     mix: Path | None = None,
 ) -> Any:
@@ -75,6 +76,9 @@ def song_of(
         vocals=audio,
         truth=tuple(lib.TruthLine(text, start, end) for text, start, end in lines),
         words=None if words is None else tuple(lib.TruthWord(s, e) for s, e in words),
+        syllables=None
+        if syllables is None
+        else tuple(lib.TruthSyllable(i, at, text, s, e) for i, at, text, s, e in syllables),
     )
 
 
@@ -307,6 +311,92 @@ def test_word_scores_follow_bench_py() -> None:
     assert words["aligned"] == 3 and words["gross"] == 1
     assert words["w250_pct"] == pytest.approx(66.67) and words["pco300_pct"] == pytest.approx(40.0)
     assert words["medae_ms"] == pytest.approx(200.0) and words["bias_ms"] == pytest.approx(200.0)
+
+
+def test_syllable_scores_pair_on_a_character_offset_whatever_split_the_line() -> None:
+    """W8 stages 1-2's deciding metric, and the reason it is not the word metric.
+
+    One Chinese line, six hanzi, no space: the whitespace rule publishes it as ONE word, so every syllable
+    of the line is scored against that word's single onset; `nonlatin-units` publishes six, each on its own.
+    The DENOMINATOR is the truth's either way, which is what makes the two arms comparable.
+    """
+    text = "\u6545\u4e8b\u7684\u5c0f\u9ec4\u82b1"
+    song = song_of(
+        [(text, 1.0, 4.0)],
+        syllables=[(0, at, ch, 1.0 + 0.5 * at, 1.5 + 0.5 * at) for at, ch in enumerate(text)],
+    )
+    got = claims(song, "truth")
+    one_word = [
+        lib.DocLine(text, 1.0, 4.0, "high", 0, words=(lib.DocWord(1.0, 4.0, True, text),)),
+    ]
+    per_hanzi = [
+        lib.DocLine(
+            text,
+            1.0,
+            4.0,
+            "high",
+            0,
+            words=tuple(lib.DocWord(1.0 + 0.5 * at, 1.5 + 0.5 * at, True, ch) for at, ch in enumerate(text)),
+        ),
+    ]
+    whole = lib.score_syllables(song, got, one_word)
+    split = lib.score_syllables(song, got, per_hanzi)
+    assert whole.in_text == split.in_text == 6, "the truth's own spans are the denominator"
+    assert whole.errors == pytest.approx((0.0, -0.5, -1.0, -1.5, -2.0, -2.5))
+    assert split.errors == pytest.approx((0.0,) * 6)
+    assert (whole.unpaired, split.unpaired) == (0, 0)
+    rows = [
+        lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+        for doc in (one_word, per_hanzi)
+    ]
+    assert lib.syllable_metrics(rows[:1])["w300_pct"] == pytest.approx(16.67)
+    assert lib.syllable_metrics(rows[1:])["w300_pct"] == pytest.approx(100.0)
+    assert lib.syllable_metrics(rows[:1])["gross"] == 1
+
+
+def test_a_published_syllable_span_is_the_unit_scored_where_a_word_carries_one() -> None:
+    """A Japanese word is a fugashi token of several moras, so the WORD's onset would score the first mora
+    and nothing else; the document's own `syllables` key is the finer unit and is what pairs."""
+    text = "\u6c88\u3080"
+    song = song_of(
+        [(text, 1.0, 2.0)],
+        syllables=[(0, 0, text[0], 1.0, 1.4), (0, 1, text[1], 1.5, 2.0)],
+    )
+    got = claims(song, "truth")
+    doc = [
+        lib.DocLine(
+            text,
+            1.0,
+            2.0,
+            "high",
+            0,
+            words=(
+                lib.DocWord(
+                    1.0,
+                    2.0,
+                    True,
+                    text,
+                    (lib.DocSyllable(1.0, 1.4, text[0]), lib.DocSyllable(1.45, 2.0, text[1])),
+                ),
+            ),
+        )
+    ]
+    score = lib.score_syllables(song, got, doc)
+    assert score.errors == pytest.approx((0.0, -0.05)), "each mora against its own truth span"
+
+
+def test_a_syllable_no_published_unit_covers_is_unpaired_and_a_case_with_no_truth_is_none() -> None:
+    """An unpaired syllable is COUNTED rather than dropped: a line published with other words entirely
+    would otherwise read as perfect accuracy over the syllables it did carry."""
+    text = "\u6545\u4e8b"
+    song = song_of([(text, 1.0, 2.0)], syllables=[(0, 0, text[0], 1.0, 1.4), (0, 1, text[1], 1.5, 2.0)])
+    got = claims(song, "truth")
+    elsewhere = [lib.DocLine(text, 1.0, 2.0, "high", 0, words=(lib.DocWord(1.0, 2.0, True, "xyz"),))]
+    score = lib.score_syllables(song, got, elsewhere)
+    assert (score.unpaired, score.errors, score.in_text) == (2, (), 2)
+    assert lib.score_syllables(song, got, []).in_text == 2, "a case that published nothing keeps its own"
+    assert lib.score_syllables(song_of([(text, 1.0, 2.0)]), got, elsewhere) is None
+    assert lib.syllable_metrics([{"syllables": None}]) is None
 
 
 def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() -> None:
@@ -1297,12 +1387,12 @@ def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_ri
     assert [r.gate.name for r in short if r.status != "PASS"] == ["committed-not-down-truth"]
 
 
-#: `gates/w8b-arms.yaml`'s published-onset floors as the W8b measurement recorded them — the default's reading
-#: over Jamendo, identical at `run_align` and `time_text`: mode -> (±100, ±250, ±300, AAE ms). README, "W8b:
-#: re-judging `word-aligned-not-down`" carries the table and the two modes left out of the file.
+#: `gates/w8b-arms.yaml`'s published-onset floors: mode -> (±100, ±250, ±300, AAE ms). `jit`'s first three are
+#: W9's named exception, the rest W8b's. README, "W8b: re-judging `word-aligned-not-down`" and "W9:
+#: `band-reopen` flipped default-on, and the four words the owner waived".
 W8B_PUBLISHED_FLOORS: Mapping[str, tuple[float, float, float, float]] = {
     "truth": (82.79, 94.43, 95.36, 86.6),
-    "jit": (76.64, 89.40, 90.54, 116.0),
+    "jit": (76.59, 89.37, 90.51, 116.0),
     "credit": (82.25, 94.04, 94.96, 89.5),
     "extraverse": (82.00, 93.61, 94.55, 88.8),
     "drop20": (77.63, 90.08, 91.26, 162.9),
@@ -1802,7 +1892,7 @@ def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_reco
         if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
     }
     assert set(recorded.values()) <= set(e2e.DETECTORS), f"unreadable detector stamp: {recorded}"
-    assert all(path.startswith(("w8a-", "w8b-")) for path in recorded), (
+    assert all(path.startswith(("w8a-", "w8b-", "w9-", "w8-")) for path in recorded), (
         "W8a's sweeps are the first runs to carry the stamp; anything earlier is silent by construction"
     )
 
@@ -3116,7 +3206,7 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
     from encore_worker.adapters import ml
 
     host = set(inspect.signature(ml.build_aligner).parameters)
-    assert host == {"device", "jobs", "model"}, (
+    assert host == {"device", "jobs", "model", "nonlatin_model"}, (
         "a new production factory argument: forward it to BenchAligner too"
     )
     assert set(inspect.signature(ml.WhisperXAligner.__init__).parameters) == {"self", *host}
@@ -3128,6 +3218,12 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
     # whisperx's per-language table (the base model, on every box).
     assert built._model == ml.default_align_model("cpu") == e2e.default_model("en", "cpu")
     assert e2e.BenchAligner(device="cpu", model="HUBERT_ASR_XLARGE")._model == "HUBERT_ASR_XLARGE"
+    # AND W8 STAGE 2's BUNDLE, which is a NON-LATIN language's and reaches a different field: a run with
+    # `--mms` off must keep whisperx's per-language table, those weights being CC-BY-NC.
+    assert e2e.BenchAligner(device="cpu")._nonlatin_model is None
+    armed = e2e.BenchAligner(device="cpu", nonlatin_model=ml.MMS_ALIGN_MODEL)
+    assert armed._bundle_of("zh") == ml.MMS_ALIGN_MODEL
+    assert armed._bundle_of("en") == ml.default_align_model("cpu"), "English is never routed to it"
 
 
 def test_every_retime_knob_is_a_metric_whether_or_not_it_was_used(
@@ -3955,10 +4051,40 @@ def test_the_shipped_tree_gates_are_an_identity_claim_both_baselines_satisfy() -
     # The two modes the arms-on sweep demoted a document in are the two this file pins `high` on by name.
     assert by_name["high-identical-off05"] == "off05.high == base.off05.high"
     assert by_name["high-identical-offm1"] == "offm1.high == base.offm1.high"
-    # And the arms exist to be flipped, so the names have to be real ones the CLI would accept.
+    # And the arms exist to be flipped, so the names have to be real ones the CLI would accept. W9 flipped
+    # `band-reopen` default-on and retired the name for its control, the idiom docs/arch/04-alignment.md §14
+    # states: the file keeps judging the same rule, now from the other side.
     from encore_worker.host.config import ALIGN_EXPERIMENTS
 
-    assert {"band-off-sheet", "band-reopen"} <= set(ALIGN_EXPERIMENTS)
+    assert {"band-off-sheet", "band-late-kept"} <= set(ALIGN_EXPERIMENTS)
+    assert "band-reopen" not in ALIGN_EXPERIMENTS, "a retired name must not keep answering the CLI"
+
+
+def test_every_gate_file_replays_a_name_the_knob_still_accepts() -> None:
+    """A gate file's header IS its replay command, so a retired name turns the file into a config crash
+    rather than a measurement — and `Config` refuses an unknown experiment by design.
+
+    W9 retired `band-reopen` and three files went on prescribing it (review W9 r1-tests-18), which the
+    one-file assertion above could not see. This reads every file in the directory instead.
+    """
+    import re
+
+    from encore_worker.host.config import Config, ConfigError
+
+    asked: dict[str, set[str]] = {}
+    for path in sorted(GATES_DIR.glob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        for found in re.finditer(r"ENCORE_ALIGN_EXPERIMENTS=([A-Za-z0-9,-]+)", text):
+            asked.setdefault(path.name, set()).update(found.group(1).split(","))
+    assert len(asked) > 10, f"the scan found almost no replay commands to check: {sorted(asked)}"
+    refused: dict[str, list[str]] = {}
+    for name, arms in sorted(asked.items()):
+        for arm in sorted(arms):
+            try:
+                Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": arm})
+            except ConfigError:
+                refused.setdefault(name, []).append(arm)
+    assert not refused, f"these gate files replay a name the knob refuses: {refused}"
 
 
 def test_the_line_sync_gates_read_the_rung_they_were_written_on() -> None:
@@ -4719,6 +4845,203 @@ def test_w7s_own_gate_files_replay_the_verdicts_the_wave_was_accepted_on() -> No
         ],
     )
     assert read("w7-star", "w7-run_align", "w7-run_align") == (36, ["pooled-gross-down"])
+
+
+def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it() -> None:
+    """`gates/w9-star.yaml`: the re-fit's reject-if on the 28-song SCORED pool, read on committed summaries.
+
+    A gate file is worth what it rejects, so three readings: the default against itself, the in-sample
+    P = 1.0 arm — which it must still reject, on MORE clauses than `w7-star.yaml`'s 32-song pooled rules
+    did — and a pre-W8b baseline, where the pooled 28-song rules must ERROR rather than be called clear.
+
+    README, "W9: the star re-fitted out of sample, at an optimum outside the review's range".
+    """
+    results = SCRIPTS.parent / "results"
+    rules = gates.parse_gates((GATES_DIR / "w9-star.yaml").read_text(encoding="utf-8"))
+
+    def read(run: str, base: str) -> tuple[int, list[str], list[gates.Gate]]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        return (
+            len(got),
+            sorted(r.gate.name for r in got if r.status == "FAIL"),
+            [r.gate for r in got if r.status == "ERROR"],
+        )
+
+    # (1) the shipped default against itself: the floors ARE its reading, so only the SHOULD bites.
+    assert read("w8b-run_align", "w8b-run_align") == (72, ["pooled-gross-down"], []), (
+        "a MUST that the default itself cannot pass is a mis-transcribed literal, not a ratchet"
+    )
+
+    # (2) W7's arm at the IN-SAMPLE P = 1.0, which this file must still reject — and does, on 8 clauses
+    # readable from the committed pair (the pooled `scored.` rules need a post-W8b summary, below). The one
+    # that is NEW here is `no-scored-song-gains-a-gross-line`: 15 song x mode cells against the 32-song
+    # YouTube clause's 14, so W7's verdict is NOT a denominator artefact — it gets worse on the honest pool.
+    total, failed, errored = read("w7-star-run_align", "w7-run_align")
+    assert total == 72
+    assert [name for name in failed if "pm500" not in name] == [
+        "high-gross-not-up",
+        "no-jamendo-song-worse-at-word-pm300",
+        "no-scored-song-gains-a-gross-line",
+        "no-youtube-song-gains-a-gross-line",
+        "truth-jamendo-word-aae-at-most-71-1",
+        "truth-jamendo-word-pm100-at-least-85-46",
+        "truth-jamendo-word-pm300-at-least-97-16",
+        "truth-no-song-loses-lines",
+    ], "the PLAN's pinned word row is three of the eight: ±100 84.94, ±300 96.81, AAE 74.1 ms"
+
+    # (3) FAIL-LOUD on a baseline that predates the `scored` group. The unreadable rules are EXACTLY those
+    # that ask the BASELINE for a pooled 28-song number; a per-song `scored.` rule still reads, the pool
+    # coming from the live `corpus-truth.json` by slug, which is why part (2) works on W7's summaries at all.
+    _total, _failed, errored = read("w8b-run_align", "w7-run_align")
+    assert len(errored) == 39, [gate.name for gate in errored]
+    assert {gate.name for gate in errored} == {
+        gate.name
+        for gate in rules
+        if "base." in gate.expr and ".scored." in gate.expr and "song" not in gate.expr
+    }, "a pre-W8b base must make the pooled 28-song reads ERROR and nothing else"
+
+    # (4) THE ARM'S OWN READING, which is the verdict the README publishes and the one nothing pinned.
+    # `jit-high-bad-not-up` is in it because §3.7's rule has two halves and the file carried only
+    # `high_gross` until review W9 r1-spec-11: `high_bad` is a `high` line more than 0.5 s out, and the
+    # re-fitted star posts one more of them at `jit` (7 -> 8) while improving `blind` (43 -> 39).
+    total, failed, errored = read("w9-star-on-run_align", "w9-run_align")
+    assert (total, errored) == (72, [])
+    assert failed == [
+        "jit-high-bad-not-up",
+        "no-jamendo-song-worse-at-word-pm300",
+        "no-scored-song-gains-a-gross-line",
+        "no-youtube-song-gains-a-gross-line",
+        "scored-lines-not-down-drop20",
+        "truth-jamendo-word-aae-at-most-71-1",
+        "truth-jamendo-word-pm100-at-least-85-46",
+        "truth-jamendo-word-pm300-at-least-97-16",
+        "truth-scored-word-aae-at-most-71-1",
+        "truth-scored-word-pm100-at-least-85-46",
+    ], "README, 'The star at the re-fitted P = 0.3': 62 PASS, 10 FAIL, 0 ERROR"
+
+
+def test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites() -> None:
+    """`gates/w9-research.yaml`: the bar every W9 research arm is judged against, on committed rows.
+
+    A gate file is worth what it rejects, so three readings: the default against itself, the `vendored`
+    control clause against runs whose documents really differ, and a pre-W8b baseline that must ERROR.
+    README, "W9: a vendored decoder, and the three arms it unblocks".
+    """
+    results = SCRIPTS.parent / "results"
+    rules = gates.parse_gates((GATES_DIR / "w9-research.yaml").read_text(encoding="utf-8"))
+
+    def read(run: str, base: str) -> tuple[list[str], list[str]]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        return (
+            sorted(r.gate.name for r in got if r.status == "FAIL"),
+            sorted(r.gate.name for r in got if r.status == "ERROR"),
+        )
+
+    # (1) the shipped default against itself: a MUST the default cannot pass is a mis-transcribed literal,
+    # not a ratchet. What is left failing is section 8, which is the point of section 8 — an arm earns
+    # default-on by beating the default, and the default does not beat itself.
+    failed, errored = read("w8b-run_align", "w8b-run_align")
+    assert errored == []
+    assert failed == [
+        "blind-gross-down",
+        "drop50-gross-down",
+        "drop50-text-pm500-up",
+        "pooled-gross-down",
+    ], failed
+
+    # (2) THE CONTROL CLAUSE BITES. `vendored` must publish the kernel's own bytes, and the clause that says
+    # so is only worth writing if a document that moved would fail it. Two arm runs against their own bases
+    # read 28 and 37 changed documents; the default against itself reads 0.
+    control = [gate for gate in rules if gate.name == "vendored-control-changes-no-document"]
+    assert len(control) == 1, "the control clause is the file's foundation and has to be in it"
+    for run, base, changed in (
+        ("w8b-arms-run_align", "w8b-run_align", 28),
+        ("w8a-arms-run_align", "w8a-run_align", 37),
+    ):
+        got = gates.run_gates(
+            control,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        reading = [r for r in got if r.gate.name == control[0].name]
+        assert [(r.status, r.detail) for r in reading] == [("FAIL", f"{changed} == 0")], reading
+
+    # (3) FAIL-LOUD on a baseline that predates the `scored` group, exactly as `w9-star.yaml` does: the
+    # unreadable rules are those that ask the BASELINE for a pooled 28-song number, and nothing else.
+    _failed, errored = read("w8b-run_align", "w7-run_align")
+    assert {name for name in errored} == {
+        gate.name
+        for gate in rules
+        if "base." in gate.expr and ".scored." in gate.expr and "song" not in gate.expr
+    }, "a pre-W8b base must make the pooled 28-song reads ERROR and nothing else"
+    assert len(errored) >= 20, f"only {len(errored)} pooled reads — the file has stopped being relative"
+
+
+def test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip() -> None:
+    """`gates/w9-r1.yaml`: the review fix pass published the post-flip baseline's bytes, read on the rows.
+
+    An identity file is worth only what it can fail on, so three readings: the post-fix row against the
+    baseline it must match, the same row against W8b's PRE-flip row — where section 1 must fail on exactly
+    the modes the flip fires in — and a pre-W8b baseline, where the pooled `scored.` reads must ERROR.
+
+    README, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
+    """
+    results = SCRIPTS.parent / "results"
+    rules = gates.parse_gates((GATES_DIR / "w9-r1.yaml").read_text(encoding="utf-8"))
+
+    def read(run: str, base: str) -> tuple[int, list[str], list[str]]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        return (
+            len(got),
+            sorted(r.gate.name for r in got if r.status == "FAIL"),
+            sorted(r.gate.name for r in got if r.status == "ERROR"),
+        )
+
+    # (1) the measurement the file exists for: a different code fingerprint, the same published bytes.
+    assert read("w9-r1-run_align", "w9-reopen-run_align") == (86, [], [])
+
+    # (2) THE SAME ROW AGAINST THE PRE-FLIP DEFAULT, which must fail — on the eight modes the re-opening
+    # rule can fire in and nowhere else. `blind` carries no claim to re-open onto, and the offsets and
+    # tempos are byte-identical through the flip, so their clauses hold even here: that is what makes
+    # section 1 a measurement of the fix pass rather than a restatement of "these two rows are the same".
+    _total, failed, errored = read("w9-r1-run_align", "w8b-run_align")
+    assert errored == []
+    assert failed == [
+        "docs-unchanged-credit",
+        "docs-unchanged-drop20",
+        "docs-unchanged-drop50",
+        "docs-unchanged-extraverse",
+        "docs-unchanged-headers",
+        "docs-unchanged-jit",
+        "docs-unchanged-off05",
+        "docs-unchanged-truth",
+        "onsets-unchanged-drop50",
+        "onsets-unchanged-extraverse",
+        "onsets-unchanged-jit",
+        "onsets-unchanged-truth",
+    ], "the flip's 26 documents, by mode; everything else in the file still holds on the pre-flip row"
+
+    # (3) FAIL-LOUD on a baseline that predates the `scored` group, as every W8b-onward file is. The
+    # unreadable rules are every one that asks the BASE for a `scored` address — including this file's
+    # three `sum(base.scored.song.…)` pools, which `w9-star.yaml`'s version of this assertion excludes
+    # because its pools are written on the group and not on the rows.
+    _total, _failed, errored = read("w9-r1-run_align", "baseline-v2-run_align")
+    assert {name for name in errored} == {
+        gate.name for gate in rules if "base." in gate.expr and ".scored." in gate.expr
+    }, "a pre-W8b base must make the 28-song reads ERROR and nothing else"
+    assert len(errored) == 21, f"only {len(errored)} pooled reads — the file has stopped being relative"
 
 
 def test_the_exact_frame_clock_took_the_offset_and_tempo_gross_down_not_up() -> None:

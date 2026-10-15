@@ -36,7 +36,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import * as Empty from '$lib/components/ui/empty';
-	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 
 	let me = $state<PublicSinger | null>(null);
@@ -50,6 +49,9 @@
 	let libraryTags = $state.raw<Record<string, string[]>>({});
 	let entries = $state.raw<QueueEntry[]>([]);
 	let libraryLoaded = $state(false);
+	/** Mirrored beside `libraryLoaded` because this page needs both: loaded says the fetch RETURNED, failed says it
+	 *  DIED. Without the second, one dropped request renders "No karaoke tracks yet" over a full library. */
+	let libraryFailed = $state(false);
 	/* Left un-raw deliberately, and it is not an oversight: Svelte proxies plain objects and arrays, never class
 	   instances, so there is no proxy here to avoid. */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -62,6 +64,7 @@
 			library = room.library;
 			libraryTags = room.libraryTags;
 			libraryLoaded = room.libraryLoaded;
+			libraryFailed = room.libraryFailed;
 			entries = room.entries;
 			store = room.queue;
 		};
@@ -69,6 +72,12 @@
 		const stopMirror = room.subscribe(sync);
 		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
 		void room.connect();
+		/* AN ARRIVAL IS A RETRY, and it is the cheap half of the fix. The one fetch fires at JOIN, inside
+		   `connect()`, which is guarded idempotent — so a blip at join poisoned this tab for the rest of the
+		   session for a guest who only walks over here later, and no number of tab round trips re-asked. One mount
+		   per arrival bounds it by construction, and on a first mount the flag is false, so this is inert in the
+		   common case. It does not replace the failure arm below: a guest who is still offline needs to be told. */
+		if (room.libraryFailed) void room.refreshLibrary();
 		return () => {
 			stopMirror();
 			stopErrors();
@@ -130,8 +139,11 @@
 	const view = $derived(libraryWindow(rows, revealed));
 	/** What the ROWS reflect — the count line must never describe a query the list has not applied yet. */
 	const filtering = $derived(appliedQuery.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
-	/** What is in the BOX — the clear control has to appear on the first keystroke, not 150ms after the last one. */
-	const dirty = $derived(query.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
+	/** What is in the BOX, and now only that. `query` rather than `appliedQuery` is still the point — the clear
+	 *  control has to appear on the first keystroke, not 150ms after the last one — but the two facet terms this
+	 *  carried were surplus to that: they put an X inside a visibly EMPTY field whenever a chip was picked, and
+	 *  paired with a handler that cleared the chip too. `/`'s twin passes `clearable={searchActive}`, query only. */
+	const boxHasText = $derived(query.trim().length > 0);
 
 	/* Built HERE rather than inline in the markup, because an inline `{#if}` across two lines puts a NEWLINE
 	   between the number and its noun — invisible on screen, but it is the element's text, so it reaches a screen
@@ -157,6 +169,18 @@
 		filtering
 			? `${rows.length} of ${library.length} songs`
 			: `${library.length} ${library.length === 1 ? 'song' : 'songs'}`
+	);
+	/** The filtered-to-nothing sentence, hoisted for the reason this file already records for `countLabel` (the
+	 *  newline note in this `<script>`): inline across two lines it rendered "Nothing here matches“zzqq”." — Svelte
+	 *  trims the leading whitespace of a branch fragment's first text node, so neither half kept a separator and the
+	 *  quote sat hard against the "s" (measured: a 0.00px gap between the glyph rects, not merely a textContent
+	 *  artefact). A literal leading space inside the branch is trimmed by the same rule; `&nbsp;` would survive it
+	 *  but makes "matches <query>" unbreakable and can overflow a long query at 390px.
+	 *  The APPLIED query, never the live one: quoting the box would name a query these rows were not filtered by
+	 *  for the 150ms the debounce is still holding. Curly quotes as the literal codepoints, matching
+	 *  `noRowsState`'s own `Nothing matches “…”.` in readiness.ts so the two surfaces are spelled alike. */
+	const emptyLabel = $derived(
+		appliedQuery.trim() ? `Nothing here matches “${appliedQuery.trim()}”.` : 'Nothing here matches.'
 	);
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued'));
@@ -191,6 +215,18 @@
 		sort = next;
 		revealed = LIBRARY_PAGE;
 	}
+	/** THE FIELD'S X, and its scope is the field. It used to be wired to `clearFilters` below, so an X drawn inside
+	 *  a text input and named "Clear the filter" also un-pressed a chip in a separate, possibly COLLAPSED panel:
+	 *  undoing a typo took the artist facet with it, so the count went from "1 of 135 songs" back to the whole
+	 *  "135 songs" — `clearFilters` nulls both facets, which is right for its own caller. Same pending-timer
+	 *  ordering and same focus return as `clearFilters`, because both of those are about the box. */
+	function clearQuery() {
+		clearTimeout(filterTimer);
+		query = '';
+		applyQuery('');
+		queryEl?.focus();
+	}
+	/** EVERYTHING the rows are narrowed by — the zero-state's own control, where clearing the facet too is the point. */
 	function clearFilters() {
 		// The PENDING TIMER FIRST, or the keystroke that was still in flight re-applies the query 150ms after the
 		// clear and the control reads as having undone itself.
@@ -236,10 +272,12 @@
 		<main>
 			<!-- A FILTER, not a search: same shape as the home field for consistency, but its own placeholder, and the
 					count line below carries the actual distinction.
-					GONE WHEN THE LIBRARY IS PROVEN EMPTY, because a filter over nothing is dead chrome — measured on a
+					GONE WHEN THERE ARE NO ROWS TO FILTER, because a filter over nothing is dead chrome — measured on a
 					0-ready catalog at 390x844, the slot painted 102..172 directly above "No karaoke tracks yet", offering
-					to narrow a list with no rows in it. The `!libraryLoaded` arm keeps it mounted while the skeleton
-					shows, so in the common case it is there from the first frame rather than appearing late.
+					to narrow a list with no rows in it. That covers both row-less arms below: the proven-empty library and
+					the FAILED fetch, which has no rows either and carries its own control. The `!libraryLoaded` arm keeps
+					it mounted while the skeleton shows, so in the common case it is there from the first frame rather than
+					appearing late.
 					The div does NOT move out of its place in `main`'s flow: the --bp-lg arm puts `.field-slot` in
 					grid-column 1, and library-wide-head.test.ts asserts that placement. -->
 			{#if !libraryLoaded || library.length > 0}
@@ -249,9 +287,9 @@
 						bind:element={queryEl}
 						ariaLabel="Filter your library"
 						placeholder="Filter your library…"
-						clearable={dirty}
+						clearable={boxHasText}
 						clearLabel="Clear the filter"
-						onclear={clearFilters}
+						onclear={clearQuery}
 						oninput={onQueryInput}
 					/>
 				</div>
@@ -259,6 +297,26 @@
 
 			{#if !libraryLoaded}
 				<SkeletonRows count={4} label="Loading your library…" />
+			{:else if libraryFailed && library.length === 0}
+				<!-- THE FETCH DIED, checked BEFORE the empty-library arm so its "No karaoke tracks yet" copy is
+						unreachable on this path. One dropped request used to render that sentence over a 135-song library,
+						with every control on the page gone and the dock simultaneously playing a track from the library the
+						page called empty — and nothing re-asked, because the only fetch is `connect()`'s and that is
+						idempotent, so it survived any number of tab round trips and needed a reload to clear.
+						`library.length === 0` IS LOAD-BEARING, not redundant with the flag: `refreshLibrary()` also runs on
+						every `media:status` ready event, and one of those failing must never replace a shelf of working rows
+						with an error state. Description-only with a retry, which is the register `/`'s own search-failure
+						arm uses — the same defect in the same shape one route over. -->
+				<Empty.Root>
+					<div class="lib-empty">
+						<Empty.Header>
+							<Empty.Description>Couldn't reach the server — your library didn't load.</Empty.Description>
+						</Empty.Header>
+						<Button variant="secondary" size="tap" onclick={() => void room.refreshLibrary()}>
+							<Icon name="restart" /> Try again
+						</Button>
+					</div>
+				</Empty.Root>
 			{:else if library.length === 0}
 				<!-- The genuinely empty library. The only useful instruction points at the SING tab, which is the one
 						surface that can ADD a song — this page can only show what is already here. It used to say "Search
@@ -416,12 +474,10 @@
 					<Empty.Root>
 						<div class="lib-empty tight">
 							<Empty.Header>
-								<!-- The APPLIED query, never the live one: quoting the box would name a query these rows were
-										not filtered by for the 150ms the debounce is still holding. -->
-								<Empty.Description>
-									Nothing here matches{#if appliedQuery.trim()}
-										&ldquo;{appliedQuery.trim()}&rdquo;{/if}.
-								</Empty.Description>
+								<!-- ONE expression, no inline `{#if}` — see `emptyLabel`, which also carries the note on why the
+										APPLIED query is the one quoted. Inline across two lines this sentence rendered with no space
+										before the opening quote. -->
+								<Empty.Description>{emptyLabel}</Empty.Description>
 							</Empty.Header>
 							<Button variant="secondary" size="tap" onclick={clearFilters}>
 								<Icon name="close" /> Clear the filter
@@ -435,8 +491,6 @@
 {:else}
 	<JoinLanding />
 {/if}
-
-<Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
 <style>
 	.library-page {

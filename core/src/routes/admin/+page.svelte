@@ -48,50 +48,89 @@
 	   because the node to focus does not exist until the keyed block has been patched. */
 	/** The armed row's confirm button, so focus can be PLACED on it rather than left to fall to `<body>`. */
 	let confirmEl = $state<HTMLElement | null>(null);
-	/** The control the prompt was opened from, so Cancel returns focus where it started. */
-	let armedFrom: HTMLElement | null = null;
+	/** Every row's own Delete button, by song id. A single captured node does NOT work here: arming DESTROYS the button
+	    that was clicked, so `.focus()` on the captured reference ran against a detached element and focus fell to
+	    `<body>`. The `{#each}` is keyed on `song.id`, so each entry nulls on unmount and re-populates with the FRESH
+	    node when the row disarms — which is why the map must be read after the patch, never captured before it.
+	    Bound through a GETTER/SETTER pair rather than `bind:ref={armRefs[song.id]}`: a plain member bind reads
+	    `undefined` on the first render and `Button` declares `ref = $bindable(null)`, so Svelte threw
+	    props_invalid_value and the page never got past "Loading library…". Measured. */
+	let armRefs: Record<string, HTMLElement | null> = $state({});
+	/** The live-region wrapper, as the focus target of last resort: deleting the only song leaves no row to return to. */
+	let noticeEl = $state<HTMLElement | null>(null);
 
-	async function askDelete(id: string, from: HTMLElement | null) {
+	async function askDelete(id: string) {
 		notice = null;
-		armedFrom = from;
 		confirmingId = id;
 		await tick();
 		confirmEl?.focus();
 	}
 
 	async function cancelDelete() {
+		const id = confirmingId;
 		confirmingId = null;
 		await tick();
-		// Back to the control that opened the prompt; the row's own Delete button is what it became again.
-		armedFrom?.focus();
-		armedFrom = null;
+		// Back to the control that opened the prompt — the row's own Delete button, freshly re-mounted by the line above.
+		if (id) armRefs[id]?.focus();
 	}
 
 	async function confirmDelete(song: LibrarySong) {
 		deletingId = song.id;
+		// The row's place in the list, read BEFORE the delete: on a long library, dropping the operator at the top
+		// costs them their position.
+		const index = songs.findIndex((s) => s.id === song.id);
+		let deleted = false;
+		// NO early `return` and no `finally`: a `return` inside the try skips everything after the block, which is where
+		// focus gets placed — measured, as focus falling to `<body>` on the failure path only.
 		try {
 			const res = await fetch('/api/delete-media', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ mediaId: song.id })
 			});
-			if (!res.ok) {
+			if (res.ok) {
+				const result = await res.json();
+				// Drop it locally at once; the broadcast reconciles every other surface.
+				songs = songs.filter((s) => s.id !== song.id);
+				deleted = true;
+				notice = result.wasPlaying
+					? `Deleted "${song.title}" and skipped to the next song.`
+					: `Deleted "${song.title}".`;
+			} else {
 				const body = await res.json().catch(() => ({}));
 				notice = body.error ? `Could not delete: ${body.error}` : 'Could not delete that song.';
-				return;
 			}
-			const result = await res.json();
-			// Drop it locally at once; the broadcast reconciles every other surface.
-			songs = songs.filter((s) => s.id !== song.id);
-			notice = result.wasPlaying ? `Deleted "${song.title}" and skipped to the next song.` : `Deleted "${song.title}".`;
 		} catch {
 			notice = 'Could not delete that song.';
-		} finally {
-			deletingId = null;
-			confirmingId = null;
 		}
+		deletingId = null;
+		// A FAILED DELETE STAYS ARMED. Disarming on both outcomes made a failure look like a cancellation, and the
+		// retry then cost re-arming the row; the notice beside it says what went wrong.
+		if (deleted) confirmingId = null;
+		await tick();
+		if (!deleted) {
+			confirmEl?.focus();
+			return;
+		}
+		// Whatever row took the deleted one's index, or the new last row if it was the last.
+		const next = songs[index] ?? songs[index - 1];
+		if (next) armRefs[next.id]?.focus();
+		else noticeEl?.focus();
 	}
 </script>
+
+<!-- Escape cancels the armed prompt: it is an ad-hoc modal-in-a-row rather than a bits-ui dialog, so it inherits no
+	 dismissal behaviour, and /admin has no other Escape consumer for this to steal from. It must NOT fire once the
+	 DELETE is in flight — that request cannot be called off, and both prompt buttons are already `disabled` in that
+	 window, so cancelling there would be a lie. -->
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && confirmingId && !deletingId) {
+			e.preventDefault();
+			void cancelDelete();
+		}
+	}}
+/>
 
 <svelte:head><title>Admin · Encore</title></svelte:head>
 
@@ -106,7 +145,9 @@
 			 announces a CHANGE inside one it was already observing. So the wrapper is unconditional and only the contents
 			 swap; `/metrics`, `/metrics/[mediaId]` and `/stats` all state this same rule, and this page was the one that
 			 broke it. `role="status"`, and `accent` not `destructive`: a completed action must not interrupt or alarm. -->
-		<div role="status" aria-live="polite">
+		<!-- `tabindex="-1"` so deleting the LAST song has somewhere to put focus: there is no next row to return to, and
+			 this wrapper is unconditional, so it outlives the message it holds. -->
+		<div bind:this={noticeEl} role="status" aria-live="polite" tabindex="-1">
 			{#if notice}
 				<Alert.Root variant="accent"><Alert.Title>{notice}</Alert.Title></Alert.Root>
 			{/if}
@@ -158,10 +199,11 @@
 								>
 							{:else}
 								<Button
+									bind:ref={() => armRefs[song.id] ?? null, (node) => (armRefs[song.id] = node)}
 									data-act="arm-delete"
 									variant="outline"
 									aria-label={`Delete ${song.title}`}
-									onclick={(e) => askDelete(song.id, e.currentTarget as HTMLElement)}>Delete</Button
+									onclick={() => askDelete(song.id)}>Delete</Button
 								>
 							{/if}
 						</Item.Actions>

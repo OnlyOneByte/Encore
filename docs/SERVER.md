@@ -306,6 +306,16 @@ socket), `away` (no socket, still counted, shown greyed), `gone` (grace expired,
   Pending songs hold a singer at every setting, which is what makes the clock meaningful at all.
 - **Never seen means not a member.** That is what keeps a restarted server's roster empty until phones
   reconnect rather than inventing members it cannot vouch for.
+- **The policy map is not the published roster.** `server.ts` holds a module-level `membership` CACHE, and
+  that — not `presence` — is what the per-socket replies it builds carry: the `hello` reply's `queue:sync`,
+  via its per-frame `listOnline`/`listAway`, plus the `singer:presence` broadcast. (The one `queue:sync`
+  built elsewhere, `app.ts`'s `onMediaReady` broadcast, reads `presence.online()` live and omits `away`.) It
+  is re-derived on socket edges, on a `queue:command` and on the 20s sweep, so anything that changes who is
+  in the room OUTSIDE those must say so by calling `app.refreshMembership?.()`. An explicit leave is the
+  live example: `presence.forget` deletes their record, but the leaver's own socket closing cannot refresh the
+  cache (`disconnect` is a no-op for a record already deleted), so without the call the next `hello` — a TV
+  reload, or its 15s heartbeat — re-advertises someone who went home and the television names them as in
+  the room.
 
 ### Song profile and readiness
 

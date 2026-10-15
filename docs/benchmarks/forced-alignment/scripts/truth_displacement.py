@@ -139,6 +139,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--songs", default=None, help="slugs, prefixes or a group (default: all 32)")
     parser.add_argument(
+        "--corpus",
+        choices=lib.CORPORA,
+        default=lib.ENGLISH_CORPUS,
+        help="which song set to measure; the non-Latin songs are their own corpus (W8)",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=None,
@@ -148,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
 
     recorded = lib.load_corpus_truth()
     kept_entries = lib.corpus_truth_entries()
-    songs = lib.select(lib.discover(lib.bench_root()), args.songs)
+    songs = lib.select(lib.discover(lib.bench_root(), corpus=args.corpus), args.songs)
     measured: dict[str, dict[str, object]] = {}
     for song in songs:
         reading = measure(song).as_json()

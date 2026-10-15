@@ -46,6 +46,10 @@ UNUSABLE = "numb"
 #: numb's: its truth leads its audio, and its stem is never quiet at a line start for the arbiter to read it.
 UNUSABLE_GROUND = "continuous-vocal"
 
+#: Songs the shipped `corpus-truth.json` measures: the English 32, plus W8's 7 non-Latin ones, which are
+#: their own corpus (`lib.NONLATIN_CORPUS`) and never pool with them.
+MEASURED_SONGS = 32 + 7
+
 
 def envelope_of(loud: Sequence[tuple[float, float]], seconds: float = 60.0) -> np.ndarray:
     """A 0/1 activity envelope that is loud exactly over `loud`, at `activity.HOP_SEC`."""
@@ -395,7 +399,7 @@ def test_measuring_one_song_rewrites_the_file_without_losing_the_others(
     _measures(monkeypatch, one, reading(median=0.9))
     assert displacement.main(["--songs", one, "--out", str(out)]) == 0
     after = json.loads(out.read_text(encoding="utf-8"))["songs"]
-    assert set(after) == set(before) and len(after) == 32
+    assert set(after) == set(before) and len(after) == MEASURED_SONGS
     assert {s: e for s, e in after.items() if s != one} == {s: e for s, e in before.items() if s != one}
     assert after[one]["median_ms"] == 900.0, "and the measured song is the one that moved"
     assert sorted(lib.accuracy_exclusions(out)) == sorted([*DISPLACED, UNUSABLE])
@@ -475,7 +479,7 @@ def test_the_shipped_corpus_excludes_exactly_the_four_songs_the_owner_named() ->
     excluded = lib.accuracy_exclusions()
     assert sorted(excluded) == sorted([*DISPLACED, UNUSABLE])
     recorded = lib.load_corpus_truth()
-    assert len(recorded) == 32, "every corpus song is measured, not only the excluded ones"
+    assert len(recorded) == MEASURED_SONGS, "every corpus song is measured, not only the excluded ones"
     assert set(lib.YOUTUBE_SLUGS) | set(lib.TFR_SLUGS) <= set(recorded)
     for slug in DISPLACED:
         assert "leads its audio" in excluded[slug]
@@ -699,7 +703,8 @@ def test_the_scored_pool_leaves_the_excluded_song_out_and_all_keeps_it() -> None
     assert summary["scored"]["lines"]["scored"] == 4 and summary["scored"]["lines"]["w500_pct"] == 100.0
     assert summary["all"]["lines"]["band"] == 4 and summary["scored"]["lines"]["band"] == 0
     assert summary["youtube"] == summary["all"], "the exclusion never moves an existing group"
-    assert lib.GROUPS == (lib.JAMENDO, lib.YOUTUBE, lib.SCORED, lib.ALL)
+    assert lib.GROUPS == (lib.JAMENDO, lib.YOUTUBE, lib.NONLATIN, lib.SCORED, lib.ALL)
+    assert lib.NONLATIN not in summary, "W8's group has members only on a non-Latin corpus run"
 
 
 def test_nothing_is_excluded_when_the_corpus_says_nothing() -> None:

@@ -15,7 +15,7 @@ worth knowing what was NOT recovered in the move, at the bottom of this file.
 | ------- | --------------------------------------------- | --------------------------------------------------------- |
 | `gate`  | **Yes** — it is leg 7 of `bun run gates`      | 8 specs: CLAIM 1-7 on real resolved geometry, plus the register's own shape |
 | `flow`  | not yet wired into `gates`                    | long multi-client scenarios: party, playback, lobby, fuzz |
-| `probe` | no — run when you want the answer             | 23 specs, one subject each                                |
+| `probe` | no — run when you want the answer             | 26 specs, one subject each                                |
 | `shot`  | **cannot** — a screenshot cannot fail a build | 20 frames, each driven INTO its state                     |
 
 **Which project a check belongs in is decided by whether it can silently regress, not by how

@@ -1,13 +1,20 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { SINGER_COLORS } from '$lib/contract';
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { MediaStatus } from '$lib/contract';
-	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import type { QueueCardKind } from '$lib/readiness';
+	import { processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
 	interface Props {
+		/** WHICH CARD THIS IS, decided by `queueCardKind` at the route and never re-derived here from `status` — the
+		 * readiness classifier is the only thing that may answer "can the rotation ever play this entry", and a
+		 * second answer computed from a live status is exactly the disagreement it exists to prevent. Three of the
+		 * four kinds reach this component; `plain` is QueueRow's. */
+		kind: Exclude<QueueCardKind, 'plain'>;
 		// Both absent when the card renders OUTSIDE the rotation list, where there is no slot or singer to attribute to.
 		seq?: number;
 		title: string;
@@ -20,11 +27,22 @@
 		 * otherwise be invisible on the exact path that creates it. A KIND, never a boolean: a pending REORDER must not
 		 * announce that it is "adding". */
 		pending?: 'add' | 'move' | null;
-		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
-		pct: number;
+		/** The live stage — queued|downloading|separating|aligning — read ONLY when `kind === 'processing'`.
+		 *
+		 * OPTIONAL BECAUSE THE GAP IS REAL, not to give the caller a shortcut: the catalog can say a media is
+		 * processing while this phone holds no live status for it (`refreshLibrary()` sets `libraryFailed` and
+		 * returns while the catalog still arrives via `queue:sync`), and that row is a cooking turn that must still
+		 * draw a bar. `queued` is then the honest stand-in — SongRow's own rule for the same gap, "the LEAST
+		 * COMMITTAL in-flight value: naming a step would print a guess as fact". A `failed` or `stalled` card reads
+		 * neither this nor `pct`, which is why the route may stop inventing one. */
+		status?: MediaStatus;
+		pct?: number;
 		// A processing song is still a QUEUE ENTRY, so it gets the same controls a ready row does — a minutes-long
 		// process is a long time to be stuck on a mis-tap. All absent outside the rotation, where there is no slot.
 		onremove?: () => void;
+		/** Ask for the karaoke again. Present only on a STALLED card, where the turn exists and nothing is making
+		 * its karaoke — `processAndQueue`'s `hasQueuedTurn` branch, so the turn is kept rather than re-added. */
+		onretry?: () => void;
 		reorderable?: boolean;
 		/** The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean. This card is draggable in
 		 * the same list as the uniform rows: `liveSortTarget` counts crossings against every row's measured CENTRE
@@ -44,6 +62,7 @@
 		shift?: -1 | 0 | 1;
 	}
 	let {
+		kind,
 		seq,
 		title,
 		singerName,
@@ -51,8 +70,9 @@
 		singerAway = false,
 		pending = null,
 		status,
-		pct,
+		pct = 0,
 		onremove,
+		onretry,
 		reorderable = false,
 		grip = false,
 		gripId,
@@ -63,8 +83,16 @@
 		shift = 0
 	}: Props = $props();
 
-	// The pct is shown separately in the stage row, so the line itself omits it.
-	const stageLabel = $derived(processStageLabel(status));
+	/* THREE KINDS, THREE LINES, and the kind decides — never the status. The pct is shown separately in the stage
+	   row below, so the line itself omits it. `stalled` has no `MediaStatus` to describe BY DEFINITION (that is
+	   what makes it stalled), so its words are a sibling export from the same phrasing module. */
+	const stageLabel = $derived(
+		kind === 'stalled'
+			? STALLED_TURN_LABEL
+			: kind === 'failed'
+				? processStageLabel('failed')
+				: processStageLabel(status ?? 'queued')
+	);
 	// One expression for both unconfirmed states, so a pending reorder cannot re-borrow the add path's word.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 
@@ -81,12 +109,36 @@
 		seqDir = seq > prevSeq ? 1 : -1;
 		prevSeq = seq;
 	});
-	// A terminally failed process is NOT in flight, and it reaches this card because the singer's own queue slot must
-	// say the process died. This branch drops the bar and the sparkle; the RETRY lives on SongRow, not here.
-	const failed = $derived(status === 'failed');
+	/* TWO NON-FLIGHT KINDS, and both reach this card because the singer's own queue slot is the only place that can
+	   say so. `failed` is a process that RAN AND DIED; `stalled` is a turn with no process at all. Neither draws a
+	   bar or a sparkle — a bar near 0 reads as slow rather than stopped — and they differ in what they are entitled
+	   to claim, which is why they are two kinds and not one: see the --danger/--warn note in the styles below.
+	   A RETRY LIVES HERE NOW, on the stalled kind only (`onretry`), alongside SongRow's — which is reachable only
+	   from a search result, so recovering a stranded turn meant finding the song again first. */
+	const failed = $derived(kind === 'failed');
+	const stalled = $derived(kind === 'stalled');
+	const inFlight = $derived(kind === 'processing');
 	// `pct` is the worker's PER-STEP 0-100; the bar must show OVERALL completion, or every step reaching 100% fills
 	// the whole bar while later milestones have not started. Rounded only for the readout.
-	const overall = $derived(overallProcessPct(status, pct));
+	const overall = $derived(overallProcessPct(status ?? 'queued', pct));
+
+	/* THE STAGE THIS CARD WAS BORN IN, captured once at init and never again — ported from SongRow, whose own note
+	   carries the measurement that forced it: /library mounted one polite region per rendered row and a
+	   MutationObserver armed before the tab tap counted 63 `role=status` INSERTIONS against 3 removals, every one
+	   of them a dynamic insertion AT may speak. This card had NO such guard, and it did not need one while every
+	   non-plain kind required a live status: /queue was measured at 1 region and 2 insertions. The stalled arm is
+	   what makes it need one — it turns every stranded turn in the room into a mounted region reading one sentence.
+	   DRIVEN WITH THIS GUARD IN PLACE, 390x844 against the owner's library copy, MutationObserver armed before the
+	   tab tap: a /queue arrival rendering 99 stalled cards inserted 3 `role=status` regions and removed 3, and the
+	   page holds 1 afterwards — the route's own queue announcer. Every card contributed none.
+	   WHAT SURVIVES is the thing worth announcing: a card that CHANGES stage still speaks, and the retry is exactly
+	   such a change (stalled → "Making karaoke…" on the same component instance, because the route's branch and its
+	   `(e.id)` key both hold).
+	   `untrack` rather than a bare read, this tree's idiom in exactly this position (SongRow, TvPlayer,
+	   settings/you): a bare read of a rune outside an effect raises `state_referenced_locally`, which
+	   `bun run check` surfaces. MUST STAY BELOW `stageLabel`, which it reads — `$derived` is lazy at runtime, but
+	   the checker reports a block-scoped use before declaration. */
+	const bornStage = untrack(() => stageLabel);
 </script>
 
 <!-- Item.Root supplies the row grammar through its `child` snippet, so this file keeps the row ELEMENT: a `class:`
@@ -95,7 +147,7 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class={['qrow', 'proc', 'card', 'list-row', { pending, failed, moving, shifted: shift !== 0 }]}
+			class={['qrow', 'proc', 'card', 'list-row', { pending, failed, stalled, moving, shifted: shift !== 0 }]}
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
 			<!-- The digit rolls on a position change exactly as QueueRow's does: the two kinds share ONE list, and a drag
@@ -136,7 +188,10 @@
 						ellipsis — precisely the state the mark exists to announce. -->
 				<div class="title-line">
 					<span class="t">{title}</span>
-					{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+					<!-- THE SPARKLE MEANS "SOMETHING IS HAPPENING TO THIS SONG", so only the in-flight kind may wear it.
+							It was gated on `!failed` while those were the only two kinds; a stalled turn is the case where that
+							negative becomes a lie, since nothing is being made for it at all. -->
+					{#if inFlight}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 				</div>
 				{#if singerName}
 					<div class="who">
@@ -149,11 +204,29 @@
 					</div>
 				{/if}
 			</Item.Content>
-			{#if !pending && (onremove || reorderable)}
+			{#if !pending && (onretry || onremove || reorderable)}
 				<Item.Actions data-align="start">
-					<!-- Reordering lives on the GRIP above, so REMOVE is the only control this cluster ever holds. `reorderable`
-							only WIDENS the gate — it contributes nothing of its own — so a card the route says may move but that is
-							not the guest's to remove renders this cluster empty. -->
+					<!-- Reordering lives on the GRIP above, so this cluster holds the two controls that act on the TURN:
+							RETRY (stalled cards only) and REMOVE. `reorderable` only WIDENS the gate — it contributes nothing of
+							its own — so a card the route says may move but that is neither the guest's to remove nor stalled
+							renders this cluster empty.
+							RETRY IS UNGATED BY OWNERSHIP, unlike remove, and that asymmetry is the point: remove DESTROYS
+							someone's turn, a retry destroys nothing and /api/process is already callable by any joined singer
+							for any song from the Sing tab. Gating it on `singerId === me.id` would be stricter than the
+							affordance it duplicates — and in the owner's own library copy every stranded turn belongs to a
+							singer who is `· away`, so an ownership gate makes all 89 of them unfixable from any phone in the
+							room. The blast radius is bounded where it already was: `processState`'s over-limit arm caps
+							in-flight processes per singer. -->
+					{#if onretry}
+						<Button
+							variant="iconPrimary"
+							size="icon"
+							data-testid="card-retry"
+							aria-label="Make the karaoke for this turn — you keep your place in line"
+							title="Make the karaoke for this turn — you keep your place in line"
+							onclick={() => onretry?.()}><Icon name="sparkle" /></Button
+						>
+					{/if}
 					{#if onremove}
 						<Button
 							variant="outline"
@@ -170,6 +243,11 @@
 					<!-- No bar for a dead process: a bar stuck near 0 reads as stalled rather than failed, so the tinted stage
 							line carries the state on its own. -->
 					<div class="stage bad"><span>{stageLabel}</span></div>
+				{:else if stalled}
+					<!-- No bar and no percentage, for a stronger reason than the failed card's: there is no process to have
+							made progress, so ANY figure here would be invented. The line keeps `.stage`'s own --warn ink — see
+							the styles for why this card may not take the danger family. -->
+					<div class="stage"><span>{stageLabel}</span></div>
 				{:else}
 					<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
 					<div class="stage"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
@@ -183,8 +261,14 @@
 	containing the pct, and the hub rebroadcasts `media:status` on every worker progress report with no throttle — so a
 	guest waiting on three songs got several hundred polite announcements, starving the regions that matter (the queue
 	announcer and the reorder notes). `stageLabel` is pct-free, so this speaks once per real transition. The bar keeps
-	`role="progressbar"` with its value, which AT reads ON DEMAND instead of being pushed. -->
-<div class="vh" role="status">{stageLabel}</div>
+	`role="progressbar"` with its value, which AT reads ON DEMAND instead of being pushed.
+	AND ONLY A CHANGE OUT OF `bornStage` GETS A REGION AT ALL, which is SongRow's rule arriving here — see the note on
+	`bornStage` for the measurement and for what it deliberately gives up (a card that MOUNTS already stalled or
+	already failed announces nothing; its visible line still says so, and a stall the guest did not watch happen is
+	not news worth interrupting them with). The retry still speaks, because that is a real transition. -->
+{#if stageLabel && stageLabel !== bornStage}
+	<div class="vh" role="status">{stageLabel}</div>
+{/if}
 
 <style>
 	/* `.seq`, `.t` and `.who` must STAY in this file, because they declare COLOUR and a contrast question about this row
@@ -211,6 +295,18 @@
 	}
 	.stage.bad {
 		color: var(--danger-ink);
+	}
+	/* A STALLED TURN TAKES THE WARN FAMILY, NOT THE DANGER ONE, and docs/FRONTEND.md's token rule is what decides it
+	   rather than taste: --danger means a failure that WILL NOT self-heal, --warn one that may. This card cannot
+	   tell apart a turn whose process half genuinely never landed (permanent) and the one-round-trip window on
+	   another guest's phone between the add and the `media:status` that follows it (transient) — so it is not
+	   entitled to the stronger claim, and reusing `.proc.failed` would assert a permanence the client cannot know.
+	   --danger on this surface is earned only by the live `failed` event. The ink needs no rule at all: `.stage` is
+	   already --warn, which is the honest colour here, so only the border is stated.
+	   SAME SPECIFICITY GAME AS `.proc.failed`: two classes, so it wins over `.pending`'s one-class border
+	   deliberately, and an unconfirmed stalled card keeps the pending SURFACE under a warn edge. */
+	.proc.stalled {
+		border-color: var(--warn-line);
 	}
 	/* The unconfirmed state is a warn tint on the CARD SURFACE, never a subtree opacity: an alpha here composites the
 	   stage line to 3.76:1 against a 4.5:1 floor and the singer dot to 2.57:1, and the value that clears AA is

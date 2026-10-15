@@ -26,7 +26,7 @@ BACKENDS = ("torch", "mlx")
 #: Whisper checkpoints the ASR fallback may load. A job may not name an arbitrary model.
 ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
-#: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`); four of these
+#: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`); five of these
 #: names are default-ON features' controls. What each switches, why it is off and what retiring a name costs:
 #: docs/arch/04-alignment.md §14, with the numbers in docs/benchmarks/forced-alignment/README.md.
 ALIGN_EXPERIMENTS = (
@@ -49,7 +49,16 @@ ALIGN_EXPERIMENTS = (
     "conf-legacy",
     "conf-fuzzy-repeats",
     "band-off-sheet",
-    "band-reopen",
+    "band-late-kept",
+    "vendored",
+    "skip-arcs",
+    "star-b",
+    "claim-priors",
+    "claim-fusion",
+    "priors-decide",
+    "nonlatin-units",
+    "zh-simplify",
+    "mms-roman",
 )
 
 

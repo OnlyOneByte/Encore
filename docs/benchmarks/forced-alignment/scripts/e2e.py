@@ -50,7 +50,7 @@ import e2e_lib as lib  # noqa: E402
 from encore_worker.adapters import ml, ports  # noqa: E402
 from encore_worker.adapters.ml import Emissions, WhisperXAligner  # noqa: E402
 from encore_worker.artifacts import keys  # noqa: E402
-from encore_worker.domain.lyrics import language, lexical  # noqa: E402
+from encore_worker.domain.lyrics import language, lexical, romanize  # noqa: E402
 from encore_worker.domain.lyrics.clean import clean_indexed, clean_segments  # noqa: E402
 from encore_worker.domain.lyrics.policy import Tier  # noqa: E402
 from encore_worker.host.config import Config, ConfigError  # noqa: E402
@@ -89,6 +89,12 @@ SYNC_MODES = (SYNC_FORCED, SYNC_LINES)
 #: so the default stays OFF, `meta["detector"]` says which ran, and `off` comes from `lib.RUN_DEFAULTS`.
 DETECTOR_OFF, DETECTOR_LINGUA = lib.RUN_DEFAULTS["detector"], "lingua"
 DETECTORS = (DETECTOR_OFF, DETECTOR_LINGUA)
+
+#: `--romanize`: the DISPLAY-ONLY romaniser in the Adapters at `run_align` (XA-19). Same shape and same
+#: reason as `--detector`: every row under `results/` was measured with none, so the default stays OFF and
+#: `meta["romanize"]` says which ran. It can only ADD a line's `romanization` field; no timing moves.
+ROMANIZE_OFF, ROMANIZE_SHIPPED = lib.RUN_DEFAULTS["romanize"], "shipped"
+ROMANIZERS = (ROMANIZE_OFF, ROMANIZE_SHIPPED)
 
 
 # ── seams ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -241,6 +247,18 @@ def resolve_bundle(named: str | None, config: Any, language: str) -> tuple[str |
     return (named or from_env), None
 
 
+def nonlatin_bundle(config: Any) -> str | None:
+    """The bundle a NON-LATIN language aligns on, or None for whisperx's per-language table.
+
+    READ OFF THE FUNCTION PRODUCTION READS (`__main__.nonlatin_align_model_for`), so the harness cannot
+    drift from the composition root: only `ENCORE_ALIGN_EXPERIMENTS=mms-roman` answers anything, and what it
+    answers has CC-BY-NC weights (docs/arch/04-alignment.md §9.1).
+    """
+    from encore_worker.__main__ import nonlatin_align_model_for  # noqa: PLC0415
+
+    return nonlatin_align_model_for(config)
+
+
 def uncalibrated_banner(model: str) -> str | None:
     """The loud stderr banner for a run whose bundle has no `lexical.CALIBRATED` row, or None when it has one.
 
@@ -329,12 +347,18 @@ class BenchAligner(WhisperXAligner):
         device: str,
         jobs: int = 1,
         model: str | None = None,
+        nonlatin_model: str | None = None,
         store: lib.EmissionStore | None = None,
         read: bool = True,
         write: Literal["always", "missing"] = "missing",
         identify: Callable[[str], str] | None = None,
     ) -> None:
-        super().__init__(device=device, jobs=jobs, model=model or ml.default_align_model(device))
+        super().__init__(
+            device=device,
+            jobs=jobs,
+            model=model or ml.default_align_model(device),
+            nonlatin_model=nonlatin_model,
+        )
         self._store = store
         self._read = read
         self._write = write
@@ -530,6 +554,7 @@ def doc_lines(
                                 float(w["end"]),
                                 line.words[k].provenance == "aligned" if known else _scored(w),
                                 str(w.get("word") or ""),
+                                _doc_syllables(w),
                             )
                             for k, w in enumerate(words)
                         ),
@@ -550,13 +575,29 @@ def doc_lines(
             confidence=raw.get("confidence"),
             source=source,
             words=tuple(
-                lib.DocWord(float(w["start"]), float(w["end"]), _scored(w), str(w.get("word") or ""))
+                lib.DocWord(
+                    float(w["start"]),
+                    float(w["end"]),
+                    _scored(w),
+                    str(w.get("word") or ""),
+                    _doc_syllables(w),
+                )
                 for w in raw.get("words") or []
             ),
         )
         for text, start, raw, source in zip(texts, starts, rendered, sources, strict=True)
     ]
     return out, "text"
+
+
+def _doc_syllables(word: Mapping[str, Any]) -> tuple[lib.DocSyllable, ...]:
+    """A published word's syllable spans, or empty — the document's `syllables` key is optional and only a
+    word the publisher split carries one (`generate.Generated.as_doc`)."""
+    return tuple(
+        lib.DocSyllable(float(s["start"]), float(s["end"]), str(s.get("text") or ""))
+        for s in word.get("syllables") or []
+        if isinstance(s, dict)
+    )
 
 
 def _scored(word: Mapping[str, Any]) -> bool:
@@ -1011,6 +1052,7 @@ class RunAlignDriver(TimeTextDriver):
         transcriber: ports.Transcriber | None = None,
         sync_mode: str = SYNC_FORCED,
         detector: Any = None,
+        romanizer: Any = None,
     ) -> None:
         super().__init__(
             aligner=aligner,
@@ -1026,6 +1068,9 @@ class RunAlignDriver(TimeTextDriver):
         #: The LATIN-script detector the acquiring steps get (`--detector`, W7 review r1-spec-9). None is the
         #: configuration every recorded row was measured on; the shipped composition root builds lingua's.
         self.detector = detector
+        #: The DISPLAY-ONLY romaniser factory the publishing step gets (`--romanize`). None is a box without
+        #: the `romanize` extra, which is what every recorded row was measured on (XA-19).
+        self.romanizer = romanizer
         if sync_mode not in SYNC_MODES:
             raise ValueError(f"sync mode {sync_mode!r}; expected one of {', '.join(SYNC_MODES)}")
         #: The job's `syncMode` (`--sync-mode`). `lines` makes every text's only attempt the gated LINE_SYNC
@@ -1079,6 +1124,7 @@ class RunAlignDriver(TimeTextDriver):
                     # The seam `language.detect` reads in the acquiring steps (`--detector`): None unless the
                     # run asked for the shipped lingua one, and `meta["detector"]` records which it was.
                     detector=self.detector,
+                    romanizer=self.romanizer,
                 ),
                 reporter=trail,
             )
@@ -1418,6 +1464,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="separate each tfr song's youtube-mix.wav into the vocals stem --tfr-audio youtube reads",
     )
     ap.add_argument(
+        "--corpus",
+        choices=lib.CORPORA,
+        default=lib.ENGLISH_CORPUS,
+        help="which song set to run: english = the recorded 32, nonlatin = W8's AMLL songs (pass "
+        "--language zh/ja/ko too, one language a run)",
+    )
+    ap.add_argument(
         "--no-stem",
         action="store_true",
         help="run every case STEMLESS: vocals_path None, so the mix is the align target, as production "
@@ -1449,6 +1502,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="run_align: the LATIN-script language detector in the Adapters, as `__main__` builds one "
         "(lingua = the shipped composition root's; off = a box without the `text` extra, which is what "
         "every recorded row was measured on). Stamped into the summary's meta either way",
+    )
+    ap.add_argument(
+        "--romanize",
+        choices=ROMANIZERS,
+        default=ROMANIZE_OFF,
+        help="run_align: the display-only romaniser in the Adapters, as `__main__` builds one (shipped = "
+        "the composition root's factory; off = a box without the `romanize` extra, which is what every "
+        "recorded row was measured on). Stamped into the summary's meta either way",
     )
     ap.add_argument(
         "--sync-mode",
@@ -1518,7 +1579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     root = lib.bench_root()
     if args.prepare_tfr:
         return prepare_tfr(root, config)
-    corpus = lib.discover(root, tfr_audio=args.tfr_audio)
+    corpus = lib.discover(root, tfr_audio=args.tfr_audio, corpus=args.corpus)
     songs = lib.select(corpus, args.songs)
     missing = [f"{song.slug}: {path}" for song in songs for path in song.missing_files()]
     if missing:
@@ -1526,12 +1587,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"missing audio (prepare the corpus first{hint}):\n  " + "\n  ".join(missing), file=sys.stderr)
         return 2
     modes = parse_modes(args.modes)
+    if args.corpus == lib.NONLATIN_CORPUS and args.language == ml.ENGLISH:
+        # Left at the default, these songs' CJK/Hangul text would be timed by the ENGLISH bundle — which HAS
+        # a calibration row, so the lane's own gate would never be the one under measurement. Production
+        # cannot reach it (`language.detect` reads the script), so refuse rather than measure the wrong thing.
+        print(
+            f"--corpus {lib.NONLATIN_CORPUS} needs --language (zh / ja / ko), one a run: left at "
+            f"{ml.ENGLISH!r} these songs would be timed by the English bundle, whose calibration row is not "
+            "this lane's",
+            file=sys.stderr,
+        )
+        return 2
     device = resolve_device(args.device)
     named, refused_bundle = resolve_bundle(args.model, config, args.language)
     if refused_bundle is not None:
         print(refused_bundle, file=sys.stderr)
         return 2
-    model_label = named or default_model(args.language, device)
+    #: W8 stage 2: the `mms-roman` arm replaces whisperx's table for a NON-LATIN language, so the label,
+    #: the emission store's key and the loaded weights stay one fact (`resolve_bundle`'s reason).
+    mms = nonlatin_bundle(config)
+    routed_mms = mms if mms and args.language not in language.LATIN_LANGUAGES else None
+    model_label = named or routed_mms or default_model(args.language, device)
     banner = uncalibrated_banner(model_label)
     if banner is not None:
         print(banner, file=sys.stderr)
@@ -1577,6 +1653,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         #: keeps the `run.json` shape `resume_refusal` compares, and a `--resume` across a calibration being
         #: PASTED IN is refused as the setting change it is.
         run_config["uncalibrated"] = True
+    if args.corpus != lib.ENGLISH_CORPUS:
+        #: Recorded only when it is not the recorded 32, for the same reason, and read back through
+        #: `e2e_gates.SETUP_DEFAULTS`: every run before W8 is an `english` one that never said so.
+        run_config["corpus"] = args.corpus
     if args.level == "run_align":
         run_config["asr"] = args.asr if args.asr == "off" else f"whisper:{args.asr_model or config.asr_model}"
         run_config["sync_mode"] = args.sync_mode
@@ -1584,6 +1664,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         #: `meta["detector"]` a live run does. It was conditional, so that a key appearing in `run.json` could
         #: not refuse an older directory's `--resume`; `resume_refusal` reads `lib.RUN_DEFAULTS` instead now.
         run_config["detector"] = args.detector
+        run_config["romanize"] = args.romanize
     config_path = out / "run.json"
     refusal = resume_refusal(config_path, run_config)
     if refusal is not None:
@@ -1599,6 +1680,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     aligner = BenchAligner(
         device=device,
         model=named,
+        nonlatin_model=mms,
         store=store,
         read=args.emissions_cache == "use",
         write="always" if args.emissions_cache == "refresh" else "missing",
@@ -1617,6 +1699,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             transcriber=transcriber,
             sync_mode=args.sync_mode,
             detector=build_detector(args.detector),
+            romanizer=build_romanizer_factory(args.romanize),
         )
         if args.level == "run_align"
         else DRIVERS[args.level](
@@ -1674,6 +1757,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "target": run_config["target"],
         "align_config": run_config["align_config"],
         **({"uncalibrated": True} if banner is not None else {}),
+        **({"corpus": args.corpus} if args.corpus != lib.ENGLISH_CORPUS else {}),
         "modes": modes,
         "songs": [song.slug for song in songs],
         #: Which of them did NOT score accuracy, and why, so the exclusion is the first thing a reader of
@@ -1696,6 +1780,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         #: answer `en` with no detector, and every row under `results/` was measured that way — which a reader
         #: could previously only learn by reading this harness's `Adapters(...)` call. Now the row says so.
         meta["detector"] = args.detector
+        #: ALWAYS too, and for the same reason: a `romanization` field in a published document is only there
+        #: because this said `shipped`, and a reader comparing two rows has to be able to see which.
+        meta["romanize"] = args.romanize
         if isinstance(transcriber, lib.CachedTranscriber):
             meta["transcripts"] = dict(transcriber.served)
     document = {"meta": meta, "summary": summary, "songs": lib.per_song(rows)}
@@ -1821,6 +1908,17 @@ def build_detector(asked: str) -> Any:
     return built
 
 
+def build_romanizer_factory(asked: str) -> Any:
+    """`--romanize shipped`: the factory `__main__.build_adapters` wires; `off`: None, no romaniser at all.
+
+    An explicit `shipped` on a box with no backend for the run's language is an ERROR rather than a silent
+    fall back to the default configuration — the `--detector` lesson (review r1-spec-9) applied here.
+    """
+    if asked == ROMANIZE_OFF:
+        return None
+    return romanize.build_romanizer
+
+
 def build_asr(args: argparse.Namespace, root: Path, device: str, config: Config) -> ports.Transcriber | None:
     """`--asr whisper`: the shipped `WhisperTranscriber` behind a disk cache; `off`: no transcriber at all.
 
@@ -1868,7 +1966,14 @@ def verify_cache(
     results: dict[str, tuple[dict[str, Any], bytes]] = {}
     for label, read in (("fresh", False), ("cached", True)):
         ml.clear_cache()
-        aligner = BenchAligner(device=device, model=bundle, store=store, read=read, write="missing")
+        aligner = BenchAligner(
+            device=device,
+            model=bundle,
+            nonlatin_model=nonlatin_bundle(config),
+            store=store,
+            read=read,
+            write="missing",
+        )
         driver = TimeTextDriver(
             aligner=aligner,
             corpus=corpus,

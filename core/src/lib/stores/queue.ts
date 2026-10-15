@@ -48,6 +48,12 @@ export class QueueStore {
 	#subs = new Set<(entries: QueueEntry[]) => void>();
 	#lastAddedAt = 0; // monotonic clock for addedAt tiebreaker (Finding #4)
 	#pendingSeq = 0; // monotonic issue counter for pending ops (rollback rebase order)
+	/** Has the server ever handed us a FULL list? Set by `#onSync` only, so it cannot be confused with "the store
+	 * exists": the store is constructed before the socket opens, and an empty `#entries` in that window is
+	 * indistinguishable from an empty queue. A caller that diffs successive lists needs to know which it is looking
+	 * at — /queue's polite region announced the whole join snapshot as N additions because it seeded its baseline
+	 * from the pre-socket empty list. `queue:sync` is part of every hello, so sync-only is sufficient. */
+	#synced = false;
 
 	constructor(deps: QueueStoreDeps) {
 		this.#deps = deps;
@@ -58,6 +64,10 @@ export class QueueStore {
 	}
 	get rev(): number {
 		return this.#rev;
+	}
+	/** See `#synced`. Never goes back to false: a resync replaces truth, it does not un-know it. */
+	get synced(): boolean {
+		return this.#synced;
 	}
 	get pendingCount(): number {
 		return this.#pending.size;
@@ -209,6 +219,8 @@ export class QueueStore {
 
 	#onSync(e: Extract<ServerEvent, { type: 'queue:sync' }>): void {
 		this.#rev = e.rev;
+		// Before `#emit()`, so the first subscriber call-back already sees the flag that says its list is real.
+		this.#synced = true;
 		// Rebase through the shared writer: a resync replaces truth, and a stale snapshot would lose the guest's
 		// in-flight changes on a later reject.
 		const base = e.entries.map((x) => ({ ...x }));

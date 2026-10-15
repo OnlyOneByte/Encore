@@ -311,7 +311,12 @@ export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, dep
 			mediaId: job.mediaId,
 			status: mediaStatusFor(job),
 			pct: job.progressPct,
-			etaSec: job.etaSec ?? undefined
+			etaSec: job.etaSec ?? undefined,
+			// WHO TO TELL "try again". The job has carried this since it was enqueued — /api/process and
+			// /api/lyrics-reselect are the only callers and both pass the session's singer — and a chained
+			// follow-up inherits it (see `inheritsProcess` at the requeue in worker-hub). `null` means nobody
+			// asked, which the client reads as "tell the room".
+			requestedBy: job.singerId ?? undefined
 		});
 	}
 	console.warn(

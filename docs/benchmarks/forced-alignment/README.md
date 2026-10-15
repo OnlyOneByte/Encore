@@ -5143,10 +5143,11 @@ the same one; only the denominator moved.
 every worker comment and docstring before the cleanup — **8 411 tokens, 6 461 of them substantive; 4 782
 substantive in the two roots being cleaned, over 1 227 distinct magnitudes** — into `_prose/numbers.json`.
 `_tools/verify_numbers.py` then re-reads the tree and sorts each token into **code** (a literal in Python, or
-in a committed gate file), **doc** (a committed Markdown file), **prose** (still in a comment or docstring) or
-**LOST**. Under `--strict --durable`, which counts only code and **committed** docs as a home — the
-`PLAN-*` / `REVIEW-*` / `UI-REVIEW` working documents are gitignored, so a number that lives only there is not
-kept at all — the split taken **before the subsections below were written** was:
+in a committed gate file), **doc** (a committed Markdown file), **fixture** (prose in a
+`TERMINAL_PROSE_ROOTS` root, W9 below), **prose** (still in a comment or docstring the cleanup is relocating)
+or **LOST**. Under `--strict --durable`, which counts only code, **committed** docs and fixture prose as a
+home — the `PLAN-*` / `REVIEW-*` / `UI-REVIEW` working documents are gitignored, so a number that lives only
+there is not kept at all — the split taken **before the subsections below were written** was:
 
 | home | rows of 4 782 |
 | --- | --- |
@@ -5237,6 +5238,17 @@ leading-dot artefacts of the pattern above. All 31 genuine rows were given homes
 [`../../arch/05-worker.md`](../../arch/05-worker.md) §12-§13. The deeper chain, which is the answer to W7b's
 4 894: the manifest rebuilt from `w7b-start` over all three roots — every number either wave's prose ever
 carried — is **6 637 strict substantive rows, 0 LOST** (5 564 code / 1 073 doc).
+
+**W9 reversed that direction for test prose, and the gate says which it is taking.** Giving those 29 rows doc
+homes treated a FIXTURE's numbers as relocatable, which is the opposite of the ruling W7b made when it left
+`worker/tests` out of the strict scope — and it did not hold: by W9 eleven more rows read `LOST`, every one of
+them a number still standing in test prose (nine in `test_align_provenance.py`, one each in
+`test_coherent_offset.py` and `test_prose_shape.py`). A fixture's own numbers are TERMINAL, so
+`verify_numbers.TERMINAL_PROSE_ROOTS` makes prose in `worker/tests` a durable home reported as **fixture**,
+and `--strict --durable` reads **2 894 strict substantive rows, 0 LOST** — 2 695 code, 188 doc, 11 fixture,
+under Python 3.12. The 29 keep their doc homes; nothing was deleted to get here. The reasoning and the
+mutation that shows this is not a blanket pass are in
+[`../../arch/05-worker.md`](../../arch/05-worker.md) §12.
 
 **The class did hide one real deletion**, which is why the limit was worth closing: `never-be-alone` off3's
 winning claim-clock candidate flipping from `decode-median −3.18 s (14/45)` to `envelope-lag −3.76 s (4/44)`.
@@ -6061,7 +6073,8 @@ with `ast` and walked node by node (never `eval`):
 - **References** are dotted paths into a summary. `[base.]MODE[.GROUP].METRIC` is one pooled number
   (`truth.pm500`, `base.blind.jamendo.gross`); `[base.][MODE.][GROUP.]song.METRIC` is one number PER SONG
   (`truth.jamendo.song.word_pm300`, `song.gross`). MODE is a claim mode, or `mode("jit+off15")` for a
-  `+`-combined one; GROUP is `jamendo` / `youtube` / `all` (the default); `base.` reads the `--compare`
+  `+`-combined one; GROUP is `jamendo` / `youtube` / `scored` / `nonlatin` / `all` (the default); `base.`
+  reads the `--compare`
   baseline. A per-song path with no MODE ranges over EVERY mode, keyed `(mode, song)`. METRIC is a name from
   `e2e_lib.flat_metrics` — `pm500 pm1000 text_pm500 text_pm1000 gross zero_gross_songs high high_gross refused
   error published scored in_text missing unsung text_paired`; `word_pm100/250/300 word_pco300 word_bias_ms
@@ -6217,6 +6230,14 @@ one song. Its corpus layout under `$ENCORE_BENCH_ROOT` is `jamendolyrics/` (the 
 `JamendoLyrics.csv` for the Language column) and `_lang/stems/<slug>/vocals.wav` (htdemucs vocals, built by
 `_lang/separate.sh` at ~15 s a song). The readings are in "W7: the language is an INPUT" and "Language: the
 detector's cost, and three censuses".
+
+**`amll.py` — the non-Latin truth set's ingest, and the only script here that writes truth.** It reads each
+`<bench>/amll/<slug>/lyrics.ttml` (AMLL TTML DB, CC0) and writes that song's `truth-lines.json` +
+`truth-words.json`, grouping the TTML's per-SYLLABLE spans into words on the TTML's own whitespace so the
+truth words and `line.text.split()` are one tokenisation. It drops background vocals, translations and
+romanisations, reports what it dropped, and refuses a file whose line starts run backwards. `jamendo.py` is
+its English counterpart. The set it feeds, the admission rule and the per-song numbers: "W8: the non-Latin
+truth set".
 
 **`pool_gate.py` — what the ranking actually CHOOSES.** W5 landed "every provider is a candidate" with a
 corroboration-ordered candidate tier (review M13) and an LRCLIB retry without the duration (L5), and
@@ -7983,3 +8004,1073 @@ What a later reader needs to know:
 * **`corpus-truth.json` gained a required field** (`starts_level_median`) and two published limits
   (`min_lag_correlation`, `continuous_vocal_level`). A pre-review copy of the file no longer loads, which is the
   intended direction: the rule reads fields that must be measured, not assumed.
+
+## W9: the star re-fitted out of sample, at an optimum outside the review's range (2026-10-09; review §3 item 10 / D3)
+
+W7 built §3.10's star, fitted `P = 1.0`, and the corpus read **rejected** it (`gates/w7-star.yaml` 32/36, the
+section above). But that fit named its own correction: the sweep's optimum for a sheet with lines missing sat
+at **0.1–0.3**, *below* review §3.10's proposed `[1, 4]`, and 1.0 was chosen partly because it was *inside* the
+range the review specified. A verdict taken at a value the data does not pick is a verdict about the value, not
+about the mechanism — and the mechanism is the only one in the build that lets the decode say *these words are
+not in this audio*. So P is re-fitted here, on the region the correction points at, and **the sweep is the
+result; the single value is a consequence of naming an objective.**
+
+Same harness, same stored matrices, no model pass: `_runs/w9-star/star_sweep9.py` (W7's with the emitter
+PINNED, the accuracy pool carried per row, and the fine grid) + `star_report9.py` + `star_record9.py`. The grid
+is now **19 arms — 18 values of P plus the `off` control** — W7's 15 arms merged with 0.05, 0.15, 0.35 and
+0.45 — over 32 songs × 4 text modes, 2 432
+decode rows, 90 s of Viterbi for the new ones. Every number below is recomputable from the committed digest
+`results/w9-star-sweep.json` (both pools, per mode, per group, per song, per song×mode gross, and all four
+fits); the raw per-line errors stay in `_runs/w9-star/` and `_runs/w7-star/`.
+
+**Two provenance checks first, because this re-reads W7's own file.** (1) The 0.75 arm and the `off` control
+were re-decoded on W7's emitter key (`a51283424a0195e1`): **256 overlapping cells — 2 arms × 32 songs × 4
+modes — 0 differ** in gross, ±500, scored, `in_text`, `missing` and both error summaries, so W7's sweep
+reproduces on this tree. (2) The whole fine region was then decoded a second time on the emitter key W8a used
+(`1a2fd6852bd30243`, today's warm store): **640 shared cells — the 5 arms the two passes have in common ×
+128 — 0 differ**. The two stored HuBERT-Large sets are value-identical, so the fit does not depend on which
+one a later wave happens to read, and the emitter fingerprint moved with code that does not move a matrix.
+Both counts are recomputable from `_runs/w9-star/{fine9,replicate9}.json` against `_runs/w7-star/{sweep,fine}.json`.
+
+### The denominator, named before the numbers
+
+`±500/t` is `w500 / in_text` over **every truth line the served text holds**, so a line the decode never placed
+is a MISS, not an absent row. `missing` is **4 of 5 068 on every row of the grid, the control's included** — no
+arm here buys anything by dropping lines. That is the artefact the critics caught in the review's scratch
+scorer (published-lines-only, which turned a loss into "68 → 64"), and the one W8b found under the band arms.
+The headline basis is the **28 songs that score** (`corpus-truth.json`; `bad-guy`, `believer`, `numb` and
+`tfr-chosen` are measured for robustness and excluded from accuracy, W8b above) — so these numbers are NOT
+comparable to the 32-song table in the W7 section, whose control reads gross 713 / ±500/t 72.40. On this pool
+the same control reads **609 / 78.31**.
+
+### The sweep, 28-song accuracy pool, all four modes (5 068 lines served, 5 064 scored)
+
+| P | gross | ±250/t | ±500/t | AAE ms | MedAE ms |
+| --- | --- | --- | --- | --- | --- |
+| **off** | 609 | 72.67 | 78.31 | 1 078 | 83 |
+| 0 (MMS) | 434 | 72.73 | 81.08 | 1 414 | 94 |
+| 0.05 | 387 | 79.62 | 85.54 | 1 024 | 70 |
+| **0.1** | **378** | **80.05** | **85.95** | 914 | 70 |
+| 0.15 | 383 | 79.76 | 85.79 | 956 | 70 |
+| 0.2 | 384 | 79.58 | 85.91 | 936 | 70 |
+| 0.25 | 379 | 79.38 | 85.56 | 913 | 70 |
+| **0.3 (ships)** | **384** | **79.81** | **85.67** | **906** | **70** |
+| 0.35 | 395 | 79.72 | 85.62 | 930 | 70 |
+| 0.4 | 400 | 79.56 | 85.56 | 930 | 70 |
+| 0.45 | 397 | 79.58 | 85.64 | 848 | 70 |
+| 0.5 | 397 | 79.22 | 85.24 | 831 | 70 |
+| 0.75 | 429 | 78.73 | 84.63 | 834 | 71 |
+| 1 (W7's) | 464 | 77.86 | 83.84 | 891 | 73 |
+| 2 | 522 | 75.83 | 81.71 | 977 | 77 |
+| 4 | 560 | 74.82 | 80.72 | 1 007 | 79 |
+
+**The region is FLAT and it is the whole finding.** Every value from 0.05 to 0.5 reads gross 378–400 and ±500/t
+85.2–86.0; the differences inside it are 1–20 lines of 5 068 and are not a ranking anyone should trust. What is
+not flat is the distance to the ends. Against the **shipped P = 0.3** — naming the reference, because the
+region's rows differ by less than the gap being described — review §3.10's own band costs **80 gross lines and
+1.8 pt** at `P = 1` and **176 lines / 5.0 pt** at `P = 4`; against the region's best row, `P = 0.1`, the same
+two gaps are 86 / 2.1 pt and 182 / 5.2 pt. The MMS constant 0 is still the one value that makes the full sheet
+worse (below), reproducing the review's "over-eager" objection.
+
+### Per mode: the trade the single number is making (gross / ±500/t)
+
+| P | full sheet (1 536) | drop20 (1 233) | drop50 (763) | extraverse (1 536) |
+| --- | --- | --- | --- | --- |
+| **off** | 60 / 86.98 | 171 / 75.51 | 280 / 52.69 | 98 / 84.64 |
+| 0 (MMS) | **88** / 83.98 | 104 / 81.27 | 129 / 73.26 | 113 / 81.90 |
+| 0.05 | 70 / 88.67 | 93 / 85.97 | **120** / **77.72** | 104 / 85.94 |
+| 0.1 | 65 / 89.13 | **89** / **86.54** | 123 / 77.72 | 101 / 86.39 |
+| 0.2 | 65 / 89.13 | 93 / 86.13 | 124 / 77.59 | 102 / 86.65 |
+| **0.3** | **60** / 89.26 | 90 / 86.05 | 134 / 75.88 | 100 / 86.65 |
+| 0.5 | 56 / 89.71 | 92 / 85.40 | 159 / 72.21 | 90 / 87.11 |
+| 1 (W7's) | 54 / 90.04 | 123 / 82.89 | 197 / 65.66 | 90 / 87.43 |
+| 4 | 53 / 89.32 | 155 / 78.02 | 265 / 55.70 | 87 / 86.72 |
+
+The two ends of the grid are two different jobs. A dear star (P ≥ 0.75) is cheap insurance on a sheet the audio
+covers — full-sheet gross 54 against the control's 60 — and buys almost nothing where half the lines are gone
+(drop50 197 against 280). A cheap star (P ≤ 0.2) nearly halves drop50 (123 against 280, ±500/t 52.69 → 77.72)
+and costs the full sheet 5 gross lines. **P = 0.3 is the value that takes the partial-sheet win without
+costing the full sheet a single gross line** (60 = 60, ±500/t 86.98 → 89.26), which is the column §3.10's
+reject-if is written over and the column W7's arm died in. Per group at 0.3: Jamendo gross 327 → **199**
+(±500/t 81.88 → **89.53**, 2 864 lines), YouTube 282 → **185** (73.68 → **80.67**, 2 204).
+
+### Out of sample, twice, under four objectives
+
+W7 was explicit that the review's P was tuned in-sample. Each objective below is fitted on songs the read is
+then taken on NONE of: leave-one-song-out over the 28 (fit on 27, read the held-out song at that P) and a
+2-fold interleaved split (fit on 14, read the other 14). `guarded` is §3.10's reject-if expressed as an
+objective rather than a verdict — the best pooled ±500/t among the arms that cost the full sheet no gross line
+and no more than 0.5 pt.
+
+| objective | in-sample P | in-sample | LOSO held-out | LOSO picks | 2-fold held-out |
+| --- | --- | --- | --- | --- | --- |
+| `w7` (gross, then ±500/t) | 0.1 | 378 / 85.95 | **398 / 85.42** | 0.1 ×24, 0.25 ×3, 0.3 ×1 | 382 / 85.46 |
+| `pm500` (±500/t alone) | 0.1 | 378 / 85.95 | **392 / 85.54** | 0.1 ×23, 0.2 ×5 | 382 / 85.46 |
+| `partial` (drop50 ±500/t) | 0.05 | 387 / 85.54 | **410 / 85.12** | 0.05 ×20, 0.1 ×5, 0.2 ×2, 0.15 ×1 | 383 / 85.77 |
+| `guarded` (§3.10's clause) | **0.3** | 384 / 85.67 | **406 / 85.06** | 0.3 ×14, 0.45 ×9, 0.15 ×2, 0.35 ×2, 0.25 ×1 | 389 / 85.20 |
+
+Three things worth reading off it. (1) **The optimism is small and the win survives it**: the worst held-out
+read on the table is gross 410 / ±500/t 85.12 against a control of 609 / 78.31, so the out-of-sample gain is
+**−199 gross lines and +6.8 pt**, not an artefact of fitting. (2) **The fine region is where every objective
+lands** — the largest P any objective picks in any fold is **0.5** (`guarded`, one of the two 2-fold halves),
+and the review's `[1, 4]` is picked by none of them in any fold. (3) **The vote is only stable for the
+unconstrained objectives.** `w7` and `pm500` pick 0.1 in 23–24 of 28 LOSO folds; `guarded` splits 0.3/0.45
+(and 0.5/0.1 across the two halves) because a constraint on a discrete gross COUNT is a step function one
+song can move. So the honest statement is a region and a rule, not a digit: **P ∈ [0.1, 0.3]
+out of sample, and 0.3 is its conservative end** — the least eager star in the region, the one that holds the
+full sheet, and the closest to the band the review proposed. `ml.STAR_PENALTY_NATS = 0.3`.
+
+### One song through the whole ladder: the line that killed W7's arm (n = 1, NOT the verdict)
+
+The arm was rejected on 14 YouTube cells of which **11 were `never-be-alone` losing one line of its 47 to
+`missing`**, in 11 of 16 modes *including* `truth`. That song, that level, both arms, code `28e8cccbc63012d1`,
+HuBERT-L on MPS, `--asr off`, emissions warm (`_runs/w9-star-spot-{off,on}`, 30 s + 54 s):
+
+| mode | arm | in_text | missing | scored | gross | band | ±500/text | `high` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| truth | off | 47 | **1** | 46 | 0 | 3 | 91.49 | 23 |
+| truth | **star @ 0.3** | 47 | **0** | **47** | 0 | **2** | **95.74** | **27** |
+| drop50 | off | 23 | **0** | 23 | 0 | 15 | 34.78 | 0 |
+| drop50 | **star @ 0.3** | 23 | **2** | 21 | 0 | 14 | **30.43** | 0 |
+
+**At `truth` the clause inverts**: the arm publishes the line the default loses (`missing` 1 → 0) and improves
+±500/text by 4.25 pt with gross still 0, where at P = 1.0 it *lost* a second line. The trail says the arm is
+live and says the new P — `star: one per line, id 29 = frame max − 0.3 nats, its frames blank (star)`. **At
+`drop50` the same song loses two lines to `missing`**, so the arm has not stopped being able to trip
+`missing_up`; it has stopped tripping it on the path that publishes. One song is one song: this is an existence
+proof that the honest P changes the sign of the deciding cell, not a re-verdict.
+
+### The claims path at P = 1.0, re-read on the 28 — W7's REJECTION IS NOT A DENOMINATOR ARTEFACT
+
+Everything above is the blind decode. §3.10's reject-if is about the path that **publishes**, and W7 took that
+verdict on the 32-song `all` pool — so before writing a gate file for the re-fit, the old verdict was re-read
+on the honest basis. This costs no corpus run: `_runs/w7-star-run_align/rows.jsonl` and `_runs/w7-ra/rows.jsonl`
+re-summarized by today's harness gain the `scored` group their committed summaries predate.
+
+**The arm at P = 1.0 fails every clause it failed before, and the per-song one gets WORSE.** The 32-song clause
+is YouTube-only; `scored` holds Jamendo too, so it reads **15** cells where the review's wording reads 14.
+
+| clause | 32-song `all` | 28-song `scored` |
+| --- | --- | --- |
+| song gains a gross or missing line | 14 cells (YouTube) | **15** cells |
+| `truth`: no song loses lines | 1 | 1 |
+| `sum(song.high_gross)` | 3 ≤ 2 | 3 ≤ 2 (`hello` blind 0 → 1) |
+| `min_song_delta(truth.jamendo.word_pm300)` | −4.26 pt | −4.26 pt (`jamendo` ⊂ `scored`, 20 of 28) |
+
+So the two artefacts this build already caught — the review's published-lines-only scratch scorer and W8b's
+band arms — do **not** explain W7's verdict. It stands on the pool that matters.
+
+**And the number this wave was told to re-read on today's basis.** "drop50 gross 82 → 44 with ±500/text
+75.72 → 81.90" is a 32-song reading. On the 28 the same two runs read **gross 69 → 33, ±500/text
+79.42 → 87.42, `missing` 45 → 18 of 763 served, `scored` 718 → 745** — the arm publishes **27 more lines** and
+places them **8 pt better**, which is the one shape a denominator artefact cannot have. Across the other modes
+at P = 1.0: `truth` ±500 97.07 → 97.41 with gross 0 and `high_bad` 0 both held, `jit` 92.69 → 94.22, `blind`
+gross 49 → 41 and ±500 87.97 → 89.23, `extraverse` 97.43 → 97.96. What it costs is the PLAN's pinned **word**
+row — ±100 85.46 → 84.94, ±300 97.16 → 96.81, AAE 71.1 → 74.1 ms — and two scored lines at `drop20`
+(1209 → 1207). Partial-sheet line starts bought with full-sheet word onsets: the trade W7 named, confirmed on
+the pool it should have been named on.
+
+**Which way the re-fit moves those clauses, stated against our own interest.** 11 of the 15 regressing cells
+are ONE song: `never-be-alone` losing one line of its 47 to `missing`, in 11 of 16 modes including `truth`. The
+other four are `Avercage_-_Embers` blind +1 gross, `shape-of-you` blind +1 gross, `Kinematic_-_Peyote` drop50
++2 `missing`, `tfr-mayday` drop20 +1 `missing`. The spot check above decoded that song at P = 0.3 and `truth`
+**inverts** (`missing` 1 → 0, ±500/text 91.49 → 95.74, gross still 0), which is why a corpus read is owed —
+but P = 0.3 is a **cheaper, therefore more eager** star than 1.0, and the decode sweep reads the full sheet 54
+gross at P = 1 against 60 at P = 0.3. The clauses W7 died on are full-sheet-path clauses, and lowering P moves
+them the **wrong** way. One song inverting is an existence proof, not a prediction.
+
+### What the hermetic fixture can and cannot say about P (review W9 r1-tests-12)
+
+`tests/test_star.py`'s `tempting()` fixture is an EAGERNESS test, not a fit. Its ladder, frames the forced
+path spends on a star over `LINES[1:]`:
+
+| P (nats) | 0.0 | 0.05 | 0.1 | 0.3 | 0.5 | 1.0 | 2.0 | 4.0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| star frames | 156 | 89 | 89 | 89 | 89 | 89 | 2 | 2 |
+
+The intro the star has to absorb is 90 frames, so the fixture's own cliff falls between **1 and 2 nats** and
+every value from 0.05 to 1.0 reads identically on it. Two consequences, both of them properties of the
+fixture rather than of the arm: the review's proposed [1, 4] band STRADDLES this cliff rather than sitting
+above it, and no symbolic test here can tell the shipped 0.3 from W7's 1.0 — mutating the constant to 1.0
+left the whole suite green. The discrimination is the corpus's (the tables above), so the shipped value is
+pinned as a LITERAL in `test_the_shipped_penalty_is_the_one_the_corpus_fitted`, the way
+`tests/test_viterbi.py` pins the arcs' 30.0 / 6.0.
+
+### What is settled here, and what is not
+
+Settled: P was fitted out of sample on the 28 songs that score, under four named objectives and two
+hold-out schemes, over a grid that extends past the optimum on both sides; the fit is invariant to which
+stored matrix set is read; at the decode the shipped value costs the full sheet nothing; and W7's claims-path
+rejection survives the move to the accuracy pool rather than dissolving into it.
+
+NOT settled, and not settleable without a corpus run: whether the re-fitted P clears §3.10 on the path that
+publishes. The arm therefore stays **default-off behind `ENCORE_ALIGN_EXPERIMENTS=star`** until that read says
+otherwise. The file to read it with is the new **[`gates/w9-star.yaml`](gates/w9-star.yaml)**, not
+`w7-star.yaml`, whose pooled rules are on the 32-song pool and whose header is about a different arm; the new
+file puts §3.10's clause on both bases, floors `in_text` / `scored` so no percentage can be bought by
+refusing, and carries the pinned truth row (±500 97.07, gross 0, `high_bad` 0, `line_sync` 0, Jamendo words
+±100 85.46 / AAE 71.1 ms) as absolute literals. Its three scored readings — the default against itself at
+**69/70** (69 parsed rules plus the built-in; the one FAIL is the `pooled-gross-down` SHOULD), the P = 1.0 arm
+rejected on **8** clauses readable from the committed pair, and **39** ERRORs against a pre-W8b baseline — are
+pinned in `tests/test_bench_e2e.py`. Default-off with the new sweep recorded is a legitimate
+outcome of this task; so is default-on if the corpus says so.
+
+## W9: a vendored decoder, and the three arms it unblocks (2026-10-14; review §3 items 14 + 15, star phase B)
+
+The research track. One new decoder — `domain/lyrics/viterbi.py`, a pure-numpy CTC Viterbi with int8
+backpointers in the style of NeMo's `aligner_utils` (Apache-2.0) — and the three things a *fixed* kernel
+cannot be asked to do, each expressed as arcs in its graph: **skip arcs over an optional line** (review
+§3.15), **a star that may be bypassed** (phase B of §3.10), and **a claim prior inside the decode** (§3.14).
+Six knob names for the three arms, because §3.14 has two halves that are worth measuring apart and the
+review named a fourth combination as the one that decides it:
+
+| `ENCORE_ALIGN_EXPERIMENTS` | what it is |
+| --- | --- |
+| `vendored` | the **control**: an empty graph, so the decoder swap and nothing else |
+| `skip-arcs` | §3.15, as a **complement** to the never-sung rule (repeats exempt, 30 + 6/char) |
+| `star-b` | phase B: §3.10's token, in a graph that may bypass it |
+| `claim-priors` | §3.14's capped-Gaussian onset bonus at each line's first-character state |
+| `claim-fusion` | §3.14's other half: the mix fused in where the stem is mute inside a claim window |
+| `priors-decide` | the review's **deciding arm** — priors + fusion + optional lines, the ladder bypassed |
+
+Every one of them ships **default-off**. The design is `docs/arch/04-alignment.md` §3.2 and invariant XA-18;
+the corpus verdict is **owed, not recorded** (the last section below), and the file to take it with is
+[`gates/w9-research.yaml`](gates/w9-research.yaml).
+
+**`F5` was stale and this is not urgent-by-removal.** The review's F5 said `torchaudio.functional.forced_align`
+was being deleted in 2.9; W4b found 2.10 and 2.11 both keep it. The vendored decoder's value is not insurance
+against a removal — it is that the three arms above cannot be written without it.
+
+### The swap is free, and that is held two ways
+
+An alternative decoder is only worth having if swapping it in is **provably** free; otherwise every arm
+measured through it is measuring the swap as well. So on an empty `Graph` the vendored decoder is the kernel
+**frame for frame**: the same three-way tie-break (a step or a blank-skip only when *strictly* best), the same
+choice of final state (the trailing blank only when *strictly* better), float32 accumulation, and `ValueError`
+wherever the kernel refuses.
+
+Two legs, because each one alone has a hole:
+
+* `tests/test_viterbi.py::test_an_empty_graph_is_the_fixture_kernel_frame_for_frame` — against
+  `tests/ctc_fixture.py`'s `ctc_viterbi`, **without torch**, so it runs everywhere.
+* `tests/test_ml_contract.py::test_the_vendored_decoder_is_the_real_kernel_frame_for_frame` — against
+  `torchaudio.functional.forced_align` **itself**. This is the leg that makes the claim true; the fixture is
+  only *held* to the kernel by a sibling test, and a chain of two approximations is not a proof.
+
+Both run the same 80 cases and assert `compared >= 60` so neither can pass vacuously: 40 real windows sliced
+out of a sung matrix, 20 **flat** matrices (`-3.3` everywhere — the exactly-ambiguous case, where tie-breaking
+is the *only* thing that decides the path) and 20 random log-softmax matrices, with 1–65 targets over 10–199
+frames. Cases the kernel refuses must raise `ValueError` from the vendored one too, and do.
+
+The third leg is at the step: `tests/test_research_arms.py` runs `time_text` twice over one fixture and
+compares the **published documents**, so a drift anywhere between the matrix and the file — spans, leads,
+ends, grades — would show. `gates/w9-research.yaml`'s `vendored-control-changes-no-document` is the same claim
+on the corpus, and it is the clause the rest of the file rests on.
+
+### What the graph adds
+
+**Skip arcs (§3.15).** One penalised arc per line, from the blank *before* its first character to the blank
+*after* its last, priced `SKIP_LINE_NATS + SKIP_CHAR_NATS × characters` = **30 + 6/char**, the review's refined
+α/β pair. Blank-to-blank on purpose: the bypassed line's neighbours stay separated by a blank frame, so no two
+character runs can merge and XA-11's span count still holds. A **repeated line is exempt** — the arc has no way
+to tell which occurrence is which, so bypassing one is as likely to drop the sung chorus as the unsung one; the
+step computes that set and `viterbi.line_skips` honours it.
+
+It ships as a **detector, not as the publishing decode**: the lines it names are blanked and the shipped decode
+runs again without them, which is exactly what the never-sung rule does to a line it grades unsung. That is
+what makes it a *complement* and not a replacement — the arcs run first, on the blind decode, and the
+three-signal rule then grades what is left. The review measured the replacement at **+21 gross and +17 false
+drops per 1 760 clean blind lines**, and the complement at **+1 gross and 0 false drops** against the shipped
+rule's 4; the complement is the only one of the two that was ever worth building.
+
+**The star, phase B.** The star state emits `frame max − P` computed *in the graph*. The new power over phase A
+is that it may be **bypassed for free**, through two arcs — from the blank before it, and from the character
+before that — which together make the starred graph a strict **superset** of the plain one: every plain path
+exists in it at the same score, so a large `P` reproduces the plain decode exactly (pinned as
+`test_a_huge_star_penalty_reproduces_the_plain_decode`, and `test_the_star_only_ever_helps_the_path…` checks
+the other direction at P = 0.1, 0.3, 1.0 and 4.0). A fixed kernel cannot express that: a target in the sequence
+must be visited. At one `P` the star state's value is exactly what `ml.starred`'s appended column holds, which
+is why the two phases share one fitted penalty — so phase B inherits W9's re-fitted **P = 0.3** (the section
+above) rather than fitting its own.
+
+**The onset prior (§3.14).** `prior.onset_bonus` builds, per line, nats added at that line's first-character
+state: a Gaussian centred on the **clock-mapped** claim (XA-04 — a raw claim would centre the bonus on the
+sheet's own offset), peak `ONSET_BONUS_NATS` = 4.0, width `ONSET_SIGMA_SEC` = 0.6 s, truncated to zero beyond
+`ONSET_REACH_SEC` = 2.0 s so a mis-bound repeat cannot pull a line across the song. **The 4.0 is UNFITTED** —
+the review never ran the arm that would fit it, and a sweep is owed before the number means anything. The 0.6 s
+is deliberately wider than the ±300 ms the claims are scored at, because what the prior is *for* is a line the
+decode put seconds away.
+
+Two properties of it are worth more than the constants. It is paid **once, on the transition into the state**,
+never per frame of dwelling — measured on the *emission* instead, a 20-nat peak parked a line's first character
+on the prior's own peak and paid **600 nats of evidence** for the privilege, which is a boundary bonus turned
+into a magnet. And a prior is **never added to a reported score**: the score is the word's confidence and a
+bonus is not evidence (`test_a_prior_is_never_added_to_a_reported_score` checks every published frame against
+the matrix itself).
+
+`prior.fused` is the other half: inside a claim window where the target's envelope hears nothing, the mix's
+frames replace the stem's, because there they are the only evidence there is. Note it changes the **evidence**,
+not the decoder, so `claim-fusion` alone does not imply the vendored graph.
+
+**Where the arms reach, and where they do not.** The prior and the fusion reach **one** decode — the primed
+re-decode, after the claim clock and after the blind verdict grading reads (XA-03, XA-04) — and under
+`priors-decide` that decode stands in for the whole repair ladder. A repair window is never handed a graph: its
+targets are a different sequence over a slice, so a graph built on global target positions would describe a
+decode that never ran. A primed line's provenance is `_Source.PRIMED`, which is not `BLIND`, so grading asks it
+for blind corroboration **and** agreement — strictly more than a blind line is asked for, which is the right
+direction for a line a claim helped place.
+
+### A fixture that cannot price an arc, and the one that can
+
+Pricing an arc on synthetic evidence is its own trap, and it is worth recording because the next person to
+write a step-level test for a penalised arc will hit it. On `ctc_fixture.sung_matrix` the shipped 30 + 6/char
+arc **can never pay, at any line length**: in silence the blank sits at `log 0.9` = −0.105 nats and a character
+there at `log(0.1/27)` = −5.59, so an unsung character costs about **5.49 nats** against an arc that charges
+**6** — the price per character exceeds the evidence per character, so a longer line only widens the gap.
+
+Worse, sharpening the silence does not fix it. Measured on an eight-line fixture with a 34-character credit
+line appended (arc price 30 + 6 × 34 = **234 nats**), the saving from bypassing it is **214.2 nats, invariant**
+at blank confidences of 0.999, 0.99999 and 0.9999999 — because the monotone path does not put the unsung line
+in the sharpened silence at all. It smears it across the **last sung line's spare frames** (frames 1943–1997 of
+2500), where `sung_matrix` spreads each character over about four frames and a fifth character costs almost
+nothing. 214.2 / 34 = 6.30 nats per character, just under the price, and no amount of silence sharpening moves
+a number that was never read off the silence.
+
+What works is taking the spare frames away: one frame per sung character, one blank between. Then an extra
+character has to be bought from the silence, and the shipped price pays — at blank confidence 0.99 the arc
+bypasses **exactly** the unsung line, saving 268.3 nats against its 234, and at 0.999, 346.9. At the fixture's
+own `HIT` = 0.9 it still saves 0.0, so the fixture's confidence is itself the variable. `packed()` in
+`tests/test_research_arms.py` is that matrix, and it is why the step-level skip-arc test asserts a real drop at
+the **shipped** constants instead of at a fixture price. The unit tests in `tests/test_viterbi.py` keep their
+own cheap pair (2.0 + 1.0/char) and say so, which is the honest way to test a mechanism rather than a price.
+
+### One defect, found by the tests and fixed
+
+`claim-fusion` **fused the mix into the decode and said nothing about it on the audit trail.** The step collects
+what the decode arms did into one `decode_note` list, and the trail clause that prints it was gated on
+`vendored_arm` — but `claim-fusion` changes the evidence and not the decoder, so it does not set that flag.
+Under `ENCORE_ALIGN_EXPERIMENTS=claim-fusion` the step would replace frames of the stem's matrix with the
+mix's and publish a document whose trail read exactly like a run that had fused nothing. That is the failure
+mode the surrounding code is explicit about ("an arm that acted and an arm that went inert must not read
+alike"), and it was invisible until a step-level test asked the trail what had happened. `_graph_why` now takes
+the decoder it is describing and labels itself `vendored decoder:` or `claim fusion:` accordingly, and the
+clause prints under either arm.
+
+### What is settled here, and what is not
+
+**Settled.** The decoder exists, it is bit-compatible with the real kernel on the plain topology over 80 cases
+including the flat ones where tie-breaking is the whole decision, and the swap is a byte-level no-op on a
+published document at the step. All three arms are built, wired to the one knob, and reachable: the arcs detect
+and drop, the star is optional in the graph, the prior tips a placement the evidence is indifferent about
+(`test_the_onset_prior_decides_a_placement_the_evidence_is_indifferent_about` — on a flat matrix the line lands
+on the claim, ±20 ms, for claims at 2.0 s and 5.0 s), the fusion reads the mix only inside mute claim windows,
+and `priors-decide` really does stand the ladder down (on a scattered-claims fixture the `vendored` control
+publishes 3 window + 4 mix + 1 blind timings and the deciding arm publishes 8 primed and no repair at all).
+**45 hermetic tests** carry it: **23** in `tests/test_viterbi.py`, **20** in `tests/test_research_arms.py` and
+**2** in `tests/test_ml_contract.py` (the vendored decoder and the star column, against the real kernel). The
+first two counts are derived from the files in
+`test_the_readme_counts_the_hermetic_tests_this_track_actually_has`, because this sentence had already drifted
+once (review W9 r2-spec-9).
+
+**Not settled, and not settleable without a corpus run:** whether any of them is worth defaulting on. Nothing
+in this section is a corpus number — **no bench sweep was run for it** — and the review's own measurements say
+what to expect: §3.15's complement is worth about **+1 gross and 0 false drops** against the shipped rule's 4,
+which is a small win that the per-song clause can easily eat; and §3.14's prior arm measured **3.1 pt worse at
+±500 with truth claims** (85.4 against 88.5) and **4.2 worse on HuBERT**. So the honest prediction is that
+`claim-priors` fails, `skip-arcs` is marginal, and the one genuinely open question is `priors-decide`, the
+combination the review never ran. **Run the control arm first** (`vendored`), because if it moves a document
+nothing else in the file means anything.
+
+`gates/w9-research.yaml` is the file to read them with: 83 rules, one run per arm against the knob-unset cell
+of the same tree. It carries the PLAN's 2026-10-09 row as **absolute literals** (truth ±500 97.07, gross 0,
+`high_bad` 0, `line_sync` 0, Jamendo words ±100 85.46 / ±300 97.16 / AAE 71.1 ms, highlight 81.40, wrong text
+0/320 + 0/320 and 0/640 at the LINE_SYNC rung), holds **gross at 0 in all twelve right-text modes** that read
+0 today, floors `in_text` and `scored` so no percentage can be bought by refusing a song, and puts §3.15's own
+false-drop risk on the per-song clause. Its three readings — the default against itself failing only the four
+SHOULD clauses, the control clause failing at 28 and 37 changed documents on two committed arm runs, and the
+pooled 28-song reads ERRORing against a pre-W8b baseline — are pinned in
+`tests/test_bench_e2e.py::test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites`.
+**Default-off with the arms built and the numbers recorded is the expected outcome of this wave**, and it is
+not a failure: the review asked for them to be built and measured, and three of the four are expected to lose.
+
+## W9: the research track, priced on the corpus (2026-10-14)
+
+Five corpus runs, 5440 cases, **0 ERROR rows**, 6035 s of wall clock, one tree per cell, HuBERT-Large, 32
+songs, seed 0, `wrong_k` 10, `--tfr-audio youtube`, mps, `--asr off`, `--detector off`. Code
+`ee807b0096e456dc` for the four pre-flip cells, `6db0b601a018e8d1` for the post-flip one. The emitter moved
+to **`14c8c0a4bfba8627`** — W7's `1a2fd6852bd30243` is dead because `adapters/ml.py`'s bytes are in the
+emission key and `STAR_PENALTY_NATS` is in that file — so the store was **cold: 0 of 32 matrices**, and the
+first run paid one full HuBERT-Large pass (about 370 s of the `time_text` cell's 1473). Every later cell on
+the same `align_config` read the store; `ENCORE_ALIGN_EXPERIMENTS=star` is in the key, so the star cell paid
+its own cold pass (about 500 s of 1569).
+
+### The default did not move one byte, and that is the measurement, not the argument
+
+The research track and the star re-fit are reachable only through default-off knobs, so the prediction was
+byte identity and the honest way to state it is a digest. Over the **2176 shared cases** of
+`_runs/w9-{ra,tt}` against `_runs/w8b-{ra,tt}`, and the **1088** of `_runs/w9-lines` against
+`_runs/w8b-lines`:
+
+| compared | cases | `doc_sha256` differs | `onsets_sha256` differs | `outcome` differs | `confidence` differs |
+| --- | --- | --- | --- | --- | --- |
+| `run_align` | 1088 | **0** | **0** | **0** | **0** |
+| `time_text` | 1088 | **0** | **0** | **0** | **0** |
+| `run_align --sync-mode lines` | 1088 | **0** | **0** | **0** | — |
+
+Every printed cell of `--compare` reads `(=)` at both forced levels, and the only deltas the table prints at
+all are the 28 `(+0.0)` of the per-song best/worst lines. The 28-song `scored` row is therefore the PLAN's
+2026-10-09 row exactly: `truth` ±500 **97.07**, ±500/text 95.05, **gross 0**, `high_bad` **0**, 28 of 28
+zero-gross songs, Jamendo words ±100 **85.46** / ±250 96.58 / ±300 **97.16** / AAE **71.1 ms**, highlight
+**81.40 %**, wrong text **0/320** and own-clock **0/320** at both forced levels and **0/640** at the
+LINE_SYNC rung (320 + 320 cases, 0 published). The lines rung reads `truth` ±500 **100.00**.
+
+Gate files re-read on this tree: the new [`gates/w9.yaml`](gates/w9.yaml) **88/88 at both forced levels**,
+`w8b.yaml` 154/154, `w8b-arms.yaml` 77/77, `w8b-lines.yaml` 94/94 on the lines cell, `w7.yaml` 45/45,
+`w7-{truth,words,wrongtext}.yaml` 18/18 + 25/25 + 10/10, `w4b.yaml` 30/30. `w8a.yaml` reads 150/154 and
+`w5.yaml` 38/40, and **both sets of failures are identical on W8b's own committed rows** — they are those
+waves' arm clauses (`best-song-gain-*`, `band-down-truth`, `w5-*-unsung-down`) read against a default pair,
+where they can never hold. Not regressions; checked by re-reading both files on `_runs/w8b-{ra,tt}`.
+
+### The star at the re-fitted P = 0.3: a very large win on the partial sheet, rejected on the full one
+
+`ENCORE_ALIGN_EXPERIMENTS=star` against the same tree with the knob unset (`_runs/w9-star-on-ra` against
+`_runs/w9-ra`), read with [`gates/w9-star.yaml`](gates/w9-star.yaml): **62 PASS, 10 FAIL, 0 ERROR** (56/9/0
+as the file was first written; review W9 r1-spec-11 added §3.7's five `high_bad` clauses, one of which the arm
+trips, and r2-spec-7 the two `word_aligned` count pins the arm passes). The arm **stays default-off**. What it buys, on the 28-song `scored` basis:
+
+| 28-song `scored` | `star` off | `star` on, P = 0.3 |
+| --- | --- | --- |
+| `drop50` gross | 69 | **0** |
+| `drop50` ±500/text | 79.42 | **93.32** |
+| `drop50` ±500 | 84.40 | **95.83** |
+| `drop50` missing / scored | 45 / 718 | **20 / 743** |
+| `blind` gross | 49 | **42** |
+| pooled `scored` gross, 14 modes | 118 | **42** |
+| `truth` ±500 | 97.07 | **97.34** |
+| `truth` ±500/text | 95.05 | **95.44** |
+| `truth` missing / scored | 32 / 1504 | **30 / 1506** |
+| Jamendo `truth` highlight | 81.40 | **81.94** |
+
+**W5's number to beat, re-read on today's basis.** The figure this wave was sent to improve was `drop50`
+gross **82 → 44** with ±500/text 75.72 → 81.90, a 32-song `all` reading of the star at P = 1.0. On the same
+32-song pool the re-fitted P reads **82 → 11** with ±500/text 75.72 → **86.03** — another 33 gross lines and
+4.1 points past what the review's P bought. `never-be-alone`'s `truth` cell inverts exactly as the spot check
+predicted (47 of 47 lines, ±500 91.49 → **95.74**), so the one existence proof held at corpus scale.
+
+**And why it is still refused.** Ten clauses fail, and they split in two:
+
+| clause | reading | verdict |
+| --- | --- | --- |
+| `truth-jamendo-word-pm100-at-least-85-46` | 85.46 → **85.02** | denominator artefact — see below |
+| `truth-jamendo-word-pm300-at-least-97-16` | 97.16 → **96.98** | denominator artefact |
+| `truth-jamendo-word-aae-at-most-71-1` | 71.1 → **72.7 ms** | denominator artefact |
+| `truth-scored-word-pm100` / `-aae` | the same two numbers on the 28 | denominator artefact |
+| `no-scored-song-gains-a-gross-line` | **6 cells** | real |
+| `no-youtube-song-gains-a-gross-line` | 4 cells | real |
+| `no-jamendo-song-worse-at-word-pm300` | `min_song_delta` **−5.19 pt** (bound −1.0) | real |
+| `scored-lines-not-down-drop20` | 1209 → **1208** | real |
+| `jit-high-bad-not-up` | `jit` `high_bad` 7 → **8** | real — §3.7's own rule |
+
+**The grading clause is the tenth, and it was missing.** §3.7 says a `high` line that is WRONG may not rise;
+`high_gross` and `high_bad` are two different readings of it and this file carried only the first (review W9
+r1-spec-11). With `high_bad` read per mode the arm posts one more confidently-wrong published line at `jit`
+(**7 → 8**, a `high` line more than 0.5 s out) against an improvement at `blind` (**43 → 39**) and 0 in every
+other mode — the same "more eager where the clock is noisy" shape the gross cells show.
+
+**The first five are bookkeeping, and the provenance-held family proves it.** The star publishes **157 more
+measured Jamendo words** at `truth` — `word_aligned` 5378 → **5535**, `word_interpolated` 311 → **158** — so
+±100 and ±300 are percentages over a denominator that grew. In COUNTS the arm puts **110 more words inside
+±100 ms** (4596 → 4706) and **143 more inside ±300** (5225 → 5368). `word_published_*`, which W8b built to
+score the same onsets with provenance held constant, moves the other way at every tolerance: ±100 82.79 →
+**83.58**, ±250 94.43 → **95.13**, ±300 95.36 → **95.87**, published AAE 86.6 → **82.5 ms**. `word_pco300`,
+which counts an unaligned word as not-correct, rises 91.78 → **94.29**.
+
+**The real objections are `jit` and six songs.** On the provenance-held family `jit` genuinely loses:
+published ±100 76.64 → **74.90**, ±300 90.54 → **89.11**, published AAE 116.0 → **124.9 ms**, and
+`word_aligned` 5102 → 5096 — fewer words measured, placed worse. `blind`'s tail gets much worse too
+(published AAE 253.6 → **367.0 ms**) even as its ±100 is flat. And six scored cells regress: `blind` +1
+gross on `Avercage_-_Embers`, +1 on `Explosive_Ear_Candy_-_Like_The_Sun`, +2 on `The_Rinn_-_Voices__2017_
+Version_`; `drop20` +2 missing on `tfr-mayday`; `drop50` +2 missing on `Kinematic_-_Peyote` and +2 on
+`never-be-alone` — which is the same song whose `truth` cell inverted, paying for it on the half sheet. Two
+more cells are on `tfr-chosen`, excluded from accuracy.
+
+So the shape is exactly the trade W7 named and the re-fit sharpened rather than dissolved: **a cheaper star
+is a more eager star**. It is worth an enormous amount where the sheet is INCOMPLETE and it costs where the
+sheet is complete but its clock is noisy. §3.10 is not cleared, and the arm keeps its knob.
+
+### The research arms: a decode-level read, and why only one of them would earn a corpus cell
+
+The cheapest honest read of the arms is at the decode — `generate()` over the stored matrices, no model pass
+and no ladder, so the only variable is the graph. 28 songs × 5 claim modes × 5 arms, 672 rows, 385 s
+(`$ENCORE_BENCH_ROOT/_runs/w9-graph/{graph_sweep.py,arms28.json}`; `text_pm500 = w500 / in_text`, so a line
+the decode never placed is charged as a miss). `prior` is skipped where a mode carries no claim times. The
+cell was re-run after the review's round-1 fixes and is identical in all 672 rows (`arms28-r1.json`; below,
+"W9 review round 1"), so every number in this table is on the shipped code.
+
+| mode | arm | gross | ±500/text | AAE ms | extra dropped | TRUE lines dropped |
+| --- | --- | --- | --- | --- | --- | --- |
+| `truth` | `off` | 60 | 86.98 | 464 | 0 | 0 |
+| `truth` | `skip` | 59 | 86.91 | 463 | 0 | **5** |
+| `truth` | `star-a` | 60 | 89.26 | 572 | 0 | 0 |
+| `truth` | `star-b` | **57** | **89.58** | 534 | 0 | 0 |
+| `truth` | `prior` | **39** | **90.43** | **366** | 0 | 0 |
+| `drop50` | `off` | 280 | 52.69 | 3319 | — | 0 |
+| `drop50` | `skip` | 280 | 52.69 | 3319 | — | 0 |
+| `drop50` | `star-a` | **134** | **75.88** | 1755 | — | 0 |
+| `drop50` | `star-b` | 135 | 75.88 | 1758 | — | 0 |
+| `drop50` | `prior` | 220 | 62.65 | 2738 | — | 0 |
+| `extraverse` | `off` | 98 | 84.64 | 622 | 0 | 0 |
+| `extraverse` | `skip` | 78 | 85.87 | **488** | **58 of 168** | **7** |
+| `extraverse` | `prior` | 78 | **87.43** | 564 | 0 | 0 |
+
+**`skip-arcs` is refused here and does not reach a corpus cell.** In `truth` the served text is exactly the
+song's own, so there is nothing to decline — and the arm drops **5 true lines** anyway, taking `missing` from
+1 to 6 and ±500/text DOWN 86.98 → 86.91. It does detect: 58 of `extraverse`'s 168 injected lines. But it buys
+them with 7 true drops in the same mode, against the shipped never-sung rule's 4 on the full corpus. The
+review's own prediction for the complement was "+1 gross and 0 false drops"; the measurement is +1 gross and
+**5–7 false drops**. Default-off with evidence.
+
+**`star-b` is within noise of `star-a` and inherits its rejection.** It is better by 3 gross and 0.32 pt at
+`truth`/`blind`, identical at `drop50`, and WORSE at `extraverse` (102 against `star-a`'s 100 and `off`'s 98).
+Since `star-a` — the same token through the real kernel — is the arm the corpus just refused on the full-sheet
+word clock, a variant that moves those clauses by a third of a point cannot clear them. Default-off.
+
+**`claim-priors` is the one arm whose decode cell earns a corpus run, and it did not get one.** It is the
+biggest decode-level win of any arm on every mode it can run in — `truth` gross 60 → **39** and ±500/text
+86.98 → **90.43**, `credit` 64 → 43 and 86.00 → 89.52, `extraverse` 98 → 78 and 84.64 → 87.43, `drop50` 280 →
+220 and 52.69 → 62.65 — and the review's prediction (3.1 pt WORSE at ±500) is contradicted at the decode. But
+**every mode in that sweep is fed the evaluation reference**, not only `truth`: `credit`, `extraverse` and
+`drop50` ADD, INJECT or DROP lines and never retime a surviving one, so every scored line's claimed start is
+still its truth start to the microsecond (`e2e_lib.build_claims`; `blind` serves no times, which is why
+`prior` is skipped there). The sweep's five modes contain no claim-PERTURBING mode, so not one of its `prior`
+cells was an honest onset reading (review W9 r2-correctness-2).
+
+**So the arm was re-read on the three modes that do move a claim** — `graph_sweep.py --songs 28 --modes
+jit,off3,tempo102,truth --arms off,prior`, the same stored matrices and emitter `1a2fd6852bd30243`, 224 rows,
+**96 s** (`$ENCORE_BENCH_ROOT/_runs/w9-graph/honest28.json`):
+
+| 28 songs, decode level | gross | ±500/text | AAE ms |
+| --- | --- | --- | --- |
+| any mode, `off` (the control reads no claim) | 60 | 86.98 | 464 |
+| `truth` + `prior` — the oracle cell | **39** | **90.43** | 366 |
+| `jit` + `prior` — σ **0.3 s** per line | **39** | **90.17** | **356** |
+| `tempo102` + `prior` — a **+2 %** clock | 56 | 87.57 | 447 |
+| `off3` + `prior` — a **+3 s** sheet | **67** | **86.91** | 468 |
+
+**The win is real but conditional on the claim clock.** At a per-line jitter the prior keeps the whole oracle
+gain (39 gross, 0.26 pt off the oracle's ±500/text); at a 2 % tempo error about a third of it; at a 3 s offset
+it goes NEGATIVE — **7 gross lines worse than reading no claim at all**, and the only cell in the honest four
+where the arm costs anything. That is the shape production's control already assumes, because the clock-fixed
+ladder maps an `off3`-sized offset away before any repair sees a claim — which is another reason the owed read
+is a `run_align` cell and not a third decode cell. More importantly the `off` control at this level has **no
+ladder**, and
+production's control for §3.14 is the clock-fixed ladder plus the adoption guard — which is what the review
+asked for and what `priors-decide` exists to bypass. So the decode cell says the mechanism works and says
+nothing about whether it beats the ladder. **That read is owed**, it is one `run_align` cell per arm against
+`_runs/w9-ra` with [`gates/w9-research.yaml`](gates/w9-research.yaml), and the `vendored` control must go
+first. All six knobs stay off.
+
+**The `vendored` control's corpus cell was not run either**, and what stands in its place is narrower but not
+nothing: `tests/test_ml_contract.py` holds the vendored decoder to `torchaudio.functional.forced_align`
+**frame for frame** over 80 cases including the flat ones where tie-breaking is the whole decision, and
+`tests/test_research_arms.py` holds the swap to a byte-identical published document at the step. The corpus
+clause `vendored-control-changes-no-document` is the same claim over 1088 cases and is unread.
+
+## W9: `band-reopen` flipped default-on, and the four words the owner waived (2026-10-14)
+
+The owner's mid-wave decision (PLAN 2026-10-09): §4's re-opening — a repaired line that opened past its own
+claim while ENDING with it has its opening boundary moved back to the claim — becomes the shipped default.
+W8a measured the arm and left it off because its absolute gates could not be read on the 14-song selection
+that holds every move it makes; this is that reading, on the full corpus, taken AFTER the wave's own arms so
+the attribution stays readable. The name is retired and **`band-late-kept` is its control**, which is the
+idiom `docs/arch/04-alignment.md` §14 states for an arm that becomes the default.
+
+`_runs/w9f-ra` (code `6db0b601a018e8d1`, 998 s, warm store — the knob is not in the emitter key once it is
+the default) against `_runs/w9-ra` on the same tree. [`gates/w9-reopen.yaml`](gates/w9-reopen.yaml) is the new
+baseline's gate file and reads **91/91** (89/89 as first written; review W9 r1-spec-9 re-based its section 3
+and added the two `aligned-at-least-*` denominator pins).
+
+### What it bought
+
+| 28-song `scored` | pre-flip | post-flip |
+| --- | --- | --- |
+| `truth` ±500 | 97.07 | **97.27** |
+| `truth` ±500/text | 95.05 | **95.25** |
+| `truth` `band` (0.5–2 s) | 163 | **160** |
+| `jit` ±500 | 92.69 | **92.82** |
+| `drop20` ±500 | 96.28 | **96.44** |
+| `extraverse` ±500 | 97.43 | **97.62** |
+| `headers` / `credit` ±500 | 97.07 / 97.14 | **97.27 / 97.27** |
+| Jamendo `truth` words ±100 / ±300 / AAE | 85.46 / 97.16 / 71.1 ms | 85.54 / 97.23 / 70.6 ms |
+| Jamendo `truth` highlight | 81.40 | **81.50** |
+| `gross`, `missing`, `scored`, `high_bad`, every mode | — | **unchanged** |
+
+**THE WORD ROW IS NOT A GAIN, and the bolding above is deliberately withheld from it** (review W9
+r1-spec-9). Every percentage in the aligned family is over `word_aligned`, which the re-opening SHRINKS by
+re-labelling words interpolated: 5378 → 5373 at `truth`, 5102 → 5096 at `jit`. In counts the flip gained no
+word anywhere — `truth` inside ±100 **4596 → 4596** (+0), ±250 **5194 → 5194** (+0), ±300 **5225 → 5224**
+(−1); `jit` ±100 **4258 → 4254** (−4), ±300 **4891 → 4887** (−4). 4596/5378 = 85.46 and 4596/5373 = 85.54,
+which is the whole of the ±100 "rise". The AAE move is the same five words leaving the mean rather than being
+repaired: 71.1 × 5378 − 70.6 × 5373 = 3042 ms over 5 removed words, i.e. five words averaging 608 ms of error
+that are no longer counted. The flip's real gains are the line clock, the `band` count and `highlight`, all
+over denominators the re-labelling cannot move.
+
+**The whole gain is one song, and saying so is the point.** `Kinematic_-_Peyote` moves **+21.43 pt** at
+`truth` and `headers` (71.43 → **92.86**, the owner's own figure), +21.43 at `extraverse`, +18.18 at
+`drop20`, +14.29 at `credit`, +14.28 at `jit`. `tfr-chosen` moves +3.12 at `off05` and is excluded from
+accuracy. **No song loses anything at ±500 in any mode** — which is the clause W8a rejected the arm on
+(`gates/w8a.yaml`'s `no-song-loses-jit`, then `min_song_delta` −2.17) and which the free-time guard fixed.
+
+**It fires only where it can.** 26 of 1088 documents changed, in 8 modes (`truth` 4, `jit` 4, `off05` 1,
+`drop20` 4, `drop50` 1, `extraverse` 4, `headers` 4, `credit` 4) on 8 songs (`Kinematic_-_Peyote` 6,
+`Lower_Loveday_-_Is_It_Right_` 6, `Avercage_-_Embers` 5, `bohemian-rhapsody` 5, and one each on
+`Explosive_Ear_Candy_-_Like_The_Sun`, `HILA_-_Give_Me_the_Same`, `Quentin_Hannappe_-_Keep_On`,
+`tfr-chosen`) — every one inside W8a's 14 songs, which is what that wave's completeness argument predicted.
+`blind`, the uniform offsets, the tempo scalings and both wrong-text modes are **byte-identical**: no claim to
+re-open onto, no line opening past its claim while ending with it, and a refused text never reaches a repair.
+Wrong-text protection is therefore unchanged by measurement as well as by argument — **0/320** and **0/320**.
+
+### The four words, as a recorded exception
+
+W8a priced the waiver on its 14-song selection: of the 30 words the two sweeps disagree about, 24 land on
+exactly 0.0 ms in the six modes whose claimed times ARE the truth times, 2 are real `jit` gains (783.9 → 85.8
+and 908.8 → 186.5 ms), and **4 at `jit` move from inside ±100 ms to outside ±300** — `Explosive_Ear_Candy_-_
+Like_The_Sun` twice (**+317**, **+322 ms**), `HILA_-_Give_Me_the_Same` (**+342**) and
+`Quentin_Hannappe_-_Keep_On` (**+273**).
+
+On the full 32 songs the POOLED aligned-word PERCENTAGES rise at `jit` as well (±100 83.46 → 83.48, ±300
+95.86 → 95.90, AAE 80.3 → 80.1) where the 14-song selection read ±300 95.86 → 95.79 — but that rise is the
+denominator, not the other 18 songs paying for the four: in counts `jit` loses 4 words inside ±100 and 4
+inside ±300 over a `word_aligned` that fell 5102 → 5096 (review W9 r1-spec-9, and the count table above). So
+the only place the four are visible is the **provenance-held** family, and that is
+where the exception lives: `gates/w8b-arms.yaml` section 2's `jit` triple, which now reads ±100 **76.59**,
+±250 **89.37**, ±300 **90.51** against W8b's 76.64 / 89.40 / 90.54. The measured net, in the integer counts
+the rows carry rather than in rounded percentages, is **4360 → 4357 inside ±100, 5086 → 5084 inside ±250 and
+5151 → 5149 inside ±300**: the four named words leave every window, against the two gains above arriving —
+783.9 → 85.8 ms inside ±100 (`Kinematic_-_Peyote`, the song the waiver was bought for) and 908.8 → 186.5 ms
+inside ±250 and ±300 only. The denominator is the **5689** PUBLISHED onsets, `word_aligned +
+word_interpolated` (5102 + 587 pre-flip, 5096 + 593 post), and NOT the 5693 words `in_text`:
+`Color_Out_-_Falling_Star` pairs 224 and publishes 220, four paired words whose missing onsets
+`word_unpublished` (0) does not count. Fixed either way, so a percentage there is a word count at
+**0.01758** pt per word (review W9 r2-correctness-1).
+
+**It is an exception with no slack, not a loosened bound.** As measured the three clauses pass exactly
+(76.59 ≥ 76.59). One more broken word takes them to 76.57 / 89.35 / 90.49 and **all three go red** — verified
+by subtracting 0.0176 pt from each reading and re-running the rules. The file reads **77/77** on the post-flip
+default and 77/77 on the pre-flip cell, so the exception did not cost the file its teeth anywhere else.
+
+### Every gate file re-read on the new default, and what moved
+
+| file | post-flip | moved by the flip? |
+| --- | --- | --- |
+| `w9-reopen.yaml` (new) | **91/91** | — the file written for it |
+| `w8b-arms.yaml` | **77/77** | yes — the `jit` triple, now the named exception |
+| `w8b-lines.yaml` | 94/94 on `_runs/w9-lines` | no — the rung cannot fire the rule |
+| `w7-truth.yaml`, `w7-wrongtext.yaml`, `w4b.yaml` | 18/18, 10/10, 30/30 | no |
+| `w8a.yaml` | 152/154 | yes — W8a's two `word-aligned-not-down` rules, 5378 → 5373 and 5102 → 5096 |
+| `w7-words.yaml` | 22/25 | yes — `word_pco300` 91.78 → 91.76, `word_aligned` 5378 → 5373, `drop50` Jamendo ±300 82.55 → 82.54 |
+| `w8b.yaml` | 147/154 | yes — 5 identity rules, and `no-song-gains-{truth,jit}` on **+21.43** and +14.28 |
+| `w9.yaml` | 75/88 | yes — its §1 is the pre-flip identity claim, by construction |
+| `w5.yaml` | 38/40 | **no** — identical on W8b's own rows; W5 arm clauses on a default pair |
+
+The failures divide cleanly. `w8b.yaml`'s `no-song-gains-*` and `w9.yaml`'s §1 are **"nothing moves" clauses
+read on a wave that deliberately moved something**, and a clause that fails on a +21.43 pt GAIN is doing its
+job. `w8a.yaml`'s and `w7-words.yaml`'s failures are the aligned/interpolated **re-labelling** — 5 words at
+`truth`, 6 at `jit`, 0.1 % of the 5689 Jamendo pairs — which is precisely the verdict W8b re-judged and
+replaced with a bounded rule: `relabelled-at-most-{truth,jit}` allows 28 and reads 5 and 6, and
+`word-accounting-whole-*` confirms no word left the accounting. `word_pco300` falls 0.02 pt at `truth` and
+0.07 at `jit` for the same reason and nothing else. None of those nine readings is a timing regression, and
+`w9-reopen.yaml` section 3 floors them so the next wave inherits a ratchet rather than an argument — with the
+aligned family floored at the PRE-flip reading, because in counts it gained nothing, plus
+`aligned-at-least-{truth,jit}` pinning the denominator at this flip's own spend so no percentage there can be
+cleared by refusing another word (review W9 r1-spec-9).
+
+## W9 review round 1: the fix pass re-benched, and the no-op is now measured (2026-10-14)
+
+Round 1 of the W9 review fixed 14 findings, six of them in code: the vendored graph's frame-0 seeding and its
+bypass-aware frames precheck (`domain/lyrics/viterbi.py`), the arms' graph trail, `star-b`'s margin
+abstention, R3's claim-free blind-repeat input, and `fuse_in_the_mix`'s vocabulary guard. The fix pass argued
+no re-bench was owed because every one of those paths is reached only through a default-off knob. **That
+argument is now a measurement**, on the two levels where a published byte can move and on the decode cell the
+arms were judged by.
+
+**What it cost: nothing.** The emitter fingerprint is `14c8c0a4bfba8627`, UNCHANGED — nothing round 1 touched
+is in the emission key (`adapters/ml.py` is, and round 1 did not edit it) — so the store was warm for all 32
+songs in both cells and no HuBERT pass was paid. The code fingerprint moved `6db0b601a018e8d1` →
+**`d1f88c1c10ab72d9`**, which is the point: a different tree, the same bytes out. Two corpus cells, 2176
+cases, **0 ERROR rows**, 997 s + 905 s, plus the 672-row decode cell at 330 s.
+
+### The default publishes the baseline's bytes, in every mode, at both rungs
+
+`_runs/w9r1-ra` against `_runs/w9f-ra` and `_runs/w9r1-lines` against `_runs/w9-lines`, row for row on
+`(song, mode, variant)` over every field either row carries (`_tools/row_identity.py`):
+
+| compared | cases | `doc_sha256` | `onsets_sha256` | `outcome` | `confidence` | `verdict` | `gross` | `scored` | `high_bad` | `band` | `trail` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `run_align` (post-flip default) | 1088 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+| `run_align --sync-mode lines` | 1088 | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+
+The ONLY field that differs anywhere in 2176 rows is `attempts[].seconds`, the per-attempt wall clock (799
+and 957 rows of it). The `trail` column is worth naming on its own: round 1 rewrote the graph notes so a
+non-plain graph says itself where it is BUILT, and the default decode's trail is byte-identical anyway —
+because the default never builds one.
+
+So the shipped row is the flip's row, exactly: 28-song `scored` `truth` ±500 **97.27**, ±500/text **95.25**,
+**gross 0** in all twelve right-text modes, `high_bad` **0**, 28 of 28 zero-gross songs, Jamendo words ±100
+**85.54** / ±300 **97.23** / AAE **70.6 ms** over 5373 aligned, `word_pco300` 91.76, highlight **81.50 %**,
+wrong text **0/320** + own-clock **0/320**, and at the LINE_SYNC rung `truth` ±500 **100.00** with
+**0 of 640** wrong-text documents published. Rows: [`results/w9-r1-run_align.json`](results/w9-r1-run_align.json)
+and [`results/w9-r1-lines-run_align.json`](results/w9-r1-lines-run_align.json), with their per-case digests.
+
+### Every gate file reads what it read on the baseline, rule for rule
+
+[`gates/w9-r1.yaml`](gates/w9-r1.yaml) is this re-run's own file — identity against the post-flip baseline
+first, then the shipped accuracy row as absolute literals — and it reads **86/86**. Read against W8b's
+pre-flip row instead, its section 1 fails on exactly the flip's **26** documents (4 + 4 + 1 + 4 + 1 + 4 + 4 +
+4 across the eight modes that can fire), which is what keeps the identity clause from being vacuous.
+
+| file | on the post-fix row | on the post-flip baseline | same? |
+| --- | --- | --- | --- |
+| `w9-r1.yaml` (new) | **86/86** | — the file written for it | — |
+| `w9-reopen.yaml` | **91/91** | 91/91 | yes |
+| `w8b-arms.yaml` | **77/77** | 77/77 | yes — the four waived `jit` words, still with no slack |
+| `w8b-lines.yaml` | **94/94** | 94/94 | yes |
+| `w8a.yaml` | 152/154 | 152/154 | yes |
+| `w8b.yaml` | 147/154 | 147/154 | yes |
+| `w9.yaml` | 75/88 | 75/88 | yes |
+| `w7-words.yaml` | 22/25 | 22/25 | yes |
+| `w7.yaml` | 44/45 | 44/45 | yes — `w7-no-published-document-changes` reads **26** on both |
+| `w7-truth.yaml`, `w7-wrongtext.yaml`, `w4b.yaml` | 18/18, 10/10, 30/30 | same | yes |
+| `w5.yaml` | 38/40 | 38/40 | yes |
+| `w9-star.yaml` on `results/w9-star-on-run_align.json` | **62/10** | 62/10 | yes — the arm's own reading, re-read offline |
+
+Every failure in that table belongs to the flip or to an earlier wave's arm clauses read on a default pair;
+none of them moved, and each reads the same number on the baseline's committed row.
+
+### The arms' decode cell is no longer stale
+
+The fix pass recorded `_runs/w9-graph/arms28.json` as stale and owed the re-read to W10, since four arms'
+code changed (`star-b` and `skip-arcs` through the graph, `star-b`'s grading, `claim-priors` and
+`claim-fusion` through R3's input) and the expectation that they were no-ops on this corpus — a song's frame 0
+is intro silence, and 9000 frames never fail a precheck against a few thousand targets — was an expectation.
+It is now measured: `graph_sweep.py --songs 28` re-run on the fixed tree (`_runs/w9-graph/arms28-r1.json`, 672
+rows, 330 s, the same emitter `1a2fd6852bd30243` and the same stored matrices) is **identical to
+`arms28.json` in every field of all 672 rows** (`_runs/w9-graph/arms_diff.py`). The arm table above therefore
+stands as measured on the shipped code, including the two verdicts that depend on it: `skip-arcs` still drops
+**5 true lines** at `truth` and still buys `extraverse`'s 58 injected drops with **7**, and `star-b` is still
+within noise of `star-a`. `star-a` — the corpus `star` arm's decode — is in that identity too, so
+`gates/w9-star.yaml`'s 62/10 needed no re-run either.
+
+### What is settled here, and what is not
+
+Settled: round 1 changed no published byte at either rung, no gate reading, and no arm verdict. The worker
+suite reads **2362 passed, 2 skipped, 4 xfailed, 0 FAILED** on this tree — one more test than the fix pass
+left, `test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip`, which pins all three of
+this file's readings — with both skips environmental and
+named (`test_builders_return_none_rather_than_raising_when_ml_is_absent`, skipped because whisperx IS
+installed here; `test_every_capability_used_is_one_the_host_probe_can_prove`, skipped because this box cannot
+PROVE `stems:roformer` while still asserting every token is emittable) and the four `xfail(strict=True)` the
+review's M2 left on `test_repair_order.py`'s inverting seeds. Three mutations were planted to show the fixes
+are genuinely pinned: P back to W7's 1.0 reddens `test_the_shipped_penalty_is_the_one_the_corpus_fitted`
+alone, dropping the frame-0 entry seeding reddens
+`test_the_starred_graph_holds_the_plain_path_that_sings_from_frame_zero` alone, counting every target as
+mandatory in the precheck reddens `test_a_sheet_too_long_for_the_recording_is_not_refused_on_frames_an_arc_can_bypass`
+alone, and flipping one tie-break in the vendored decoder (`one > stay` → `one >= stay`) reddens the
+real-kernel contract test — which is also the non-vacuity proof for that 80-case comparison.
+
+Not settled, and unchanged by this re-run: the `vendored` control's corpus cell and the `claim-priors` /
+`priors-decide` `run_align` cells are still owed to W10. They are the one open question in §3.14, and nothing
+here was allowed to substitute for them.
+
+## W8: the non-Latin truth set (2026-10-15)
+
+This lane had no ground truth at all, so nothing about it could be judged — and with no truth, nothing about
+it should ship. The set below is the stage-0 prerequisite: **7 songs** of AMLL TTML DB truth (4 zh, 2 ja,
+1 ko), wired through `discover()` exactly as JamendoLyrics is, measured by the same
+`truth_displacement.py` the English corpus is measured by, and kept deliberately small because what decided
+each song's place was a measurement rather than a wish. **22 candidates were pursued; 15 were dropped.**
+
+**Where it lives.** `<bench>/amll/<slug>/{lyrics.ttml, mix.wav, mix/vocals.wav, source.json}`, outside the
+repo like every other corpus audio, and `amll.py` turns each `lyrics.ttml` into that song's
+`truth-lines.json` + `truth-words.json`. The TTML is CC0 (github.com/amll-dev/amll-ttml-db) and stays in the
+song directory, so its per-SYLLABLE spans — which no metric reads yet, and which stage 1's script-aware units
+will — are never lost to the collapse described below. The audio is a local research copy, held only in the
+bench root, never committed and never redistributed: the same posture as the 9 YouTube songs of the English
+corpus, and the reason `source.json` records the video id, channel, title and duration each truth file was
+checked against. Each recording stays its rights-holder's; the CC0 is the TTML truth, not the audio. A
+dropped candidate keeps everything it was judged on under `<bench>/amll/_rejected/<slug>/`, one directory
+deeper than `discover()`'s glob looks, so a later wave can re-source its audio without re-deciding anything.
+
+**A corpus of its own, so no English number can move.** The non-Latin songs are NOT 7 more rows in
+`scored`/`all`: `e2e.py --corpus nonlatin` is a setup variable (`e2e_lib.CORPORA`, `e2e_gates.SETUP_META`,
+default `english` via `SETUP_DEFAULTS`), so a run measures one song set or the other and a `base.` gate across
+the two is an ERROR rather than a comparison. They report in their own group, `nonlatin`, which has members
+only on such a run. `corpus-truth.json` grew from 32 to **39** rows and not one English row's bytes changed.
+`--corpus nonlatin` also REFUSES `--language en`: left at the default, these songs' text would be timed by
+the English bundle, which has a calibration row — so the lane's own gate would not be the thing measured.
+
+### What the TTML gives, and the one thing it does not
+
+| slug | song | lines | syllables | words | agents |
+| --- | --- | --- | --- | --- | --- |
+| `amll-zh-gaobai-qiqiu` | 告白氣球 — 周杰倫 | 40 | 308 | 91 | v1 |
+| `amll-zh-guangnian-zhiwai` | 光年之外 — G.E.M. | 57 | 397 | 59 | v1 (+4 `x-bg` dropped) |
+| `amll-zh-qingtian` | 晴天 — 周杰倫 | 62 | 494 | 77 | v1 |
+| `amll-zh-zaijian` | 再見 — G.E.M. | 39 | 217 | 61 | v1 |
+| `amll-ja-ragutorein` | ラグトレイン — 稲葉曇 | 31 | 520 | 39 | v1 |
+| `amll-ja-yoru-ni-kakeru` | 夜に駆ける — YOASOBI | 56 | 693 | 56 | v1, v2 |
+| `amll-ko-gangnam-style` | Gangnam Style — PSY | 55 | 535 | 233 | v1 (+1 `x-bg`, 48 `x-roman`, 56 `x-translation` dropped) |
+
+A **word** here is a run of syllables the TTML writes with no space inside it, so the truth words and
+`line.text.split()` are one tokenisation by construction and `load_truth_words` accepts the file. That is also
+the lane's first real finding: **a CJK TTML often writes a whole line with no space at all**, so the word
+truth collapses onto the line (56 lines / 56 words on 夜に駆ける, 693 syllables inside them). The ko sheet, whose
+script is space-separated, keeps 233 words for 535 syllables. Nothing sub-line can therefore be SCORED on most
+of this set until the units are script-aware (stage 1), and the syllable spans the TTML holds are the data
+that measurement will read. Background vocals (`x-bg`), translations (`x-translation`) and romanisations
+(`x-roman`) are dropped: the bench's truth is one voice's line sequence.
+
+### The admission rule, and the 13 songs it dropped
+
+A truth file that does not describe the audio beside it would mislead this lane exactly as four caption files
+misled W8a, so every candidate was measured before it was kept, with the same two numbers the W8b rule uses:
+
+* **the envelope lag** must read |lag| ≤ **250 ms** (`DISPLACEMENT_LIMIT_MS`) at r ≥ **0.25**
+  (`MIN_LAG_CORRELATION`) — the sheet-against-stem cross-correlation over the whole song;
+* **the silence arbiter** must not read a median delay at or above **500 ms** (twice the limit, the bar
+  `TruthQuality.silence_stands_alone` already uses) over the starts that land in stem silence.
+
+Both are READ, not corrected: no truth file is shifted to fit its audio, and a song whose two arbiters
+disagree is dropped rather than averaged. Kept, measured on the separated stem:
+
+| slug | lag (r) | silent starts / onsets | median | verdict |
+| --- | --- | --- | --- | --- |
+| `amll-zh-gaobai-qiqiu` | −100 ms (0.75) | 0 / 0 | — | kept |
+| `amll-zh-guangnian-zhiwai` | −80 ms (0.70) | 0 / 0 | — | kept |
+| `amll-zh-qingtian` | −20 ms (0.63) | 0 / 0 | — | kept |
+| `amll-zh-zaijian` | +80 ms (0.63) | 2 / 2 | +232 ms | kept |
+| `amll-ja-ragutorein` | +100 ms (0.55) | 2 / 2 | +420 ms | kept, thin |
+| `amll-ja-yoru-ni-kakeru` | −80 ms (0.67) | 3 / 3 | +428 ms | kept, thin |
+| `amll-ko-gangnam-style` | −40 ms (0.42) | 0 / 0 | — | kept |
+
+Dropped, and on which measurement or fact:
+
+| slug | reading | why it is not in the set |
+| --- | --- | --- |
+| `amll-zh-tianhou` 天后 | lag **−2440 ms** (0.85) | the upload is not the master the TTML times |
+| `amll-zh-chiling` 赤伶 | lag **−2280 ms** (0.56), median +820 ms | same, and the two readings disagree |
+| `amll-zh-duoyuan` 多遠都要在一起 | median **+2147 ms** (7 onsets), lag **+2160 ms** (0.69) | both arbiters agree the truth leads by 2.1 s |
+| `amll-ja-kaibutsu` 怪物 | median **+853 ms** (6 onsets), lag **+900 ms** (0.68) | both agree the truth leads by ~0.9 s |
+| `amll-zh-yehangxing` 夜航星 | median +944 ms, lag **−1800 ms** (0.70) | the arbiters disagree by 2.7 s: unreadable |
+| `amll-zh-zhuiguangzhe` 追光者 | median +330 ms, lag **−1340 ms** (0.69) | same |
+| `amll-zh-jiaoao-shaonian` 驕傲的少年 | lag **−360 ms** (0.64) | over the 250 ms limit |
+| `amll-zh-guyongzhe` 孤勇者 | — | only live performances on offer: another performance, not another master |
+| `amll-zh-shanhetu` 山河圖 | — | same (a 2020 televised performance) |
+| `amll-zh-qinglian` 輕漣 | — | the only candidate was a different artist's cover |
+| `amll-zh-fuqin` 父親, `amll-zh-guangliang` 光亮, `amll-zh-renshi` 人是_ | — | audio could not be fetched (HTTP 403); TTML kept |
+| `amll-zh-su-reverse` 溯, `amll-zh-mangzhong` 芒種 | — | no candidate within +25/+30 s of the TTML's own end |
+
+Five dropped on a lag or lead past the limit (`tianhou`, `chiling`, `jiaoao-shaonian`, `duoyuan`,
+`kaibutsu`), two because their arbiters disagree by 1.3–2.7 s, three because no master was on offer (two live
+performances, one cover), three because the audio would not fetch, two because no upload came within half a
+minute of the TTML's own end.
+
+`amll-ja-kaibutsu` is the row that matters most, because **the W8b `displaced` rule would have kept it**: its
+6 timed onsets are 10.7% of 56 lines, under `MIN_DISPLACEMENT_SHARE` (0.15), so its confidence reads `thin`
+and `displaced` answers False on a sheet whose own two arbiters agree it leads by 0.9 s. The English rule is
+one-sided and share-gated for reasons measured on the English corpus (README, W8b); on a dense CJK sheet with
+few silent starts it does not bind. That is why admission here is a RULE OF THIS SET applied before a song
+enters the corpus, rather than an edit to `TruthQuality` — which would have re-judged the English 28
+(`never-be-alone` reads lag −800 ms at r 0.77 and scores today; see "Not settled" below).
+
+### The gate: an uncalibrated bundle may publish LINES, never WORDS
+
+Stage 0's real job was not accuracy, it was that this lane had **no wrong-text gate at all**. W7 closed the
+global engine's word document on an uncalibrated matrix; W8 makes that one named rule
+(`lexical.may_time_words` — words need a witness, which is a calibration row or a transcript of this very
+recording) and closes the other word-timing exit, the WINDOWED engine, which reads no matrix and so can
+measure no lift on any bundle. Both engines print one sentence (`lexical.words_ungated`). The exemptions are
+unchanged and are two: the ASR tier, and a human PIN (published all-`low`, unvouched). `h3-ungated-words`
+remains the control that restores the old behaviour, and is still the only way to read this lane's words end
+to end. English is untouched, and measured rather than argued: `_runs/w8-english-smoke` (`--level run_align --songs hello,Avercage --modes truth,wrongtext --wrong-k 2`) republishes both documents and both onset series DIGEST-IDENTICAL to `results/w9-r1-run_align.json`, with every per-song delta at +0.0 and wrong text 0/4. The windowed engine on the English bundle publishes exactly what it did.
+
+### The measurement, 4 zh songs through the real bundle
+
+`results/w8-nonlatin-zh-run_align.json` (+ `.cases.jsonl`; rows in `_runs/w8-nonlatin-zh`) — `--level
+run_align --corpus nonlatin --language zh --songs amll-zh --modes truth,wrongtext --wrong-k 3 --asr off`, on
+`jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn` (the bundle whisperx tables for zh, and the run is
+marked `uncalibrated`), 16 cases, 257 s, 11 matrices computed. `gates/w8-nonlatin.yaml` reads **17/17**.
+
+| mode | cases | published | line-synced | refused | lines | gross | ±500 | pass rate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `truth` | 4 | 0 as words | **4** | 0 | 198 | **0** | 100.0 | — |
+| `wrongtext` | 12 | 0 | 0 | **12** | 0 | — | — | **0/12 = 0.0%** |
+
+**The wrong-text pass rate for the non-Latin lane is 0 of 12** (3 cross-pairs on each of 4 songs; a pass is
+`published` OR `line-synced`, so a line-synced wrong text would count). Every one of the 12 declined its word
+document for want of a gate and was then REFUSED at the LINE_SYNC rung, by the one threshold a missing
+calibration row does not switch off: the share of decoded lines starting near their mapped claim.
+
+That threshold is `LINE_SYNC_SHARE_UNCALIBRATED` = 0.5, fitted on English, and this run is the first
+out-of-sample reading of it — a wide one:
+
+| | right text (`truth`, 4 songs) | wrong text (12 pairs) |
+| --- | --- | --- |
+| decode agreement | **97–100%** | **0–23%** |
+| sheet-span envelope r | 0.55–0.75 | 0.09–0.28 |
+| median claim lag | −0.13 … +0.10 s | −66.4 … +58.7 s |
+
+The populations do not overlap: the lowest right text reads 97%, the highest wrong text 23%, and the share
+sits at 50% between them. The right texts' median lag is also a THIRD arbiter on the truth set itself, from a
+mechanism neither admission reading uses — the zh bundle's own blind decode places 97–100% of lines within
+1.0 s of where the TTML says, with a median lag of −130…+100 ms and a spread of 30–50 ms.
+
+The `truth` row's ±500 of 100.0 is a PUBLISH-RATE and clock-no-op reading, not an aligner accuracy reading: a
+line-synced document carries the sheet's own times, which in `truth` mode are the truth, so what it measures
+is that all 198 lines published, that the rung's claim clock left them where they were (bias +0 ms, MAD 0 ms)
+and that both its gates passed. **Nothing on this lane measures alignment accuracy yet**, and nothing can
+until the words are timed — which is stage 1's and stage 2's job, with this truth set as its denominator.
+
+### Not settled, and owed
+
+* **ja and ko are unmeasured.** Their bundles are not on this box (~1.2 GB each) and `--language` takes one
+  language a run, so the 3 ja/ko songs have truth and audio but no row here. The run above is zh only.
+* **`never-be-alone` reads lag −800 ms at r 0.77 and scores today.** The W8b displacement rule only convicts
+  a sheet that runs EARLY, so an audio that leads its truth is invisible to it. Left alone deliberately:
+  two-siding the lag arbiter would take a song out of the English 28 and move every recorded accuracy number.
+  It wants its own wave, with the re-bench that implies.
+* **The windowed engine's ENGLISH words are still ungated** — it measures no lift at all, so nothing reads
+  its words on any bundle. Only the routed half is closed here, because English is the measured default and
+  the shipped aligner has `emissions` (so the engine is unreachable in production today).
+* **Stage 1 and stage 2 are not started**: script-aware units, OpenCC t2s, MMS_FA, and the per-language
+  calibration rows (`lift_gate.py --model` + `line_gate.py --model`) that option (i) needs. Until a row
+  exists, this lane publishes LINES only — by rule, not by accident. (Romanisation for display landed in the
+  same wave; the section below.)
+
+## W8 stage 0: romanisation and the CJK line (2026-10-15)
+
+The gate above is what made this lane safe. This is what makes it USABLE: a guest who cannot read Han, kana,
+Hangul, Cyrillic or Arabic could sing nothing off a line published in it, and a word-timed CJK line reached
+the reel spelled out character by character, because the TV put one space between every word. Both are fixed
+without an accuracy claim of any kind — nothing here moves a timing.
+
+### What romanises what, and under which licence
+
+Licences decided the backends before accuracy did, this tree shipping no GPL code
+(`worker/pyproject.toml`, the `romanize` extra, states each one):
+
+| language | backend | licence | example |
+| --- | --- | --- | --- |
+| `zh` | pypinyin 0.55.0 | MIT, pure Python | 我来到你的城市 → `wǒ lái dào nǐ de chéng shì` |
+| `ja` | cutlet 0.5.2 (+ fugashi MIT, mojimoji Apache-2.0, unidic-lite) | MIT | 夜に駆ける → `Yoru ni kakeru` |
+| everything else non-Latin | uroman 1.3.1.1 | Apache-2.0 | 오빤 강남스타일 → `obban gangnamseutail` |
+
+**NOT pykakasi**, which is GPL-3.0 — the review named it as the thing to avoid and it is avoided. The one
+licence that needed reading rather than quoting is **unidic-lite**: its packaging is MIT, and the UniDic
+2.1.2 dictionary inside it is triple-licensed GPL-2.0 / LGPL-2.1 / BSD-3-Clause, taken here under
+**BSD-3-Clause**. It is also 47 MB of the extra's 49 MB. cutlet reads UniDic's own `pron`/`kana` features, so
+the BSD-only IPAdic cannot stand in for it.
+
+uroman is the fallback rather than a per-script library for one reason: `language.SCRIPT_LANGUAGES` routes
+**14** non-Latin languages to a bundle, and a script this project never measured must still print something
+readable rather than nothing. `tests/test_romanize.py` pins `romanize.BACKENDS` equal to that table, so a new
+routable language cannot be added without a backend. **Nothing here measures how GOOD a transliteration is**
+— this is a reading aid, not a claim, and the uroman rows in particular are the generic tables rather than a
+Revised-Romanization or ALA-LC reading.
+
+### Coverage on the truth set: 331 of 331, and the 9 lines that correctly get none
+
+Measured over all **7** songs' `truth-lines.json` — ja and ko included, which the zh-only alignment run
+cannot reach, romanisation needing no audio and no bundle:
+
+| song | backend | lines | need a second script | romanised | cost |
+| --- | --- | --- | --- | --- | --- |
+| `amll-zh-gaobai-qiqiu` | pypinyin | 40 | 40 | **40** | 1.6 ms |
+| `amll-zh-guangnian-zhiwai` | pypinyin | 57 | 57 | **57** | 1.8 ms |
+| `amll-zh-qingtian` | pypinyin | 62 | 60 | **60** | 2.0 ms |
+| `amll-zh-zaijian` | pypinyin | 39 | 39 | **39** | 1.8 ms |
+| `amll-ja-ragutorein` | cutlet | 31 | 31 | **31** | 104.4 ms |
+| `amll-ja-yoru-ni-kakeru` | cutlet | 56 | 56 | **56** | 78.7 ms |
+| `amll-ko-gangnam-style` | uroman | 55 | 48 | **48** | 11.1 ms |
+| **total** | | **340** | **331** | **331 (100%)** | |
+
+The **9** lines that get no romanisation are the measurement that matters more than the 331, because a
+coverage number alone would be satisfied by romanising everything: they are `amll-ko-gangnam-style`'s seven
+`Eeeeeh, sexy lady` / `Eh-eh-eh, eh-eh-eh` rows and `amll-zh-qingtian`'s two solfège rows (`Re So So Si Do Si
+La`, `So La Si Si Si Si La Si La So`). Those are already Latin, and a second script under them would be a
+copy of themselves. The rule is `romanize.needs_romanization` — at least one letter in a non-Latin script,
+counted the same way `language.script_histogram` counts — so `♪♪♪`, `[ ... ]` and a row of digits get none
+either.
+
+Build cost is once per process and per language (`build_romanizer` is cached): pypinyin 0.10 s, cutlet
+0.013 s, **uroman 2.21 s** — which is why it is cached, and why it is nothing against the ~5–9 s emission
+pass of the same job.
+
+### End to end: the published document carries it, and the onsets do not move
+
+`_runs/w8s0-romanize` — `--level run_align --corpus nonlatin --language zh --songs
+amll-zh-zaijian,amll-zh-qingtian --modes truth --asr off --romanize shipped`, through the real whisperx zh
+bundle and the real publishing step. The harness gained `--romanize {off,shipped}` with the same shape and
+the same reason `--detector` has: **the default is OFF**, so every row under `results/` goes on reproducing,
+and `meta["romanize"]` states which ran either way (it joins `e2e_gates.COMPARED_META`).
+
+| | recorded (`results/w8-nonlatin-zh`, romanize off) | `--romanize shipped` |
+| --- | --- | --- |
+| published | 2 line-synced | 2 line-synced |
+| lines / gross / ±500 | 101 / 0 / 100.0 | 101 / 0 / 100.0 |
+| lines carrying `romanization` | 0 | **99 of 101** |
+| `onsets_sha256` | `9d0fc4ba42f145d5`, `3315046fe49353c6` | **identical, both songs** |
+| `doc_sha256` | `f18ae73ed9146577`, `df4bd2f8e26f5427` | moved (the new field) |
+
+That pair is the whole claim: the document gains a field, **not one onset moves**, and the two lines that
+skip it are 晴天's solfège rows again — the same refusal, now on the publishing path. `_runs/w8s0-romanize-off`
+is the control, and it reproduces both recorded `doc_sha256` values EXACTLY, so the default configuration is
+byte-identical to what is on disk.
+
+**ENGLISH IS BYTE-UNMOVED EVEN WITH THE ARM ON**, measured rather than argued, because there is no backend
+for a Latin language and `needs_romanization` would refuse a Latin line if there were:
+`_runs/w8s0-english-smoke` (`--level run_align --songs hello,Avercage --modes truth --asr off --romanize
+shipped`) republishes both documents and both onset series **DIGEST-IDENTICAL** to
+`results/w9-r1-run_align` — `doc_sha256` and `onsets_sha256` match on both songs, and `hello`'s word and
+highlight figures match to the digit. (`Avercage`'s `words` reads differently only because the recorded
+`cases.jsonl` carries the summariser's shape where a live row carries raw error arrays; the digests are the
+comparable fields and they are equal.)
+
+### Core: one gap rule, and it is pinned in both languages
+
+The reel joined every pair of words with one space, which is correct for Latin and wrong for the scripts this
+lane publishes. `wordGap` in `core/src/lib/tv/lyrics.ts` is now the one rule, read by the reel's inter-word
+gap AND by the text re-segmentation rebuilds (`lineFromWords`, the textless-line fallback in
+`parseLyricsDoc`, the `COVERAGE_MIN` refusal and the `LINE_MAX_CHARS` cap), so the two cannot disagree:
+
+* nothing between two characters of **Han, kana, or the CJK and fullwidth punctuation** the UCD files under
+  "Common" and Script_Extensions shares with them;
+* one space everywhere else — **Hangul included**, Korean spacing its words and being "CJK" only
+  typographically, and a **CJK/Latin boundary** included, since 光年之外oh is unreadable either way.
+
+The coverage refusal is the one place this changes a Latin-script reading too: it used to measure the words
+against the line's text with a space after every word, which on a CJK line counts characters the text does
+not have and let a partially-timed sheet split. It now measures `joinWords`.
+
+The bench's TV port carries the same rule rather than a "not modelled" note, because the `highlight` metric
+reads which word is lit through it. Python's `re` has no Script_Extensions, so the TypeScript class was
+ENUMERATED over all 0x110000 codepoints and compressed into the 55 ranges of `e2e_lib.TV_CJK_JOINS` — the two
+sets are **104 411 codepoints, equal**, checked by enumeration rather than by eye. Two new cases of the
+parity fixture (`cjk-rebuilt-without-spaces`, `cjk-splits-at-a-pause`) pin them together in both trees, and
+no English row of that fixture moved: the rule is arithmetically identical to `join(" ")` for Latin text, and
+the regenerated file is **+2 lines, 0 changed**.
+
+### What stage 0 does and does not buy
+
+* **`no lyrics` → published** is W7's routing plus task 1's gate, not this half: the 4 zh songs publish
+  4/4 line-synced (above), and what this adds is that the room can READ them. The honest counterfactual is
+  the review's own §3 line — "language is always `en`, so non-Latin text ends as no lyrics" — which §9 closed
+  in W7; `--corpus nonlatin` deliberately REFUSES `--language en`, so it cannot be re-measured here.
+* **Line-level accuracy of what publishes is still a publish-rate reading**, exactly as above: a line-synced
+  document carries the sheet's own times, so ±500 100.0 on 101 lines says the gates passed and the claim
+  clock was a no-op, not that an aligner placed anything.
+* **`romanization` is written on LINE documents only.** This lane publishes lines by rule (§5.4), and the TV
+  drops a romanisation when it re-segments a row — which is precisely what a word document of a dense CJK
+  line would be subject to. A word-level romanisation wants per-row spans, which is stage 1's unit work.
+* **ja and ko still have no alignment reading** (their bundles are ~1.2 GB each and `--language` takes one a
+  run), so their romanisation is measured on the truth text above and not through a published document.

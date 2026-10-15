@@ -53,8 +53,29 @@ export function createSettingsWrites(read: () => EffectiveSettings): SettingsWri
 				body: JSON.stringify(body)
 			});
 			if (!res.ok) throw new Error('rejected');
-			settings = await res.json();
-			committed = settings;
+			/* PER-FIELD ON SUCCESS TOO, and the reason is the one written on the failure path below — this path had
+			   the same defect in mirror image, which is how it survived review: the careful argument sat eight lines
+			   away from its own counterexample.
+			   The response is the WHOLE effective settings object as it stood when the server handled THIS request.
+			   Assigning it wholesale republished every field at that moment, so a slower write landing second
+			   overwrote a newer one the server had already stored and confirmed. Reproduced: delay request A, flip
+			   field X; while A is in flight flip field Y and let it confirm; when A's success lands, Y reverts on
+			   screen while the server still holds the new Y — the UI and the server now disagree and nothing says so.
+			   A per-field merge cannot do that: only the fields this write SENT are adopted, so a concurrent write's
+			   confirmed value is never a casualty of someone else's round trip. */
+			const confirmed = (await res.json()) as EffectiveSettings;
+			const accepted = Object.fromEntries(Object.entries(confirmed[scope]).filter(([field]) => field in body));
+			settings =
+				scope === 'global'
+					? { ...settings, global: { ...settings.global, ...accepted } }
+					: { ...settings, room: { ...settings.room, ...accepted } };
+			/* `committed` TRACKS THE SAME SUBSET. It is the rollback target, so adopting the whole response here
+			   would reintroduce the clobber on the next refusal: a field another write had moved would roll back to
+			   this response's stale value rather than to what the server holds. */
+			committed =
+				scope === 'global'
+					? { ...committed, global: { ...committed.global, ...accepted } }
+					: { ...committed, room: { ...committed.room, ...accepted } };
 		} catch {
 			/* Only the fields THIS write sent go back, and to what the server holds NOW — every other field keeps
 			   whatever landed while this request was in flight. Restoring a whole pre-request snapshot silently undid

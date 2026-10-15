@@ -101,11 +101,26 @@ function clampIndex(i: number, count: number): number {
 export function modeInvalidation(
 	queued: readonly { id: string }[],
 	movingId: string | null,
-	movingStatus: EntryStatus | undefined
+	movingStatus: EntryStatus | undefined,
+	/* HOW MANY ROWS THE GEOMETRY WAS MEASURED AT, or null when no gesture is open. `measureRowBoxes()` reads every
+	 * `.qrow` ONCE at press time and nothing re-measures for the life of the drag — deliberately, because a row
+	 * changing height mid-flight would otherwise re-place the dragged row under the finger. The cost is that the
+	 * boxes describe a list that may no longer exist. */
+	measuredCount: number | null = null
 ): string | null {
 	if (!movingId) return null; // no mode open
 	if (movingStatus === undefined) return 'That song left the queue — nothing was moved.';
 	if (movingStatus !== 'queued') return 'That song started playing — nothing was moved.';
 	if (queued.length < 2) return 'Only one song is queued now — there is nothing to reorder.';
+	/* ANOTHER GUEST CHANGED THE QUEUE, and this is the arm that was missing. `liveSortTarget` bails to -1 when
+	   `rowBoundsPx.length !== count`, which is correct arithmetic and a terrible interaction: the row kept
+	   following the finger, the live sort froze, and the release committed nothing — a drag that looked like it
+	   was working and silently was not. At a party another phone adding or removing a song mid-drag is ordinary,
+	   not exotic.
+	   CHECKED LAST, after the three reasons above, because they are more specific about the same situation: if the
+	   dragged song itself left, "that song left the queue" is the better sentence than "the queue changed". */
+	if (measuredCount !== null && measuredCount !== queued.length) {
+		return 'The queue changed — nothing was moved.';
+	}
 	return null;
 }

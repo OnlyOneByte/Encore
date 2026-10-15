@@ -236,6 +236,48 @@ def test_the_suites_fake_decoder_is_the_kernel_frame_for_frame() -> None:
     assert compared >= 60, "the comparison must not be vacuous"
 
 
+def test_the_vendored_decoder_is_the_real_kernel_frame_for_frame() -> None:
+    """XA-18, against `torchaudio.functional.forced_align` itself and not against the fixture.
+
+    The vendored graph may only be swapped in if an EMPTY graph publishes the same bytes, and "the same"
+    has to mean the real kernel's: the same three-way tie-break, the same choice of final state, the same
+    float32 accumulation, and `ValueError` wherever the kernel refuses. `tests/test_viterbi.py` runs the
+    same cases without torch; this one is the leg that makes the claim true.
+    """
+    from encore_worker.domain.lyrics.viterbi import align
+    from tests.test_viterbi import cases
+
+    compared = 0
+    for matrix, targets in cases():
+        try:
+            want = decode(matrix, targets)
+        except RuntimeError:
+            with pytest.raises(ValueError):
+                align(matrix, targets)
+            continue
+        got = align(matrix, targets)
+        assert list(got.labels) == want[0], (
+            f"labels differ on a {len(matrix)}-frame case with {len(targets)} targets"
+        )
+        assert list(got.scores) == pytest.approx(want[1])
+        compared += 1
+    assert compared >= 60, "the comparison must not be vacuous"
+
+
+def test_the_graphs_frame_relative_star_is_the_starred_columns_own_value() -> None:
+    """Phase B needs no matrix surgery: at one P its star state emits exactly what `ml.starred`'s appended
+    column holds, which is what lets the two phases share one fitted penalty."""
+    from encore_worker.adapters.ml import STAR_NAME, starred
+
+    matrix = sung_matrix(SUNG, DIC, DURATION)
+    widened = starred(Emitted(torch.from_numpy(np.ascontiguousarray(matrix))), penalty=0.3)
+    column = np.asarray(widened.log_probs)
+    star = widened.specials[STAR_NAME]
+    assert star == matrix.shape[1]
+    assert column[:, star] == pytest.approx(column.max(axis=1) - 0.3)
+    assert column[:, star] == pytest.approx(matrix.max(axis=1) - 0.3)
+
+
 # ── the emission pass ────────────────────────────────────────────────────────────────────────────
 
 

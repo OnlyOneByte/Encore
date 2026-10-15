@@ -1,0 +1,174 @@
+# W9's WAVE GATE, FIRST HALF: the research track and the star re-fit cost the shipped default NOTHING, and
+# the proof is BYTE IDENTITY rather than a tolerance. Read on the two forced levels, against
+# `results/w8b-*.json`. Narrative and the arm verdicts: README, "W9: the research track, priced on the
+# corpus".
+#
+# THIS FILE SPEAKS FOR THE PRE-FLIP TREE AND IS NOT THE WAVE'S BASELINE. Later in the same wave the owner
+# flipped `band-reopen` default-on (PLAN 2026-10-09), which changes 26 of 1088 published documents on
+# purpose — so section 1 FAILS on the post-flip tree by construction, and `word-pco300-truth` with it
+# (91.78 -> 91.76, W8b's bounded re-labelling). **`gates/w9-reopen.yaml` is the post-flip default's gate and
+# the new baseline.** Keep this file: its section 1 is the only measurement that separates "the research
+# track moved nothing" from "the flip moved something", and a later wave reading the two together can tell
+# which half of W9 it is standing on. Its reading on `_runs/w9-{ra,tt}` is 88/88.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9.yaml
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9-tt \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8b-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9.yaml
+#   (`--sync-mode lines` keeps `gates/w8b-lines.yaml`: at that rung no line is graded and no word is scored,
+#   so half of what is below would be an ERROR there. W9 reads that file unchanged, 69/69.)
+#
+# WHAT THE WAVE CHANGED AND WHY NONE OF IT CAN REACH THE DEFAULT. `ml.STAR_PENALTY_NATS` 1.0 -> 0.3 is read
+# only when the `star` arm is set; `domain/lyrics/viterbi.py`, `domain/lyrics/prior.py`,
+# `generate.line_blocks` and the `steps/align_steps.py` wiring are reached only by `vendored`, `skip-arcs`,
+# `star-b`, `claim-priors`, `claim-fusion` and `priors-decide`, all default-off; the hygiene half is
+# `worker/tests` plus comments in `adapters/zoo.py`, which the align path never imports. So the prediction
+# was byte identity, and section 1 is the measurement that keeps it honest rather than argued.
+#
+# SECTION 1 IS THE WHOLE POINT OF THIS FILE. Every other section is the PLAN's 2026-10-09 accuracy row
+# written down so that a LATER wave which does move a byte still has to pass the bar W9 held. Read on W9's own
+# tree, sections 2-6 are implied by section 1 and therefore cheap; read on a tree that changed the aligner,
+# section 1 will fail first and the rest says what was lost.
+#
+# MEASURED, 2026-10-14, one tree: code `ee807b0096e456dc`, emitter `14c8c0a4bfba8627`, HuBERT-Large, 32 songs,
+# seed 0, `wrong_k` 10, `--tfr-audio youtube`, mps, `--asr off`, `--detector off`. The emitter moved from W7's
+# `1a2fd6852bd30243` because `adapters/ml.py`'s bytes are in the key, so BOTH levels recomputed all 32
+# matrices cold; the matrices themselves are the same computation, which is what section 1 proves downstream.
+# Over the 2176 shared cases of `_runs/w9-{ra,tt}` against `_runs/w8b-{ra,tt}`, `doc_sha256` differs in 0,
+# `onsets_sha256` in 0, `outcome` in 0 and `confidence` in 0.
+#
+# Absolute literals are the LOWER of the two levels' readings for a floor and the HIGHER for a cap, so a rule
+# that bites bites on both; where the two differ by more than rounding the pair is named above the rule.
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is `results/w8b-<level>.json`, which carries the 28-song `scored` group (W8b onward). Read against
+# a pre-W8b summary every `scored.` rule is an ERROR, which fails the run — the fail-loud direction.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+# Without these a `--songs` subset would gate a 28-song ratchet against some other set. `scored` is the 28
+# songs `corpus-truth.json` admits to accuracy; the four it excludes must still RUN, or an arm that crashed
+# them would read as a clean 28-song pass.
+all-songs-still-run-truth: truth.cases == 32
+all-songs-still-run-drop50: drop50.cases == 32
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-blind: blind.scored.cases == 28
+scored-songs-twenty-eight-drop50: drop50.scored.cases == 28
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 203
+excluded-still-measured-drop50: drop50.scored - drop50.scored.scored >= 95
+
+# ── 1) MUST: THE SHIPPED DEFAULT PUBLISHES THE SAME BYTES IT PUBLISHED IN W8b ───────────────────────────
+# `song.doc_changed` is `doc_sha256` against the baseline's, per song; `onsets_changed` is every published
+# line's and word's START at full precision, which moves on one ulp. A wave whose default-on half is a no-op
+# can say so exactly, and this is how W7 said it. The two together are stronger than every tolerance below:
+# a document that is byte-identical cannot have moved an accuracy metric, a confidence grade or a word.
+# ONE RULE PER MODE and not one pooled rule, so a failure names the mode.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+docs-unchanged-off15: count(off15.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-offm1: count(offm1.song.doc_changed) == 0
+docs-unchanged-tempo098: count(tempo098.song.doc_changed) == 0
+docs-unchanged-tempo102: count(tempo102.song.doc_changed) == 0
+docs-unchanged-drop20: count(drop20.song.doc_changed) == 0
+docs-unchanged-drop50: count(drop50.song.doc_changed) == 0
+docs-unchanged-extraverse: count(extraverse.song.doc_changed) == 0
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-headers: count(headers.song.doc_changed) == 0
+docs-unchanged-credit: count(credit.song.doc_changed) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed) == 0
+onsets-unchanged-drop50: count(drop50.song.onsets_changed) == 0
+onsets-unchanged-extraverse: count(extraverse.song.onsets_changed) == 0
+
+# ── 2) MUST: the PLAN's 2026-10-09 accuracy row, on the 28-song `scored` basis ───────────────────────────
+# The 0.3 pt tolerance on `truth` is the owner's, and it is the ONLY tolerance in this section: everything
+# else is the measurement itself. `pm500` at `run_align` 97.07 / `time_text` 97.12 — the floor is the former.
+truth-pm500-at-least-96-77: truth.scored.pm500 >= 96.77
+truth-gross-zero: truth.scored.gross == 0
+truth-high-bad-zero: truth.scored.high_bad == 0
+truth-high-gross-zero: truth.scored.high_gross == 0
+truth-zero-gross-songs-all-28: truth.scored.zero_gross_songs >= 28
+truth-no-line-sync-degrade: truth.scored.line_sync == 0
+# `text_pm500` charges a line the decode never placed as a miss, which is the denominator this build had to
+# learn twice. `run_align` 95.05 / `time_text` 96.48.
+truth-text-pm500-at-least-95-05: truth.scored.text_pm500 >= 95.05
+truth-scored-lines-at-least-1504: truth.scored.scored >= 1504
+truth-in-text-1536: truth.scored.in_text == 1536
+
+# ── 3) MUST: gross 0 in every RIGHT-TEXT, CLAIM-CARRYING mode, and no mode gains one ────────────────────
+# These eleven modes read gross 0 at BOTH levels in W8b and read it here. `blind` (49 / 55) and `drop50`
+# (69 / 124) are the two that do not, and they are held relatively in section 5 instead: `blind` has no claim
+# to anchor on and `drop50` is served half a sheet, so neither has ever been a zero-gross mode.
+gross-zero-truth: truth.scored.gross == 0
+gross-zero-jit: jit.scored.gross == 0
+gross-zero-off05: off05.scored.gross == 0
+gross-zero-off15: off15.scored.gross == 0
+gross-zero-off3: off3.scored.gross == 0
+gross-zero-offm1: offm1.scored.gross == 0
+gross-zero-tempo098: tempo098.scored.gross == 0
+gross-zero-tempo102: tempo102.scored.gross == 0
+gross-zero-drop20: drop20.scored.gross == 0
+gross-zero-extraverse: extraverse.scored.gross == 0
+gross-zero-headers: headers.scored.gross == 0
+gross-zero-credit: credit.scored.gross == 0
+no-scored-song-gains-a-gross-line: count(scored.song.gross_up + scored.song.missing_up) == 0
+no-youtube-song-gains-a-gross-line: count(youtube.song.gross_up + youtube.song.missing_up) == 0
+
+# ── 4) MUST: the Jamendo word clock and the highlight ───────────────────────────────────────────────────
+# Denominator: 5378 Jamendo words ALIGNED of 5693 in text, over the 20 Jamendo songs, all 20 of which score.
+# `word_pco300` counts an unaligned word as not-correct, so it is the one that falls on a re-labelling.
+# Identical at both levels, so these are single literals and not a lower-of-two.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
+word-aae-truth: truth.jamendo.word_aae_ms <= 71.1
+word-pco300-truth: truth.jamendo.word_pco300 >= 91.78
+highlight-truth: truth.jamendo.highlight >= 81.4
+word-aligned-not-down-truth: truth.jamendo.word_pm100 >= base.truth.jamendo.word_pm100
+word-pm300-not-down-blind: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300
+word-pm300-not-down-jit: jit.jamendo.word_pm300 >= base.jit.jamendo.word_pm300
+
+# ── 5) MUST: WRONG TEXT IS STILL REFUSED, every case, both clocks ───────────────────────────────────────
+# 320 cases each: 32 songs x `wrong_k` 10 donors. `wrongtext_pass` is a published document on another song's
+# lyrics; `refused` is the count that declined. An uncalibrated bundle cannot measure `wrongtext_pass`, and
+# reading it there is an ERROR rather than a pass — the fail-loud direction. The combined mode is spelled
+# `mode("wrongtext+ownclock")` because a bare `+` is addition in this language (W3 onward).
+wrongtext-publishes-nothing: wrongtext.wrongtext_pass == 0
+wrongtext-refuses-all-320: wrongtext.refused == 320
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-nothing-published: wrongtext.published + wrongtext.line_sync == 0
+ownclock-publishes-nothing: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-refuses-all-320: mode("wrongtext+ownclock").refused == 320
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-nothing-published: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+wrongtext-no-errors: wrongtext.error == 0
+ownclock-no-errors: mode("wrongtext+ownclock").error == 0
+
+# ── 6) MUST: nothing moved relative to the recorded baseline ────────────────────────────────────────────
+# The relative half, so a tree whose absolute floors still clear cannot quietly give a point back. The
+# pooled `gross` sum is 118 at `run_align` and 179 at `time_text` over the fourteen modes section 3 lists
+# plus `blind` and `drop50`; it is read against the base rather than against a literal for that reason.
+pooled-gross-not-up: sum(scored.song.gross) <= sum(base.scored.song.gross)
+pooled-missing-not-up: sum(scored.song.missing) <= sum(base.scored.song.missing)
+pooled-high-gross-not-up: sum(scored.song.high_gross) <= sum(base.scored.song.high_gross)
+refused-not-up: count(song.refused_up) == 0
+pm500-not-down-truth: truth.scored.pm500 >= base.truth.scored.pm500
+pm500-not-down-jit: jit.scored.pm500 >= base.jit.scored.pm500
+pm500-not-down-blind: blind.scored.pm500 >= base.blind.scored.pm500
+pm500-not-down-drop20: drop20.scored.pm500 >= base.drop20.scored.pm500
+pm500-not-down-drop50: drop50.scored.pm500 >= base.drop50.scored.pm500
+pm500-not-down-extraverse: extraverse.scored.pm500 >= base.extraverse.scored.pm500
+pm500-not-down-credit: credit.scored.pm500 >= base.credit.scored.pm500
+pm500-not-down-headers: headers.scored.pm500 >= base.headers.scored.pm500
+text-pm500-not-down-truth: truth.scored.text_pm500 >= base.truth.scored.text_pm500
+text-pm500-not-down-drop50: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500
+text-pm500-not-down-blind: blind.scored.text_pm500 >= base.blind.scored.text_pm500
+scored-lines-not-down-truth: truth.scored.scored >= base.truth.scored.scored
+scored-lines-not-down-drop50: drop50.scored.scored >= base.drop50.scored.scored
+scored-lines-not-down-extraverse: extraverse.scored.scored >= base.extraverse.scored.scored
+in-text-unchanged-truth: truth.scored.in_text == base.truth.scored.in_text
+in-text-unchanged-drop50: drop50.scored.in_text == base.drop50.scored.in_text

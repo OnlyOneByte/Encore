@@ -205,6 +205,32 @@ test('the moving song can be ANY guest\u2019s now, not only the actor\u2019s', (
 	expect(modeInvalidation([{ id: 'x' }, { id: 'y' }, { id: 'z' }], 'z', 'queued')).toBeNull();
 });
 
+/* THE ARM FOR A CONCURRENT CHANGE. `liveSortTarget` already bails to -1 when the measured box count does not
+   match the row count — correct arithmetic, terrible interaction: the dragged row kept following the finger while
+   the sort was frozen and the release committed nothing. This predicate is what turns that into an ended gesture
+   with a sentence. */
+test('a queue that changed size since the geometry was measured invalidates the gesture', () => {
+	const reason = modeInvalidation([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'a', 'queued', 2);
+	expect(reason).toBe('The queue changed — nothing was moved.');
+});
+
+test('a matching count does not invalidate, and an absent count opts out entirely', () => {
+	// The ordinary drag: boxes measured at three rows, still three rows.
+	expect(modeInvalidation([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'a', 'queued', 3)).toBeNull();
+	// Not dragging: the route passes null, so this arm must never fire on its own.
+	expect(modeInvalidation([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'a', 'queued', null)).toBeNull();
+});
+
+test('the three specific reasons outrank the generic one, because they describe the same event better', () => {
+	// The dragged song itself leaving ALSO changes the count; "that song left" is the sentence that helps.
+	expect(modeInvalidation([{ id: 'b' }, { id: 'c' }], 'a', undefined, 3)).toBe(
+		'That song left the queue — nothing was moved.'
+	);
+	expect(modeInvalidation([{ id: 'a' }, { id: 'b' }], 'a', 'playing', 3)).toBe(
+		'That song started playing — nothing was moved.'
+	);
+});
+
 test('non-vacuity · the Queue tab imports and calls every predicate asserted here', () => {
 	// Without this, all of the above could pass against a module no surface had left. Each name is checked as a
 	// CALL, not just an import — and it is pointed at /queue, which is where the rows are.

@@ -20,7 +20,7 @@ from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, 
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
-from encore_worker.domain.lyrics import language, lexical
+from encore_worker.domain.lyrics import language, lexical, romanize
 from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config, ConfigError
 from encore_worker.protocol import frames as f
@@ -54,13 +54,20 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
         # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
         aligner=ml.build_aligner(
-            device=device, jobs=config.concurrency, model=align_model_for(config, device)
+            device=device,
+            jobs=config.concurrency,
+            model=align_model_for(config, device),
+            nonlatin_model=nonlatin_align_model_for(config),
         ),
         diarizer=ml.build_diarizer(device=device),
         # Built ONCE per process: lingua holds n-gram models per language. None without the `text` extra,
         # which costs accuracy on non-English LATIN songs and nothing else, the script half of the decision
         # being stdlib `unicodedata`. See docs/arch/04-alignment.md §9.
         detector=language.lingua_detector(),
+        # DISPLAY-ONLY, and the factory rather than one romaniser: the language is a per-document fact and
+        # each backend is built once on first use (`romanize.build_romanizer`). None for every language
+        # without the `romanize` extra, which publishes what this worker always published (XA-19).
+        romanizer=romanize.build_romanizer,
     )
 
 
@@ -98,6 +105,16 @@ def align_model_for(config: Config, device: str) -> str:
             f"({ml.default_align_model(device)})."
         )
     return named or ml.default_align_model(device)
+
+
+def nonlatin_align_model_for(config: Config) -> str | None:
+    """The bundle a NON-LATIN language aligns on, or None for whisperx's per-language table.
+
+    Only the `mms-roman` arm answers anything, and only because MMS_FA's vocabulary is Latin: it has to be
+    paired with the romanised target sequence (`units.rules`). Its weights are CC-BY-NC — an arm an operator
+    switches on, never a default (docs/arch/04-alignment.md §9.1, §14).
+    """
+    return ml.MMS_ALIGN_MODEL if "mms-roman" in config.align_experiments else None
 
 
 def device_for(config: Config, report: hardware.Report) -> str:

@@ -96,6 +96,12 @@ function refreshMembership(): void {
 	}
 }
 
+// A hook for the same reason app.toWorker is one: the SvelteKit route bundle shares the app INSTANCE via
+// the Symbol.for('encore.app') global but not this module's scope, so a route (/api/leave) cannot reach
+// `membership` or the function above. Anything that changes who is in the room without a socket edge has to
+// say so, or the next hello reply is built from a cache that still lists them.
+app.refreshMembership = refreshMembership;
+
 // The grace clock starts when a singer's last pending song leaves the queue, so a queue change moves
 // membership as surely as a socket closing. 20s balances timeliness against a per-tick scan.
 const MEMBERSHIP_SWEEP_MS = 20_000;

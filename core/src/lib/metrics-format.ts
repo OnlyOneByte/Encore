@@ -6,7 +6,9 @@ import { SEPARATOR_ENGINES } from '$lib/contract';
 
 /** ms to a human duration. Null renders as an em dash, NEVER as 0 — a missing timing is "not recorded", not "took
  * no time". EACH BRANCH ROUNDS TO THE PRECISION IT DISPLAYS BEFORE the branch is chosen: the other order prints
- * values that have already carried into the next unit, giving "1m 60s" and "60.0s". */
+ * values that have already carried into the next unit, giving "1m 60s" and "60.0s". Each branch also prints its OWN
+ * unit and the one below, which is why the hour branch drops seconds — "19h 58m 36s" is three units of precision
+ * nobody reads off a dashboard. */
 export function dur(ms: number | null): string {
 	if (ms === null) return '—';
 	if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -14,6 +16,10 @@ export function dur(ms: number | null): string {
 	// it belongs to the minute branch.
 	const tenths = Math.round(ms / 100);
 	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+	// Whole minutes, the unit the hour branch prints: 60 of them IS an hour. Without this branch an overnight
+	// re-process printed "1198m 36s", which is a number the reader has to divide.
+	const totalMin = Math.round(ms / 60_000);
+	if (totalMin >= 60) return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
 	const totalSec = Math.round(ms / 1000);
 	return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`;
 }

@@ -99,6 +99,15 @@ export interface EncoreApp {
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
 	/** Replaced by server.ts with the real socket map. */
 	toWorker: (workerId: string, cmd: WorkerCommand) => void;
+	/** Re-derives the membership snapshot the per-socket replies server.ts builds are made from — the
+	 *  hello reply's `queue:sync`, via its per-frame `listOnline`/`listAway` — and re-broadcasts
+	 *  `singer:presence`. NOT every `queue:sync`: the `onMediaReady` broadcast below builds its own from
+	 *  `app.presence.online()`, the live map, with `away` omitted. Assigned by server.ts, which
+	 *  OWNS that cache; call it after anything that changes who is in the room outside a socket edge.
+	 *  OPTIONAL rather than no-op-by-default like {@link toWorker}, because the unit harnesses build their
+	 *  app with `as unknown as EncoreApp` and a required field would be absent at runtime anyway — so every
+	 *  caller must use `?.()` and get a real no-op instead of a crash. */
+	refreshMembership?: () => void;
 	now: () => number;
 }
 

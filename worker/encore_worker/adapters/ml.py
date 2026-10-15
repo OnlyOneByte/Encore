@@ -40,6 +40,10 @@ ALIGN_MODELS_BY_DEVICE: Mapping[str, str] = {}
 #: one-time 1.2 GB download, A/B'd in README, "The English bundle is a setting" and "W5: the flip, landed".
 DEFAULT_ALIGN_MODEL = "HUBERT_ASR_LARGE"
 
+#: The ONE bundle that times a NON-LATIN language off a romanised target sequence, under the `mms-roman`
+#: arm. ITS WEIGHTS ARE CC-BY-NC, so it may not become anybody's default: docs/arch/04-alignment.md §9.1.
+MMS_ALIGN_MODEL = "MMS_FA"
+
 
 def default_align_model(device: str) -> str:
     """The English bundle this box loads when the operator names none — a function of the DEVICE, which is
@@ -140,14 +144,17 @@ def _has_default_align_model(language: str) -> bool:
     return bool(language in DEFAULT_ALIGN_MODELS_TORCH or language in DEFAULT_ALIGN_MODELS_HF)
 
 
-def align_model_name(language: str, model: str | None = None) -> str:
+def align_model_name(language: str, model: str | None = None, nonlatin: str | None = None) -> str:
     """The alignment bundle `_aligner` loads for `language` — the name, without loading anything.
 
-    `model` wins for `ENGLISH` only and the rest comes off whisperx's tables, so this and `_aligner` name the
-    same thing. Unknown is reported as such, `""` claiming `BANDS`' model (XA-06).
+    `model` wins for `ENGLISH` and `nonlatin` for a non-Latin language (the `mms-roman` arm); the rest comes
+    off whisperx's tables, so this and `_aligner` name the same thing. Unknown is reported as such, `""`
+    claiming `BANDS`' model (XA-06).
     """
     if model is not None and language == ENGLISH:
         return model
+    if nonlatin is not None and not _is_latin(language):
+        return nonlatin
     try:
         from whisperx.alignment import (  # noqa: PLC0415
             DEFAULT_ALIGN_MODELS_HF,
@@ -157,6 +164,14 @@ def align_model_name(language: str, model: str | None = None) -> str:
         return f"unknown:{language}"
     named = DEFAULT_ALIGN_MODELS_TORCH.get(language) or DEFAULT_ALIGN_MODELS_HF.get(language)
     return str(named or f"default:{language}")
+
+
+def _is_latin(language: str) -> bool:
+    """Is `language` one whisperx tables a LATIN-script bundle for? The `mms-roman` arm's own scope: a Latin
+    language's MMS reading is already measurable through `ENCORE_ALIGN_MODEL` on English."""
+    from encore_worker.domain.lyrics.language import LATIN_LANGUAGES  # noqa: PLC0415
+
+    return language in LATIN_LANGUAGES
 
 
 def _cached(device: str, checkpoint: str, build: Any) -> Any:
@@ -252,11 +267,15 @@ def blank_id_of(dictionary: Mapping[str, int]) -> int:
 
 def specials_of(dictionary: Mapping[str, int]) -> dict[str, int]:
     """The `_SPECIAL_NAMES` this vocabulary has, for `Emissions.specials` — plus `-` WHEN IT IS THE BLANK,
-    the torchaudio bundles' case, where it is not a hyphen the text may align on."""
+    the torchaudio bundles' case, where it is not a hyphen the text may align on, and `*` where the
+    vocabulary ships its own STAR column (MMS_FA's), which a lyric's literal `*` must never target."""
     out = {name: int(code) for name in _SPECIAL_NAMES if (code := dictionary.get(name)) is not None}
     blank = blank_id_of(dictionary)
     if dictionary.get("-") == blank:
         out["-"] = blank
+    own_star = dictionary.get("*")
+    if own_star is not None and int(own_star) != blank:
+        out[STAR_NAME] = int(own_star)
     return out
 
 
@@ -265,8 +284,9 @@ def specials_of(dictionary: Mapping[str, int]) -> dict[str, int]:
 STAR_NAME = "<star>"
 
 #: Nats BELOW each frame's own best log-probability that the star column sits at (docs/arch/04-alignment.md
-#: §3.1). The fit and the verdict are README, "W7: the star/filler token, phase A".
-STAR_PENALTY_NATS = 1.0
+#: §3.1). The sweep, the objectives and the verdict: README, "W9: the star re-fitted out of sample, at an
+#: optimum outside the review's range" and "W7: the star/filler token, phase A" (W7's in-sample 1.0).
+STAR_PENALTY_NATS = 0.3
 
 
 def starred(emissions: Any, *, penalty: float = STAR_PENALTY_NATS) -> Emissions:
@@ -277,8 +297,11 @@ def starred(emissions: Any, *, penalty: float = STAR_PENALTY_NATS) -> Emissions:
     duck-typed in with `Emissions` out for `generate.blank_of`'s reason.
     """
     matrix = emissions.log_probs
-    if matrix is None or emissions.frames == 0:
+    named_already: Mapping[str, int] = getattr(emissions, "specials", None) or {}
+    if matrix is None or emissions.frames == 0 or STAR_NAME in named_already:
         # The SAME OBJECT, so an inert arm is not even a copy; `cast` because the parameter is a duck type.
+        # A matrix that NAMES a star already has one (MMS_FA ships the column): a second would be a second
+        # absorbing token, and the arm's own penalty would not apply to the model's.
         return cast("Emissions", emissions)
     star = int(matrix.shape[1])
     installed: Any
@@ -392,6 +415,18 @@ def load_audio_mono_16k(path: str) -> Any:
         raise _machinery_fault(f"decoding {path!r} through ffmpeg", failed) from failed
 
 
+def log_probs_like(original: Any, computed: Any) -> Any:
+    """`computed` as the KIND `original` is: a tensor where `original` is one, else itself — what `domain/`
+    computes comes back as numpy and the CTC kernel needs a tensor (docs/arch/04-alignment.md §3.2)."""
+    try:
+        import torch  # noqa: PLC0415 - lazy by design; see the module docstring
+    except ImportError:  # no torch here, so `original` is not a tensor either
+        return computed
+    if not isinstance(original, torch.Tensor) or isinstance(computed, torch.Tensor):
+        return computed
+    return torch.as_tensor(computed, dtype=original.dtype, device=original.device)
+
+
 def forced_align_decoder(
     log_probs: Any, targets: Sequence[int], blank: int = 0
 ) -> tuple[list[int], list[float]]:
@@ -471,7 +506,14 @@ class WhisperTranscriber:
 class WhisperXAligner:
     """`Aligner` over whisperX's wav2vec2 forced alignment, and the reason this worker stays Python."""
 
-    def __init__(self, *, device: str = "cpu", jobs: int = 1, model: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        device: str = "cpu",
+        jobs: int = 1,
+        model: str | None = None,
+        nonlatin_model: str | None = None,
+    ) -> None:
         self._device = device
         #: The emission LRU's bound, from the box's configured concurrency (`_emission_cache_size`).
         self._matrices = _emission_cache_size(jobs)
@@ -479,11 +521,16 @@ class WhisperXAligner:
         #: constructor keeps: the per-device policy lives in `build_aligner`, so this class stays "load what
         #: you were told to load".
         self._model = model
+        #: The bundle that REPLACES whisperx's table for a non-Latin language (`MMS_ALIGN_MODEL` under the
+        #: `mms-roman` arm), or None for the table. Off by default: those weights are CC-BY-NC.
+        self._nonlatin_model = nonlatin_model
 
     def _bundle_of(self, language: str) -> str | None:
-        """The bundle to LOAD for `language`: the configured English one, else None = whisperx's table, so
-        those names are not a second copy of it."""
-        return self._model if language == ENGLISH else None
+        """The bundle to LOAD for `language`: the configured English one, the arm's non-Latin one, else
+        None = whisperx's table, so those names are not a second copy of it."""
+        if language == ENGLISH:
+            return self._model
+        return self._nonlatin_model if not _is_latin(language) else None
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
         bundle = self._bundle_of(language)
@@ -517,7 +564,7 @@ class WhisperXAligner:
     def _bundle_name(self, language: str) -> str:
         """The bundle `_aligner` loads for `language`, for `Emissions.model` — resolved, never a placeholder:
         a calibrated reader trusts it and the cache keys on it (XA-06)."""
-        return align_model_name(language, self._model)
+        return align_model_name(language, self._model, self._nonlatin_model)
 
     def emissions(self, audio_path: str, language: str) -> Emissions:
         """The full song's per-frame character log-probabilities, computed ONCE and reusable: THE EVIDENCE
@@ -667,15 +714,22 @@ def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | N
     return WhisperTranscriber(device=device, checkpoint=checkpoint)
 
 
-def build_aligner(*, device: str, jobs: int = 1, model: str | None = None) -> WhisperXAligner | None:
+def build_aligner(
+    *, device: str, jobs: int = 1, model: str | None = None, nonlatin_model: str | None = None
+) -> WhisperXAligner | None:
     """The aligner, or None on a box with no whisperx. `jobs` is `Config.concurrency` and sizes the emission
     LRU; `model` is the English bundle, already checked for a calibration row by `__main__.align_model_for`,
-    and unset takes THIS DEVICE's default."""
+    and unset takes THIS DEVICE's default. `nonlatin_model` is the `mms-roman` arm's, off by default."""
     from encore_worker.host.hardware import module_available
 
     if not module_available("whisperx"):
         return None
-    return WhisperXAligner(device=device, jobs=jobs, model=model or default_align_model(device))
+    return WhisperXAligner(
+        device=device,
+        jobs=jobs,
+        model=model or default_align_model(device),
+        nonlatin_model=nonlatin_model,
+    )
 
 
 def build_diarizer(*, device: str) -> PyannoteDiarizer | None:
