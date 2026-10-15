@@ -410,6 +410,63 @@ def test_a_star_absorbs_audio_the_text_does_not_mention() -> None:
     assert starts == sorted(starts), "the stars kept the path monotone"
 
 
+# ── P, the one number the arm chooses (README, "W9: the star re-fitted out of sample, at an optimum
+# outside the review's range") ─────────────────────────────────────────────────────────────────────────
+
+
+def star_frames(text: Sequence[str], matrix: Matrix, penalty: float) -> int:
+    """How many frames the forced path spends on a star at `penalty` — the arm's eagerness, in frames."""
+    starred = ml.starred(emissions(matrix), penalty=penalty)
+    labels, _scores = ctc_viterbi(starred.log_probs, char_targets(text, starred, stars=True).targets, 0)
+    return sum(1 for label in labels if label == STAR)
+
+
+def test_a_lower_penalty_absorbs_more_and_the_fitted_one_still_holds_the_intro() -> None:
+    """P is an EAGERNESS knob, and the fitted value has to sit on the side of the cliff that absorbs.
+
+    Monotone by construction (`frame max − P` against fixed columns), asserted because the sweep the
+    constant carries is a curve in P and a later wave reading it needs the code's direction to be the same
+    one. The cliff is the arm's whole behaviour: above it the star is too expensive to enter and the
+    uncovered intro drags the text back again. WHERE it falls is the FIXTURE's, between 1 and 2 nats, so the
+    shipped P is pinned as a literal below (README, "What the hermetic fixture can and cannot say about P").
+    """
+    text = LINES[1:]
+    matrix = tempting(text)
+    ladder = [(penalty, star_frames(text, matrix, penalty)) for penalty in (0.0, 0.05, 1.0, 2.0, 4.0)]
+    frames = [count for _penalty, count in ladder]
+    assert frames == sorted(frames, reverse=True), f"a dearer star absorbed MORE: {ladder}"
+    _intro, intro_start, intro_end = SUNG[0]
+    intro_frames = int((intro_end - intro_start) / FRAME_SEC)
+    fitted = star_frames(text, matrix, ml.STAR_PENALTY_NATS)
+    assert fitted >= intro_frames * 0.5, f"the fitted P does not absorb the intro: {fitted} frames"
+    assert frames[-1] <= len(text), "at 4 nats the star is abandoned, which is the other side of the cliff"
+
+
+def test_the_shipped_penalty_is_the_one_the_corpus_fitted() -> None:
+    """P is a MEASURED choice nothing hermetic can discriminate, so it is pinned as a literal.
+
+    The re-fit put the optimum at 0.1-0.3, BELOW the review's [1, 4] band, buying `drop50` gross 82 -> 11 at
+    ±500/text 75.72 -> 86.03 on the 32-song pool. Every other test here reads the constant symbolically and
+    the fixture's cliff sits between 1 and 2 nats, so a revert to W7's 1.0 left the suite green (review W9
+    r1-tests-12). README, "W9: the star re-fitted out of sample" and its fixture-ladder table.
+    """
+    assert ml.STAR_PENALTY_NATS == 0.3
+
+
+def test_the_fitted_penalty_leaves_a_covered_sheet_alone_where_the_mms_constant_does_not() -> None:
+    """The property P was fitted to protect: on audio the text COVERS, a star must stay a fallback.
+
+    The MMS constant (`P = 0`, a star that never scores worse than the frame's best character) is the only
+    value measured to make the unperturbed control WORSE — full-sheet gross 77 -> 102, ±250 72.44 -> 67.16 —
+    and here it is the same mechanism in one song: it takes frames the text's own letters own, while at the
+    fitted P every star takes the single frame the topology forces it to and nothing else.
+    """
+    covered = sung_matrix(SUNG, VOCAB, DURATION)
+    fitted = star_frames(LINES, covered, ml.STAR_PENALTY_NATS)
+    assert fitted == len(LINES), f"a star took audio the text covers: {fitted} frames for {len(LINES)} stars"
+    assert star_frames(LINES, covered, 0.0) > 10 * fitted, "the over-eager constant must show here"
+
+
 def test_a_repair_window_is_not_starred_and_decodes_as_it_always_did() -> None:
     """REPAIRS STAY STAR-FREE (`generate`'s docstring owns the reasoning: §3.10's defect is the GLOBAL path's,
     and a repair window is already bounded on both sides by evidence that says which text belongs in it).

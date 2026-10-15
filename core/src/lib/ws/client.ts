@@ -227,6 +227,28 @@ export class WsClient {
 		if (typeof document !== 'undefined' && document.visibilityState === 'visible') this.wake();
 	};
 
+	/* THE LOSS SIDE OF THE LIFECYCLE, and its absence was the root cause of six separate behavioural defects.
+	 * Every other listener here is a RECOVERY signal — `online`, `pageshow`, `resume`, `visibilitychange` all
+	 * call `wake()`. Nothing was bound to the browser telling us the link had GONE, so the only detection path
+	 * was waiting out `heartbeatMs` (15s) plus `livenessTimeoutMs` (10s): a TCP connection that is never going to
+	 * answer again looks perfectly live for up to 25 seconds. Measured on a real cut, with `navigator.onLine`
+	 * instrumented: the browser's `offline` event fired at +41ms while the app's own cue appeared at +23.2s on
+	 * `/`, +25.2s on `/song` and +20.0s on the TV.
+	 *
+	 * At a party those 25 seconds are the whole problem. Every control on the remote keeps looking live, and
+	 * taps land in a socket that will never deliver them — the guiding-track slider, pause, skip and ±semitone
+	 * all discard input silently in that window.
+	 *
+	 * `offline` IS A HINT, NOT A TRUTH, which is why this calls `#presumeDead()` rather than anything harsher:
+	 * the same teardown the liveness timeout already uses, which discards the socket, publishes
+	 * `connected = false` and schedules a reconnect. So a FALSE offline (a VPN flap, a captive portal) costs one
+	 * reconnect rather than a broken client, and `online`/`visibilitychange` above are already wired to recover.
+	 * Guarded on `#sock` so an offline event arriving while we are already disconnected cannot schedule a second
+	 * reconnect on top of the one in flight. */
+	#onOffline = () => {
+		if (this.#sock) this.#presumeDead();
+	};
+
 	#bindLifecycle(): void {
 		if (!this.#opt.bindLifecycle || this.#lifecycleBound) return;
 		if (typeof document === 'undefined' || typeof window === 'undefined') return;
@@ -234,6 +256,7 @@ export class WsClient {
 		document.addEventListener('resume', this.#onWake); // Page Lifecycle: thawed after freeze
 		window.addEventListener('pageshow', this.#onWake); // back/forward cache restore
 		window.addEventListener('online', this.#onWake);
+		window.addEventListener('offline', this.#onOffline);
 		this.#lifecycleBound = true;
 	}
 
@@ -243,6 +266,7 @@ export class WsClient {
 		document.removeEventListener('resume', this.#onWake);
 		window.removeEventListener('pageshow', this.#onWake);
 		window.removeEventListener('online', this.#onWake);
+		window.removeEventListener('offline', this.#onOffline);
 		this.#lifecycleBound = false;
 	}
 }

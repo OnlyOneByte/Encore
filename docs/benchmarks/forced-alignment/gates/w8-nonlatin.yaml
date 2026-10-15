@@ -1,0 +1,46 @@
+# W8's NON-LATIN lane: what an UNCALIBRATED bundle may publish (PLAN-alignment-v3 W8 stage 0). Narrative, the
+# truth set and every number below: README, "W8: the non-Latin truth set".
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --corpus nonlatin --language zh --songs amll-zh \
+#       --modes truth,wrongtext --wrong-k 3 --asr off --tag w8-nonlatin-zh \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8-nonlatin.yaml
+#
+# THERE IS NO `--compare` BASELINE and there cannot be one: `corpus` is setup (`e2e_gates.SETUP_META`), so
+# every recorded row — all of them English — is a mismatch here rather than a comparison. The floors are this
+# run's own reading (`_runs/w8-nonlatin-zh`, 2026-10-15, 16 cases, 257 s, 11 matrices).
+#
+# WHY NO RULE READS `wrongtext_pass`. The run is marked `uncalibrated` (zh has no `lexical.CALIBRATED` row,
+# which is the whole point of the lane), and on such a run `e2e_gates.UNCALIBRATED_METRICS` makes reading that
+# metric an ERROR: with the emission-scale gates stood down it would be the envelope gate's reading. The claim
+# here is a different one — nothing published AT ALL — so §2 gates the outcome counts it is derived from.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 1) MUST: the lane publishes LINES, never WORDS ──────────────────────────────────────────────────────
+# Four zh songs, four line-synced documents, no word document anywhere: the global engine declines for want
+# of a wrong-text gate and the LINE_SYNC rung publishes the sheet. `high` 0 by construction at that rung.
+truth-cases-four: truth.cases == 4
+truth-line-synced-four: truth.line_sync == 4
+truth-times-no-words: truth.published == 0
+truth-nothing-refused: truth.refused == 0
+truth-never-high: truth.high == 0
+truth-in-its-own-group: truth.nonlatin.cases == 4
+
+# ── 2) MUST: the wrong-text path is closed, 0 of 12 ────────────────────────────────────────────────────
+# Three cross-pairs on each of the four songs. A line-synced wrong text would be a pass too, so both counts
+# are gated, and `scored` holds that not one wrong line was ever measured against this song's truth.
+wrongtext-cases-twelve: wrongtext.cases == 12
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-all-refused: wrongtext.refused == 12
+wrongtext-scores-no-line: wrongtext.scored == 0
+
+# ── 3) MUST: the truth set is still the truth the rung publishes ───────────────────────────────────────
+# 198 lines over the 4 songs, published where the sheet says: the claim clock is a no-op on this set (bias
+# 0 ms at MAD 0 ms), so `gross` 0 and ±500 100.0 are a publish-rate reading, not an accuracy one.
+truth-lines-198: truth.scored >= 198
+truth-no-gross: truth.gross == 0
+truth-pm500: truth.pm500 >= 100.0
+truth-no-band: truth.band == 0
+truth-clock-moved-nothing: count((abs(truth.song.bias_ms) > 1) * (truth.song.mad_ms <= 250)) == 0
+truth-zero-gross-songs: truth.zero_gross_songs == 4

@@ -16,7 +16,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from encore_worker.adapters import audiosep
+from encore_worker.adapters import audiosep, zoo
+from tests.zoo_fixture import catalogue_or_skip, needs_zoo
 
 RATE = 44100
 
@@ -152,18 +153,10 @@ def test_an_unknown_token_is_refused_at_construction() -> None:
 
 # ── refusing to publish something it cannot identify ─────────────────────────────────────────────
 
-import importlib.util  # noqa: E402 - kept beside the tests that need it
 
-needs_zoo = pytest.mark.skipif(
-    importlib.util.find_spec("audio_separator") is None,
-    reason="the `audiosep` extra is not installed here",
-)
-
-
-def _a_separator() -> audiosep.ZooSeparator:
-    from encore_worker.adapters import zoo
-
-    return audiosep.ZooSeparator(token=zoo.catalogue()[0].token, model_file_dir="/tmp/zoo-models")
+def _a_separator(models: tuple[zoo.ZooModel, ...]) -> audiosep.ZooSeparator:
+    assert models, "the catalogue was read and offers nothing; see test_zoo for which filter rejected it"
+    return audiosep.ZooSeparator(token=models[0].token, model_file_dir="/tmp/zoo-models")
 
 
 @needs_zoo
@@ -176,13 +169,14 @@ def test_two_stems_it_cannot_tell_apart_are_refused(tmp_path: object) -> None:
     """
     from encore_worker.adapters.separate import SeparationFailed
 
+    models = catalogue_or_skip()
     out = str(tmp_path)
     both = (110.0, 440.0)
     a = write(os.path.join(out, "x_(Vocals)_m.wav"), both)
     b = write(os.path.join(out, "x_(Instrumental)_m.wav"), both)
 
     with pytest.raises(SeparationFailed, match="too similar to tell apart"):
-        _a_separator()._roles_of([a, b])
+        _a_separator(models)._roles_of([a, b])
 
 
 @needs_zoo
@@ -190,10 +184,11 @@ def test_a_decidable_pair_is_named_by_measurement_not_by_filename(tmp_path: obje
     """The filenames here are DELIBERATELY INVERTED — the bass-heavy file is called `(Vocals)`. The
     measurement must win, because that is exactly the bs-roformer case: its `_instrumental` file holds the
     vocals, and believing the name would publish the voice as the backing track."""
+    models = catalogue_or_skip()
     out = str(tmp_path)
     lying_vocals = write(os.path.join(out, "x_(Vocals)_m.wav"), (55.0, 80.0, 110.0))
     lying_inst = write(os.path.join(out, "x_(Instrumental)_m.wav"), (330.0, 660.0, 990.0))
 
-    verdict = _a_separator()._roles_of([lying_vocals, lying_inst])
+    verdict = _a_separator(models)._roles_of([lying_vocals, lying_inst])
     assert verdict.instrumental_path == lying_vocals, "the measurement must override the filename"
     assert verdict.ratio > 3.0

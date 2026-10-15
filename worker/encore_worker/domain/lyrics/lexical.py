@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import random
 import zlib
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
 from encore_worker.domain.lyrics.generate import Decoder as _Decoder
 from encore_worker.domain.lyrics.generate import blank_of, char_ids, excluded_of
+from encore_worker.domain.lyrics.units import Rules
 
 #: The decoder contract, imported rather than restated, so the lift measures on the decode that publishes.
 Decoder = _Decoder
@@ -48,22 +49,32 @@ class Lift:
 
 
 def letters_of(
-    line_texts: Sequence[str], dictionary: Mapping[str, int], exclude: Collection[int] = (0,)
+    line_texts: Sequence[str],
+    dictionary: Mapping[str, int],
+    exclude: Collection[int] = (0,),
+    units: Rules | None = None,
 ) -> list[int]:
     """The targets `generate` decodes `line_texts` as, by calling its own `char_ids`, so the lift is measured
     on the exact sequence the decode publishes; `exclude` is the MATRIX's (XA-10)."""
     return [
         token
         for text in line_texts
-        for word in text.split()
-        for _index, token in char_ids(word, dictionary, exclude)
+        for word in (units.words(text) if units is not None else text.split())
+        for _index, token in char_ids(word, dictionary, exclude, units)
     ]
 
 
-def shuffles_of(line_texts: Sequence[str], count: int = SHUFFLES) -> list[list[str]]:
+def shuffles_of(
+    line_texts: Sequence[str], count: int = SHUFFLES, units: Rules | None = None
+) -> list[list[str]]:
     """`count` copies of `line_texts` with the WORDS shuffled across the whole text, each line keeping its
-    own word count — so every copy holds exactly the text's letters, on the text's own lines."""
-    words = [word for text in line_texts for word in text.split()]
+    own word count — so every copy holds exactly the text's letters, on the text's own lines.
+
+    THE SHUFFLE IS THE UNIT RULE'S: with the whitespace rule a Chinese line is one word, so a "shuffle"
+    only permutes whole lines and the contrast is a much weaker one than any Latin text's.
+    """
+    words_of: Callable[[str], Sequence[str]] = units.words if units is not None else str.split
+    words = [word for text in line_texts for word in words_of(text)]
     rng = random.Random(zlib.crc32("\n".join(line_texts).encode("utf-8")))
     out: list[list[str]] = []
     for _ in range(count):
@@ -72,21 +83,23 @@ def shuffles_of(line_texts: Sequence[str], count: int = SHUFFLES) -> list[list[s
         lines: list[str] = []
         taken = 0
         for text in line_texts:
-            n = len(text.split())
+            n = len(words_of(text))
             lines.append(" ".join(drawn[taken : taken + n]))
             taken += n
         out.append(lines)
     return out
 
 
-def lift(line_texts: Sequence[str], emissions: Any, *, decoder: Decoder) -> Lift | None:
+def lift(
+    line_texts: Sequence[str], emissions: Any, *, decoder: Decoder, units: Rules | None = None
+) -> Lift | None:
     """The text's lexical lift on `emissions` (duck-typed), or None when it cannot say: too few letters, an
     empty matrix, or a text whose every shuffle decodes as itself. The decoder's raises propagate."""
     # `blank_of` / `excluded_of` rather than a second `getattr` with its own default: one literal per idea, or
     # the gate measures a different text from the one about to publish.
     blank = blank_of(emissions)
     excluded = excluded_of(emissions)
-    targets = letters_of(line_texts, emissions.dictionary, excluded)
+    targets = letters_of(line_texts, emissions.dictionary, excluded, units)
     if len(targets) < MIN_LETTERS or emissions.frames == 0:
         return None
     # A contrast is a different TARGET SEQUENCE and not a different line string: a shuffle whose letters do
@@ -94,14 +107,14 @@ def lift(line_texts: Sequence[str], emissions: Any, *, decoder: Decoder) -> Lift
     # such a text has no contrast left and `lift` says None instead of convicting it.
     shuffled = [
         lines
-        for lines in shuffles_of(line_texts)
-        if letters_of(lines, emissions.dictionary, excluded) != targets
+        for lines in shuffles_of(line_texts, units=units)
+        if letters_of(lines, emissions.dictionary, excluded, units) != targets
     ]
     if not shuffled:
         return None
 
     def path(lines: Sequence[str]) -> float:
-        targets_of = letters_of(lines, emissions.dictionary, excluded)
+        targets_of = letters_of(lines, emissions.dictionary, excluded, units)
         _labels, scores = decoder(emissions.log_probs, targets_of, blank)
         return float(sum(scores))
 
@@ -199,6 +212,26 @@ def line_sync_share(bands: Bands | None) -> float:
     own, else `LINE_SYNC_SHARE_UNCALIBRATED` — a missing row meaning "do not judge this matrix's
     LOG-PROBABILITIES by another model's", not "publish a sheet no witness read"."""
     return bands.line_sync_min_agreement if bands is not None else LINE_SYNC_SHARE_UNCALIBRATED
+
+
+#: Wrong texts the v2 ENVELOPE gate let through — the only gate an uncalibrated bundle has left.
+ENVELOPE_WRONG_TEXT_PASSES = "189 of 380"
+
+
+def may_time_words(bands: Bands | None, *, heard_on_this_audio: bool) -> bool:
+    """Whether a WORD document may publish off a matrix whose calibration row is `bands`: only where a
+    witness read THESE WORDS, the lift against that row or a transcript of this recording being the two
+    (XA-06; docs/arch/04-alignment.md §5.4)."""
+    return bands is not None or heard_on_this_audio
+
+
+def words_ungated(why: str) -> str:
+    """Why words are declined for want of a gate, in the one sentence every engine prints."""
+    return (
+        f"no wrong-text gate can read this text: {why} — and the envelope gate it would fall back to "
+        f"passed {ENVELOPE_WRONG_TEXT_PASSES} of the bench's wrong texts, so this bundle may time LINES "
+        f"but not WORDS"
+    )
 
 
 def margin_floor(bands: Bands | None) -> float | None:

@@ -2,6 +2,7 @@
 	// ONE row shape for all readiness states: the state decides the badge line and which actions appear, and the
 	// layout never changes, so a row that finishes processing morphs in place instead of jumping between lists.
 	// Every guest-facing string below is PARTY ENGLISH: a guest waits for a karaoke track, not an "instrumental".
+	import { untrack } from 'svelte';
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
@@ -128,13 +129,20 @@
 
 	/* WHAT IS ANNOUNCED, and deliberately NOT `stateChip`, which carries the percentage. The chip's text changes on every
 	   whole-percent step, so as a live region it announced hundreds of times per song and drowned out the queue
-	   announcer. This is the STAGE only, so it speaks once per real transition; the progress bar still exposes its value
-	   for AT to read on demand. Empty for a row with no process state, which renders no region at all. */
+	   announcer. This is the STAGE only; the progress bar still exposes its value for AT to read on demand. Empty for a
+	   row with no process state, which renders no region at all. Only a CHANGE out of `bornStage` reaches the region —
+	   see the markup at the foot of this file. */
 	const announcedStage = $derived(
 		readiness === 'processing' || readiness === 'failed' || readiness === 'ready'
 			? processStageLabel(readiness === 'processing' ? 'queued' : readiness === 'failed' ? 'failed' : 'ready')
 			: ''
 	);
+	/* THE STAGE THIS ROW WAS BORN IN, captured once at init and never again. `untrack` rather than a bare read, which
+	   is this tree's idiom for exactly this position (TvPlayer.svelte, settings/you's drafts): a bare read of a rune
+	   outside an effect raises `state_referenced_locally`, which `bun run check` surfaces. MUST STAY BELOW
+	   `announcedStage` for the same reason `metaFacts` does — $derived is lazy at runtime, but the checker reports a
+	   block-scoped use before declaration. */
+	const bornStage = untrack(() => announcedStage);
 
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return processStageLabel('ready');
@@ -297,9 +305,25 @@
 	{/snippet}
 </Item.Root>
 
-<!-- THE STAGE TRANSITION IS THE ANNOUNCEMENT, NEVER THE PERCENTAGE — see `announcedStage`. Gated on being non-empty, so
-	a ready-to-queue row with no process state mounts no region at all rather than an empty one. -->
-{#if announcedStage}
+<!-- THE STAGE TRANSITION IS THE ANNOUNCEMENT, NEVER THE PERCENTAGE — see `announcedStage`. A row announces the stage it
+	CHANGED INTO, never the stage it was BORN in, which extends the same "no region rather than an empty one" rule from a
+	row with no process state to a row whose stage was settled before it existed. /library is the case that forced it:
+	every row there is handed `readiness="ready"` and can never transition, so it mounted one polite region per rendered
+	row, all reading "Karaoke ready". MEASURED on a 135-song library at 390x844, 60 rows on arrival: a MutationObserver
+	armed before the tab tap counted 63 `role=status` INSERTIONS against 3 removals, so every one of them is a dynamic
+	insertion, which is the condition under which AT may speak. The same drive with this gate in place counts 3 and 3.
+	`.vh` is clip-based, not display:none, so each region also sat in the accessibility tree beside the visible pill:
+	with all 135 rows revealed, Chrome's full AX tree now names "Karaoke ready" 270 times — two nodes per row, the
+	pill's container and its text — where the duplicate region doubled that, and `innerText` now holds the string 135
+	times where it held it twice per row.
+	THE DOCUMENTED ANNOUNCEMENT SURVIVES, which is the whole point: on `/` an optimistically-processed row keeps its
+	component instance (`processingRows` is fed only by the search response, so the optimistic `setMediaStatus` leaves
+	the row in the same keyed group), so `bornStage` is '' there. DRIVEN on `/`: a "Needs karaoke" row carries no region
+	at all, and one tap on its sing action inserts a `role=status` reading "Making karaoke…" — `processStageLabel`'s own
+	words for an in-flight process, with no worker needed to prove the transition speaks.
+	ONE BEHAVIOUR GIVEN UP deliberately: a row that mounts ALREADY failed announces nothing. Its visible chip still
+	says so, and a failure the guest did not watch happen is not news a live region should interrupt them with. -->
+{#if announcedStage && announcedStage !== bornStage}
 	<div class="vh" role="status">{announcedStage}</div>
 {/if}
 

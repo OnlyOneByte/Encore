@@ -1,6 +1,5 @@
 <!-- Public party page: aggregate only, no singer names — `plays` has no singer column. docs/FRONTEND.md#stats -->
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import Trend from '$lib/charts/Trend.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
@@ -8,40 +7,28 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { count } from '$lib/metrics-format';
 
-	interface SongTally {
-		mediaId: string;
-		title: string;
-		plays: number;
-	}
-	interface Stats {
-		library: { ready: number; catalog: number };
-		sings: { total: number; window: number; distinctSongs: number };
-		topSongs: SongTally[];
-		topRecent: SongTally[];
-		topArtists: { artist: string; plays: number }[];
-		perDay: { day: string; plays: number }[];
-		window: { days: number; since: number };
-	}
+	/* The shapes and the fetch live in `+page.ts`, not here: the data has to be in the navigation result BEFORE the
+	   document commits, or a popped scroll offset clamps to 0 on a page that is still empty. See that file. */
+	import type { SongTally, Stats } from './+page';
 
-	let stats = $state<Stats | null>(null);
-	let failed = $state(false);
-	const now = Date.now();
+	interface Props {
+		data: {
+			stats: Stats | null;
+			failed: boolean;
+			/** The trend's right edge, from the same request that computed `window.since`. */
+			now: number;
+		};
+	}
+	let { data }: Props = $props();
+	// Aliased so every tile and chart below reads the names it always read.
+	const stats = $derived(data.stats);
+	const now = $derived(data.now);
 
 	const tallyFingerprint = (rows: SongTally[]) => rows.map((s) => `${s.mediaId}:${s.plays}`).join('|');
 	/** On a young install the window covers the whole log, and one chart printed twice reads as a bug. */
 	const recentDiffers = $derived.by(() => {
 		if (!stats || stats.topRecent.length === 0) return false;
 		return tallyFingerprint(stats.topSongs) !== tallyFingerprint(stats.topRecent);
-	});
-
-	onMount(async () => {
-		try {
-			const res = await fetch('/api/stats?days=30');
-			if (!res.ok) throw new Error(String(res.status));
-			stats = await res.json();
-		} catch {
-			failed = true; // say so rather than rendering zeros that look like real data
-		}
 	});
 </script>
 
@@ -53,19 +40,14 @@
 	<PageHeader title="Party stats" back={{ href: '/settings', label: 'Back to settings' }} />
 
 	<main aria-label="Party stats">
-		{#if failed}
+		{#if data.failed}
 			<Alert.Root variant="destructive"><Alert.Title>Could not load stats.</Alert.Title></Alert.Root>
 		{:else}
-			<!-- This live region must OUTLIVE the load: one created by it arrives already holding its message, so silently. -->
-			<p class="note" role="status">
-				{#if !stats}
-					Loading…
-				{:else}
-					Party stats for the last {count(stats.window.days, 'day')}.
-				{/if}
-			</p>
-
 			{#if stats}
+				<!-- NOT a live region, and no "Loading…" branch: the load runs before the document commits, so this sentence
+					 ships already written and there is no change for an AT to announce. -->
+				<p class="note">Party stats for the last {count(stats.window.days, 'day')}.</p>
+
 				<div class="tiles">
 					<div class="tile-slot primary">
 						<Card.Root>

@@ -1,6 +1,12 @@
 /*
  * THE LIBRARY PAGE'S LOGIC, out of the route so it is testable without a DOM. See docs/FRONTEND.md#the-library-page.
  *
+ * ONE EXPORT IS SHARED WITH THE SING TAB, and the file's name no longer covers it: `LIBRARY_PAGE` and
+ * `libraryWindow` are imported by `/` as well, which windows its three search-result groups the same way. Nothing
+ * else here is — the filtering, facets and sort are /library's alone, because /library narrows a list it already
+ * holds in memory while `/` fetches from three resolvers. Keep that split: a `/`-shaped concern added below would
+ * be reachable from a module every surface treats as the library page's.
+ *
  * WHAT "YOUR LIBRARY" IS: the READY catalog — `MediaRepository.listReady()`, served by /api/library and mirrored whole
  * in `room.library`. It is NOT the `local` resolver, which searches audio FILES in the media directory: a processed
  * YouTube song is in the library and absent from that list, so `/api/search?source=local` answers a different question
@@ -38,13 +44,29 @@ export interface LibraryFacet {
 export const FACET_CHIP_LIMIT = 12;
 
 /**
- * Rows `/library` renders per reveal. NOT a cap — `/library` is the only place every ready song is reachable, so a
- * row it refuses to show is a song you own with nowhere left to reach it. The window GROWS by this much per tap.
+ * Rows a reveal renders, on BOTH surfaces that window: `/library`'s match list, and each of `/`'s three
+ * search-result groups. NOT a cap on either — `/library` is the only place every ready song is reachable, and `/`
+ * hands back every row /api/search returned — so a row either surface refuses to show is a song with nowhere left to
+ * reach it. The window GROWS by this much per tap.
  *
  * SIXTY, measured rather than chosen, on a 390x844 phone at a 4x CPU throttle with 2000 ready songs: the whole list
  * took 4.6s and 40,125 DOM nodes before the first row was usable, and the backspace that widened the filter again
  * blocked the main thread for 3.4s. One page of sixty is 1,328 nodes and 0.9s. Sixty rows is also ~4300px — five
  * screens of scrolling to reach the control, so the reveal is not friction anyone meets on a party-sized library.
+ *
+ * THE SING TAB'S COLUMN IS ITS OWN MEASUREMENT, not those figures re-quoted: those were taken on /library at a 4x
+ * throttle, and `/` was measured un-throttled on a real search. A row there costs ~16-17 DOM nodes and 85-95px, and
+ * the spread in the second figure is which deltas you take. TWO CROSS-QUERY deltas off the same server — 3,344 rows
+ * (3,412 rows / 56,260 nodes / 320,120px against 68 / 1,230 / 7,280) reading 16.5 nodes and 93.6px, and 226 rows
+ * (294 / 5,054 / 28,967 against the same 68-row query) reading 16.9 and 96.0 — carry each group's heading, door and
+ * widen along with the rows. TWO SAME-QUERY deltas, one `Needs karaoke` reveal each on `q=a` at 390x844, isolate the
+ * rows: 120 / 2,033 / 12,493px to 180 / 3,007 / 17,716 reads 16.23 nodes and 87.05px, and 180 to 240 / 3,969 / 22,726
+ * reads 16.03 and 83.50. So sixty rows is ~5,000-5,700px there depending on which you ask for, and the worst query
+ * that copy has — two groups at the cap, 120 rows — measures ~12,500px against 320,120 un-windowed (12,493 on the
+ * last re-measurement), which is what keeps the `Not it? Search everything` control's own
+ * "low in the column" reasoning true. It is REUSED rather than re-chosen because two surfaces windowing the same way
+ * is one rule a guest learns once; a Sing-tab-specific page size is a real option if that column's widen hatch
+ * proves too deep, and nothing here assumes it never will.
  */
 export const LIBRARY_PAGE = 60;
 

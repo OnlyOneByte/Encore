@@ -87,10 +87,23 @@ test('the library page renders its rows, and the filter narrows them in place', 
 		await expect(phone.locator(SEL.songRow)).toHaveCount(1);
 		await expect(phone.locator(SEL.libraryCount)).toHaveText(/1 of 1 songs/);
 
+		// A ROW BORN READY MOUNTS NO LIVE REGION, and only a browser can see this: `.vh` is clip-based, so the
+		// region stays in the accessibility tree and a screen reader read "Karaoke ready" twice per row — once
+		// from the visible pill, once from a polite region the row would never update, because /library hands
+		// every row `readiness="ready"` and nothing on this surface ever transitions. The PILL must still be
+		// there; it is the region beside it that was the duplicate.
+		await expect(phone.getByText('Karaoke ready')).toHaveCount(1);
+		expect(await phone.locator('[role="status"]').allTextContents()).not.toContain('Karaoke ready');
+
 		// A term that matches nothing empties the list WITHOUT emptying the library, and offers the way out.
 		await phone.locator(SEL.libraryFilter).fill('zzzznotasong');
 		await expect(phone.locator(SEL.songRow)).toHaveCount(0);
 		await expect(phone.locator(SEL.clearLibraryFilter)).toBeVisible();
+
+		// THE SENTENCE, SPACE AND ALL. Built inline across two lines it read "Nothing here matches“zzzznotasong”."
+		// — Svelte trims the leading whitespace of a branch fragment's first text node, so no separator survived
+		// in either half and the quote sat hard against the "s". `toHaveText` is exact here on purpose.
+		await expect(phone.locator('[data-slot="empty-description"]')).toHaveText('Nothing here matches “zzzznotasong”.');
 
 		// Clearing restores the row in place — no request, no navigation.
 		await phone.locator(SEL.clearLibraryFilter).click();
@@ -154,4 +167,52 @@ test('the chrome reaches the page, and a song added there lands in the rotation'
 	} finally {
 		await worker.stop();
 	}
+});
+
+/*
+ * A DROPPED /api/library REQUEST MUST NOT READ AS AN EMPTY LIBRARY, and this needs a browser because the
+ * conflation was entirely in what the page CHOSE TO RENDER from one tuple: `library: []` with `libraryLoaded`
+ * true. Measured over a 135-song library, one aborted request produced "No karaoke tracks yet", zero rows, no
+ * filter field, no disclosure and no error word anywhere — while the dock was playing a track from the library
+ * the page called empty — and nothing re-asked, because the only fetch is `connect()`'s and that is guarded
+ * idempotent, so three tab round trips added zero attempts and only a full reload cleared it.
+ *
+ * NO READY SONG NEEDED, which is why this is its own test rather than a leg of the two above: the claim is about
+ * which ARM renders, and the ~60s separation those two pay for buys nothing here. The abort is installed after
+ * the join, then the route is entered by a fresh document load — `connect()` runs again there and that attempt
+ * is the one that fails.
+ */
+test('a failed library fetch says so, with a retry — never "No karaoke tracks yet"', async ({ world }) => {
+	const phone = await world.openPhone('Libby');
+
+	// ONE handler with a flag rather than route-then-unroute, so the counter keeps counting after the block is
+	// lifted — "the retry issued a request" is the assertion that matters at the bottom, and an unrouted pattern
+	// would let a retry that fires nothing at all pass.
+	let attempts = 0;
+	let block = true;
+	await phone.route('**/api/library*', (r) => {
+		attempts++;
+		return block ? r.abort('failed') : r.continue();
+	});
+	await phone.goto(`${world.baseURL}/library`);
+
+	// THE FAILURE ARM, and the empty-library copy absent — the two are mutually exclusive arms, and before the
+	// fix this exact drive rendered the second one.
+	await expect(phone.locator('[data-slot="empty-description"]')).toHaveText(
+		"Couldn't reach the server — your library didn't load."
+	);
+	await expect(phone.locator('[data-slot="empty-title"]')).toHaveCount(0);
+	await expect(phone.getByRole('button', { name: 'Try again' })).toBeVisible();
+	// And the filter field is gone for the reason it is gone from the empty arm: there are no rows to narrow.
+	await expect(phone.locator(SEL.libraryFilter)).toHaveCount(0);
+	expect(attempts, 'the route under test is the one being aborted').toBeGreaterThan(0);
+
+	// THE RETRY REALLY RE-ASKS. Un-block, tap it, and the page settles on the arm that describes the truth —
+	// this core has nothing processed, so that is the genuinely-empty library, which is now reachable ONLY when
+	// the fetch succeeded.
+	const before = attempts;
+	block = false;
+	await phone.getByRole('button', { name: 'Try again' }).click();
+	await expect(phone.locator('[data-slot="empty-title"]')).toHaveText('No karaoke tracks yet');
+	expect(attempts, 'Try again must issue a request, not just clear the flag').toBeGreaterThan(before);
 });

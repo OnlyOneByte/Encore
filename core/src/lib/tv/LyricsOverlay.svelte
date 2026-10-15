@@ -8,6 +8,7 @@
 		activeWordIndex,
 		isAutoTranscribed,
 		wipesWords,
+		wordGap,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
@@ -248,13 +249,14 @@
 											>{ball === 'underline' ? '' : '●'}</span
 										>{/if}{w.word}
 									<!--
-										The inter-word space HAS to stay a mustache. Compiled, this each body emits `</span> ` with
+										The inter-word gap HAS to stay a mustache. Compiled, this each body emits `</span> ` with
 										`{' '}` and `</span>` with a bare literal space, because Svelte trims whitespace at the end of a
 										block body — so the plain-space form runs every word of the line together, with no break to wrap
 										on. It also has to sit OUTSIDE `.word`, or the gap takes the `.done` fill and the ball.
+										`wordGap` is what makes it a RULE rather than a space: CJK writes none between its own
+										characters, so a Japanese line rendered word-by-word is not spelled out letter by letter.
 									-->
-									<!-- eslint-disable-next-line svelte/no-useless-mustaches -->
-								</span>{' '}
+								</span>{wordGap(l.words, wi)}
 							{/each}
 						{:else}
 							<!-- The plain-text branch, shared by a line-timed doc and the `line`/`off` settings — no second

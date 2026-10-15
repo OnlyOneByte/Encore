@@ -123,6 +123,12 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 		// vacuously green either way.
 		await surface('/queue', async () => {
 			await page.goto('/queue');
+			// THE DOCK FIRST, as the `/` arm above already does, and now it is load-bearing rather than tidy:
+			// /queue renders `JoinLanding` for an unjoined visitor, and JoinLanding has an `h1` of its own — so on a
+			// cold load `SEL.pageHeading` ('h1') can be satisfied by the join screen during the ≤1-frame window
+			// before `me` arrives, and this arm would sweep the wrong surface. The dock exists only for a joined
+			// singer, so waiting on it first says WHICH h1 the heading wait then resolves.
+			await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout: 15_000 });
 			await page.locator(SEL.pageHeading).first().waitFor({ state: 'attached', timeout: 15_000 });
 		});
 		// The browse page. Its controls are its own and none of them is reachable from the two surfaces above, so

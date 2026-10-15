@@ -121,9 +121,19 @@ export const SEL = {
 	 *  strip-PRESENT state back to ABSENT, which is half of the measured gate's cross-state claim: measured exactly
 	 *  one on /queue with one entry, and clicking it drops --dock-h from 91px to 46px at 390x844. */
 	queueRemove: '[aria-label="remove from queue"]',
+	/** The drag handle, by the `data-grip` attribute the route publishes the ENTRY ID into — the same attribute
+	 *  `focusGrip` re-finds a moved row by, so it is a contract and not a convenience. BOTH row kinds carry it:
+	 *  the cooking card went without one for the whole life of the three-tab rebuild (the route passed
+	 *  `reorderable`, which is not the handle's gate), so a count scoped under `.proc` is the claim. */
+	queueGrip: '[data-grip]',
+	/** The route's ONE polite region, shared by the queue's own news and the reorder results. Read for its TEXT:
+	 *  it is empty on a cold load by design — the first synced list is a baseline, not news. */
+	queueLive: '.sr-live',
 	/** The measured gate reads its padding-bottom to prove the docked row is RESERVED, not overlapping. */
 	mainColumn: 'main',
-	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — the subject. */
+	/** GuidingTrack's root. `.gt.disabled` is the unavailable state, and it dims BY TOKEN — the component's own
+	 *  rule moves `.gt-val`'s colour to `--ink-dim` and declares no opacity at all, which is FRONTEND.md's rule
+	 *  about never flattening a subtree that holds text. This key named an opacity that is not there. */
 	guidingTrackRoot: '.gt',
 	guideReadout: '.gt-val',
 	/** By shadcn's own `data-slot`, which survives a re-vendor. NOT `input[type="range"]` — see `hueSlider`. */
@@ -170,8 +180,19 @@ export const SEL = {
 	queueRow: '.qrow',
 	queueTitle: '.qrow .t',
 	/** ProcessingCard renders `class="qrow proc …"`, so `.proc` is a SUBSET of `.qrow`: fine for existence,
-	 *  but `queued + processing` double-counts and is never an exact total. */
+	 *  but `queued + processing` double-counts and is never an exact total. ALSO A SUPERSET of the two kinds
+	 *  below — `.proc` alone cannot tell a cooking turn from a stranded one. */
 	processing: '.proc',
+	/** A DEAD TURN: queued, no karaoke, and nothing in flight that could produce any — `queueCardKind`'s
+	 *  `stalled`. ITS OWN SELECTOR, never a reuse of `.failed`, because the two make different claims: failed is a
+	 *  process that ran and died (--danger), stalled is a turn no process exists for (--warn). An assertion that
+	 *  accepted either would pass on the bug this card was added to make visible. */
+	stalledTurn: '.qrow.proc.stalled',
+	/** A process that RAN AND DIED, from a live `media:status` failure. */
+	failedTurn: '.qrow.proc.failed',
+	/** The stalled card's retry — the only control in the tree that can recover a stranded turn without searching
+	 *  for the song again. Scoped to the card, unlike `singAction`. */
+	retryKaraoke: '.qrow.proc.stalled [data-testid="card-retry"]',
 	/** Unscoped, unlike `addTurn`/`sing` above: p3/p8/p10 ask whether a row offers an action AT ALL. */
 	addAction: '[data-testid="song-add"]',
 	singAction: '[data-testid="song-sing"]',

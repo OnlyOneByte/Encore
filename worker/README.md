@@ -429,9 +429,13 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 
-uv sync --extra cpu --extra ml --extra text    # to run real jobs on CPU
-uv sync --extra cu128 --extra ml --extra text  # on an NVIDIA box
+uv sync --extra cpu --extra ml --extra text --extra romanize    # to run real jobs on CPU
+uv sync --extra cu128 --extra ml --extra text --extra romanize  # on an NVIDIA box
 ```
+
+`romanize` is the display-only second script a non-Latin line publishes alongside its own text (pypinyin,
+cutlet, uroman — the licences are in `pyproject.toml`). Optional like `text`: without it no line gains a
+`romanization` field and nothing else changes.
 
 `cpu` and `cu128` are declared mutually exclusive in `[tool.uv]`, which is what lets one lockfile hold
 both resolutions. The pins are identical between them; only the wheel index differs, so switching
@@ -497,7 +501,7 @@ publication rather than re-running a 45-minute pass.
 ### Running it
 
 ```bash
-uv sync --extra cpu --extra ml --extra text   # or --extra cu128 on an NVIDIA box, --extra mlx on a Mac
+uv sync --extra cpu --extra ml --extra text --extra romanize  # or --extra cu128 / --extra mlx
 ENCORE_CORE_URL=ws://core:3000/worker uv run python -m encore_worker
 ```
 

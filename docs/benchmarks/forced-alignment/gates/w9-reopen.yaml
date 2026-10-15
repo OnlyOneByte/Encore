@@ -1,0 +1,181 @@
+# W9: THE NEW SHIPPED DEFAULT, with `band-reopen` flipped ON (owner decision, PLAN 2026-10-09). This file is
+# the post-flip BASELINE's gate — the one a later wave re-reads — and `gates/w9.yaml` is the pre-flip half of
+# the same wave, kept because its byte-identity section is the proof that the research track and the star
+# re-fit cost nothing. Narrative and the four waived words: README, "W9: `band-reopen` flipped default-on, and
+# the four words the owner waived".
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9f-ra \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w9-ra \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9-reopen.yaml
+#   (the control is `ENCORE_ALIGN_EXPERIMENTS=band-late-kept`, which reproduces `_runs/w9-ra` — the knob
+#   is in the emitter fingerprint, so the control cell recomputes every matrix cold.)
+#
+# THE BASE IS THE PRE-FLIP CELL OF THE SAME TREE (`_runs/w9-ra`, code `ee807b0096e456dc`), not an earlier
+# wave's row: this file's whole job is to say what the flip moved and that nothing else did. Read against
+# `results/w8b-run_align.json` instead, sections 2 and 4 still hold — they are absolute — and section 1's
+# `base.` rules read the same, W9's pre-flip default being byte-identical to W8b's (gates/w9.yaml §1).
+#
+# WHAT THE FLIP BOUGHT, MEASURED. `_runs/w9f-ra` (code `6db0b601a018e8d1`) against `_runs/w9-ra`, 32 songs,
+# 1088 cases, HuBERT-Large, seed 0, `wrong_k` 10, `--tfr-audio youtube`, mps, `--asr off`, `--detector off`.
+# 28-song `scored` truth +-500 **97.07 -> 97.27** (+0.20), +-500/text 95.05 -> 95.25, `band` 163 -> 160, and
+# the same +0.1 to +0.2 at `jit`, `drop20`, `extraverse`, `headers` and `credit`. `gross` stays 0 in all
+# twelve right-text modes, `missing`, `scored` and `high_bad` are UNCHANGED in every mode, and the Jamendo
+# word clock IMPROVES: +-100 85.46 -> **85.54**, +-250 96.58 -> 96.67, +-300 97.16 -> **97.23**, AAE 71.1 ->
+# **70.6 ms**, highlight 81.40 -> **81.50**.
+#
+# THE WHOLE GAIN IS ONE SONG, and that is the honest way to read it. `Kinematic_-_Peyote` moves +21.43 pt at
+# `truth` and `headers` (71.43 -> 92.86), +21.43 at `extraverse`, +18.18 at `drop20`, +14.29 at `credit` and
+# +14.28 at `jit`; `tfr-chosen` moves +3.12 at `off05` and is excluded from accuracy. NO SONG LOSES ANYTHING
+# at +-500 in any mode, which is the clause W8a rejected the arm on (`gates/w8a.yaml`'s `no-song-loses-jit`,
+# then -2.17) and which the free-time guard fixed: that file now reads 152/154 here, failing only W8a's two
+# `word-aligned-not-down` rules that W8b re-judged and replaced with a bounded re-labelling.
+#
+# WHAT IT COST: four Jamendo `jit` words, named and bounded in `gates/w8b-arms.yaml` section 2's `jit` block
+# — `Explosive_Ear_Candy_-_Like_The_Sun` twice (+317, +322 ms), `HILA_-_Give_Me_the_Same` (+342) and
+# `Quentin_Hannappe_-_Keep_On` (+273), each moving from inside +-100 ms to outside +-300. That file reads
+# 77/77 here with the exception in it and 77/77 on the pre-flip cell, and its literals have NO SLACK: one
+# more broken word is 0.018 pt and goes red. The two pooled metrics that fall at all are `word_pco300`
+# (91.78 -> 91.76 at `truth`, 85.91 -> 85.84 at `jit`) and `word_aligned` (5378 -> 5373, 5102 -> 5096),
+# both of which are the re-labelling W8b's owner decision calls bookkeeping and section 3 bounds at 28.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+all-songs-still-run-truth: truth.cases == 32
+all-songs-still-run-drop50: drop50.cases == 32
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-blind: blind.scored.cases == 28
+scored-songs-twenty-eight-drop50: drop50.scored.cases == 28
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 203
+excluded-still-measured-drop50: drop50.scored - drop50.scored.scored >= 95
+
+# ── 1) MUST: THE FLIP ONLY EVER IMPROVES, AND ONLY WHERE IT CAN FIRE ────────────────────────────────────
+# The rule re-opens a repaired line that opened past its own claim while ending with it, so it can only fire
+# where a claim exists AND a repair ran. It changed 26 documents of 1088, in 8 modes (truth 4, jit 4, off05 1,
+# drop20 4, drop50 1, extraverse 4, headers 4, credit 4) on 8 songs (`Kinematic_-_Peyote` 6,
+# `Lower_Loveday_-_Is_It_Right_` 6, `Avercage_-_Embers` 5, `bohemian-rhapsody` 5, and one each on
+# `Explosive_Ear_Candy_-_Like_The_Sun`, `HILA_-_Give_Me_the_Same`, `Quentin_Hannappe_-_Keep_On`,
+# `tfr-chosen`) — every one inside the 14 songs W8a proved hold every move the arm makes.
+# THE SIX MODES THAT CANNOT FIRE MUST BE BYTE-IDENTICAL. `blind` has no claim to re-open onto; the uniform
+# offsets and tempo scalings leave no line opening past its claim while ending with it; and wrong text is
+# refused before a repair runs. A change here is the rule reaching somewhere it has no business.
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-off15: count(off15.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-offm1: count(offm1.song.doc_changed) == 0
+docs-unchanged-tempo098: count(tempo098.song.doc_changed) == 0
+docs-unchanged-tempo102: count(tempo102.song.doc_changed) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed) == 0
+onsets-unchanged-tempo098: count(tempo098.song.onsets_changed) == 0
+# AND WHERE IT DOES FIRE, NO SONG MAY LOSE. This is W8a's rejecting clause, read on the full corpus.
+no-scored-song-loses-truth: min_song_delta(truth.scored.pm500) >= -0.001
+no-scored-song-loses-jit: min_song_delta(jit.scored.pm500) >= -0.001
+no-scored-song-loses-drop20: min_song_delta(drop20.scored.pm500) >= -0.001
+no-scored-song-loses-extraverse: min_song_delta(extraverse.scored.pm500) >= -0.001
+no-scored-song-loses-credit: min_song_delta(credit.scored.pm500) >= -0.001
+no-scored-song-loses-headers: min_song_delta(headers.scored.pm500) >= -0.001
+no-scored-song-gains-a-gross-line: count(scored.song.gross_up + scored.song.missing_up) == 0
+no-youtube-song-gains-a-gross-line: count(youtube.song.gross_up + youtube.song.missing_up) == 0
+refused-not-up: count(song.refused_up) == 0
+# The gain is real and it is ratcheted: the arm must keep buying `Kinematic_-_Peyote`'s 21.43 points, or the
+# flip has stopped paying for its four words and should be reconsidered rather than silently kept.
+best-song-gain-truth: max_song_delta(truth.scored.pm500) >= 21.4
+best-song-gain-jit: max_song_delta(jit.scored.pm500) >= 14.2
+
+# ── 2) MUST: the NEW accuracy row, absolute, on the 28-song `scored` basis ───────────────────────────────
+# These are the post-flip readings and they are the floors a later wave has to clear. The PLAN's 2026-10-09
+# row is the FLOOR MINUS the flip's own gain, so every one of these is at or above it.
+truth-pm500-at-least-97-27: truth.scored.pm500 >= 97.27
+truth-text-pm500-at-least-95-25: truth.scored.text_pm500 >= 95.25
+truth-gross-zero: truth.scored.gross == 0
+truth-high-bad-zero: truth.scored.high_bad == 0
+truth-high-gross-zero: truth.scored.high_gross == 0
+truth-zero-gross-songs-all-28: truth.scored.zero_gross_songs >= 28
+truth-no-line-sync-degrade: truth.scored.line_sync == 0
+truth-scored-lines-at-least-1504: truth.scored.scored >= 1504
+truth-in-text-1536: truth.scored.in_text == 1536
+jit-pm500-at-least-92-82: jit.scored.pm500 >= 92.82
+drop20-pm500-at-least-96-44: drop20.scored.pm500 >= 96.44
+extraverse-pm500-at-least-97-62: extraverse.scored.pm500 >= 97.62
+headers-pm500-at-least-97-27: headers.scored.pm500 >= 97.27
+credit-pm500-at-least-97-27: credit.scored.pm500 >= 97.27
+gross-zero-truth: truth.scored.gross == 0
+gross-zero-jit: jit.scored.gross == 0
+gross-zero-off05: off05.scored.gross == 0
+gross-zero-off15: off15.scored.gross == 0
+gross-zero-off3: off3.scored.gross == 0
+gross-zero-offm1: offm1.scored.gross == 0
+gross-zero-tempo098: tempo098.scored.gross == 0
+gross-zero-tempo102: tempo102.scored.gross == 0
+gross-zero-drop20: drop20.scored.gross == 0
+gross-zero-extraverse: extraverse.scored.gross == 0
+gross-zero-headers: headers.scored.gross == 0
+gross-zero-credit: credit.scored.gross == 0
+
+# ── 3) MUST: the Jamendo word clock, which the flip DOES NOT COST ───────────────────────────────────────
+# Denominator: 5373 Jamendo words ALIGNED of 5693 in text at `truth`, 5096 of 5693 at `jit`, over the 20
+# Jamendo songs — and BOTH are 5-6 words SMALLER than the pre-flip pair (5378 and 5102), because the
+# re-opening re-labels that many words interpolated (W8b's bounded re-labelling, section below).
+#
+# SO THE ALIGNED FAMILY IS FLOORED AT THE PRE-FLIP READING, NOT THE POST-FLIP ONE (review W9 r1-spec-9).
+# Every percentage in it is over `word_aligned`, and in COUNTS the flip gained nothing: at `truth` the words
+# inside ±100 go 4596 -> 4596 (+0), ±250 5194 -> 5194 (+0) and ±300 5225 -> 5224 (-1); at `jit` ±100
+# 4258 -> 4254 (-4) and ±300 4891 -> 4887 (-4). The percentage rise is the denominator falling (4596/5378 =
+# 85.46, 4596/5373 = 85.54), and the AAE "gain" is the same five removed words carrying 3042 ms of error out
+# of the mean. Flooring the post-flip percentages would have ratcheted a gain that was never made AND let a
+# later wave clear the bar by refusing more words, so: the literals are what the clock read BEFORE the flip,
+# and `aligned-at-least-*` pins the denominator at the flip's own spend so no percentage here can be bought
+# by refusing another word. The fixed-denominator families are the ones that carry teeth — `word_pco300`
+# over 5693 below, and the published `jit` triple in `gates/w8b-arms.yaml` section 2, which is the only
+# place the four waived words are visible and the only file that scores onsets with provenance held
+# constant. `highlight` is NOT in the aligned family: its denominator is truth's own `sung_sec`, so its
+# 81.40 -> 81.50 is a real gain and is floored as one.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
+word-pm250-truth: truth.jamendo.word_pm250 >= 96.58
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
+word-aae-truth: truth.jamendo.word_aae_ms <= 71.1
+aligned-at-least-truth: truth.jamendo.word_aligned >= 5373
+highlight-truth: truth.jamendo.highlight >= 81.5
+word-pm100-jit: jit.jamendo.word_pm100 >= 83.46
+word-pm300-jit: jit.jamendo.word_pm300 >= 95.86
+word-aae-jit: jit.jamendo.word_aae_ms <= 80.3
+aligned-at-least-jit: jit.jamendo.word_aligned >= 5096
+# THE RE-LABELLING IS BOUNDED, NOT FORBIDDEN (W8b's owner decision): 5 words at `truth` and 6 at `jit` move
+# from aligned to interpolated, which is 0.1 % of the 5689 Jamendo pairs, and `word_pco300` falls 0.02 and
+# 0.07 pt because an unaligned word counts as not-correct. A change past this bound is a different timing
+# policy, not a provenance edit.
+relabelled-at-most-truth: truth.jamendo.word_interpolated <= base.truth.jamendo.word_interpolated + 28
+relabelled-at-most-jit: jit.jamendo.word_interpolated <= base.jit.jamendo.word_interpolated + 28
+word-accounting-whole-truth: truth.jamendo.word_aligned + truth.jamendo.word_interpolated == base.truth.jamendo.word_aligned + base.truth.jamendo.word_interpolated
+word-accounting-whole-jit: jit.jamendo.word_aligned + jit.jamendo.word_interpolated == base.jit.jamendo.word_aligned + base.jit.jamendo.word_interpolated
+word-pco300-at-least-91-76-truth: truth.jamendo.word_pco300 >= 91.76
+word-pco300-at-least-85-84-jit: jit.jamendo.word_pco300 >= 85.84
+
+# ── 4) MUST: WRONG TEXT IS STILL REFUSED, every case, both clocks ───────────────────────────────────────
+# The rule runs inside the repair pass, which a refused text never reaches — so the prediction is identity
+# and section 1 already holds `blind` to it. These eight are the absolute statement, unchanged since W2.
+wrongtext-publishes-nothing: wrongtext.wrongtext_pass == 0
+wrongtext-refuses-all-320: wrongtext.refused == 320
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-nothing-published: wrongtext.published + wrongtext.line_sync == 0
+ownclock-publishes-nothing: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-refuses-all-320: mode("wrongtext+ownclock").refused == 320
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-nothing-published: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+
+# ── 5) MUST: nothing else moved ─────────────────────────────────────────────────────────────────────────
+pooled-gross-not-up: sum(scored.song.gross) <= sum(base.scored.song.gross)
+pooled-missing-not-up: sum(scored.song.missing) <= sum(base.scored.song.missing)
+pooled-high-gross-not-up: sum(scored.song.high_gross) <= sum(base.scored.song.high_gross)
+band-not-up-truth: truth.scored.band <= base.truth.scored.band
+band-not-up-jit: jit.scored.band <= base.jit.scored.band
+pm500-not-down-blind: blind.scored.pm500 >= base.blind.scored.pm500
+pm500-not-down-drop50: drop50.scored.pm500 >= base.drop50.scored.pm500
+scored-lines-not-down-truth: truth.scored.scored >= base.truth.scored.scored
+scored-lines-not-down-drop50: drop50.scored.scored >= base.drop50.scored.scored
+scored-lines-not-down-extraverse: extraverse.scored.scored >= base.extraverse.scored.scored
+in-text-unchanged-truth: truth.scored.in_text == base.truth.scored.in_text
+in-text-unchanged-drop50: drop50.scored.in_text == base.drop50.scored.in_text
+high-bad-not-up-jit: jit.scored.high_bad <= base.jit.scored.high_bad
+high-bad-not-up-blind: blind.scored.high_bad <= base.blind.scored.high_bad

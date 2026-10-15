@@ -331,9 +331,16 @@ async def test_a_stemless_song_keeps_the_default_bundle_without_the_arm(tmp_path
 
 async def test_the_windowed_engine_reads_the_resolved_target_too(tmp_path: Path) -> None:
     """The second consumer of the bundle language, fixed at the same seam (`AudioRef.targets_mix`) so the two
-    engines cannot disagree about which file they are on."""
+    engines cannot disagree about which file they are on.
+
+    Under `h3-ungated-words` because W8 closed this engine's ROUTED word document too (a bundle with no
+    calibration row has no wrong-text gate, and this engine reads no matrix to measure one on): the arm is
+    what still lets a routed bundle time words, so it is what can still show which language it asked for.
+    """
     aligner = WindowedAligner()
-    steps, _out = impl(tmp_path, aligner=aligner, experiments=frozenset({"lang-route-mix"}))
+    steps, _out = impl(
+        tmp_path, aligner=aligner, experiments=frozenset({"lang-route-mix", "h3-ungated-words"})
+    )
     await steps.time_text(request(tmp_path, language="fr", stem=False))
     assert aligner.languages == ["fr"]
 
@@ -354,12 +361,24 @@ async def test_the_line_sync_rung_always_reads_the_stems_bundle(tmp_path: Path) 
 
 
 async def test_the_windowed_engine_routes_the_same_way(tmp_path: Path) -> None:
-    """It is reached only by an aligner that cannot produce emissions at all, and it must not be the one path
-    that hands whisperx a language the policy did not choose."""
-    aligner = WindowedAligner()
-    steps, _out = impl(tmp_path, aligner=aligner)
+    """It is reached only by an aligner that cannot produce emissions at all, and where it may time words it
+    must not be the one path that hands whisperx a language the policy did not choose.
+
+    W8 is why the routed half needs the control arm: this engine measures no lift on any bundle, so a routed
+    one declines rather than publishing words (`tests/test_nonlatin_lane.py`), and the bundle CHOICE is then
+    only observable with the arm on. The Latin default, which is what this test was written to pin, is
+    unmoved.
+    """
+    routed = WindowedAligner()
+    steps, out = impl(tmp_path, aligner=routed)
     await steps.time_text(request(tmp_path, language="ko"))
-    assert aligner.languages == ["ko"]
+    assert routed.languages == [], "a bundle with no calibration row times no words here either"
+    assert any("may time LINES but not WORDS" in why for why in out.reasons)
+
+    arm = WindowedAligner()
+    steps, _out = impl(tmp_path, aligner=arm, experiments=frozenset({"h3-ungated-words"}))
+    await steps.time_text(request(tmp_path, language="ko"))
+    assert arm.languages == ["ko"], "the routing itself is unchanged"
 
     latin = WindowedAligner()
     steps, _out = impl(tmp_path, aligner=latin)

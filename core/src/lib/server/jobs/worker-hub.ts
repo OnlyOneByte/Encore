@@ -625,7 +625,11 @@ export class WorkerHub {
 			mediaId: job.mediaId,
 			status: job.status === 'ready' ? completedStatusFor(job, media) : mediaStatusFor(job, stage),
 			pct: job.progressPct,
-			etaSec: job.etaSec ?? undefined
+			etaSec: job.etaSec ?? undefined,
+			// Carried on every stage, not only on `failed`: this is the ONE emitter for a worker-reported
+			// outcome, and a field set on some stages and not others is a field the next reader has to go
+			// read this function to trust. Only the client's failure NOTICE gates on it today.
+			requestedBy: job.singerId ?? undefined
 		});
 	}
 }

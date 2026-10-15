@@ -429,3 +429,23 @@ test('least-recently-sung: the sing history from the roster changes where my add
 	const mine = store.addSong('m1');
 	expect(store.entries.map((e) => e.id)).toEqual([mine, 'them1', 'them2']);
 });
+
+test('`synced` separates "no list yet" from "an empty list": false fresh and after a patch, true after a sync', () => {
+	// THE CONTRACT /queue's POLITE REGION DEPENDS ON. The region diffs successive lists, and a store that has
+	// never heard from the server holds the same empty array an empty queue does — so the route seeded its
+	// baseline from the pre-socket list and the first real sync read as N additions (measured against a 267-entry
+	// room: "267 songs added to the queue" on every cold load). Nothing pinned this, which is how it slipped past a
+	// pure function whose own null-baseline guard is three comments deep.
+	const { store } = makeStore();
+	expect(store.synced).toBe(false);
+	// A PATCH IS NOT A SYNC, and that is the half worth pinning: a patch carries a delta (or, with `entries`, a
+	// snapshot that only exists because a sync came first), so treating one as the handshake would re-open the
+	// window on a reconnect that lands a patch before its sync.
+	store.onServerEvent({ type: 'queue:patch', patch: { rev: 1, ops: [], causedBy: undefined } });
+	expect(store.synced).toBe(false);
+	// AN EMPTY SYNC STILL COUNTS. A genuinely empty queue is the case where seeding from the first NON-empty
+	// list would swallow another guest's first add, so "the server has spoken" cannot mean "there are rows".
+	store.onServerEvent({ type: 'queue:sync', rev: 1, entries: [] });
+	expect(store.synced).toBe(true);
+	expect(store.entries).toHaveLength(0);
+});

@@ -276,11 +276,86 @@ test('a process in flight still selects the processing card', () => {
 	expect(queueCardKind(m(), { status: 'queued' })).toBe('processing');
 });
 
-test('a settled or absent status leaves a plain waiting row', () => {
-	// ready and canceled are terminal-and-settled: an ordinary turn, no process card.
+/* THE RESTATED ARMS. This was ONE test, `'a settled or absent status leaves a plain waiting row'`, and it
+   contradicted the invariant three lines above `queueCardKind` — so it is restated, arm by arm, rather than flipped.
+   Its comment read "ready and canceled are terminal-and-settled: an ordinary turn, no process card", which silently
+   equates THE PROCESS HAS STOPPED with THE TURN IS ORDINARY. Those two come apart exactly where the bug lives, and
+   the `m()` fixture here is the shape it lives in: `stemStatus: 'none'` with no `instrumentalRef` — all 89 of the
+   stranded entries in the owner's library copy.
+
+   A CARD KIND IS A CLAIM ABOUT WHETHER THE ROTATION CAN EVER PLAY THE ENTRY, which is what both
+   `nextPlayableEntryId` (client) and the server's `nextPlayable` act on. Read that way:
+    · `{status:'ready'}`    — terminal AND the turn will play. "Ordinary" is TRUE, so this expect SURVIVES
+                              unchanged, which is what shows the restatement is not a blanket flip.
+    · `{status:'canceled'}` — terminal, and `cancel.ts` settles the media BACK to un-processed while the turn stays
+                              in the rotation. "Ordinary" is FALSE: it can never play.
+    · `undefined`           — not a claim about the turn at all; it is THIS PHONE'S IGNORANCE. And after a reload it
+                              is the state of EVERY row: `mediaStatus` is in-memory only, and the cold-load seed
+                              filters `readinessOf(m) === 'processing'`, so an unacquired media is in neither of
+                              /api/library's lists. Rendering ignorance as "about to play" is the lie.
+
+   PRECEDENT IN THIS FILE, which is why this is a restatement and not a new policy: the lyrics-upgrade test below
+   already establishes that the CATALOG, not the event, decides. The arms are now discriminated BY THE MEDIA'S
+   READINESS rather than by the liveness of the status, so the suite can no longer be satisfied by the "is it in
+   flight" test the invariant condemns. */
+
+test('a READY media is an ordinary waiting row, whatever the live status says', () => {
+	const singable = m({
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac'
+	});
+	expect(queueCardKind(singable, { status: 'ready' })).toBe('plain');
+	expect(queueCardKind(singable, undefined)).toBe('plain');
+	// The surviving expect from the test this replaces: a ready EVENT means the process landed before the catalog
+	// caught up, so the turn will play even though this fixture's own catalog copy still says otherwise.
 	expect(queueCardKind(m(), { status: 'ready' })).toBe('plain');
-	expect(queueCardKind(m(), { status: 'canceled' })).toBe('plain');
-	expect(queueCardKind(m(), undefined)).toBe('plain');
+});
+
+test('THE DEAD TURN: an unacquired media with no live status is STALLED, not a waiting row', () => {
+	// The 89. No instrumental, nothing in flight to make one, and a queued entry pointing at it — which is a
+	// precondition of calling this function at all, since its one call site is inside `{#each queued}`.
+	expect(queueCardKind(m(), undefined)).toBe('stalled');
+});
+
+test('a canceled process on an unacquired media is STALLED: the job stopped, the turn did not', () => {
+	/* `cancel.ts` settles the media back to un-processed and the entry stays in the rotation. Narrow but real:
+	   `cancelJobsForMedia` only broadcasts `canceled` when no remaining entry references the media, so the
+	   cancelling guest's own row is already gone — this arm is reached through a resync race, a `resendPending()`
+	   add landing after another singer's remove cancelled the job. Pinned rather than deleted precisely because an
+	   arm that narrow should be correct by construction instead of by a reachability argument. */
+	expect(displayReadiness(m(), { status: 'canceled' })).toBe('unacquired'); // the premise
+	expect(queueCardKind(m(), { status: 'canceled' })).toBe('stalled');
+});
+
+test('a media the CATALOG says is cooking keeps its progress card with no live status', () => {
+	/* NEW COVERAGE, for the second defect the old `if (!live) return 'plain'` hid: a turn genuinely in flight drew
+	   no bar at all whenever this phone held no live status for it. Reachable without a worker — `refreshLibrary()`
+	   sets `libraryFailed` and returns while the catalog still arrives through `queue:sync`. */
+	expect(queueCardKind(m({ stemStatus: 'queued' }), undefined)).toBe('processing');
+});
+
+test('UNSERVABLE is not progress: the server has said nobody can run this job', () => {
+	/* NEW COVERAGE, for the third. `media:status` carries `unservable`, `#sweepUnservable` sets it only when the
+	   stall blocks singing, and the TV's `processIsTerminal` has read it all along — the phone discarded it and so
+	   drew "Making karaoke… 0%" with a live bar for the whole 120s TTL. It is NOT the failed card: no worker has
+	   run anything, and one connecting is exactly what would clear the stall. */
+	// Only the two fields the classifier reads: the wire event also carries `pct`/`etaSec`/`requestedBy`, and the
+	// signature deliberately asks for no more than it consults.
+	const cooking = m({ stemStatus: 'queued' });
+	expect(queueCardKind(cooking, { status: 'queued' })).toBe('processing');
+	expect(queueCardKind(cooking, { status: 'queued', unservable: true })).toBe('stalled');
+});
+
+test('a media missing from the catalog is still answered by the live status alone', () => {
+	/* UNCHANGED, and kept because the rule is still right: a media absent from the catalog cannot be asked whether
+	   it is singable, so there is nothing to read `unacquired` off and the event is the only witness. In practice
+	   unreachable from /queue — `queue:sync` carries the media for every entry it sends. */
+	expect(queueCardKind(undefined, undefined)).toBe('plain');
+	expect(queueCardKind(undefined, { status: 'ready' })).toBe('plain');
+	expect(queueCardKind(undefined, { status: 'canceled' })).toBe('plain');
+	expect(queueCardKind(undefined, { status: 'separating' })).toBe('processing');
+	expect(queueCardKind(undefined, { status: 'failed' })).toBe('failed');
 });
 
 test('a failed lyrics upgrade on a still-singable song is NOT marked broken', () => {
@@ -346,24 +421,39 @@ test('no processing results is an empty group, not a fallback to the catalog', (
 // `Nothing matches "i want it that way".` plus a `Show all 1` button beneath them. The inline gate was
 // `!readyResults.length && library.length`, so it fired on nothing-READY rather than nothing-FOUND.
 
+/* A FAILED SEARCH IS NOT AN EMPTY ONE, and this is the review's only blocks-the-party finding pinned.
+   With the request dead the catch wipes the rows, so every count below is 0 and `searching` is already back to
+   false — the exact shape of a genuine no-match. Without the `failed` term the screen then asserted
+   `Nothing matches "<query>"` in the room's own voice, with a button pointing at somebody else's library, and it
+   outlived the 4-second toast that was the only honest signal. Measured: still on screen at t+12s with the server
+   healthy again, because only a fresh keystroke cleared it. */
+test('a FAILED search does not render the no-rows state, however empty the groups are', () => {
+	expect(showsNoRows({ searching: false, failed: true, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(false);
+});
+
+test('the failed term does not suppress a genuine no-match', () => {
+	// The honest zero-state still has to work, or the fix trades one false claim for a blank screen.
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(true);
+});
+
 test('THE BUG: raw results on screen means the screen is NOT showing zero rows', () => {
 	// Twelve "Needs karaoke" rows, nothing processed yet — the normal case for a fresh song.
-	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 12, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 0, rawCount: 12, processingCount: 0 })).toBe(false);
 });
 
 test('a group of any kind suppresses the zero-state', () => {
-	expect(showsNoRows({ searching: false, readyCount: 3, rawCount: 0, processingCount: 0 })).toBe(false);
-	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 0, processingCount: 1 })).toBe(false);
-	expect(showsNoRows({ searching: false, readyCount: 1, rawCount: 1, processingCount: 1 })).toBe(false);
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 3, rawCount: 0, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 0, rawCount: 0, processingCount: 1 })).toBe(false);
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 1, rawCount: 1, processingCount: 1 })).toBe(false);
 });
 
 test('only a finished search that found nothing at all may say so', () => {
-	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(true);
+	expect(showsNoRows({ searching: false, failed: false, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(true);
 });
 
 test('a search in flight never renders a zero-state, because the groups are the PREVIOUS query', () => {
 	// Mid-flight the state still holds the last query's results (or nothing yet on a first search), so a
 	// sentence here is a claim about a search that has not finished.
-	expect(showsNoRows({ searching: true, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(false);
-	expect(showsNoRows({ searching: true, readyCount: 0, rawCount: 5, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: true, failed: false, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: true, failed: false, readyCount: 0, rawCount: 5, processingCount: 0 })).toBe(false);
 });

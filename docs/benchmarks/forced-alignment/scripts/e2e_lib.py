@@ -69,6 +69,16 @@ TFR_SLUGS = ("tfr-flyaway", "tfr-mayday", "tfr-chosen")
 TFR_YOUTUBE, TFR_REFERENCE = "youtube", "reference"
 TFR_AUDIO = (TFR_YOUTUBE, TFR_REFERENCE)
 
+#: Where the non-Latin songs live under the bench root: `<root>/amll/<slug>/{lyrics.ttml,mix.wav,mix/
+#: vocals.wav}`, their truth written by `amll.py`. Outside the repo like every other corpus audio.
+AMLL_DIR = "amll"
+
+#: Which SONG SET a run measures (`e2e.py --corpus`), and part of the setup a `base.` gate must share
+#: (`e2e_gates.SETUP_META`): every recorded row is the ENGLISH 32, so the non-Latin lane is a corpus of its
+#: own rather than four more songs in the pooled groups. README, "W8: the non-Latin truth set".
+ENGLISH_CORPUS, NONLATIN_CORPUS = "english", "nonlatin"
+CORPORA = (ENGLISH_CORPUS, NONLATIN_CORPUS)
+
 #: What a run's `target` metadata says it aligned on (`e2e.py --no-stem`, `e2e_gates.SETUP_META`): the vocals
 #: stem every corpus song has, or the MIX of a song run as if no stems job could separate it. A STEMLESS run
 #: measures a whole other path, which is why it is setup and not an arm: it decodes a different audio file.
@@ -77,13 +87,18 @@ STEM_TARGET, STEMLESS_TARGET = "stem", "mix"
 #: Run metadata whose ABSENCE is a known DEFAULT rather than "unknown" — one map, read by everything that
 #: compares two runs' setups (`e2e.resume_refusal`, `rows_document`, `e2e_gates.format_compare`), because
 #: a key recorded only when it was not the default could never fire the warning it exists for.
-RUN_DEFAULTS: Mapping[str, str] = {"detector": "off"}
+RUN_DEFAULTS: Mapping[str, str] = {"detector": "off", "romanize": "off"}
 
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
 #: captions whose own per-song bias runs −147 to +430 ms — so the two are never averaged silently.
 #: `scored` is `all` minus `corpus-truth.json`'s accuracy exclusions: 28 of the 32 songs today.
 JAMENDO, YOUTUBE, SCORED, ALL = "jamendo", "youtube", "scored", "all"
-GROUPS = (JAMENDO, YOUTUBE, SCORED, ALL)
+
+#: The non-Latin songs' group: AMLL TTML DB truth, timed per SYLLABLE by its authors (W8). A group of its
+#: own because it is neither of the two English truth kinds and must never average with them; it has members
+#: only on a `NONLATIN_CORPUS` run.
+NONLATIN = "nonlatin"
+GROUPS = (JAMENDO, YOUTUBE, NONLATIN, SCORED, ALL)
 
 #: The two groups that POOL songs of both truth kinds, so neither prints word or highlight figures.
 POOLED_GROUPS = (SCORED, ALL)
@@ -220,6 +235,25 @@ class TruthLine:
 class TruthWord:
     start: float
     end: float
+
+
+@dataclass(frozen=True, slots=True)
+class TruthSyllable:
+    """One timed span of a truth line, located by a CHARACTER OFFSET into that line's text.
+
+    The offset is what lets a published unit pair with it however the publisher split the line, which is the
+    whole point for a script that writes no spaces (README, "W8 stages 1-2").
+    """
+
+    line: int
+    at: int
+    text: str
+    start: float
+    end: float
+
+    @property
+    def until(self) -> int:
+        return self.at + len(self.text)
 
 
 #: The id of the measurement `corpus-truth.json` records, spelled out in README, "W8b: the corpus's own truth,
@@ -508,6 +542,10 @@ class Song:
     #: Why this song's accuracy does not count, from `CORPUS_TRUTH` — None for the 28 that score. It stays in
     #: every run for robustness: its refusals, its gross lines and its documents are measured as ever.
     accuracy_excluded: str | None = None
+    #: Every timed span of the truth, located by character offset (`load_truth_syllables`). The non-Latin
+    #: lane's ONLY sub-line truth: zh and ja write a line with no space in it, so `words` above is that
+    #: line. None for every song without the file, which is all 32 English ones.
+    syllables: tuple[TruthSyllable, ...] | None = None
 
     def missing_files(self) -> list[str]:
         return [str(p) for p in (self.mix, self.vocals) if not p.is_file()]
@@ -550,17 +588,43 @@ def load_truth_words(path: Path, lines: Sequence[TruthLine]) -> tuple[TruthWord,
     return tuple(out)
 
 
-def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_YOUTUBE) -> list[Song]:
-    """The 32-song corpus in e2e2's order: 20 English Jamendo, 9 YouTube, 3 TheFatRat.
+def load_truth_syllables(path: Path, lines: Sequence[TruthLine]) -> tuple[TruthSyllable, ...] | None:
+    """`amll.py`'s `truth-syllables.json`, or None when absent or when one span is not where it says.
+
+    EVERY OFFSET IS CHECKED against its own line's text: a file whose spans have drifted out of their line
+    would score every unit of that line against the wrong onset, silently.
+    """
+    if not path.is_file():
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))["syllables"]
+    out: list[TruthSyllable] = []
+    for entry in raw:
+        index, at, text = int(entry["line"]), int(entry["at"]), str(entry["text"])
+        if not 0 <= index < len(lines) or lines[index].text[at : at + len(text)] != text:
+            return None
+        out.append(TruthSyllable(index, at, text, float(entry["start"]), float(entry["end"])))
+    return tuple(out)
+
+
+def discover(
+    root: Path,
+    repo_songs: Path = REPO_SONGS,
+    *,
+    tfr_audio: str = TFR_YOUTUBE,
+    corpus: str = ENGLISH_CORPUS,
+) -> list[Song]:
+    """The 32-song ENGLISH corpus in e2e2's order (20 Jamendo, 9 YouTube, 3 TheFatRat), or
+    `NONLATIN_CORPUS`'s AMLL songs — one or the other, never both.
 
     A Jamendo song without a separated vocals stem is skipped (as e2e2 did); a YouTube/tfr song is always
     listed, and `Song.missing_files` says whether its audio is there, so a missing file fails loudly at
     selection instead of shrinking the corpus silently. The Jamendo MIX comes from the dataset checkout under
-    the bench root when present: the per-song `mix.mp3` symlinks into a /tmp copy that dies on reboot, moving
-    the emissions cache key with it. A song `CORPUS_TRUTH` never measured RAISES: it is measured first.
+    the bench root when present. A song `CORPUS_TRUTH` never measured RAISES: it is measured first.
     """
     if tfr_audio not in TFR_AUDIO:
         raise ValueError(f"tfr audio {tfr_audio!r}; expected one of {', '.join(TFR_AUDIO)}")
+    if corpus not in CORPORA:
+        raise ValueError(f"corpus {corpus!r}; expected one of {', '.join(CORPORA)}")
     measured = load_corpus_truth()
 
     def excluded_for(slug: str) -> str | None:
@@ -572,6 +636,23 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
         return quality.exclusion
 
     songs: list[Song] = []
+    if corpus == NONLATIN_CORPUS:
+        for found in sorted((root / AMLL_DIR).glob("*/truth-lines.json")):
+            directory = found.parent
+            truth = load_truth_lines(found)
+            songs.append(
+                Song(
+                    slug=directory.name,
+                    group=NONLATIN,
+                    mix=directory / "mix.wav",
+                    vocals=directory / "mix" / "vocals.wav",
+                    truth=truth,
+                    words=load_truth_words(directory / "truth-words.json", truth),
+                    accuracy_excluded=excluded_for(directory.name),
+                    syllables=load_truth_syllables(directory / "truth-syllables.json", truth),
+                )
+            )
+        return songs
     jamendo = root / "jamendo"
     for directory in sorted(jamendo.iterdir()) if jamendo.is_dir() else []:
         vocals = directory / "mix" / "vocals.wav"
@@ -624,7 +705,7 @@ def tfr_stem(root: Path, slug: str) -> Path:
 
 
 def select(songs: Sequence[Song], spec: str | None) -> list[Song]:
-    """`--songs`: comma-separated slugs, slug prefixes, or group names (`jamendo`, `youtube`)."""
+    """`--songs`: comma-separated slugs, slug prefixes, or group names (`jamendo`, `youtube`, `nonlatin`)."""
     if not spec:
         return list(songs)
     wanted = [part.strip() for part in spec.split(",") if part.strip()]
@@ -888,6 +969,15 @@ def _credit(lines: list[ClaimLine], rng: random.Random) -> list[ClaimLine]:
 
 
 @dataclass(frozen=True, slots=True)
+class DocSyllable:
+    """One published syllable span of a word — the document's optional `syllables` key."""
+
+    start: float
+    end: float
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class DocWord:
     start: float
     end: float
@@ -896,6 +986,9 @@ class DocWord:
     #: The word as published. The TV's pause re-segmentation reads word LENGTHS (`LINE_MAX_CHARS`), so
     #: the highlight's port of it needs the text.
     text: str = ""
+    #: Its syllable spans where the document carries them, else empty — the finest published unit, and
+    #: what `score_syllables` pairs with the truth's own spans.
+    syllables: tuple[DocSyllable, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1078,16 +1171,115 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SyllableScore:
+    """How well the published units time the TRUTH's own syllables — W8 stages 1-2's deciding metric."""
+
+    #: Signed onset errors of every truth syllable paired with an ALIGNED published unit, seconds.
+    errors: tuple[float, ...]
+    #: Every truth syllable of every line the text asked for — the denominator, as PCO's is.
+    in_text: int
+    #: Paired with an interpolated or claim-adopted unit rather than an aligned one.
+    interpolated: int
+    #: Truth syllables whose offset no published unit covers (a line published with other words).
+    unpaired: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Unit:
+    """One published span and the TRUTH-TEXT characters it covers, located by search (`_published_units`)."""
+
+    at: int
+    until: int
+    start: float
+    aligned: bool
+
+
+def _published_units(truth_text: str, line: DocLine) -> list[_Unit]:
+    """`line`'s finest published spans, each located in `truth_text` by an in-order search.
+
+    BY SEARCH AND NOT BY ARITHMETIC: the publisher's own gap rule (`tv_word_gap`) decides how its words sit
+    in a line, and a label a hygiene rule stripped would shift every offset after it. A span whose text is
+    not there is skipped rather than guessed at.
+    """
+    out: list[_Unit] = []
+    cursor = 0
+    for word in line.words:
+        pieces: Sequence[tuple[float, str]] = (
+            [(syllable.start, syllable.text) for syllable in word.syllables]
+            if word.syllables
+            else [(word.start, word.text)]
+        )
+        for start, text in pieces:
+            found = truth_text.find(text, cursor) if text else -1
+            if found < 0:
+                continue
+            cursor = found + len(text)
+            out.append(_Unit(found, cursor, start, word.aligned))
+    return out
+
+
+def score_syllables(song: Song, claims: Claims, doc: Sequence[DocLine]) -> SyllableScore | None:
+    """Every truth syllable against the published unit that COVERS it, or None without a syllable truth.
+
+    THE DENOMINATOR IS THE TRUTH'S, so the arms are comparable: with the whitespace rule a Chinese line is
+    one word, which covers every syllable of its line and is scored once per syllable against each; with
+    `nonlatin-units` each hanzi has a unit of its own. An EMPTY `doc` still reports `in_text`.
+    """
+    if song.syllables is None:
+        return None
+    by_line: dict[int, list[TruthSyllable]] = {}
+    for syllable in song.syllables:
+        by_line.setdefault(syllable.line, []).append(syllable)
+    errors: list[float] = []
+    interpolated = unpaired = 0
+    for line in doc:
+        if line.source is None:
+            continue
+        claim = claims.lines[line.source]
+        if claim.truth is None:
+            continue
+        units = _published_units(song.truth[claim.truth].text, line)
+        for truth in by_line.get(claim.truth, ()):
+            covering = next((unit for unit in units if unit.at <= truth.at < unit.until), None)
+            if covering is None:
+                unpaired += 1
+            elif covering.aligned:
+                errors.append(covering.start - truth.start)
+            else:
+                interpolated += 1
+    in_text = sum(len(by_line.get(index, ())) for index in claims.truth_indexes())
+    return SyllableScore(tuple(errors), in_text, interpolated, unpaired)
+
+
 # ── the highlight, as the TV shows it ────────────────────────────────────────────────────────────────
 #
 # A PORT of `core/src/lib/tv/lyrics.ts` (parseLyricsDoc -> resegmentLine -> coalesceOrphans, then
 # activeLineIndex / activeWordIndex as `LyricsOverlay.svelte` calls them), because "which word is lit" is
 # decided there and nowhere else. Not modelled: the display lead and JS's UTF-16 string lengths. When the TV's
-# rendering changes this port changes with it — W6 made the first such change, `tv_lit(wipe_low=True)`.
+# rendering changes this port changes with it — W6's `tv_lit(wipe_low=True)`, W8's CJK word gap below.
 TV_LINE_GAP_SEC = 0.45
 TV_LINE_MAX_CHARS = 42
 TV_COVERAGE_MIN = 0.8
 TV_ORPHAN_MAX_SEC = 1.0
+
+#: `lyrics.ts`'s `CJK_JOINS`, as RANGES: Python's `re` has no Script_Extensions, so the TypeScript's
+#: `\p{scx=Han|Hiragana|Katakana}` + fullwidth-punctuation class was ENUMERATED over all 0x110000 codepoints
+#: and compressed here — 55 ranges, 104 411 codepoints. `tv_parity.py` holds the CJK cases that pin the two.
+TV_CJK_JOINS = re.compile(
+    "["
+    "·̣̅⺀-⺙⺛-⻳⼀-⿕⿰-⿿、-〃々-】"
+    "〓-〟〡-〭〰-〵〷-〿ぁ-ゖ゙-ヿ㆐-㆟"
+    "㇀-㇥㇯-ㇿ㈠-㉇㊀-㊰㋀-㋋㋐-㍰㍻-㍿"
+    "㏠-㏾㐀-䶿一-鿿꜀-꜇豈-舘並-龎﹅-﹆"
+    "！-／：-＠［-｀｛-ﾟ\U00016fe2-\U00016fe3\U00016ff0-\U00016ff6"
+    "\U0001aff0-\U0001aff3\U0001aff5-\U0001affb\U0001affd-\U0001affe\U0001b000-\U0001b122\U0001b132"
+    "\U0001b150-\U0001b152\U0001b155\U0001b164-\U0001b167\U0001d360-\U0001d371\U0001f200"
+    "\U0001f250-\U0001f251\U00020000-\U0002a6df\U0002a700-\U0002b81d\U0002b820-\U0002cead"
+    "\U0002ceb0-\U0002ebe0\U0002ebf0-\U0002ee5d\U0002f800-\U0002fa1d\U00030000-\U0003134a"
+    "\U00031350-\U00033479"
+    "]"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1122,23 +1314,39 @@ def tv_wipes_words(confidence: str | None) -> bool:
     return confidence != "low"
 
 
+def tv_word_gap(words: Sequence[TvWord], index: int) -> str:
+    """`lyrics.ts` `wordGap`: nothing between two CJK characters, one space everywhere else."""
+    before = words[index].word[-1:] if 0 <= index < len(words) else ""
+    after = words[index + 1].word[:1] if 0 <= index + 1 < len(words) else ""
+    if not before:
+        return ""
+    if not TV_CJK_JOINS.match(before):
+        return " "
+    return " " if after and not TV_CJK_JOINS.match(after) else ""
+
+
+def tv_join_words(words: Sequence[TvWord]) -> str:
+    """`lyrics.ts` `joinWords`: a line's words spaced by the rule the reel renders them with."""
+    return "".join(("" if i == 0 else tv_word_gap(words, i - 1)) + word.word for i, word in enumerate(words))
+
+
 def _line_from_words(words: Sequence[TvWord], *, wipes: bool = True) -> TvLine:
     """`lineFromWords`."""
-    return TvLine(words[0].start, words[-1].end, " ".join(w.word for w in words), tuple(words), wipes=wipes)
+    return TvLine(words[0].start, words[-1].end, tv_join_words(words), tuple(words), wipes=wipes)
 
 
 def tv_resegment(line: TvLine) -> list[TvLine]:
     """`resegmentLine`: split a line longer than LINE_MAX_CHARS at pauses (and at the char cap)."""
     if len(line.text.strip()) <= TV_LINE_MAX_CHARS or len(line.words) < 2:
         return [line]
-    if len(" ".join(w.word for w in line.words)) < len(line.text.strip()) * TV_COVERAGE_MIN:
+    if len(tv_join_words(line.words)) < len(line.text.strip()) * TV_COVERAGE_MIN:
         return [line]
     out: list[TvLine] = []
     current: list[TvWord] = []
     for word in line.words:
         if current:
             gap = word.start - current[-1].end
-            chars = sum(len(x.word) + 1 for x in current) + len(word.word)
+            chars = len(tv_join_words([*current, word]))
             if gap >= TV_LINE_GAP_SEC or chars > TV_LINE_MAX_CHARS:
                 out.append(_line_from_words(current))
                 current = []
@@ -1196,7 +1404,7 @@ def tv_lines(doc: Sequence[tuple[DocLine, Sequence[int]]]) -> list[TvLine]:
             for w, truth in zip(line.words, truths, strict=True)
             if math.isfinite(w.start) and math.isfinite(w.end)
         )
-        text = line.text if line.text.strip() else " ".join(w.word for w in words)
+        text = line.text if line.text.strip() else tv_join_words(words)
         if not text.strip() and not words:
             continue
         start = line.start if math.isfinite(line.start) else None
@@ -1359,6 +1567,7 @@ def row_of(
     shown: Sequence[DocLine] = doc if published else ()
     errors, disagreements = score_lines(song, claims, shown) if published else ([], None)
     words = score_words(song, claims, shown)
+    syllables = score_syllables(song, claims, shown)
     lit = score_highlight(song, claims, shown)
     # THE SHIPPED TV's own reading, beside the alignment one (W6 review r1-tests-20): a `low` line renders as
     # one text node and lights NO word (`tv_lit(wipe_low=True)`, `lyrics.ts` `wipesWords`), so this is the
@@ -1390,6 +1599,15 @@ def row_of(
             "unaligned_errors": list(words.unaligned_errors),
             "end_errors": list(words.end_errors),
             "final_end_errors": list(words.final_end_errors),
+        },
+        #: Only the non-Latin corpus has a syllable truth, so this is None on every English row.
+        "syllables": None
+        if syllables is None
+        else {
+            "in_text": syllables.in_text,
+            "interpolated": syllables.interpolated,
+            "unpaired": syllables.unpaired,
+            "errors": list(syllables.errors),
         },
         "highlight": None if lit is None else {"hit": lit[0], "sung": lit[1]},
         "highlight_wiped": None if wiped is None else {"hit": wiped[0], "sung": wiped[1]},
@@ -1478,6 +1696,35 @@ def line_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "pairing_disagreements": sum(int(r.get("pairing_disagreements") or 0) for r in published),
         "text_paired": sum(1 for r in rows if r.get("identity") == "text"),
     }
+
+
+def syllable_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Syllable onset metrics POOLED over the rows, or None where no row carries a syllable truth.
+
+    The same shape as `word_metrics`' onset half, over the truth's own spans: `in_text` counts every truth
+    syllable every case's text asked for, so a case that published nothing still adds its denominator.
+    """
+    carried = [r for r in rows if r.get("syllables")]
+    if not carried:
+        return None
+    scored = [r["syllables"] for r in carried]
+    errors = [float(e) for w in scored for e in w["errors"]]
+    in_text = sum(int(w["in_text"]) for w in scored)
+    out: dict[str, Any] = {
+        "aligned": len(errors),
+        "in_text": in_text,
+        "interpolated": sum(int(w["interpolated"]) for w in scored),
+        "unpaired": sum(int(w["unpaired"]) for w in scored),
+        "gross": sum(1 for e in errors if abs(e) > GROSS_SEC),
+    }
+    for tol in WORD_TOLERANCES_SEC:
+        out[f"w{int(tol * 1000)}_pct"] = pct(sum(1 for e in errors if abs(e) <= tol), len(errors))
+    out["pco300_pct"] = pct(sum(1 for e in errors if abs(e) <= PCO_SEC), in_text)
+    if errors:
+        out["aae_ms"] = round(statistics.fmean(abs(e) for e in errors) * 1000.0, 1)
+        out["medae_ms"] = round(statistics.median(abs(e) for e in errors) * 1000.0, 1)
+        out["bias_ms"] = round(statistics.median(errors) * 1000.0, 1)
+    return out
 
 
 def word_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -1688,6 +1935,7 @@ def group_entry(
     entry: dict[str, Any] = {
         "lines": line_metrics(rows),
         "words": word_metrics(rows),
+        "syllables": syllable_metrics(rows),
         "highlight": highlight_metrics(rows),
         "highlight_wiped": highlight_metrics(rows, key="highlight_wiped"),
     }
@@ -1813,6 +2061,20 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "final_end100_pct", "final_end_pm100"),
     ("words", "final_end250_pct", "final_end_pm250"),
     ("words", "final_end_bias_ms", "final_end_bias_ms"),
+    #: W8 stages 1-2 (§3.12's reject-if reads `syllable_pm300`): the non-Latin lane's only sub-line
+    #: accuracy, None on every English row for want of a syllable truth.
+    ("syllables", "aligned", "syllable_aligned"),
+    ("syllables", "in_text", "syllable_in_text"),
+    ("syllables", "interpolated", "syllable_interpolated"),
+    ("syllables", "unpaired", "syllable_unpaired"),
+    ("syllables", "gross", "syllable_gross"),
+    ("syllables", "w100_pct", "syllable_pm100"),
+    ("syllables", "w250_pct", "syllable_pm250"),
+    ("syllables", "w300_pct", "syllable_pm300"),
+    ("syllables", "pco300_pct", "syllable_pco300"),
+    ("syllables", "aae_ms", "syllable_aae_ms"),
+    ("syllables", "medae_ms", "syllable_medae_ms"),
+    ("syllables", "bias_ms", "syllable_bias_ms"),
     ("highlight", "pct", "highlight"),
     ("highlight_wiped", "pct", "highlight_wiped"),
     ("wrongtext", "pass_rate_pct", "wrongtext_pass"),

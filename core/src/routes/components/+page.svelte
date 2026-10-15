@@ -410,10 +410,19 @@
 	<QueueRow seq={3} title="Heroes" singerName="You" singerColor={PINK} mine subtitle="" />
 
 	<h2 class="section">ProcessingCard</h2>
-	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
+	<ProcessingCard
+		kind="processing"
+		seq={2}
+		title="Bohemian Rhapsody"
+		singerName="You"
+		singerColor={PINK}
+		status="separating"
+		pct={68}
+	/>
 
 	<!-- Paired with its non-pending twin: the warn tint must be obvious, and `opacity` on `.pending` washes out. -->
 	<ProcessingCard
+		kind="processing"
 		seq={2}
 		title="Bohemian Rhapsody"
 		singerName="You"
@@ -425,6 +434,7 @@
 
 	<!-- The same band-edge case on a card: downloading at 100% must read 20% overall, not a solid bar. -->
 	<ProcessingCard
+		kind="processing"
 		seq={2}
 		title="Africa (downloading complete)"
 		singerName="You"
@@ -435,6 +445,7 @@
 
 	<!-- A processing song is a queue entry: its controls and grip must line up with the QueueRow below. -->
 	<ProcessingCard
+		kind="processing"
 		seq={3}
 		title="Toto - Africa (Lyrics)"
 		singerName="You"
@@ -448,6 +459,7 @@
 	/>
 	<!-- Reachable collapse: a 32-char UNBROKEN name. Drop the `.who i` flex:0 0 auto rule and the dot goes to 0px. -->
 	<ProcessingCard
+		kind="processing"
 		seq={5}
 		title="Toto - Africa (Lyrics)"
 		singerName="ChristopherAlexanderMontgomeryJr"
@@ -455,6 +467,29 @@
 		status="separating"
 		pct={16}
 		reorderable
+		onremove={() => {}}
+	/>
+	<!-- THE TWO NON-FLIGHT KINDS, DELIBERATELY ADJACENT, because the only way to judge the token split is to see it:
+		`failed` is a process that ran and died and takes the DANGER border and ink; `stalled` is a turn nothing is
+		making karaoke for and takes the WARN border with `.stage`'s own warn ink. A client cannot tell a permanently
+		dead turn from the round trip before another phone's process broadcast arrives, so it may not claim --danger —
+		docs/FRONTEND.md's token rule. Neither draws a bar; only the stalled one offers the retry. -->
+	<ProcessingCard
+		kind="failed"
+		seq={6}
+		title="Never Gonna Give You Up"
+		singerName="You"
+		singerColor={PINK}
+		onremove={() => {}}
+	/>
+	<ProcessingCard
+		kind="stalled"
+		seq={7}
+		title="Wonderwall"
+		singerName="Jo"
+		singerColor={PINK}
+		singerAway
+		onretry={() => {}}
 		onremove={() => {}}
 	/>
 	<QueueRow

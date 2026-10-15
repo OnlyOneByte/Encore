@@ -47,6 +47,11 @@
 # BETTER, which is what section 4 would have read had an arms row carried the onsets. A pre-W8b run reads 21
 # PASS and 48 ERROR, which is the fail-loud direction: no row carries the onsets, so no floor may be called
 # clear.
+# W9 (2026-10-14): `band-reopen` IS THE DEFAULT, so those three readings are the default's and section 2's
+# `jit` triple carries them as a NAMED EXCEPTION with no slack — see the block above it. The whole file reads
+# **77/77** on the post-flip default (`_runs/w9f-ra` against `results/w8b-run_align.json`); the `band-off-sheet`
+# half of the replay command below is the only arm left in it, and `band-late-kept` is what stands the
+# re-opening down.
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
 
@@ -83,9 +88,42 @@ published-pm100-truth: truth.jamendo.word_published_pm100 >= 82.79
 published-pm250-truth: truth.jamendo.word_published_pm250 >= 94.43
 published-pm300-truth: truth.jamendo.word_published_pm300 >= 95.36
 published-aae-truth: truth.jamendo.word_published_aae_ms <= 86.6
-published-pm100-jit: jit.jamendo.word_published_pm100 >= 76.64
-published-pm250-jit: jit.jamendo.word_published_pm250 >= 89.40
-published-pm300-jit: jit.jamendo.word_published_pm300 >= 90.54
+# ── THE `jit` TRIPLE IS A NAMED EXCEPTION, NOT A LOOSENED BOUND (W9, owner decision PLAN 2026-10-09) ────
+# `band-reopen` is the DEFAULT since W9. The owner priced its waiver and took it: `Kinematic_-_Peyote` 71.43
+# -> 92.86 at +-500 and +0.20 pt pooled on the 28-song `scored` truth row, against FOUR Jamendo `jit` words
+# moving from inside +-100 ms to outside +-300 — `Explosive_Ear_Candy_-_Like_The_Sun` twice (+317, +322 ms),
+# `HILA_-_Give_Me_the_Same` (+342) and `Quentin_Hannappe_-_Keep_On` (+273). Those four are the whole of what
+# the three floors below give up, and the literals are the post-flip MEASUREMENT with NO SLACK:
+# `_runs/w9f-ra`, 32 songs, 1088 cases, code `6db0b601a018e8d1`, against `_runs/w9-ra` on the same tree.
+#
+# WHY THESE THREE AND NOTHING ELSE. `word_published_*` divides by the PUBLISHED onsets — `word_aligned +
+# word_interpolated`, 5689 on both sides (5102 + 587 pre-flip, 5096 + 593 post) — and not by the 5693 words
+# `in_text`: `Color_Out_-_Falling_Star` pairs 224 and publishes 220, four paired words carrying no published
+# onset, which `word_unpublished` (0 here, and the field once cited as proof) does not count. Fixed either
+# way, so a percentage here IS a word count, at 100/5689 = **0.01758 pt per word**. READ OFF THE ROWS rather
+# than the percentages, the counts inside each window are **+-100 4360 -> 4357, +-250 5086 -> 5084, +-300
+# 5151 -> 5149** (`results/w9-run_align.cases.jsonl` against `results/w9-reopen-run_align.cases.jsonl`,
+# mode `jit`, group `jamendo`). THE LEDGER IS FOUR OUT AND ONE OR TWO BACK IN: the four named words leave
+# every window, against two that arrive — 783.9 -> 85.8 ms, inside +-100, and 908.8 -> 186.5 ms, inside
+# +-250 and +-300 only — which is exactly the measured -3 / -2 / -2. At +-100 the one arrival is
+# `Kinematic_-_Peyote` (+1), the song the waiver was bought for. ONE MORE BROKEN WORD GOES RED:
+# 76.59 - 0.0176 = 76.57 < 76.59 fails, and so does 90.51 - 0.0176. The waiver buys exactly the four words
+# it names and not a fifth.
+#
+# AND THE WAIVER CANNOT HIDE A WIDER REGRESSION — but NOT because the aligned-word family "improves". That
+# family's `jit` percentages rise (+-100 83.46 -> 83.48, +-300 95.86 -> 95.90, AAE 80.3 -> 80.1 ms) only
+# because its denominator falls, `word_aligned` 5102 -> 5096 as six words are re-labelled interpolated; in
+# COUNTS it LOSES four words at every window (+-100 4258 -> 4254, +-250 4856 -> 4852, +-300 4891 -> 4887).
+# Section 3 of THIS file floors the aligned family at `truth` only, so what holds `jit` is
+# `gates/w9-reopen.yaml` section 3: `word-pm100-jit` 83.46, `word-pm300-jit` 95.86 and `word-aae-jit` 80.3 —
+# the PRE-flip literals — plus `aligned-at-least-jit >= 5096`, which pins the denominator so no later wave
+# can clear those bars by refusing another word (review W9 r1-spec-9, r2-tests-11). What makes the exception
+# per-word rather than pooled is that the 14-song W8a selection the owner priced on read +-300 95.86 ->
+# 95.79 while the full 32 read it up.
+# README, "W9: `band-reopen` flipped default-on, and the four words the owner waived".
+published-pm100-jit: jit.jamendo.word_published_pm100 >= 76.59
+published-pm250-jit: jit.jamendo.word_published_pm250 >= 89.37
+published-pm300-jit: jit.jamendo.word_published_pm300 >= 90.51
 published-aae-jit: jit.jamendo.word_published_aae_ms <= 116.0
 published-pm100-credit: credit.jamendo.word_published_pm100 >= 82.25
 published-pm250-credit: credit.jamendo.word_published_pm250 >= 94.04

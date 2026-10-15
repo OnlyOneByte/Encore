@@ -13,7 +13,14 @@
 // second spec could want: a fixture in the world reads as a fact about the app.
 
 export interface MetricsFixture {
-	sample: { attempts: number; processes: number; provisional: boolean };
+	sample: {
+		attempts: number;
+		total: number;
+		windowDays: number;
+		clipped: boolean;
+		processes: number;
+		provisional: boolean;
+	};
 	e2e: { n: number; meanMs: number; p50Ms: number; p95Ms: number };
 	steps: {
 		jobType: string;
@@ -56,10 +63,12 @@ export interface MetricsFixture {
 
 /** The sample line the page prints from `sample`, which is what the frames wait on: it appears only once the
  *  stubbed fetch has landed, so it is a positive ready signal rather than the absence of "Loading…". */
-export const METRICS_READY_TEXT = '47 runs across 19 songs';
+export const METRICS_READY_TEXT = '47 attempts in the last 7 days, across 19 finished songs.';
 
 export const METRICS_FIXTURE: MetricsFixture = {
-	sample: { attempts: 47, processes: 19, provisional: false },
+	// `clipped: true` and a `total` above `attempts` light the two caveat sentences the page grew for the dropped
+	// server fields, per this file's rule that the fixture lights every branch the page has.
+	sample: { attempts: 47, total: 1_240, windowDays: 7, clipped: true, processes: 19, provisional: false },
 	e2e: { n: 19, meanMs: 214_000, p50Ms: 188_000, p95Ms: 402_000 },
 	steps: [
 		{

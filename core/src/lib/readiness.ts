@@ -24,18 +24,64 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 	return readinessOf(m);
 }
 
-/** Which card an entry in the ROTATION gets. A terminally failed process is NOT in flight, so an "is it in flight"
- * test renders a dead turn as an ordinary waiting one while the rotation holds its slot and skips it every pass.
- * Failure is decided by `displayReadiness`, NEVER by a fresh `status === 'failed'` test, so this cannot disagree. */
-export type QueueCardKind = 'processing' | 'failed' | 'plain';
+/** Which card an entry in the ROTATION gets.
+ *
+ * A CARD KIND IS A CLAIM ABOUT WHETHER THE ROTATION CAN EVER PLAY THE ENTRY — the same question
+ * `nextPlayableEntryId` below and the server's `nextPlayable` both act on. So a terminally failed process is NOT in
+ * flight, and an "is it in flight" test renders a dead turn as an ordinary waiting one while the rotation holds its
+ * slot and skips it every pass. Failure is decided by `displayReadiness`, NEVER by a fresh `status === 'failed'`
+ * test, so this cannot disagree with it.
+ *
+ * `stalled` IS THAT DEAD TURN, and it exists because the three liveness arms this function used to open with WERE
+ * the condemned test: `if (!live) return 'plain'` answered "nothing is in flight" with "an ordinary turn about to
+ * play". Measured on the owner's own library copy on 2026-10-15: 89 queued entries over 50 media whose stems gate is
+ * open with no job left that could close it, every one of them drawn as an ordinary waiting row. */
+export type QueueCardKind = 'processing' | 'failed' | 'stalled' | 'plain';
 
-export function queueCardKind(media: Media | undefined, live?: { status: MediaStatus }): QueueCardKind {
-	if (!live) return 'plain';
-	if (live.status === 'ready' || live.status === 'canceled') return 'plain';
-	// A media missing from the catalog cannot be asked whether it is singable, so the live status is
-	// the only witness — take it at its word rather than silently downgrading a dead process to plain.
-	if (live.status === 'failed') return media && displayReadiness(media, live) !== 'failed' ? 'plain' : 'failed';
-	return 'processing';
+export function queueCardKind(
+	media: Media | undefined,
+	live?: { status: MediaStatus; unservable?: boolean }
+): QueueCardKind {
+	/* A media missing from the catalog cannot be asked whether it is singable, so the live status is the only
+	   witness — take it at its word rather than silently downgrading a dead process to plain. These are the answers
+	   this arm has always given, kept unchanged: there is no catalog here to read `unacquired` off, so the arm
+	   cannot state a stall, and it is in practice unreachable from the one call site — `queue:sync` carries the
+	   media for every entry it sends, and /queue classifies only rows inside `{#each queued}`. */
+	if (!media) {
+		if (!live || live.status === 'ready' || live.status === 'canceled') return 'plain';
+		return live.status === 'failed' ? 'failed' : 'processing';
+	}
+	/* ONE EXPRESSION OVER THE READINESS, which is what this function's own docstring asks for. The readiness
+	   already folds the live status in (a `ready` event beats a stale catalog; a `failed` one is swallowed on a
+	   song that is singable anyway; a `canceled` one defers to the catalog, which the server has already settled
+	   back to un-processed), so there is nothing left for a liveness test to decide. */
+	const r = displayReadiness(media, live);
+	if (r === 'ready') return 'plain'; // 205 of that snapshot's 304 queued rows: the common case
+	if (r === 'failed') return 'failed';
+	if (r === 'processing') {
+		/* THE SERVER HAS ALREADY SAID NOBODY CAN RUN THIS. `unservable` rides the `media:status` broadcast
+		   (contract/core/events.ts), is set by `#sweepUnservable` only when the stall blocks singing, and
+		   `lib/tv/catalog.ts` has treated it as terminal all along (`processIsTerminal`). The phone threw it away,
+		   so it drew "Making karaoke… 0%" with a live bar for the whole 120s TTL on a job already known to be
+		   unrunnable. */
+		return live?.unservable ? 'stalled' : 'processing';
+	}
+	/* UNACQUIRED IS THE DEAD TURN: no instrumental, nothing in flight to produce one, and a queued entry pointing
+	   at it. QUEUED-NESS IS A PRECONDITION of calling this — the one call site is inside `{#each queued}` on
+	   /queue — so no entry argument is needed to say it. And it cannot libel a turn nobody asked to process,
+	   because no UI path creates a bare turn on an unacquired media: SongRow renders its `+` only when `onmake` is
+	   undefined, i.e. when `canProcess` is false.
+	   NO AGE GATE, NO FIRST-SEEN MAP, NO CONSTANT, and the token rule is what settles that rather than taste. This
+	   arm cannot tell a turn whose process half never landed (permanent) from the one-round-trip window on ANOTHER
+	   guest's phone between the `queue:patch` carrying the add and the `media:status` the subsequent /api/process
+	   POST produces (transient) — so it is not entitled to --danger, and a --warn card saying no karaoke is being
+	   made for this turn is TRUE in both: during the window it is true and resolves in a moment, for a dead turn it
+	   is true forever. The flash is the truth arriving early, not a prediction that can be wrong. (The TAPPING
+	   phone sees no flash at all: `processAndQueue` runs the queue step then the process step, and the process step
+	   sets a live `queued` status BEFORE it awaits, so that phone holds one in the same tick as the add.)
+	   A CLIENT-SIDE age gate would also be a new lie rather than a guard: `addedAt` is a SERVER stamp, and
+	   comparing it against the device's `Date.now()` is cross-clock and skew-unsafe. */
+	return 'stalled';
 }
 
 /** Whether offering "make karaoke" makes sense: only for a song neither done nor in flight, AND whose audio can
@@ -79,11 +125,23 @@ export interface NoRowsState {
  * groups, so a zero-state rendered then is a claim about a search that has not finished. */
 export function showsNoRows(opts: {
 	searching: boolean;
+	failed: boolean;
 	readyCount: number;
 	rawCount: number;
 	processingCount: number;
 }): boolean {
 	if (opts.searching) return false;
+	/* A SEARCH THAT FAILED IS NOT A SEARCH THAT FOUND NOTHING, and conflating them was the worst defect the
+	   behavioural review found: with the request dead, every row was wiped and the screen read
+	   `Nothing matches "wonderwall"` — a confident false fact in the room's own voice, with a button pointing at
+	   somebody else's library. The 4s toast was the only honest signal, so the lie outlived the truth; on
+	   reconnect the offline cue cleared and the sentence stayed, i.e. recovery removed the last evidence.
+	   This is the same class of claim the `searching` term above already guards — that one exists because a
+	   zero-state rendered mid-flight "is a claim about a search that has not finished", and a failed search is a
+	   claim about a search that never arrived. The term lives HERE rather than inline at the call site for the
+	   reason this file gives for being a predicate at all: an `every`-shaped condition spread across a template
+	   silently loses a term when a fourth group is added later. */
+	if (opts.failed) return false;
 	return opts.readyCount === 0 && opts.rawCount === 0 && opts.processingCount === 0;
 }
 

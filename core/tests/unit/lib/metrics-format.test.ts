@@ -35,6 +35,14 @@ test('durations never carry into a unit they do not print', () => {
 	expect(dur(60_000)).toBe('1m 0s');
 	expect(dur(119_400)).toBe('1m 59s');
 	expect(dur(120_000)).toBe('2m 0s');
+
+	// The minute→hour carry, same rule one unit up: 3_599_700ms is 59.995 minutes, which rounds to the 60 that IS an
+	// hour, so it must read "1h 0m" and never "0h 60m".
+	expect(dur(3_599_700)).toBe('1h 0m');
+	// The boundary either side. 59.5 minutes rounds UP to 60 and so belongs to the hour branch — the same way 59_960ms
+	// already renders "1m 0s" rather than "60.0s".
+	expect(dur(3_569_999)).toBe('59m 30s');
+	expect(dur(3_570_000)).toBe('1h 0m');
 });
 
 test('each branch prints its own unit', () => {
@@ -43,6 +51,9 @@ test('each branch prints its own unit', () => {
 	expect(dur(1000)).toBe('1.0s');
 	expect(dur(9040)).toBe('9.0s');
 	expect(dur(154_000)).toBe('2m 34s');
+	// A real overnight re-process out of the copy DB's job_attempts ledger: 19h 58m 36s. Without the hour branch this
+	// printed "1198m 36s", a span the reader had to divide by 60 to understand.
+	expect(dur(71_916_066)).toBe('19h 59m');
 });
 
 test('an unmapped job type or stage falls through to its raw name', () => {

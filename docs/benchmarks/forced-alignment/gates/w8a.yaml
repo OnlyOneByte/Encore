@@ -4,6 +4,12 @@
 # sweep that scores all three at once. Narrative and per-song numbers: README, "W8a: the 0.5-2 s band ..."
 # sections; design: docs/arch/04-alignment.md §4 and §6.1.
 #
+# W9 (2026-10-14): THE NAME `band-reopen` BELOW IS RETIRED — the rule went DEFAULT-ON and the name left
+# `host.config.ALIGN_EXPERIMENTS`, so setting it now exits before any model work and the stand-down control
+# is `ENCORE_ALIGN_EXPERIMENTS=band-late-kept`. Every reading in this file is W8a's, taken when the rule was
+# an arm, and is kept as such; this file reads 152/154 on the post-flip default and both failures are W8b's
+# own rows (README, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
+#
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --modes all,wrongtext+ownclock --tag w8a-ra \
 #       --compare ../docs/benchmarks/forced-alignment/results/w8a-band-run_align.json \

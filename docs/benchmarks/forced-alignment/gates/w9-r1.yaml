@@ -1,0 +1,152 @@
+# W9 REVIEW ROUND 1 — the re-bench that turns the fix pass's "expected no-op" into a MEASUREMENT. The 14
+# round-1 fixes land in the vendored graph (`domain/lyrics/viterbi.py`), the arms' wiring and trail, the
+# gate files and `worker/tests`; the argument for not re-benching was that every one of them is reached
+# only through a default-off knob. This file is that argument read as a digest instead. Narrative:
+# README, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9r1-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w9-reopen-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9-r1.yaml
+#   (`--sync-mode lines` keeps `gates/w8b-lines.yaml`, as W9 did: at that rung no line is graded and no word
+#   is scored, so most of what is below would be an ERROR there. The post-fix lines cell reads that file
+#   94/94 and is byte-identical to `_runs/w9-lines` as well — `results/w9-r1-lines-run_align.json`.)
+#
+# THE BASE IS THE POST-FLIP BASELINE OF THE SAME WAVE (`results/w9-reopen-run_align.json`, `_runs/w9f-ra`,
+# code `6db0b601a018e8d1`), because that is the row the fix pass must not have moved. Read against
+# `results/w8b-run_align.json` instead, section 1 fails by construction on the flip's 26 documents and
+# `gates/w9-reopen.yaml` is the file that says what the flip bought.
+#
+# MEASURED, 2026-10-14, one tree: code `d1f88c1c10ab72d9` (the fix pass; the baseline's was
+# `6db0b601a018e8d1`), emitter `14c8c0a4bfba8627` UNCHANGED — nothing round 1 touched is in the emission
+# key, so the store was warm for all 32 songs and no HuBERT pass was paid. 1088 cases, 0 ERROR rows, 997 s,
+# HuBERT-Large, 32 songs, seed 0, `wrong_k` 10, `--tfr-audio youtube`, mps, `--asr off`, `--detector off`.
+# Over all 1088 shared cases of `_runs/w9r1-ra` against `_runs/w9f-ra`, the ONLY field that differs anywhere
+# is `attempts[].seconds`, the per-attempt wall clock: `doc_sha256` 0, `onsets_sha256` 0, `outcome` 0,
+# `confidence` 0, `verdict` 0, `gross` 0, `w500` 0, `scored` 0, `high_bad` 0, `published_label` 0,
+# `terminal` 0, `band` 0, and the `trail` — which the fix pass rewrote for the arms — 0 as well, the default
+# decode never building a graph that notes itself.
+#
+# EVERY GATE FILE RE-READ ON THIS ROW AGREES WITH THE BASELINE'S READING, rule for rule: `w9-reopen` 91/91,
+# `w8b-arms` 77/77 (the four waived `jit` words, with no slack), `w8a` 152/154, `w8b` 147/154, `w9` 75/88,
+# `w7-words` 22/25, `w5` 38/40, `w7` 44/45, `w7-truth` 18/18, `w7-wrongtext` 10/10, `w4b` 30/30,
+# `w8b-lines` 94/94. The failures are the flip's, not round 1's: each reads the same number on
+# `results/w9-reopen-run_align.json` (`w7-no-published-document-changes` is 26 on both).
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+all-songs-still-run-truth: truth.cases == 32
+all-songs-still-run-drop50: drop50.cases == 32
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-blind: blind.scored.cases == 28
+scored-songs-twenty-eight-drop50: drop50.scored.cases == 28
+
+# ── 1) MUST: A REVIEW FIX PASS PUBLISHES THE BASELINE'S BYTES ───────────────────────────────────────────
+# `song.doc_changed` is `doc_sha256` against the base's, per song; `onsets_changed` is every published line's
+# and word's START at full precision, which moves on one ulp. This is the whole file: a document that is
+# byte-identical cannot have moved an accuracy number, a confidence grade or a word, and the sections below
+# only say what would have been lost if it had. ONE RULE PER MODE, so a failure names the mode.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+docs-unchanged-off15: count(off15.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-offm1: count(offm1.song.doc_changed) == 0
+docs-unchanged-tempo098: count(tempo098.song.doc_changed) == 0
+docs-unchanged-tempo102: count(tempo102.song.doc_changed) == 0
+docs-unchanged-drop20: count(drop20.song.doc_changed) == 0
+docs-unchanged-drop50: count(drop50.song.doc_changed) == 0
+docs-unchanged-extraverse: count(extraverse.song.doc_changed) == 0
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-headers: count(headers.song.doc_changed) == 0
+docs-unchanged-credit: count(credit.song.doc_changed) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed) == 0
+onsets-unchanged-drop50: count(drop50.song.onsets_changed) == 0
+onsets-unchanged-extraverse: count(extraverse.song.onsets_changed) == 0
+
+# ── 2) MUST: the shipped accuracy row, as the FLIP left it, on the 28-song `scored` basis ────────────────
+# Absolute literals at the post-flip reading, not at the PLAN's 2026-10-09 pre-flip row: the flip is shipped,
+# so 97.27 is the number a later wave has to hold, and the owner's 0.3 pt tolerance (96.77) is the floor only
+# for a wave that MEANS to move it. Here identity is claimed, so these are exact.
+truth-pm500-97-27: truth.scored.pm500 >= 97.27
+truth-text-pm500-95-25: truth.scored.text_pm500 >= 95.25
+truth-gross-zero: truth.scored.gross == 0
+truth-high-bad-zero: truth.scored.high_bad == 0
+truth-high-gross-zero: truth.scored.high_gross == 0
+truth-zero-gross-songs-all-28: truth.scored.zero_gross_songs >= 28
+truth-no-line-sync-degrade: truth.scored.line_sync == 0
+truth-scored-lines-at-least-1504: truth.scored.scored >= 1504
+truth-in-text-1536: truth.scored.in_text == 1536
+
+# ── 3) MUST: gross 0 in every RIGHT-TEXT, CLAIM-CARRYING mode ───────────────────────────────────────────
+# `blind` (49) and `drop50` (69) have never been zero-gross modes — no claim to anchor on, half a sheet —
+# and are held relatively in section 6 instead.
+gross-zero-truth: truth.scored.gross == 0
+gross-zero-jit: jit.scored.gross == 0
+gross-zero-off05: off05.scored.gross == 0
+gross-zero-off15: off15.scored.gross == 0
+gross-zero-off3: off3.scored.gross == 0
+gross-zero-offm1: offm1.scored.gross == 0
+gross-zero-tempo098: tempo098.scored.gross == 0
+gross-zero-tempo102: tempo102.scored.gross == 0
+gross-zero-drop20: drop20.scored.gross == 0
+gross-zero-extraverse: extraverse.scored.gross == 0
+gross-zero-headers: headers.scored.gross == 0
+gross-zero-credit: credit.scored.gross == 0
+no-scored-song-gains-a-gross-line: count(scored.song.gross_up + scored.song.missing_up) == 0
+
+# ── 4) MUST: the Jamendo word clock and the highlight, at the post-flip reading ──────────────────────────
+# Denominator: 5373 Jamendo words ALIGNED of 5693 in text over the 20 Jamendo songs. The flip's own cost is
+# four `jit` words, named with no slack in `gates/w8b-arms.yaml` section 2 — which reads 77/77 here, so a
+# FIFTH broken word is still red. The `aligned-at-least-*` pins are W9 r1-spec-9's: no percentage in this
+# family may be cleared by refusing another word.
+word-pm100-truth: truth.jamendo.word_pm100 >= 85.54
+word-pm300-truth: truth.jamendo.word_pm300 >= 97.23
+word-aae-truth: truth.jamendo.word_aae_ms <= 70.6
+word-pco300-truth: truth.jamendo.word_pco300 >= 91.76
+highlight-truth: truth.jamendo.highlight >= 81.5
+aligned-at-least-truth: truth.jamendo.word_aligned >= 5373
+aligned-at-least-jit: jit.jamendo.word_aligned >= 5096
+
+# ── 5) MUST: WRONG TEXT IS STILL REFUSED, every case, both clocks ───────────────────────────────────────
+# 320 cases each: 32 songs x `wrong_k` 10 donors. Round 1 changed `fuse_in_the_mix`'s vocabulary guard and
+# R3's blind-repeat input, both on the refusal side of the ladder, so these are the clauses with teeth here.
+wrongtext-publishes-nothing: wrongtext.wrongtext_pass == 0
+wrongtext-refuses-all-320: wrongtext.refused == 320
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-nothing-published: wrongtext.published + wrongtext.line_sync == 0
+ownclock-publishes-nothing: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-refuses-all-320: mode("wrongtext+ownclock").refused == 320
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-nothing-published: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+wrongtext-no-errors: wrongtext.error == 0
+ownclock-no-errors: mode("wrongtext+ownclock").error == 0
+
+# ── 6) MUST: nothing moved relative to the post-flip baseline ───────────────────────────────────────────
+# Implied by section 1 on this row, and the half that still bites on a tree where section 1 legitimately
+# fails (a later wave that means to move the default re-reads this file as the bar, not as the identity).
+pooled-gross-not-up: sum(scored.song.gross) <= sum(base.scored.song.gross)
+pooled-missing-not-up: sum(scored.song.missing) <= sum(base.scored.song.missing)
+pooled-high-gross-not-up: sum(scored.song.high_gross) <= sum(base.scored.song.high_gross)
+refused-not-up: count(song.refused_up) == 0
+pm500-not-down-truth: truth.scored.pm500 >= base.truth.scored.pm500
+pm500-not-down-jit: jit.scored.pm500 >= base.jit.scored.pm500
+pm500-not-down-blind: blind.scored.pm500 >= base.blind.scored.pm500
+pm500-not-down-drop20: drop20.scored.pm500 >= base.drop20.scored.pm500
+pm500-not-down-drop50: drop50.scored.pm500 >= base.drop50.scored.pm500
+pm500-not-down-extraverse: extraverse.scored.pm500 >= base.extraverse.scored.pm500
+pm500-not-down-credit: credit.scored.pm500 >= base.credit.scored.pm500
+pm500-not-down-headers: headers.scored.pm500 >= base.headers.scored.pm500
+text-pm500-not-down-truth: truth.scored.text_pm500 >= base.truth.scored.text_pm500
+text-pm500-not-down-drop50: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500
+text-pm500-not-down-blind: blind.scored.text_pm500 >= base.blind.scored.text_pm500
+scored-lines-not-down-truth: truth.scored.scored >= base.truth.scored.scored
+scored-lines-not-down-drop50: drop50.scored.scored >= base.drop50.scored.scored
+scored-lines-not-down-extraverse: extraverse.scored.scored >= base.extraverse.scored.scored
+in-text-unchanged-truth: truth.scored.in_text == base.truth.scored.in_text
+in-text-unchanged-drop50: drop50.scored.in_text == base.drop50.scored.in_text
+high-bad-not-up-jit: jit.scored.high_bad <= base.jit.scored.high_bad
+high-bad-not-up-blind: blind.scored.high_bad <= base.blind.scored.high_bad

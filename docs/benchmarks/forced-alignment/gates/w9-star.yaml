@@ -1,0 +1,194 @@
+# W9 §3.10 / D3 — THE STAR AT THE RE-FITTED P, read on the 28-SONG ACCURACY BASIS.
+# `ENCORE_ALIGN_EXPERIMENTS=star` with `ml.STAR_PENALTY_NATS = 0.3` against the same code without it.
+# The sweep, the four objectives and the two hold-out schemes: README, "W9: the star re-fitted out of sample,
+# at an optimum outside the review's range"; the digest is `results/w9-star-sweep.json`.
+#
+# WHY THIS FILE AND NOT `w7-star.yaml`. That file is W7's verdict and its header still reads "at the shipped
+# P = 1.0"; keep it for the historical replay (`tests/test_bench_e2e.py` pins its 32/36). Two things make it
+# the wrong file for the re-fit. (1) ITS POOLED RULES ARE ON THE 32-SONG `all` POOL. `MODE.X` with no group is
+# all 32; `MODE.scored.X` is the 28 that `corpus-truth.json` admits to accuracy (W8b). The four it excludes
+# are excluded because their TRUTH leads their audio by 460-834 ms, so an arm that moves line starts is
+# scored there against a displaced reference — which is the one pool a star must not be judged on.
+# (2) P moved, so every number in that header is about a different arm.
+#
+# ── WHAT IS ALREADY MEASURED AT THE CLAIMS LEVEL, re-read on the 28 (`_runs/w7-star-run_align/rows.jsonl`
+# ── and `_runs/w7-ra/rows.jsonl` re-summarized by today's harness, which adds the `scored` group that
+# ── `results/w7-star-run_align.json` predates; no model pass, no corpus run) ──────────────────────────────
+# THE ARM AT P = 1.0 IS NOT REJECTED BY A DENOMINATOR. This was checked before the file was written, because
+# the review's scratch scorer and W8b's band arms were both denominator artefacts and this clause had not been
+# re-read since. All four of W7's failures survive the move to the 28-song pool, and the per-song one gets
+# WORSE (15 cells, not 14, the 32-song clause being YouTube-only while `scored` holds Jamendo too):
+#
+#     clause                                      32-song `all`      28-song `scored`
+#     youtube/scored song gains gross or missing   14 cells           15 cells
+#     truth: no song loses lines                    1                  1
+#     sum(song.high_gross)                          3 <= 2             3 <= 2   (`hello` blind 0 -> 1)
+#     min_song_delta(truth.jamendo.word_pm300)     -4.26 pt           -4.26 pt  (jamendo IS a subset of
+#                                                                                scored, so it never re-based)
+#
+# AND WHAT IT BUYS, which is the number this wave was told to re-read on today's basis. "drop50 gross 82 -> 44
+# with ±500/text 75.72 -> 81.90" is a 32-song reading. On the 28 the same two runs read **gross 69 -> 33,
+# ±500/text 79.42 -> 87.42, missing 45 -> 18 of 763 served, scored 718 -> 745** — so the arm publishes 27 MORE
+# lines AND places them 8 pt better, which is the shape a denominator artefact cannot have.
+#
+# WHERE THE RE-FIT HELPS AND WHERE IT HURTS, stated so this file is not read as optimism. **11 of those 15
+# cells are ONE SONG**: `never-be-alone` losing one line of its 47 to `missing`, in 11 of 16 modes including
+# `truth`. The other four are `Avercage_-_Embers` blind +1 gross, `shape-of-you` blind +1 gross,
+# `Kinematic_-_Peyote` drop50 +2 missing, `tfr-mayday` drop20 +1 missing. W9's spot check decoded that song at
+# P = 0.3 and `truth` INVERTS — `missing` 1 -> 0, ±500/text 91.49 -> 95.74, gross still 0 — which is why a
+# corpus read is owed. But P = 0.3 is a CHEAPER star than 1.0, so it is MORE eager, and the decode sweep reads
+# the full sheet 54 gross at P = 1 against 60 at P = 0.3: the clauses W7 died on are full-sheet-path clauses
+# and lowering P moves them the WRONG way. One song inverting is an existence proof, not a prediction. If this
+# file rejects the arm again, THAT is the finding, and the honest one.
+#
+# ── THE RUNS. Both cells on ONE tree, one at a time (parallel corpus runs thrash) ─────────────────────────
+# `align_experiments` is part of the emission cache key, so BOTH cells recompute every matrix cold. An absent
+# `--model` resolves to HuBERT-Large, which every number above is on.
+#
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE \
+#       --tag w9-star-off-ra > /tmp/w9-star-off.log 2>&1 &
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=star nohup .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9-star-on-ra \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w9-star-off-ra \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9-star.yaml > /tmp/w9-star-on.log 2>&1 &
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# THE BASE MUST CARRY THE `scored` GROUP (W8b onward, or any rows file re-summarized by this harness). Read
+# against a pre-W8b summary every `scored.` rule is an ERROR, which fails the run — the fail-loud direction,
+# and pinned in `tests/test_bench_e2e.py`.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the arm-off cell of the SAME bundle and the SAME tree.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+# Without these, a `--songs` subset would gate a ratchet written for 28 songs against some other set.
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-drop50: drop50.scored.cases == 28
+all-songs-still-run-truth: truth.cases == 32
+# The four excluded songs must still be MEASURED, just not scored (W8b's `excluded-still-measured-*`): a star
+# that crashed them would otherwise read as a clean 28-song pass.
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 203
+excluded-still-measured-drop50: drop50.scored - drop50.scored.scored >= 95
+
+# ── 1) MUST: §3.10's OWN REJECT-IF — "E2E with claims gains a gross line on any YouTube song, or loses more
+# ── than 0.5 pt at ±500" ─────────────────────────────────────────────────────────────────────────────────
+# The review's clause verbatim, YouTube, per song AND per mode (`song.` with no mode ranges over every mode).
+# `missing_up` rides along because `gross` counts PUBLISHED lines only: a song that refuses instead of
+# publishing its 2 gross lines reads FEWER gross, and `missing` is what catches that trade. Read 14 at P = 1.
+no-youtube-song-gains-a-gross-line: count(youtube.song.gross_up + youtube.song.missing_up) == 0
+# ... and the same clause on the basis this wave was told to judge on. The gate language has no intersection
+# of two groups, so `scored` is Jamendo + YouTube minus the four displaced-truth songs: STRICTER than §3.10's
+# wording on the Jamendo side and the honest 28-song reading of it. Read 15 at P = 1.
+no-scored-song-gains-a-gross-line: count(scored.song.gross_up + scored.song.missing_up) == 0
+
+# ── 2) MUST: ±500 PER MODE on the 28, both denominators ─────────────────────────────────────────────────
+# Per mode, which is stricter than §3.10's pooled wording and is the only thing the language can say: a
+# cross-mode ±500 would let a 2 pt loss on a partial sheet hide behind a gain somewhere else. BOTH
+# denominators, because a star that refuses a song it is bad at IMPROVES `pm500` (published lines only) while
+# `text_pm500` (every truth line the served text holds) catches it. The headline is `text_pm500`.
+pm500-not-down-truth: truth.scored.pm500 >= base.truth.scored.pm500 - 0.5
+pm500-not-down-jit: jit.scored.pm500 >= base.jit.scored.pm500 - 0.5
+pm500-not-down-blind: blind.scored.pm500 >= base.blind.scored.pm500 - 0.5
+pm500-not-down-drop20: drop20.scored.pm500 >= base.drop20.scored.pm500 - 0.5
+pm500-not-down-drop50: drop50.scored.pm500 >= base.drop50.scored.pm500 - 0.5
+pm500-not-down-extraverse: extraverse.scored.pm500 >= base.extraverse.scored.pm500 - 0.5
+pm500-not-down-headers: headers.scored.pm500 >= base.headers.scored.pm500 - 0.5
+pm500-not-down-credit: credit.scored.pm500 >= base.credit.scored.pm500 - 0.5
+pm500-not-down-off05: off05.scored.pm500 >= base.off05.scored.pm500 - 0.5
+pm500-not-down-off15: off15.scored.pm500 >= base.off15.scored.pm500 - 0.5
+pm500-not-down-off3: off3.scored.pm500 >= base.off3.scored.pm500 - 0.5
+pm500-not-down-offm1: offm1.scored.pm500 >= base.offm1.scored.pm500 - 0.5
+pm500-not-down-tempo098: tempo098.scored.pm500 >= base.tempo098.scored.pm500 - 0.5
+pm500-not-down-tempo102: tempo102.scored.pm500 >= base.tempo102.scored.pm500 - 0.5
+text-pm500-not-down-truth: truth.scored.text_pm500 >= base.truth.scored.text_pm500 - 0.5
+text-pm500-not-down-jit: jit.scored.text_pm500 >= base.jit.scored.text_pm500 - 0.5
+text-pm500-not-down-blind: blind.scored.text_pm500 >= base.blind.scored.text_pm500 - 0.5
+text-pm500-not-down-drop20: drop20.scored.text_pm500 >= base.drop20.scored.text_pm500 - 0.5
+text-pm500-not-down-drop50: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500 - 0.5
+text-pm500-not-down-extraverse: extraverse.scored.text_pm500 >= base.extraverse.scored.text_pm500 - 0.5
+text-pm500-not-down-headers: headers.scored.text_pm500 >= base.headers.scored.text_pm500 - 0.5
+text-pm500-not-down-credit: credit.scored.text_pm500 >= base.credit.scored.text_pm500 - 0.5
+
+# ── 3) MUST: THE DENOMINATOR, named as its own rule ─────────────────────────────────────────────────────
+# Every percentage in section 2 is counted over these. `in_text` is the served text's own truth lines and may
+# not move at all (the text is an input, not a result); `scored` is what the arm actually placed, floored at
+# the default's reading so a refusal cannot buy a percentage. `missing` is `in_text - scored` and is reduced
+# ACROSS every mode, the only cross-mode total the language has.
+in-text-unchanged-truth: truth.scored.in_text == base.truth.scored.in_text
+in-text-unchanged-drop50: drop50.scored.in_text == base.drop50.scored.in_text
+in-text-unchanged-blind: blind.scored.in_text == base.blind.scored.in_text
+scored-lines-not-down-truth: truth.scored.scored >= base.truth.scored.scored
+scored-lines-not-down-jit: jit.scored.scored >= base.jit.scored.scored
+scored-lines-not-down-blind: blind.scored.scored >= base.blind.scored.scored
+scored-lines-not-down-drop20: drop20.scored.scored >= base.drop20.scored.scored
+scored-lines-not-down-drop50: drop50.scored.scored >= base.drop50.scored.scored
+scored-lines-not-down-extraverse: extraverse.scored.scored >= base.extraverse.scored.scored
+missing-not-up: sum(scored.song.missing) <= sum(base.scored.song.missing)
+refused-not-up: count(song.refused_up) == 0
+
+# ── 4) MUST: THE PINNED TRUTH ROW (PLAN-alignment-v3, 2026-10-09, 28-song basis) ────────────────────────
+# Absolute literals, not deltas: the PLAN says nothing in this wave may cost any of this. ±500 97.07, gross 0,
+# `high_bad` 0, lines rung 100.00 (`line_sync` 0 documents degraded), Jamendo words ±100 85.46 / AAE 71.1 ms.
+# `jamendo` is a SUBSET of `scored` (20 of the 28, none excluded), so the word row needs no re-basing and the
+# two spellings below read the same number — both are written because the next arm may not be Jamendo-only.
+truth-pm500-at-least-97-07: truth.scored.pm500 >= 97.07
+truth-gross-zero: truth.scored.gross == 0
+truth-high-bad-zero: truth.scored.high_bad == 0
+truth-zero-gross-songs-all-28: truth.scored.zero_gross_songs >= 28
+truth-no-line-sync-degrade: truth.scored.line_sync == 0
+truth-jamendo-word-pm100-at-least-85-46: truth.jamendo.word_pm100 >= 85.46
+truth-jamendo-word-pm300-at-least-97-16: truth.jamendo.word_pm300 >= 97.16
+truth-jamendo-word-aae-at-most-71-1: truth.jamendo.word_aae_ms <= 71.1
+truth-scored-word-pm100-at-least-85-46: truth.scored.word_pm100 >= 85.46
+truth-scored-word-aae-at-most-71-1: truth.scored.word_aae_ms <= 71.1
+# THOSE FIVE PERCENTAGES DIVIDE BY A DENOMINATOR THE ARM CONTROLS, so each is pinned to a COUNT as well
+# (review W9 r1-spec-9, r2-spec-7). `word_pm100` / `word_pm300` / `word_aae_ms` are all over `word_aligned`,
+# and an arm moves it: this very arm measures 5535 of 5693 aligned where the default measures 5373, and an
+# arm that went the other way could clear a bar by REFUSING words rather than timing them better. 5373 is the
+# shipped default's own spend after `band-reopen` (5378 before it), and `jamendo` IS `scored` on this basis,
+# so both spellings are pinned.
+aligned-at-least-truth-jamendo: truth.jamendo.word_aligned >= 5373
+aligned-at-least-truth-scored: truth.scored.word_aligned >= 5373
+# THE ARM AT P = 1.0 FAILS THREE OF THOSE FIVE WORD ROWS (±100 84.94, ±300 96.81, AAE 74.1 ms) — partial-sheet
+# line starts bought with full-sheet word onsets, the wrong way round for a default. The re-fit's whole claim
+# is that a cheaper star does not make that trade; these are the rules that decide it.
+truth-no-song-loses-lines: count(truth.scored.song.gross_up + truth.scored.song.missing_up) == 0
+truth-word-pco300-not-down: truth.scored.word_pco300 >= base.truth.scored.word_pco300 - 0.5
+no-jamendo-song-worse-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+blind-jamendo-word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300 - 0.5
+
+# ── 5) MUST: the wrong-text floor, which must be BYTE-identical ─────────────────────────────────────────
+# Every gate that decides a text reads the UNSTARRED matrix by construction (`generate.generate`'s docstring:
+# the arm is the global decode's token stream and nothing else), so a difference here is a WIRING BUG and not
+# a trade-off. `tests/test_star.py` pins the widths the step hands out.
+wrongtext-pass-unchanged: wrongtext.wrongtext_pass == base.wrongtext.wrongtext_pass
+wrongtext-refused-unchanged: wrongtext.refused == base.wrongtext.refused
+# Grading: the margin reads the STARRED trellis (a margin from a decode that did not run is not evidence), and
+# a star makes every alternative placement cheaper, so `high` COVERAGE may fall. What may not rise is a `high`
+# line that is WRONG — review §3.7's rule. Read 3 <= 2 at P = 1.0 (`hello` blind 0 -> 1).
+high-gross-not-up: sum(scored.song.high_gross) <= sum(base.scored.song.high_gross)
+high-gross-truth-zero: truth.scored.high_gross == 0
+# `high_gross` AND `high_bad` ARE NOT INTERCHANGEABLE, so §3.7's rule needs both halves — the sibling file
+# `gates/w9-research.yaml` section 7 carries them and this one did not (review W9 r1-spec-11). `high_bad` is
+# a `high` line more than 0.5 s out and has no per-song row in the summary, so it is read per MODE. On the 28
+# it is 0 everywhere today except `jit` (7) and `blind` (43), the two modes with no trustworthy claim to
+# corroborate against. THE RE-FITTED ARM TRIPS THE `jit` ONE: 7 -> 8 at P = 0.3, one more confidently-wrong
+# published line, while `blind` improves 43 -> 39 (README, "The star at the re-fitted P = 0.3").
+blind-high-bad-not-up: blind.scored.high_bad <= base.blind.scored.high_bad
+jit-high-bad-not-up: jit.scored.high_bad <= base.jit.scored.high_bad
+drop50-high-bad-zero: drop50.scored.high_bad == 0
+drop20-high-bad-zero: drop20.scored.high_bad == 0
+extraverse-high-bad-zero: extraverse.scored.high_bad == 0
+
+# ── 6) SHOULD: an arm that moves nothing is not worth a knob ────────────────────────────────────────────
+# The bar is the P = 1.0 re-read above, on this pool: drop50 gross 69 -> 33 and ±500/text 79.42 -> 87.42. The
+# re-fit sweeps a CHEAPER star, which the decode sweep reads as better on the partial sheet and worse on the
+# full one, so these are written as "no worse than the default" and the P = 1.0 column is the thing to beat.
+drop50-gross-down: drop50.scored.gross <= base.drop50.scored.gross
+drop50-text-pm500-up: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500
+drop20-gross-down: drop20.scored.gross <= base.drop20.scored.gross
+blind-gross-down: blind.scored.gross <= base.blind.scored.gross
+extraverse-gross-down: extraverse.scored.gross <= base.extraverse.scored.gross
+pooled-gross-down: sum(scored.song.gross) <= sum(base.scored.song.gross) - 1

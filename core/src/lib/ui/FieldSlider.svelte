@@ -23,6 +23,48 @@
 
 	let { label, ...rest }: { label: string } & ComponentProps<typeof Slider> = $props();
 
+	/* ONE PLACE, NOT ELEVEN. Every slider in the app goes through this wrapper — nine on /settings, one on
+	   /settings/server, one in GuidingTrack — so the trailing commit belongs here rather than at each call site.
+	   WHY: `onValueCommit` fires per ARROW KEYPRESS, and each commit is a PUT plus a room-wide websocket
+	   broadcast. Holding Right on a 0-100 slider emitted one write per step, every one of them landing on every
+	   phone and the TV. A pointer drag already commits once on release; the keyboard path had no such boundary,
+	   so the accessible way to use the control was also the expensive one.
+	   TRAILING, NOT LEADING: the value that matters is where the guest stopped, and a leading edge would write
+	   the first step and drop the rest. `onValueChange` is deliberately NOT touched — the readout and the TV
+	   preview still track every step, so the control stays live while only the WRITE is coalesced. */
+	const COMMIT_SETTLE_MS = 200;
+	let pending: ReturnType<typeof setTimeout> | null = null;
+	let queued: number | number[] | undefined;
+	/** The last value actually written, so a no-op commit sends nothing at all. */
+	let lastSent: string | undefined = $state(undefined);
+
+	function flush(): void {
+		if (pending) {
+			clearTimeout(pending);
+			pending = null;
+		}
+		if (queued === undefined) return;
+		const key = JSON.stringify(queued);
+		const value = queued;
+		queued = undefined;
+		/* A REPEATED VALUE IS NOT A WRITE. This also kills the no-op PUT that a press at min/max, or a second
+		   Home/End, used to emit — the slider clamps so the value never changes, but the commit still fired. */
+		if (key === lastSent) return;
+		lastSent = key;
+		rest.onValueCommit?.(value as never);
+	}
+
+	function onCommit(value: number | number[]): void {
+		queued = value;
+		if (pending) clearTimeout(pending);
+		pending = setTimeout(flush, COMMIT_SETTLE_MS);
+	}
+
+	/* FLUSHED ON THE WAY OUT, both ways. A host who sets a value and immediately tabs away or navigates would
+	   otherwise lose the last write inside the settle window — the one case where a debounce turns into data
+	   loss rather than a saving. */
+	$effect(() => () => flush());
+
 	/** EVERY thumb, because a range slider renders one per handle and an unnamed second handle is the same defect. */
 	function nameThumbs(root: Element) {
 		for (const thumb of root.querySelectorAll('[data-slot="slider-thumb"]')) {
@@ -31,4 +73,16 @@
 	}
 </script>
 
-<Slider {...rest} {@attach nameThumbs} />
+<!-- `onblur` on the wrapper, with `|capture` not needed: blur does not bubble, but focusout does, and the
+	thumb is a descendant — so this fires when focus leaves any handle. -->
+<div class="slider-slot" onfocusout={flush}>
+	<Slider {...rest} onValueCommit={onCommit} {@attach nameThumbs} />
+</div>
+
+<style>
+	/* `display: contents`, so inserting this wrapper changes no layout: the Slider stays the flex/grid item its
+	   parents already size. A plain div here moved every slider on /settings by its own box. */
+	.slider-slot {
+		display: contents;
+	}
+</style>

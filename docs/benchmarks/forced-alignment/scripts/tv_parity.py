@@ -62,6 +62,11 @@ def _run(words: str, start: float, step: float = 0.4, sung: float = 0.3) -> list
     ]
 
 
+def _chars(text: str, start: float, step: float = 0.4, sung: float = 0.3) -> list[Word]:
+    """`_run` for a script that writes no spaces: one word per character, as a CJK sheet is timed."""
+    return [(ch, round(start + i * step, 3), round(start + i * step + sung, 3)) for i, ch in enumerate(text)]
+
+
 def shaped() -> list[tuple[str, dict[str, Any]]]:
     """One document per rule of the port, named for it."""
     back = [
@@ -149,6 +154,38 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
                     {**_line(None, _run("medium row", 0.0)), "confidence": "medium"},
                     {**_line(None, _run("unknown row", 2.0)), "confidence": "shiny"},
                     _line(None, _run("ungraded row", 4.0)),
+                ]
+            },
+        ),
+        (
+            # W8's non-Latin lane: CJK writes no space between its words. Each line carries NO text, so
+            # both trees rebuild it from the words and the gap rule is what they must agree on — including
+            # Hangul, which spaces its words like Latin, and the mixed line's CJK/Latin boundary.
+            "cjk-rebuilt-without-spaces",
+            {
+                "lines": [
+                    _line("", _chars("我来到你的城市", 0.0)),
+                    _line("", _chars("夜に駆ける", 3.0)),
+                    _line("", _run("오빤 강남스타일", 5.0)),
+                    _line("", [*_chars("光年之外", 8.0), *_run("oh my love", 9.5)]),
+                ]
+            },
+        ),
+        (
+            # Long enough for the length guard to let the pause split fire, so each ROW's text is what
+            # `lineFromWords`/`_line_from_words` rebuilt rather than the document's own.
+            "cjk-splits-at-a-pause",
+            {
+                "lines": [
+                    _line(
+                        "今日もパパッと終わらせて" * 4,
+                        [
+                            *_chars("今日もパパッと終わらせて", 0.0, step=0.2, sung=0.15),
+                            *_chars("今日もパパッと終わらせて", 2.4, step=0.2, sung=0.15),
+                            *_chars("今日もパパッと終わらせて", 5.4, step=0.2, sung=0.15),
+                            *_chars("今日もパパッと終わらせて", 7.8, step=0.2, sung=0.15),
+                        ],
+                    )
                 ]
             },
         ),

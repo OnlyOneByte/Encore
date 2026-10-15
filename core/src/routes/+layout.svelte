@@ -2,7 +2,8 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import { SINGER_COLORS, songDisplay } from '$lib/contract';
+	import { toast } from 'svelte-sonner';
+	import { SINGER_COLORS, songDisplay, type PlayerCommand } from '$lib/contract';
 	import { nextPlayableEntryId } from '$lib/readiness';
 	import { room } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
@@ -24,6 +25,8 @@
 	   you touch a style here, re-measure or say less. */
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
+	import { Toaster } from '$lib/components/ui/sonner';
 
 	let { children } = $props();
 
@@ -49,6 +52,8 @@
 	let durationSec = $state(0);
 	let hasSong = $state(false);
 	let canStart = $state(false);
+	// For the dock's offline cue — see the banner in the markup for why it lives here and not on a route.
+	let connected = $state(true);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
 
@@ -75,6 +80,7 @@
 			   `nextPlayableEntryId` is the SAME predicate the server's `nextPlayable` uses, so the strip can no longer
 			   promise a turn the server will skip. */
 			queueCount = room.entries.filter((e) => e.status === 'queued').length;
+			connected = room.connected;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -121,6 +127,32 @@
 		});
 	});
 
+	/* THE TRANSPORT'S DROPPED-COMMAND NOTICE, and the argument for it, because a toast per tap needs one.
+	   `room.command` reports whether the frame reached the wire; false means the socket was absent or not OPEN, so
+	   the server never heard it. A player command is NOT resent on resync the way a queue add is, so dropped means
+	   lost — and these three buttons were the sites that discarded that boolean.
+	   WHAT THEY DO NOT NEED is the guard the ± keycaps and the guiding-track slider got. Those hold an optimistic
+	   value, so a drop there left them SHOWING a state the room does not have; these hold none — the play/pause
+	   icon follows `playback.isPlaying`, which only moves on a broadcast — so there is nothing to roll back.
+	   WHAT THEY DO NEED IS A SAY, and for a sharper reason than the other two: on SUCCESS, restart and skip change
+	   nothing in this strip either. The next broadcast redraws it. So "nothing happened" is indistinguishable from
+	   "it worked", which is the one shape where silence cannot be read at all, and the guest's only remaining move
+	   is to tap again.
+	   WHY NOT JUST THE `.offline-bar` BELOW. It answers "is the link up?", where a tap asks "did MY skip happen?",
+	   and it deliberately refuses to say which taps survive — its own note records the split, because the queue's
+	   do and the transport's do not. Nor is it reliably up when a send fails: `connected` flips in the socket's
+	   `onclose`/`#presumeDead`, while a send reports false as soon as `readyState` leaves OPEN, so a tap in the
+	   window before `close` is dispatched is lost under a bar that is not showing yet. THE CONVERSE LIMIT IS REAL
+	   AND NEITHER CUE COVERS IT: a frozen socket is still OPEN, so the send returns true and the command is lost
+	   silently. `WsClient`'s liveness watchdog and its `offline` listener are what shorten that window; no boolean
+	   at this call site can see it.
+	   ONE NOTICE, NOT ONE PER TAP: sonner keys toasts by `id`, so a mash updates the single notice and resets its
+	   timer rather than stacking a tower of them over the dock. */
+	function transport(command: PlayerCommand): void {
+		if (room.command(command)) return;
+		toast.error("Not connected — the TV didn't hear that.", { id: 'transport-dropped', duration: 4000 });
+	}
+
 	// A guest on the landing page has no room to be a remote for.
 	const showChrome = $derived(isPhoneSurface && me !== null);
 
@@ -158,6 +190,32 @@
 	<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 </svelte:head>
 
+<!-- ONE TOASTER FOR THE WHOLE APP, and the three route-local mounts it replaces were a real defect rather than
+	duplication. `toast()` pushes into a MODULE-LEVEL sonner store; a toast pushed while no <Toaster> is mounted is
+	HELD and replayed on the next mount. So tapping "make karaoke", switching to the Queue tab, and having the
+	server refuse meant the refusal was invisible on /queue for as long as you stayed there — then appeared on the
+	Sing tab seconds or minutes later, on a screen whose query had been wiped, naming no song.
+	THE OFFSET IS SET TWICE, AND ONE OF THEM WAS THE WHOLE POINT. A toast clears the bottom chrome by riding
+	--dock-h, which resolves to 0 on surfaces with no dock — but sonner reads `--offset-bottom` only ABOVE its own
+	600px breakpoint and `--mobile-offset-bottom` at or below it, and the `offset` prop feeds the first alone. So
+	on every phone width — which is every width that HAS a dock — the standing value was its `mobileOffset`
+	default of 16px, and the toast landed on the dock. MEASURED at 390x844 with a song playing and the offline bar
+	up: --dock-h 116px, the dock's top edge at 728, and the toast's box at 774.5-828 — 828 being 844 - 16 exactly
+	— so it covered all three transport buttons (each 754-798). That is the worst case there is for the one toast
+	that is ABOUT those buttons: a notice saying skip did not land, sitting on top of skip.
+	Each rung keeps sonner's OWN gap above the chrome rather than one shared number, because those two constants
+	(VIEWPORT_OFFSET 24px, MOBILE_VIEWPORT_OFFSET 16px) are the rungs the library's own spacing is drawn at.
+	AN OBJECT, NOT A BARE STRING, and this is measured too: a scalar offset is `assignAll`ed to top, right, bottom
+	AND left, so a bottom inset of `--dock-h + 16px` also became a 132px inset on each side — the toast narrowed
+	to 126px of the 390 viewport and the one sentence wrapped onto four lines. Naming only `bottom` leaves the
+	other three at the library's defaults, which is what the full-width toast was relying on by accident before. -->
+<Toaster
+	position="bottom-center"
+	offset={{ bottom: 'calc(var(--dock-h, 0px) + 24px)' }}
+	mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + 16px)' }}
+	style="--width: min(92vw, 420px);"
+/>
+
 <div class="app-shell">
 	{@render children()}
 </div>
@@ -168,6 +226,30 @@
 		inside a single positioned parent — two fixed siblings would each need their own inset arithmetic and would
 		disagree the moment one of them changed height. -->
 	<div class="dock" bind:clientHeight={dockH}>
+		<!-- THE OFFLINE CUE, AND IT BELONGS HERE RATHER THAN ON A ROUTE. It used to exist only in `/`'s topbar, which
+			is deliberately NOT sticky, so on a 59-row result list it was measured at `top: -2420px, inViewport: false`
+			— present in the DOM, 2.4k pixels above the fold, on the one surface that needs it least. `/queue` owns
+			pause, skip, ±semitone and the guiding-track slider and read `room.connected` nowhere at all; `/library`
+			likewise. Three of the behavioural review's findings were that same gap on three surfaces.
+			The dock is `position: fixed` and renders on every joined phone surface, so a cue here is visible at every
+			scroll position on every route, and there is exactly one of it.
+			--warn, NOT --danger: a dropped socket self-heals on the next backoff tick, and --danger is reserved for a
+			failure that will not. The queue store keeps accepting taps while offline and resends them on resync, so
+			this is "your taps are being held" for a QUEUE op and "your taps are lost" for a PLAYER command, which is
+			why the copy says only Reconnecting.
+			IT USED TO SAY "your taps are saved", AND THAT WAS HALF FALSE. `QueueStore.resendPending()` really does
+			replay a pending add or move on resync, so for the queue it was true. Player commands — pause, skip,
+			±key, the guiding track — go through `RoomLink.command`, which is one `#ws?.send()` with no pending
+			ledger behind it: dropped means lost. Promising both was the same overstatement this review kept
+			finding elsewhere, so the bar now states the fact it can keep and nothing more.
+			THE OTHER HALF OF THAT SPLIT IS `transport()` ABOVE, which says the thing this bar cannot: not "the
+			link is down" but "the command you just issued was lost". Those are different questions, and this bar
+			can only ever answer the first. -->
+		{#if !connected}
+			<p class="offline-bar" role="status" aria-live="polite">
+				<Icon name="warning" /> Reconnecting…
+			</p>
+		{/if}
 		<NowPlayingStrip
 			title={title}
 			singerName={singerName}
@@ -178,9 +260,9 @@
 			hasSong={hasSong}
 			canStart={canStart}
 			queueCount={queueCount}
-			onrestart={() => room.command({ cmd: 'restart' })}
-			ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
-			onskip={() => room.command({ cmd: 'skip' })}
+			onrestart={() => transport({ cmd: 'restart' })}
+			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
+			onskip={() => transport({ cmd: 'skip' })}
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
@@ -211,6 +293,23 @@
 		/* The chrome spans the viewport but its CONTENT aligns with the column above it, or the transport sits under
 		   the page's trailing margin on a wide screen while the rows it controls sit inboard. */
 		justify-items: center;
+	}
+
+	.offline-bar {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-xs);
+		margin: 0;
+		padding: var(--space-2xs) var(--space-lg);
+		background: var(--warn-bg);
+		border-top: 1px solid var(--warn-line);
+		color: var(--warn);
+		font-size: var(--ph-text-sm);
+		/* NO nowrap and a floor of none: this bar spans the dock's full width, so a long string wraps to a second
+		   line rather than overflowing. The pill it replaced was `white-space: nowrap` in a flex topbar, where its
+		   133px min-content width pushed `scrollWidth` to 334 against a 320 viewport. */
+		text-align: center;
 	}
 
 	.dock > :global(*) {

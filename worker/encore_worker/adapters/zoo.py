@@ -99,13 +99,13 @@ def _score(entry: object, stem: str) -> float | None:
 
 @functools.cache
 def catalogue() -> tuple[ZooModel, ...]:
-    """Every usable model the installed `audio-separator` can run, or `()` when the extra is absent.
+    """Every usable model the installed `audio-separator` can run, or `()` when it cannot be listed.
 
     CACHED because `list_supported_model_files` constructs a `Separator`, which probes torch, ONNX runtime
     and the accelerator, and on a cold cache downloads the catalogue JSON. Called once per process.
 
-    Returns `()` rather than raising when the extra is missing: `host.capabilities` decides whether to
-    advertise the zoo, and an import error here would turn a capability question into a crashed startup.
+    `()` rather than raising, for an absent extra and an unreadable listing alike: `host.capabilities`
+    decides whether to advertise the zoo, and a crash here would turn that question into a failed startup.
     """
     try:
         from audio_separator.separator import Separator  # noqa: PLC0415 - an extra, absent by default
@@ -113,8 +113,9 @@ def catalogue() -> tuple[ZooModel, ...]:
         return ()
 
     try:
-        # `output_dir`/`model_file_dir` are required by the constructor but unused for enumeration; the real
-        # ones are supplied per job by the adapter.
+        # Enumeration FETCHES the upstream listing and caches it in the default `model_file_dir` (`/tmp`,
+        # which macOS wipes), so a cold box needs the network for it. Per-job directories come from the
+        # adapter; `tests/zoo_fixture.py` is how the tests tell "unreadable" from "wrong".
         listed = Separator(log_level=50).list_supported_model_files()
     except Exception:  # noqa: BLE001 - a broken install must degrade to "no zoo", not to a crash
         return ()

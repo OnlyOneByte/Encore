@@ -9,6 +9,7 @@
 	   not in the queued list, so putting them under the list would separate a control from its subject by the whole
 	   scroll height of a party's queue. */
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		SINGER_COLORS,
 		songDisplay,
@@ -25,6 +26,7 @@
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId } from '$lib/readiness';
+	import { createGuideSend } from '$lib/guide-send';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { tick } from 'svelte';
 	import {
@@ -41,6 +43,7 @@
 	import { songFacts } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
+	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
@@ -67,8 +70,22 @@
 		guideLevel: null,
 		background: null
 	});
+	/* TWO OF `playback`'s FIELDS ARE ALSO MIRRORED AS SCALARS, and that is not redundancy — it is the fix for a clock
+	   that jumped backwards every 15 seconds. `room.playback` is a plain object on a plain class, and Svelte's
+	   `proxy()` has no identity cache, so `playback = room.playback` mints a NEW proxy on every room emit: the
+	   assignment is ALWAYS a change even when every field is identical. The client heartbeat is 15s and the server
+	   answers every `hello` with `playback:state`, so an idle phone re-ran the anchor effect — and re-anchored its own
+	   clock to the same stale position — four times a minute. An equal PRIMITIVE notifies nothing, which is why the
+	   root layout's scalar mirror never had this problem and why these two must not be "simplified" back into the
+	   object read. The object mirror stays for `currentEntryId`, `keyShift` and `guideLevel`, which no effect anchors. */
+	let positionSec = $state(0);
+	let isPlaying = $state(false);
 	let roomGuideDefault = $state(0);
 	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
+	/* THE SERVER HAS HANDED US A FULL LIST — not "the store exists", which is true before the socket opens. The
+	   polite region below diffs successive lists, and an empty pre-socket list looks exactly like an empty queue, so
+	   without this the first real sync read as N additions. See `QueueStore.synced`. */
+	let queueSynced = $state(false);
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -82,12 +99,25 @@
 			awaySingers = room.awaySingers;
 			mediaStatus = room.mediaStatus;
 			playback = room.playback;
+			positionSec = room.playback.positionSec;
+			isPlaying = room.playback.isPlaying;
 			roomGuideDefault = room.roomGuideDefault;
 			pendingKind = room.pendingKind;
 			store = room.queue;
+			queueSynced = room.queue?.synced ?? false;
 		};
 		sync();
-		return room.subscribe(sync);
+		const stopMirror = room.subscribe(sync);
+		/* THE SURFACE THAT OWNS THE TRANSPORT HAD NO ERROR SINK, where `/`, `/library` and `/song/[mediaId]` all
+		   register one — so a server-side refusal of a queue op ("Couldn't do that: …") was composed by the store and
+		   then dropped on the only screen that can issue one. The `<Toaster>` is the single app-wide mount in
+		   `+layout.svelte`, so this needs no renderer of its own. This is NOT the dead-socket cue: that is the dock's
+		   `.offline-bar`, which the fixed chrome shows on every joined surface including this one. */
+		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
+		return () => {
+			stopMirror();
+			stopErrors();
+		};
 	});
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
@@ -110,7 +140,41 @@
 	const nowSinger = $derived(nowEntry ? singers.get(nowEntry.singerId) : undefined);
 
 	const profile = $derived<SongProfile | null>(nowMedia?.songProfile ?? null);
-	const keyShift = $derived(playback.keyShift);
+	/* AN OPTIMISTIC KEY, for the same reason the guiding-track slider below holds `guideDraft`: a control that
+	   computes its next value from the last SERVER ECHO loses every tap made before the echo arrives. Both keycaps
+	   sent `keyShift ± 1` read off `playback.keyShift`, so five fast taps all computed from the same stale 0 and
+	   sent 1, 1, 1, 1, 1 — the key moved one semitone instead of five, and on party latency that is the normal
+	   result rather than the unlucky one. Nothing was disabled and nothing was said, so the guest simply mashed.
+	   THE WIRE VALUE STAYS ABSOLUTE. The `key` command is idempotent by design — it carries the target, not a
+	   delta — and that must not change: a delta protocol would turn a dropped or duplicated message into a key
+	   that is permanently wrong, where a repeated absolute is a no-op. So the draft moves the LOCAL view and the
+	   command still names where to land.
+	   `null` means "no local opinion", which is what lets a key change from the TV or another phone take over
+	   immediately rather than being pinned behind this phone's last tap. */
+	let keyDraft = $state<number | null>(null);
+	/* The draft is dropped the moment the server agrees with it, and whenever the song changes — a per-song value
+	   held across a song change would show the previous song's shift against the new song's range. */
+	$effect(() => {
+		if (keyDraft !== null && (playback.keyShift === keyDraft || !nowEntry)) keyDraft = null;
+	});
+	const keyShift = $derived(keyDraft ?? playback.keyShift);
+
+	/* ±7 is the range both keycaps already bound themselves to; named once here so the step, the two `disabled`
+	   tests and the clamp cannot drift apart. */
+	const KEY_LIMIT = 7;
+	function stepKey(delta: number): void {
+		const next = Math.max(-KEY_LIMIT, Math.min(KEY_LIMIT, keyShift + delta));
+		if (next === keyShift) return;
+		/* THE DRAFT ONLY MOVES IF THE COMMAND LEFT. Setting it unconditionally was a regression this very wave
+		   introduced: with no socket, `command()` silently no-ops, so the keycap showed a shift the server had
+		   never heard — and the clearing effect below only fires when the server AGREES with the draft, which
+		   offline it never does, so the wrong value stuck indefinitely. Before the draft existed the control was
+		   honest by accident (it read the server value and so simply did not move).
+		   A player command is fire-and-forget and is NOT resent on resync the way a queue add is, so "dropped"
+		   really does mean lost — there is nothing to be optimistic about. */
+		if (!room.command({ cmd: 'key', semitones: next })) return;
+		keyDraft = next;
+	}
 	// Two different stem requirements, so a song can offer ±key without offering a guiding track.
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
 	const guideEnabled = $derived(!!nowMedia && hasGuidingTrack(nowMedia));
@@ -122,56 +186,53 @@
 
 	/* Once a second, not a frame. BOTH READS STAY INSIDE THE EFFECT: a resume re-delivers an equal `positionSec`,
 	   and writing an equal primitive notifies nothing, so a separate anchor effect would never re-run — the
-	   documented hazard this tree has shipped twice. */
+	   documented hazard this tree has shipped twice.
+	   THE TWO READS ARE THE SCALAR MIRRORS, never `playback.positionSec`/`playback.isPlaying`. Reading them off the
+	   mirrored OBJECT made this effect re-run on every room emit, because the object mirror mints a fresh proxy per
+	   assignment — see the note on the mirrors above. The hazard the one-effect shape defends is untouched: a real
+	   position change still re-runs it and re-arms the ticker. */
 	let displayPos = $state(0);
 	$effect(() => {
-		const positionSec = playback.positionSec;
+		const anchor = positionSec;
 		const anchoredAtMs = performance.now();
-		const playing = playback.isPlaying;
-		displayPos = positionSec;
+		const playing = isPlaying;
+		displayPos = anchor;
 		return secondTicker(playing, () => {
-			displayPos = drawPosition({ positionSec, playing, anchoredAtMs, nowMs: performance.now() });
+			displayPos = drawPosition({ positionSec: anchor, playing, anchoredAtMs, nowMs: performance.now() });
 		});
 	});
+	/* NEITHER HALF OF THE CLOCK MAY PASS THE END OF THE SONG. `drawPosition` extrapolates from the last anchor with no
+	   duration term, so once nothing re-anchors (the display stopped reporting, or the socket died) the elapsed figure
+	   ran on past the song's length while `formatRemaining` pinned at −0:00, and the two halves of one readout
+	   disagreed. Clamped HERE rather than inside `drawPosition`: that function also feeds the TV lyrics reel and the
+	   layout's transport ring, which have the same unbounded term but are other surfaces' business. An unknown length
+	   is 0, and clamping to 0 would freeze the clock, so the cap only applies when there is a length to cap to. */
+	const drawnPos = $derived(nowDurationSec > 0 ? Math.min(displayPos, nowDurationSec) : displayPos);
 
-	/* While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled websocket echo.
-	   Carried over verbatim from the deleted sheet, including the trailing send: without it the last position of a fast
-	   drag is the one that gets dropped, which leaves the guide at a level the guest did not choose. */
-	let guideDragging = $state(false);
-	let guideDraft = $state(0);
-	const guidePct = $derived(guideDragging ? guideDraft : guideServerPct);
-
-	const GUIDE_SEND_THROTTLE_MS = 120;
-	let guideLastSent = 0;
-	let guidePending: ReturnType<typeof setTimeout> | null = null;
-
-	function sendGuide(pct: number): void {
-		guideLastSent = Date.now();
-		room.command({ cmd: 'guide', level: pct / 100 });
-	}
-	function onGuideInput(pct: number): void {
-		guideDragging = true;
-		guideDraft = pct;
-		const since = Date.now() - guideLastSent;
-		if (since >= GUIDE_SEND_THROTTLE_MS) {
-			sendGuide(pct);
-			return;
-		}
-		if (guidePending) clearTimeout(guidePending);
-		guidePending = setTimeout(() => {
-			guidePending = null;
-			sendGuide(guideDraft);
-		}, GUIDE_SEND_THROTTLE_MS - since);
-	}
-	function onGuideCommit(pct: number): void {
-		if (guidePending) {
-			clearTimeout(guidePending);
-			guidePending = null;
-		}
-		guideDraft = pct;
-		sendGuide(pct);
-		guideDragging = false;
-	}
+	/* THE GUIDE'S LOCAL OPINION, and it is `keyDraft`'s shape rather than the `guideDragging` boolean plus a
+	   number it replaces. While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled
+	   websocket echo — but a drag-scoped flag made the control tell two different lies either side of the release.
+	   DURING the drag it showed a level the room had never heard, because the draft moved whether or not the
+	   command reached the wire. AT the release it sprang back: `guideDragging = false` fell straight through to
+	   the server echo, so even a command that DID land showed the old level for one round trip (docs/UI-REVIEW.md
+	   finding C reports the dropped half of that as "reads as the app being broken").
+	   One nullable draft fixes both. `null` means "no local opinion", so a guide change from another phone or the
+	   TV takes over immediately rather than being pinned behind this phone's last drag, and the draft outlives
+	   the release until the room AGREES with it — which is the only event that proves the command landed.
+	   The throttle, the trailing send and the drop-on-refusal rule are `$lib/guide-send`, where a bun test can
+	   reach them; what stays here is the reactive half. */
+	let guideDraft = $state<number | null>(null);
+	const guidePct = $derived(guideDraft ?? guideServerPct);
+	/* Dropped the moment the room agrees, and whenever the song changes — the override is per-song, so a draft
+	   held across a song change would show the previous song's level against the new song's default. The same two
+	   arms `keyDraft`'s effect has, for the same two reasons. */
+	$effect(() => {
+		if (guideDraft !== null && (guideServerPct === guideDraft || !nowEntry)) guideDraft = null;
+	});
+	const guideSend = createGuideSend({
+		send: (pct) => room.command({ cmd: 'guide', level: pct / 100 }),
+		onDraft: (pct) => (guideDraft = pct)
+	});
 
 	/* REORDERING, MOVED VERBATIM FROM THE HOME PAGE rather than re-derived. It is a live sort with no mode:
 	   `liveSortTarget` both places the rows and decides the commit, so a release cannot land somewhere the guest did
@@ -181,6 +242,18 @@
 	let liveMsg = $state('');
 	let announcedIds: string[] | null = null;
 	$effect(() => {
+		/* NOTHING IS A BASELINE UNTIL THE SERVER HAS SENT A LIST, and this guard is ahead of every read and write of
+		   `announcedIds` for that reason. `queueAnnouncement` is silent with a null baseline precisely so that joining
+		   a busy room does not read the whole queue aloud — and this caller used to defeat it: the effect ran before
+		   the socket's first `queue:sync` with `queued` empty, announced nothing (correctly), and then SEEDED the
+		   baseline as `[]`. The first real sync then diffed the whole room against `[]`, which `queueAnnouncement`
+		   quite correctly reports as N additions — measured against a 267-entry room, `.sr-live` read "267 songs
+		   added to the queue" at 0.4s, 1.2s and 2.4s after every cold load, which is a mutation into an
+		   already-registered polite region and so really is spoken. Gating on the store merely EXISTING would not help: `room.queue` is
+		   constructed before the socket opens, which is the window that seeded the empty baseline. And the first
+		   synced list is the baseline even when it is empty — seeding from the first NON-empty list instead would
+		   swallow the first add in a room that really was empty. */
+		if (!queueSynced) return;
 		const announcement = queueAnnouncement({
 			previousIds: announcedIds,
 			queued,
@@ -291,9 +364,32 @@
 	// The queue moving under a drag needs no handling — the live sort is relative to where the row IS. Only the
 	// dragged song leaving, starting to play, or the queue falling below two invalidates the gesture.
 	$effect(() => {
-		const reason = modeInvalidation(queued, movingId, entries.find((e) => e.id === movingId)?.status);
+		// `rowBounds.length` only while dragging: it is the count the boxes were measured at, and it is empty
+		// except during a gesture, so passing it outside one would invalidate nothing and read as a bug.
+		const reason = modeInvalidation(
+			queued,
+			movingId,
+			entries.find((e) => e.id === movingId)?.status,
+			dragging ? rowBounds.length : null
+		);
 		if (reason) endDrag(false, reason);
 	});
+
+	/** THE RETRY ON A STALLED CARD: the turn is already in the rotation, so this asks for the PROCESS alone.
+	 *
+	 * NOT THROUGH `processAndQueue`, and that is the one place this could have looked tidier and been worse. That
+	 * function pairs an ADD with a process; here the turn exists by construction — this is only reachable from a
+	 * card inside `{#each queued}` — which is exactly its `hasQueuedTurn` branch, i.e. the process alone. Calling
+	 * it with a no-op queue step would add a dead argument and a reader's doubt about whether a second turn lands.
+	 *
+	 * THE TURN IS NEVER ROLLED BACK by what follows: `requestProcess` clears only its own optimistic status mark on
+	 * a refusal. A refused retry leaves the guest exactly where they were, holding a turn and a stalled card. */
+	function retryKaraoke(mediaId: string) {
+		// Same 12ms as the Sing tab's own process action — this is the same expensive action, so it answers the
+		// same way. The DOM read stays here; `RoomLink` holds no DOM.
+		if (navigator.vibrate) navigator.vibrate(12);
+		void room.requestProcess(mediaId);
+	}
 
 	const mediaTitleOf = (id: string) => songDisplay(mediaCatalog.get(id)).title || 'Untitled';
 	// The moved block calls this name; home spelled it `mediaTitle`.
@@ -302,47 +398,60 @@
 
 <svelte:head><title>Queue · Encore</title></svelte:head>
 
-<PageHeader title="Up next" icon="clock" />
+<!-- THE JOIN GATE, the idiom `/` and `/library` already use — this was the one tab route rendering its body
+	unconditionally. An unjoined visitor (a shared or bookmarked /queue link, a second device, private browsing, a
+	guest who tapped Leave) got `/api/me` 401, a room store settled at `guest` with no socket, and an empty entry
+	list — which this route's own `{:else}` arm then reported as an empty QUEUE: "Nothing queued yet. Find a song on
+	the Sing tab" over a room with hundreds of songs in it, pointing at a tab bar that is not rendered, because the
+	dock belongs to a joined singer. `JoinLanding` reads `?room=` itself, so a guest who arrived holding the code
+	lands on the identity pane instead of being asked to retype it.
+	KNOWN COST, inherited rather than introduced: `me` is mirrored from the link and is null for at most one frame on
+	a cold load even for a joined guest, so the landing can flash — which is exactly what `/` and `/library` have
+	always done, and a joined guest's cold load of this route was measured reaching the full list with the landing
+	gone. Beating it wants a settled-state read on the shared link, applied to all three tabs at once; leaving
+	/queue the odd one out in the other direction is worse. -->
+{#if me}
+	<PageHeader title="Up next" icon="clock" />
 
-<!-- `--row-h` is the dragged row's measured height, published for the neighbours' transform to read: a
+	<!-- `--row-h` is the dragged row's measured height, published for the neighbours' transform to read: a
 	shifted row slides by exactly one row rather than by a guess. Measured once at press time and 0 otherwise. -->
-<main style="--row-h:{rowH}px">
-	{#if nowEntry}
-		<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
+	<main style="--row-h:{rowH}px">
+		{#if nowEntry}
+			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
 			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
-		<div class="now">
-			<p class="now-eyebrow">Singing now</p>
-			<h2 class="now-title">{nowDisplay.title || nowMedia?.title || 'Untitled'}</h2>
-			<p class="now-by">
-				<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
-				{nowSinger?.displayName ?? 'Someone'}
-				{#if nowDisplay.artist}<span class="artist"> · {nowDisplay.artist}</span>{/if}
-			</p>
+			<div class="now">
+				<p class="now-eyebrow">Singing now</p>
+				<h2 class="now-title">{nowDisplay.title || nowMedia?.title || 'Untitled'}</h2>
+				<p class="now-by">
+					<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
+					{nowSinger?.displayName ?? 'Someone'}
+					{#if nowDisplay.artist}<span class="artist"> · {nowDisplay.artist}</span>{/if}
+				</p>
 
-			<!-- THE ONE PLACE THE PHONE SPELLS THE CLOCK. The strip above carries only a hairline, because a
+				<!-- THE ONE PLACE THE PHONE SPELLS THE CLOCK. The strip above carries only a hairline, because a
 				once-a-second percentage announced over a title is noise; here there is room for the real numbers, and
-				`displayPos` is the extrapolated position rather than the last broadcast one so it does not sit still
-				between websocket frames. `formatRemaining` omits the estimate rather than zeroing it when the length
-				is unknown. -->
-			{#if nowDurationSec > 0}
-				<p class="clock">
-					<span class="elapsed">{formatClock(displayPos)}</span>
-					<span class="remain">{formatRemaining(displayPos, nowDurationSec)}</span>
-				</p>
-			{/if}
+				`drawnPos` is the extrapolated position rather than the last broadcast one so it does not sit still
+				between websocket frames, capped at the song's length so it cannot print a time past the end.
+				`formatRemaining` omits the estimate rather than zeroing it when the length is unknown. -->
+				{#if nowDurationSec > 0}
+					<p class="clock">
+						<span class="elapsed">{formatClock(drawnPos)}</span>
+						<span class="remain">{formatRemaining(drawnPos, nowDurationSec)}</span>
+					</p>
+				{/if}
 
-			{#if facts.keyOriginal}
-				<p class="facts">
-					<span class="k-orig">{facts.keyOriginal}</span>
-					{#if facts.keyShifted}
-						<span class="k-arrow"><Icon name="arrow-right" /></span>
-						<span class="k-sound">{facts.keySounding}</span>
-					{/if}
-					{#if facts.rangeText}<span class="k-range"> · {facts.rangeText}</span>{/if}
-				</p>
-			{/if}
+				{#if facts.keyOriginal}
+					<p class="facts">
+						<span class="k-orig">{facts.keyOriginal}</span>
+						{#if facts.keyShifted}
+							<span class="k-arrow"><Icon name="arrow-right" /></span>
+							<span class="k-sound">{facts.keySounding}</span>
+						{/if}
+						{#if facts.rangeText}<span class="k-range"> · {facts.rangeText}</span>{/if}
+					</p>
+				{/if}
 
-			<!-- KEY SHIFT. The accessible names carry the DIRECTION: `Icon` is aria-hidden, so both keycaps otherwise
+				<!-- KEY SHIFT. The accessible names carry the DIRECTION: `Icon` is aria-hidden, so both keycaps otherwise
 				compute to the bare word "semitone" and a screen-reader user cannot tell which one lowers the key — on
 				the app's signature control.
 				THE LABEL IS app.css's `.control-label`, NOT a local class, and this card is why that matters: the
@@ -351,51 +460,56 @@
 				used to be `.ctl-lab`, re-declaring three of the shared rule's four properties and dropping the fourth
 				(`line-height`), which is precisely the drift `.control-label` was factored to stop. A plain `<span>`
 				rather than the primitive because the row labels TWO keycaps, and `<label for>` points at one. -->
-			<div class="ctl">
-				<span class="control-label">{facts.keyLabel}</span>
-				<div class="keys">
-					<Button
-						size="tap"
-						variant="keycap"
-						disabled={!keyShiftEnabled || keyShift <= -7}
-						aria-label="Lower by one semitone"
-						onclick={() => room.command({ cmd: 'key', semitones: keyShift - 1 })}><Icon name="minus" /></Button
-					>
-					<Button
-						size="tap"
-						variant="keycap"
-						disabled={!keyShiftEnabled || keyShift >= 7}
-						aria-label="Raise by one semitone"
-						onclick={() => room.command({ cmd: 'key', semitones: keyShift + 1 })}><Icon name="plus" /></Button
-					>
+				<div class="ctl">
+					<span class="control-label">{facts.keyLabel}</span>
+					<div class="keys">
+						<Button
+							size="tap"
+							variant="keycap"
+							disabled={!keyShiftEnabled || keyShift <= -KEY_LIMIT}
+							aria-label="Lower by one semitone"
+							onclick={() => stepKey(-1)}><Icon name="minus" /></Button
+						>
+						<Button
+							size="tap"
+							variant="keycap"
+							disabled={!keyShiftEnabled || keyShift >= KEY_LIMIT}
+							aria-label="Raise by one semitone"
+							onclick={() => stepKey(1)}><Icon name="plus" /></Button
+						>
+					</div>
 				</div>
-			</div>
 
-			<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
+				<GuidingTrack
+					pct={guidePct}
+					available={guideEnabled}
+					oninput={(pct) => guideSend.input(pct)}
+					oncommit={(pct) => guideSend.commit(pct)}
+				/>
 
-			<RangeBar profile={profile} keyShift={keyShift} />
+				<RangeBar profile={profile} keyShift={keyShift} />
 
-			<!-- THE DOOR TO /song/[mediaId], AND CURRENTLY THE ONLY ONE. The deleted drawer held the only `href` to that
+				<!-- THE DOOR TO /song/[mediaId], AND CURRENTLY THE ONLY ONE. The deleted drawer held the only `href` to that
 				route in the tree, so removing it orphaned the page: `LyricsReselect` has one importer, `room.reselectLyrics`
 				two call sites, and `/api/lyrics-reselect` had no reachable UI at all. "Are the words right" is one of the
 				live controls the architecture names, so it needs a door, and the playing song is the one it belongs to —
 				which is the same reachability the drawer gave it, not a wider one. -->
-			{#if nowMedia?.id}
-				<a class="more" href={`/song/${nowMedia.id}`}>
-					Song details and lyrics
-					<Icon name="chevron-right" />
-				</a>
-			{/if}
-		</div>
-	{/if}
-
-	{#if queued.length}
-		<h2 class="grouphead">Queued</h2>
-		<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
-		{#if reorderNote}
-			<p class="reorder-note">{reorderNote}</p>
+				{#if nowMedia?.id}
+					<a class="more" href={`/song/${nowMedia.id}`}>
+						Song details and lyrics
+						<Icon name="chevron-right" />
+					</a>
+				{/if}
+			</div>
 		{/if}
-		<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
+
+		{#if queued.length}
+			<h2 class="grouphead">Queued</h2>
+			<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
+			{#if reorderNote}
+				<p class="reorder-note">{reorderNote}</p>
+			{/if}
+			<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
 			what this page shipped first and what broke reordering. The reorder arithmetic is ONE INDEX SPACE: `i`,
 			`dragFrom`, `dragTo` and `count: queued.length` all index `queued`, and `measureRowBoxes()` reads `.qrow`
 			in DOM ORDER — a class BOTH card kinds carry. Rendering ready rows in one section and cooking rows in a
@@ -407,76 +521,113 @@
 			shape: rotation order is one order, so `seq` must number every row in it. Splitting the list made the
 			cooking card show a sparkle while the ready rows numbered 1..n, and the printed order then contradicted
 			the rotation the server keeps. -->
-		{#each queued as e, i (e.id)}
-			{@const s = singers.get(e.singerId)}
-			{@const media = mediaCatalog.get(e.mediaId)}
-			{@const card = queueCardKind(media, mediaStatus.get(e.mediaId))}
-			{#if card === 'processing' || card === 'failed'}
-				{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-				<ProcessingCard
-					seq={liveSeq(i, dragFrom, dragTo)}
-					title={mediaTitleOf(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-					singerColor={s?.color ?? SINGER_COLORS[0]}
-					singerAway={awaySingers.has(e.singerId)}
-					status={proc.status}
-					pct={proc.pct}
-					pending={pendingKind.get(e.id) ?? null}
-					onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
-					reorderable={gripsVisible}
-					shift={rowShift(i, dragFrom, dragTo)}
-				/>
-			{:else}
-				<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
+			{#each queued as e, i (e.id)}
+				{@const s = singers.get(e.singerId)}
+				{@const media = mediaCatalog.get(e.mediaId)}
+				{@const live = mediaStatus.get(e.mediaId)}
+				{@const card = queueCardKind(media, live)}
+				<!-- THE GATE IS "NOT PLAIN", NEVER AN ENUMERATION OF KINDS. It read `card === 'processing' || card ===
+				'failed'` while those were the only two, and a FIFTH kind added later would fall through this `{:else}` to
+				a plain QueueRow — i.e. the bug would survive its own fix while a Playwright assertion on `.proc` kept
+				passing. `plain` is the only kind QueueRow owns, so that is the term to test. -->
+				{#if card !== 'plain'}
+					<!-- THE SAME SIX REORDER PROPS THE ROW BELOW GETS, and they are six rather than one because this route
+					used to pass `reorderable` ALONE — a prop ProcessingCard reads only as an extra term in its
+					actions-cluster gate, never as the handle's gate, which is `grip`. So the card rendered no handle and
+					wired no `ongripdown`/`onnudge`, and a cooking song could not be moved by drag or by arrow key while
+					every ready row beside it could. The server imposes no readiness condition on a move (`entryOpRefusal`
+					gates `move-to-index` on the entry existing, an integer index and ownership), so a processing entry is
+					just a queued entry, which is what both this list's comment above and the card's own "THE GRIP LEADS
+					THE ROW" note already assumed. `moving`/`dragY` are not optional extras: `.moving` is the only rule
+					that reads `--drag-y`, so without them the picked-up card would not follow the finger.
+					`reorderable` IS KEPT, not dropped: it only widens the actions gate, and dropping it would take the
+					right-hand cluster off a card that is not the guest's to remove, where QueueRow renders an (empty)
+					`Item.Actions` whenever it is not pending. Keeping it means the handle is the only visible change.
+					KNOWN COSMETIC COST, so it is not reported as new: `--row-h` is the CARRIED row's one measured
+					height, so dragging a tall cooking card shifts its shorter neighbours by a cooking-card height. The
+					committed target is unaffected — `liveSortTarget` counts measured row CENTRES — so this is in-gesture
+					appearance only. The reverse case already shipped, since `shift` was always passed here. -->
+					<!-- `status`/`pct` ARE HANDED OVER AS THEY ARE, with no invented default. This block used to open with
+					`{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed', pct: 0 }}`, which was dead code only
+					because every non-plain kind then required a live status — the moment one of them stopped requiring
+					one, that fallback would have silently handed every stranded turn the ran-and-failed copy. The card
+					reads these two on its processing kind alone and documents what an absent status means there. -->
+					<ProcessingCard
+						kind={card}
+						seq={liveSeq(i, dragFrom, dragTo)}
+						title={mediaTitleOf(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						singerAway={awaySingers.has(e.singerId)}
+						status={live?.status}
+						pct={live?.pct ?? 0}
+						pending={pendingKind.get(e.id) ?? null}
+						onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
+						onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
+						grip={gripsVisible}
+						gripId={e.id}
+						moving={movingId === e.id && dragging}
+						dragY={movingId === e.id && dragging ? dragY : 0}
+						reorderable={gripsVisible}
+						shift={rowShift(i, dragFrom, dragTo)}
+						ongripdown={(ev) => onGripPointerDown(e, ev)}
+						onnudge={(delta) => nudge(e.id, delta)}
+					/>
+				{:else}
+					<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
 					places the row, so a number never corrects itself when the patch lands. -->
-				<QueueRow
-					seq={liveSeq(i, dragFrom, dragTo)}
-					title={mediaTitleOf(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-					singerColor={s?.color ?? SINGER_COLORS[0]}
-					mine={e.singerId === me?.id}
-					singerAway={awaySingers.has(e.singerId)}
-					up={e.id === nextPlayableId}
-					subtitle={originalKeyLabel(media?.songProfile ?? null) ?? ''}
-					pending={pendingKind.get(e.id) ?? null}
-					removable={e.singerId === me?.id}
-					grip={gripsVisible}
-					gripId={e.id}
-					moving={movingId === e.id && dragging}
-					dragY={movingId === e.id && dragging ? dragY : 0}
-					shift={rowShift(i, dragFrom, dragTo)}
-					ongripdown={(ev) => onGripPointerDown(e, ev)}
-					onnudge={(delta) => nudge(e.id, delta)}
-					onremove={() => store?.removeEntry(e.id)}
-				/>
-			{/if}
-		{/each}
-	{:else}
-		<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
+					<QueueRow
+						seq={liveSeq(i, dragFrom, dragTo)}
+						title={mediaTitleOf(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						mine={e.singerId === me?.id}
+						singerAway={awaySingers.has(e.singerId)}
+						up={e.id === nextPlayableId}
+						subtitle={originalKeyLabel(media?.songProfile ?? null) ?? ''}
+						pending={pendingKind.get(e.id) ?? null}
+						removable={e.singerId === me?.id}
+						grip={gripsVisible}
+						gripId={e.id}
+						moving={movingId === e.id && dragging}
+						dragY={movingId === e.id && dragging ? dragY : 0}
+						shift={rowShift(i, dragFrom, dragTo)}
+						ongripdown={(ev) => onGripPointerDown(e, ev)}
+						onnudge={(delta) => nudge(e.id, delta)}
+						onremove={() => store?.removeEntry(e.id)}
+					/>
+				{/if}
+			{/each}
+		{:else}
+			<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
 			actually running: a song playing and nobody queued behind it. That is the moment the page most needs to
 			ask for a song. Gated on `queued` alone now, because a cooking song IS a queued entry and renders above. -->
-		<Empty.Root>
-			<Empty.Content>
-				<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
-				{#if nowEntry}
-					<Empty.Title>Nobody's up next</Empty.Title>
-					<Empty.Description>
-						{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
-					</Empty.Description>
-				{:else}
-					<Empty.Title>Nothing queued yet</Empty.Title>
-					<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
-				{/if}
-				<Button href="/" size="block">Find a song</Button>
-			</Empty.Content>
-		</Empty.Root>
-	{/if}
-</main>
+			<Empty.Root>
+				<Empty.Content>
+					<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
+					{#if nowEntry}
+						<Empty.Title>Nobody's up next</Empty.Title>
+						<Empty.Description>
+							{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
+						</Empty.Description>
+					{:else}
+						<Empty.Title>Nothing queued yet</Empty.Title>
+						<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
+					{/if}
+					<Button href="/" size="block">Find a song</Button>
+				</Empty.Content>
+			</Empty.Root>
+		{/if}
+	</main>
 
-<!-- ONE polite region for both the queue's own announcements and the reorder results, `aria-atomic` so a fast
-	sequence of moves replaces rather than queues. Visually hidden; `reorder-note` above is the sighted half. -->
-<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+	<!-- ONE polite region for both the queue's own announcements and the reorder results, `aria-atomic` so a fast
+	sequence of moves replaces rather than queues. Visually hidden; `reorder-note` above is the sighted half. Inside
+	the gate with the list it describes: an unjoined visitor has no queue to announce. -->
+	<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+{:else}
+	<JoinLanding />
+{/if}
 
 <style>
 	main {

@@ -52,7 +52,17 @@
 		provisional: boolean;
 	}
 	interface Metrics {
-		sample: { attempts: number; processes: number; provisional: boolean };
+		/** `total`, `windowDays` and `clipped` are what the endpoint sends and this interface used to drop: `attempts`
+		    alone is the count INSIDE an unnamed window, and when the server's row backstop bites it is the backstop
+		    rendered as a measurement — the exact failure `clipped` is computed to prevent. */
+		sample: {
+			attempts: number;
+			total: number;
+			windowDays: number;
+			clipped: boolean;
+			processes: number;
+			provisional: boolean;
+		};
 		steps: StepRow[];
 		e2e: { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null };
 		models: ModelRow[];
@@ -71,18 +81,64 @@
 
 	let metrics = $state<Metrics | null>(null);
 	let failed = $state(false);
+	/** A reading we have, that we could not refresh. Separate from `failed`, which means we have nothing at all. */
+	let stale = $state(false);
 
 	/** Marked in the table, because comparing mixed units down a column is arithmetic, not a glance. */
 	const slowestStep = $derived(metrics ? slowestStepType(metrics.steps) : null);
 
-	onMount(async () => {
+	/** The two facts the client used to drop on the floor. Joined HERE rather than in markup because the gap between two
+	    sentences is whitespace, and whitespace between `{#if}` blocks is what Svelte trims. */
+	const sampleCaveats = $derived.by(() => {
+		if (!metrics) return '';
+		const parts: string[] = [];
+		// `clipped` is true when the row backstop bit OR a process straddled the window's older edge, so the wording
+		// must not name one cause — "the most recent N of M" is false under the second.
+		if (metrics.sample.clipped) parts.push('Partial sample: not every run in this window is counted.');
+		// `total` is the LIFETIME finished-attempt count, not this window's population: said as "N of M" it would claim
+		// every one of those attempts fell inside the window above.
+		if (metrics.sample.total > metrics.sample.attempts)
+			parts.push(`${count(metrics.sample.total, 'attempt')} recorded in all, including before this window.`);
+		return parts.join(' ');
+	});
+
+	/* THE WORKER CLAIM IS PRESENT TENSE, so the reading behind it has to be live. A single `onMount` fetch froze
+	   "No worker connected — songs can't be processed right now." at load, in BOTH directions: it stayed up after a
+	   worker connected, and stayed absent after one died. /metrics is in the layout's NOT_PHONE list, which forbids an
+	   ungated `room.connect()` (it would register this page as a singer) — it does not forbid polling. The endpoint
+	   measures 0.03s and ~3.3kB, so a 5s poll is negligible. */
+	const POLL_MS = 5_000;
+
+	async function load() {
 		try {
 			const res = await fetch('/api/metrics');
 			if (!res.ok) throw new Error(String(res.status));
 			metrics = await res.json();
+			stale = false;
+			failed = false;
 		} catch {
-			failed = true;
+			// A FAILED POLL MUST NOT DISCARD A GOOD READING. Blanking the whole page for a 5s blip is worse than showing
+			// the last reading and saying it could not be refreshed; the hard state is for having nothing to show.
+			if (metrics) stale = true;
+			else failed = true;
 		}
+	}
+
+	onMount(() => {
+		void load();
+		// A backgrounded tab polls nothing, and `visibilitychange` is what makes returning to a parked one correct AT
+		// ONCE rather than up to POLL_MS later.
+		const timer = setInterval(() => {
+			if (!document.hidden) void load();
+		}, POLL_MS);
+		const onVisibility = () => {
+			if (!document.hidden) void load();
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisibility);
+		};
 	});
 </script>
 
@@ -99,6 +155,13 @@
 		{#if failed}
 			<Alert.Root variant="destructive"><Alert.Title>Could not load metrics.</Alert.Title></Alert.Root>
 		{:else}
+			<!-- `warn`, not `destructive`: a poll that missed is transient and self-healing — the next one clears this. -->
+			{#if stale}
+				<Alert.Root variant="warn" role="status">
+					<Alert.Title>Couldn't refresh — showing the last reading.</Alert.Title>
+				</Alert.Root>
+			{/if}
+
 			<!-- Worker state leads: with none connected, every timing below is history, not live state. -->
 			{#if metrics && metrics.workers.length === 0}
 				<!-- `role="status"`, not `alert`: a standing condition must not interrupt what the operator is reading. -->
@@ -112,10 +175,20 @@
 				{#if !metrics}
 					Loading…
 				{:else}
-					{count(metrics.sample.attempts, 'run')} across {count(metrics.sample.processes, 'song')}.
+					<!-- The WINDOW is named, because "0 runs" over an unnamed span reads as "nothing has ever been processed"
+						 while thousands of attempts sit in the ledger. Worded like /stats' own "Party stats for the last N days." so the
+						 two operator pages read alike. -->
+					{count(metrics.sample.attempts, 'attempt')} in the last {count(metrics.sample.windowDays, 'day')}, across
+					{count(metrics.sample.processes, 'finished song')}.
 					{#if metrics.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
 				{/if}
 			</p>
+
+			{#if sampleCaveats}
+				<!-- No role: the headline above is the live region, and a 5s poll re-announcing the ledger size would talk
+					 over whatever the operator is reading. -->
+				<p class="note">{sampleCaveats}</p>
+			{/if}
 
 			{#if metrics}
 				<Card.Root>
@@ -149,7 +222,10 @@
 									<Table.Header>
 										<Table.Row>
 											<Table.Head scope="col">step</Table.Head>
-											<Table.Head scope="col">runs</Table.Head>
+											<!-- `measured`, not `runs`: this column counts the runs that got AVERAGED, which the caption below
+												 says excludes failures, while the headline's "attempts" counts every sealed attempt in the
+												 window. One word for two populations is what made the table contradict the line above it. -->
+											<Table.Head scope="col">measured</Table.Head>
 											<Table.Head scope="col">average</Table.Head>
 											<Table.Head scope="col">typical</Table.Head>
 											<Table.Head scope="col">worst</Table.Head>

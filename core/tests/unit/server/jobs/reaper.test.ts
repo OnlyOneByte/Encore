@@ -207,7 +207,7 @@ const mkMedia_ReaperBroadcastOnFailure = (id: string, over: Partial<Media> = {})
 	...over
 });
 
-function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Media> = {}) {
+function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Media> = {}, singerId?: string) {
 	let clock = T0_ReaperBroadcastOnFailure;
 	const db = migratedDb();
 	const jobs = new JobRepository(db);
@@ -221,7 +221,7 @@ function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Med
 		tickMs: 1_000_000,
 		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => broadcasts.push(e), mediaById })
 	});
-	const job = jobs.enqueue('m1', jobType, 0, T0_ReaperBroadcastOnFailure);
+	const job = jobs.enqueue('m1', jobType, 0, T0_ReaperBroadcastOnFailure, undefined, singerId);
 	for (let i = 0; i < 3; i++) {
 		jobs.assign(job.id, 'w', ackDeadline(clock), clock);
 		jobs.accept(job.id, progressDeadline(clock), clock);
@@ -287,6 +287,41 @@ test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no read
 		// Even a suppressed broadcast still logs the terminal failure — the operator record is unconditional.
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn.mock.calls[0]![0] as string).toContain('cause=reaper');
+	} finally {
+		warn.mockRestore();
+	}
+});
+
+// WHO ASKED REACHES THE WIRE. `media:status` stays a room-wide broadcast — every phone needs the status to draw
+// the right row — but the client's failure NOTICE is gated on `requestedBy`, so if the field is dropped here one
+// guest's dead job goes back to telling every phone in the room to "try again" for a song it never requested.
+// The attribution already existed on the job and was simply never published; these two tests are what stop it
+// being dropped again, in BOTH directions — a present requester must survive the epilogue, and an unattributed
+// job must stay unattributed rather than acquire a stray id, because `undefined` is what the client reads as
+// "tell the room".
+
+test('a singer-requested job publishes requestedBy on the failure broadcast', () => {
+	const warn = spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		const { broadcasts } = exhaust('stems', { stemStatus: 'queued' }, 'singer-abc');
+		const ev = broadcasts.find((e) => e.type === 'media:status') as Extract<ServerEvent, { type: 'media:status' }>;
+		expect(ev.status).toBe('failed');
+		expect(ev.requestedBy).toBe('singer-abc');
+	} finally {
+		warn.mockRestore();
+	}
+});
+
+test('an internal job (no requester) leaves requestedBy undefined — the room is told', () => {
+	const warn = spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		// `enqueue` stores `singerId: null` when nobody passed one, and the epilogue must publish that as ABSENT
+		// rather than as the literal null: the client's gate is `!e.requestedBy`, which both satisfy, but the
+		// contract declares `requestedBy?: string` and a null on the wire is a lie about the type.
+		const { broadcasts } = exhaust('stems', { stemStatus: 'queued' });
+		const ev = broadcasts.find((e) => e.type === 'media:status') as Extract<ServerEvent, { type: 'media:status' }>;
+		expect(ev.status).toBe('failed');
+		expect(ev.requestedBy).toBeUndefined();
 	} finally {
 		warn.mockRestore();
 	}

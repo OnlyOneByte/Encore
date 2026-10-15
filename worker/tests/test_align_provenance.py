@@ -1434,10 +1434,12 @@ EARLY_BLIND = [
 ]
 
 
-#: The re-opening rule is behind `band-reopen` and OFF by default (it leaked a line on the corpus: README,
-#: "W8a: what the corpus said about the two band components"), so every test OF the rule and of the three
-#: guards that stand it down has to switch it on; the default is asserted where the rule itself is.
-REOPEN = frozenset({"band-reopen"})
+#: The re-opening rule is DEFAULT-ON since W9, so its tests need no knob. README, "W9: `band-reopen` flipped
+#: default-on, and the four words the owner waived".
+REOPEN: frozenset[str] = frozenset()
+
+#: Its control: the late-opening half stands down and the decode's own opening is kept.
+LATE_KEPT = frozenset({"band-late-kept"})
 
 
 def _redecoded(
@@ -1489,9 +1491,9 @@ def test_a_repair_that_opened_past_its_claim_but_ended_with_it_is_reopened_there
 
     Adoption was the other candidate and it costs the word metrics, so only the opening boundary moves
     (`generate.reopened_line`); the first word's onset is then the SHEET'S, scores 0.0 and is marked
-    `CUE_OPENED` so nothing that counts aligned onsets counts it (review r1-spec-11). The default is asserted
-    here too, the rule being behind `band-reopen`: README, "W8a: what the corpus said about the two band
-    components".
+    `CUE_OPENED` so nothing that counts aligned onsets counts it (review r1-spec-11). The rule is DEFAULT-ON
+    since W9, so its control `band-late-kept` is asserted here too: README, "W9: `band-reopen` flipped
+    default-on, and the four words the owner waived".
     """
     got = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0))
     why = got.verdict[4]
@@ -1515,10 +1517,10 @@ def test_a_repair_that_opened_past_its_claim_but_ended_with_it_is_reopened_there
         "onset being the cue's (review r2-correctness-6)"
     )
 
-    default = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0), experiments=frozenset())
-    kept = default.line("morning light across the river")
-    assert abs(kept["start"] - (27.9 - ONSET_LEAD_SEC)) < 0.08, "the default keeps the decode's own opening"
-    assert "re-opened" not in default.verdict[4], "and says nothing it did not do"
+    control = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0), experiments=LATE_KEPT)
+    kept = control.line("morning light across the river")
+    assert abs(kept["start"] - (27.9 - ONSET_LEAD_SEC)) < 0.08, "`band-late-kept` keeps the decode's opening"
+    assert "re-opened" not in control.verdict[4], "and says nothing it did not do"
 
 
 @pytest.mark.usefixtures("any_tempo")

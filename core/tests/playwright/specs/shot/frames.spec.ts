@@ -432,11 +432,10 @@ const FRAMES: Frame[] = [
 			await expect(page.locator(SEL.pageHeading)).toBeVisible();
 			// A TILE NUMBER, not `SEL.dashCard`: that key is `.card`, and the card component renders
 			// `.encore-card` — it resolves against nothing on this page, so it would wait out the timeout on a
-			// page that had loaded fine. The tiles only exist once the fetch has landed, so one of them is the
-			// ready signal.
+			// page that had loaded fine. /stats loads in `+page.ts`, so the tiles ship with the document; this
+			// waits out hydration rather than a fetch, and stays a positive signal either way.
 			await expect(page.locator(SEL.dashTileNumber).first()).toBeVisible();
-			// Fit AFTER the cards have arrived: measuring a page that is still empty sizes the frame to the
-			// empty state.
+			// Fit AFTER the tiles are on screen: measuring before layout has settled sizes the frame wrong.
 			await fitToContent(page);
 		}
 	}

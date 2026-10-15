@@ -1,0 +1,196 @@
+# W9 RESEARCH TRACK — the vendored decoder and the three arms it unblocks, on the 28-SONG ACCURACY BASIS.
+# One file, read once PER ARM: `ENCORE_ALIGN_EXPERIMENTS=<arm>` against the same code with the knob unset.
+# The arms, the graph and what each one is for: README, "W9: a vendored decoder, and the three arms it
+# unblocks"; docs/arch/04-alignment.md §3.2; the review's roadmap items 14 and 15, and star phase B.
+#
+#   vendored        the CONTROL. An empty graph, so the decoder swap and nothing else (XA-18).
+#   skip-arcs       roadmap item 15, as a COMPLEMENT to the never-sung rule (repeats exempt, 30 + 6/char).
+#   star-b          star phase B: the same token, in a graph that may BYPASS it.
+#   claim-priors    roadmap item 14's capped-Gaussian onset bonus at each line's first-character state.
+#   claim-fusion    item 14's other half: the mix fused in where the stem is mute inside a claim window.
+#   priors-decide   the review's DECIDING ARM — priors + fusion + optional lines, THE LADDER BYPASSED.
+#
+# ── THE CONTROL IS NOT OPTIONAL, AND IT IS READ FIRST ────────────────────────────────────────────────────
+# `vendored` must come out a BYTE-LEVEL NO-OP: section 1 holds it to `doc_changed == 0`, which is the same
+# shape W7 used for language-as-an-input. Every other arm is measured through the vendored decoder, so an
+# arm read against a control that moved is measuring the swap as well. If section 1 fails on `vendored`,
+# NOTHING ELSE IN THIS FILE MEANS ANYTHING — stop and fix the decoder.
+#
+# ── WHAT THE REVIEW ALREADY MEASURED, so these runs are not read as discovery ────────────────────────────
+# ITEM 15 AS A REPLACEMENT for the never-sung rule: +21 gross and +17 false drops per 1 760 clean blind
+# lines. As a COMPLEMENT, which is what ships here: +1 gross and 0 false drops, against the shipped rule's 4.
+# So the arm's whole case is section 6's `drop50` clauses, and section 2's per-song clause is what refuses it
+# if it pays for them with a false drop on a sheet the audio sings.
+# ITEM 14's PRIOR ARM: 3.1 pt WORSE at ±500 with truth claims (85.4 against 88.5) and 4.2 worse on HuBERT.
+# The DECIDING arm (priors + fusion + optional lines, ladder bypassed) was NEVER RUN — it is the one open
+# question in item 14, and `priors-decide` is it. EXPECT THE PRIOR ARM TO FAIL; the review says it does.
+# THE LADDER STAYS unless `priors-decide` wins its gates outright (the review's own instruction).
+#
+# ── THE RUNS. One at a time, on ONE tree (parallel corpus runs thrash) ───────────────────────────────────
+# `align_experiments` is part of the emission cache key, so EVERY cell recomputes its matrices cold. An
+# absent `--model` resolves to HuBERT-Large, which every literal in this file is on.
+#
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE \
+#       --tag w9-res-off > /tmp/w9-res-off.log 2>&1 &
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=<arm> nohup .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9-res-<arm> \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w9-res-off \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w9-research.yaml > /tmp/w9-res-<arm>.log 2>&1 &
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# Section 8's LINE_SYNC clause needs the `--lines` pair as well; run it once per arm that reaches section 8.
+#
+# THE BASE MUST CARRY THE `scored` GROUP (W8b onward, or any rows file re-summarized by this harness). Read
+# against a pre-W8b summary every `scored.` rule is an ERROR, which fails the run — the fail-loud direction.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the knob-unset cell of the SAME bundle and the SAME tree. Absolute literals come from
+# `results/w8b-run_align.json`, the 28-song `scored` pool, which is the PLAN's 2026-10-09 row.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+# Without these a `--songs` subset would gate a 28-song ratchet against some other set.
+scored-songs-twenty-eight-truth: truth.scored.cases == 28
+scored-songs-twenty-eight-blind: blind.scored.cases == 28
+scored-songs-twenty-eight-drop50: drop50.scored.cases == 28
+all-songs-still-run-truth: truth.cases == 32
+# The four displaced-truth songs must still be MEASURED, just not scored (W8b): an arm that crashed them
+# would otherwise read as a clean 28-song pass.
+excluded-still-measured-truth: truth.scored - truth.scored.scored >= 203
+excluded-still-measured-drop50: drop50.scored - drop50.scored.scored >= 95
+
+# ── 1) MUST, ON `vendored` ONLY: the control publishes the kernel's own bytes (XA-18) ───────────────────
+# The decoder swap is free or it is a defect; there is no trade-off to weigh. Delete nothing here when
+# reading another arm — the clause is cheap and a vendored decode that drifted would fail it under every
+# arm, which is exactly the alarm wanted. `tests/test_ml_contract.py` holds the same claim per frame
+# against the real kernel and `tests/test_research_arms.py` holds it per DOCUMENT on the step.
+vendored-control-changes-no-document: count(song.doc_changed) == 0
+
+# ── 2) MUST: NO SONG AT 100% DROPS ──────────────────────────────────────────────────────────────────────
+# The standing bar's first clause. `gross_up` is a line placed more than 2 s out; `missing_up` rides along
+# because `gross` counts PUBLISHED lines only, so a song that REFUSES instead of publishing its two gross
+# lines reads fewer gross. Per song and per mode (`song.` with no mode ranges over every mode).
+no-scored-song-gains-a-gross-line: count(scored.song.gross_up + scored.song.missing_up) == 0
+no-youtube-song-gains-a-gross-line: count(youtube.song.gross_up + youtube.song.missing_up) == 0
+truth-zero-gross-songs-all-28: truth.scored.zero_gross_songs >= 28
+refused-not-up: count(song.refused_up) == 0
+
+# ── 3) MUST: POOLED GROSS STAYS 0 IN EVERY RIGHT-TEXT MODE ──────────────────────────────────────────────
+# The standing bar's second clause, as absolute literals: on the 28 these twelve modes all read gross 0
+# today, and an arm that is allowed to put one of them to 1 has spent the row the PLAN pinned. `blind` (49)
+# and `drop50` (69) are the two that are not zero, and they get "not up" instead.
+truth-gross-zero: truth.scored.gross == 0
+jit-gross-zero: jit.scored.gross == 0
+off05-gross-zero: off05.scored.gross == 0
+off15-gross-zero: off15.scored.gross == 0
+off3-gross-zero: off3.scored.gross == 0
+offm1-gross-zero: offm1.scored.gross == 0
+tempo098-gross-zero: tempo098.scored.gross == 0
+tempo102-gross-zero: tempo102.scored.gross == 0
+headers-gross-zero: headers.scored.gross == 0
+credit-gross-zero: credit.scored.gross == 0
+drop20-gross-zero: drop20.scored.gross == 0
+extraverse-gross-zero: extraverse.scored.gross == 0
+blind-gross-not-up: blind.scored.gross <= base.blind.scored.gross
+drop50-gross-not-up: drop50.scored.gross <= base.drop50.scored.gross
+
+# ── 4) MUST: THE PINNED TRUTH ROW (PLAN-alignment-v3, 2026-10-09, 28-song basis) ────────────────────────
+# Absolute literals, not deltas: the PLAN says nothing in this wave may cost any of this. ±500 97.07,
+# gross 0 (section 3), `high_bad` 0, lines rung 100.00 (`line_sync` 0 documents a degraded rung).
+truth-pm500-at-least-97-07: truth.scored.pm500 >= 97.07
+truth-high-bad-zero: truth.scored.high_bad == 0
+truth-high-gross-zero: truth.scored.high_gross == 0
+truth-no-line-sync-degrade: truth.scored.line_sync == 0
+
+# ── 5) MUST: THE JAMENDO WORD ROW and THE HIGHLIGHT ─────────────────────────────────────────────────────
+# The standing bar's third and fourth clauses. `jamendo` is a SUBSET of `scored` (20 of the 28, none
+# excluded), so the word row needs no re-basing and the two spellings read the same number — both are
+# written because the next arm may not be Jamendo-only. The highlight is TV semantics (the fraction of sung
+# time the correct word is lit), 2 432.77 s of singing.
+truth-jamendo-word-pm100-at-least-85-46: truth.jamendo.word_pm100 >= 85.46
+truth-jamendo-word-pm300-at-least-97-16: truth.jamendo.word_pm300 >= 97.16
+truth-jamendo-word-aae-at-most-71-1: truth.jamendo.word_aae_ms <= 71.1
+truth-scored-word-pm100-at-least-85-46: truth.scored.word_pm100 >= 85.46
+truth-scored-word-aae-at-most-71-1: truth.scored.word_aae_ms <= 71.1
+# THOSE FIVE PERCENTAGES DIVIDE BY A DENOMINATOR THE ARM CONTROLS, so each is pinned to a COUNT as well
+# (review W9 r1-spec-9, r2-spec-7). `word_pm100` / `word_pm300` / `word_aae_ms` are all over `word_aligned`,
+# which an arm moves — the star re-fit measures 5535 of 5693 aligned where the default measures 5373 — so
+# without this a run could clear a bar by REFUSING words rather than timing them better. 5373 is the shipped
+# default's own spend after `band-reopen` (5378 before it), and `jamendo` IS `scored` on this basis, so both
+# spellings are pinned. The highlight below needs none: its denominator is truth's own `sung_sec`.
+aligned-at-least-truth-jamendo: truth.jamendo.word_aligned >= 5373
+aligned-at-least-truth-scored: truth.scored.word_aligned >= 5373
+truth-highlight-at-least-81-40: truth.jamendo.highlight >= 81.40
+no-jamendo-song-worse-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+truth-word-pco300-not-down: truth.scored.word_pco300 >= base.truth.scored.word_pco300 - 0.5
+blind-jamendo-word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300 - 0.5
+
+# ── 6) MUST: ±500 PER MODE, BOTH DENOMINATORS, and the denominators themselves ──────────────────────────
+# BOTH, because an arm that refuses a song it is bad at IMPROVES `pm500` (published lines only) while
+# `text_pm500` (every truth line the served text holds) catches it. The headline is `text_pm500`.
+# `in_text` is the SERVED TEXT's own truth lines and may not move at all — the text is an input, not a
+# result, and this is the clause that makes `skip-arcs` and `star-b` answerable: both of them exist to
+# decline text, and declining it may not quietly shrink the denominator it is scored against.
+pm500-not-down-truth: truth.scored.pm500 >= base.truth.scored.pm500 - 0.5
+pm500-not-down-jit: jit.scored.pm500 >= base.jit.scored.pm500 - 0.5
+pm500-not-down-blind: blind.scored.pm500 >= base.blind.scored.pm500 - 0.5
+pm500-not-down-drop20: drop20.scored.pm500 >= base.drop20.scored.pm500 - 0.5
+pm500-not-down-drop50: drop50.scored.pm500 >= base.drop50.scored.pm500 - 0.5
+pm500-not-down-extraverse: extraverse.scored.pm500 >= base.extraverse.scored.pm500 - 0.5
+pm500-not-down-headers: headers.scored.pm500 >= base.headers.scored.pm500 - 0.5
+pm500-not-down-credit: credit.scored.pm500 >= base.credit.scored.pm500 - 0.5
+pm500-not-down-off3: off3.scored.pm500 >= base.off3.scored.pm500 - 0.5
+pm500-not-down-tempo102: tempo102.scored.pm500 >= base.tempo102.scored.pm500 - 0.5
+text-pm500-not-down-truth: truth.scored.text_pm500 >= base.truth.scored.text_pm500 - 0.5
+text-pm500-not-down-jit: jit.scored.text_pm500 >= base.jit.scored.text_pm500 - 0.5
+text-pm500-not-down-blind: blind.scored.text_pm500 >= base.blind.scored.text_pm500 - 0.5
+text-pm500-not-down-drop20: drop20.scored.text_pm500 >= base.drop20.scored.text_pm500 - 0.5
+text-pm500-not-down-drop50: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500 - 0.5
+text-pm500-not-down-extraverse: extraverse.scored.text_pm500 >= base.extraverse.scored.text_pm500 - 0.5
+in-text-unchanged-truth: truth.scored.in_text == 1536
+in-text-unchanged-blind: blind.scored.in_text == 1536
+in-text-unchanged-drop20: drop20.scored.in_text == 1233
+in-text-unchanged-drop50: drop50.scored.in_text == 763
+scored-lines-not-down-truth: truth.scored.scored >= base.truth.scored.scored
+scored-lines-not-down-jit: jit.scored.scored >= base.jit.scored.scored
+scored-lines-not-down-blind: blind.scored.scored >= base.blind.scored.scored
+scored-lines-not-down-drop20: drop20.scored.scored >= base.drop20.scored.scored
+scored-lines-not-down-extraverse: extraverse.scored.scored >= base.extraverse.scored.scored
+missing-not-up: sum(scored.song.missing) <= sum(base.scored.song.missing)
+
+# ── 7) MUST: THE WRONG-TEXT FLOOR, which must be BYTE-identical ─────────────────────────────────────────
+# 0 of 320 + 0 of 320 at this level. Every gate that decides a TEXT reads the matrix it was calibrated on
+# and never a graph (docs/arch/04-alignment.md §3.2: a repair window and a gate decode are never given
+# one), so a difference here is a WIRING BUG and not a trade-off. The arms that decline text —
+# `skip-arcs`, `star-b` — are the ones this clause is really watching: a sheet that is wrong about the
+# song must still be refused, not whittled down to the handful of lines that happen to fit.
+wrongtext-none-of-320: mode("wrongtext").wrongtext_pass == 0
+ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+wrongtext-every-case-refuses: mode("wrongtext").refused + mode("wrongtext+ownclock").refused == 640
+# Grading, review §3.7's rule: `high` COVERAGE may fall (a graph makes alternative placements cheaper), but
+# a `high` line that is WRONG may not rise.
+high-gross-not-up: sum(scored.song.high_gross) <= sum(base.scored.song.high_gross)
+# `high_bad` has no per-song row in the summary, so it is read per MODE. On the 28 it is 0 everywhere today
+# except `jit` (7) and `blind` (43), which are the two with no trustworthy claim to corroborate against.
+blind-high-bad-not-up: blind.scored.high_bad <= base.blind.scored.high_bad
+jit-high-bad-not-up: jit.scored.high_bad <= base.jit.scored.high_bad
+drop50-high-bad-zero: drop50.scored.high_bad == 0
+drop20-high-bad-zero: drop20.scored.high_bad == 0
+extraverse-high-bad-zero: extraverse.scored.high_bad == 0
+
+# ── 8) SHOULD: an arm that moves nothing is not worth a knob ─────────────────────────────────────────────
+# NOT a reject-if. These are what each arm has to BUY to earn default-on, and they are deliberately
+# per-arm-agnostic: `vendored` must FAIL all of them (that is what a control is), `skip-arcs` and `star-b`
+# live or die on `drop50` and `extraverse`, and the claim arms on the claim-perturbed modes. The W9 star
+# re-fit's bar for the same trade is drop50 gross 69 -> 33 with ±500/text 79.42 -> 87.42 on this pool.
+drop50-gross-down: drop50.scored.gross <= base.drop50.scored.gross - 1
+drop50-text-pm500-up: drop50.scored.text_pm500 >= base.drop50.scored.text_pm500 + 0.5
+extraverse-text-pm500-up: extraverse.scored.text_pm500 >= base.extraverse.scored.text_pm500
+blind-gross-down: blind.scored.gross <= base.blind.scored.gross - 1
+pooled-gross-down: sum(scored.song.gross) <= sum(base.scored.song.gross) - 1
+# The claim arms' own target: the review's prior arm lost 3.1 pt at ±500 with TRUTH claims, so the first
+# thing `claim-priors` / `priors-decide` has to show is that it does not.
+jit-text-pm500-up: jit.scored.text_pm500 >= base.jit.scored.text_pm500
+off3-text-pm500-up: off3.scored.text_pm500 >= base.off3.scored.text_pm500

@@ -13,7 +13,7 @@
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Empty from '$lib/components/ui/empty';
-	import { Toaster } from '$lib/components/ui/sonner';
+	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
 
 	const mediaId = $derived(page.params.mediaId ?? '');
@@ -26,15 +26,42 @@
 	/** The room's live transpose, so the range readout agrees with what the TV is sounding right now. */
 	let keyShift = $state(0);
 
+	/* THE LIVE RE-TIME STATUS, which the server already broadcasts and this page simply never read. Without it
+	   every tap on a lyrics option fired another align job — each one cancelling the last — with nothing disabled
+	   and nothing said, so a guest who tapped twice because the first tap looked like it did nothing was in fact
+	   throwing away the work the first tap started. */
+	let liveStatus = $state<string | undefined>(undefined);
+	/* A LOCAL FLAG AS WELL AS THE LIVE STATUS, because there is a window between the tap and the first broadcast
+	   where the server knows nothing yet — and that window is exactly when a guest taps again. Set on pick,
+	   cleared the moment the live status takes over or settles, so it can never stick if the request is lost. */
+	let justPicked = $state(false);
+	const reselecting = $derived(justPicked || liveStatus === 'aligning');
+
 	onMount(() => {
 		const sync = () => {
 			connected = room.connected;
 			keyShift = room.playback.keyShift;
+			/* `aligning` is the only status a re-time produces — the full set is queued/downloading/separating/
+			   aligning/ready/failed/canceled, and the other non-terminal ones belong to a stems job, which this
+			   control does not start. Reading them too would disable the lyrics options while an unrelated
+			   separation ran. */
+			liveStatus = room.mediaStatus.get(mediaId)?.status;
+			if (liveStatus === 'aligning' || liveStatus === 'ready' || liveStatus === 'failed' || liveStatus === 'canceled') {
+				justPicked = false;
+			}
 		};
 		sync();
 		const stop = room.subscribe(sync);
+		/* THE ONE ROUTE THAT CAN PRODUCE A RE-TIME REFUSAL IS THE ONE ROUTE THAT NEVER LISTENED FOR ONE. `reselectLyrics`
+		   is called from here and nowhere else, and the link's own doc says an unhandled message is dropped — so the
+		   server's already-human-worded 401/409/400 refusals, and the dropped-request message, went nowhere at all. Same
+		   registration /library makes; the `<Toaster>` the layout mounts is what renders it. */
+		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
 		void room.connect();
-		return stop;
+		return () => {
+			stop();
+			stopErrors();
+		};
 	});
 
 	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference — the same trap `+layout.svelte`
@@ -53,9 +80,16 @@
 		void load(mediaId);
 	});
 
-	async function load(id: string) {
-		loading = true;
-		loadError = null;
+	/* `quiet` IS THE RE-READ AFTER OUR OWN WRITE, and it skips both the skeleton and the error arm for a measured
+	   reason each. Flipping `loading` swaps the whole body for the skeleton, which UNMOUNTS LyricsReselect and
+	   destroys the open/pasting/draft state the guest is standing in — so a confirmation would collapse the
+	   disclosure it was confirming. And a refresh that blips must not replace a working screen with the failure
+	   arm, so a quiet pass commits only what it actually got. */
+	async function load(id: string, quiet = false) {
+		if (!quiet) {
+			loading = true;
+			loadError = null;
+		}
 		// A 404 is an ANSWER — the id is simply not a song this server knows — so it leaves `row` null and `failed`
 		// unset, and the empty state says so. Only a thrown error is a failed load.
 		let row: Media | null = null;
@@ -72,10 +106,16 @@
 		   `loading` from a superseded run would show the stale body instead of the skeleton. Measured: a 1500ms
 		   response for the song we left, arriving after a 100ms one for the song we are on, is discarded. */
 		if (id !== mediaId) return;
+		if (quiet) {
+			if (row) media = row;
+			return;
+		}
 		media = row;
 		loadError = failed;
 		loading = false;
-		if (failed) toast.error(failed, { duration: 4000 });
+		/* NO TOAST FOR THIS SENTENCE. The failure arm below is a `role="alert"` carrying the same words AND the control
+		   that acts on them, so toasting it too announced it twice to a screen reader and put the copy somewhere that
+		   expires. The `room.onError` registration above is a different channel — store messages only. */
 	}
 
 	const display = $derived(songDisplay(media ?? undefined));
@@ -113,7 +153,21 @@
 				<Skeleton />
 			</div>
 		{:else if loadError}
-			<p class="load-error" role="alert">{loadError}</p>
+			<!-- RECOVERABLE, in /admin's own shape for its own failed load: this state used to be terminal — no control of
+				 any kind, and `load()` re-enterable only by remounting the component, so a one-fetch wifi blip read as
+				 "this song is broken" until the guest left and came back. Re-entry is safe: `load` sets `loading` first so
+				 the skeleton returns, and the guarded commit still discards a superseded response. The wrapper carries the
+				 class because one handed to a child component gets no scoping hash. -->
+			<div class="load-error">
+				<Empty.Root role="alert">
+					<Empty.Header>
+						<Empty.Description>{loadError}</Empty.Description>
+					</Empty.Header>
+					<Empty.Content>
+						<Button variant="link" onclick={() => void load(mediaId)}>Try again</Button>
+					</Empty.Content>
+				</Empty.Root>
+			</div>
 		{:else if !media}
 			<Empty.Root>
 				<Empty.Header>
@@ -167,16 +221,34 @@
 						chosenRef={chosenCandidate(media)?.ref}
 						overrideRef={media.lyricsOverrideRef}
 						newerExists={hasNewerCandidateThanOverride(media.lyricsCandidates, media.lyricsOverrideRef)}
-						onpick={(ref) => void room.reselectLyrics(songId, { ref })}
-						onpaste={(text) => void room.reselectLyrics(songId, { text })}
+						pending={reselecting}
+						onpick={async (ref) => {
+							justPicked = true;
+							/* RE-READ OUR OWN WRITE. `media` is only ever assigned by `load()`, and `load()` only ever runs
+							   from the `mediaId`-keyed effect, so a re-pick — which does not change the id — could not be
+							   observed by the page that caused it: the peek kept reading "Auto-selected" over a durable
+							   override until a reload. The socket cannot repair it either; the endpoint publishes
+							   `media:status`, which carries no override field, and this row comes from the audit endpoint
+							   rather than the room catalog. On a refusal the server never broadcasts anything, so clearing
+							   `justPicked` here is the only thing that can release the control. */
+							if (await room.reselectLyrics(songId, { ref })) await load(songId, true);
+							else justPicked = false;
+						}}
+						onpaste={async (text) => {
+							// Same two jobs as `onpick` — this path used to set no pending flag at all — plus the boolean the
+							// control needs to keep the guest's pasted verse when the server says no.
+							justPicked = true;
+							const ok = await room.reselectLyrics(songId, { text });
+							if (ok) await load(songId, true);
+							else justPicked = false;
+							return ok;
+						}}
 					/>
 				</section>
 			{/if}
 		{/if}
 	</main>
 </div>
-
-<Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
 <style>
 	.song-page {
@@ -201,13 +273,17 @@
 		color: var(--warn);
 		font-size: var(--ph-text-sm);
 	}
-	/* Dimmed by token, never by an ancestor opacity. And --danger-ink, NOT the --warn three rules up: `.offline-note`
+	/* Dimmed by token, never by an ancestor opacity. And --danger-ink, NOT the --warn rule above: `.offline-note`
 	   really does self-heal on the next backoff tick, a song that would not load does not, and one colour for both told a
-	   guest to relax about the only thing on this page they had to act on. */
+	   guest to relax about the only thing on this page they had to act on. The ink now has to reach THROUGH the Empty
+	   primitive — hence `:global` on its slot, the same escape `LyricsReselect` uses for its textarea — and the size
+	   declaration is gone with the bare `<p>`: the description takes the primitive's own rung, which is what makes this
+	   state read identically to /admin's failed load. */
 	.load-error {
 		margin: 0 0 var(--space-md);
+	}
+	.load-error :global([data-slot='empty-description']) {
 		color: var(--danger-ink);
-		font-size: var(--ph-text-sm);
 	}
 	/* Surface, radius and border come from .card in app.css. Padding was `xl 2xl lg` (14/16/12) — a top 2px off its own bottom, on a rung app.css retired; `lg 2xl` is symmetric vertically and keeps the inline 16. */
 	.facts {

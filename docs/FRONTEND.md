@@ -361,12 +361,34 @@ and it too keeps both reads inside the effect.
 **The site that used to demonstrate the safe two-effect case is gone, so the principle is stated instead of
 pointed at.** Reading `playback.positionSec` off an object `src/lib/stores/room.ts` REPLACES wholesale on every
 broadcast makes the two-effect arrangement safe, because the replacement is a fresh identity and any playback
-change re-runs the dependent effect. `/queue` is exactly that case — it mirrors the whole `room.playback` object —
-and it STILL writes the one-effect shape, with its reason in its own comment, because an arrangement whose
-safety rests on a store's identity discipline breaks silently the day that store mutates in place instead. The
-root layout takes the opposite trade and mirrors NINE scalars, which is what narrows its dependency set: a
-library merge or a queue reorder touches none of them, and a component that mirrors cannot borrow the route's
-shape.
+change re-runs the dependent effect. The one-effect shape is written anyway, because an arrangement whose safety
+rests on a store's identity discipline breaks silently the day that store mutates in place instead. The root
+layout takes the opposite trade and mirrors NINE scalars, which is what narrows its dependency set: a library
+merge or a queue reorder touches none of them, and a component that mirrors cannot borrow the route's shape.
+
+**A FRESH IDENTITY FOR AN UNCHANGED VALUE IS A CHANGE, which is the cost the paragraph above only states the
+benefit of.** `/queue` used to anchor its elapsed clock off its mirrored `room.playback` OBJECT, and `proxy()`
+has no identity cache — so `playback = room.playback` minted a new proxy on every room emit and the assignment
+was always a change, even when every field was identical. The client heartbeat is 15s and the server answers
+every `hello` with a `playback:state`, so an idle phone re-anchored its own clock to the same stale position four
+times a minute: with no display reporting, the readout sawtoothed BACKWARDS once per heartbeat — a measured series
+over an idle phone read 0:00…0:12, then 0:00 again, then climbed once more.
+So the rule has a second half. **Anchor an effect on SCALARS, inside the effect.** `/queue` now mirrors
+`positionSec` and `isPlaying` as scalars beside the object (which it still keeps for the fields no effect
+anchors) and the anchor effect reads those; writing an equal primitive notifies nothing, so an identical
+rebroadcast is silent while a real change still re-arms the ticker. The root layout never had this defect for
+exactly that reason, and the two surfaces no longer disagree by construction.
+
+**An extrapolated position is capped where it is DRAWN, not where it is computed.** `drawPosition` in
+`src/lib/playhead.ts` has no duration term, so once nothing re-anchors, an elapsed readout runs on past the end
+of the song while `formatRemaining` clamps its remainder at zero — one readout, two halves, disagreeing.
+`/queue`'s clock takes `Math.min(displayPos, nowDurationSec)` at its own call site rather than capping the shared
+helper, because that helper also feeds the TV lyrics reel and the layout's transport ring. An unknown length is
+0, so the cap applies only when there is a length to cap to. NOTE FOR WHOEVER OWNS THOSE TWO SURFACES: they
+carry the same unbounded term and want the same one-line clamp. What none of this fixes is the product gap
+underneath it — the app has no concept of "the display is not reporting" (there is no `tvConnected`, and no
+presence for `role=tv`), so `is_playing` stays asserted forever after a television vanishes. A clock that stops
+at the end of the song is an honest-shaped lie, not the truth.
 
 ### The room link is a plain class, not a rune store
 
@@ -491,6 +513,14 @@ because a `class:` directive is not valid on a component. Their common contracts
   which makes it a scroll container: a mark inside is clipped off-box exactly when the title is long enough to
   need the ellipsis, which is the state the mark exists to announce. The title's `flex-grow` must stay 0, or the
   clamp box fills the line and pushes the mark to the column's far edge.
+- **A row announces the stage it CHANGED INTO, never the stage it was BORN in.** Both `SongRow` and
+  `ProcessingCard` capture `bornStage` once with `untrack` and gate their `role="status"` region on a difference
+  from it. Without it a list mounts one polite region per row, all reading one sentence: measured on /library at 63
+  `role=status` insertions against 3 removals, and the same wall was latent on /queue for every stranded turn the
+  moment a card kind stopped requiring a live status. Driven with the guard in place, a /queue arrival rendering 99
+  stalled cards inserts 3 regions and removes 3, leaving the route's own announcer. What it gives up deliberately
+  is a card that mounts already settled (failed or stalled) announcing nothing; the visible line still says so, and
+  a retry that moves a card to "Making karaoke…" is a real transition and does speak.
 - **`ProcessingCard` and `QueueRow` are deliberately byte-identical** on the drag transform, the digit roll and
   the dimmed treatment, because the two kinds sit in ONE list dragged by one gesture, and a difference reads as
   one of them being broken. A long-name fixture additionally
@@ -645,6 +675,49 @@ published on `documentElement` so every scrolling column can reserve it in norma
   `$state` scalar notifies nothing, so a separate anchor effect never re-runs and the interval keeps
   extrapolating from the pause-time wall clock.
 
+### Offline, and which taps survive it
+
+**THE REMOTE MAKES TWO DIFFERENT PROMISES AND NO SURFACE MAY BLUR THEM.** A QUEUE op — add, move, remove — rides
+`QueueStore`, which keeps accepting taps with the socket down and replays the pending one on the next
+`queue:sync` through `resendPending()`. A PLAYER command — play, pause, skip, restart, ±key, the guiding track —
+goes through `RoomLink.command`, which is one `WsClient.send` with no pending ledger behind it: **dropped means
+lost.** The dock's `.offline-bar` says only "Reconnecting…" because that is the one sentence true of both, and
+`--warn` rather than `--danger` because a dropped socket self-heals on the next backoff tick.
+
+`RoomLink.command` returns the boolean `WsClient.send` has always returned. `false` means the socket was absent
+or its `readyState` was not OPEN, so the server never heard it. **Every call site reads it**, and
+`tests/unit/lib/player-command-drop.test.ts` is the exhaustive guard — it allow-lists the consuming shapes rather
+than banning the bare statement, because `onskip={() => room.command(…)}` discards the result just as thoroughly
+while looking like it uses it. (The one deliberate silent drop in the tree is the TV's `tv:telemetry`; the TV
+socket section says why.)
+
+A call site can owe one of two things, and which one depends on whether it holds an optimistic value:
+
+- **An optimistic value may not move on a drop.** Two controls hold one, both on /queue: the ± keycaps
+  (`keyDraft`) and the guiding-track slider (`guideDraft`, driven by `$lib/guide-send`). Both are nullable
+  "no local opinion" drafts — cleared when the room AGREES with them and on a song change, set only by a command
+  that reached the wire. The shape that fails is a drag-scoped boolean beside a number: it showed a level the
+  room had never heard for the length of the drag, and then sprang back to a stale echo on release even when the
+  command had landed. `guide-send.ts` owns the throttle, its trailing edge and the drop rule precisely so that
+  arithmetic is reachable from a bun test; the route keeps only the `$state` draft and the clearing effect.
+- **A say is owed where failure is indistinguishable from success.** The strip's restart, play/pause and skip
+  hold no optimistic value, so there is nothing to roll back — but on SUCCESS they change nothing locally
+  either, since the next broadcast is what redraws them. Silence therefore cannot be read at all, and the
+  guest's only remaining move is to tap again. `transport()` in `src/routes/+layout.svelte` answers with one
+  `toast.error` carrying `id: 'transport-dropped'`: sonner keys toasts by id, so a mash updates the single
+  notice and resets its timer instead of stacking a tower of them over the dock.
+
+**THE BAR IS NOT A SUBSTITUTE FOR THE NOTICE.** It answers "is the link up?", is up for the whole outage, and
+deliberately declines to say which taps survive; the notice answers "did the command I just issued land?". Nor is
+the bar reliably up when a send fails — `connected` flips in the socket's `onclose`/`#presumeDead`, while a send
+reports `false` the moment `readyState` leaves OPEN, so a tap in the window before `close` is dispatched is lost
+under a bar that is not showing yet.
+
+**THE LIMIT NEITHER CUE COVERS, recorded because it is real:** a FROZEN socket still reads OPEN, so the send
+returns `true` and the command is lost with no signal anywhere. Nothing at a call site can see that. What bounds
+it is `WsClient`'s liveness watchdog and its `offline` listener — without them, detection waits out
+`heartbeatMs` + `livenessTimeoutMs`, 15s + 10s, and client.ts holds the measured readings from a real cut.
+
 ### The three tabs
 
 The phone has one navigation and it is a tab bar: **Sing** (`/`), **Queue** (`/queue`), **Library** (`/library`),
@@ -690,9 +763,63 @@ commits, so a drop cannot land somewhere the guest did not see — and `src/lib/
 Geometry is measured once per gesture at press time (rows change height mid-flight), pointer listeners go on `window`
 because the pressed grip becomes a detached node as the list reorders, and focus is returned by attribute for the same
 reason; all three of those rules live in `queue-drag.ts`, and the route keeps only the reactive state they drive.
-Arrow Up/Down on the grip is the single-pointer alternative (SC 2.5.7 / 2.1.1). Queue changes the guest did not cause
-are announced through `queueAnnouncement` in `src/lib/phrasing/queue-announcement.ts`, which is silent with no
-baseline so joining a busy room does not read the whole queue aloud.
+Arrow Up/Down on the grip is the single-pointer alternative (SC 2.5.7 / 2.1.1).
+
+**BOTH ROW KINDS TAKE THE GRIP, and the cooking one is the row a guest most wants to move.** A song that is still
+processing holds its turn, so it is a queued entry like any other: the server's `move-to-index` gate consults
+identity, an integer index and ownership, never readiness. The handle is gated on `ProcessingCard`'s `grip` prop —
+not on `reorderable`, which only widens the actions cluster — and a route that passes one where the component
+reads the other leaves the cooking card with no handle and no keyboard path beside neighbours that have both,
+which reads as broken rather than as a rule. One known cosmetic cost: `--row-h` is the CARRIED row's single
+measured height, so dragging a tall cooking card shifts its shorter neighbours by a cooking-card height. The
+committed target is unaffected, because `liveSortTarget` counts measured row CENTRES.
+
+**WHICH CARD A QUEUED ROW GETS IS A READINESS MAPPING, NEVER AN "IS IT IN FLIGHT" TEST.** `queueCardKind` in
+`src/lib/readiness.ts` is one expression over `displayReadiness`, and the Queue tab's gate on it is
+`{#if card !== 'plain'}` — a list of kinds there means a kind added later falls through to a plain `QueueRow`,
+which is the bug surviving its own fix while every `.proc` assertion keeps passing. A card kind is **a claim about
+whether the rotation can ever play the entry**, the same question `nextPlayableEntryId` and the server's
+`nextPlayable` act on, so there are four:
+
+- `plain` — the turn will play (or the live status says it is about to). `QueueRow`.
+- `processing` — something is making its karaoke. The only kind that draws a bar, and the only one that reads
+  `status`/`pct`; an ABSENT live status is a real case there (the catalog says cooking, this phone holds no
+  broadcast, reachable whenever `refreshLibrary()` throws) and `queued` is the least-committal honest stage for it.
+- `failed` — a process RAN AND DIED, from a live `media:status`. This is the only kind on this surface that earns
+  the **danger** family.
+- `stalled` — **a dead turn**: a queued entry whose stems gate is open with nothing in flight that could close it,
+  or one the server has already called `unservable`. It takes **warn**, and the token rule is what decides that
+  rather than taste: the client cannot tell a turn whose process half never landed (permanent) from the
+  one-round-trip window on another guest's phone between the add and the `media:status` that follows it
+  (transient), so it is not entitled to --danger — which also settles the grace question with no clock at all. A
+  warn card saying no karaoke is being made for this turn is TRUE in both readings. A client-side `addedAt` age
+  gate is NOT available as an alternative: that field is a server stamp, so comparing it against the device's
+  `Date.now()` is cross-clock.
+
+The stalled card carries the only **retry** in the tree that can recover a stranded turn without searching for the
+song again (SongRow's `data-retry` is reachable only from a search result). It is **ungated by ownership**, unlike
+remove: a retry destroys nothing, /api/process is already callable by any joined singer for any song, and every
+stranded turn in a real room tends to belong to a singer who is `· away`. It runs the process ALONE —
+`processAndQueue`'s `hasQueuedTurn` branch — and a refusal rolls back the optimistic status mark and NOTHING else,
+because the turn rides `QueueStore` and is resent on resync, so rolling it back would delete a turn the guest
+asked for. The request itself is `RoomLink.requestProcess`, hoisted off the Sing tab once it had two callers.
+
+**Queue news needs a pure function AND a caller that seeds it honestly.** `queueAnnouncement` in
+`src/lib/phrasing/queue-announcement.ts` is silent with a NULL baseline, so joining a busy room does not read the
+whole queue aloud — and that guard is defeated by a caller that seeds the baseline before the socket has spoken.
+`room.queue` is constructed before the socket opens, and an empty list in that window is indistinguishable from
+an empty queue, so `QueueStore.synced` (set only by the `queue:sync` handler) is what the Queue tab gates its
+announcement effect on. The first SYNCED list is the baseline even when it is empty: seeding from the first
+non-empty list instead would swallow the first add in a room that really was empty.
+
+**Every phone TAB has a join gate, including the Queue tab.** `/`, `/queue` and `/library` all render
+`JoinLanding` when `me` is null, which is what stops an unjoined visitor — a shared or bookmarked link, a second
+device, a guest who tapped Leave — being shown a route's own empty store as a fact about the room. /queue was the
+holdout, and its empty-queue copy ("Find a song on the Sing tab") pointed at a dock that only a joined singer
+has. `JoinLanding` reads `?room=` itself, so the gate also keeps a scanned or shared code instead of asking for
+it again. The cost is shared by all three: `me` is mirrored from the link, so the landing can paint for at most
+one frame on a cold load even for a joined guest, which is what the two older tabs have always done.
+Beating that wants a settled-state read on the link, applied to all three at once.
 
 ### The Sing tab
 
@@ -717,6 +844,27 @@ would land on the idle state, which shows no songs, so the old label promised wh
 surface that prints a count prints its noun in agreement**: this label shipped as `Show my 1 songs` on a one-ready
 library — the ordinary state the first time a song finishes processing — while `/library`'s own count line, one tap
 away, read `1 song`. `showAllCount` carries a bare number, so agreement is the caller's to supply.
+
+**EACH RESULT GROUP IS WINDOWED, and the window is a DOOR rather than a cap.** `/` imports `LIBRARY_PAGE` (60) and
+`libraryWindow` from `library-browse.ts` — the same arithmetic and the same `Show N more` + `N left` control
+`/library` ships — and gives each of the three groups its OWN counter, because one shared counter would let a long
+`Needs karaoke` tail decide how many ready songs a guest can see. Nothing is unreachable: /api/search still answers
+with every hit, every row it sent is behind a tap, and the group headings, the widen gate and the zero-state keep
+reading the FULL lists. That last clause is the trap, not a detail — `accountedFor`/`unaccounted` decide which group
+OWNS a song and `showsNoRows` decides whether the search found anything at all, so pointing either at `.shown` would
+make a 200-row answer whose first sixty happened to be ready print `Nothing matches “…”` under sixty visible rows.
+The windows reset in `clearResults()` and only there, which is the seam where all three groups are already dropped:
+reset on the keystroke instead and a guest watches revealed rows collapse before the next answer exists. WHY: only
+the resolvers are bounded (`PER_SOURCE_LIMIT = 12`); `partitionSearch`'s catalog arm walks the whole persisted
+catalog, and /api/search materialises AND persists every hit, so this column was sized by the install's LIFETIME
+catalog rather than by the query. Measured at 390×844 against one server, windowed and not, on a copy past 3,700
+media — and every reading drifts a little between runs, which is the same defect talking: `q=a` went from
+3,412 rows / 56,260 DOM nodes / 320,120px — with the widen hatch at y=319,949, 379 viewports down — and 1,235ms for
+the first `+` to read `queued`, to 120 rows / ~2,030 nodes / ~12,500px / 53ms with the hatch at y≈12,350. A 68-row
+query (`wonderwall`) is unchanged at 1,230 nodes and 7,280px, confirms its tap in 47ms on the same server, and
+paints no door at all, which is what makes that 1,235ms the column rather than the queue round-trip. The payload is
+NOT touched and is a separate decision for the owner: `q=a` is still a 1,058,948-byte body for one debounced
+keystroke, and it grows with the catalog it persists.
 
 With an empty box, the idle state is the whole screen. Its title names this tab's job
 (`What do you want to sing?`), and it is deliberately not `Nothing queued yet`: that is false on the Sing tab and is
@@ -843,7 +991,16 @@ number exactly — and the list renders `LIBRARY_PAGE` (60) rows at a time behin
 row was usable, the first two letters of a query blocked the main thread for 634ms and 427ms, and the backspace that
 widened the list again blocked it for 3.4s; one page is 1,328 nodes and 0.9s, with keystrokes at 85ms then ~31ms. The
 debounce holds `appliedQuery`, never `query`, so the box still echoes instantly and only the rows wait, and
-`clearFilters` cancels the pending timer or a cleared filter re-applies itself 150ms later. The window is a DOOR
+both clear handlers cancel the pending timer first or a cleared filter re-applies itself 150ms later. There are TWO
+of them, on two scopes, and that is the fix for an X that reached outside its own field: `clearQuery` is the field's,
+and it clears the TEXT only, while `clearFilters` is the filtered-to-nothing state's and clears the text and the
+facet chips (not `sort`, which is why that control is not labelled "Clear filters"). The field's X is gated on
+`boxHasText` — the live `query` alone, so it still appears on keystroke 1 rather than 150ms after the last one, and
+no longer appears over a visibly EMPTY box whenever a chip is picked. Wired to `clearFilters` with the facets in its
+gate, one tap to undo a typo took the picked artist with it — the count going from "1 of 135 songs" back to the whole
+"135 songs" — and the only cue was the eyebrow falling back from "Sort & filter · <artist>" to "Sort & filter", which
+is a line of chrome under the field and may be scrolled past. `/`'s twin field has always passed its
+query alone (`clearable={searchActive}`), so this is the two callers agreeing again rather than a new idiom. The window is a DOOR
 and never a cap — this page is the only place every ready song is reachable now that the home shelf is gone, so a row
 it would not show is a song you own with nowhere left to reach it — and it resets to one page WITH THE ROWS rather than with the keystroke, so a
 revealed list is not truncated under a filter that has not landed yet.
@@ -958,13 +1115,43 @@ rest are real anchors. Driven in a browser, clicking it recorded two main-frame 
 wiped a sentinel set on `window`, so it was a full document replacement: the socket closed, `/api/library`
 re-fetched and the shell re-parsed to cross one tab. The dock carries a Queue tab on every surface now, so the
 toast names the destination in its text instead. Unjoined, the route renders `JoinLanding`
-exactly as `/` does — `refreshLibrary` never runs for a guest, so there would be nothing to browse. `libraryLoaded`
-on the room link is what separates "not fetched yet" from "you own nothing", so a full library is never accused of
-being empty for one frame.
+exactly as `/` does — `refreshLibrary` never runs for a guest, so there would be nothing to browse.
+
+**It takes TWO flags on the room link to keep a full library from being called empty, not one.** `libraryLoaded`
+separates "not fetched yet" from "the fetch returned", which is what stops the empty copy painting for one frame
+before the first response. `libraryFailed` separates "you own nothing" from "we could not ask", and it is the one
+that was missing: `refreshLibrary` swallowed its error, never checked `res.ok`, and set `libraryLoaded` in
+`finally` regardless, so `library: []` + loaded was the tuple a DEAD request produced too. Driven at 390×844 over
+a 135-song library with `**/api/library*` aborted once, that rendered "No karaoke tracks yet", zero rows, no
+filter field and no disclosure — while the dock was simultaneously playing "Gucci Flip Flops", a track from the
+library the page called empty — with no error word anywhere and no toast. And it was permanent for the session:
+the only fetch is `connect()`'s, which is guarded idempotent, so a tab tap re-attempted nothing and only a reload
+cleared it. /library now carries a third arm ABOVE the empty one, gated on `libraryFailed && library.length === 0`
+— description plus a `Try again`, the register `/`'s own search-failure arm uses — and its `onMount` re-attempts
+when it arrives with the flag already set, so a later tab tap repairs a blip that happened at join. The
+`library.length === 0` term is load-bearing: `refreshLibrary` also runs on every `media:status` ready event, and
+one of those failing must never replace a shelf of working rows with an apology.
+
+**A song row announces the stage it CHANGED INTO, never the stage it was born in.** SongRow's clipped
+`role="status"` exists so a row that finishes processing says so once, and it was gated on the stage merely
+existing. Every /library row is handed `readiness="ready"` and can never transition, so the route mounted one
+polite region per rendered row, all reading "Karaoke ready" — and every one of them was a DYNAMIC insertion,
+which is the condition under which AT may speak: measured on a 135-song library at 390×844 with 60 rows on
+arrival, a `MutationObserver` armed before the tab tap counted 63 `role=status` insertions against 3 removals
+(the same drive now counts 3 and 3). Because `.vh` is clip-based rather than `display: none`, each region also
+stayed in the accessibility tree beside the visible pill, so the string was in the tree twice per row. The region
+is now gated on the current stage differing from a non-reactive `bornStage` captured at init with `untrack`:
+/library arrives with zero regions reading "Karaoke ready" at either row count, Chrome's full AX tree names it
+270 times with all 135 rows revealed (two nodes per row — the pill's container and its text — where the duplicate
+doubled that), `innerText` holds it 135 times rather than twice per row, and the visible pill is still on every
+row. The announcement it was written for
+is unaffected — driven on `/`, a "Needs karaoke" row carries no region and one tap on its sing action inserts one
+reading "Making karaoke…" — and the one case deliberately given up is a row that mounts already failed, whose
+visible chip still says so.
 
 ### The join screen
 
-`src/lib/components/JoinLanding.svelte` is the UNJOINED state of `/`, not a route of its own. It has TWO PANES,
+`src/lib/components/JoinLanding.svelte` is the UNJOINED state of all three phone TABS, not a route of its own. It has TWO PANES,
 and which one is on screen is DERIVED from the resolved room preview rather than from a hand-advanced counter, so
 no state can show an identity pane for a room that was never confirmed. Step 1 is the CODE pane, a FALLBACK
 reached only by a guest with no code in the URL or whose scanned code did not resolve. Step 2 is the IDENTITY
@@ -1217,9 +1404,11 @@ the TabBar was built to end. The asymmetry the old pair created is resolved by S
 third instance: restoring a panel-level exit for position parity would re-mint the two identical `--accent` block
 buttons this scope was fixed to remove, one of which did not save.
 
-Three `goto` sites survive, and each is a destination rather than an exit affordance. `leaveRoom`'s is `/`
-UNCONDITIONALLY and must be: the cookie is gone, so the landing page is the only honest destination and anywhere
-else 401s. The commit's two are resolved through `safeNextPath(page.url.searchParams.get('next'), '/')` — the same
+Three `goto` sites survive, and each is a destination rather than an exit affordance. `leaveRoom`'s is `/` AND
+NEVER `closeTo`, whatever `?next=` says: the cookie is gone, so the landing page is the only honest destination and
+anywhere else 401s. It is the DESTINATION that is unconditional, not the navigation: the `goto` runs only once
+`POST /api/leave` has actually answered ok, because a leave that did not happen must not land a still-joined guest
+on the landing page as though it had. The commit's two are resolved through `safeNextPath(page.url.searchParams.get('next'), '/')` — the same
 hardened allowlist `/` uses — and the You scope's back anchor reads the SAME expression, so the arrow and the
 button cannot disagree about where "done" is, which is the class of defect the dual-commit fix was about one level
 up. `/` is today's only answer (the identity chip is that route's one door), so the `?next=` exists to keep a second
@@ -1238,10 +1427,27 @@ the Leaving card below it. The destructive action is last because last is the en
 guest came for; it is the only BUTTON in settings that is not an `--accent` fill, and the only control anywhere here
 behind an `alertdialog` confirm, so arriving at it by reaching for the bottom costs a dismissal rather than a room.
 Lifting Leaving above the You card would move the destructive card into the panel's FIRST position — top-left of
-the paired grid, which is desktop-only but real — to protect its last. A refusal on this pane is also keyed to the
-draft it refused (`{ name, colour, message }`, read back through a `$derived`) rather than held as a bare string: a
-stated reason must not outlive an edit to the field it names, or an empty-name refusal goes on sitting under a
-button that has gone back to reading `Done`.
+the paired grid, which is desktop-only but real — to protect its last. **A refusal is keyed to whatever it is a
+statement ABOUT**, which is a rule and not one shape. The profile refusal is keyed to the draft it refused
+(`{ name, colour, message }`, read back through a `$derived`) rather than held as a bare string: a stated reason
+must not outlive an edit to the field it names, or an empty-name refusal goes on sitting under a button that has
+gone back to reading `Done`. The leave refusal IS a bare string, and correctly: a leave has no draft, its subject
+is the open dialog, and `askLeave` clears it on every open — so the same rule is satisfied by a different mechanism.
+Copying the keying here would key a statement to nothing.
+
+**THE CONFIRM STATES A PRICE, so it may not state one it has not been told.** `Leave the room` is the one guest
+action with no undo, and its dialog carries two separate statements. The first is the cost, built by
+`leaveCostSentence` in `$lib/phrasing` from `GET /api/leave`: a KNOWN count is named ("Your 3 queued songs will be
+removed"), and a count that has not arrived — in flight, or dead — gets the number-free sentence instead, because
+`null` is unknown and not zero. A `?? 0` there asserted the cheapest possible price for the irreversible action,
+permanently when the GET failed; and since `role="alertdialog"` announces its description AT MOUNT and that
+description is not a live region, the screen-reader path heard the zero on every open at any latency and never
+heard the correction. Neutral copy is what makes that fix latency-independent — the alternative, holding the
+confirm disabled until the cost lands, would trap a guest inside the room they are trying to leave, which is the
+same "a failure cannot block" constraint the fetch is already written to. The second statement is the refusal, and
+it is the one place on this pane where a second `role="alert"` beside an alertdialog description is right: it can
+only arrive AFTER the open announcement, so it duplicates nothing, and the alternative is a destructive action that
+failed in silence while its button quietly went back to reading `Yes, leave`.
 
 Other rules a change here must respect. IDS ARE A CONTRACT: all ten `SEL.SETTING_IDS` plus `id="max-processes"` are
 spelled explicitly because `tests/playwright/world/selectors.ts` and the probe and shot specs resolve those

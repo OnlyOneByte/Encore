@@ -14,6 +14,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { leaveCostSentence, type LeaveCost } from '$lib/phrasing/leave-cost-sentence';
 	import type { PublicSinger } from '$lib/contract';
 
 	interface Props {
@@ -49,8 +50,15 @@
 	let profileRefusal = $state<{ name: string; colour: string; message: string } | null>(null);
 	let confirmingLeave = $state(false);
 	let leaving = $state(false);
-	/** What a leave would cost, fetched when the confirm opens so it can state the price in numbers. */
-	let leaveCost = $state<{ queuedCount: number; hasPlaying: boolean } | null>(null);
+	/** What a leave would cost, fetched when the confirm opens so it can state the price in numbers. `null` is NOT
+	 * ZERO — see leave-cost-sentence.ts, which owns that distinction. */
+	let leaveCost = $state<LeaveCost | null>(null);
+	/* A BARE STRING, not draft-keyed the way `profileRefusal` is: a leave has no draft for a reason to be about, its
+	   whole subject is the dialog that is open, and `askLeave` clears it on every open — so it cannot outlive the
+	   attempt that produced it the way a bare profile refusal once outlived its name. */
+	let leaveRefusal = $state('');
+	/** One wording for both failure modes: a guest does not need to know whether the server refused or the wifi did. */
+	const LEAVE_REFUSAL = 'Could not leave the room — try again.';
 
 	const profileDirty = $derived(name.trim() !== savedName || colour !== savedColour);
 	const canSaveProfile = $derived(profileDirty && name.trim().length > 0 && !saving);
@@ -111,8 +119,14 @@
 		await saveProfile();
 	}
 
-	/** Fetched on OPEN so the number is current when read out, and best-effort so a failure cannot block. */
+	/* Fetched on OPEN so the number is current when read out, and best-effort so a failure cannot block.
+	   BOTH STATEMENTS ARE CLEARED BEFORE THE DIALOG OPENS, because both belong to one attempt: a reopen that kept the
+	   last open's `leaveCost` would state a price this open has not asked about, and a refusal left standing would
+	   explain a leave the guest is no longer making. With the cost nulled, the second open reads the number-free
+	   sentence until its own fetch lands instead of the carried-over count. */
 	async function askLeave() {
+		leaveCost = null;
+		leaveRefusal = '';
 		confirmingLeave = true;
 		try {
 			const res = await fetch('/api/leave');
@@ -122,26 +136,43 @@
 		}
 	}
 
+	/* GUARDED LIKE EVERY OTHER WRITE IN THIS FILE: this was the one unwrapped fetch in it, and both ways it could fail
+	   produced a lie. A REJECTION (dead wifi) escaped as an unhandled error, so execution never reached the `goto` and
+	   `leaving` stayed true forever — the one action a guest cannot undo sat at "Leaving…", disabled, claiming to be in
+	   progress, and closing and reopening the dialog showed the same dead label because `leaving` belongs to a
+	   component that stays mounted. A 500 RESOLVED, so a catch alone would not have fired: the navigation ran anyway
+	   and dropped a guest who was still a member on the Sing tab with their own name in the topbar and nothing saying
+	   the leave had failed. That is why this tests `res.ok` and does not merely catch.
+	   THE RESETS ARE ON THE TWO FAILURE PATHS RATHER THAN IN A `finally`: on success this component is still mounted
+	   while the navigation runs, and clearing the flag there would flip the label back to "Yes, leave" mid-leave — a
+	   leave that IS happening must keep saying so until the component is gone. `goto` stays OUTSIDE the try for the
+	   same reason: a rejection from it arrives after the POST has already landed, so reporting it as "Could not leave
+	   the room" would be a brand-new false statement. No message is read from the body either — /api/leave's only
+	   non-ok answer is a 401 `join first`, which is nonsense to show somebody trying to leave. */
 	async function leaveRoom() {
 		leaving = true;
-		await fetch('/api/leave', { method: 'POST' });
+		leaveRefusal = '';
+		try {
+			const res = await fetch('/api/leave', { method: 'POST' });
+			if (!res.ok) {
+				leaveRefusal = LEAVE_REFUSAL;
+				leaving = false;
+				return;
+			}
+		} catch {
+			leaveRefusal = LEAVE_REFUSAL;
+			leaving = false;
+			return;
+		}
 		/* `/` AND NEVER `closeTo`: the cookie is gone, so the landing page is the only honest destination — a reload, or
 		   a `?next=` pointing at any other surface, would 401 into the same place after a flash of an empty page. */
 		await goto('/');
 	}
 
-	/** Counts, not adjectives: a leave clears the cookie and forgets the singer, so there is no undo. */
-	const leaveWarning = $derived.by(() => {
-		const n = leaveCost?.queuedCount ?? 0;
-		const songs =
-			n === 0
-				? 'You have no songs queued'
-				: n === 1
-					? 'Your 1 queued song will be removed'
-					: `Your ${n} queued songs will be removed`;
-		const playing = leaveCost?.hasPlaying ? ' The song on screen now will finish.' : '';
-		return `${songs}, and you'll need to rejoin to sing again.${playing}`;
-	});
+	/* Counts, not adjectives — and a cost that has not answered is UNKNOWN, never zero. The sentence itself lives in
+	   $lib/phrasing so that unknown arm can be asserted without mounting anything; leave-cost-sentence.ts carries the
+	   reasoning for why the `?? 0` that used to be here was the defect. */
+	const leaveWarning = $derived(leaveCostSentence(leaveCost));
 </script>
 
 <SettingsScope scope={SETTINGS_SCOPES.you} back={{ href: closeTo, label: 'Back to the remote' }}>
@@ -218,8 +249,19 @@
 				<AlertDialog.Content>
 					<AlertDialog.Header>
 						<AlertDialog.Title>Leave the room?</AlertDialog.Title>
-						<!-- The DESCRIPTION, never a second role="alert" paragraph: alertdialog already announces this on open. -->
+						<!-- The DESCRIPTION, never a second role="alert" COPY OF ITSELF: alertdialog already announces this on
+								open, so mirroring it into a live region would say it twice. -->
 						<AlertDialog.Description>{leaveWarning}</AlertDialog.Description>
+						<!-- A DIFFERENT STATEMENT, and the one case that does need announcing: a refusal can only arrive
+								AFTER the open announcement, so it duplicates nothing, and without it a failed destructive action
+								would be silent on the non-visual channel while the button quietly went back to reading "Yes, leave".
+								The file's own precedent is the profile save's `<p class="err" role="alert">`. Last child of the
+								HEADER, not of Content: the header's `gap-1.5` is 6px at the default root, so with .err's own 6px
+								margin the measured separation from the description is 12px — Content's --space-2xl gap would have
+								made it 16 + 6 = 22px, which is not a rung on the ladder. (The Tailwind gap is rem-based and the
+								margin is not, so at 200% text zoom it measures 18px; the reflow is clean either way — at 320px
+								with a 32px root the paragraph lays out 238px inside a 280px dialog with nothing overflowing.) -->
+						{#if leaveRefusal}<p class="err" role="alert">{leaveRefusal}</p>{/if}
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
 						<AlertDialog.Cancel variant="ghost">Stay</AlertDialog.Cancel>
@@ -238,7 +280,10 @@
 	   ("~45 minutes per song on CPU"): a rejected profile save was painted that same amber, so a guest could not tell
 	   a hint from the one thing they had to act on. This is the ink the rest of the app spends on a failure —
 	   `.err[role=alert]` on the join screen, the destructive Alert at the top of a scope — and the box is the
-	   advisories' to the pixel, so the class carries only the ink. */
+	   advisories' to the pixel, so the class carries only the ink.
+	   TWO USERS NOW: the refused profile save in the card, and the refused leave inside the alertdialog. The dialog's
+	   content is portalled out of this subtree, which does not matter here — the paragraph is authored in THIS file, so
+	   Svelte's scoping hash travels on the element and this rule still reaches it wherever the portal puts it. */
 	.err {
 		margin: var(--space-xs) 0 0;
 		font-size: var(--ph-text-xs);

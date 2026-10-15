@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from encore_worker.domain.lyrics.language import fold_to_base
+from encore_worker.domain.lyrics.units import Rules, plain
 
 #: A word whose every character is out-of-dictionary gets its span INTERPOLATED from its neighbours and
 #: this confidence, so a non-Latin token or a run of digits degrades one word rather than failing the line.
@@ -173,21 +174,29 @@ def star_of(emissions: Any) -> int | None:
     return None if code is None or int(code) == blank_of(emissions) else int(code)
 
 
-def char_ids(word: str, dictionary: Mapping[str, int], excluded: Collection[int]) -> list[tuple[int, int]]:
+def char_ids(
+    word: str,
+    dictionary: Mapping[str, int],
+    excluded: Collection[int],
+    units: Rules | None = None,
+) -> list[tuple[int, int]]:
     """`(index within `word`, vocabulary id)` for every character of `word` this vocabulary can align — THE
     target filter, and the only copy of it.
 
-    Three rules in order: LOWERCASED, then NFKD-folded to base LETTERS where the composed form is absent, and
-    a non-character column is never a target (XA-10). A folded character may yield SEVERAL targets, all
-    carrying the ORIGINAL character's index (docs/arch/04-alignment.md §9).
+    Rules in order: LOWERCASED, then `units.fold` where it has one, then NFKD-folded to base LETTERS, and a
+    non-character column is never a target (XA-10). A folded or ROMANISED character may yield SEVERAL
+    targets, all carrying the index of the grapheme they came from (docs/arch/04-alignment.md §9, §9.1;
+    XA-20).
     """
+    spelled = units.chars if units is not None else None
+    fold = units.fold if units is not None else None
     out: list[tuple[int, int]] = []
-    for index, ch in enumerate(word.lower()):
+    for index, ch in spelled(word) if spelled is not None else enumerate(word.lower()):
         token = dictionary.get(ch)
         if token is None:
             if not ch.isalpha():
                 continue  # the fold is a LETTER's (see above); a symbol is dropped as it was before W7
-            for folded in fold_to_base(ch).lower():
+            for folded in _folds(ch, fold):
                 code = dictionary.get(folded) if folded.isalpha() else None
                 if code is not None and code not in excluded:
                     out.append((index, int(code)))
@@ -197,7 +206,17 @@ def char_ids(word: str, dictionary: Mapping[str, int], excluded: Collection[int]
     return out
 
 
-def alignable_chars(text: str, emissions: Any) -> int:
+def _folds(ch: str, fold: Callable[[str], str] | None) -> str:
+    """The characters to try for a `ch` the vocabulary lacks: the unit rule's own fold where it has one and
+    that fold changed something, else NFKD to base letters."""
+    if fold is not None:
+        mapped = fold(ch)
+        if mapped != ch:
+            return mapped.lower()
+    return fold_to_base(ch).lower()
+
+
+def alignable_chars(text: str, emissions: Any, units: Rules | None = None) -> int:
     """Characters of `text` this matrix can align: in its dictionary, and not one of its non-character
     columns (XA-10).
 
@@ -207,7 +226,8 @@ def alignable_chars(text: str, emissions: Any) -> int:
     rather than restated, so this counts TARGETS: a folded `ﬁ` costs two frames, not one.
     """
     excluded = excluded_of(emissions)
-    return sum(len(char_ids(word, emissions.dictionary, excluded)) for word in text.split())
+    words = units.words(text) if units is not None else text.split()
+    return sum(len(char_ids(word, emissions.dictionary, excluded, units)) for word in words)
 
 
 def _char_spans(
@@ -292,6 +312,7 @@ def regenerate(
     syllabifier: Callable[[str, str], list[str]] | None = None,
     faults: list[str] | None = None,
     separate_lines: bool = False,
+    units: Rules | None = None,
 ) -> dict[int, Line]:
     """Re-decode runs of lines INSIDE evidence-derived windows, on the same emission matrix.
 
@@ -308,7 +329,7 @@ def regenerate(
             continue
         first = max(0, int(window_start / emissions.frame_sec))
         last = min(emissions.frames, int(window_end / emissions.frame_sec))
-        per_line = [alignable_chars(line.text, emissions) for line in run]
+        per_line = [alignable_chars(line.text, emissions, units) for line in run]
         alignable = sum(per_line)
         # Only a line that emits a character takes part in the boundary count, exactly as `generate` emits
         # them: a decorative row between two sung lines is one boundary, not two.
@@ -331,6 +352,7 @@ def regenerate(
                 decoder=decoder,
                 syllabifier=syllabifier,
                 separate_lines=separate_lines,
+                units=units,
             )
         except Exception as exc:  # noqa: BLE001 - a failed repair keeps the original, never degrades it
             if faults is not None:
@@ -482,7 +504,8 @@ class CharTargets:
     owners: tuple[tuple[int, int], ...]
     #: Each character target's index WITHIN its word, for regrouping into syllables.
     char_of: tuple[int, ...]
-    #: `text.split()` per input line, kept so the caller splits once.
+    #: The words of each input line (`Rules.words`, `text.split()` by default), kept so the caller splits
+    #: once.
     words_by_line: tuple[tuple[str, ...], ...]
     #: How many of `targets` are line separators (`separator_of`), i.e. targets with no character.
     separators: int
@@ -493,13 +516,25 @@ class CharTargets:
     #: character, counted separately because the two arms are independent and the span-count invariant below
     #: has to subtract both.
     stars: int = 0
+    #: Each CHARACTER target's position in `targets`, parallel to `owners`: what a reader of the trellis needs
+    #: to name a line's own states when separators or stars sit between them (`line_blocks`).
+    char_positions: tuple[int, ...] = ()
 
 
 def char_targets(
-    line_texts: Sequence[str], emissions: Any, *, separate_lines: bool = False, stars: bool = False
+    line_texts: Sequence[str],
+    emissions: Any,
+    *,
+    separate_lines: bool = False,
+    stars: bool = False,
+    units: Rules | None = None,
 ) -> CharTargets:
     """Flatten `line_texts` into the decoder's target sequence (see `CharTargets`, and `generate`, its
-    caller and the definition of every rule here)."""
+    caller and the definition of every rule here).
+
+    `units` is the script's own word rule and vocabulary spelling (`units.Rules`); without one this is the
+    whitespace rule every recorded row was measured on.
+    """
     dictionary: Mapping[str, int] = emissions.dictionary
     excluded = excluded_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
@@ -507,19 +542,20 @@ def char_targets(
     targets: list[int] = []
     owners: list[tuple[int, int]] = []
     char_of: list[int] = []
+    positions: list[int] = []
     words_by_line: list[tuple[str, ...]] = []
     first: dict[int, int] = {}
     separators = 0
     starred = 0
     pending_separator: int | None = None
     for line_index, text in enumerate(line_texts):
-        words_by_line.append(tuple(text.split()))
+        words_by_line.append(tuple(units.words(text) if units is not None else text.split()))
         # A STAR IS OWED BY THIS LINE and paid at its first character target, for the separator's reason one
         # line down: a decorative row (`♪`, a line the never-sung rule blanked) contributes no character, and
         # two stars in a row would be a second absorbing token nobody asked for.
         pending_star = star
         for word_index, word in enumerate(words_by_line[-1]):
-            for char_index, token in char_ids(word, dictionary, excluded):
+            for char_index, token in char_ids(word, dictionary, excluded, units):
                 if pending_separator is not None:
                     targets.append(pending_separator)
                     separators += 1
@@ -529,6 +565,7 @@ def char_targets(
                     starred += 1
                     pending_star = None
                 first.setdefault(line_index, len(targets))
+                positions.append(len(targets))
                 targets.append(token)
                 owners.append((line_index, word_index))
                 char_of.append(char_index)
@@ -544,7 +581,22 @@ def char_targets(
         separators=separators,
         first_char_target=first,
         stars=starred,
+        char_positions=tuple(positions),
     )
+
+
+def line_blocks(flat: CharTargets) -> dict[int, tuple[int, int]]:
+    """Line index -> `[first, last)` positions in `flat.targets` spanning that line's CHARACTER targets.
+
+    The run a skip arc bypasses (`viterbi.line_skips`). A line that emitted no character is absent, and the
+    run is contiguous because a separator and a star are both emitted BEFORE a line's first character, never
+    between two of them.
+    """
+    out: dict[int, tuple[int, int]] = {}
+    for (line_index, _word), position in zip(flat.owners, flat.char_positions, strict=True):
+        low, high = out.get(line_index, (position, position))
+        out[line_index] = (min(low, position), max(high, position + 1))
+    return out
 
 
 def _lead_starts(spans: list[tuple[float, float, float]], lead: float) -> list[tuple[float, float, float]]:
@@ -568,27 +620,24 @@ def generate(
     syllabifier: Callable[[str, str], list[str]] | None = None,
     separate_lines: bool = False,
     stars: bool = False,
+    units: Rules | None = None,
 ) -> Generated:
     """Align `line_texts` over the whole recording and return nested line/word/syllable timings.
 
     `emissions` is `adapters.ml.Emissions` (duck-typed), computed once per song and shared by every candidate
     text. Non-character ids are never targets (XA-10); both default-off target-adding arms are counted in the
-    span check and relabelled to blank before grouping (XA-11, XA-12). docs/arch/04-alignment.md §2 (the
-    pipeline), §14.1 (what the arms share) and §12 (XA-09, the nesting invariant this returns).
+    span check and relabelled to blank before grouping (XA-11, XA-12). `units` is the script's own word and
+    syllable rule (§9.1); an explicit `syllabifier` overrides its syllable half, which is how the bench
+    switches syllabification off. docs/arch/04-alignment.md §2, §14.1 and §12 (XA-09).
     """
     blank = blank_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
     star = star_of(emissions) if stars else None
     decode = decoder
-    if syllabifier is not None:
-        split = syllabifier
-    else:
-        from encore_worker.domain.lyrics.syllabify import syllables  # noqa: PLC0415
-
-        split = syllables
+    split = syllabifier or (units or plain()).syllables
 
     # ── flatten to char targets, remembering every char's owner (`char_targets`, shared with `margin`) ──
-    flat = char_targets(line_texts, emissions, separate_lines=separate_lines, stars=stars)
+    flat = char_targets(line_texts, emissions, separate_lines=separate_lines, stars=stars, units=units)
     targets, owners, char_of = flat.targets, flat.owners, flat.char_of
     words_by_line, separators = flat.words_by_line, flat.separators
 

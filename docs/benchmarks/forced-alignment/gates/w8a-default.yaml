@@ -2,6 +2,12 @@
 # (PLAN-alignment-v3 W8a; `band-off-sheet` and `band-reopen` in `host/config.ALIGN_EXPERIMENTS`,
 # docs/arch/04-alignment.md §14).
 #
+# W9 (2026-10-14): HISTORICAL IN ONE RESPECT. `band-reopen` left `ALIGN_EXPERIMENTS` when the rule went
+# DEFAULT-ON, so "both band arms off" now means `band-off-sheet` off and the re-opening ON; the stand-down
+# control is `ENCORE_ALIGN_EXPERIMENTS=band-late-kept`. Setting the retired name exits before any model work.
+# This file's identity claim is W8a's and is read against W7's rows, which is why it is kept as it was
+# (README, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
+#
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --modes all,wrongtext+ownclock --tag w8a-def-ra \
 #       --compare ../docs/benchmarks/forced-alignment/results/w8a-band-run_align.json \

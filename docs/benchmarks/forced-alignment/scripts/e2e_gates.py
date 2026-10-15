@@ -111,17 +111,31 @@ COMPARE_COLUMNS: tuple[tuple[str, str, str], ...] = (
 #: The measurement SETUP a run and its baseline must share for a `base.` gate to mean anything: the job
 #: (`level`), the cases and claims (`seed`, `wrong_k`), the text language, the audio and the transcriber. A
 #: gate reading the baseline across a difference here is an ERROR, not a warning; so is a key missing on one.
-SETUP_META = ("level", "seed", "wrong_k", "language", "tfr_audio", "target", "asr", "sync_mode")
+SETUP_META = (
+    "level",
+    "seed",
+    "wrong_k",
+    "language",
+    "tfr_audio",
+    "target",
+    "asr",
+    "sync_mode",
+    "corpus",
+)
 
-#: A setup key a summary may leave out, and what its absence means: every run before `--sync-mode` existed
-#: sent no `syncMode`, which the worker reads as `forced`, and every run before `--no-stem` aligned on the
-#: vocals stem. So a `lines` or a STEMLESS run against those baselines is a mismatch, not a comparison.
-SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_TARGET}
+#: A setup key a summary may leave out, and what its absence means: no `--sync-mode` is `forced`, no
+#: `--no-stem` is the vocals stem, no `--corpus` is the English 32. So a `lines`, a STEMLESS or a non-Latin
+#: run against a baseline that predates the flag is a mismatch, not a comparison.
+SETUP_DEFAULTS: Mapping[str, str] = {
+    "sync_mode": "forced",
+    "target": lib.STEM_TARGET,
+    "corpus": lib.ENGLISH_CORPUS,
+}
 
 #: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm, a difference here
 #: being the experiment rather than a broken comparison. `code` is absent for the same reason and printed as
 #: its own NOTE. A key with a `lib.RUN_DEFAULTS` entry is compared even where one side is silent.
-COMPARED_META = ("model", "model_identity", "align_config", "detector")
+COMPARED_META = ("model", "model_identity", "align_config", "detector", "romanize")
 
 #: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one on such a run is an ERROR:
 #: with no `lexical.CALIBRATED` row every emission-scale gate stands down, so `wrongtext_pass` is not that
