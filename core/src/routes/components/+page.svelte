@@ -628,7 +628,13 @@
 	</div>
 
 	<h2 class="section">GuidingTrack · every state</h2>
-	<!-- Off (the shipped default), faint, halfway, full sing-along, and unavailable for want of a vocals stem. -->
+	<!-- Off (the shipped default), faint, halfway, full sing-along, and unavailable for want of a vocals stem.
+		THESE FIVE DO NOT DRAG, and that is the control working rather than failing: GuidingTrack's value is CONTROLLED
+		(see its header), so the thumb renders `pct` and a move is a request to the caller. There is no caller here, so
+		each row stays on the level it is here to show — measured, a full-width drag plus five ArrowRights on every row
+		left all five reading Off / 15% / 60% / 100% / Off with matching `aria-valuenow`. That is what a gallery of
+		states wants, and it is new: while the primitive owned the value these rows could be dragged off the very
+		states they are here to show. On /queue the caller is the room, and a move the room accepts moves the thumb. -->
 	<div style="display:grid;gap:14px;">
 		<GuidingTrack pct={0} available={true} />
 		<GuidingTrack pct={15} available={true} />

@@ -10,14 +10,14 @@ docs/arch/04-alignment.md §9.1; docs/benchmarks/forced-alignment/README.md, "W8
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from functools import cache
 
 from encore_worker.domain.lyrics import language, romanize
 
 #: Scripts written WITHOUT spaces between their words, so every letter of one may open a unit. Korean is not
-#: here: Hangul is dense typographically and spaced grammatically (`wordGap`, §11.2).
+#: here: Hangul is dense typographically and spaced grammatically (docs/arch/04-alignment.md §11.2).
 DENSE_SCRIPTS: dict[str, frozenset[str]] = {
     "zh": frozenset({language.HAN}),
     "ja": frozenset({language.HAN, language.KANA}),
@@ -35,9 +35,14 @@ SYLLABLE_SCRIPTS: dict[str, frozenset[str]] = {
 #: (`きょ` is one mora), the prolonged sound mark and the voicing marks, which have no onset of their own.
 _TAILS = frozenset("ゃゅょぁぃぅぇぉゎゕゖャュョァィゥェォヮヵヶーゝゞヽヾ゛゜゙゚")
 
-#: The languages with a unit rule of their own. Everything else keeps the whitespace rule, which is what
-#: every English and Jamendo row under `results/` was measured on.
-SCRIPT_LANGUAGES = tuple(sorted(DENSE_SCRIPTS))
+#: Languages whose romanisation is only sound for a WHOLE word: a Japanese kanji is read by the token it
+#: sits in, so romanising one grapheme of it answers a different reading.
+_READ_PER_WORD = frozenset({"ja"})
+
+#: `Rules.chars` index for a target that belongs to the whole word and to no one grapheme of it, which is
+#: what a `_READ_PER_WORD` language's word answers when its fragments do not read as it does. The word is
+#: still timed; it publishes no syllables (XA-20, docs/arch/04-alignment.md §9.1).
+WHOLE_WORD = -1
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,9 +113,7 @@ def syllables(word: str, language_code: str) -> list[str]:
     """
     dense = SYLLABLE_SCRIPTS.get(language_code)
     if dense is None or not any(language.script_of(ch) in dense for ch in word):
-        from encore_worker.domain.lyrics.syllabify import syllables as latin  # noqa: PLC0415
-
-        return latin(word, language_code)
+        return _latin_syllables()(word, language_code)
     return grouped(word, dense)
 
 
@@ -143,6 +146,17 @@ def rules(language_code: str, *, script_units: bool, simplify: bool, translitera
         syllables=syllables if script_units else _latin_syllables(),
         chars=chars,
         fold=fold,
+    )
+
+
+def rules_for(language_code: str, experiments: Collection[str]) -> Rules:
+    """`rules` read off an `ALIGN_EXPERIMENTS` set — THE one place the three W8 arm names are spelled, so
+    the step layer and the bench harness cannot name them differently."""
+    return rules(
+        language_code,
+        script_units="nonlatin-units" in experiments,
+        simplify="zh-simplify" in experiments,
+        transliterate="mms-roman" in experiments,
     )
 
 
@@ -216,23 +230,29 @@ def _transliterated(language_code: str) -> Callable[[str], Sequence[tuple[int, s
     """`word` -> the LATIN characters to align it as, each tagged with the index in `word` it came from.
 
     Per syllable fragment, so every target belongs to one grapheme run and a span maps straight back
-    (XA-20). None without a backend, which leaves the original characters as the targets.
+    (XA-20) — except for a `_READ_PER_WORD` language whose fragments do not rebuild the word's own reading,
+    where the word's reading is the target sequence and `WHOLE_WORD` says no fragment owns it. None without
+    a backend, which leaves the original characters as the targets.
     """
     say = romanize.build_transliterator(language_code)
     if say is None:
         return None
-    fragments: Callable[[str], list[str]] = (
-        (lambda word: [word]) if language_code == "ja" else lambda word: syllables(word, language_code)
-    )
+
+    def read(text: str) -> str:
+        # `or text`: an ALREADY-LATIN fragment gets no romanisation, and dropping it would decode a Chinese
+        # sheet's English chorus as nothing at all.
+        said = romanize.romanization_of(text, say) or text
+        return "".join(ch for ch in said.lower() if ch.isalpha() or ch == "'")
 
     def chars(word: str) -> Sequence[tuple[int, str]]:
+        fragments = syllables(word, language_code)
+        per_fragment = [read(fragment) for fragment in fragments]
+        if language_code in _READ_PER_WORD and (whole := read(word)) != "".join(per_fragment):
+            return [(WHOLE_WORD, ch) for ch in whole]
         out: list[tuple[int, str]] = []
         at = 0
-        for fragment in fragments(word):
-            # `or fragment`: an ALREADY-LATIN fragment gets no romanisation, and dropping it would decode
-            # a Chinese sheet's English chorus as nothing at all.
-            said = romanize.romanization_of(fragment, say) or fragment
-            out.extend((at, ch) for ch in said.lower() if ch.isalpha() or ch == "'")
+        for fragment, said in zip(fragments, per_fragment, strict=True):
+            out.extend((at, ch) for ch in said)
             at += len(fragment)
         return out
 

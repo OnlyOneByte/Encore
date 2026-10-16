@@ -802,13 +802,14 @@ class GenerateDriver(TimeTextDriver):
     are this level (±100 78.7 / ±250 90.5 / ±300 91.3, bias +4 ms, 141/5693 words >2 s); through `time_text`
     the never-sung rule drops 2 Jamendo lines and re-decodes, reading 78.8 / 90.5 / 91.3, +4 ms, 139 >2 s.
     Claimed timings never enter `generate()`, so a timed mode equals its text-only twin and every line is
-    ungraded. The two arms that reach this level are arguments to `generate` itself — 6c's line separator and
-    the star — so both are threaded from `self.config`, or a run named for an arm measures the default."""
+    ungraded. The arms reaching this level are arguments to `generate` itself — 6c's separator, the star and
+    W8's units — so all are threaded from `self.config`, or a run named for an arm measures the default."""
 
     level = "generate"
 
     def run(self, case: Case) -> dict[str, Any]:
         from encore_worker.adapters.ml import forced_align_decoder, starred  # noqa: PLC0415
+        from encore_worker.domain.lyrics import units  # noqa: PLC0415
         from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
 
         claims = self.claims_for(case)
@@ -825,6 +826,7 @@ class GenerateDriver(TimeTextDriver):
                 language=self.language,
                 separate_lines="linesep" in self.config.align_experiments,
                 stars=stars,
+                units=units.rules_for(self.language, self.config.align_experiments),
             )
         except Exception as exc:  # noqa: BLE001 - one broken case must not lose the sweep
             outcome = lib.ERROR
@@ -838,7 +840,14 @@ class GenerateDriver(TimeTextDriver):
                     confidence=None,
                     source=line.index,
                     words=tuple(
-                        lib.DocWord(w.start, w.end, w.provenance == "aligned", w.word) for w in line.words
+                        lib.DocWord(
+                            w.start,
+                            w.end,
+                            w.provenance == "aligned",
+                            w.word,
+                            tuple(lib.DocSyllable(s.start, s.end, s.text) for s in w.syllables),
+                        )
+                        for w in line.words
                     ),
                 )
                 for line in generated.lines
@@ -1598,6 +1607,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    foreign = foreign_language_songs(args.corpus, args.language, [song.slug for song in songs])
+    if foreign:
+        print(
+            f"--language {args.language!r} but {len(foreign)} selected song(s) declare another language "
+            f"({', '.join(foreign)}): ONE LANGUAGE A RUN — narrow it with --songs amll-{args.language}",
+            file=sys.stderr,
+        )
+        return 2
     device = resolve_device(args.device)
     named, refused_bundle = resolve_bundle(args.model, config, args.language)
     if refused_bundle is not None:
@@ -1699,7 +1716,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             transcriber=transcriber,
             sync_mode=args.sync_mode,
             detector=build_detector(args.detector),
-            romanizer=build_romanizer_factory(args.romanize),
+            romanizer=build_romanizer_factory(args.romanize, args.language),
         )
         if args.level == "run_align"
         else DRIVERS[args.level](
@@ -1892,6 +1909,18 @@ def verdicts(document: Mapping[str, Any], args: argparse.Namespace) -> int:
     return 0
 
 
+def foreign_language_songs(corpus: str, language: str, slugs: Sequence[str]) -> list[str]:
+    """The selected slugs that DECLARE a language other than the run's, `amll-<language>-<title>` being the
+    only naming that declares one. ONE LANGUAGE A RUN: README, "W8 stages 1-2"."""
+    if corpus != lib.NONLATIN_CORPUS:
+        return []
+    return [
+        slug
+        for slug in slugs
+        if (declared := lib.nonlatin_language_of(slug)) is not None and declared != language
+    ]
+
+
 def build_detector(asked: str) -> Any:
     """`--detector lingua`: the shipped composition root's detector; `off`: None, i.e. no `text` extra.
 
@@ -1908,14 +1937,20 @@ def build_detector(asked: str) -> Any:
     return built
 
 
-def build_romanizer_factory(asked: str) -> Any:
+def build_romanizer_factory(asked: str, language: str) -> Any:
     """`--romanize shipped`: the factory `__main__.build_adapters` wires; `off`: None, no romaniser at all.
 
-    An explicit `shipped` on a box with no backend for the run's language is an ERROR rather than a silent
-    fall back to the default configuration — the `--detector` lesson (review r1-spec-9) applied here.
+    An explicit `shipped` whose PACKAGE is missing is an ERROR rather than a silent fall back to the default
+    configuration — the `--detector` lesson (review r1-spec-9). A language `romanize.BACKENDS` does not route
+    has no backend BY DESIGN (every Latin one), and that configuration is measured on purpose.
     """
     if asked == ROMANIZE_OFF:
         return None
+    backend = romanize.BACKENDS.get(language)
+    if backend is not None and romanize.build_romanizer(language) is None:
+        raise SystemExit(
+            f"--romanize shipped needs {backend} for {language!r} (the worker's `romanize` extra)"
+        )
     return romanize.build_romanizer
 
 

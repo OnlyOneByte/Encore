@@ -32,6 +32,7 @@ import pytest
 import soundfile as sf
 
 from encore_worker.adapters import ports
+from encore_worker.domain.lyrics import romanize
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "docs" / "benchmarks" / "forced-alignment" / "scripts"
 
@@ -320,7 +321,7 @@ def test_syllable_scores_pair_on_a_character_offset_whatever_split_the_line() ->
     of the line is scored against that word's single onset; `nonlatin-units` publishes six, each on its own.
     The DENOMINATOR is the truth's either way, which is what makes the two arms comparable.
     """
-    text = "\u6545\u4e8b\u7684\u5c0f\u9ec4\u82b1"
+    text = "\u5c71\u6c34\u98a8\u96f2\u96e8\u96ea"  # six hanzi, a synthetic enumeration and not a sheet's
     song = song_of(
         [(text, 1.0, 4.0)],
         syllables=[(0, at, ch, 1.0 + 0.5 * at, 1.5 + 0.5 * at) for at, ch in enumerate(text)],
@@ -397,6 +398,47 @@ def test_a_syllable_no_published_unit_covers_is_unpaired_and_a_case_with_no_trut
     assert lib.score_syllables(song, got, []).in_text == 2, "a case that published nothing keeps its own"
     assert lib.score_syllables(song_of([(text, 1.0, 2.0)]), got, elsewhere) is None
     assert lib.syllable_metrics([{"syllables": None}]) is None
+
+
+def test_a_truth_syllable_on_a_line_the_document_dropped_is_counted_as_unpublished() -> None:
+    """Review r1-spec-8: it was in NO bucket — not aligned, not interpolated, not unpaired — so the ko cell
+    read 481 + 30 + 0 against an `in_text` of 535 and the 24 spans on the 7 lines its document is missing
+    were invisible to every gate in `gates/w8-units.yaml`. The four counts now sum to the denominator.
+
+    It also separates the two readings the section claimed were one: `w300_pct` is the precision of the
+    units that aligned and `pco300_pct` divides by the truth, which is what the reject-if reads.
+    """
+    first, second = "山水", "風雲"
+    song = song_of(
+        [(first, 1.0, 2.0), (second, 3.0, 4.0)],
+        syllables=[
+            (0, 0, first[0], 1.0, 1.4),
+            (0, 1, first[1], 1.5, 2.0),
+            (1, 0, second[0], 3.0, 3.4),
+            (1, 1, second[1], 3.5, 4.0),
+        ],
+    )
+    got = claims(song, "truth")
+    only_first = [
+        lib.DocLine(
+            first,
+            1.0,
+            2.0,
+            "high",
+            0,
+            words=(lib.DocWord(1.0, 1.4, True, first[0]), lib.DocWord(1.5, 2.0, True, first[1])),
+        )
+    ]
+    score = lib.score_syllables(song, got, only_first)
+    assert score.in_text == 4 and score.unpaired == 0 and score.interpolated == 0
+    assert score.errors == pytest.approx((0.0, 0.0))
+    assert score.unpublished == 2, "the line the document never carried"
+    assert len(score.errors) + score.interpolated + score.unpaired + score.unpublished == score.in_text
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=only_first)
+    pooled = lib.syllable_metrics([row])
+    assert pooled["unpublished"] == 2 and pooled["in_text"] == 4
+    assert pooled["w300_pct"] == pytest.approx(100.0), "the precision of the units that aligned"
+    assert pooled["pco300_pct"] == pytest.approx(50.0), "and the reading on the truth's own denominator"
 
 
 def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() -> None:
@@ -1874,6 +1916,43 @@ def test_the_detector_the_acquiring_steps_get_is_the_runs_own_setting(
     assert e2e.build_detector(e2e.DETECTOR_OFF) is None
 
 
+def test_a_nonlatin_run_refuses_songs_of_a_language_other_than_the_one_it_declares() -> None:
+    """Review r1-tests-18: `--corpus nonlatin` refused only `--language en`, and `--songs` has no default —
+    so the documented reproduction of `gates/w8-units.yaml` decoded the 2 ja and the 1 ko song on the zh
+    bundle, under zh unit rules (a kana or Hangul token stays ONE word there), and pooled all three into one
+    `syllable_pm300`. The slug declares the language, so the slug is the check.
+
+    Every selected slug must agree, and nothing but an `amll-<language>-` slug declares one: the English
+    corpus is unaffected.
+    """
+    every = ["amll-zh-one", "amll-ja-two", "amll-ja-three", "amll-ko-four"]
+    assert [lib.nonlatin_language_of(slug) for slug in every] == ["zh", "ja", "ja", "ko"]
+    assert lib.nonlatin_language_of("Avercage_-_Embers") is None
+
+    assert e2e.foreign_language_songs(lib.NONLATIN_CORPUS, "zh", every) == every[1:]
+    assert e2e.foreign_language_songs(lib.NONLATIN_CORPUS, "zh", every[:1]) == []
+    assert e2e.foreign_language_songs(lib.NONLATIN_CORPUS, "ja", every[1:3]) == []
+    assert e2e.foreign_language_songs(lib.ENGLISH_CORPUS, "en", every) == [], "a zh slug cannot be selected"
+
+
+def test_an_explicit_romanize_shipped_fails_closed_where_its_package_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review r1-spec-9: the factory PROMISED `--detector`'s fail-closed behaviour and returned the shipped
+    factory unconditionally, so on a box without the `romanize` extra the run completed, stamped
+    `meta["romanize"] = "shipped"` and produced documents byte-identical to `--romanize off` — a row naming
+    a configuration it never measured.
+
+    A language `romanize.BACKENDS` does not route is a different case and stays legal: English has no
+    backend BY DESIGN, and `_runs/w8s0-english-smoke` measures the arm's inertness there on purpose.
+    """
+    assert e2e.build_romanizer_factory(e2e.ROMANIZE_OFF, "zh") is None
+    assert e2e.build_romanizer_factory("shipped", "en") is romanize.build_romanizer, "no backend by design"
+    monkeypatch.setattr(romanize, "build_romanizer", lambda _language: None)
+    with pytest.raises(SystemExit, match="pypinyin"):
+        e2e.build_romanizer_factory("shipped", "zh")
+
+
 def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_recorded_one(
     tmp_path: Path,
 ) -> None:
@@ -1892,7 +1971,7 @@ def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_reco
         if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
     }
     assert set(recorded.values()) <= set(e2e.DETECTORS), f"unreadable detector stamp: {recorded}"
-    assert all(path.startswith(("w8a-", "w8b-", "w9-", "w8-")) for path in recorded), (
+    assert all(path.startswith(("w8a-", "w8b-", "w9-", "w8-", "w8s12-")) for path in recorded), (
         "W8a's sweeps are the first runs to carry the stamp; anything earlier is silent by construction"
     )
 
@@ -3282,6 +3361,22 @@ def test_the_highlight_port_lights_what_the_committed_parity_fixture_says() -> N
         assert [[ln.text, ln.start, ln.end] for ln in lines] == case["rows"], case["name"]
         assert [tv_parity.lit(lines, pos) for pos in case["positions"]] == case["lit"], case["name"]
     assert tv_parity.dump(tv_parity.build()) == tv_parity.FIXTURE.read_text(encoding="utf-8"), "regenerate it"
+
+
+def test_the_cjk_join_class_is_the_enumeration_both_trees_are_held_to() -> None:
+    """Review r1-tests-19: `TV_CJK_JOINS` is a FROZEN COPY of `lyrics.ts`'s `\\p{scx=...}` class — Python's
+    `re` has no Script_Extensions — and only a one-off enumeration ever said the two were equal. The
+    committed ranges are that enumeration: this side holds the copy to them and core's
+    `lyrics-bench-parity.test.ts` enumerates `wordGap` over all 0x110000 codepoints against the same file,
+    so neither class can move without one tree going red.
+    """
+    tv_parity: Any = _load("tv_parity")
+    committed = json.loads(tv_parity.CJK_FIXTURE.read_text(encoding="utf-8"))
+    ranges = lib.cjk_join_ranges()
+    assert [list(pair) for pair in committed["ranges"]] == ranges
+    assert committed["codepoints"] == sum(hi - lo + 1 for lo, hi in ranges) == 104411
+    assert len(ranges) == 55, "the 55 ranges the port's own comment names"
+    assert tv_parity.cjk_ranges() == tv_parity.CJK_FIXTURE.read_text(encoding="utf-8"), "regenerate it"
 
 
 def test_an_orphan_folds_forward_even_with_a_row_before_it() -> None:

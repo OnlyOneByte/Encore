@@ -33,6 +33,10 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 #: tested from `core/` alone, so the fixture lives there and the worker test reaches over).
 FIXTURE = REPO / "core" / "tests" / "unit" / "lib" / "tv" / "bench-highlight-parity.json"
 
+#: Where both trees read the CJK join class, as integer ranges: Python's `re` cannot write `CJK_JOINS`
+#: (no Script_Extensions), so the equality needs an artefact to meet on.
+CJK_FIXTURE = FIXTURE.with_name("cjk-join-ranges.json")
+
 #: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there. W6 added the
 #: `wipesWords(l)` conjunct (a `low` line renders line-level), and this literal is what makes the core test
 #: fail until the port has it too — `lib.tv_lit(wipe_low=True)` below.
@@ -160,14 +164,15 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
         (
             # W8's non-Latin lane: CJK writes no space between its words. Each line carries NO text, so
             # both trees rebuild it from the words and the gap rule is what they must agree on — including
-            # Hangul, which spaces its words like Latin, and the mixed line's CJK/Latin boundary.
+            # Hangul, which spaces its words like Latin, and the mixed line's CJK/Latin boundary. The text
+            # is SYNTHETIC in every script (README, "Why no fixture holds a lyric").
             "cjk-rebuilt-without-spaces",
             {
                 "lines": [
-                    _line("", _chars("我来到你的城市", 0.0)),
-                    _line("", _chars("夜に駆ける", 3.0)),
-                    _line("", _run("오빤 강남스타일", 5.0)),
-                    _line("", [*_chars("光年之外", 8.0), *_run("oh my love", 9.5)]),
+                    _line("", _chars("山水风云雨雪雷", 0.0)),
+                    _line("", _chars("雲が流れる", 3.0)),
+                    _line("", _run("바다 하늘구름들", 5.0)),
+                    _line("", [*_chars("山水风云", 8.0), *_run("a latin chorus", 9.5)]),
                 ]
             },
         ),
@@ -178,12 +183,12 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
             {
                 "lines": [
                     _line(
-                        "今日もパパッと終わらせて" * 4,
+                        "ひらがなのれんしゅうです" * 4,
                         [
-                            *_chars("今日もパパッと終わらせて", 0.0, step=0.2, sung=0.15),
-                            *_chars("今日もパパッと終わらせて", 2.4, step=0.2, sung=0.15),
-                            *_chars("今日もパパッと終わらせて", 5.4, step=0.2, sung=0.15),
-                            *_chars("今日もパパッと終わらせて", 7.8, step=0.2, sung=0.15),
+                            *_chars("ひらがなのれんしゅうです", 0.0, step=0.2, sung=0.15),
+                            *_chars("ひらがなのれんしゅうです", 2.4, step=0.2, sung=0.15),
+                            *_chars("ひらがなのれんしゅうです", 5.4, step=0.2, sung=0.15),
+                            *_chars("ひらがなのれんしゅうです", 7.8, step=0.2, sung=0.15),
                         ],
                     )
                 ]
@@ -299,20 +304,40 @@ def dump(fixture: dict[str, Any]) -> str:
     return f'{opening},\n "cases": [\n{body}\n ]\n}}\n'
 
 
+def cjk_ranges() -> str:
+    """`lib.TV_CJK_JOINS` enumerated, for the core test that enumerates `lyrics.ts`'s own class against it —
+    an equality nothing re-checked until review r1-tests-19 (README, "Core: one gap rule")."""
+    ranges = lib.cjk_join_ranges()
+    body = ",\n".join(f"  [{lo},{hi}]" for lo, hi in ranges)
+    head = json.dumps(
+        {
+            "generator": "docs/benchmarks/forced-alignment/scripts/tv_parity.py --check",
+            "source": "docs/benchmarks/forced-alignment/scripts/e2e_lib.py: TV_CJK_JOINS",
+            "pins": "core/src/lib/tv/lyrics.ts: CJK_JOINS",
+            "codepoints": sum(hi - lo + 1 for lo, hi in ranges),
+        },
+        indent=1,
+    )[:-2]
+    return f'{head},\n "ranges": [\n{body}\n ]\n}}\n'
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Write (or --check) the TV-highlight parity fixture.")
     ap.add_argument(
         "--check", action="store_true", help="exit 1 if the committed fixture is not what this writes"
     )
     args = ap.parse_args(argv)
-    text = dump(build())
+    written = {FIXTURE: dump(build()), CJK_FIXTURE: cjk_ranges()}
     if args.check:
-        same = FIXTURE.is_file() and FIXTURE.read_text(encoding="utf-8") == text
-        print(f"{FIXTURE}: {'up to date' if same else 'STALE — re-run without --check'}")
-        return 0 if same else 1
-    FIXTURE.write_text(text, encoding="utf-8")
+        stale = [path for path, text in written.items() if path.read_text(encoding="utf-8") != text]
+        for path in written:
+            print(f"{path}: {'STALE — re-run without --check' if path in stale else 'up to date'}")
+        return 1 if stale else 0
+    for path, text in written.items():
+        path.write_text(text, encoding="utf-8")
     total = sum(len(case["positions"]) for case in build()["cases"])
     print(f"{FIXTURE}: {len(build()['cases'])} documents, {total} positions")
+    print(f"{CJK_FIXTURE}: {len(lib.cjk_join_ranges())} ranges")
     return 0
 
 

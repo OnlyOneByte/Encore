@@ -16,6 +16,7 @@ import {
 	activeLineIndex,
 	activeWordIndex,
 	wipesWords,
+	wordGap,
 	LINE_GAP_SEC,
 	LINE_MAX_CHARS,
 	ORPHAN_MAX_SEC,
@@ -67,10 +68,43 @@ test('the bench fixture covers every rule the port models', () => {
 		// W6: the low-line rule, its carry across a split, and the three grades that keep the wipe.
 		'low-line-lights-no-word',
 		'low-line-splits-and-no-row-wipes',
-		'other-grades-still-wipe'
+		'other-grades-still-wipe',
+		// W8: the CJK word gap, the one rule the two trees can now disagree about.
+		'cjk-rebuilt-without-spaces',
+		'cjk-splits-at-a-pause'
 	])
 		expect(names).toContain(shape);
 	expect(fixture.cases.reduce((n, c) => n + c.positions.length, 0)).toBeGreaterThan(1000);
+});
+
+test('the port joins the same codepoints this file does, enumerated', () => {
+	// The port cannot WRITE this file's class — Python's `re` has no Script_Extensions — so it carries a frozen
+	// copy, and only a one-off enumeration ever said the two were equal (review r1-tests-19). This is that
+	// enumeration as a gate: a Unicode release that adds a Han codepoint moves `\p{scx=...}` here and not the
+	// copy there, and the two parity cases below exercise far too few characters to notice.
+	//
+	// `wordGap` rather than the class itself, so what is pinned is the rule the room runs: a pair of the SAME
+	// character joins with no space exactly where that character is one of the joiners.
+	const frozen = JSON.parse(read('tests/unit/lib/tv/cjk-join-ranges.json')) as {
+		codepoints: number;
+		ranges: [number, number][];
+	};
+	const pair = [{ word: '' }, { word: '' }];
+	const joins = (code: number): boolean => {
+		const ch = String.fromCodePoint(code);
+		pair[0]!.word = ch;
+		pair[1]!.word = ch;
+		return wordGap(pair, 0) === '';
+	};
+	const ours: [number, number][] = [];
+	for (let code = 0; code < 0x110000; code++) {
+		if (!joins(code)) continue;
+		const last = ours.at(-1);
+		if (last && last[1] === code - 1) last[1] = code;
+		else ours.push([code, code]);
+	}
+	expect(ours).toEqual(frozen.ranges);
+	expect(ours.reduce((n, [lo, hi]) => n + hi - lo + 1, 0)).toBe(frozen.codepoints);
 });
 
 test("the port's constants are this file's", () => {

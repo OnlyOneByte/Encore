@@ -1,0 +1,261 @@
+{
+ "meta": {
+  "level": "run_align",
+  "model": "HUBERT_ASR_LARGE",
+  "model_identity": {
+   "en": "16d3538bb11da405"
+  },
+  "device": "mps",
+  "language": "en",
+  "seed": 0,
+  "wrong_k": 10,
+  "tfr_audio": "youtube",
+  "target": "stem",
+  "align_config": {},
+  "modes": [
+   "truth"
+  ],
+  "songs": [
+   "hello"
+  ],
+  "accuracy_excluded": {},
+  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "git": {
+   "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
+   "dirty_files": 39
+  },
+  "harness": "6cf2112006f8b9d0",
+  "code": "71fec98470a37e52",
+  "row_codes": [
+   "71fec98470a37e52"
+  ],
+  "emissions": {
+   "computed": 2
+  },
+  "started": "2026-10-15T13:34:32",
+  "seconds": 44.5,
+  "mode_seconds": {
+   "truth": 44.4
+  },
+  "asr": "off",
+  "sync_mode": "forced",
+  "detector": "off",
+  "romanize": "off",
+  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8s12-english-smoke/rows.jsonl"
+ },
+ "summary": {
+  "truth": {
+   "youtube": {
+    "lines": {
+     "cases": 1,
+     "published": 1,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 74,
+     "in_text": 74,
+     "missing": 11,
+     "unsung": 0,
+     "scored": 63,
+     "gross": 0,
+     "band": 0,
+     "w500": 63,
+     "w1000": 63,
+     "high": 47,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 100.0,
+     "w1000_pct": 100.0,
+     "w500_text_pct": 85.14,
+     "w1000_text_pct": 85.14,
+     "bias_ms": 122.0,
+     "mad_ms": 82.0,
+     "zero_gross_songs": 1,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "syllables": null,
+    "highlight": null,
+    "highlight_wiped": null,
+    "policy": {
+     "attempts": 1,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 0,
+     "asr_published": 0,
+     "no_lyrics": 0
+    },
+    "ci": {
+     "pm500": [
+      100.0,
+      100.0
+     ],
+     "text_pm500": [
+      85.14,
+      85.14
+     ],
+     "gross": [
+      0.0,
+      0.0
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "scored": {
+    "lines": {
+     "cases": 1,
+     "published": 1,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 74,
+     "in_text": 74,
+     "missing": 11,
+     "unsung": 0,
+     "scored": 63,
+     "gross": 0,
+     "band": 0,
+     "w500": 63,
+     "w1000": 63,
+     "high": 47,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 100.0,
+     "w1000_pct": 100.0,
+     "w500_text_pct": 85.14,
+     "w1000_text_pct": 85.14,
+     "bias_ms": 122.0,
+     "mad_ms": 82.0,
+     "zero_gross_songs": 1,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "syllables": null,
+    "highlight": null,
+    "highlight_wiped": null,
+    "policy": {
+     "attempts": 1,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 0,
+     "asr_published": 0,
+     "no_lyrics": 0
+    },
+    "ci": {
+     "pm500": [
+      100.0,
+      100.0
+     ],
+     "text_pm500": [
+      85.14,
+      85.14
+     ],
+     "gross": [
+      0.0,
+      0.0
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 1,
+     "published": 1,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 74,
+     "in_text": 74,
+     "missing": 11,
+     "unsung": 0,
+     "scored": 63,
+     "gross": 0,
+     "band": 0,
+     "w500": 63,
+     "w1000": 63,
+     "high": 47,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 100.0,
+     "w1000_pct": 100.0,
+     "w500_text_pct": 85.14,
+     "w1000_text_pct": 85.14,
+     "bias_ms": 122.0,
+     "mad_ms": 82.0,
+     "zero_gross_songs": 1,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "syllables": null,
+    "highlight": null,
+    "highlight_wiped": null,
+    "policy": {
+     "attempts": 1,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 0,
+     "asr_published": 0,
+     "no_lyrics": 0
+    },
+    "ci": {
+     "pm500": [
+      100.0,
+      100.0
+     ],
+     "text_pm500": [
+      85.14,
+      85.14
+     ],
+     "gross": [
+      0.0,
+      0.0
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   }
+  }
+ },
+ "songs": {
+  "truth": {
+   "hello": {
+    "group": "youtube",
+    "cases": 1.0,
+    "published": 1.0,
+    "refused": 0.0,
+    "error": 0.0,
+    "scored": 63.0,
+    "missing": 11.0,
+    "unsung": 0.0,
+    "gross": 0.0,
+    "band": 0.0,
+    "bias_ms": 122.0,
+    "mad_ms": 82.0,
+    "pm500": 100.0,
+    "pm1000": 100.0,
+    "text_pm500": 85.14,
+    "high_gross": 0.0,
+    "mix_published": 0.0,
+    "changed_vs_first": 0.0,
+    "no_lyrics": 0.0,
+    "coverage": 0.9718,
+    "doc": "4851b178858ce19f",
+    "onsets": "75391ffb463bfe9d"
+   }
+  }
+ }
+}

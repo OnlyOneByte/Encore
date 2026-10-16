@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from encore_worker.domain.lyrics.language import fold_to_base
-from encore_worker.domain.lyrics.units import Rules, plain
+from encore_worker.domain.lyrics.units import WHOLE_WORD, Rules, plain
 
 #: A word whose every character is out-of-dictionary gets its span INTERPOLATED from its neighbours and
 #: this confidence, so a non-Latin token or a run of digits degrades one word rather than failing the line.
@@ -627,8 +627,8 @@ def generate(
     `emissions` is `adapters.ml.Emissions` (duck-typed), computed once per song and shared by every candidate
     text. Non-character ids are never targets (XA-10); both default-off target-adding arms are counted in the
     span check and relabelled to blank before grouping (XA-11, XA-12). `units` is the script's own word and
-    syllable rule (§9.1); an explicit `syllabifier` overrides its syllable half, which is how the bench
-    switches syllabification off. docs/arch/04-alignment.md §2, §14.1 and §12 (XA-09).
+    syllable rule and an explicit `syllabifier` overrides its syllable half, which is how the bench switches
+    syllabification off. docs/arch/04-alignment.md §2, §9.1, §14.1 and §12 (XA-09).
     """
     blank = blank_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
@@ -683,7 +683,10 @@ def generate(
             starts = [s for _c, (s, _e, _sc) in chars]
             ends = [e for _c, (_s, e, _sc) in chars]
             scores = [sc for _c, (_s, _e, sc) in chars]
-            fragments = split(word_text, language)
+            # A `WHOLE_WORD` target names no grapheme, so the word is timed but publishes no syllables
+            # rather than one real span and the rest zero-width at its end (XA-20).
+            attributable = all(char_index != WHOLE_WORD for char_index, _span in chars)
+            fragments = split(word_text, language) if attributable else []
             syls: list[Syllable] = []
             cursor = 0
             for fragment in fragments:

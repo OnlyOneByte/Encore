@@ -129,6 +129,40 @@ test('the hub wires its own persistMedia into the terminal-failure epilogue', ()
 	expect(persisted, 'the hub settled the gate in memory but never persisted it').toContain('m1');
 });
 
+test('the REAPER path persists too — the fourth terminal path, wired as app.ts wires it', () => {
+	/* THE PATH THAT WAS MISSING A SINK. The reaper fails a job whose progress lease expired for the last
+	   time; `JobReaper.onFailed` hands it to the same epilogue. app.ts assembled that bag INLINE as
+	   `{ broadcast, mediaById }` with no `persist`, so a reaper-killed process settled its stem gate in
+	   memory while the stored row still said 'queued' — and `hydrateMediaCatalog` wins at the next boot,
+	   resurrecting exactly the stranding the settle exists to prevent (repaired only one boot later still,
+	   incidentally, by `reconcileStrandedGates`).
+	   DRIVEN THROUGH `hub.terminalFailureSinks()`, which is the bag app.ts now passes, so this arm reds if
+	   that bag loses `persist` — the same way the arm above reds for the hub's own paths. What it cannot
+	   see is app.ts going back to building its own bag; that is the reason the method exists at all, so
+	   there is one bag rather than two sites that must remember the same thing. */
+	const { hub, jobs, mediaById, persisted } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.assign(job.id, 'w1', T0 + 10_000, T0);
+	jobs.accept(job.id, T0 + 40_000, T0 + 1);
+	// One attempt short of the cap (maxAttempts is 3), so the next lease expiry is terminal rather than a requeue.
+	jobs.progress(job.id, { attempts: 2, leaseExpiresAt: T0 + 40_000 }, T0 + 2);
+
+	const clock = T0 + 60_000; // past the progress lease
+	const reaper = new JobReaper(jobs, {
+		now: () => clock,
+		tickMs: 1_000_000,
+		onFailed: (dead) => reportTerminalFailure(dead, 'reaper', hub.terminalFailureSinks())
+	});
+	expect(reaper.tick()).toBe(1);
+
+	expect(jobs.byId(job.id)!.status).toBe('failed');
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled in memory — this half always worked
+	expect(
+		persisted,
+		'the reaper settled the gate in memory and never persisted it, so the next boot reads "queued" back'
+	).toContain('m1');
+});
+
 // ── 2. the unservable TTL, driven by the clock rather than by the test ─────────────────────────────
 
 test('an unservable job reaches terminal failed on the reaper clock, with nobody calling dispatch', () => {

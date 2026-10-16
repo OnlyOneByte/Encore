@@ -8,9 +8,11 @@
  * which is why a drop clears the draft instead of holding it. That is the rule `/queue`'s `keyDraft` already
  * states for the ± keycaps, applied to the one other control that holds an optimistic value.
  *
- * The defect it exists for is on record in docs/UI-REVIEW.md finding C: the thumb followed the finger through a
- * drag the room never heard, and then sprang back on release — which reads as the app being broken rather than
- * as the network being down.
+ * The defect it exists for is on record in docs/UI-REVIEW.md finding C: the control followed the finger through a
+ * drag the room never heard, and then sprang back on release — which reads as the app being broken rather than as
+ * the network being down. THIS MODULE OWNS THE DRAFT HALF of that, which is the spring-back and the readout;
+ * holding the primitive's own copy of the value still is `GuidingTrack.svelte`'s, and neither half fixes the
+ * finding alone. The note in `input` below records what was measured when only this half existed.
  *
  * WHY A MODULE rather than four `let`s in the route. This is arithmetic over a clock and a boolean, and the
  * component-mount harness is gone (bunfig.toml records why), so logic left in a `.svelte` file is logic no bun
@@ -89,9 +91,19 @@ export function createGuideSend(opt: GuideSendOptions): GuideSend {
 				return;
 			}
 			/* Inside the window nothing is sent, so the draft is the only thing that can track the finger — and it
-			   may only do so while the wire is known good. With the socket down the control therefore does not move
-			   at all, which is what the ± keycaps do and is honest for the same reason: before the draft existed
-			   this slider was honest by accident, because it read the server value and so simply could not move. */
+			   may only do so while the wire is known good. With the socket down the DRAFT therefore does not advance,
+			   and the readout, which reads `guideDraft ?? guideServerPct`, shows the room's level throughout.
+			   THAT IS AS FAR AS THIS MODULE REACHES, and claiming more here was a false comment worth recording: it
+			   used to read "the control therefore does not move at all", which is a property of the whole control and
+			   not of a draft — and it was measured FALSE. bits-ui keeps its own copy of the slider's value, so the
+			   thumb, the filled range and `aria-valuenow` advanced on the refused command anyway (0 → 95 offline
+			   against a room at 0%) and survived the reconnect, while the readout held. The rest of the promise is
+			   `GuidingTrack.svelte`, which binds that value to a getter over the caller's `pct` so there is no second
+			   copy left to diverge; its header carries the measurements. Both halves are load-bearing and
+			   tests/unit/lib/player-command-drop.test.ts pins each, because either one alone restores the defect.
+			   The ± keycaps need the draft half ALONE, and that is why the analogy does not carry further: they render
+			   the number themselves and own no widget holding a value of its own. It is also why they were honest by
+			   accident before any draft existed — they read the server value and so simply could not move. */
 			if (landed) opt.onDraft(pct);
 			pending = setTimer(() => {
 				pending = null;

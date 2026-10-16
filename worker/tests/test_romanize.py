@@ -15,11 +15,12 @@ import pytest
 
 from encore_worker.domain.lyrics import language, romanize
 
-#: One line per backend, in the script that backend is for.
+#: One SYNTHETIC line per backend, in the script that backend is for — never a sheet's words
+#: (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
 LINES = {
-    "zh": "我来到你的城市",
-    "ja": "夜に駆ける",
-    "ko": "오빤 강남스타일",
+    "zh": "山水风云雨雪",
+    "ja": "山の上に雲が流れる",
+    "ko": "바다 하늘 구름들",
     "ru": "Привет мир",
     "ar": "مرحبا بالعالم",
 }
@@ -58,13 +59,13 @@ def test_an_unknown_language_code_is_not_an_error() -> None:
 
 def test_a_latin_only_line_is_never_romanised() -> None:
     """A mixed-script sheet's English lines would otherwise each print a shouted copy of themselves."""
-    assert not romanize.needs_romanization("oh my love")
-    assert romanize.romanization_of("oh my love", shouting) is None
+    assert not romanize.needs_romanization("oh my friend")
+    assert romanize.romanization_of("oh my friend", shouting) is None
 
 
 def test_a_line_with_one_non_latin_letter_is_romanised() -> None:
-    assert romanize.needs_romanization("光年之外 oh my love")
-    assert romanize.romanization_of("光年之外 oh my love", shouting) == "光年之外 OH MY LOVE"
+    assert romanize.needs_romanization("山水风云 a latin chorus")
+    assert romanize.romanization_of("山水风云 a latin chorus", shouting) == "山水风云 A LATIN CHORUS"
 
 
 def test_punctuation_and_digits_are_not_a_script() -> None:
@@ -76,14 +77,14 @@ def test_punctuation_and_digits_are_not_a_script() -> None:
 
 
 def test_no_backend_means_no_field() -> None:
-    assert romanize.romanization_of("我来到你的城市", None) is None
+    assert romanize.romanization_of(LINES["zh"], None) is None
 
 
 def test_an_answer_that_only_repeats_the_line_is_dropped() -> None:
     """A backend that cannot read a script tends to hand the text straight back; printing it under itself
     is noise, and the TV's `romanization` field is meant to be absent in that case."""
-    assert romanize.romanization_of("我来到你的城市", lambda text: text) is None
-    assert romanize.romanization_of("我来到你的城市", lambda text: " " * len(text)) is None
+    assert romanize.romanization_of(LINES["zh"], lambda text: text) is None
+    assert romanize.romanization_of(LINES["zh"], lambda text: " " * len(text)) is None
 
 
 def test_whitespace_is_collapsed() -> None:
@@ -99,7 +100,7 @@ def test_a_backend_that_raises_costs_that_line_its_romanisation_and_nothing_else
     def explode(text: str) -> str:
         raise RuntimeError(f"no dictionary for {text!r}")
 
-    assert romanize.romanization_of("我来到你的城市", explode) is None
+    assert romanize.romanization_of(LINES["zh"], explode) is None
 
 
 def test_the_factory_builds_each_language_once() -> None:
@@ -114,9 +115,9 @@ def test_the_factory_builds_each_language_once() -> None:
 @pytest.mark.parametrize(
     ("code", "package", "expected"),
     [
-        ("zh", "pypinyin", "wǒ lái dào nǐ de chéng shì"),
-        ("ja", "cutlet", "Yoru ni kakeru"),
-        ("ko", "uroman", "obban gangnamseutail"),
+        ("zh", "pypinyin", "shān shuǐ fēng yún yǔ xuě"),
+        ("ja", "cutlet", "Yama no ue ni kumo ga nagareru"),
+        ("ko", "uroman", "bada haneul gureumdeul"),
     ],
 )
 def test_the_shipped_backend_reads_its_own_script(code: str, package: str, expected: str) -> None:
@@ -140,4 +141,4 @@ def test_a_shipped_backend_leaves_a_latin_line_alone() -> None:
     safe if a later wave moves that gate."""
     if find_spec("pypinyin") is None:
         pytest.skip("pypinyin is not installed: the `romanize` extra is optional by design")
-    assert romanize.romanization_of("oh my love", romanize.build_romanizer("zh")) is None
+    assert romanize.romanization_of("oh my friend", romanize.build_romanizer("zh")) is None

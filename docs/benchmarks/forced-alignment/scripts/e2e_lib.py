@@ -589,10 +589,10 @@ def load_truth_words(path: Path, lines: Sequence[TruthLine]) -> tuple[TruthWord,
 
 
 def load_truth_syllables(path: Path, lines: Sequence[TruthLine]) -> tuple[TruthSyllable, ...] | None:
-    """`amll.py`'s `truth-syllables.json`, or None when absent or when one span is not where it says.
+    """`amll.py`'s `truth-syllables.json`, or None when there is NO FILE — every English song.
 
-    EVERY OFFSET IS CHECKED against its own line's text: a file whose spans have drifted out of their line
-    would score every unit of that line against the wrong onset, silently.
+    EVERY OFFSET IS CHECKED against its own line's text, and a DRIFTED one RAISES: answering None would
+    drop the song out of the metric's numerator AND denominator in silence (review r1-tests-20).
     """
     if not path.is_file():
         return None
@@ -600,8 +600,14 @@ def load_truth_syllables(path: Path, lines: Sequence[TruthLine]) -> tuple[TruthS
     out: list[TruthSyllable] = []
     for entry in raw:
         index, at, text = int(entry["line"]), int(entry["at"]), str(entry["text"])
-        if not 0 <= index < len(lines) or lines[index].text[at : at + len(text)] != text:
-            return None
+        if not 0 <= index < len(lines):
+            raise ValueError(f"{path}: syllable at line {index}, which this truth does not have")
+        if lines[index].text[at : at + len(text)] != text:
+            raise ValueError(
+                f"{path}: the syllable at line {index} offset {at} is not where it says it is; this truth "
+                "file has drifted from its own lines and would score every unit of that line against the "
+                "wrong onset — regenerate it with scripts/amll.py"
+            )
         out.append(TruthSyllable(index, at, text, float(entry["start"]), float(entry["end"])))
     return tuple(out)
 
@@ -702,6 +708,13 @@ def discover(
 def tfr_stem(root: Path, slug: str) -> Path:
     """Where `e2e.py --prepare-tfr` leaves a tfr song's production-shaped vocals stem."""
     return root / slug / "mix" / "vocals.wav"
+
+
+def nonlatin_language_of(slug: str) -> str | None:
+    """The language an AMLL slug DECLARES — they are named `amll-<language>-<title>` — or None for a slug
+    not shaped that way, which is nothing to check against."""
+    parts = slug.split("-")
+    return parts[1] if len(parts) > 2 and parts[0] == AMLL_DIR else None
 
 
 def select(songs: Sequence[Song], spec: str | None) -> list[Song]:
@@ -1183,6 +1196,9 @@ class SyllableScore:
     interpolated: int
     #: Truth syllables whose offset no published unit covers (a line published with other words).
     unpaired: int
+    #: Truth syllables of a line the document does not carry — COVERAGE, not pairing, and what keeps
+    #: `aligned + interpolated + unpaired + unpublished == in_text` (r1-spec-8).
+    unpublished: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1223,8 +1239,9 @@ def score_syllables(song: Song, claims: Claims, doc: Sequence[DocLine]) -> Sylla
     """Every truth syllable against the published unit that COVERS it, or None without a syllable truth.
 
     THE DENOMINATOR IS THE TRUTH'S, so the arms are comparable: with the whitespace rule a Chinese line is
-    one word, which covers every syllable of its line and is scored once per syllable against each; with
-    `nonlatin-units` each hanzi has a unit of its own. An EMPTY `doc` still reports `in_text`.
+    one word covering every syllable of its line, and with `nonlatin-units` each hanzi has a unit of its own.
+    Every truth syllable lands in exactly ONE bucket — a line the document dropped is `unpublished` — so the
+    four counts sum to `in_text` and coverage cannot leave the denominator unremarked (r1-spec-8).
     """
     if song.syllables is None:
         return None
@@ -1233,12 +1250,14 @@ def score_syllables(song: Song, claims: Claims, doc: Sequence[DocLine]) -> Sylla
         by_line.setdefault(syllable.line, []).append(syllable)
     errors: list[float] = []
     interpolated = unpaired = 0
+    carried: set[int] = set()
     for line in doc:
         if line.source is None:
             continue
         claim = claims.lines[line.source]
         if claim.truth is None:
             continue
+        carried.add(claim.truth)
         units = _published_units(song.truth[claim.truth].text, line)
         for truth in by_line.get(claim.truth, ()):
             covering = next((unit for unit in units if unit.at <= truth.at < unit.until), None)
@@ -1248,8 +1267,10 @@ def score_syllables(song: Song, claims: Claims, doc: Sequence[DocLine]) -> Sylla
                 errors.append(covering.start - truth.start)
             else:
                 interpolated += 1
-    in_text = sum(len(by_line.get(index, ())) for index in claims.truth_indexes())
-    return SyllableScore(tuple(errors), in_text, interpolated, unpaired)
+    asked = list(claims.truth_indexes())
+    in_text = sum(len(by_line.get(index, ())) for index in asked)
+    unpublished = sum(len(by_line.get(index, ())) for index in asked if index not in carried)
+    return SyllableScore(tuple(errors), in_text, interpolated, unpaired, unpublished)
 
 
 # ── the highlight, as the TV shows it ────────────────────────────────────────────────────────────────
@@ -1265,7 +1286,7 @@ TV_ORPHAN_MAX_SEC = 1.0
 
 #: `lyrics.ts`'s `CJK_JOINS`, as RANGES: Python's `re` has no Script_Extensions, so the TypeScript's
 #: `\p{scx=Han|Hiragana|Katakana}` + fullwidth-punctuation class was ENUMERATED over all 0x110000 codepoints
-#: and compressed here — 55 ranges, 104 411 codepoints. `tv_parity.py` holds the CJK cases that pin the two.
+#: and compressed here; `cjk_join_ranges` + `tv_parity.py --check` hold both trees to that enumeration.
 TV_CJK_JOINS = re.compile(
     "["
     "·̣̅⺀-⺙⺛-⻳⼀-⿕⿰-⿿、-〃々-】"
@@ -1280,6 +1301,20 @@ TV_CJK_JOINS = re.compile(
     "\U00031350-\U00033479"
     "]"
 )
+
+
+def cjk_join_ranges() -> list[list[int]]:
+    """`TV_CJK_JOINS` enumerated over every codepoint, as inclusive `[lo, hi]` INTEGER ranges — what
+    `tv_parity.py` commits and both trees are held to (README, "Core: one gap rule")."""
+    out: list[list[int]] = []
+    for code in range(0x110000):
+        if not TV_CJK_JOINS.match(chr(code)):
+            continue
+        if out and out[-1][1] == code - 1:
+            out[-1][1] = code
+        else:
+            out.append([code, code])
+    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -1607,6 +1642,7 @@ def row_of(
             "in_text": syllables.in_text,
             "interpolated": syllables.interpolated,
             "unpaired": syllables.unpaired,
+            "unpublished": syllables.unpublished,
             "errors": list(syllables.errors),
         },
         "highlight": None if lit is None else {"hit": lit[0], "sung": lit[1]},
@@ -1702,7 +1738,8 @@ def syllable_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None
     """Syllable onset metrics POOLED over the rows, or None where no row carries a syllable truth.
 
     The same shape as `word_metrics`' onset half, over the truth's own spans: `in_text` counts every truth
-    syllable every case's text asked for, so a case that published nothing still adds its denominator.
+    syllable every case's text asked for, so a case that published nothing still adds its denominator;
+    `pco300_pct` is the ±300 reading over THAT denominator and `w300_pct` the aligned units' own (r1-spec-8).
     """
     carried = [r for r in rows if r.get("syllables")]
     if not carried:
@@ -1715,6 +1752,8 @@ def syllable_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None
         "in_text": in_text,
         "interpolated": sum(int(w["interpolated"]) for w in scored),
         "unpaired": sum(int(w["unpaired"]) for w in scored),
+        # A row written before this bucket existed carries none, and its absence is not a zero reading.
+        "unpublished": sum(int(w.get("unpublished") or 0) for w in scored),
         "gross": sum(1 for e in errors if abs(e) > GROSS_SEC),
     }
     for tol in WORD_TOLERANCES_SEC:
@@ -2061,12 +2100,14 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "final_end100_pct", "final_end_pm100"),
     ("words", "final_end250_pct", "final_end_pm250"),
     ("words", "final_end_bias_ms", "final_end_bias_ms"),
-    #: W8 stages 1-2 (§3.12's reject-if reads `syllable_pm300`): the non-Latin lane's only sub-line
-    #: accuracy, None on every English row for want of a syllable truth.
+    #: W8 stages 1-2 of docs/benchmarks/forced-alignment/README.md, whose reject-if reads
+    #: `syllable_pco300` (the TRUTH's denominator): the non-Latin lane's only sub-line accuracy, None on
+    #: every English row for want of a syllable truth.
     ("syllables", "aligned", "syllable_aligned"),
     ("syllables", "in_text", "syllable_in_text"),
     ("syllables", "interpolated", "syllable_interpolated"),
     ("syllables", "unpaired", "syllable_unpaired"),
+    ("syllables", "unpublished", "syllable_unpublished"),
     ("syllables", "gross", "syllable_gross"),
     ("syllables", "w100_pct", "syllable_pm100"),
     ("syllables", "w250_pct", "syllable_pm250"),
@@ -2289,6 +2330,20 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
                     f"  ±100 {_fmt(w.get('final_end100_pct'), 0, '.1f')}"
                     f"  ±250 {_fmt(w.get('final_end250_pct'), 0, '.1f')}"
                     f"  bias {_fmt(w.get('final_end_bias_ms'), 0, '+.0f')}ms"
+                )
+            syl = entry.get("syllables")
+            if syl and syl["in_text"] and group not in POOLED_GROUPS:
+                # BESIDE the word line and never instead of it: on a script with no spaces the two have
+                # different denominators on purpose (README, "W8 stages 1-2").
+                out.append(
+                    f"  {'':<8} syllables {syl['aligned']}/{syl['in_text']}"
+                    f"  ±100 {_fmt(syl['w100_pct'], 0, '.1f')}  ±250 {_fmt(syl['w250_pct'], 0, '.1f')}"
+                    f"  ±300 {_fmt(syl['w300_pct'], 0, '.1f')}"
+                    f"  PCO@.3 {_fmt(syl['pco300_pct'], 0, '.1f')}"
+                    f"  AAE {_fmt(syl.get('aae_ms'), 0, '.0f')}ms"
+                    f"  bias {_fmt(syl.get('bias_ms'), 0, '+.0f')}ms"
+                    f"  >2s {syl['gross']}"
+                    + (f"  (unpaired {syl['unpaired']})" if syl.get("unpaired") else "")
                 )
             lit = entry.get("highlight")
             if lit and group not in POOLED_GROUPS:

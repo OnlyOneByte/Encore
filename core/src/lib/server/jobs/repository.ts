@@ -7,6 +7,7 @@ import { jobs } from '../db/schema';
 import {
 	ulid,
 	isTerminalJob,
+	TERMINAL_JOB_STATUSES,
 	type Job,
 	type JobStatus,
 	type JobType,
@@ -19,6 +20,11 @@ import type { AttemptLedger, AttemptFacts } from './attempts';
 // A (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same set the partial unique index
 // `jobs_live_media_type_idx` enforces. A `ready` job STILL occupies the slot; only failed/canceled frees it.
 const SLOT_FREEING_STATUSES: JobStatus[] = ['failed', 'canceled'];
+
+// The steps that can still close one of a song's readiness gates, in pipeline order. `stems-upgrade` is
+// deliberately absent: it runs on an ALREADY singable song, so it is never what the room is waiting on.
+// Named once so `findOutstandingForMedia` and `mediaWithOutstandingJob` cannot answer over different chains.
+const OUTSTANDING_CHAIN: JobType[] = ['fetch', 'stems', 'align'];
 
 /** Optional fields a transition can patch alongside the status change. */
 export interface JobPatch {
@@ -138,13 +144,50 @@ export class JobRepository {
 	 *  mid-fetch or mid-align is not reported idle. `stems-upgrade` is excluded: background work on an
 	 *  already-finished song is not a step the room waits on. */
 	findOutstandingForMedia(mediaId: string): Job | null {
-		const chain: JobType[] = ['fetch', 'stems', 'align'];
-		for (const jobType of chain) {
+		for (const jobType of OUTSTANDING_CHAIN) {
 			const job = this.findLive(mediaId, jobType);
 			if (!job) continue; // never enqueued (a local file skips fetch) — look further down the chain
 			if (job.status !== 'ready') return job; // the step in flight or waiting
 		}
 		return null; // every enqueued step finished
+	}
+
+	/** `findOutstandingForMedia`'s SET-VALUED TWIN: every media with a job that could still close one of its
+	 *  readiness gates, in ONE select. THE SAME RULE, not a second statement of it — both walk
+	 *  `OUTSTANDING_CHAIN`, and both exclude a TERMINAL job, which is the trap `findLive` sets: it drops only
+	 *  failed/canceled, so it RETURNS a terminal `ready` job and any predicate built on its truthiness is
+	 *  wrong. tests/unit/server/jobs/outstanding-job-parity.test.ts pins the two against each other over
+	 *  every job status so the pair cannot drift.
+	 *
+	 *  WHY A SET EXISTS AT ALL, written as what was MEASURED rather than as the intuition, because the
+	 *  intuition is wrong in a way worth recording. The dead-turn reader (dead-turns.ts) asks this about
+	 *  every media holding a queued entry, on every reaper tick — ~80 such media on the owner's library
+	 *  copy, so up to ~240 point selects every 3 s.
+	 *  · SQLITE IS NOT WHAT PAYS FOR THAT. Measured in bun:sqlite with both statements prepared, the one
+	 *    set query and the 240 point selects are a WASH: ~0.85 ms each. An earlier draft of this comment
+	 *    claimed the set was "one scan of the few live rows", and that is simply false — see below.
+	 *  · DRIZZLE IS WHAT PAYS. Through the app's own stack, which builds a fresh statement per call, the
+	 *    same comparison is ~1 ms against ~85 ms (measured over 300 passes, warm, on that copy). So the set
+	 *    is right here for a JS-side reason — per-call query-builder overhead — and not for a query-cost
+	 *    one. The per-media walk is the better SQL of the two, and if these calls ever stop going through a
+	 *    builder that is the shape to return to; `findOutstandingForMedia` is still here and still pinned.
+	 *
+	 *  THE PLAN IS `SCAN jobs`, HONESTLY, and it grows with the ledger forever: every row, 4,803 of them on
+	 *  that copy and EVERY ONE of them terminal (measured 2026-10-15), to return the empty set. The partial
+	 *  index `jobs_live_media_type_idx` would narrow that to the non-failed/canceled rows — 153 of the 4,803
+	 *  — and CANNOT be used here: it is keyed `(media_id, job_type)`, so a status-only predicate has no
+	 *  leading column, and while SQLite does scan the index when its own WHERE is spelled out as a redundant
+	 *  LITERAL clause, Drizzle always binds parameters, and with `?` placeholders the planner cannot prove
+	 *  the implication and falls back to the table. Both plans verified with EXPLAIN QUERY PLAN; adding that
+	 *  clause here buys exactly nothing, which is why it is not here. At ~1 ms per tick this is not today's
+	 *  problem, and the fix when it becomes one is an index on `status`, not a cleverer predicate. */
+	mediaWithOutstandingJob(): Set<string> {
+		const rows = this.#db
+			.select({ mediaId: jobs.mediaId })
+			.from(jobs)
+			.where(and(inArray(jobs.jobType, OUTSTANDING_CHAIN), notInArray(jobs.status, [...TERMINAL_JOB_STATUSES])))
+			.all();
+		return new Set(rows.map((r) => r.mediaId));
 	}
 
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */

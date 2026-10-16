@@ -50,21 +50,21 @@ def doc(*paragraphs: str) -> str:
 #: Two syllables, a space, then three: one line, two words, as a zh TTML writes a word boundary.
 TWO_WORDS = (
     '<p begin="00:01.000" end="00:03.500" ttm:agent="v1">'
-    '<span begin="00:01.000" end="00:01.400">我</span>'
-    '<span begin="00:01.400" end="00:01.900">来</span> '
-    '<span begin="00:02.000" end="00:02.400">到</span>'
-    '<span begin="00:02.400" end="00:02.900">你</span>'
-    '<span begin="00:02.900" end="00:03.500">的</span></p>'
+    '<span begin="00:01.000" end="00:01.400">山</span>'
+    '<span begin="00:01.400" end="00:01.900">水</span> '
+    '<span begin="00:02.000" end="00:02.400">风</span>'
+    '<span begin="00:02.400" end="00:02.900">云</span>'
+    '<span begin="00:02.900" end="00:03.500">雨</span></p>'
 )
 
 
 def test_a_word_is_the_ttmls_own_whitespace_grouping() -> None:
     parsed = amll.parse(doc(TWO_WORDS))
     (line,) = parsed.lines
-    assert [word.text for word in line.words] == ["我来", "到你的"]
+    assert [word.text for word in line.words] == ["山水", "风云雨"]
     assert [(word.start, word.end) for word in line.words] == [(1.0, 1.9), (2.0, 3.5)]
     assert [word.syllables for word in line.words] == [2, 3]
-    assert line.text == "我来 到你的" and line.start == 1.0 and line.end == 3.5
+    assert line.text == "山水 风云雨" and line.start == 1.0 and line.end == 3.5
     assert parsed.syllables == 5 and line.agent == "v1"
     assert parsed.meta["musicName"] == "歌" and parsed.restamped_lines == 0
 
@@ -81,7 +81,7 @@ def test_the_voices_the_bench_does_not_time_are_dropped_and_counted() -> None:
         '<span ttm:role="x-roman">a</span></p>'
     )
     parsed = amll.parse(doc(TWO_WORDS, extras))
-    assert [line.text for line in parsed.lines] == ["我来 到你的", "啊"]
+    assert [line.text for line in parsed.lines] == ["山水 风云雨", "啊"]
     assert parsed.dropped_roles == {"x-bg": 1, "x-translation": 1, "x-roman": 1}
     assert parsed.syllables == 6, "the background syllable is not one of the timed ones"
 
@@ -141,7 +141,7 @@ def test_what_it_writes_is_what_the_harness_reads(tmp_path: Path) -> None:
 
     truth = lib.load_truth_lines(directory / "truth-lines.json")
     words = lib.load_truth_words(directory / "truth-words.json", truth)
-    assert [line.text for line in truth] == ["我来 到你的"]
+    assert [line.text for line in truth] == ["山水 风云雨"]
     assert words is not None, "a word count that disagreed with the line texts would answer None"
     assert [(word.start, word.end) for word in words] == [(1.0, 1.9), (2.0, 3.5)]
     assert sum(len(line.text.split()) for line in truth) == len(words)
@@ -165,11 +165,11 @@ def test_the_syllable_file_is_this_lanes_only_sub_line_truth(tmp_path: Path) -> 
     syllables = lib.load_truth_syllables(directory / "truth-syllables.json", truth)
     assert syllables is not None, "an offset that was not where it said would answer None"
     assert [(s.at, s.text) for s in syllables] == [
-        (0, "我"),
-        (1, "来"),
-        (3, "到"),
-        (4, "你"),
-        (5, "的"),
+        (0, "山"),
+        (1, "水"),
+        (3, "风"),
+        (4, "云"),
+        (5, "雨"),
     ], "offset 2 is the space `Line.text` writes between the two words"
     assert all(truth[s.line].text[s.at : s.until] == s.text for s in syllables)
     assert [s.start for s in syllables] == [1.0, 1.4, 2.0, 2.4, 2.9]
@@ -177,7 +177,13 @@ def test_the_syllable_file_is_this_lanes_only_sub_line_truth(tmp_path: Path) -> 
 
 def test_a_drifted_syllable_offset_is_refused_rather_than_scored(tmp_path: Path) -> None:
     """Scoring a unit against the wrong syllable's onset is the one failure this truth set could hide, so
-    the loader checks every offset against its own line's text."""
+    the loader checks every offset against its own line's text.
+
+    IT RAISES, and it answers None only for an ABSENT file (review r1-tests-20). Answering None for both
+    made a drifted file indistinguishable from "this corpus has no syllable truth": `discover` stored it on
+    `Song.syllables`, `score_syllables` returned None, and `syllable_metrics` filtered the row out — so the
+    song left the numerator AND the denominator and the "zh | 4 songs" header went on saying four.
+    """
     directory = tmp_path / lib.AMLL_DIR / "amll-zh-test"
     directory.mkdir(parents=True)
     (directory / "lyrics.ttml").write_text(doc(TWO_WORDS), encoding="utf-8")
@@ -185,7 +191,13 @@ def test_a_drifted_syllable_offset_is_refused_rather_than_scored(tmp_path: Path)
     truth = lib.load_truth_lines(directory / "truth-lines.json")
     path = directory / "truth-syllables.json"
     written = json.loads(path.read_text(encoding="utf-8"))
+    assert lib.load_truth_syllables(path, truth) is not None, "as written it loads"
     written["syllables"][0]["at"] = 1
     path.write_text(json.dumps(written, ensure_ascii=False), encoding="utf-8")
-    assert lib.load_truth_syllables(path, truth) is None
+    with pytest.raises(ValueError, match="drifted from its own lines"):
+        lib.load_truth_syllables(path, truth)
+    written["syllables"][0].update({"at": 0, "line": 7})
+    path.write_text(json.dumps(written, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="which this truth does not have"):
+        lib.load_truth_syllables(path, truth)
     assert lib.load_truth_syllables(directory / "absent.json", truth) is None

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { at } from '$test';
 
 /*
@@ -24,6 +24,15 @@ import { at } from '$test';
 
 const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
 const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+
+/* THE WHOLE TREE, because the two files above are where the call sites happen to be TODAY and the exhaustiveness
+   arm at the bottom claims something about tomorrow. Reading only those two was a hole a verifier walked
+   through: a bare `room.command({ cmd: 'skip' });` pasted into `src/routes/+page.svelte` left this suite green,
+   and that is one of five files importing the singleton. Directories have no matching extension, so the filter
+   is also what keeps `readFileSync` off them. */
+const SRC = readdirSync(at('src'), { recursive: true, encoding: 'utf8' })
+	.filter((rel) => /\.(svelte|ts)$/.test(rel))
+	.map((rel) => ({ rel: rel.replaceAll('\\', '/'), body: readFileSync(at('src', rel), 'utf8') }));
 
 test('the transport buttons go through one reporting helper, not three bare sends', () => {
 	// One helper, because three copies of the same `if (!room.command(...))` is how two of them keep the old copy.
@@ -96,29 +105,91 @@ test('the guide draft is cleared by the ROOM agreeing, and by a song change', ()
 	expect(queuePage).toContain('oncommit={(pct) => guideSend.commit(pct)}');
 });
 
+test('the guide slider is CONTROLLED, so a refused command cannot leave the thumb out there', () => {
+	/* THE OTHER HALF OF THE SAME FINDING, and the half that shipped once already. Holding the draft back is not
+	   enough on its own: bits-ui keeps its own copy of `value` and reads every thumb position, the filled range
+	   and `aria-valuenow` out of it, so a plain `value={shown}` let all three advance on a command the room never
+	   heard — measured offline against a room at 0%, `aria-valuenow` reached 95 and the thumb 92% of the track
+	   while the readout still said "Off", and it was STILL THERE after the socket came back.
+	   A `bind:` cannot travel through a spread, which is why FieldSlider has to declare `value` rather than let it
+	   ride `...rest`; both halves are pinned because either one alone restores the defect. */
+	const guidingTrack = readFileSync(at('src/lib/components/GuidingTrack.svelte'), 'utf8');
+	const fieldSlider = readFileSync(at('src/lib/ui/FieldSlider.svelte'), 'utf8');
+	expect(guidingTrack).toContain('bind:value={level, requestLevel}');
+	// The getter returns the caller's authority and NOTHING else — a mirror in local state is the defect wearing a
+	// binding.
+	expect(guidingTrack).toMatch(/function level\(\): number \{\s*return shown;\s*\}/);
+	/* THE NEGATIVE IS SCOPED TO THE ELEMENT, not the file, and that is not fussiness: a file-wide
+	   `not.toContain('value={shown}')` went red on the COMMENT above the binding, which names the defective
+	   spelling in order to explain it. A negative that forbids writing down what was fixed buys a passing test by
+	   deleting the account — the same trap the guideDraft test below records. So the slice is the one element's
+	   attribute list, from `<FieldSlider` to the `/>` that closes it. */
+	const el = guidingTrack.slice(
+		guidingTrack.indexOf('<FieldSlider'),
+		guidingTrack.indexOf('/>', guidingTrack.indexOf('<FieldSlider'))
+	);
+	expect(el).toContain('bind:value={level, requestLevel}');
+	expect(el).not.toContain('value={shown}');
+	// A spread would hide a `value` the slice cannot see, which would make the negative above vacuous.
+	expect(el).not.toContain('{...');
+	expect(fieldSlider).toContain('value = $bindable()');
+	expect(fieldSlider).toContain('bind:value={value as never}');
+});
+
 test('the ± keycaps still refuse to move the draft on a dropped command', () => {
 	// The site that already had the treatment, pinned so the pattern cannot be undone at one of the five.
 	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next })) return;");
 });
 
-test('NO call site of room.command discards the boolean', () => {
-	/* The exhaustive arm, and the reason this file is worth having. Every `room.command(` under src/ must sit
-	   inside something that reads its result: an `if`, a `return`, or an arrow body handed to `createGuideSend`.
-	   A bare statement call is the defect, and it is the shape a sixth control added later would arrive in. */
-	const sites = [...layout.matchAll(/room\.command\(/g), ...queuePage.matchAll(/room\.command\(/g)];
-	// Three in the layout's helper and the route (one helper call, ±key, the guide send), so the count is a floor
-	// on the scan having found anything at all rather than a claim about the total.
-	expect(sites.length).toBeGreaterThanOrEqual(3);
+test('the scan this file rests on reaches every file that can host a call site', () => {
+	/* ANTI-VACUITY, asserted ahead of the arm that uses it: an exhaustiveness claim is only worth what its file
+	   list is worth, and this one was worth two files. The importers are DERIVED rather than listed, so a sixth
+	   one needs no edit here; what is pinned is that the scan sees all of them and that it sees the specific file
+	   the old two-file version was blind to. */
+	const importers = SRC.filter((f) => /import \{ room \} from '\$lib\/stores\/room'/.test(f.body)).map((f) => f.rel);
+	expect(importers).toContain('routes/+page.svelte');
+	expect(importers).toContain('routes/+layout.svelte');
+	expect(importers).toContain('routes/queue/+page.svelte');
+	expect(importers).toContain('routes/library/+page.svelte');
+	expect(importers).toContain('routes/song/[mediaId]/+page.svelte');
+	// A floor, not the total: a sixth importer is fine, a scan that found four is a broken scan.
+	expect(importers.length).toBeGreaterThanOrEqual(5);
+});
 
+test('NO call site of room.command discards the boolean, anywhere under src/', () => {
+	/* The exhaustive arm, and the reason this file is worth having. Every `.command(` under src/ must be on the
+	   room singleton AND must sit inside something that reads its result: an `if`, a `return`, or the send
+	   adapter handed to `createGuideSend`. A bare statement call is the defect, and it is the shape a sixth
+	   control added later would arrive in.
+	   SCANNED FOR `.command(` RATHER THAN `room.command(` so that an aliased receiver (`const r = room;
+	   r.command(…)`) is red rather than unseen — it would be a call site this guard could not reason about, so it
+	   has to be argued rather than smuggled in. The module that DEFINES the method is skipped: its own
+	   declaration is not a call site, and nothing there is spelled with a leading dot today anyway. */
+	const DEFINITION = 'lib/stores/room.ts';
 	/* AN ALLOW-LIST, NOT "anything but a bare statement", and that distinction is a bug this test caught in its
 	   own first draft. A permissive `=> room.command(` arm passed `onskip={() => room.command({cmd:'skip'})}` —
 	   which is the ORIGINAL DEFECT verbatim, since the prop's type is `() => void` and the returned boolean goes
 	   nowhere. So the only arrow body admitted is the send adapter handed to `createGuideSend`, whose caller
 	   does consume it. A new site must either test the boolean here or add its own arm with its own reason. */
 	const CONSUMES = /(?:if \(!?|return |send: \(pct\) => )$/;
-	for (const source of [layout, queuePage]) {
-		for (const m of source.matchAll(/(.*)room\.command\(/g)) {
-			expect(m[1]!).toMatch(CONSUMES);
+	const offenders: string[] = [];
+	let sites = 0;
+	for (const { rel, body } of SRC) {
+		if (rel === DEFINITION) continue;
+		for (const m of body.matchAll(/(.*)\.command\(/g)) {
+			sites += 1;
+			const lead = m[1]!;
+			if (!lead.endsWith('room')) {
+				offenders.push(`${rel}: receiver is not the room singleton — ${m[0]!.trim()}`);
+				continue;
+			}
+			if (!CONSUMES.test(lead.slice(0, -'room'.length))) {
+				offenders.push(`${rel}: result discarded — ${m[0]!.trim()}`);
+			}
 		}
 	}
+	expect(offenders).toEqual([]);
+	// Three today: the layout's one `transport` helper, ±key, and the guide send. A floor on the scan having
+	// found anything at all rather than a claim about the total — a fourth well-formed site is not a failure.
+	expect(sites).toBeGreaterThanOrEqual(3);
 });

@@ -111,7 +111,7 @@ def build_transliterator(language_code: str) -> Romanizer | None:
 
 
 def _pypinyin(*, toned: bool = True) -> Romanizer | None:
-    """Mandarin pinyin: `我来到` -> `wǒ lái dào`, or `wo lai dao` untoned. MIT, pure Python, no download."""
+    """Mandarin pinyin: `山水风` -> `shān shuǐ fēng`, or `shan shui feng` untoned. MIT, pure Python."""
     try:
         from pypinyin import Style, lazy_pinyin  # noqa: PLC0415
     except ImportError:
@@ -125,7 +125,7 @@ def _pypinyin(*, toned: bool = True) -> Romanizer | None:
 
 
 def _cutlet() -> Romanizer | None:
-    """Japanese, as Hepburn romaji: `夜に駆ける` -> `Yoru ni kakeru`. MIT, over fugashi + unidic-lite."""
+    """Japanese, as Hepburn romaji: `雲が流れる` -> `Kumo ga nagareru`. MIT, over fugashi + unidic-lite."""
     try:
         import cutlet  # noqa: PLC0415
     except ImportError:
