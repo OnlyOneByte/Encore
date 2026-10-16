@@ -11,6 +11,7 @@ docs/arch/04-alignment.md §5.4.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -28,24 +29,26 @@ from tests.test_align_provenance import DIC, PathAligner
 from tests.test_align_steps import SUNG, SUNG_WORDS, Reporter, job, sung_stem
 from tests.test_lexical_gate import NamingAligner
 
-#: A Mandarin sheet, six lines, written as the script is: no spaces, so one whitespace token per line.
-MANDARIN = (
-    "我来到你的城市",
-    "走过你来时的路",
-    "想像着没我的日子",
-    "你是怎样的孤独",
-    "拿着你给的照片",
-    "熟悉的那一条街",
+#: A SYNTHETIC Han sheet, six lines, written as the script is: no spaces, so one whitespace token per line.
+#: Enumerations and not a sheet's words: the corpus is commercial music and no lyric text is committed to
+#: this tree (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
+HAN_SHEET = (
+    "一二三四五六七",
+    "甲乙丙丁戊己庚",
+    "金木水火土石山",
+    "东南西北中左右",
+    "春夏秋冬晨午夜",
+    "红黄蓝绿紫黑白",
 )
 
-#: Another song's Mandarin words — the wrong-text shape on this lane, on this song's own clock.
-WRONG_MANDARIN = (
-    "光年之外的你",
-    "缘分让我们相遇乱世以外",
-    "命运却要我们奋力求生存",
-    "我们等不到的未来",
-    "却要用尽一生等待",
-    "你是我的光年之外",
+#: Another sheet's Han words — the wrong-text shape on this lane, on this song's own clock.
+OTHER_HAN_SHEET = (
+    "子丑寅卯辰巳午",
+    "宫商角徵羽变闰",
+    "点线面体角边形",
+    "上中下前后内外",
+    "大小多少高低平",
+    "风雨雷电霜雾雪",
 )
 
 #: The bundle whisperx loads for Mandarin — the real name, so the matrix under test names a model
@@ -136,10 +139,10 @@ def test_a_cjk_lift_can_only_contrast_whole_lines_because_the_script_writes_no_s
     WHITESPACE tokens and a CJK sheet has one per line, so the contrast is the sheet's lines reordered rather
     than its words. Still a different target sequence, so a lift is measurable — but a far weaker one, which
     is what stage 1's script-aware units are for."""
-    assert all(len(line.split()) == 1 for line in MANDARIN), "no word boundary for the shuffle to use"
-    shuffled = lexical.shuffles_of(list(MANDARIN))
-    assert shuffled and all(sorted(lines) == sorted(MANDARIN) for lines in shuffled)
-    assert any(list(lines) != list(MANDARIN) for lines in shuffled), "the contrast is line order"
+    assert all(len(line.split()) == 1 for line in HAN_SHEET), "no word boundary for the shuffle to use"
+    shuffled = lexical.shuffles_of(list(HAN_SHEET))
+    assert shuffled and all(sorted(lines) == sorted(HAN_SHEET) for lines in shuffled)
+    assert any(list(lines) != list(HAN_SHEET) for lines in shuffled), "the contrast is line order"
 
 
 # ── the global engine, on a CJK sheet ─────────────────────────────────────────────────────────────────
@@ -157,14 +160,14 @@ async def test_a_cjk_sheet_publishes_its_line_timings_unvouched_and_never_words(
     out = Reporter()
     steps = impl(tmp_path, reporter=out, aligner=aligner)
 
-    words = await steps.time_text(request(tmp_path, sheet(MANDARIN), stem, language="zh"))
+    words = await steps.time_text(request(tmp_path, sheet(HAN_SHEET), stem, language="zh"))
     assert words is None, "a bundle with no wrong-text gate may not time words"
     assert ("align-global", "declined", None) in out.states
     assert any("no wrong-text gate can read this text" in why for why in out.reasons)
     assert aligner.asked == [stem.vocals_path], "the routing still happened: one emission pass on the stem"
 
     lines = await steps.time_text(
-        request(tmp_path, sheet(MANDARIN), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
+        request(tmp_path, sheet(HAN_SHEET), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
     )
     assert isinstance(lines, TimedDoc), lines
     assert lines.timing == TIMING_LINE and lines.confidence == "low"
@@ -177,14 +180,14 @@ async def test_a_cjk_sheet_publishes_its_line_timings_unvouched_and_never_words(
 async def test_a_wrong_cjk_text_times_no_words_either_and_the_reason_is_the_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Another song's Mandarin on this song's clock: the shape the review rated HIGH, because on this lane
+    """Another sheet's Han words on this song's clock: the shape the review rated HIGH, because on this lane
     the lift cannot refuse it. It declines for want of a gate rather than being judged — the honest answer,
     and the one that cannot publish a wrong text as word timings."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
     stem = sung_stem(tmp_path)
     out = Reporter()
     steps = impl(tmp_path, reporter=out, aligner=NamingAligner(singing(stem), ZH_BUNDLE))
-    assert await steps.time_text(request(tmp_path, sheet(WRONG_MANDARIN), stem, language="zh")) is None
+    assert await steps.time_text(request(tmp_path, sheet(OTHER_HAN_SHEET), stem, language="zh")) is None
     assert any("may time LINES but not WORDS" in why for why in out.reasons)
 
 
@@ -199,7 +202,7 @@ async def test_a_windowed_aligner_times_no_words_on_a_routed_bundle(tmp_path: Pa
     routed = WindowedAligner()
     out = Reporter()
     got = await impl(tmp_path, reporter=out, aligner=routed).time_text(
-        request(tmp_path, sheet(MANDARIN), stem, language="zh")
+        request(tmp_path, sheet(HAN_SHEET), stem, language="zh")
     )
     assert got is None, "words with no witness at all"
     assert routed.languages == [], "declined BEFORE the aligner was paid for"
@@ -216,19 +219,32 @@ async def test_a_windowed_aligner_times_no_words_on_a_routed_bundle(tmp_path: Pa
 
 async def test_the_windowed_engine_keeps_the_two_exemptions_the_global_one_has(tmp_path: Path) -> None:
     """A transcript's words were heard on THIS recording, so they can be misheard but never another song's;
+    a human PIN publishes anyway, all-`low` and unvouched, as `_time_text_global` has it (review r1-tests-21);
     `h3-ungated-words` is the control that restores the pre-W8 behaviour for a measurement."""
     stem = sung_stem(tmp_path)
     heard = await impl(tmp_path, reporter=Reporter(), aligner=WindowedAligner()).time_text(
-        request(tmp_path, sheet(MANDARIN, tier=Tier.ASR), stem, language="zh")
+        request(tmp_path, sheet(HAN_SHEET, tier=Tier.ASR), stem, language="zh")
     )
     assert isinstance(heard, TimedDoc) and heard.timing == "word"
+
+    out = Reporter()
+    pinned = TimeRequest(
+        job=job(tmp_path, pinnedRef="lyrics/pinned.json"),
+        text=sheet(HAN_SHEET),
+        audio=stem,
+        language="zh",
+    )
+    chosen = await impl(tmp_path, reporter=out, aligner=WindowedAligner()).time_text(pinned)
+    assert isinstance(chosen, TimedDoc), "a person's own text is not declined out from under them"
+    assert chosen.confidence == "low" and chosen.vouched is False
+    assert ("align-windowed", "pin-unvouched", None) in out.states
 
     control = await impl(
         tmp_path,
         reporter=Reporter(),
         aligner=WindowedAligner(),
         experiments=frozenset({"h3-ungated-words"}),
-    ).time_text(request(tmp_path, sheet(MANDARIN), stem, language="zh"))
+    ).time_text(request(tmp_path, sheet(HAN_SHEET), stem, language="zh"))
     assert isinstance(control, TimedDoc), "the control arm is the only way to read this lane end to end"
 
 
@@ -249,7 +265,7 @@ async def test_a_published_cjk_line_carries_its_romanisation_as_an_extra_field(
     reaches no target sequence (XA-19; docs/arch/04-alignment.md §11.2)."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
     stem = sung_stem(tmp_path)
-    said = {line: f"r:{index}" for index, line in enumerate(MANDARIN)}
+    said = {line: f"r:{index}" for index, line in enumerate(HAN_SHEET)}
     steps = impl(
         tmp_path,
         reporter=Reporter(),
@@ -257,11 +273,11 @@ async def test_a_published_cjk_line_carries_its_romanisation_as_an_extra_field(
         romanizer=romanizer_of(said),
     )
     lines = await steps.time_text(
-        request(tmp_path, sheet(MANDARIN), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
+        request(tmp_path, sheet(HAN_SHEET), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
     )
     assert isinstance(lines, TimedDoc), lines
     published = json.loads((tmp_path / lines.ref).read_text(encoding="utf-8"))
-    assert [line["text"] for line in published["lines"]] == list(MANDARIN), "the original text, untouched"
+    assert [line["text"] for line in published["lines"]] == list(HAN_SHEET), "the original text, untouched"
     assert [line["romanization"] for line in published["lines"]] == list(said.values())
     assert all("words" not in line for line in published["lines"]), "stage 0 publishes LINES"
 
@@ -281,7 +297,7 @@ async def test_a_box_with_no_romaniser_publishes_the_document_it_always_did(
             romanizer=romanizer,
         )
         lines = await steps.time_text(
-            request(tmp_path, sheet(MANDARIN), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
+            request(tmp_path, sheet(HAN_SHEET), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
         )
         assert isinstance(lines, TimedDoc), lines
         published = json.loads((tmp_path / lines.ref).read_text(encoding="utf-8"))
@@ -307,6 +323,34 @@ async def test_an_english_line_document_gains_nothing_even_with_a_romaniser_wire
     assert isinstance(lines, TimedDoc), lines
     published = json.loads((tmp_path / lines.ref).read_text(encoding="utf-8"))
     assert all("romanization" not in line for line in published["lines"])
+
+
+async def test_the_romaniser_is_built_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """uroman spends ~2 s building its tables and the factory is asked per published document, so building it
+    ON the loop stalls every other job this worker is running — progress frames and the heartbeat included
+    (review r1-correctness-3). A display extra may not cost that."""
+    monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
+    stem = sung_stem(tmp_path)
+    built: list[int] = []
+
+    def factory(_language: str) -> romanize.Romanizer:
+        built.append(threading.get_ident())
+        return lambda text: f"r:{text}"
+
+    steps = impl(
+        tmp_path,
+        reporter=Reporter(),
+        aligner=NamingAligner(singing(stem), ZH_BUNDLE),
+        romanizer=factory,
+    )
+    lines = await steps.time_text(
+        request(tmp_path, sheet(HAN_SHEET), stem, language="zh", knobs=frozenset({Knob.LINE_SYNC}))
+    )
+    assert isinstance(lines, TimedDoc), lines
+    assert built, "the factory was asked for this document's language"
+    assert threading.get_ident() not in built, "built on the loop's own thread"
 
 
 def test_the_shipped_worker_wires_the_factory_and_not_one_romaniser() -> None:

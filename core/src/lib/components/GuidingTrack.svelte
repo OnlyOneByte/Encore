@@ -19,6 +19,33 @@
 
 	const shown = $derived(Math.max(0, Math.min(100, Math.round(pct))));
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
+
+	/*
+	 * A CONTROLLED VALUE, and the thumb is the reason. `pct` is the caller's authority — on /queue it is
+	 * `guideDraft ?? guideServerPct`, a draft that only advances on a command that reached the wire — and the
+	 * READOUT above has always been honest because it reads `shown`. The slider did not: the primitive keeps its
+	 * own copy of `value`, so a plain `value={shown}` let it advance the thumb, the filled range and
+	 * `aria-valuenow` on a command the room never heard, and nothing pushed them back when the draft refused to
+	 * follow. Measured offline against a room at 0%: `aria-valuenow` went 0 -> 20 over twenty ArrowRights and 95
+	 * through a drag, the thumb centre 3% -> 92% of the track, and all of it was STILL THERE after the socket came
+	 * back. A screen reader announced a level the visible readout denied, and the next innocent keypress stepped
+	 * from the phantom value and sent it.
+	 * A function binding is the fix rather than an `$effect` writing a mirror back: bits-ui reads every thumb
+	 * position, every aria value and the range geometry out of this one box (`opts.value.current` throughout its
+	 * slider.svelte.js), so a getter makes `shown` the only thing any of them can render, and the setter makes a
+	 * move a REQUEST. Nothing is lost by refusing the write — the pointer path recomputes from the pointer
+	 * position on every move, and the keyboard path steps from the box, which is now the room's value, exactly as
+	 * /queue's ± keycaps step from `keyShift`.
+	 * NOT `{#key}` on a refusal, which was the other way to force it back: re-creating the slider drops focus, so
+	 * every dropped ArrowRight would throw a keyboard guest out of the control they were using.
+	 */
+	function level(): number {
+		return shown;
+	}
+	/** `type="single"` so the box holds a scalar; the array arm is the union's, not this control's. */
+	function requestLevel(next: number | number[] | undefined): void {
+		if (typeof next === 'number') oninput?.(next);
+	}
 </script>
 
 <div class={['gt', { disabled: !available }]}>
@@ -53,10 +80,9 @@
 		min={0}
 		max={100}
 		step={1}
-		value={shown}
+		bind:value={level, requestLevel}
 		disabled={!available}
 		label="Guiding track — original vocal level"
-		onValueChange={(v) => oninput?.(v)}
 		onValueCommit={(v) => oncommit?.(v)}
 	/>
 </div>

@@ -359,3 +359,12 @@ def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on(
     named = default_align_model("cpu")
     assert align_model_name("en", named) == named, "a configured bundle is what English loads"
     assert align_model_name("de", named) == align_model_name("de"), "and never what another language loads"
+    # THE NAME DESCRIBES THE LOAD, for every language `_bundle_of` answers (review r1-spec-12): an
+    # undetected language loads the configured bundle, so reporting `default:` would hand a calibrated
+    # matrix an unknown row and decline the words it is allowed to publish.
+    from encore_worker.adapters.ml import MMS_ALIGN_MODEL, WhisperXAligner
+
+    aligner = WhisperXAligner(device="cpu", model=named, nonlatin_model=MMS_ALIGN_MODEL)
+    for language in ("en", "", "de", "zh", "zz"):
+        loaded, reported = aligner._bundle_of(language), aligner._bundle_name(language)
+        assert loaded is None or loaded == reported, f"{language!r} loads {loaded} and reports {reported}"

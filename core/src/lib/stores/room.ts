@@ -296,16 +296,21 @@ export class RoomLink {
 			/* THE NOTICE IS PERSONAL. `media:status` is a room-wide broadcast by design — worker-hub records why —
 			   but this arm used to toast on EVERY connected phone, so one guest's dead job told seven other people
 			   to "try again" for a song they had never heard of, and it spent the one channel a guest's OWN refusals
-			   arrive on. The room is not left ignorant: every phone's /queue row for that entry already reads
-			   "Couldn't make karaoke".
+			   arrive on. The room is not left ignorant: every phone that RECEIVES this frame flips that entry's /queue
+			   row to the failed card, and a phone that did not — one that was offline, or joined later, or simply
+			   reloaded, since `mediaStatus` is in-memory only — reads the same turn off the catalog instead, where
+			   `queueCardKind`'s unacquired arm draws the stalled card. Both say no karaoke is being made for that
+			   turn and both carry the way out; neither depends on this toast. (What this comment used to claim — that
+			   every phone's row "already reads 'Couldn't make karaoke'" — is false after any reload, i.e. false for
+			   every phone that joins the party later, and it was the sentence carrying the argument.)
 			   SERVER-SIDE ATTRIBUTION, not a client-side "did I tap this?" set: `me.id` comes from the session
 			   cookie, so the notice still finds the requester after they reload mid-wait, which a local set would
 			   not survive.
 			   ABSENT `requestedBy` KEEPS TODAY'S BEHAVIOUR, which is the conservative direction — an internal or
 			   admin-side process nobody asked for is news for whoever is looking.
 			   THE ONE TRADE, recorded because it is real: `enqueue` dedupes, and a reused job keeps its ORIGINAL
-			   requester, so a second singer who taps the same song gets no toast. Their row still reads
-			   failed-with-retry and their /queue row still says "Couldn't make karaoke". */
+			   requester, so a second singer who taps the same song gets no toast. Their search row still reads
+			   failed-with-retry, and their /queue row still draws a non-plain card by the paragraph above. */
 			if (!e.requestedBy || e.requestedBy === this.me?.id) {
 				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
 			}

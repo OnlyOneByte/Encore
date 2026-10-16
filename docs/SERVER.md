@@ -640,6 +640,37 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   expiry and boot `RECOVER`. Keying on the event is also what makes `REPRIORITIZE`, a status-free
   scheduling write, a legal edge of the machine rather than an escape hatch around it.
 
+### The dead turn
+
+A DEAD TURN is a queued entry whose song can never become singable: the rotation holds its slot and skips
+it on every pass. It is made by the compound "make karaoke" action half-landing — the queue add succeeds,
+the process half does not — or, which is what actually happened on the owner's box, by the process landing
+and its `fetch` job dying 120 s later for want of a connected worker.
+
+- **A queued entry is dead iff `!readyToSing(media)` AND no OUTSTANDING job for it**, where outstanding is
+  `findOutstandingForMedia`'s rule: a `fetch`/`stems`/`align` job that is not terminal. Both halves are
+  reused, never restated — `readyToSing` is the shared gate table and the job half has a one-select twin,
+  `mediaWithOutstandingJob`, pinned against the per-media walk by a parity test.
+- **`findLive` RETURNS a terminal `ready` job**, since only `failed`/`canceled` free the dedup slot. A
+  predicate built on its truthiness calls every finished song "still working", which inverts this test.
+- **The answer is DERIVED on every read and MARKED NOWHERE.** There is no `stem_status: 'failed'` (a dead
+  process settles back to un-processed by design, so a mark would un-reprocess the song forever), no new
+  `EntryStatus` (it would be a parallel mechanism to `isTerminal`/`applyAndReseq` and would race the add
+  that `QueueStore.resendPending()` re-sends on resync), and no cancel — cancelling is the rollback that
+  deletes a turn the guest genuinely asked for the moment the refusal was transient.
+- **Ledger-only, not `stem_status`-based.** `settleStemsGate` resets that column to `'none'`, so the media
+  row erases the failure by design, and `TerminalFailureDeps.persist` is optional in the type — a
+  column-based predicate is hostage to every terminal path remembering to pass a sink.
+- **Nothing is broadcast, because the phone derives the card better than any frame could say it.** Every
+  `queue:sync` carries the media, so `queueCardKind`'s unacquired arm already draws the --warn stalled card
+  with its retry; the only thing `media:status` can say is `'failed'`, which takes that retry away and
+  claims a process ran. The missing witness was the OPERATOR's: a boot census plus a per-pass warning when
+  a turn newly dies, on the reaper's existing `onTick` (core keeps exactly two periodic timers).
+- **Two consecutive passes, not a grace constant.** The one false-positive window is between `queue()` and
+  `process()` inside `processAndQueue` (measured at 3–21 ms), and requiring the same song twice closes it
+  with no number to defend. A server-side `addedAt` grace would also be sound, since the hub re-stamps
+  `addedAt` from the room's own clock; the same comparison on a CLIENT is cross-clock and is not.
+
 ### Idempotency and the process cap
 
 - **The dedup key is `(mediaId, jobType)` over non-terminal statuses**, enforced by a partial unique index

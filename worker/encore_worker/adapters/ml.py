@@ -147,13 +147,13 @@ def _has_default_align_model(language: str) -> bool:
 def align_model_name(language: str, model: str | None = None, nonlatin: str | None = None) -> str:
     """The alignment bundle `_aligner` loads for `language` — the name, without loading anything.
 
-    `model` wins for `ENGLISH` and `nonlatin` for a non-Latin language (the `mms-roman` arm); the rest comes
-    off whisperx's tables, so this and `_aligner` name the same thing. Unknown is reported as such, `""`
-    claiming `BANDS`' model (XA-06).
+    `model` wins for `ENGLISH` and for an UNDETECTED language, which `_bundle_of` loads it for too, and
+    `nonlatin` for a non-Latin one (the `mms-roman` arm); the rest comes off whisperx's tables, so this and
+    `_aligner` name the same thing, which is what a calibrated reader trusts (XA-06).
     """
-    if model is not None and language == ENGLISH:
+    if model is not None and (language == ENGLISH or not language):
         return model
-    if nonlatin is not None and not _is_latin(language):
+    if nonlatin is not None and language and not _is_latin(language):
         return nonlatin
     try:
         from whisperx.alignment import (  # noqa: PLC0415
@@ -267,21 +267,26 @@ def blank_id_of(dictionary: Mapping[str, int]) -> int:
 
 def specials_of(dictionary: Mapping[str, int]) -> dict[str, int]:
     """The `_SPECIAL_NAMES` this vocabulary has, for `Emissions.specials` — plus `-` WHEN IT IS THE BLANK,
-    the torchaudio bundles' case, where it is not a hyphen the text may align on, and `*` where the
-    vocabulary ships its own STAR column (MMS_FA's), which a lyric's literal `*` must never target."""
+    the torchaudio bundles' case, where it is not a hyphen the text may align on, and `*` under
+    `OWN_STAR_NAME` where the vocabulary ships its own star column (MMS_FA's)."""
     out = {name: int(code) for name in _SPECIAL_NAMES if (code := dictionary.get(name)) is not None}
     blank = blank_id_of(dictionary)
     if dictionary.get("-") == blank:
         out["-"] = blank
     own_star = dictionary.get("*")
     if own_star is not None and int(own_star) != blank:
-        out[STAR_NAME] = int(own_star)
+        out[OWN_STAR_NAME] = int(own_star)
     return out
 
 
-#: `Emissions.specials`' name for the STAR column. NOT `*`, which a vocabulary could hold as a character.
-#: Restated in `generate.star_of` because `domain/` may not import this; a test holds the copies equal.
+#: `Emissions.specials`' name for the STAR column THIS ARM INSTALLED, priced at `STAR_PENALTY_NATS`. NOT
+#: `*`, which a vocabulary could hold as a character. Restated in `generate.star_of` because `domain/` may
+#: not import this; a test holds the copies equal.
 STAR_NAME = "<star>"
+
+#: `Emissions.specials`' name for a star column THE VOCABULARY ITSELF SHIPS (MMS_FA's `*`): excluded from
+#: every target, and NOT `STAR_NAME`, this arm's star being one it priced (docs/arch/04-alignment.md §14.1).
+OWN_STAR_NAME = "<model-star>"
 
 #: Nats BELOW each frame's own best log-probability that the star column sits at (docs/arch/04-alignment.md
 #: §3.1). The sweep, the objectives and the verdict: README, "W9: the star re-fitted out of sample, at an
@@ -300,8 +305,7 @@ def starred(emissions: Any, *, penalty: float = STAR_PENALTY_NATS) -> Emissions:
     named_already: Mapping[str, int] = getattr(emissions, "specials", None) or {}
     if matrix is None or emissions.frames == 0 or STAR_NAME in named_already:
         # The SAME OBJECT, so an inert arm is not even a copy; `cast` because the parameter is a duck type.
-        # A matrix that NAMES a star already has one (MMS_FA ships the column): a second would be a second
-        # absorbing token, and the arm's own penalty would not apply to the model's.
+        # Idempotent: a matrix this already starred keeps the one column it was priced with.
         return cast("Emissions", emissions)
     star = int(matrix.shape[1])
     installed: Any
@@ -526,9 +530,9 @@ class WhisperXAligner:
         self._nonlatin_model = nonlatin_model
 
     def _bundle_of(self, language: str) -> str | None:
-        """The bundle to LOAD for `language`: the configured English one, the arm's non-Latin one, else
-        None = whisperx's table, so those names are not a second copy of it."""
-        if language == ENGLISH:
+        """The bundle to LOAD for `language`: the configured English one (an UNDETECTED language too,
+        whisperx having no row for `""`), the arm's non-Latin one, else None = whisperx's own table."""
+        if language == ENGLISH or not language:
             return self._model
         return self._nonlatin_model if not _is_latin(language) else None
 

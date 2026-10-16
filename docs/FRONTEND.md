@@ -685,11 +685,16 @@ lost.** The dock's `.offline-bar` says only "Reconnecting…" because that is th
 `--warn` rather than `--danger` because a dropped socket self-heals on the next backoff tick.
 
 `RoomLink.command` returns the boolean `WsClient.send` has always returned. `false` means the socket was absent
-or its `readyState` was not OPEN, so the server never heard it. **Every call site reads it**, and
-`tests/unit/lib/player-command-drop.test.ts` is the exhaustive guard — it allow-lists the consuming shapes rather
-than banning the bare statement, because `onskip={() => room.command(…)}` discards the result just as thoroughly
-while looking like it uses it. (The one deliberate silent drop in the tree is the TV's `tv:telemetry`; the TV
-socket section says why.)
+or its `readyState` was not OPEN, so the server never heard it. **Every call site reads it** — three today, all on
+/queue and the layout — and `tests/unit/lib/player-command-drop.test.ts` is the guard. It allow-lists the consuming
+shapes rather than banning the bare statement, because `onskip={() => room.command(…)}` discards the result just as
+thoroughly while looking like it uses it, and it requires the receiver to be the `room` singleton so an aliased one
+has to be argued rather than smuggled past. **Its scan is the whole of `src/`**, which is what the word exhaustive
+has to mean here and for one revision did not: it read the two files the call sites happened to live in, so a bare
+`room.command(…)` pasted into `src/routes/+page.svelte` — one of five files importing the singleton — left the
+suite green. The file now derives that importer list and asserts the scan reaches all of it, ahead of the arm that
+relies on it. (The one deliberate silent drop in the tree is the TV's `tv:telemetry`; the TV socket section says
+why.)
 
 A call site can owe one of two things, and which one depends on whether it holds an optimistic value:
 
@@ -700,6 +705,19 @@ A call site can owe one of two things, and which one depends on whether it holds
   room had never heard for the length of the drag, and then sprang back to a stale echo on release even when the
   command had landed. `guide-send.ts` owns the throttle, its trailing edge and the drop rule precisely so that
   arithmetic is reachable from a bun test; the route keeps only the `$state` draft and the clearing effect.
+  **A DRAFT IS ONLY HALF OF IT WHERE THE CONTROL IS A THIRD-PARTY WIDGET**, and the slider shipped on that half
+  alone for a revision. bits-ui keeps its own copy of a slider's `value` and reads the thumb position, the filled
+  range and `aria-valuenow` out of it, so holding the draft back left all three advancing on a refused command:
+  measured offline against a room at 0%, `aria-valuenow` reached 95 and the thumb 92% of the track while the
+  readout still said "Off", and it survived the reconnect. The phantom then ARMED THE NEXT INPUT, because the
+  keyboard path steps from that same copy: one arrow key sent a step off 95 rather than off the room's 0. The
+  repaired control was driven on the same scenario — offline drag to the far rail moved nothing, and one
+  ArrowRight after the reconnect put a single step off the room's own level on the wire.
+  The fix is a CONTROLLED value — `GuidingTrack` passes `bind:value={getter, setter}` where the getter
+  is the room's level, so a move is a request and there is no second copy to diverge. A `bind:` cannot travel
+  through a spread, which is why `FieldSlider` has to declare `value` instead of letting it ride `...rest`. Not
+  `{#key}` on a refusal: re-creating the control drops focus, so a keyboard guest would be thrown out of it on
+  every dropped keypress.
 - **A say is owed where failure is indistinguishable from success.** The strip's restart, play/pause and skip
   hold no optimistic value, so there is nothing to roll back — but on SUCCESS they change nothing locally
   either, since the next broadcast is what redraws them. Silence therefore cannot be read at all, and the

@@ -651,33 +651,33 @@ import { wordGap, joinWords } from '$lib/tv/lyrics';
 const words = (...texts: string[]) => texts.map((word, i) => ({ word, start: i, end: i + 1 }));
 
 test('joinWords runs CJK together and keeps every other pair spaced', () => {
-	expect(joinWords(words('我', '来到', '你的', '城市'))).toBe('我来到你的城市');
-	expect(joinWords(words('夜', 'に', '駆ける'))).toBe('夜に駆ける');
+	expect(joinWords(words('山', '水风', '云雨', '雪雷'))).toBe('山水风云雨雪雷');
+	expect(joinWords(words('雲', 'が', '流れる'))).toBe('雲が流れる');
 	expect(joinWords(words('the', 'quick', 'fox'))).toBe('the quick fox');
 	// Korean SPACES its words — it is only "CJK" typographically, and running it together is a misreading.
-	expect(joinWords(words('오빤', '강남스타일'))).toBe('오빤 강남스타일');
+	expect(joinWords(words('바다', '하늘구름들'))).toBe('바다 하늘구름들');
 	// A mixed line keeps the boundary space: both halves are unreadable run together.
-	expect(joinWords(words('光年之外', 'oh', 'my', 'love'))).toBe('光年之外 oh my love');
+	expect(joinWords(words('山水风云', 'a', 'latin', 'chorus'))).toBe('山水风云 a latin chorus');
 });
 
 test('wordGap is empty between two CJK words, a space everywhere else, and empty at a CJK line end', () => {
-	const cjk = words('我', '来到');
+	const cjk = words('山', '水风');
 	expect(wordGap(cjk, 0)).toBe('');
 	expect(wordGap(cjk, 1)).toBe('');
 	const latin = words('the', 'fox');
 	expect(wordGap(latin, 0)).toBe(' ');
 	expect(wordGap(latin, 1)).toBe(' '); // the trailing gap English has always rendered
-	expect(wordGap(words('光年之外', 'oh'), 0)).toBe(' ');
-	expect(wordGap(words('oh', '光年之外'), 0)).toBe(' ');
+	expect(wordGap(words('山水风云', 'a'), 0)).toBe(' ');
+	expect(wordGap(words('a', '山水风云'), 0)).toBe(' ');
 	// CJK punctuation and the prolonged-sound mark are "Common" in the UCD and join all the same.
-	expect(joinWords(words('ラグ', 'トレイン', '、', 'もう'))).toBe('ラグトレイン、もう');
+	expect(joinWords(words('カタ', 'カナの', '、', 'れんしゅう'))).toBe('カタカナの、れんしゅう');
 	expect(wordGap([], 0)).toBe('');
 });
 
 test('a CJK line rebuilt by resegmentation reads as one run of characters', () => {
 	// 48 characters, one per word as a CJK word document is timed, with a pause at the halfway mark: past
 	// LINE_MAX_CHARS, so the length guard lets the split fire.
-	const run = [...'今日もパパッと終わらせて'.repeat(4)];
+	const run = [...'ひらがなのれんしゅうです'.repeat(4)];
 	const timed = run.map((word, i) => {
 		const start = i * 0.1 + (i >= 24 ? 0.9 : 0);
 		return { word, start, end: start + 0.08 };
@@ -691,7 +691,7 @@ test('a CJK line rebuilt by resegmentation reads as one run of characters', () =
 test('parseLyricsDoc rebuilds a textless CJK line without inventing spaces', () => {
 	const doc = parseLyricsDoc({
 		language: 'zh',
-		lines: [{ start: 0, end: 2, words: words('我', '来到', '你的', '城市') }]
+		lines: [{ start: 0, end: 2, words: words('山', '水风', '云雨', '雪雷') }]
 	})!;
-	expect(doc.lines[0]!.text).toBe('我来到你的城市');
+	expect(doc.lines[0]!.text).toBe('山水风云雨雪雷');
 });

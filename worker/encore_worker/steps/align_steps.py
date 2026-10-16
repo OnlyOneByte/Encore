@@ -137,21 +137,19 @@ class AlignStepsImpl:
         One object per attempt, read by the decode, the repair, the lift and the margin alike, so no two of
         them can group one text differently (docs/arch/04-alignment.md §9.1, §14).
         """
-        experiments = self._cfg.align_experiments
-        return units.rules(
-            language_code,
-            script_units="nonlatin-units" in experiments,
-            simplify="zh-simplify" in experiments,
-            transliterate="mms-roman" in experiments,
-        )
+        return units.rules_for(language_code, self._cfg.align_experiments)
 
-    def _romanizer(self, language_code: str) -> romanize.Romanizer | None:
+    async def _romanizer(self, language_code: str) -> romanize.Romanizer | None:
         """This box's DISPLAY-ONLY romaniser for `language_code`, where it has a backend for it.
 
         Asked per published document rather than held, the factory caching the built backend; a box with no
-        backend answers None and the document is the one it always was (XA-19).
+        backend answers None and the document is the one it always was (XA-19). OFF THE EVENT LOOP because
+        the first build costs seconds (README, "W8 stage 0"), which would stall every other job on this
+        worker — a display extra may not.
         """
-        return self._a.romanizer(language_code) if self._a.romanizer is not None else None
+        if self._a.romanizer is None:
+            return None
+        return await asyncio.to_thread(self._a.romanizer, language_code)
 
     async def _bundle_language(self, req: TimeRequest, *, on_mix: bool) -> str:
         """The language whose BUNDLE must produce these frames, noted when it is not the text's own.
@@ -457,19 +455,26 @@ class AlignStepsImpl:
         # LINES at most (XA-06; docs/arch/04-alignment.md §5.4).
         routed = bundle_language != language.ENGLISH
         gateless = not lexical.may_time_words(None, heard_on_this_audio=req.text.tier is Tier.ASR)
+        unvouched = False
         if routed and gateless and "h3-ungated-words" not in self._cfg.align_experiments:
+            ungated = lexical.words_ungated(
+                f"this aligner reads no emission matrix, and the {bundle_language!r} bundle it aligns on "
+                f"has no calibration row ({', '.join(sorted(lexical.CALIBRATED))} do)"
+            )
+            if pin_of(req.job) is None:
+                await self._out.state(req.job.job_id, "align-windowed", 0, "declined", ungated, None)
+                return None
+            # THE SECOND EXEMPTION, as in `_time_text_global`: a person chose this text, so it publishes
+            # anyway — all-`low` and unvouched, nothing here having read the words.
+            unvouched = True
             await self._out.state(
                 req.job.job_id,
                 "align-windowed",
                 0,
-                "declined",
-                lexical.words_ungated(
-                    f"this aligner reads no emission matrix, and the {bundle_language!r} bundle it aligns on "
-                    f"has no calibration row ({', '.join(sorted(lexical.CALIBRATED))} do)"
-                ),
+                "pin-unvouched",
+                f"{ungated} — a person chose this text, so it publishes anyway: every line graded low",
                 None,
             )
-            return None
         try:
             aligned = await asyncio.to_thread(self._a.aligner.align, spans, target, bundle_language)
         except InfraFault:
@@ -490,7 +495,14 @@ class AlignStepsImpl:
             await self._out.state(
                 req.job.job_id, "align-windowed", 0, "out-of-order", _backwards_why(doc), None
             )
-        return self._write(req, doc, TIMING_WORD, "high", report=report)
+        return self._write(
+            req,
+            doc,
+            TIMING_WORD,
+            "low" if unvouched else "high",
+            report=report,
+            vouched=not unvouched,
+        )
 
     async def _time_line_sync(self, req: TimeRequest) -> TimedDoc | Refused | None:
         """The LINE_SYNC rung: the text's own line timings, placed on this clock — IF they describe it.
@@ -511,7 +523,7 @@ class AlignStepsImpl:
             # A TRANSCRIPT is not a sheet: its spans were measured on THIS recording, so neither thing this
             # gate detects can be true of it — and read as a sheet it FAILS (README, the rung's four
             # candidate rules).
-            doc = _line_doc(self._placed_by(req, None), req.language, self._romanizer(req.language))
+            doc = _line_doc(self._placed_by(req, None), req.language, await self._romanizer(req.language))
             report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
             timed = self._write(req, doc, TIMING_LINE, "low", report=report)
             why = f"a transcript of this recording, on its own spans (no sheet gate); {report.summary()}"
@@ -628,7 +640,7 @@ class AlignStepsImpl:
             )
         else:
             gate_note = f"{verdict}{clock_note}; {lexical_note}; no decode check: {unchecked}"
-        doc = _line_doc(placed, req.language, self._romanizer(req.language))
+        doc = _line_doc(placed, req.language, await self._romanizer(req.language))
         report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
         # VOUCHED ONLY WHERE THE WORDS WERE READ. `heard is None` is not a pass: several reasons reach here
         # having checked the TIMINGS alone, and this rung's own hazard is a text whose timings are perfect and

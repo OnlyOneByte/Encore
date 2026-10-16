@@ -16,10 +16,14 @@ from encore_worker.domain.lyrics import romanize, syllabify, units
 from encore_worker.domain.lyrics.generate import char_targets, generate
 from tests.test_generate import FakeEmissions, evenly, scripted_decoder
 
-ZH = "故事的小黄花"
-JA = "沈むように溶けてゆくように"
-KO = "오빤 강남 스타일"
-EN = "say something I'm giving up on you"
+#: SYNTHETIC lines, never a sheet's: the corpus is commercial music and no lyric text is committed to this
+#: tree (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
+ZH = "山水风云雨雪"
+JA = "山の上に雲が流れる"
+#: An ALL-KANA line, whose tokens read mora by mora where `JA`'s kanji token does not.
+JA_KANA = "ひらがなのれんしゅう"
+KO = "바다 하늘 구름들"
+EN = "the quick brown fox isn't jumping"
 
 #: A Traditional line whose characters the simplified-only zh-cn vocabulary does not hold — the review's
 #: 69%-covered case, which `zh-simplify` exists for.
@@ -28,6 +32,7 @@ TRADITIONAL = "學習愛情與時間"
 fugashi_installed = units._fugashi() is not None
 opencc_installed = units._opencc() is not None
 pypinyin_installed = romanize.build_transliterator("zh") is not None
+cutlet_installed = romanize.build_transliterator("ja") is not None
 
 
 def han_dictionary(texts: Sequence[str]) -> dict[str, int]:
@@ -42,9 +47,9 @@ def han_dictionary(texts: Sequence[str]) -> dict[str, int]:
 @pytest.mark.parametrize(
     ("language_code", "text", "expected"),
     [
-        ("zh", ZH, ["故", "事", "的", "小", "黄", "花"]),
+        ("zh", ZH, list(ZH)),
         ("zh", "我爱you 好", ["我", "爱", "you", "好"]),
-        ("ko", KO, ["오빤", "강남", "스타일"]),
+        ("ko", KO, KO.split()),
         ("en", EN, EN.split()),
         ("fr", "allez viens", ["allez", "viens"]),
     ],
@@ -53,7 +58,8 @@ def test_words_are_the_scripts_own(language_code: str, text: str, expected: list
     """One word per hanzi; a Latin RUN inside a Chinese line stays one word; Korean keeps its spaces.
 
     Korean is the one deviation from the review's "one word per Hangul block": the TV joins Hangul words
-    with a space (§11.2), so per-block words would publish `오 빤` where the sheet wrote `오빤`.
+    with a space (docs/arch/04-alignment.md §11.2), so per-block words would publish `오 빤` where the
+    sheet wrote `오빤`.
     """
     assert units.words(text, language_code) == expected
 
@@ -63,9 +69,9 @@ def test_japanese_words_are_morphological_or_mora() -> None:
     got = units.words(JA, "ja")
     assert "".join(got) == JA
     if fugashi_installed:
-        assert got == ["沈む", "よう", "に", "溶け", "て", "ゆく", "よう", "に"]
+        assert got == ["山", "の", "上", "に", "雲", "が", "流れる"]
     else:
-        assert got[:3] == ["沈", "む", "よう"]
+        assert got[:3] == ["山", "の", "上"]
 
 
 @pytest.mark.parametrize(
@@ -96,7 +102,7 @@ def test_a_latin_word_in_a_cjk_line_keeps_the_latin_syllabifier() -> None:
 @pytest.mark.parametrize("text", [ZH, JA, KO, EN, "♪", "（间奏）", "我爱you 好", TRADITIONAL])
 def test_units_concatenate_to_the_text(language_code: str, text: str) -> None:
     """The invariant the TV's rebuild rests on: the units are the text's own characters, in order, with its
-    whitespace taken out — so `wordGap` can put the spacing back (§11.2)."""
+    whitespace taken out — so `wordGap` can put the spacing back (docs/arch/04-alignment.md §11.2)."""
     got = units.words(text, language_code)
     assert "".join(got) == "".join(text.split())
     assert all(got) and not any(word.strip() != word for word in got)
@@ -206,6 +212,48 @@ def test_an_already_latin_fragment_is_not_dropped_from_the_targets() -> None:
     rules = units.rules("zh", script_units=True, simplify=False, transliterate=True)
     assert rules.chars is not None
     assert [ch for _at, ch in rules.chars("you")] == list("you")
+
+
+@pytest.mark.skipif(not (cutlet_installed and fugashi_installed), reason="the ja extras are not installed")
+def test_a_japanese_mora_owns_its_letters_where_the_token_reads_as_its_morae() -> None:
+    """A kana token reads mora by mora, so each mora carries its own index and gets a span of its own."""
+    rules = units.rules("ja", script_units=True, simplify=False, transliterate=True)
+    assert rules.chars is not None
+    spelled = list(rules.chars("ひらがな"))
+    assert "".join(ch for _at, ch in spelled) == "hiragana"
+    assert sorted({at for at, _ch in spelled}) == [0, 1, 2, 3]
+
+
+@pytest.mark.skipif(not (cutlet_installed and fugashi_installed), reason="the ja extras are not installed")
+def test_a_kanji_token_reads_as_a_WORD_and_so_no_mora_owns_its_letters() -> None:
+    """A kanji is read by the token it sits in — `流れる` is `nagareru` where its first grapheme ALONE is
+    `ryuu` — so the token's own reading is the target sequence and `WHOLE_WORD` says no mora owns it."""
+    rules = units.rules("ja", script_units=True, simplify=False, transliterate=True)
+    assert rules.chars is not None
+    spelled = list(rules.chars("流れる"))
+    assert "".join(ch for _at, ch in spelled) == "nagareru"
+    assert {at for at, _ch in spelled} == {units.WHOLE_WORD}
+
+
+@pytest.mark.skipif(not (cutlet_installed and fugashi_installed), reason="the ja extras are not installed")
+def test_no_japanese_syllable_is_published_zero_width_at_its_words_end() -> None:
+    """The defect `WHOLE_WORD` exists for (review r1-tests-15): with every target tagged grapheme 0, the
+    first mora absorbed the whole token and every later one was published zero-width at the token's END —
+    511 of this corpus's 1229 ja truth morae. The word is still timed either way.
+    """
+    latin = han_dictionary(["abcdefghijklmnopqrstuvwxyz"])
+    emissions = FakeEmissions(log_probs=[0] * 600, frame_sec=0.02, dictionary=latin)
+    roman = units.rules("ja", script_units=True, simplify=False, transliterate=True)
+    flat = char_targets([JA, JA_KANA], emissions, units=roman)
+    decoder = scripted_decoder(evenly(len(flat.targets)), 600)
+    got = generate([JA, JA_KANA], emissions, decoder=decoder, language="ja", units=roman)
+    words = [word for line in got.lines for word in line.words]
+    assert [word.word for word in words] == units.words(JA, "ja") + units.words(JA_KANA, "ja")
+    assert all(word.start < word.end for word in words)
+    assert all(syllable.start < syllable.end for word in words for syllable in word.syllables)
+    multi_mora = [word for word in words if len(units.syllables(word.word, "ja")) > 1]
+    assert [word.word for word in multi_mora if not word.syllables] == ["流れる"]
+    assert [len(word.syllables) for word in multi_mora if word.syllables] == [4, 4]
 
 
 def test_the_target_romaniser_strips_tones_and_the_display_one_keeps_them() -> None:

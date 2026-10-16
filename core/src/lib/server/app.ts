@@ -38,6 +38,7 @@ import { join } from 'node:path';
 
 import { markLyricsQueued, reportTerminalFailure } from './jobs/process';
 import { reconcileStrandedGates } from './jobs/gate-reconcile';
+import { deadTurns, DeadTurnWatch, type DeadTurn } from './jobs/dead-turns';
 import { cancelJobsForMedia } from './jobs/cancel';
 import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
@@ -217,6 +218,26 @@ export function getApp(): EncoreApp {
 			);
 	} catch (err) {
 		console.warn(`[core] stale readiness-gate reconciliation skipped: ${(err as Error).message}`);
+	}
+
+	/* THE CENSUS, and it belongs HERE, one line below the pass whose own sentence it finishes: `reconcileStrandedGates` already knows correctly that a gate will never close, and then never looks at the QUEUED ENTRIES its own settle just orphaned. Those entries are the dead turns — a turn the rotation holds a slot for and skips on every pass. READ-ONLY, after the reconcile so a gate it just settled is counted as what it now is, and never a repair: see the sweep further down for why nothing is written and nothing is broadcast. One line at boot plus the sweep's "what died while we were watching" is the whole operator story; about a hundred of these had accumulated across four separate days on the owner's own box with no line in any log, found only by a hand-written SQL join.
+	   IT ALSO SITS ABOVE THE `lyrics backfill` BOOT PASS, and that one is not free: the pass enqueues an `align` job for every stems-ready song with no word-level timing, which is precisely a song whose lyrics gate is open — so a turn on one of those is counted dead HERE and revived seconds later, making this line briefly overstated rather than wrong-forever. Measured zero such songs on the owner's copy (every stems-ready row there has its lyrics gate closed), and the ordering is still the right one: the backfill is async and may be disabled by `ENCORE_LYRICS_BACKFILL=0`, so waiting on it would mean a census that sometimes never runs. The sweep below never repeats the overstatement: by the time it first runs the `align` job exists, `mediaWithOutstandingJob` sees it, and the song is simply not dead.
+	   Wrapped like the pass above, for the same reason: a census must never be the thing that stops a party starting. */
+	try {
+		const outstanding = jobs.mediaWithOutstandingJob();
+		const dead = deadTurns(state.entries, mediaById, (mediaId) => outstanding.has(mediaId));
+		if (dead.length > 0) {
+			const songs = new Set(dead.map((d) => d.mediaId)).size;
+			const singers = new Set(dead.map((d) => d.singerId)).size;
+			console.warn(
+				`[core] ${dead.length} queued turn(s) over ${songs} song(s), held by ${singers} singer(s), can never be` +
+					' made ready — nothing is in flight and no job is left that could finish them. The rotation skips each' +
+					' one on every pass. A turn whose STEMS gate is open carries a retry on its /queue card; one whose' +
+					' stems are ready but whose LYRICS gate is open does not — see the note on this predicate'
+			);
+		}
+	} catch (err) {
+		console.warn(`[core] dead-turn census skipped: ${(err as Error).message}`);
 	}
 
 	// ONE probe for the whole app, so a stem silent enough to refuse at publish time is silent enough to refuse a guide link. Declared ABOVE the boot passes and the hub that close over it: below them it is only initialised in time because every pass awaits first, which is a microtask-ordering accident rather than a guarantee.
@@ -496,13 +517,45 @@ export function getApp(): EncoreApp {
 		now: () => app.now()
 	});
 
+	/* THE DEAD-TURN SWEEP — READ-ONLY. `deadTurns` (jobs/dead-turns.ts) is the only thing in the system that can tell a turn the rotation will never play from one still cooking, because the test is "no live job can still close the gate" and the ledger that answers it is server-side. IT WRITES NOTHING AND BROADCASTS NOTHING, and both halves are deliberate:
+	   · NOTHING IS WRITTEN because there is no inconsistency to repair — a dead turn's media is already `stem_status='none'` with its gate settled and nothing in flight, which is the state this system's own invariants say is correct. A write is also the one thing that cannot be taken back: the ~100 such entries on the owner's library copy are spread over ~80 distinct singers (round numbers deliberately — see dead-turns.ts on why the exact counts are not worth pinning in a comment), so a predicate bug that DELETED them destroys turns that many separate people asked for, where the same bug in a reader costs a wrong log line.
+	   · NOTHING IS BROADCAST because the phone already derives this card itself, and better. Every `queue:sync` carries the media, so `queueCardKind`'s unacquired arm draws a --warn stalled card with an inline retry with no help from here. The only thing a `media:status` frame can say is 'failed', which flips that card to the ran-and-died copy, takes the RETRY off it (`onretry` is wired on the stalled kind alone) and toasts the holder about a turn that may have died days ago. The room is not the party missing a witness.
+	   THE OPERATOR IS, and the census above says why. That is what this prints. */
+	const deadTurnWatch = new DeadTurnWatch();
+	const sweepDeadTurns = () => {
+		const entries = state.entries;
+		// The QUERY is what an empty queue skips, and only the query: `mediaWithOutstandingJob` is the sole I/O here, and with no queued entry there is no media to ask it about.
+		let dead: DeadTurn[] = [];
+		if (entries.length > 0) {
+			const outstanding = jobs.mediaWithOutstandingJob();
+			dead = deadTurns(entries, mediaById, (mediaId) => outstanding.has(mediaId));
+		}
+		// THE WATCH IS STEPPED ON EVERY PASS, INCLUDING AN EMPTY ONE, and returning above it would be the bug: its prune is one rule ("a media absent from this pass leaves both sets"), so skipping the call freezes the sets rather than clearing them — a song announced dead, drained from the queue, then re-queued and still dead would never announce again, and the silent first-pass adopt would be deferred to the first non-empty pass. Stepping with the empty set costs nothing and is the honest input: nothing is dead right now.
+		// What the watch DECIDES is what counts as news: two consecutive passes (which closes the queue()→process() window with no clock) and once per media (which stops a 3s tick reprinting the standing population forever — that one is the boot census above, printed once).
+		const newly = deadTurnWatch.step(new Set(dead.map((d) => d.mediaId)));
+		if (newly.length === 0) return;
+		// Turns, not just songs: one media holds ten of them on the owner's copy, and ten guests is a different sentence from one song.
+		const turns = dead.filter((d) => newly.includes(d.mediaId)).length;
+		console.warn(
+			`[core] ${turns} queued turn(s) over ${newly.length} song(s) can no longer be made ready —` +
+				` the rotation will skip them: ${newly.join(', ')}.` +
+				' Retryable from the /queue card when the stems gate is the open one; see the predicate note for the' +
+				' lyrics-gate case, which this census counts but the card cannot yet offer a way out of'
+		);
+	};
+
 	// A lease expiry may have changed capacity, so redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
 		// EVERY tick, not only when sweep() reaps something: dispatch() is event-driven, so on an EMPTY fleet nothing else ever calls it and a job with no capable worker parks queued forever.
-		onTick: () => workerHub.dispatch(),
+		// The dead-turn sweep rides the SAME tick rather than taking a timer of its own: core has exactly two periodic timers (this 3s reaper and MEMBERSHIP_SWEEP_MS in server.ts), and `onTick`'s own doc is written for precisely this class of purely time-based check. Dispatch runs FIRST because it is what fails an unservable job, so a turn that dies on this tick is seen dead on this tick rather than one tick later.
+		onTick: () => {
+			workerHub.dispatch();
+			sweepDeadTurns();
+		},
 		// A reaper-killed process reaches terminal `failed` without the worker reporting it, so it never hits worker-hub's onFailed. The SAME shared epilogue must run here, or the phone stays pinned on the processing percentage forever.
-		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById }),
+		// THE SINKS COME FROM THE HUB, not a bag built here. This call site used to pass `{ broadcast, mediaById }` and no `persist`, so a reaper-killed process settled its stem gate IN MEMORY ONLY while the stored row kept saying 'queued' — and `hydrateMediaCatalog` then won at the next boot, resurrecting the stranding the settle exists to prevent (repaired only incidentally, one boot later still, by `reconcileStrandedGates`). `TerminalFailureDeps.persist` is optional in the TYPE and required for durability, which is exactly the mistake a second assembly site invites; `WorkerHub.terminalFailureSinks()` is the one bag.
+		onFailed: (job) => reportTerminalFailure(job, 'reaper', workerHub.terminalFailureSinks()),
 		// The PUSH half of the ownership guard. A worker may be 40 minutes into a separation when its lease
 		// expires; without this it finishes and publishes over whoever the job was reassigned to, and the last
 		// writer wins with no error anywhere.

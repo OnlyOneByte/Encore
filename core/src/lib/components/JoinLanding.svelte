@@ -40,8 +40,25 @@
 	);
 
 	/* Gated on having SEEN step 1: a guest who scans lands on step 2 without step 1 ever rendering, and "step 2
-	   of 2" then reports a step they never skipped as skipped. */
-	let sawCodeStep = $state(false);
+	   of 2" then reports a step they never skipped as skipped.
+	   SEEDED FROM THE OPENING PANE rather than from `false`, because `false` was a LAYOUT SHIFT on the first screen
+	   every guest opens. A bare `/` or `/library` resolves `pane === 'code'` in its very first render, so the latch
+	   below was always going to be true — but an `$effect` runs AFTER that render, so `.steps` mounted a frame late
+	   and grew `.join-main` by 30px (the row's own 10px plus this column's 20px `gap`). On the centred layout from
+	   --bp-md up that moved the whole gate 15px: measured at 768x900, `.join-head` painted at y=277.58 and then
+	   jumped to its resting y=262.58, with the CTA's bottom edge going the other way, 622.41 -> 637.41.
+	   WRITTEN AS `!arrivedWithCode` AND NOT AS `pane === 'code'`, which is the same boolean here and the better
+	   spelling: `pane` is a `$derived`, and capturing one in a `$state` initialiser is exactly what
+	   `state_referenced_locally` warns about — the capture is intended, but the warning is indistinguishable from
+	   the bug it exists to catch. At this point `preview` is null and `previewError` is empty, so `pane` can only be
+	   'resolving' or 'code' and the arm that decides between them is `arrivedWithCode` alone, which is a plain const
+	   read once off the landing URL.
+	   The `$effect` STAYS, and is not redundant: it carries the case this seed cannot see, a guest who arrives with
+	   a scanned code on `pane === 'resolving'` and drops back to step 1 when the preview fails. Such a guest must
+	   still START with `sawCodeStep` false, which is what seeding from the opening pane gives.
+	   The shift was caught by tests/playwright/specs/gate/measured-join-gate.spec.ts, whose two equality arms read
+	   the two hosts at different points in this one-frame window and so disagreed by exactly that 15px. */
+	let sawCodeStep = $state(!arrivedWithCode);
 	$effect(() => {
 		if (pane === 'code') sawCodeStep = true;
 	});

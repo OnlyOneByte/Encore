@@ -34,8 +34,10 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
  *
  * `stalled` IS THAT DEAD TURN, and it exists because the three liveness arms this function used to open with WERE
  * the condemned test: `if (!live) return 'plain'` answered "nothing is in flight" with "an ordinary turn about to
- * play". Measured on the owner's own library copy on 2026-10-15: 89 queued entries over 50 media whose stems gate is
- * open with no job left that could close it, every one of them drawn as an ordinary waiting row. */
+ * play". Measured on the owner's own library copy on 2026-10-15: roughly a hundred queued entries over some sixty
+ * media whose stems gate is open with no job left that could close it, every one of them drawn as an ordinary
+ * waiting row. (Round, because that copy drifts with every drive against it — server-side
+ * `jobs/dead-turns.ts` holds the structural version of this measurement and the reason not to pin it.) */
 export type QueueCardKind = 'processing' | 'failed' | 'stalled' | 'plain';
 
 export function queueCardKind(
@@ -56,7 +58,7 @@ export function queueCardKind(
 	   song that is singable anyway; a `canceled` one defers to the catalog, which the server has already settled
 	   back to un-processed), so there is nothing left for a liveness test to decide. */
 	const r = displayReadiness(media, live);
-	if (r === 'ready') return 'plain'; // 205 of that snapshot's 304 queued rows: the common case
+	if (r === 'ready') return 'plain'; // about two thirds of that snapshot's queued rows: the common case
 	if (r === 'failed') return 'failed';
 	if (r === 'processing') {
 		/* THE SERVER HAS ALREADY SAID NOBODY CAN RUN THIS. `unservable` rides the `media:status` broadcast

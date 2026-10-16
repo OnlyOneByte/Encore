@@ -1,0 +1,64 @@
+# W8's NON-LATIN LANE, OVER THE WHOLE TRUTH SET: what an UNCALIBRATED bundle may publish, in rules that
+# hold for EVERY language rather than for the 4 zh songs one run could reach. Companion to
+# `gates/w8-nonlatin.yaml`, which is the zh cell's own file and counts its four songs by hand; this one is
+# read once per language and says the same thing relatively, so adding a song cannot make it vacuous.
+# Narrative and every number: README, "W8: the non-Latin lane, priced on the corpus".
+#
+#   cd worker && for L in zh ja ko; do .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --corpus nonlatin --language $L --songs amll-$L \
+#       --modes truth,wrongtext --wrong-k 3 --asr off --tag w8-nl-$L-ra \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8-lane.yaml ; done
+#
+# THERE IS NO `--compare` BASELINE AND THERE CANNOT BE ONE: `corpus` is a SETUP key
+# (`e2e_gates.SETUP_META`), so every recorded row — all of them English — is a mismatch here rather than a
+# comparison. Every literal below is this set's own reading, and `>=` / `==` are written against the COUNTS
+# the run reports so the file holds for 1 song or for 40.
+#
+# WHY NO RULE READS `wrongtext_pass`. These runs are marked `uncalibrated` (no non-Latin bundle has a
+# `lexical.CALIBRATED` row — that is the whole point of the lane), and on such a run
+# `e2e_gates.UNCALIBRATED_METRICS` makes reading that metric an ERROR. The claim here is a stronger and
+# simpler one — nothing was published AT ALL — so the outcome counts carry it.
+#
+# MEASURED, 2026-10-15, code `0125c5457b5c8bf8`: `_runs/w8-nl-{zh,ja,ko}-ra`, 7 songs (4 zh + 2 ja + 1 ko),
+# **340 lines line-synced, gross 0, ±500 100.0, band 0, `high` 0, 0 word documents**, and **0 of 21 wrong
+# texts published** (3 cross-pairs a song, donors drawn from the whole 7-song corpus). The reading that
+# makes this non-vacuous is the CONTROL: with `ENCORE_ALIGN_EXPERIMENTS=h3-ungated-words`, which is the lane
+# as it stood before stage 0, **5 of the same 21 wrong texts PUBLISH** — zh 2 of 12, ja 3 of 6 — and this
+# file FAILS on all three of those rows (`results/w8-lane-*-ungated-run_align.json`).
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 1) MUST: the lane publishes LINES, never WORDS ─────────────────────────────────────────────────────
+# §5.4's rule, read as an outcome: `lexical.may_time_words` declines a word document off a bundle with no
+# calibration row, the LINE_SYNC rung publishes the sheet instead, and `high` is 0 by construction there.
+# Relative to `cases`, so the rule says "every song" and not "four songs".
+truth-every-song-line-synced: truth.line_sync == truth.cases
+truth-no-word-document: truth.published == 0
+truth-nothing-refused: truth.refused == 0
+truth-never-high: truth.high == 0
+truth-no-word-timed: truth.word_aligned == 0
+truth-in-its-own-group: truth.nonlatin.cases == truth.cases
+truth-no-song-ends-in-no-lyrics: truth.no_lyrics == 0
+
+# ── 2) MUST: the wrong-text path is closed, every case ─────────────────────────────────────────────────
+# A line-synced wrong text would be a pass too, so both counts are gated; `scored` holds that not one wrong
+# line was ever measured against this song's truth. The pre-stage-0 control fails `wrongtext-all-refused`
+# at 10 of 12 (zh) and 3 of 6 (ja), which is what makes these four rules a measurement.
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-all-refused: wrongtext.refused == wrongtext.cases
+wrongtext-scores-no-line: wrongtext.scored == 0
+wrongtext-times-no-word: wrongtext.word_aligned == 0
+wrongtext-has-cases-to-refuse: wrongtext.cases >= 3
+
+# ── 3) MUST: what publishes is the sheet the truth set admits ──────────────────────────────────────────
+# A line-synced document carries the SHEET's own times, so ±500 100.0 is a PUBLISH-RATE reading and not an
+# accuracy one — nothing here measures alignment. What it does measure is that the claim clock is a no-op on
+# this set (bias 0 ms at MAD 0 on all 7 songs), which is the third arbiter the admission rule never used.
+truth-pm500: truth.pm500 >= 100.0
+truth-no-gross: truth.gross == 0
+truth-no-band: truth.band == 0
+truth-zero-gross-songs-all: truth.zero_gross_songs == truth.cases
+truth-clock-moved-nothing: count((abs(truth.song.bias_ms) > 1) * (truth.song.mad_ms <= 250)) == 0
+truth-no-errors: truth.error == 0
+wrongtext-no-errors: wrongtext.error == 0

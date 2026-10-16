@@ -229,19 +229,30 @@ def test_the_alignment_model_is_unset_unless_named() -> None:
     assert Config.from_env({"ENCORE_ALIGN_MODEL": " HUBERT_ASR_LARGE "}).align_model == "HUBERT_ASR_LARGE"
 
 
+#: The modules allowed to READ an arm name, and what each is. The step is where almost every branch lives;
+#: `units.rules_for` is W8's one reader of three arm names, and keeping them there rather than in the step is
+#: what stops the bench harness from spelling them a second time (docs/arch/04-alignment.md §9.1).
+ARM_READERS = ("steps/align_steps.py", "domain/lyrics/units.py", "__main__.py")
+
+
 def test_every_declared_arm_is_read_by_the_step() -> None:
     """The other half of the typo guard, and the one the config cannot catch: an arm the CONFIG accepts and
     NOTHING reads is measured as the default path under the arm's name, and a whole bench run says "no
     change" for the most honest-looking reason there is. Every name in `ALIGN_EXPERIMENTS` must therefore
-    appear as a literal in the step that reads them (W2; source text, not an import, because reading them is
-    a branch deep inside `_time_text_global` that no unit call can enumerate)."""
+    appear as a literal in one of `ARM_READERS` (W2; source text, not an import, because reading them is a
+    branch deep inside `_time_text_global` that no unit call can enumerate)."""
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parent.parent / "encore_worker" / "steps" / "align_steps.py"
-    ).read_text()
+    package = Path(__file__).resolve().parent.parent / "encore_worker"
+    source = "\n".join((package / name).read_text() for name in ARM_READERS)
     unread = [arm for arm in ALIGN_EXPERIMENTS if f'"{arm}"' not in source]
     assert not unread, f"declared but never switched on anything: {', '.join(unread)}"
+    step = (package / "steps/align_steps.py").read_text()
+    delegated = [arm for arm in ALIGN_EXPERIMENTS if f'"{arm}"' not in step]
+    assert delegated == ["nonlatin-units", "zh-simplify", "mms-roman"], (
+        "an arm the step itself does not name must be read by a module this test lists, and the list of "
+        f"such arms is part of the claim: {delegated}"
+    )
 
 
 def test_config_errors_are_not_retryable() -> None:

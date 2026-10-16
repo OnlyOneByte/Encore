@@ -202,6 +202,43 @@ def test_the_domain_and_the_adapter_name_the_same_column() -> None:
     )
 
 
+def test_a_vocabulary_that_SHIPS_a_star_still_gets_the_arms_own_priced_column() -> None:
+    """MMS_FA's vocabulary names a `*` of its own (review r1-tests-16), and it is NOT this arm's star: the
+    model's column carries a price nobody here fitted, while `_star_why` and `viterbi.star_penalty` both
+    quote `STAR_PENALTY_NATS`. So `specials_of` names it `OWN_STAR_NAME` — excluded from every target, so a
+    lyric's literal `*` cannot aim at it — and the arm appends and prices its own column as always.
+    """
+    mms_shaped = {**VOCAB, "*": max(VOCAB.values()) + 1}
+    own_star = mms_shaped["*"]
+    specials = ml.specials_of(mms_shaped)
+    assert specials[ml.OWN_STAR_NAME] == own_star
+    assert ml.STAR_NAME not in specials, "the model's own column is not the arm's star"
+
+    matrix = np.zeros((4, max(mms_shaped.values()) + 1), dtype=np.float32)
+    matrix[:, own_star] = 5.0  # a trained star absorbs frames: the arm's price may not be assumed of it
+    plain = ml.Emissions(
+        log_probs=matrix,
+        frame_sec=FRAME_SEC,
+        dictionary=dict(mms_shaped),
+        model="",
+        blank_id=0,
+        specials=specials,
+    )
+    widened = ml.starred(plain)
+    arm_star = star_of(widened)
+    assert arm_star == matrix.shape[1], "the arm's star is a column it appended, never the model's"
+    assert arm_star != own_star
+    priced = np.asarray(widened.log_probs)
+    assert np.allclose(priced[:, arm_star], matrix.max(axis=1) - ml.STAR_PENALTY_NATS)
+    assert own_star in excluded_of(widened), "and the model's own star is still no target"
+    # So the trail's clause is TRUE of the column that decoded, which it was not while the arm stood down
+    # on MMS_FA and `star_of` handed the model's own column to the decode.
+    assert _star_why(arm_star) == (
+        f"star: one per line, id {arm_star} = frame max − {ml.STAR_PENALTY_NATS:g} nats, "
+        "its frames blank (star)"
+    )
+
+
 def test_the_widened_matrix_carries_the_blank_of_the_vocabulary_it_came_from() -> None:
     """`starred` is the one code path that REBUILDS an `Emissions`, so it is the one that can lose a field.
 

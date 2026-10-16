@@ -8809,6 +8809,26 @@ only on such a run. `corpus-truth.json` grew from 32 to **39** rows and not one 
 `--corpus nonlatin` also REFUSES `--language en`: left at the default, these songs' text would be timed by
 the English bundle, which has a calibration row — so the lane's own gate would not be the thing measured.
 
+### Why no fixture holds a lyric
+
+The audio of this corpus is a local research copy, the truth is CC0 and the romanisation backends were
+chosen by licence — and then **the unit tests of the lane this all protects were written with verbatim lines
+of six commercially released songs in them** (review r1-tests-17 / r1-correctness-7): two Mandarin sheets in
+`worker/tests/test_nonlatin_lane.py`, one line each of a zh, a ja and a ko song in `test_units.py` and
+`test_romanize.py`, a line of an English one, two docstring examples in `domain/lyrics/romanize.py`, a
+comment in `core/src/lib/tv/lyrics.ts`, five characters of a TTML fixture in `test_bench_amll.py`, and the
+CJK cases of `scripts/tv_parity.py` with the `bench-highlight-parity.json` they generate. Every pre-existing
+English fixture in those same files was already synthetic (`the quick fox`, random letter runs), so the
+asymmetry was an accident of how the lane was written and not a decision anyone took.
+
+They are all SYNTHETIC now, in the same scripts and the same shapes, because every assertion in them is
+structural and none depends on the words: enumerations of hanzi, a kana line whose tokens read mora by mora
+beside one whose kanji does not, a spaced Hangul pair, a mixed Han+Latin line, and a 12-character kana run
+repeated four times for the 48-character re-segmentation case. The replacements keep the character counts
+the length guard reads, so `bench-highlight-parity.json` regenerated **+0 lines, 2 changed** — the two CJK
+cases' text and nothing else. The real lines stay where this wave already put corpus text: beside the TTML
+in the bench root, outside the repo.
+
 ### What the TTML gives, and the one thing it does not
 
 | slug | song | lines | syllables | words | agents |
@@ -8830,7 +8850,7 @@ of this set until the units are script-aware (stage 1), and the syllable spans t
 that measurement will read. Background vocals (`x-bg`), translations (`x-translation`) and romanisations
 (`x-roman`) are dropped: the bench's truth is one voice's line sequence.
 
-### The admission rule, and the 13 songs it dropped
+### The admission rule, and the 15 songs it dropped
 
 A truth file that does not describe the audio beside it would mislead this lane exactly as four caption files
 misled W8a, so every candidate was measured before it was kept, with the same two numbers the W8b rule uses:
@@ -8890,7 +8910,10 @@ global engine's word document on an uncalibrated matrix; W8 makes that one named
 (`lexical.may_time_words` — words need a witness, which is a calibration row or a transcript of this very
 recording) and closes the other word-timing exit, the WINDOWED engine, which reads no matrix and so can
 measure no lift on any bundle. Both engines print one sentence (`lexical.words_ungated`). The exemptions are
-unchanged and are two: the ASR tier, and a human PIN (published all-`low`, unvouched). `h3-ungated-words`
+unchanged and are two: the ASR tier, and a human PIN (published all-`low`, unvouched) — in BOTH engines,
+which the windowed one owes to review r1-tests-21: it shipped with the pin branch missing, so a pinned
+non-Latin sheet on an aligner with no `emissions` was declined where the global engine publishes.
+`h3-ungated-words`
 remains the control that restores the old behaviour, and is still the only way to read this lane's words end
 to end. English is untouched, and measured rather than argued: `_runs/w8-english-smoke` (`--level run_align --songs hello,Avercage --modes truth,wrongtext --wrong-k 2`) republishes both documents and both onset series DIGEST-IDENTICAL to `results/w9-r1-run_align.json`, with every per-song delta at +0.0 and wrong text 0/4. The windowed engine on the English bundle publishes exactly what it did.
 
@@ -8996,15 +9019,18 @@ cannot reach, romanisation needing no audio and no bundle:
 
 The **9** lines that get no romanisation are the measurement that matters more than the 331, because a
 coverage number alone would be satisfied by romanising everything: they are `amll-ko-gangnam-style`'s seven
-`Eeeeeh, sexy lady` / `Eh-eh-eh, eh-eh-eh` rows and `amll-zh-qingtian`'s two solfège rows (`Re So So Si Do Si
-La`, `So La Si Si Si Si La Si La So`). Those are already Latin, and a second script under them would be a
+ALREADY-LATIN rows (an interjection and two chanted-syllable rows, repeated) and `amll-zh-qingtian`'s two
+solfège rows. Those carry no non-Latin letter, and a second script under them would be a
 copy of themselves. The rule is `romanize.needs_romanization` — at least one letter in a non-Latin script,
 counted the same way `language.script_histogram` counts — so `♪♪♪`, `[ ... ]` and a row of digits get none
 either.
 
 Build cost is once per process and per language (`build_romanizer` is cached): pypinyin 0.10 s, cutlet
 0.013 s, **uroman 2.21 s** — which is why it is cached, and why it is nothing against the ~5–9 s emission
-pass of the same job.
+pass of the same job. It is nothing to THIS job and was something to every other one: `_romanizer` asks the
+factory with `asyncio.to_thread`, because that build ran on the worker's event loop and a worker at
+`concurrency > 1` would have stalled every other job's progress frames and its `worker:heartbeat` for those
+2.21 s (review r1-correctness-3). A display extra may not cost that.
 
 ### End to end: the published document carries it, and the onsets do not move
 
@@ -9060,6 +9086,15 @@ parity fixture (`cjk-rebuilt-without-spaces`, `cjk-splits-at-a-pause`) pin them 
 no English row of that fixture moved: the rule is arithmetically identical to `join(" ")` for Latin text, and
 the regenerated file is **+2 lines, 0 changed**.
 
+**THAT ENUMERATION IS NOW A GATE RATHER THAN A PAST ACTION** (review r1-tests-19, which found neither the
+script nor its output in the tree and no test comparing the two classes — the two parity cases exercise Han,
+hiragana, katakana, one ideographic comma, Hangul and Latin, so the sets could drift silently on anything
+else, and a Unicode release that adds a Han codepoint moves `\p{scx=...}` and not the frozen copy).
+`tv_parity.py` writes `core/tests/unit/lib/tv/cjk-join-ranges.json` — the 55 ranges as integer pairs, so a
+lone surrogate is a number both languages can hold — from `e2e_lib.cjk_join_ranges()`; the core test
+enumerates **`wordGap` itself** over all 0x110000 codepoints against that file (384 ms), and the worker test
+holds the frozen copy and the generator to it. Either class moving turns one tree red.
+
 ### What stage 0 does and does not buy
 
 * **`no lyrics` → published** is W7's routing plus task 1's gate, not this half: the 4 zh songs publish
@@ -9074,3 +9109,274 @@ the regenerated file is **+2 lines, 0 changed**.
   line would be subject to. A word-level romanisation wants per-row spans, which is stage 1's unit work.
 * **ja and ko still have no alignment reading** (their bundles are ~1.2 GB each and `--language` takes one a
   run), so their romanisation is measured on the truth text above and not through a published document.
+
+## W8 stages 1-2: script-aware units, and MMS_FA over romanised text (2026-10-15)
+
+Stage 0 made this lane SAFE (its wrong-text path closed by rule) and READABLE (a romanisation beside the
+line). It made nothing about it ACCURATE: a Chinese line has no spaces, so `text.split()` made the whole
+line one word with one syllable, and the lane published a single span per line. These two stages answer the
+units instead. Both are default-off arms (`nonlatin-units`, `zh-simplify`, `mms-roman`;
+`docs/arch/04-alignment.md` §9.1), and both carry a number rather than an argument.
+
+**The headline, and it is not the negative result the review expected.** `--level generate`, `--corpus
+nonlatin`, `--modes truth`, one song a language, scored against the AMLL TTML's own **syllable** spans:
+
+| song | arm | n | ±100 | ±250 | **±300** | gross | AAE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `amll-zh-qingtian` | — (whitespace) | 494/494 | 9.11 | 15.18 | **16.80** | 151 | 1527.6 ms |
+| `amll-zh-qingtian` | `nonlatin-units` | 490/494 | 67.14 | 96.94 | **97.55** | 1 | 98.5 ms |
+| `amll-zh-qingtian` | `mms-roman` | 494/494 | 55.06 | 98.18 | **98.58** | 2 | 149.4 ms |
+| `amll-ja-yoru-ni-kakeru` | — (whitespace) | 693/693 | 2.89 | 9.52 | **11.54** | 220 | 1545.7 ms |
+| `amll-ja-yoru-ni-kakeru` | `nonlatin-units` | 687/693 | 72.49 | 94.61 | **95.78** | 2 | 99.7 ms |
+| `amll-ko-gangnam-style` | `nonlatin-units` | 481/535 | 71.10 | 79.42 | **80.67** | 18 | 341.6 ms |
+| `amll-ko-gangnam-style` | `mms-roman` | 535/535 | 70.09 | 91.96 | **92.52** | 20 | 197.4 ms |
+
+`results/w8s12-*` (ten published rows, `_runs/w8s12-*`), each read by `gates/w8-units.yaml`, which passes
+**8/8 on every armed run and 5/8 — REJECT — on the whitespace baseline**, so the gate is not vacuous.
+**§3.12's reject-if is cleared with room to spare**: it fails
+the stages if AMLL zh/ja syllable ±300 is below 70%, and the measured pair is **97.55 / 95.78** against a
+whitespace baseline of 16.80 / 11.54. THE SAMPLE IS ONE SONG A LANGUAGE — a signal, not a verdict; the
+corpus cell is the bench runner's, and the second zh song reads with it below.
+
+**Why the baseline is so low, and why that is not a strawman.** The whitespace rule publishes one word for
+the whole line, so every syllable of that line is scored against the line's single onset: syllable 1 is
+right and syllable 12 is wrong by the length of the line. That IS what the lane published before this wave
+— the measurement simply had no way to say so until the truth had syllables. The denominator is the
+TRUTH's in every row above (494, 693, 535 spans), which is what makes the arms comparable at all.
+
+**The word metric moves the other way, and the syllable metric is the one to read.** On
+`amll-zh-qingtian`, `word_aligned` falls 77 → 17 with `word_mismatched` 0 → 60: the AMLL truth's WORDS are
+the TTML's whitespace grouping (77 over 62 lines), `score_words` pairs a line only when the published word
+count equals the truth's, and a per-hanzi document has 6 words where the truth line has 1. Nothing got
+worse; the two tokenisations stopped matching. `score_syllables` pairs on a CHARACTER OFFSET for exactly
+this reason, and `amll.py` now writes `truth-syllables.json` (1 722 spans over the three songs read here;
+every offset checked against its own line's text, **0 misaligned**).
+
+### Two songs, and the OOV characters that are left
+
+| run | songs | n | ±100 | ±250 | ±300 | gross | AAE | lines ±500 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `w8s12-zh-units2` | qingtian + guangnian-zhiwai | 878/891 | 73.12 | 95.56 | 96.01 | 8 | 115.0 ms | 96.64 |
+
+The 13 unaligned spans are the vocabulary's, not the units': the `zh-cn` bundle holds no `刮`, `荡`, `啸`,
+`倔`, `磅`, `礴`, `烁`, `簸` or `粹`, so those characters have no target and their word is interpolated
+between its neighbours. Measured over the whole truth set, in-vocabulary share of the letters each sheet
+holds: **zh 97.7-99.5%** (4 songs), **ja 99.7-100%** (2 songs), **ko 71.8%** (1 song). Korean is the
+outlier and the reason is countable: `kresnik/wav2vec2-large-xlsr-korean` tables **1 202 of the 11 172**
+precomposed Hangul blocks and **not one Latin letter**, so `gangnam-style`'s seven already-Latin
+rows and its one untabled Hangul block are unalignable by construction.
+
+### `zh-simplify` is correct and, on this corpus, a byte-level no-op
+
+OpenCC `t2s` folds a Traditional character onto the Simplified form the `zh-cn` vocabulary holds, tried
+after a direct hit and before NFKD. On the two zh songs above, `nonlatin-units,zh-simplify` and
+`nonlatin-units` alone publish **identical onsets** — `onsets_sha256` `72d0838b28e4b5c6` and
+`80bd92afe22fcf04` on both runs (`_runs/w8s12-zh-t2s` vs `_runs/w8s12-zh-units2`) — and the same 4 and 9
+interpolated spans. **All four of this corpus's Chinese songs are written in Simplified**, so there is
+nothing for the fold to do; the review's 69%-covered Traditional sheet is not in this set. The arm is kept
+because a Traditional sheet is a provider away, and it is recorded here as unmeasured ON TRADITIONAL TEXT
+rather than as a win. Hermetically, it is measured: `tests/test_units.py` builds a Simplified-only toy
+vocabulary and a seven-character Traditional line, where **1 of 7** characters is a target without the arm
+(`情`, which both scripts spell alike) and **7 of 7** with it.
+
+### MMS_FA: it works on singing, and its weights are CC-BY-NC
+
+The review set the expectation plainly — English MMS_FA scores 69.0% ±100 against the base model's 78.7%,
+and no source shows MMS_FA working on singing — so a negative result was the expected one. It is not what
+the three rows above read. MMS_FA ties or beats the per-language bundle at ±300 on both languages tried
+(zh 98.58 vs 97.55, ko 92.52 vs 80.67) and loses at ±100 (55.06 vs 67.14, 70.09 vs 71.10): it places a
+syllable in the right second more reliably and in the right tenth of a second less reliably. Its advantage
+is coverage rather than acoustics — **494/494 and 535/535** spans aligned against 490/494 and 481/535,
+because a romanised target is 26 Latin letters and a rare hanzi or an unlisted Hangul block cannot be
+out-of-vocabulary.
+
+Mechanically: `torchaudio.pipelines.MMS_FA`, 315 466 396 parameters, a 29-entry vocabulary (`-` as the
+blank at 0, 26 letters, `'`, and its own `*` star column, which `specials_of` names `OWN_STAR_NAME` so a
+lyric's literal `*` can never target it — and not `STAR_NAME`, so the `star` arm still appends and prices
+its own column rather than handing the decode a free absorbing token at the model's own probabilities while
+the trail quotes `STAR_PENALTY_NATS`, which is review r1-tests-16), on the same 320/400 frame grid every
+other bundle here uses — the equality check
+in `emissions()` passes unchanged. The target sequence is romanised **per syllable fragment** (pypinyin
+untoned for zh, cutlet per fugashi token for ja, uroman per Hangul block for ko), so each Latin target
+carries the index of the grapheme it came from and the published text is never romanised (XA-20).
+
+**THE LICENCE IS THE DECISION, AND IT IS THE OWNER'S.** MMS weights are **CC-BY-NC**: non-commercial use
+only. That is compatible with a local or personal room and incompatible with shipping it as anybody's
+default, so the arm exists, is measured, and is off. Nothing in this tree selects it without
+`ENCORE_ALIGN_EXPERIMENTS=mms-roman`, and `__main__.nonlatin_align_model_for` is the one function that can
+answer its name. Every other dependency these stages add is permissive: **fugashi 1.5.2** MIT and
+**opencc-python-reimplemented 0.1.7** Apache-2.0, in a new `nonlatin` extra that is absent by default
+(`units.rules` then answers the whitespace rule and `units.simplified` is the identity, which is the
+configuration every row under `results/` was measured on).
+
+### The unit rules, and their cost
+
+| song | lines | whitespace words | units | syllable fragments | truth syllables |
+| --- | --- | --- | --- | --- | --- |
+| `amll-zh-qingtian` | 62 | 77 | 494 | 494 | 494 |
+| `amll-ja-yoru-ni-kakeru` | 56 | 56 | 431 | 710 | 693 |
+| `amll-ko-gangnam-style` | 55 | 233 | 279 | 551 | 535 |
+
+Tokenising a whole sheet costs **0.4-1.9 ms**, and building a backend 0.008 s (fugashi, over unidic-lite)
+and 0.007 s (OpenCC's tables) once per process — against a 13-22 s emission pass. The Chinese units equal
+the truth's syllables exactly (494 = 494); the Japanese fragments exceed the truth's spans by 17 of 710
+because the TTML sometimes writes a two-kanji compound as one span (`二人`) where the mora rule splits it,
+and the Korean by 16 of 551 for the same kind of reason. Those are PAIRED, not lost: the character-offset
+rule scores each published fragment against the truth span that contains it. One truth syllable of
+`amll-ja-yoru-ni-kakeru` paired with no published unit at all and is counted as `syllable_unpaired`, which
+exists so an unpairable span cannot quietly leave the denominator.
+
+### What these stages do NOT buy
+
+* **No word document publishes for this lane.** §5.4 still declines words off a bundle with no
+  `lexical.CALIBRATED` row, and neither the per-language whisperx bundles nor MMS_FA has one — so every row
+  above is a `generate`-level reading of the raw decode, not of a published document. Calibrating a row
+  (`lift_gate.py --model`, `line_gate.py --model`) is what would turn this capability into something a room
+  sees, and it is a later wave's.
+* **English is untouched, and it is measured as well as argued.** `units.rules` answers the whitespace rule
+  for every language outside `{zh, ja, ko}`, so no arm can reach a Latin text, and the unit half does not
+  even change the target sequence (`tests/test_units.py` asserts the two target tuples equal). Through the
+  whole job: `_runs/w8s12-english-smoke` (`--level run_align --songs hello --modes truth`) publishes
+  `doc_sha256` **4851b178858ce19f** and `onsets_sha256` **75391ffb463bfe9d**, DIGEST-IDENTICAL to the
+  recorded `results/w9-r1-run_align` row, 63 lines, 0 gross. The new `syllables` block is None on an English
+  row for want of a syllable truth, so no English metric gains or loses a reading.
+* **Nothing here is a corpus reading.** One song a language, one mode, `truth` text only. The zh/ja/ko
+  cells over all 7 songs, the wrong-text modes, and MMS_FA on ja are the bench runner's.
+
+## W8: the non-Latin lane, priced on the corpus (2026-10-15)
+
+The three stages above were built and measured a song at a time. This is the wave's bench cell: the whole
+7-song truth set at the rung a room would actually see, every default-off arm over every song of its
+language, and — first, because a capability wave that costs accuracy has failed — the English regression.
+`results/w8-*.json` (23 rows, each with its per-case digest), `gates/w8.yaml`, `gates/w8-lane.yaml`.
+
+**What the wave paid.** `adapters/ml.py`'s bytes are in the emission key, so the store was COLD: emitter
+`14c8c0a4bfba8627` → **`cca402ad70419f05`**. ONE HuBERT-Large pass covers the English half — 61 matrices
+computed in `_runs/w8-tt` (1727 s), after which `_runs/w8-ra` (1258 s) and `_runs/w8-lines` (1202 s) read
+the store warm at 60 and 32 disk hits and **0 computed**. The non-Latin cells carry their own matrices per
+bundle and per arm, 15 to 25 s a song. One tree throughout: code `0125c5457b5c8bf8`.
+
+### English does not move, and the proof is byte identity rather than a tolerance
+
+| cell | 28-song `scored` truth ±500 | gross | `high_bad` | 0-gross songs | Jamendo ±100 / ±300 / AAE | highlight | wrong text |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `results/baseline-v2-run_align` (v2, no `scored` pool) | 88.56 (all 32) | 41 | — | 27/32 | 81.73 / 94.29 / 516.2 ms | 64.56 | — |
+| `results/w9-r1-run_align` (the W9 close) | **97.27** | 0 | 0 | 28/28 | 85.54 / 97.23 / 70.6 ms | 81.50 | 0/320 + 0/320 |
+| `results/w8-run_align` | **97.27** | 0 | 0 | 28/28 | 85.54 / 97.23 / 70.6 ms | 81.50 | 0/320 + 0/320 |
+| `results/w8-time_text` | **97.31** | 0 | 0 | 28/28 | 85.54 / 97.23 / 70.6 ms | 81.50 | 0/320 + 0/320 |
+| `results/w8-lines-run_align` | **100.00** (band 0) | 0 | 0 | 28/28 | — (no word is scored at that rung) | — | 0/320 + 0/320 |
+
+Over the **1088 shared cases** of `_runs/w8-ra` against `results/w9-r1-run_align`, and the 1088 of
+`_runs/w8-lines` against `results/w9-r1-lines-run_align`, **no field differs anywhere** — `doc_sha256`,
+`onsets_sha256`, `outcome`, `confidence`, `verdict`, `gross`, `w500`, `scored`, `high_bad`, `band`,
+`coverage`, `lift` and `words` all 0. `gates/w8.yaml` **92/92**, `gates/w9-r1.yaml` **86/86**,
+`gates/w8b-arms.yaml` **77/77**, `gates/w8b-lines.yaml` **94/94**.
+
+**The one apparent exception is the W9 FLIP, and it is measured as such.** At `time_text` 19 cases over 6
+songs differ from `results/w9-time_text`, which is the only recorded `time_text` row and predates the owner
+flipping `band-reopen` default-on. `_runs/w8-tt-preflip`
+(`ENCORE_ALIGN_EXPERIMENTS=band-late-kept`, those 6 songs, the 7 right-text modes, 42 cases) reproduces that
+row with **every field identical, `doc_sha256` and `onsets_sha256` included** — so all 19 are the flip's and
+none is W8's. `results/w8-time_text.json` is therefore DECLARED the post-flip `time_text` baseline;
+`results/w8-preflip-control-time_text.json` is the control that earns the declaration. Read against the
+pre-flip row, `gates/w8.yaml` is 81/92 and all 11 failures are its byte-identity section.
+
+### The lane, at the rung a room sees: 7 songs, 340 lines, 0 word documents, 0 of 21 wrong texts
+
+| language | songs | published | line-synced | lines | gross | ±500 | band | `high` | words timed | wrong text |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| zh | 4 | 0 | **4** | 198 | 0 | 100.0 | 0 | 0 | **0** | **0/12** |
+| ja | 2 | 0 | **2** | 87 | 0 | 100.0 | 0 | 0 | **0** | **0/6** |
+| ko | 1 | 0 | **1** | 55 | 0 | 100.0 | 0 | 0 | **0** | **0/3** |
+
+`gates/w8-lane.yaml` **20/20 on each language**. ±500 100.0 is a PUBLISH-RATE reading and not an accuracy
+one — a line-synced document carries the sheet's own times — and the clock is a no-op on all 7 songs
+(bias 0 ms at MAD 0), which is a third arbiter on the truth set from a mechanism neither admission reading
+used.
+
+### What stage 0 bought, measured against the lane as it stood
+
+The counterfactual is runnable, so it was run rather than argued: `ENCORE_ALIGN_EXPERIMENTS=h3-ungated-words`
+is the control that restores the ungated word document a routed bundle published before
+`lexical.may_time_words` (`results/w8-lane-*-ungated-run_align.json`).
+
+| | pre-stage-0 (`h3-ungated-words`) | shipped |
+| --- | --- | --- |
+| zh right text | 4 word documents, **284 words timed**, 187 lines graded `high`, ±500 97.98 | 4 line-synced, 0 words |
+| ja right text | 2 word documents, **95 words timed**, 65 `high`, ±500 89.66 | 2 line-synced, 0 words |
+| ko right text | **REFUSED — `no lyrics`, 1 of 1** | **1 line-synced, 55 lines, ±500 100.0, gross 0** |
+| wrong text | **5 of 21 PUBLISH** (zh 2/12, ja 3/6, ko 0/3) | **0 of 21** |
+| `gates/w8-lane.yaml` | 11/20, 11/20, 14/20 — REJECT | 20/20, 20/20, 20/20 |
+
+So the gain is two countable things. **One song of seven moves from `no lyrics` to published** —
+`amll-ko-gangnam-style`, whose word document the ungated lane refuses outright (the `kresnik` bundle tables
+1 202 of 11 172 Hangul blocks, so its coverage collapses) and which now publishes **55 line-synced lines at
+±500 100.0, gross 0**. And **five wrong texts of twenty-one stop publishing**, which is the ungated path the
+wave was opened to close. The other six songs move from an UNGATED word document to a gated line document:
+strictly less is published, by rule, and that is the trade stage 0 is.
+
+**Romanisation, over all 7 songs rather than 2.** `--romanize shipped` (`results/w8-lane-*-romanized-*`):
+all 7 songs publish, 340 lines, ±500 100.0 and gross 0 unchanged, and **`onsets_sha256` is IDENTICAL on
+every one of the 7** while `doc_sha256` moves on every one — the document gains a field and not one onset
+moves.
+
+### Stages 1-2 on the corpus: `nonlatin-units` clears §3.12, MMS_FA clears it on zh and FAILS on ja
+
+`--level generate --corpus nonlatin --modes truth`, all songs of each language (`--songs amll-<language>`,
+one language a run), scored against the AMLL TTML's own syllable spans.
+
+**THE ±100/±250/±300 COLUMNS DIVIDE BY THE UNITS THAT ALIGNED, NOT BY THE TRUTH** — review r1-spec-8, which
+found this section claiming the opposite. `aligned/truth` is the coverage those columns are conditioned on,
+and the reading on the TRUTH's denominator is `syllable_pco300`, which is what `gates/w8-units.yaml` now
+evaluates §3.12's reject-if on: zh 25.35 / **95.55** / 95.55 / **97.03** (whitespace / `nonlatin-units` /
+`+zh-simplify` / `mms-roman`), ja 10.72 / **81.95** / **73.78**, ko 51.78 / **72.52** / **92.52**. Only the
+rows that lose spans move — ko `nonlatin-units` by 8.15 pt (80.67 → 72.52 over 481 aligned of 535) and ja
+`nonlatin-units` by 0.40 — and **no verdict in this section turns on the difference**: `nonlatin-units`
+still clears the 70 % floor on both named languages and `mms-roman` still reads below it on ja
+(73.78 against 81.95, −8.17 pt).
+
+| language | songs | arm | aligned/truth | ±100 | ±250 | **±300** | gross | AAE | `gates/w8-units.yaml` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| zh | 4 | — (whitespace) | 1416/1416 | 10.59 | 22.18 | **25.35** | 253 | 1112.5 ms | 5/8 REJECT |
+| zh | 4 | `nonlatin-units` | 1400/1416 | 58.50 | 94.21 | **96.64** | 9 | 124.4 ms | **8/8** |
+| zh | 4 | `nonlatin-units,zh-simplify` | 1400/1416 | 58.50 | 94.21 | **96.64** | 9 | 124.4 ms | **8/8** |
+| zh | 4 | `mms-roman` | 1416/1416 | 55.16 | 94.70 | **97.03** | 14 | 145.2 ms | **8/8** |
+| ja | 2 | — (whitespace) | 1213/1213 | 2.64 | 8.66 | **10.72** | 503 | 1980.0 ms | 5/8 REJECT |
+| ja | 2 | `nonlatin-units` | 1207/1213 | 49.88 | 79.20 | **82.35** | 9 | 192.0 ms | **8/8** |
+| ja | 2 | `mms-roman` | 1208/1213 | 42.80 | 68.38 | **74.09** | 50 | 786.6 ms | 7/8 REJECT |
+| ko | 1 | — (whitespace) | 481/535 | 36.38 | 44.70 | **57.59** | 14 | 431.9 ms | 6/8 REJECT |
+| ko | 1 | `nonlatin-units` | 481/535 | 71.10 | 79.42 | **80.67** | 18 | 341.6 ms | **8/8** |
+| ko | 1 | `mms-roman` | 535/535 | 70.09 | 91.96 | **92.52** | 20 | 197.4 ms | **8/8** |
+
+**THE `gates/w8-units.yaml` COLUMN IS THE 8-RULE FILE THESE RUNS WERE GATED ON.** r1-spec-8 renamed its
+reject-if to `syllable_pco300` and added two accounting rules, so the file now holds 9 and the verdicts here
+are out of 8. The pco300 readings above say every PASS stands; the one rule no recorded row can answer is
+`syllables-account-for-every-truth-span`, `syllable_unpublished` not existing when they were written — the
+next run of this cell is what gives it a reading (ko's is 24 of 535, 4.49 %, from the arithmetic of its own
+recorded row).
+
+**§3.12's reject-if has two clauses and the corpus separates the arms on the second.** `nonlatin-units`
+clears both: zh **96.64** and ja **82.35** against the 70 % floor, and it IS the per-language whisperx
+bundle, so there is nothing for it to be below. `mms-roman` clears the floor (zh 97.03, ja 74.09) but the
+clause "or below the blank-fixed whisperx models" is where it fails: on ja it reads **74.09 against
+82.35**, −8.26 pt, with gross 50 against 9 and AAE 786.6 ms against 192.0. It wins on zh by +0.39 and on ko
+by +11.85, both on COVERAGE rather than acoustics (535/535 and 1416/1416 spans, a romanised target being
+unable to be out-of-vocabulary). **So MMS_FA is REJECTED on §3.12's own second clause and stays
+default-off**, which is also where its CC-BY-NC weights leave it: the owner's call, not a measurement's.
+
+**The one-song readings were optimistic and the corpus says by how much.** ja `nonlatin-units` ±300 was
+**95.78** on `amll-ja-yoru-ni-kakeru` alone and is **82.35** over both ja songs; `amll-ja-ragutorein` is the
+harder sheet (±500 70.97 at the line level, against 87.36 pooled). zh moves the other way only slightly,
+97.55 on `qingtian` against 96.64 over four. Both still clear the floor, and the reject-if verdict does not
+turn on the difference — but the gate file's floors were set from the one-song rounding and a later wave
+should read them against this table rather than against those.
+
+**`zh-simplify` is a no-op on this corpus, now over four songs rather than two.** Every figure in its row is
+identical to `nonlatin-units` to the last decimal, all four zh sheets being written in Simplified. The arm's
+correctness is proved hermetically instead (1 of 7 Traditional characters is a target without it, 7 of 7
+with it); nothing here is evidence for it or against it.
+
+**What this cell does NOT settle.** No word document publishes for this lane either way — §5.4 declines
+words off a bundle with no `lexical.CALIBRATED` row — so every syllable number above is the RAW DECODE's,
+and fitting such a row for a non-Latin bundle is a later wave's. ko is one song and is not in §3.12's
+reject-if, which names zh and ja. No transliteration QUALITY is measured anywhere.

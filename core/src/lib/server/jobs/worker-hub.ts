@@ -191,6 +191,16 @@ export class WorkerHub {
 		return { ...effective.global, defaultEngine: engine, defaultModel: model };
 	}
 
+	/** THE FOURTH TERMINAL PATH IS NOT THE HUB'S: the reaper fails a job whose lease expired for the last
+	 *  time, and `JobReaper.onFailed` hands it to the same `reportTerminalFailure` epilogue. That bag was
+	 *  assembled INLINE in app.ts and silently omitted `persist`, so a reaper-killed process settled its
+	 *  stem gate in memory only and the next boot read 'queued' back out of the row — the exact defect
+	 *  `#failureSinks`'s own note exists to prevent, reintroduced by re-assembling it at a second site.
+	 *  Exposed rather than copied, so there is one bag and not two. */
+	terminalFailureSinks(): TerminalFailureDeps {
+		return this.#failureSinks();
+	}
+
 	/** The sink bag every terminal path here hands `reportTerminalFailure` — named ONCE so a worker
 	 *  failure, a refused silent instrumental and the unservable TTL cannot settle through different
 	 *  sinks (in particular so none of the three loses the durable `persist` half). */

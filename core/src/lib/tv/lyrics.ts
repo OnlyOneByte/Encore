@@ -149,8 +149,8 @@ const firstChar = (s: string | undefined): string | undefined => (s ? [...s][0] 
  *
  * ONE RULE FOR BOTH RENDERERS — the reel's inter-word gap and the text `lineFromWords` rebuilds — because a
  * Japanese line joined with spaces in one and without in the other would read as two different songs. A
- * CJK/Latin boundary KEEPS its space: the two scripts mix in lyrics ("光年之外 oh my love") and running them
- * together is unreadable either way.
+ * CJK/Latin boundary KEEPS its space: the two scripts mix within a line of lyrics, and running them together
+ * is unreadable either way.
  */
 function spaceBetweenChars(before: string | undefined, after: string | undefined): boolean {
 	if (before === undefined) return false;

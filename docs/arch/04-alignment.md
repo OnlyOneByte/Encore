@@ -1104,8 +1104,13 @@ the whitespace rule for every language outside the table above, so no English ro
   `nonlatin-units`, the fragments of an unsplit line being one fragment. **Its weights are CC-BY-NC**: it is
   an arm an operator switches on for a local or personal room, and it may not become anybody's default —
   the owner's call, and the one licence in this tree that is not permissive. MMS_FA also ships its own
-  star column, which `adapters.ml.specials_of` names so a lyric's literal `*` can never target it (XA-10)
-  and `starred` does not append a second.
+  star column, which `adapters.ml.specials_of` names `OWN_STAR_NAME` so a lyric's literal `*` can never
+  target it (XA-10) — deliberately not the `star` arm's name, since that arm's column is one the arm priced
+  and the model's carries a price nobody here fitted, so `starred` appends and prices its own as always
+  (review r1-tests-16). **It needs the `romanize` extra to be useful**: with no backend
+  installed the arm loads MMS_FA and hands it the original characters, of which its 26-letter vocabulary
+  maps none — the trail says so (`units` without `roman` in the arm's clause, beside an `MMS_FA` bundle
+  clause) rather than publishing something that looks like a reading.
 
 None of this publishes words for this lane on its own: §5.4 still declines a word document off a bundle
 with no `lexical.CALIBRATED` row, and neither the per-language whisperx bundles nor MMS_FA has one. The

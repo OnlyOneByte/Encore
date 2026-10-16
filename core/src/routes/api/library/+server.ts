@@ -29,7 +29,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const processing = [...app.mediaById.values()]
 		.filter((m) => readinessOf(m) === 'processing')
 		.map((media) => {
-			// findOutstandingForMedia only asks for a live `stems` job, so a song mid-fetch or mid-align matches none and falls through to 'queued' below — a phone reloading during either step sees the progress strip jump backwards (see jobs/media-status.ts for the broadcast-side twin).
+			// `findOutstandingForMedia` walks ['fetch','stems','align'] and returns the first step that is not `ready`, so a song mid-fetch or mid-align matches its OWN job and `mediaStatusFor` floors the stage at that step — not 'queued'. (This comment used to claim it asked for a live `stems` job alone, i.e. that both those steps fell through to the `'queued'` default below and a phone reloading mid-fetch saw the strip jump backwards. The chain has three types; the fall-through is reached only by a media with no live job at all, which `readinessOf(m) === 'processing'` already excludes except in the torn window `reconcileStrandedGates` repairs at boot.) See jobs/media-status.ts for the broadcast-side twin.
 			const job = app.jobs.findOutstandingForMedia(media.id);
 			return {
 				media,
