@@ -135,7 +135,7 @@ SETUP_DEFAULTS: Mapping[str, str] = {
 #: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm, a difference here
 #: being the experiment rather than a broken comparison. `code` is absent for the same reason and printed as
 #: its own NOTE. A key with a `lib.RUN_DEFAULTS` entry is compared even where one side is silent.
-COMPARED_META = ("model", "model_identity", "align_config", "detector", "romanize")
+COMPARED_META = ("model", "model_identity", "align_config", "detector", "romanize", "units")
 
 #: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one on such a run is an ERROR:
 #: with no `lexical.CALIBRATED` row every emission-scale gate stands down, so `wrongtext_pass` is not that

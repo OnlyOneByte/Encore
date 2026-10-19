@@ -429,13 +429,18 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 
-uv sync --extra cpu --extra ml --extra text --extra romanize    # to run real jobs on CPU
-uv sync --extra cu128 --extra ml --extra text --extra romanize  # on an NVIDIA box
+uv sync --extra cpu --extra ml --extra text --extra romanize --extra nonlatin    # real jobs, CPU
+uv sync --extra cu128 --extra ml --extra text --extra romanize --extra nonlatin  # on an NVIDIA box
 ```
 
-`romanize` is the display-only second script a non-Latin line publishes alongside its own text (pypinyin,
-cutlet, uroman — the licences are in `pyproject.toml`). Optional like `text`: without it no line gains a
-`romanization` field and nothing else changes.
+`romanize` + `nonlatin` are the non-Latin lane, 49 MB together, and since W10 they are part of what a
+worker box installs — `dev.sh` and `docker/worker.Dockerfile` both sync them — because without them the
+lane is reachable in a test and not in a room: `build_romanizer` answers None so no CJK line gains its
+second script, and the per-language stage-2 table cannot route zh or ko to MMS_FA at all
+(`docs/arch/04-alignment.md` §9.2). They stay EXTRAS rather than base dependencies so
+`uv sync --only-group dev` still installs neither, which is the configuration the hermetic tests assert
+the absent behaviour on. Backends and licences are in `pyproject.toml`; MMS_FA's own CC-BY-NC attribution
+is `docs/arch/04-alignment.md` §14.2.
 
 `cpu` and `cu128` are declared mutually exclusive in `[tool.uv]`, which is what lets one lockfile hold
 both resolutions. The pins are identical between them; only the wheel index differs, so switching
@@ -479,7 +484,7 @@ preserve.
 | --- | --- | --- |
 | `protocol/` | ✅ | 15 frames as frozen dataclasses, including the new `job:state`, `job:claim`, `job:revoked` |
 | `domain/lyrics/` | ✅ | `report`, `policy`, `search`, `measure`, `place`, `claimmap`, `ends` — every retry decision, the claim clock and the word-end post-pass, pure |
-| `steps/` | ✅ | `align_steps`, `separate_steps`, records, the `AlignSteps`/`SeparateSteps` Protocols |
+| `steps/` | ✅ | `align_steps` + its six siblings (`align_{text,lines,unsung,claims,notes,geometry}`, see `docs/arch/05-worker.md` §1.1), `separate_steps`, records, the `AlignSteps`/`SeparateSteps` Protocols |
 | `workflows/` | ✅ | `align` (the state machine), `stems` (deliberately linear), `dbos_align` wrapper |
 | `transport/` | ✅ | websocket client, reconnect with jittered backoff, the two-point ownership guard |
 | `host/` | ✅ | config boundary, hardware probe, backend resolution, capability narrowing |
@@ -501,7 +506,7 @@ publication rather than re-running a 45-minute pass.
 ### Running it
 
 ```bash
-uv sync --extra cpu --extra ml --extra text --extra romanize  # or --extra cu128 / --extra mlx
+uv sync --extra cpu --extra ml --extra text --extra romanize --extra nonlatin  # or cu128 / mlx
 ENCORE_CORE_URL=ws://core:3000/worker uv run python -m encore_worker
 ```
 

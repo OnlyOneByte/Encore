@@ -2201,7 +2201,7 @@ NO_DOCUMENT = "-"
 
 
 #: The worker's top-level record of a document's whole TEXT, written only when its `lines` lost some of it
-#: (`align_steps._with_source_lines`, review W1 r1: a re-pick re-times it). Not rendered and not timed.
+#: (`align_text._with_source_lines`, review W1 r1: a re-pick re-times it). Not rendered and not timed.
 SOURCE_LINES_KEY = "sourceLines"
 
 

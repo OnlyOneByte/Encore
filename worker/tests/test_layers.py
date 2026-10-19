@@ -12,6 +12,7 @@ whole point is that this suite runs without it (`uv sync --only-group dev`).
 from __future__ import annotations
 
 import ast
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -55,6 +56,33 @@ PACKAGED_DATA_READERS = {
 
 #: What "touches the filesystem" means for the check above: the stdlib doors into one.
 FILESYSTEM_IMPORTS = frozenset({"importlib.resources", "pathlib", "wave", "os", "shutil", "tempfile", "glob"})
+
+#: Every THIRD-PARTY package `domain/` imports -> what it reads off disk the first time it is used, `""` for
+#: one that reads nothing. `FILESYSTEM_IMPORTS` sees stdlib spellings only, so a backend that opens a
+#: packaged table is invisible to it (XA-15; review r2-tests-16).
+DOMAIN_BACKENDS: dict[str, str] = {
+    "numpy": "",
+    "pyloudnorm": "",
+    "pypinyin": "",
+    "cmudict": "its packaged pronunciation dictionary",
+    "pyphen": "its packaged hyphenation dictionaries",
+    "lingua": "its packaged n-gram language models",
+    "soundfile": "the wav the step layer resolved, through libsndfile",
+    "fugashi": "unidic-lite's packaged MeCab dictionary",
+    "cutlet": "the same MeCab dictionary, through fugashi",
+    "uroman": "its packaged romanisation tables",
+    "opencc": "its packaged Traditional->Simplified conversion tables",
+}
+
+#: `PACKAGED_DATA_READERS`' twin for the PACKAGE-shaped door: the `domain/` modules that build a backend
+#: whose data is a file, and what that is. Read-only packaged data, like the stdlib half.
+PACKAGED_DATA_BACKENDS: dict[str, str] = {
+    "audio/wav.py": "a wav the step layer resolved, through soundfile",
+    "lyrics/syllabify.py": "cmudict's pronunciations and pyphen's hyphenation dictionaries",
+    "lyrics/language.py": "lingua's n-gram models, where the detector is built",
+    "lyrics/romanize.py": "uroman's tables, and unidic-lite's MeCab dictionary through cutlet",
+    "lyrics/units.py": "the same MeCab dictionary through fugashi, and OpenCC's tables",
+}
 
 
 def _modules() -> Iterator[tuple[Path, str, ast.Module]]:
@@ -187,6 +215,39 @@ def test_the_filesystem_in_domain_is_packaged_read_only_data() -> None:
     assert not stale, f"these entries no longer read a file and must leave PACKAGED_DATA_READERS: {stale}"
 
 
+def _third_party_imports(tree: ast.Module) -> set[str]:
+    """Every non-stdlib, non-`encore_worker` package this file imports, as its root name."""
+    return {
+        name.split(".")[0]
+        for name in _imported_names(tree)
+        if name.split(".")[0] not in sys.stdlib_module_names and name.split(".")[0] != PKG_NAME
+    }
+
+
+def test_every_third_party_backend_in_domain_declares_what_it_reads() -> None:
+    """XA-15's filesystem clause, through the door a stdlib spelling cannot be: `romanize` and `units` load
+    a MeCab dictionary, uroman's tables and OpenCC's tables through PACKAGES, so the guard above saw neither
+    module (review r2-tests-16). Every third-party import in `domain/` says what it reads, and a module
+    that builds a file-backed one is named with its data.
+    """
+    file_backed = {name for name, reads in DOMAIN_BACKENDS.items() if reads}
+    used: dict[str, set[str]] = {rel: _third_party_imports(tree) for rel, tree in _domain_modules()}
+    every = {name for names in used.values() for name in names}
+    assert every <= set(DOMAIN_BACKENDS), (
+        f"these third-party packages are imported in domain/ without declaring what they read off disk: "
+        f"{sorted(every - set(DOMAIN_BACKENDS))}. XA-15 allows PACKAGED READ-ONLY data and nothing else."
+    )
+    readers = {rel for rel, names in used.items() if names & file_backed}
+    assert readers <= set(PACKAGED_DATA_BACKENDS), (
+        f"these domain modules build a backend that reads a file without declaring it: "
+        f"{sorted(readers - set(PACKAGED_DATA_BACKENDS))}."
+    )
+    stale = sorted(set(PACKAGED_DATA_BACKENDS) - readers)
+    assert not stale, f"these entries no longer build a file-backed backend: {stale}"
+    unused = sorted(set(DOMAIN_BACKENDS) - every)
+    assert not unused, f"these declared backends are no longer imported in domain/: {unused}"
+
+
 def test_the_two_allowlists_are_not_vacuous() -> None:
     """Both rules above pass by finding nothing if `_imported_names` stops reading the import spellings.
 
@@ -199,6 +260,10 @@ def test_the_two_allowlists_are_not_vacuous() -> None:
     assert "importlib.resources" in names, "the dotted form a `from importlib import resources` means"
     assert FILESYSTEM_IMPORTS & names, "the filesystem check must see a stdlib door into one"
     assert SEEDED_FROM_DATA and PACKAGED_DATA_READERS, "an empty allowlist makes its rule unfalsifiable"
+    # And the PACKAGE-shaped door: the scan must see a third-party import and skip the stdlib beside it.
+    backends = _third_party_imports(ast.parse("import uroman\nimport os\nfrom fugashi import Tagger\n"))
+    assert backends == {"uroman", "fugashi"}, "the backend scan must see the packages and not the stdlib"
+    assert {"fugashi", "uroman", "opencc"} <= set(DOMAIN_BACKENDS), "the W8 backends stay declared"
 
 
 def test_every_layer_declares_its_allowance() -> None:

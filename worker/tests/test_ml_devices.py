@@ -323,13 +323,13 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
     # 0.0021. An empty table means nothing there may call any bundle a device's default. Read off the module
     # SOURCE and not `__doc__`, because since W7b the record is the `CALIBRATED` table and its `#:` block
     # rather than an essay in the docstring, and `#:` comments carry no `__doc__`.
-    from encore_worker.domain.lyrics import lexical
+    from encore_worker.domain.lyrics import language, lexical
 
     record = Path(inspect.getsourcefile(lexical) or "").read_text(encoding="utf-8")
     assert "CUDA's default" not in record, (
         "no bundle is any device's default while ALIGN_MODELS_BY_DEVICE is empty"
     )
-    assert DEFAULT_ALIGN_MODEL in lexical.CALIBRATED, (
+    assert (DEFAULT_ALIGN_MODEL, language.ENGLISH) in lexical.CALIBRATED, (
         "and the record names the bundle a box actually loads — a row, not a passing mention: a substring "
         "search over the whole module would pass on any incidental occurrence of the name"
     )

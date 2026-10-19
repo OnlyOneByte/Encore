@@ -258,7 +258,7 @@ What the graph adds, and why none of it fits through a fixed kernel:
   (it runs first, and the three-signal rule then runs on what is left) and can never be a replacement.
   A detector decodes the PUBLISHER's topology and not merely its matrix: under `skip-arcs,star-b` the star
   targets are bypassable in its graph too, at the same `P`, because mandatory stars would make it name lines
-  about a decode nobody ran (`align_steps._star_positions`, read by both; review W9 r2-correctness-4).
+  about a decode nobody ran (`align_unsung._star_positions`, read by both; review W9 r2-correctness-4).
 * **An optional frame-relative star** (star phase B). The star state emits `frame max − P` computed in the
   graph, so phase B needs no matrix surgery of its own; at one `P` that is the same number phase A's
   appended column holds, which is why the two phases share one fitted penalty. The new power is that it may
@@ -275,7 +275,12 @@ What the graph adds, and why none of it fits through a fixed kernel:
   (review W9 r1-correctness-3). The frame precheck is bypass-aware for the same reason
   (`viterbi._frames_needed`): counting every target as mandatory refused the skip-arc detector on frame
   counts its own arcs could fit, which is precisely the input class it exists for (r1-correctness-8).
-* **A capped-Gaussian onset bonus** (the review's roadmap item 14). `domain.lyrics.prior.onset_bonus` builds,
+* **A capped-Gaussian onset bonus** (the review's roadmap item 14, whose template is Huang 2022,
+  [arxiv 2202.01646](https://arxiv.org/abs/2202.01646): a boundary bonus inside the Viterbi takes line AAE
+  0.30 → 0.25 s, with the claims standing in for its boundary detector. Huang 2024,
+  [arxiv 2406.02560](https://arxiv.org/abs/2406.02560), is the counter-reading the review also recorded —
+  decode-time label priors are useless there and the gain needs training, and its code is CC BY-NC-ND).
+  `domain.lyrics.prior.onset_bonus` builds,
   per line, nats added at that line's first-character state: a Gaussian centred on the **clock-mapped**
   claim (XA-04 — a raw claim would centre it on the sheet's own offset), truncated to zero beyond
   `ONSET_REACH_SEC` so a mis-bound repeat cannot pull a line across the song. It is paid **once, on the
@@ -283,7 +288,10 @@ What the graph adds, and why none of it fits through a fixed kernel:
   first character on the prior's own peak and paid 600 nats of evidence for the privilege. A prior is
   **never** added to a reported score — the score is the word's confidence, and a bonus is not evidence.
   `prior.fused` is the other half: inside a claim window where the target's envelope hears nothing, the
-  mix's frames replace the stem's, because there they are the only evidence there is.
+  mix's frames replace the stem's, because there they are the only evidence there is. **The peak is FITTED**
+  (W10, README "fitting the claim prior's peak"): swept 0-20 nats decode-only, `peak 0` reproduces
+  torchaudio's control exactly, 8.0 is the pool's optimum and dominates the shipped 4.0, and 20.0 is where a
+  wrong clock starts costing — a 3 s offset goes from 11 gross to 19. σ and the reach are still chosen.
 
 The prior and the fusion reach one decode only — the **primed re-decode**, after the claim clock and after
 the blind verdict grading reads (XA-03, XA-04) — and under `priors-decide` that decode stands in for the
@@ -470,7 +478,7 @@ publish inside a millisecond of each other — intervals the TV can never light,
 `start ≤ pos < end`. So such an anchor is dropped and the word before it tried, trading one measured onset
 for a tail that is a timing again; both properties survive the walk exactly, because the map is still
 `t ≤ anchor → t` and still monotone. `trimmed` returns nothing for a line whose every word starts after the
-new end — a line that was not sung before it. (`align_steps._clamped_v2`, `_pulled_end`,
+new end — a line that was not sung before it. (`align_geometry._clamped_v2`, `_pulled_end`,
 `generate.trimmed`; README, "The clamp's left floor was the bug, not the ladder", prices the clamp, this
 tail and the walk.)
 
@@ -525,7 +533,7 @@ than peaked, and a shuffled sheet scored highest), and onset _agreement_ does no
 correlation at the chosen lag separates the populations.
 
 **Three tiers**, because the null hypothesis differs by what is being asked, and any one of them passing
-is a pass (`align_steps._envelope_passes`):
+is a pass (`align_lines._envelope_passes`):
 
 1. `r ≥ 0.40` — `activity.MIN_CORRELATION`, the fit's own `usable` threshold — with `|lag| ≤ 0.5 s`. The
    shape agrees and the lag is small enough to be measurement noise.
@@ -605,9 +613,12 @@ YouTube caption tier.
 ### 5.4 Calibration by model — _may this threshold be read at all?_
 
 Every lift band, the rung's agreement share and the placement-margin floor are **emission-scale**
-numbers: they belong to the bundle they were measured on and to no other. One table keyed by model
-identity (`lexical.CALIBRATED`) holds one row per bundle, and a bundle with no row is not gated on
-anybody else's numbers.
+numbers: they belong to the bundle they were measured on and to no other. One table (`lexical.CALIBRATED`)
+holds one row per **(bundle, language)** pair, and a pair with no row is not gated on anybody else's
+numbers. The key is a PAIR and not a bundle name because one bundle can serve several languages — §9.2
+sends both zh and ko to MMS_FA — and their lifts are not each other's, so a bundle-only key would hand a
+Korean text the row fitted on Chinese. The language half is the **bundle's**, so every Latin text on the
+English bundle keeps the English row.
 
 This matters because the emission model is chosen **per language**, not per wave, and this worker
 deliberately supports every language WhisperX tables. The rule is therefore:
@@ -625,6 +636,15 @@ deliberately supports every language WhisperX tables. The rule is therefore:
   sheet's own line timings, `low` and **unvouched**, with the missing row named on the trail. The
   measurement, the per-song truth set and what is still owed: `docs/benchmarks/forced-alignment/
   README.md`, "W8: the non-Latin truth set";
+* **and that rule reads the TEXT's SCRIPT, not the language the fallback picked.** `SCRIPT_LANGUAGES` names
+  no language for thirteen of the scripts `language.script_of` can read (Thai, Bengali, Tamil, Armenian,
+  Khmer…), so `detect` answers `en` for them — a fallback, not a decision — and `en` IS a calibrated
+  bundle, whose row was fitted on text its own vocabulary spells. Read off the language, the lane's one rule
+  therefore never fired for those scripts, and a word document published `high` and **vouched** on a lift
+  measured over whatever Latin the sheet happened to carry. Both engines now pass
+  `language.nonlatin_script(texts)` to `may_time_words`, so a text whose dominant script is non-Latin
+  declines its words whatever row its bundle has (review r2-spec-8); the exemptions are unchanged — a
+  transcript of this recording, a pin (all-`low`), and `h3-ungated-words` as the control;
 * the placement-margin floor **abstains** on a bundle nobody fitted one for, rather than reading 10 nats
   off somebody else's scale.
 
@@ -769,7 +789,7 @@ A demotion grades every line `low` and the document `low` — the TIMINGS' axis 
 words being fine. The TV then renders those lines line-level with no word wipe (`wipesWords` in
 `core/src/lib/tv/lyrics.ts`), which is a real user-visible cost and the reason the rule is a conjunction
 rather than a threshold. The reading is on the trail of **every** claimed job whether or not it demoted
-(`align_steps._sheet_why`): "we checked and it is close" and "nobody checked" must not read alike, that
+(`align_notes._sheet_why`): "we checked and it is close" and "nobody checked" must not read alike, that
 silence being what the 0.86 s hid behind.
 
 **THE DEMOTION IS BEHIND `band-off-sheet` AND OFF BY DEFAULT** (§14); the READING always runs and always
@@ -844,6 +864,12 @@ reconcile's corroboration band, because reconcile reads the map. The LINE_SYNC r
 own near-band, because there the reader is that rung's gate — and there the claims do not steer a repair,
 they _are_ the published document. A wider band is also a stricter map: no-shift is harder to beat at
 1.0 s than at 0.25 s, which is what a map that moves what publishes should want.
+
+**Mapping a sheet onto our clock copies it, and holds each end at or after its start.** `ClaimMap.at` is
+non-decreasing, so the map itself can never invert a pair; the hold exists for a cue that arrived
+_reversed_, which is a caption track and not an LRC. The copy matters because a `TextRef` is checkpointed
+and a replay must not re-map already-mapped timings (`steps/align_lines._mapped`, and `ClaimMap.windows`
+holds its ends the same way).
 
 **What stays raw.** The claims as the sheet gave them are kept for the trail and the report: the offset
 we publish describes the _claim_, and the global engine deliberately reports no residual at all, so that
@@ -1088,8 +1114,11 @@ publish `오 빤` where the sheet wrote `오빤` — the defect §11.2 exists to
 end. The AMLL truth agrees: its Korean lines carry 233 whitespace words over 55 lines, where its Chinese
 and Japanese lines carry roughly one word per line.
 
-Three arms, **all default-off** and all inert on a Latin language by construction (`units.rules` hands back
-the whitespace rule for every language outside the table above, so no English row can move):
+Three arms, all inert on a Latin language by construction (`units.rules` hands back the whitespace rule for
+every language outside the table above, so no English row can move). **They were all default-off through
+W8; since W10 §9.2's table arms `mms-roman` for zh and ko and `nonlatin-units` for ja, and names
+`zh-simplify` nowhere** — the table is the only thing that arms any of them by default, an operator's own
+name still widens their reach, and `nonlatin-unrouted` stands the whole table down:
 
 - **`nonlatin-units`** — the table. A GROUPING change only: the target sequence is the same characters in
   the same order, so no onset can move, only which word and which syllable a span belongs to.
@@ -1101,21 +1130,67 @@ the whitespace rule for every language outside the table above, so no English ro
 - **`mms-roman`** — `torchaudio`'s **MMS_FA** bundle for a non-Latin language, whose vocabulary is 26 Latin
   letters and an apostrophe, over a target sequence romanised **per syllable fragment** so every target
   carries the index of the grapheme it came from and a span maps straight back (**XA-20**). It implies
-  `nonlatin-units`, the fragments of an unsplit line being one fragment. **Its weights are CC-BY-NC**: it is
-  an arm an operator switches on for a local or personal room, and it may not become anybody's default —
-  the owner's call, and the one licence in this tree that is not permissive. MMS_FA also ships its own
+  `nonlatin-units`, the fragments of an unsplit line being one fragment. **Its weights are CC-BY-NC** — the
+  one licence in this tree that is not permissive, CLEARED for use by the owner on 2026-10-16 because Encore
+  is non-commercial (§14.2), which is what let §9.2 route zh and ko onto it. MMS_FA also ships its own
   star column, which `adapters.ml.specials_of` names `OWN_STAR_NAME` so a lyric's literal `*` can never
   target it (XA-10) — deliberately not the `star` arm's name, since that arm's column is one the arm priced
   and the model's carries a price nobody here fitted, so `starred` appends and prices its own as always
   (review r1-tests-16). **It needs the `romanize` extra to be useful**: with no backend
   installed the arm loads MMS_FA and hands it the original characters, of which its 26-letter vocabulary
-  maps none — the trail says so (`units` without `roman` in the arm's clause, beside an `MMS_FA` bundle
-  clause) rather than publishing something that looks like a reading.
+  maps none — so the PAIRING IS REFUSED rather than half-applied: `__main__.nonlatin_routes_for`
+  raises `ConfigError` naming the `romanize` extra when an operator NAMED the arm and this box can build no
+  transliterator at all (a ROUTED language keeps whisperx's own bundle instead, §9.2), and
+  for a language whose own backend is missing `units.unhonoured` puts "`mms-roman` did NOT apply" on the
+  trail beside the arm's clause (review r2-spec-11). A bench row says which spelling actually decoded in
+  `meta["units"]` — the resolved `Rules.name` — since `align_config` records only the arm NAMES.
 
-None of this publishes words for this lane on its own: §5.4 still declines a word document off a bundle
-with no `lexical.CALIBRATED` row, and neither the per-language whisperx bundles nor MMS_FA has one. The
-arms are measurable at the bench's `generate` level against the AMLL TTML's own syllable spans, and
-calibrating a row is a later wave's (README, "W8 stages 1-2").
+`units.Rules` reaches every reader through the step's own `_unit_rules`, built ONCE per attempt and OFF THE
+EVENT LOOP (`mms-roman` builds uroman or cutlet, measured at 2.23 s for `ko` on first use; review
+r2-correctness-3). "Every reader" includes the two the first build missed: the `adlibs` arm's
+`parts.split`, whose word list has to be the decode's or `_woven` cannot pair them, and the LINE_SYNC
+rung's own decode check (review r2-correctness-5). `tests/test_nonlatin_lane.py` holds the wiring as source
+as well as behaviour, every one of the sites having survived mutation to None (review r2-tests-13).
+
+None of this publishes words for a language on its own: §5.4 declines a word document off a bundle with no
+`lexical.CALIBRATED` row for the language it is serving, which is still every non-Latin language except the
+two W10 fitted — **zh on MMS_FA and ja on its own bundle publish WORDS; ko and every other one publish
+LINES** (README, "W10: the first non-Latin calibration rows"). The arms are also measurable below the word
+gate, at the bench's `generate` level against the AMLL TTML's own syllable spans (README, "W8 stages 1-2"),
+and §9.2 is which of them ships for which language.
+
+### 9.2 The per-language stage-2 table
+
+The arms of §9.1 are not one decision. Measured on the AMLL truth's own syllable spans at PCO@300, the
+whitespace rule → `nonlatin-units` → `mms-roman` ladder reads **zh 25.35 → 95.55 → 97.03**, **ja 10.72 →
+81.95 → 70.98**, **ko 51.78 → 72.52 → 92.52** — so the best arm is a different arm per language, and a
+blanket `mms-roman` default would hand Japanese an **11-point** regression. The shipping form is therefore
+a TABLE, `units.ROUTED`, in the same shape `lexical.CALIBRATED` has had since W4b: one frozen row per
+language, keyed by language code, carrying the arms, the bundle those arms need, and the number the row was
+chosen on.
+
+| language | arms | bundle | syllable PCO@300 | the alternative it beat |
+| -------- | ---- | ------ | ---------------- | ----------------------- |
+| `zh` | `mms-roman` | MMS_FA | **97.03** | `nonlatin-units` 95.55 (+1.48) |
+| `ja` | `nonlatin-units` | whisperx's own `ja` | **81.95** | `mms-roman` 70.98 — **MMS stays rejected for ja** |
+| `ko` | `mms-roman` | MMS_FA | **92.52** | `nonlatin-units` 72.52 (+20.00), and the only arm that reaches ko's 4.49% coverage gap |
+
+Four rules make the table a table rather than an if-chain:
+
+* **An unrouted script is NOT routed.** `units.route` answers None for a language with no row, and the
+  caller keeps the whitespace rule and whisperx's own bundle. Nothing falls back to a neighbour's row.
+* **An operator's own arm still applies to any non-Latin language** (`units.arms_for` is the union), so
+  every W8 cell — `mms-roman` on ja included — stays reproducible; the table is the measured default and
+  not a ceiling. `nonlatin-unrouted` stands the whole table down, which is the configuration every row
+  recorded before W10 was measured on.
+* **The bundle and the target sequence cannot disagree.** `units.stage2_bundle` reads
+  `units.unhonoured` before it answers MMS_FA, so a box with no transliterator for that language keeps
+  whisperx's own bundle and the script-unit rule — which is the measured `nonlatin-units` reading, not a
+  dead worker. A worker's startup line prints the table as this box resolved it.
+* **A calibration row is one (bundle, LANGUAGE) pair's** (§5.4, XA-21): MMS_FA serves zh and ko, and their
+  lifts are not each other's, so the key is a pair and a language with no row of its own publishes LINES.
+
+(README, "W10: the per-language stage-2 table".)
 
 ## 10. Word ends — a display post-pass, and starts never move
 
@@ -1235,15 +1310,22 @@ the text the room asked for. A guest who cannot read that script sees nothing th
 also carry **`romanization`**, a second script printed UNDER the original at a smaller size
 (`core/src/lib/tv/LyricsOverlay.svelte`, `.romanization`). Three rules make it safe to add:
 
-1. **It never replaces the text and is never a target.** `domain/lyrics/romanize.py` is called by
-   `_line_doc` at publish time, from the line text that is already decided; nothing upstream of the
-   decode can see it. Invariant **XA-19**.
+1. **It never replaces the text and is never a target.** The boundary is per FUNCTION rather than per
+   module (review r2-tests-17): `romanize.build_romanizer` + `romanization_of` are reached only from
+   `_line_doc` at publish time, from the line text that is already decided, and nothing upstream of the
+   decode can see that field — invariant **XA-19**. The module's TARGET-side twin,
+   `romanize.build_transliterator`, is a different question governed by **XA-20**: under `mms-roman`,
+   `units._transliterated` calls it to build the Latin target sequence MMS_FA decodes.
 2. **It is absent rather than empty when there is nothing to show**, which is what keeps every older
    document and every recorded bench row parsing unchanged. A Latin-only line gets none even inside a
    Chinese sheet (it would print a copy of itself), and a backend that hands the text straight back, blank,
    or raises, costs that line its romanisation and nothing else.
 3. **It is routed by the TEXT's language, not per line**, because the script already decided that language
-   (§9) and a kanji has to be read as Japanese rather than as Chinese.
+   (§9) and a kanji has to be read as Japanese rather than as Chinese — **and by the text's SCRIPT where
+   `SCRIPT_LANGUAGES` can name no language for it**, since `detect` answers `en` for those and `en` has no
+   backend, so a Thai or Armenian line got no second script at all though uroman ships tables for it. There
+   the lcode is NONE and uroman's universal tables read it: this module invents no script-to-language map
+   (review r2-correctness-2).
 
 The backends are an **optional extra** (`romanize` in `worker/pyproject.toml`, which states each licence)
 and the choice between them was a licence question before it was an accuracy one: **pypinyin** (MIT) for
@@ -1277,7 +1359,7 @@ change has to respect, with the mechanism that holds it.
 | - | --------- | ------------- | ------- |
 | **XA-01** | **A measured onset is never moved by a display pass.** The word-end post-pass moves ends only, only forward, and only on a stem. | Onsets are what the ball follows and what every accuracy metric scores; the rejected energy-snap prototype moved onsets and lost. | `tests/test_ends.py`, `tests/test_align_ends.py`; the bench asserts every song's onset digest is unchanged across the arm. |
 | **XA-02** | **Per-line provenance is recorded for every line, and grading reads the BLIND verdict.** A line re-timed inside a claim window may grade `high` only where the blind decode corroborated that claim. | A window repair agrees with its own claim by construction, so corroboration measured after it is circular. | `_Source` on every repair stage; `tests/test_align_provenance.py`. |
-| **XA-03** | **Corroboration is computed from the blind decode only, and the adoption reference median with it.** | Mixing repaired lines into the reference lets a stage corroborate itself. | `Reconciliation.agrees`; the `l1-*` control arms exist to A/B exactly this. |
+| **XA-03** | **Corroboration is computed from the blind decode only.** GRADING reads `blind_verdict` and nothing else, so no stage can corroborate itself. The ADOPTION REFERENCE MEDIAN is deliberately NOT held to this: the shipped default recomputes it per stage off the current generation, repaired lines included, and `l1-blind-median` — the arm that takes it from the blind decode once — is default-OFF because it LOST (25 gross / 569 within ±500 ms against 33 / 549 on the 20 cases that move; README, "The L1 arms, priced on the song the review read them from"). The adoption median is a repair input, not a grade. | Mixing repaired lines into a GRADE lets a stage vouch for itself; mixing them into the adoption reference was measured and is the better read. | `blind_verdict` is the only verdict `line_confidence` reads (`align_steps`); `Reconciliation.agrees`; the `l1-*` arms A/B the median half, and §14 records each as a failed arm rather than a control. |
 | **XA-04** | **A claim is mapped onto our clock exactly once, before the first reconcile, and only the claims move.** Our own timings are never shifted to match a sheet. | Repair windows, adoptions and corroboration must all ask about the same instant the audio does; an offset sheet is still a fact about the sheet. | `claimmap.consensus`, called once in `_time_text_global` and once in `_line_sync_clock`. |
 | **XA-05** | **A refusal is terminal for the text; a decline is not.** `Refused` means a gate measured that this text does not describe this audio → next text, never LINE_SYNC. A decline means nothing measured it → the ladder may degrade. | Line-syncing a refused text publishes the same wrong words on the text's own clock. Conflating the two either publishes wrong words or throws away a readable sheet. | `policy.decide` rules 0 and 1; `records.Refused`. |
 | **XA-06** | **An emission-scale threshold is read only off the row of the bundle that produced the matrix.** No row ⇒ the gate stands down and the attempt declines (word timings), or the rule abstains (the margin floor). Never a borrowed number. | The bands are nats per letter on one model's scale; the envelope gate that used to catch the fallback passes 189/380 wrong texts. | `lexical.CALIBRATED` / `calibration` / `margin_floor`; `__main__.align_model_for` refuses an uncalibrated **named** bundle before the worker accepts a job; `tests/test_lexical.py`, `tests/test_ml_devices.py`. |
@@ -1289,11 +1371,12 @@ change has to respect, with the mechanism that holds it.
 | **XA-12** | **The gate decodes read the UNSTARRED, separator-free matrix.** The placement margin reads the starred trellis. | The gates' floors are calibrated on star-free target sequences, so an arm reaching them would measure a recalibration. A margin measured on a decode that did not run is not evidence about the one that did. | `align_steps` passes the matrices explicitly; `host.config.ALIGN_EXPERIMENTS` documents it per arm. |
 | **XA-13** | **Every attempt is staged in job scratch and placed only after the ownership check; a pin places one document, at the pinned ref.** | Unreported documents leak for the life of the library; a rejected attempt must not become a rival candidate beside the file the TV is showing. | `steps.api.attempt_ref` / `store_ref`; `workflows.align._publish`. |
 | **XA-14** | **`vouched` is a positive claim.** True means a gate read these words and did not doubt them; unmeasured is False. | Core reads True as a claim and ranks it as one. | `records.TimedDoc.vouched`; `test_core_contract.py` ↔ `worker-align-contract.test.ts`. |
-| **XA-15** | **`domain/` is pure: no `dbos`, `asyncio`, `torch`, `torchaudio`, `whisperx`, `pyannote` or `demucs` anywhere under it, and no import of a layer above it.** Numpy and the standard library are allowed. Randomness is seeded from the DATA and never from a clock, and the only filesystem reads are packaged read-only data; both are named allowlists that can only shrink. | The suite runs with no ML installed, so a decision in `domain/` is testable with no model and no event loop; and a `domain` call reached from a DBOS workflow body must give the same answer on a replay, or one attempt would load two bundles and key two emission matrices. | `tests/test_layers.py` — `BANNED_IN_DOMAIN`, `ALLOWED`, `SEEDED_FROM_DATA`, `PACKAGED_DATA_READERS`. |
+| **XA-15** | **`domain/` is pure: no `dbos`, `asyncio`, `torch`, `torchaudio`, `whisperx`, `pyannote` or `demucs` anywhere under it, and no import of a layer above it.** Numpy and the standard library are allowed. Randomness is seeded from the DATA and never from a clock, and the only filesystem reads are packaged read-only data; both are named allowlists that can only shrink. | The suite runs with no ML installed, so a decision in `domain/` is testable with no model and no event loop; and a `domain` call reached from a DBOS workflow body must give the same answer on a replay, or one attempt would load two bundles and key two emission matrices. | `tests/test_layers.py` — `BANNED_IN_DOMAIN`, `ALLOWED`, `SEEDED_FROM_DATA`, `PACKAGED_DATA_READERS`, plus `DOMAIN_BACKENDS` / `PACKAGED_DATA_BACKENDS` for the third-party backends that open packaged data behind a stdlib door the scan cannot see (review r2-tests-16). |
 | **XA-16** | **A checkpointed record only ever gains APPENDED fields, restored through `restore_appended`.** | Pickle restores a slotted dataclass positionally, so a field added after a checkpoint was written is left unset and reading it raises — fork after fork, until the core's attempt ceiling. | `steps/records.py`; `tests/test_checkpoints.py`. |
 | **XA-18** | **The vendored decoder on an EMPTY graph is `torchaudio.functional.forced_align` frame for frame.** Same tie-break, same final state, same float32 accumulation, same refusals; the extra arcs are the only thing that may move a published byte. | A second decoder is only worth having if swapping it in is provably free — otherwise every arm measured through it is measuring the swap as well. | `domain/lyrics/viterbi.py`; `tests/test_ml_contract.py` against the real kernel, `tests/test_viterbi.py` without torch; the `vendored` control arm. |
-| **XA-19** | **A romanisation is DISPLAY ONLY: written at publish time, additive, and absent when there is nothing to show.** It never replaces a line's text, never reaches a target sequence or a gate, and a document without it parses exactly as it did before. | A second script in the alignment targets would be words nobody sings, and a mandatory field would break every stored document and every recorded bench row. The backends are also an optional extra, so "absent" is the common case. | `domain/lyrics/romanize.py`, called only by `_line_doc`; `tests/test_romanize.py`, `tests/test_nonlatin_lane.py`; `core/src/lib/tv/lyrics.ts` `parseLyricsDoc`. |
+| **XA-19** | **A romanisation is DISPLAY ONLY: written at publish time, additive, and absent when there is nothing to show.** It never replaces a line's text, never reaches a target sequence or a gate, and a document without it parses exactly as it did before. | A second script in the alignment targets would be words nobody sings, and a mandatory field would break every stored document and every recorded bench row. The backends are also an optional extra, so "absent" is the common case. | `domain/lyrics/romanize.build_romanizer` + `romanization_of`, reached only from `_line_doc`; the TARGET-side twin `build_transliterator` is XA-20's and not this row's (review r2-tests-17); `tests/test_romanize.py`, `tests/test_nonlatin_lane.py`; `core/src/lib/tv/lyrics.ts` `parseLyricsDoc`. |
 | **XA-20** | **A unit rule changes what is LOOKED UP, never what is published.** A vocabulary fold (`zh-simplify`) and a romanised target sequence (`mms-roman`) decide which dictionary entries a word becomes; `Line.text`, `Word.word` and every syllable fragment stay the characters the sheet wrote, and every target carries the index of the grapheme it came from. | A romanised published text would be words nobody asked for, in a script the room did not choose — and a span that lost its grapheme would time the wrong character of the line. The unit half is stronger still: it may not change the target sequence at all. | `domain/lyrics/units.py`, `generate.char_ids` / `char_targets`; `tests/test_units.py`. |
+| **XA-21** | **Which arms and which bundle time a non-Latin language is a per-language TABLE ROW, and a language with no row is not routed.** `units.ROUTED` carries the arms, the bundle and the number each row was chosen on; a calibration row is one (bundle, LANGUAGE) pair's. No language ever reads a neighbour's route or a neighbour's bands. | The arms do not agree across languages — MMS_FA wins zh by 1.48 and ko by 20.00 points and LOSES ja by 11 — so one default is a measured regression for somebody; and MMS_FA serving two languages means a bundle-keyed calibration would gate Korean on Chinese numbers. | `units.ROUTED` / `route` / `arms_for` / `stage2_bundle`, `lexical.CALIBRATED`'s paired key, `__main__.nonlatin_routes_for`; the `nonlatin-unrouted` control; `tests/test_units.py`, `tests/test_nonlatin_lane.py`, `tests/test_lexical.py`. |
 | **XA-17** | **A machinery fault is typed and propagates; anything else an attempt raises is one attempt declining.** | A fault that fails every attempt identically used to walk the whole ladder and publish `no lyrics` for a song whose words were never measured. | `adapters/ports.InfraFault`; `transport.Client` sends `retryable` from the class. |
 
 ## 13. Measured and rejected
@@ -1366,7 +1449,14 @@ thing this tuple exists to prevent.
 | `priors-decide` | **all three of the above, with the repair ladder bypassed** — the review's deciding arm | research arm |
 | `nonlatin-units` | a word and a syllable are the script's own, not whitespace's (§9.1) | capability arm |
 | `zh-simplify` | OpenCC `t2s` folds a Traditional character onto the simplified-only `zh-cn` vocabulary | capability arm |
-| `mms-roman` | a non-Latin language times on **MMS_FA** over a romanised target sequence; implies `nonlatin-units` | capability arm — **CC-BY-NC weights** |
+| `mms-roman` | a non-Latin language times on **MMS_FA** over a romanised target sequence; implies `nonlatin-units` | capability arm — **CC-BY-NC weights** (§14.2) |
+| `nonlatin-unrouted` | `units.ROUTED` answers None for every language, so the lane keeps the whitespace rule and whisperx's own bundles | **control** for the default-on per-language stage-2 table (§9.2) — the configuration every row recorded before W10 was measured on |
+
+Two of the three capability arms above are arms §9.2's table ROUTES, so since W10 `mms-roman` is default-ON
+for zh and ko and `nonlatin-units` for ja, and an operator's name only widens their reach.
+**`zh-simplify` is named by no row and is still fully default-off**: zh routes to `mms-roman`, whose targets
+are romanised, so there is no Han vocabulary left for a Traditional→Simplified fold to help.
+`nonlatin-unrouted` is how a pre-W10 row is reproduced.
 
 The W8 names are **capability** arms: they add a reading for text the default path can only publish as whole
 lines, so there is no default behaviour for them to be a control over. All three are inert on a Latin
@@ -1425,6 +1515,25 @@ all — every fake in the suite, every bench cache entry written before the fiel
 or star id **is the blank**, which the kernel refuses as a target outright, so an arm that could only
 decline must not be armed. The second is reachable: WhisperX tables Norwegian Bokmål with `|` at id 0 and a
 torchaudio bundle's blank _is_ 0; it is only that vocabulary's `[PAD]` = 38 that keeps the two apart today.
+
+### 14.2 MMS_FA's weights, and the attribution the BY term asks for
+
+`mms-roman` loads **MMS_FA** (`torchaudio.pipelines.MMS_FA`), Meta AI's _Scaling Speech Technology to 1,000+
+Languages_ forced-aligner. **Its weights are CC-BY-NC 4.0** — a licence this project may use, Encore being
+non-commercial (owner decision, 2026-10-16), and the reason stage 2 was an operator-only arm until then.
+
+Two things that clearing the licence does **not** change, recorded because both are easy to assume away:
+
+* **Nothing is redistributed.** The checkpoint is fetched at runtime by torchaudio into the user's own
+  torch hub cache; no weights are vendored, packaged or served by this tree. The NC term therefore never
+  binds a redistribution here — but **BY does bind attribution**, which is what this section is.
+* **Clearing the licence is not "turn MMS on".** It loses Japanese by 11 points (§9.2), so what shipped is
+  the per-language table and not a switch.
+
+Attribution, in the form the licence asks for: _MMS: Scaling Speech Technology to 1,000+ Languages_,
+Pratap et al., Meta AI (2023), weights under **CC-BY-NC 4.0**, used unmodified via `torchaudio.pipelines
+.MMS_FA`. The same note sits beside the dependency in `worker/pyproject.toml`'s `romanize` extra, which is
+the transliteration MMS_FA has to be paired with, and `torchaudio` itself is BSD-2-Clause.
 
 ## 15. Determinism, purity, and cost
 

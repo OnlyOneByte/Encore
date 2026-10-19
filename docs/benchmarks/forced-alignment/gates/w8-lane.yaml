@@ -20,6 +20,18 @@
 # `e2e_gates.UNCALIBRATED_METRICS` makes reading that metric an ERROR. The claim here is a stronger and
 # simpler one — nothing was published AT ALL — so the outcome counts carry it.
 #
+# ── SUPERSEDED ON THE SHIPPED DEFAULT BY W10 (2026-10-19 final review). READ THIS BEFORE RUNNING IT. ──
+# W10 fitted the first non-Latin calibration rows — `("MMS_FA", "zh")` and `("…xlsr-53-japanese", "ja")` —
+# so §5.4 NO LONGER declines a word document for zh or ja, and §1's four rules below (`truth-no-word-
+# document`, `truth-never-high`, `truth-no-word-timed`, and `truth-every-song-line-synced`) encode the
+# pre-W10 rule as a MUST. On the shipped default THEY ARE EXPECTED TO FAIL on zh and ja and to hold on ko,
+# which has no row; `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` reproduces the configuration they were
+# written for. Two riders: the header above is also no longer true of zh and ja (they ARE calibrated, so
+# `wrongtext_pass` is now readable on them and a rule for it is what §1 should be replaced BY); and with
+# `margin_floor_nats` None on both rows, their word documents grade with the placement-ambiguity demotion
+# ABSTAINING. Restating these rules needs the corpus numbers nobody has yet — it is the bench agent's cell
+# and then the owner's call, not a review's. README, "W10: the first non-Latin calibration rows".
+#
 # MEASURED, 2026-10-15, code `0125c5457b5c8bf8`: `_runs/w8-nl-{zh,ja,ko}-ra`, 7 songs (4 zh + 2 ja + 1 ko),
 # **340 lines line-synced, gross 0, ±500 100.0, band 0, `high` 0, 0 word documents**, and **0 of 21 wrong
 # texts published** (3 cross-pairs a song, donors drawn from the whole 7-song corpus). The reading that

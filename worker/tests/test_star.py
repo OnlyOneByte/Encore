@@ -40,7 +40,8 @@ from encore_worker.domain.lyrics.generate import (
 )
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import ALIGN_EXPERIMENTS, Config
-from encore_worker.steps.align_steps import Adapters, AlignStepsImpl, _star_why
+from encore_worker.steps.align_notes import _star_why
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import AudioRef, JobRef, TextRef, TimedDoc, TimeRequest
 from tests.ctc_fixture import FRAME_SEC, HIT, Matrix, ctc_viterbi, sung_matrix
 
@@ -282,6 +283,24 @@ def test_an_empty_matrix_leaves_the_arm_inert_rather_than_fatal() -> None:
     assert star_of(ml.starred(empty)) is None
     assert "carries no star column" in _star_why(star_of(ml.starred(empty)))
     assert f"id {STAR}" in _star_why(STAR) and "frame max" in _star_why(STAR)
+
+
+def test_starring_a_starred_matrix_keeps_the_one_column_it_was_priced_with() -> None:
+    """`starred` is IDEMPOTENT, and the clause that makes it so had no reader (review r2-tests-19).
+
+    Two call sites star a matrix today and neither can hand one back (`starred` never mutates its input), so
+    the property is the function's rather than the step's: a second pass must not append a second column, or
+    `spans == targets - separators - stars` would count a star nothing emits (XA-11).
+    """
+    once = ml.starred(emissions(sung_matrix(SUNG, VOCAB, DURATION)))
+    twice = ml.starred(once)
+    assert twice is once, "an already-starred matrix is handed straight back"
+    width = np.asarray(once.log_probs).shape[1]
+    assert width == max(VOCAB.values()) + 2, "exactly one appended column"
+    assert once.specials[ml.STAR_NAME] == STAR == width - 1
+    column = np.asarray(once.log_probs)[:, STAR]
+    others = np.asarray(once.log_probs)[:, :STAR].max(axis=1)
+    assert np.allclose(column, others - ml.STAR_PENALTY_NATS), "priced once, at the fitted penalty"
 
 
 def test_the_torch_and_numpy_paths_build_the_same_column() -> None:

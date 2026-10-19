@@ -652,7 +652,7 @@ def test_a_second_calibrated_model_is_judged_by_its_own_row(
     BOTH, and the shipped row refuses only the unsung one — so a matrix naming the second model must be
     refused on a text the first publishes, with the second row's own floor in the reason."""
     strict = replace(lexical.BANDS, model="STRICTER_BUNDLE", refuse_below=20.0, ok_from=21.0)
-    monkeypatch.setitem(lexical.CALIBRATED, strict.model, strict)
+    monkeypatch.setitem(lexical.CALIBRATED, (strict.model, strict.language), strict)
     sung = attempt(tmp_path, monkeypatch, named_model=lexical.BANDS.model)
     assert isinstance(sung.got, TimedDoc), "the shipped row publishes the sung words"
     other = attempt(_fresh(tmp_path, "strict"), monkeypatch, named_model=strict.model)

@@ -4,32 +4,30 @@ Each method resolves an adapter, calls a pure domain function, and returns data;
 `domain/`. A class rather than module functions because the adapters, the transport and the config are not
 serialisable and so cannot be step ARGUMENTS (docs/arch/05-worker.md §8).
 
-THE ENGINES AND THE REPAIR LADDER LIVE IN `_time_text_global`; the design and the thresholds' provenance are
-docs/arch/04-alignment.md — §3 the engines, §4 repair, §5 the gates, §6 grading, §7 the claim clock, §12 the
-invariants — with every number's reading in docs/benchmarks/forced-alignment/README.md.
+THE ENGINES AND THE REPAIR LADDER LIVE IN `_time_text_global`, the helpers they read in six siblings,
+`align_{text,lines,unsung,claims,notes,geometry}` (docs/arch/05-worker.md §1.1). The design and the
+thresholds' provenance are docs/arch/04-alignment.md — §3 the engines, §4 repair, §5 the gates, §6 grading,
+§7 the claim clock, §12 the invariants — with every number's reading in
+docs/benchmarks/forced-alignment/README.md.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import math
 import os
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from functools import partial
 from statistics import median
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     import numpy as np
 
     from encore_worker.domain.audio.activity import ShiftFit
     from encore_worker.domain.lyrics.generate import Generated, Line
-    from encore_worker.domain.lyrics.reconcile import AsClaimed, OffSheet
-    from encore_worker.domain.lyrics.viterbi import Graph
 
 from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
@@ -53,6 +51,74 @@ from encore_worker.domain.lyrics.policy import Knob, Tier, normalised_words
 from encore_worker.domain.lyrics.report import Engine, TimingReport
 from encore_worker.host.config import ASR_MODELS, Config
 from encore_worker.protocol.vocabulary import Stage
+from encore_worker.steps.align_claims import (
+    _ADOPT_EDGE_SEC,
+    _ADOPT_SCORE_GAP,
+    _REOPEN_MAX_SEC,
+    _REPAIR_PAD_SEC,
+    _claims_as_served,
+    _Placement,
+    _placement_margins,
+)
+from encore_worker.steps.align_geometry import (
+    _anchored_runs,
+    _clamped,
+    _with_lines,
+)
+from encore_worker.steps.align_lines import (
+    _agreement_of,
+    _claimed_starts,
+    _envelope_passes,
+    _grade_every_line_low,
+    _in_claim_order,
+    _line_doc,
+    _line_sync_clock,
+    _line_sync_decode,
+    _LineEvidence,
+    _mapped,
+    _measured_lift,
+    _nonlatin_script,
+    _sheet_passes,
+    _sheet_spans,
+    _timed_spans,
+    _word_doc,
+)
+from encore_worker.steps.align_notes import (
+    _backwards_why,
+    _built_why,
+    _bundle_why,
+    _ends_why,
+    _graph_why,
+    _linesep_why,
+    _margin_why,
+    _pulls_why,
+    _repeats_why,
+    _sheet_why,
+    _Source,
+    _sources_why,
+    _star_why,
+    _units_why,
+)
+from encore_worker.steps.align_text import (
+    _MANUAL_LABEL,
+    _Permanent,
+    _pinned_label,
+    _place,
+    _provider_label,
+    _stored_lines,
+    _timing_of,
+    _with_source_lines,
+)
+from encore_worker.steps.align_unsung import (
+    _NEVER_SUNG_ENV,
+    _NEVER_SUNG_RATE,
+    _NEVER_SUNG_SCORE_GAP,
+    _SPOKEN_FLOOR,
+    _SPOKEN_RATIO,
+    _skipped_lines,
+    _speech_mass,
+    _star_positions,
+)
 from encore_worker.steps.api import NotOurJob, as_segments, asr_model_of, attempt_ref, pin_of, store_ref
 from encore_worker.steps.records import (
     TIMING_LINE,
@@ -87,9 +153,10 @@ class Adapters:
     #: LATIN-SCRIPT language detection (lingua-py), built once at the composition root. None without the
     #: `text` extra, and the SCRIPT half needs no adapter at all (docs/arch/04-alignment.md §9).
     detector: language.Detector | None = None
-    #: A language -> its DISPLAY-ONLY romaniser, or None where this box has no backend for it. None here
-    #: romanises nothing, which is every document this worker published before W8 (XA-19).
-    romanizer: Callable[[str], romanize.Romanizer | None] | None = None
+    #: A (language, dominant non-Latin script) -> its DISPLAY-ONLY romaniser, or None where this box has no
+    #: backend for it. None here romanises nothing, which is every document this worker published before W8
+    #: (XA-19).
+    romanizer: Callable[[str, str], romanize.Romanizer | None] | None = None
 
 
 class Reporter(Protocol):
@@ -131,25 +198,27 @@ class AlignStepsImpl:
             texts, declared=job.param_str("language"), heard=heard, detector=self._a.detector
         )
 
-    def _unit_rules(self, language_code: str) -> units.Rules:
+    async def _unit_rules(self, language_code: str) -> units.Rules:
         """How THIS text becomes words, syllables and vocabulary lookups, under the three W8 arms.
 
         One object per attempt, read by the decode, the repair, the lift and the margin alike, so no two of
-        them can group one text differently (docs/arch/04-alignment.md §9.1, §14).
+        them can group one text differently (docs/arch/04-alignment.md §9.1, §14). OFF THE EVENT LOOP for
+        `_romanizer`'s reason: under `mms-roman` this builds uroman or cutlet, which costs seconds on first
+        use (README, "W8 stages 1-2").
         """
-        return units.rules_for(language_code, self._cfg.align_experiments)
+        return await asyncio.to_thread(units.rules_for, language_code, self._cfg.align_experiments)
 
-    async def _romanizer(self, language_code: str) -> romanize.Romanizer | None:
+    async def _romanizer(self, language_code: str, script: str) -> romanize.Romanizer | None:
         """This box's DISPLAY-ONLY romaniser for `language_code`, where it has a backend for it.
 
         Asked per published document rather than held, the factory caching the built backend; a box with no
-        backend answers None and the document is the one it always was (XA-19). OFF THE EVENT LOOP because
-        the first build costs seconds (README, "W8 stage 0"), which would stall every other job on this
-        worker — a display extra may not.
+        backend answers None and the document is the one it always was (XA-19). `script` routes the scripts
+        no language can be named for (docs/arch/04-alignment.md §11.2). OFF THE EVENT LOOP because the first
+        build costs seconds (README, "W8 stage 0"), which would stall every other job on this worker.
         """
         if self._a.romanizer is None:
             return None
-        return await asyncio.to_thread(self._a.romanizer, language_code)
+        return await asyncio.to_thread(self._a.romanizer, language_code, script)
 
     async def _bundle_language(self, req: TimeRequest, *, on_mix: bool) -> str:
         """The language whose BUNDLE must produce these frames, noted when it is not the text's own.
@@ -450,16 +519,26 @@ class AlignStepsImpl:
         spans = self._placed_spans(req, segments)
         bundle_language = await self._bundle_language(req, on_mix=req.audio.targets_mix(on_mix=req.on_mix))
         # A ROUTED BUNDLE MAY NOT TIME WORDS HERE EITHER, and this engine has no witness to offer: it reads
-        # no emission matrix, so no lift can be measured, and every `lexical.CALIBRATED` row is an English
-        # bundle's. English keeps the behaviour this engine was measured with; a routed language publishes
-        # LINES at most (XA-06; docs/arch/04-alignment.md §5.4).
+        # no emission matrix, so NO lift can be measured on any bundle, calibrated or not — which is why
+        # `may_time_words` is asked with no row rather than with this language's. English keeps the behaviour
+        # this engine was measured with; a routed language publishes LINES at most (XA-06;
+        # docs/arch/04-alignment.md §5.4).
         routed = bundle_language != language.ENGLISH
-        gateless = not lexical.may_time_words(None, heard_on_this_audio=req.text.tier is Tier.ASR)
+        # AND SO MAY A NON-LATIN SCRIPT ON THE ENGLISH BUNDLE, which is not a routed bundle at all: a script
+        # `language.SCRIPT_LANGUAGES` can name no language for falls back to `ENGLISH`, so the lane's rule
+        # has to read the TEXT's script and not the language the fallback picked.
+        script = _nonlatin_script(req.text)
+        gateless = not lexical.may_time_words(
+            None, heard_on_this_audio=req.text.tier is Tier.ASR, nonlatin_script=script
+        )
         unvouched = False
-        if routed and gateless and "h3-ungated-words" not in self._cfg.align_experiments:
+        if (routed or script) and gateless and "h3-ungated-words" not in self._cfg.align_experiments:
             ungated = lexical.words_ungated(
-                f"this aligner reads no emission matrix, and the {bundle_language!r} bundle it aligns on "
-                f"has no calibration row ({', '.join(sorted(lexical.CALIBRATED))} do)"
+                f"this aligner reads no emission matrix, so no lexical lift can be measured on the "
+                f"{bundle_language!r} bundle it aligns on, whatever "
+                f"({', '.join(lexical.calibrated_pairs())}) are calibrated for the global engine"
+                if routed
+                else lexical.unnamed_script(script, f"the {bundle_language!r} bundle")
             )
             if pin_of(req.job) is None:
                 await self._out.state(req.job.job_id, "align-windowed", 0, "declined", ungated, None)
@@ -482,6 +561,11 @@ class AlignStepsImpl:
         except Exception:  # noqa: BLE001 - an aligner that could not place this text is one attempt failing
             return None
         doc = _word_doc(aligned, req.language)
+        if unvouched:
+            # THE GRADE GOES ON THE LINES AND NOT ONLY ON THE RECORD: core's `wipesWords` keeps the
+            # bouncing-ball wipe for a line with no grade, so an unvouched pin would sweep word by word over
+            # timings nothing vouched for (review r2-correctness-4; XA-14).
+            _grade_every_line_low(doc)
 
         residual = place.residual_against(doc, segments) if req.text.has_own_timings else None
         report = measure.measure(
@@ -523,7 +607,11 @@ class AlignStepsImpl:
             # A TRANSCRIPT is not a sheet: its spans were measured on THIS recording, so neither thing this
             # gate detects can be true of it — and read as a sheet it FAILS (README, the rung's four
             # candidate rules).
-            doc = _line_doc(self._placed_by(req, None), req.language, await self._romanizer(req.language))
+            doc = _line_doc(
+                self._placed_by(req, None),
+                req.language,
+                await self._romanizer(req.language, _nonlatin_script(req.text)),
+            )
             report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
             timed = self._write(req, doc, TIMING_LINE, "low", report=report)
             why = f"a transcript of this recording, on its own spans (no sheet gate); {report.summary()}"
@@ -586,7 +674,9 @@ class AlignStepsImpl:
         undecoded = evidence.unlifted  # no matrix: the same reason nothing lifted
         if evidence.emissions is not None:
             texts = [str(segment.get("text") or "") for segment in req.text.segments]
-            decoded, undecoded = await _line_sync_decode(texts, evidence.emissions, req.language)
+            decoded, undecoded = await _line_sync_decode(
+                texts, evidence.emissions, req.language, evidence.units
+            )
         # THE CLAIM CLOCK, ON THE RUNG THAT PUBLISHES THE CLAIMS: the gate reads the decode against THE
         # MAPPED CLAIMS, a sheet 1.5 s off being one to move rather than to refuse. With no decode to vote
         # with, both fall back to the activity shift and the sheet-span envelope.
@@ -640,7 +730,7 @@ class AlignStepsImpl:
             )
         else:
             gate_note = f"{verdict}{clock_note}; {lexical_note}; no decode check: {unchecked}"
-        doc = _line_doc(placed, req.language, await self._romanizer(req.language))
+        doc = _line_doc(placed, req.language, await self._romanizer(req.language, _nonlatin_script(req.text)))
         report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
         # VOUCHED ONLY WHERE THE WORDS WERE READ. `heard is None` is not a pass: several reasons reach here
         # having checked the TIMINGS alone, and this rung's own hazard is a text whose timings are perfect and
@@ -668,7 +758,7 @@ class AlignStepsImpl:
         """
         emitter = getattr(self._a.aligner, "emissions", None)
         if not callable(emitter):
-            return _LineEvidence(None, "this aligner produces no emission matrix", None, None)
+            return _LineEvidence(None, "this aligner produces no emission matrix", None, None, None)
         texts = [str(segment.get("text") or "") for segment in req.text.segments]
         # ALWAYS THE DEFAULT BUNDLE (`on_mix=False`), every reading of this rung being the stem's, so the
         # calibrated share is the one its sweep fitted. THE LITERAL IS DELIBERATE and is NOT the
@@ -681,12 +771,13 @@ class AlignStepsImpl:
         except InfraFault:
             raise  # the machinery, not this text: fails the job (XA-17)
         except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-            return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None, None)
-        lifted, bands, unlifted = await _measured_lift(texts, emissions, self._unit_rules(req.language))
-        return _LineEvidence(lifted, unlifted, bands, emissions)
+            return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None, None, None)
+        rules = await self._unit_rules(req.language)
+        lifted, bands, unlifted = await _measured_lift(texts, emissions, rules, bundle_language)
+        return _LineEvidence(lifted, unlifted, bands, emissions, rules)
 
     async def _word_lift(
-        self, req: TimeRequest, line_texts: Sequence[str], emissions: Any
+        self, req: TimeRequest, line_texts: Sequence[str], emissions: Any, bundle_language: str
     ) -> tuple[lexical.Lift | None, lexical.Bands | None, str]:
         """The global engine's lexical check: `line_texts`' lift on the matrix this attempt decoded, the
         calibration row it is judged against, or None for both and why it did not run.
@@ -697,7 +788,8 @@ class AlignStepsImpl:
         """
         if req.text.tier is Tier.ASR:
             return None, None, "a transcript of this recording (its words were heard on this audio)"
-        return await _measured_lift(line_texts, emissions, self._unit_rules(req.language))
+        rules = await self._unit_rules(req.language)
+        return await _measured_lift(line_texts, emissions, rules, bundle_language)
 
     async def _time_text_global(self, req: TimeRequest) -> TimedDoc | Refused | None:
         """Generate our own timings from TEXT ALONE, then reconcile every other measurement INTO them.
@@ -742,7 +834,7 @@ class AlignStepsImpl:
         separate_lines = "linesep" in self._cfg.align_experiments
         # W8's non-Latin lane: `plain` unless an arm is on, and then the SAME object for every decode of
         # this attempt (docs/arch/04-alignment.md §9.1).
-        unit_rules = self._unit_rules(req.language)
+        unit_rules = await self._unit_rules(req.language)
         star_arm = "star" in self._cfg.align_experiments
         # W9's research track (docs/arch/04-alignment.md §3.2). `priors-decide` IS the other three: the
         # review's deciding arm is priors plus fusion plus optional lines with the ladder bypassed, and
@@ -788,7 +880,7 @@ class AlignStepsImpl:
         # NOT the lexical gate's text and NOT a repair window's, and after the emission pass because R1's "a
         # lead is left to align" test has to be the DECODE's.
         adlibs = (
-            parts.split(line_texts, emissions=emissions)
+            parts.split(line_texts, emissions=emissions, units=unit_rules)
             if "adlibs" in self._cfg.align_experiments
             else parts.untouched(line_texts)
         )
@@ -799,7 +891,7 @@ class AlignStepsImpl:
         # FIRST, before this text's decode and before any audio is read: no repair makes unsung words sung.
         # The bands are the RESOLVED bundle's row, never `lexical.BANDS` by name (XA-06); `_word_lift` says
         # what is exempt.
-        lifted, bands, unmeasured = await self._word_lift(req, line_texts, emissions)
+        lifted, bands, unmeasured = await self._word_lift(req, line_texts, emissions, bundle_language)
         on_stem = target_name == "stem"
         # THE ROW THE LIFT WAS READ AGAINST, not a second lookup of the table: a matrix from a model with no
         # calibration row comes back with neither, so a `lifted` that is not None always brings its row and
@@ -834,11 +926,19 @@ class AlignStepsImpl:
         # Invariants XA-05, XA-06; docs/arch/04-alignment.md §5.4.
         ungated_words_arm = "h3-ungated-words" in self._cfg.align_experiments
         heard_on_this_audio = req.text.tier is Tier.ASR
+        # AND A SCRIPT NO BUNDLE IS FOR REACHES A ROW THAT IS NOT ITS OWN: `language.SCRIPT_LANGUAGES` names
+        # no language for it, so `detect` falls back to English and finds a CALIBRATED row fitted on text the
+        # English vocabulary spells. The lane's rule is the TEXT's script (review r2-spec-8).
+        script = _nonlatin_script(req.text)
         if (
-            not lexical.may_time_words(bands, heard_on_this_audio=heard_on_this_audio)
+            not lexical.may_time_words(bands, heard_on_this_audio=heard_on_this_audio, nonlatin_script=script)
             and not ungated_words_arm
         ):
-            ungated = lexical.words_ungated(unmeasured)
+            ungated = lexical.words_ungated(
+                lexical.unnamed_script(script, _bundle_why(emissions))
+                if script and bands is not None
+                else unmeasured
+            )
             if pin_of(req.job) is None:
                 await decline(ungated)
                 return None
@@ -1130,7 +1230,7 @@ class AlignStepsImpl:
         # Read on the BLIND decode's trellis and nowhere else (XA-02), here because the margins must describe
         # the decode whose texts `line_texts_active` are. OFF THE EVENT LOOP, being two Viterbi passes over
         # the whole matrix. THE FLOOR COMES OFF THIS BUNDLE'S CALIBRATION ROW (XA-06), so None ABSTAINS.
-        margin_nats = lexical.margin_floor(lexical.calibration(emissions))
+        margin_nats = lexical.margin_floor(lexical.calibration(emissions, bundle_language))
         #: NO MARGINS = NOT MEASURED, and grading then reads what it did before the rule existed.
         #: `_Placement.silence` says WHICH reason; an empty dict is not that answer.
         placement: _Placement
@@ -2203,7 +2303,11 @@ class AlignStepsImpl:
             )
             # ONLY UNDER A W8 ARM, and then ALWAYS: a run whose words are per-hanzi and one whose words are
             # whole lines publish different documents off the same text (docs/arch/04-alignment.md §9.1).
-            + (f"{_units_why(unit_rules, req.language)}; " if unit_rules.name != "plain" else "")
+            + (
+                f"{_units_why(unit_rules, req.language, experiments)}; "
+                if unit_rules.name != "plain" or units.unhonoured(req.language, experiments)
+                else ""
+            )
             # ONLY UNDER THE ARM — and under it ALWAYS, so an arm that acted and an arm that went inert on a
             # matrix with no star column cannot read alike.
             + (f"{_star_why(star_of(decode_matrix))}; " if stars_wanted else "")
@@ -2421,1200 +2525,6 @@ class AlignStepsImpl:
         path = os.path.join(job.media_dir, "work", job.job_id, *parts)
         os.makedirs(path, exist_ok=True)
         return path
-
-
-class _Permanent(InfraFault):
-    """A fault no retry can fix: a capability this box does not have. An `InfraFault`: no step declines it."""
-
-    retryable = False
-
-
-def _has_timings(cues: Sequence[Segment]) -> bool:
-    """Did the provider return SYNCED lyrics, or a plain wall of text?
-
-    `bool` excluded: `True` is an `int`, and a start of `True` is not a timestamp.
-    """
-    return any(
-        isinstance(c.get("start"), (int, float)) and not isinstance(c.get("start"), bool) for c in cues
-    )
-
-
-def _has_word_spans(cues: Sequence[Segment]) -> bool:
-    """Did the provider return WORD-level timings? LRCmux can, and so does an A2 LRC sheet.
-
-    THE SEQUENCE TEST IS `measure._words`' ONE: `clean_segments` rewrites a word list as a TUPLE, so a
-    `list`-only test could never be True. `str` and `bytes` are excluded.
-    """
-    return any(
-        isinstance(c.get("words"), Sequence) and not isinstance(c.get("words"), (str, bytes)) and c["words"]
-        for c in cues
-    )
-
-
-def _timing_of(provider: ports.LyricsProvider, cues: Sequence[Segment]) -> str | None:
-    """What the returned text is timed to, read from the PAYLOAD rather than a provider's claim: a response
-    tagged word-level whose lines carry no word spans is not word-level."""
-    if _has_word_spans(cues):
-        return TIMING_WORD
-    if _has_timings(cues):
-        return TIMING_LINE
-    return None
-
-
-def _provider_label(provider: ports.LyricsProvider) -> str:
-    """The label reaching the decision trail: a multiplexer names its UPSTREAM when it has one, which is what
-    makes a systematically bad source identifiable instead of anonymous."""
-    upstream = getattr(provider, "last_source", None)
-    return f"{provider.name}:{upstream}" if isinstance(upstream, str) and upstream else provider.name
-
-
-# ── a pinned re-time ─────────────────────────────────────────────────────────────────────────────
-
-#: A paste's label, and the one core's `LyricsTextSource` spells `manual` (`__main__._text_source_of`).
-_MANUAL_LABEL = "manual"
-
-
-#: A written document's top-level key for its TEXT, in full, when its `lines` do not carry all of it
-#: (`_with_source_lines`). Not rendered: the TV's parser (`parseLyricsDoc`) reads `lines` alone.
-_SOURCE_LINES = "sourceLines"
-
-
-def _with_source_lines(doc: dict[str, object], segments: Sequence[Segment]) -> dict[str, object]:
-    """`doc`, plus the text it was timed from (`_SOURCE_LINES`) when its lines lost some of it.
-
-    The global engine's document holds only the lines it timed, so re-picking such a candidate re-timed a
-    shorter text. Written only when something IS missing (docs/arch/04-alignment.md §11).
-    """
-    source = _source_texts(segments)
-    lines = doc.get("lines")
-    shown = [
-        text
-        for text in (
-            str(line.get("text") or "").strip()
-            for line in (lines if isinstance(lines, list) else [])
-            if isinstance(line, dict)
-        )
-        if text
-    ]
-    return doc if shown == source else {**doc, _SOURCE_LINES: source}
-
-
-def _source_texts(segments: Sequence[Segment]) -> list[str]:
-    """A text's words, line by line, as a written document records them (`_SOURCE_LINES`): every segment's
-    text, stripped, the empty ones left out. What `_stored_lines` reads back, so the two compare."""
-    return [text for text in (str(segment.get("text") or "").strip() for segment in segments) if text]
-
-
-@dataclass(frozen=True, slots=True)
-class Superseded:
-    """An EARLIER job's stored candidate for words this job's ladder refused (`superseded_candidates`)."""
-
-    ref: str
-    label: str
-    timing: str
-    language: str | None
-
-
-def superseded_candidates(
-    job: JobRef, refused: Sequence[TextRef], *, placed: Collection[str]
-) -> list[Superseded]:
-    """Every document in the lyrics store that an earlier job wrote for the WORDS of a text this job refused.
-
-    Core ranks every job's candidates together and a REFUSED attempt writes nothing, so such a document kept
-    its rank and went on showing. MATCHED ON THE WORDS, not the label alone, and a store that cannot be listed
-    withdraws nothing. See docs/arch/04-alignment.md §11.
-    """
-    if not refused:
-        return []
-    wanted = {text.label: _source_texts(text.segments) for text in refused}
-    try:
-        names = sorted(os.listdir(os.path.join(job.media_dir, _LYRICS_STORE)))
-    except OSError:
-        return []
-    found: list[Superseded] = []
-    for name in names:
-        ref = f"{_LYRICS_STORE}/{name}"
-        if not name.startswith(f"{job.media_id}-") or not name.endswith(".json") or ref in placed:
-            continue
-        label = _pinned_label(ref, job.media_id)
-        words = wanted.get(label)
-        if words is None:
-            continue
-        stored, language, _why = _stored_lines(os.path.join(job.media_dir, ref))
-        if stored == words:
-            timing = TIMING_WORD if name.removesuffix(".json").endswith(f"-{TIMING_WORD}") else TIMING_LINE
-            found.append(Superseded(ref=ref, label=label, timing=timing, language=language))
-    return found
-
-
-#: Where every lyrics document is stored, relative to the media volume (`steps.api.store_ref`).
-_LYRICS_STORE = "derived/lyrics"
-
-
-def _stored_lines(path: str) -> tuple[list[str], str | None, str]:
-    """The line texts of a stored lyrics document, its language, and why it yielded none (for the trail).
-
-    Keeps only the WORDS, a re-time existing because the stored timings are not wanted: `_SOURCE_LINES` when
-    the document carries one, else `lines[].text`.
-    """
-    try:
-        with open(path, encoding="utf-8") as handle:
-            loaded = json.load(handle)
-    except FileNotFoundError:
-        return [], None, "the document is not on disk (evicted, or never written)"
-    except (OSError, ValueError) as unreadable:
-        return [], None, f"the document is unreadable ({type(unreadable).__name__})"
-    if not isinstance(loaded, dict):
-        return [], None, "the document is not a lyrics document"
-    source = loaded.get(_SOURCE_LINES)
-    lines = loaded.get("lines")
-    texts = (
-        [text.strip() for text in source if isinstance(text, str) and text.strip()]
-        if isinstance(source, list)
-        else [
-            line["text"].strip()
-            for line in (lines if isinstance(lines, list) else [])
-            if isinstance(line, dict) and isinstance(line.get("text"), str) and line["text"].strip()
-        ]
-    )
-    language = loaded.get("language")
-    known = language if isinstance(language, str) and language else None
-    return texts, known, "it carries no line with words"
-
-
-def _pinned_label(ref: str, media_id: str) -> str:
-    """The label a stored candidate was written under, read back off its ref — `_write`'s shape inverted,
-    because a stored document carries no provenance of its own.
-
-    `{media}-{label with ':' as '-'}{-knob…}-{timing}.json`: the timing and knob suffixes come off the end and
-    the FIRST dash is the label's colon, a provider's upstream being able to contain dashes where the source
-    cannot. Any other shape is `manual`.
-    """
-    name = ref.rsplit("/", 1)[-1].removesuffix(".json")
-    if not name.startswith(f"{media_id}-"):
-        return _MANUAL_LABEL
-    rest = name.removeprefix(f"{media_id}-")
-    timing = next((t for t in (TIMING_WORD, TIMING_LINE) if rest.endswith(f"-{t}")), None)
-    if timing is None:
-        return _MANUAL_LABEL
-    timed = rest.removesuffix(f"-{timing}")
-    for knob in reversed(list(Knob)):  # appended in `Knob` order, so peeled in reverse
-        timed = timed.removesuffix(f"-{knob.value}")
-    source, colon, variant = timed.partition("-")
-    if not source:
-        return _MANUAL_LABEL
-    return f"{source}:{variant}" if colon and variant else source
-
-
-def _place(media_dir: str, source_ref: str, target_ref: str) -> None:
-    """Copy `source_ref` over `target_ref` atomically: a sibling temp file, then `os.replace`.
-
-    A COPY, so the scratch original survives a `publish` re-run on resume. A source that IS its target stays.
-    """
-    if source_ref == target_ref:
-        return
-    source = os.path.join(media_dir, source_ref)
-    target = os.path.join(media_dir, target_ref)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    staging = f"{target}.{os.getpid()}.part"
-    with open(source, "rb") as src, open(staging, "wb") as dst:
-        dst.write(src.read())
-    os.replace(staging, target)
-
-
-def _word_doc(aligned: Sequence[Segment], language: str) -> dict[str, object]:
-    """The aligner's output in the core's document shape."""
-    return {"language": language, "lines": [dict(line) for line in aligned]}
-
-
-def _envelope_passes(fit: ShiftFit) -> bool:
-    """The envelope gate's three tiers: r >= 0.40 within ±0.5 s, r >= 0.25 within ±0.1 s, or r >= 0.60 at any
-    lag, where the shape agrees and the lag is an offset. The reasoning is at the global engine's gate."""
-    return (
-        (fit.usable and abs(fit.seconds) <= 0.5)
-        or (fit.correlation >= 0.25 and abs(fit.seconds) <= 0.1)
-        or (fit.correlation >= 0.60)
-    )
-
-
-def _sheet_passes(fit: ShiftFit) -> bool:
-    """The envelope gate for a SHEET's own claimed spans: tiers 1 and 3 of `_envelope_passes`, NOT tier 2 —
-    zero lag is evidence only for timings MEASURED ON this audio (docs/arch/04-alignment.md §5.2)."""
-    return (fit.usable and abs(fit.seconds) <= 0.5) or fit.correlation >= 0.60
-
-
-def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
-    """The (start, end) of every segment with a positive-length claimed span — what an envelope fits."""
-    return [(start, end) for start, end in measure.line_spans(list(segments)) if end > start]
-
-
-#: Seconds within which a line of the text's own blind decode counts as agreeing with its MAPPED claim. TWO
-#: BANDS IN ONE — the gate's and `_line_sync_clock`'s — so `line_gate.py --near` moves both. In SECONDS, which
-#: no model makes mean something else, so it is not a per-model row (README, "The LINE_SYNC rung").
-_LINE_SYNC_NEAR_SEC = 1.0
-
-#: Share of a sheet's claimed lines that must DECODE before the decode may speak for it — one bar for both
-#: readers of that decode, so a mixed-script track's Latin fragment cannot decide for forty Korean lines.
-#: What this gate cannot see, and why the lag term that would was rejected: README, "The LINE_SYNC rung".
-_LINE_SYNC_MIN_DECODED_SHARE = 0.5
-
-
-@dataclass(frozen=True, slots=True)
-class _LineEvidence:
-    """What the stem's emission matrix says about a line-sync text (`AlignStepsImpl._line_sync_evidence`)."""
-
-    #: The text's lexical lift, or None — and why (`unlifted`).
-    lift: lexical.Lift | None
-    unlifted: str
-    #: The calibration row the matrix's model has, or None. NONE MEANS DIFFERENT THINGS to the rung's two
-    #: thresholds: the nats-per-letter ones stand down while the SECONDS-based share is still gated, at
-    #: `lexical.LINE_SYNC_SHARE_UNCALIBRATED` (XA-06).
-    bands: lexical.Bands | None
-    #: The matrix the lift was read on, for the DECODE check the caller runs only once the lexical verdict has
-    #: passed: a text about to be refused must not pay for a decode. None when there was no matrix to read,
-    #: and then `unlifted` says why nothing decoded either.
-    emissions: Any
-
-
-async def _line_sync_decode(
-    texts: Sequence[str], emissions: Any, language: str
-) -> tuple[Generated | None, str]:
-    """`texts`' BLIND decode on `emissions`, off the event loop, or None and why it could not be read.
-
-    A machinery fault raises (XA-17); anything else is an unanswered question whose reason starts `it raised`,
-    which the bench scores as an ERROR row. The rung's SECOND witness, answering two questions off one decode.
-    """
-    from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
-    from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
-
-    try:
-        return (
-            await asyncio.to_thread(
-                partial(generate, decoder=forced_align_decoder, language=language), texts, emissions
-            ),
-            "",
-        )
-    except InfraFault:
-        raise  # the machinery, not this text: fails the job (XA-17)
-    except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-        return None, f"it raised {type(exc).__name__}: {exc}"
-
-
-def _agreement_of(decoded: Generated, placed: Sequence[Segment]) -> tuple[AsClaimed | None, str]:
-    """`reconcile.as_claimed` of `placed`'s starts against `decoded`, or None and why it could not be read.
-
-    `placed` is the sheet AS IT WILL PUBLISH, so the gate reads the timings the room would see.
-    """
-    from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
-
-    claims = _claimed_starts(placed)
-    got = rc.as_claimed(decoded.lines, claims, tolerance_sec=_LINE_SYNC_NEAR_SEC)
-    if got is None:
-        return None, f"fewer than {rc.MIN_PAIRS} lines both decoded and claimed"
-    # THE SHARE IS ONLY OF THE LINES THAT DECODED, so the denominator has to be most of the sheet before it
-    # may speak for it. Below the share the sheet gate decides instead, reading the WHOLE sheet's spans
-    # against the envelope. Inert on every case the bench has measured.
-    if got.pairs < (bar := _enough_decoded(len(claims))):
-        # WHICH OF `_enough_decoded`'s TWO BOUNDS BIT, because they refuse different sheets and a bare
-        # "under 50%" on a decode that read every line of its sheet reads as a broken counter.
-        rule = (
-            f"{_LINE_SYNC_MIN_DECODED_SHARE:.0%} of it"
-            if bar > claimmap.MIN_PAIRS
-            else "the floor a placement may be read on"
-        )
-        return None, (
-            f"only {got.pairs} of {len(claims)} claimed lines decoded, under the {bar} this check needs "
-            f"to speak for the sheet ({rule})"
-        )
-    return got, ""
-
-
-def _enough_decoded(claims: int) -> int:
-    """How many of a sheet's `claims` lines must DECODE before the decode may speak for the sheet: at least
-    `claimmap.MIN_PAIRS` lines, and at least `_LINE_SYNC_MIN_DECODED_SHARE` of it.
-
-    ONE rule for both readers of that decode, because two bars let a thin sheet have the clock abstain while
-    the gate was armed — and the gate then read the decode against SHIFTED claims, found them near, and
-    published the sheet displaced with both witnesses agreeing on one misplacement. `claimmap`'s floor rather
-    than `reconcile`'s, this being a reader that ACTS. Inert on everything measured.
-    """
-    return max(claimmap.MIN_PAIRS, math.ceil(_LINE_SYNC_MIN_DECODED_SHARE * claims))
-
-
-def _claimed_starts(segments: Sequence[Segment]) -> dict[int, float]:
-    """Every segment's claimed start, keyed by its POSITION in the text — which is the key `generate` gives a
-    line (`Line.index`) and `reconcile` pairs on, so the decode, the vote and the gate all pair the same way
-    and one dropped decorative line cannot shear the comparison after it."""
-    return {
-        index: float(start)
-        for index, segment in enumerate(segments)
-        if isinstance(start := segment.get("start"), (int, float)) and not isinstance(start, bool)
-    }
-
-
-def _line_sync_clock(
-    fit: ShiftFit | None, claimed: Mapping[int, float], decoded: Generated | None
-) -> claimmap.ClaimMap | None:
-    """THE LINE_SYNC RUNG'S CLAIM CLOCK: which clock this sheet is on, by the same vote the global engine
-    takes — or None when there is no decode to vote with.
-
-    Its own call because the rung PUBLISHES the claims, so THE TOLERANCE IS THIS RUNG'S and NOT PIECEWISE.
-    None rather than `IDENTITY` with no vote to take, and the bar is LITERALLY the gate's own
-    `_enough_decoded` call (docs/arch/04-alignment.md §7).
-    """
-    if decoded is None:
-        return None
-    pairs = sum(1 for line in decoded.lines if line.index in claimed)
-    if pairs < _enough_decoded(len(claimed)):
-        return None
-    return claimmap.consensus(
-        {line.index: line.start for line in decoded.lines},
-        claimed,
-        envelope_lag=(
-            fit.seconds if fit is not None and fit.correlation >= claimmap.MIN_ENVELOPE_CORRELATION else None
-        ),
-        tolerance_sec=_LINE_SYNC_NEAR_SEC,
-    )
-
-
-def _mapped(segments: Sequence[Segment], clock: claimmap.ClaimMap) -> tuple[Segment, ...]:
-    """`segments` with every claimed timestamp on our clock (`ClaimMap.at`), so a claim that PUBLISHES and a
-    repair window built from the same map move identically.
-
-    Copies, never in place: a `TextRef` is checkpointed and a replay must not re-map mapped timings. The end
-    is held at or after the start, as `ClaimMap.windows` does. THE MAP IS NOT WHAT THE HOLD DEFENDS AGAINST,
-    `ClaimMap.at` being non-decreasing: only a cue that arrived REVERSED can fire it, which is a CAPTION
-    track and not an LRC.
-    """
-    if not clock.applied:
-        return tuple(segments)
-    moved: list[Segment] = []
-    for segment in segments:
-        copy = dict(segment)
-        start = segment.get("start")
-        at: float | None = None
-        if isinstance(start, (int, float)) and not isinstance(start, bool):
-            at = clock.at(float(start))
-            copy["start"] = at
-        end = segment.get("end")
-        if isinstance(end, (int, float)) and not isinstance(end, bool):
-            mapped_end = clock.at(float(end))
-            copy["end"] = mapped_end if at is None else max(mapped_end, at)
-        moved.append(copy)
-    return tuple(moved)
-
-
-#: The most claimed starts `_in_claim_order` will hold before it leaves the sheet alone, as a share of its
-#: timed lines and never fewer than one. Many of them is a sheet whose order nobody can reconstruct
-#: (README, "A STRAY STAMP ONLY").
-_MAX_HELD_SHARE = 0.05
-
-
-def _in_claim_order(segments: Sequence[Segment]) -> tuple[tuple[Segment, ...], int, int]:
-    """`segments` with a stray backwards claimed start held at the one before it: the segments, how many were
-    held, and how many were left alone because holding them would have made things worse.
-
-    HELD, NOT SORTED — a claim is evidence about ITS line. ONE STRAY STAMP ONLY, AND ONLY WHERE THE SHEET
-    RECOVERS; otherwise `measure.out_of_order` reaches `decide` as before. IDEMPOTENT either way, and
-    docs/arch/04-alignment.md §5.3 has why the end is held PAST the predecessor's.
-    """
-    starts: dict[int, float] = {}
-    for position, segment in enumerate(segments):
-        start = segment.get("start")
-        if isinstance(start, (int, float)) and not isinstance(start, bool):
-            starts[position] = float(start)
-
-    order = list(starts)
-    #: The claimed start of the line after each claimed line, by position: the ceiling a held line's stretch
-    #: may not cross. A stray's successor is always a KEPT line, so this is the next line's own stamp.
-    next_claimed = {position: starts[later] for position, later in zip(order, order[1:], strict=False)}
-    inversions: list[int] = []
-    strays: set[int] = set()
-    previous: float | None = None
-    for rank, position in enumerate(order):
-        if previous is None or starts[position] >= previous:
-            previous = starts[position]
-            continue
-        inversions.append(position)
-        # The next claimed start decides WHICH stamp is the outlier: if the sheet comes back above the last
-        # kept start, this one line is; if it stays below, the EARLIER stamp was, and nothing here can tell
-        # where the lines after it belong. A trailing inversion has nothing left to drag.
-        recovers = starts[order[rank + 1]] if rank + 1 < len(order) else previous
-        if recovers >= previous:
-            strays.add(position)
-    if len(strays) != len(inversions) or len(inversions) > max(1, int(_MAX_HELD_SHARE * len(order))):
-        return tuple(segments), 0, len(inversions)
-
-    out: list[Segment] = []
-    held = 0
-    previous = None
-    previous_end: float | None = None
-    for position, segment in enumerate(segments):
-        if position not in starts:
-            out.append(segment)
-            continue
-        end = segment.get("end")
-        numeric_end = float(end) if isinstance(end, (int, float)) and not isinstance(end, bool) else None
-        if position in strays and previous is not None:
-            copy = dict(segment)
-            copy["start"] = previous
-            floor = previous if previous_end is None else max(previous, previous_end)
-            if numeric_end is not None and numeric_end <= floor:
-                #: A STRETCH, not the floor itself: equalling it publishes a span byte-identical to the
-                #: predecessor's, which core's `activeLineIndex` never returns.
-                room = next_claimed.get(position)
-                stretched = floor + _REPAIRED_MIN_SEC
-                numeric_end = stretched if room is None else min(stretched, max(floor, room))
-                copy["end"] = numeric_end
-            out.append(copy)
-            held += 1
-        else:
-            previous = starts[position]
-            out.append(segment)
-        previous_end = numeric_end if numeric_end is not None else previous
-    return tuple(out), held, 0
-
-
-async def _measured_lift(
-    texts: Sequence[str], emissions: Any, rules: units.Rules | None = None
-) -> tuple[lexical.Lift | None, lexical.Bands | None, str]:
-    """`lexical.lift` of `texts` on `emissions`, off the event loop, THE ROW it must be judged against, and
-    why it could not be measured.
-
-    Shared by both lexical gates so they read the same number the same way. THE ROW TRAVELS WITH THE LIFT, a
-    second lookup being able to answer differently; a row and a lift are TWO questions and only one is about
-    the MODEL (XA-06, XA-17; docs/arch/04-alignment.md §5.1, §5.4).
-    """
-    from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
-
-    bands = lexical.calibration(emissions)
-    if bands is None:
-        return None, None, lexical.uncalibrated(str(getattr(emissions, "model", "") or ""))
-    try:
-        got = await asyncio.to_thread(
-            partial(lexical.lift, decoder=forced_align_decoder, units=rules), texts, emissions
-        )
-    except InfraFault:
-        raise  # the machinery, not this text: fails the job (XA-17)
-    except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-        return None, bands, f"it raised {type(exc).__name__}: {exc}"
-    if got is None:
-        return None, bands, f"under {lexical.MIN_LETTERS} alignable letters, or no word order to contrast"
-    return got, bands, ""
-
-
-#: Seconds a sheet line may claim to be sung when its END is only the next line's START. Uncapped, an LRC's
-#: spans tile the whole song and the expected envelope degenerates to one block any text can match.
-_SHEET_SPAN_CAP_SEC = 5.0
-
-
-def _sheet_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
-    """A sheet's claimed singing, in time order, for the LINE_SYNC gate's envelope fit.
-
-    An end that coincides with the next line's start is capped at `_SHEET_SPAN_CAP_SEC`, being an onset of
-    the NEXT line rather than a measurement of this one; a span with an end of its own keeps it.
-    """
-    every = sorted(measure.line_spans(list(segments)))
-    out: list[tuple[float, float]] = []
-    for position, (start, end) in enumerate(every):
-        if end <= start:
-            continue
-        following = every[position + 1][0] if position + 1 < len(every) else None
-        if following is not None and abs(end - following) <= 1e-3:
-            end = min(end, start + _SHEET_SPAN_CAP_SEC)
-        out.append((start, end))
-    return out
-
-
-def _line_doc(
-    segments: Sequence[Segment], language: str, romanizer: romanize.Romanizer | None = None
-) -> dict[str, object]:
-    """A line-synced document: each segment becomes a line with no per-word spans.
-
-    One implementation for both the `LINE_SYNC` knob and any other line fallback, the ORDER of the starts
-    included, so no caller can publish a stray backwards claim by forgetting to normalise. Idempotent, and a
-    sheet `_in_claim_order` REFUSES to normalise keeps its inversions on purpose. `romanization` is an
-    OPTIONAL extra field, written only where there is a second script to show (XA-19,
-    docs/arch/04-alignment.md §11.2).
-    """
-    ordered, _held, _unheld = _in_claim_order(segments)
-    lines: list[dict[str, object]] = []
-    for s in ordered:
-        text = str(s.get("text") or "")
-        line: dict[str, object] = {"text": text, "start": s.get("start"), "end": s.get("end")}
-        said = romanize.romanization_of(text, romanizer)
-        if said is not None:
-            line["romanization"] = said
-        lines.append(line)
-    return {"language": language, "lines": lines}
-
-
-#: The never-sung rule's three thresholds, ALL required (the drop block in `_time_text_global`). ABSOLUTE on
-#: a P95-normalised envelope, and INERT on the MIX — README, "The never-sung floor", has every reading.
-_NEVER_SUNG_SCORE_GAP = 2.0
-_NEVER_SUNG_ENV = 0.10
-_NEVER_SUNG_RATE = 2.0
-
-#: Fraction of the blind decode's own speech mass a SPARED never-sung line's claim window must carry before
-#: the `m6-*` arms put it back, its decode not being stuck at the window's edge either. Neither the mix's
-#: envelope nor the decode's score can answer this (README, "What brings a SPARED line back").
-_SPOKEN_RATIO = 0.6
-
-#: ...and only where the witness hears the voice AT ALL: a matrix whose median speech mass over the blind
-#: decode's own lines is under this cannot vouch for one, the ratio above being a fraction of nothing there.
-#: The two populations: docs/benchmarks/forced-alignment/README.md, "What brings a SPARED line back".
-_SPOKEN_FLOOR = 0.06
-
-
-def _speech_mass(matrix: Any, start: float, end: float) -> float | None:
-    """Mean non-blank probability over `[start, end)`: how much the acoustic model hears SPEECH there, where
-    an energy envelope hears anything loud. None for an empty span.
-
-    THE BLANK COLUMN COMES FROM THE MATRIX (XA-10): a literal 0 would invert every spare this gates.
-    """
-    import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
-
-    from encore_worker.domain.lyrics.generate import blank_of  # noqa: PLC0415
-
-    log_probs = np.asarray(matrix.log_probs)
-    frame_sec = float(matrix.frame_sec)
-    if frame_sec <= 0 or log_probs.ndim != 2:
-        return None
-    blank = blank_of(matrix)
-    if not 0 <= blank < log_probs.shape[1]:
-        return None  # a matrix that names a column it does not have cannot testify
-    first = max(0, int(start / frame_sec))
-    last = min(len(log_probs), max(int(end / frame_sec), first + 1))
-    if last <= first:
-        return None
-    return float(1.0 - np.exp(log_probs[first:last, blank]).mean())
-
-
-#: WHY the placement-ambiguity rule said nothing, one name per reason, because the reasons lead to DIFFERENT
-#: next steps and all of them used to print one sentence: `arm`, `uncalibrated`, `already-low`, `fault` and
-#: `unreadable`, each spelled out in `_margin_why`.
-_MarginSilence = Literal["arm", "uncalibrated", "graph", "already-low", "fault", "unreadable"]
-
-
-@dataclass(frozen=True, slots=True)
-class _Placement:
-    """What the placement-ambiguity rule read on this document — and when it read NOTHING, WHICH silence.
-
-    `margins is None` IFF `silence is not None`: one answer in two halves, travelling together because a
-    swallowed fault and the `conf-legacy` arm used to be byte-identical on the trail. `fault` names the
-    exception TYPE for that reason.
-    """
-
-    #: Per-line max-marginal margins in nats, keyed by line index; None is NOT MEASURED (never "ambiguous").
-    margins: dict[int, float] | None = None
-    #: Which silence, when `margins` is None.
-    silence: _MarginSilence | None = None
-    #: The exception type's name when `silence` is `fault`, so the trail can name it without holding the
-    #: exception alive beside a matrix and a Viterbi (the memory note in `_placement_margins`).
-    fault: str | None = None
-
-
-def _placement_margins(
-    matrix: Any,
-    line_texts: Sequence[str],
-    *,
-    separate_lines: bool = False,
-    stars: bool = False,
-    units: units.Rules | None = None,
-) -> _Placement:
-    """How ambiguous each line's placement was on `matrix`, in nats (`domain.lyrics.margin`).
-
-    THE SAME TARGETS AND TOPOLOGY THE DECODE RAN ON: the texts must be the BLIND decode's, `matrix` the
-    STARRED one under that arm (XA-12), and the graph PLAIN — hence the caller's abstention under `star-b`.
-    NO MARGINS ON ANY FAULT, and every fault: a wrong guess at numpy's exception reinstates the bug, and `{}`
-    would still apply the rule's SCORE half. `InfraFault` is re-raised; numpy is converted here because
-    `domain/` may not import torch (XA-15; docs/arch/04-alignment.md §6).
-    """
-    import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
-
-    from encore_worker.domain.lyrics import margin  # noqa: PLC0415
-    from encore_worker.domain.lyrics.generate import blank_of, char_targets  # noqa: PLC0415
-
-    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars, units=units)
-    if not flat.targets:
-        return _Placement(silence="unreadable")
-    try:
-        got = margin.placement_margins(
-            np.asarray(matrix.log_probs, dtype=np.float64),
-            flat.targets,
-            flat.first_char_target,
-            blank=blank_of(matrix),
-            frame_sec=float(matrix.frame_sec),
-        )
-    except InfraFault:
-        raise
-    except Exception as failed:  # noqa: BLE001 - every fault means "not measured"; see the docstring
-        # MEMORY IS THE REAL ONE, the caller holding the whole matrix and a Viterbi beside these arrays. The
-        # TYPE's name is kept and the exception is not, so no traceback holds that matrix alive.
-        return _Placement(silence="fault", fault=type(failed).__name__)
-    # `placement_margins` answers `{}` for a matrix it could not read at all, which is the same GRADE as a
-    # fault — nothing measured, nothing to grade on — and a different REPORT: this matrix cannot be read,
-    # rather than this run could not read it.
-    return _Placement(margins=got) if got else _Placement(silence="unreadable")
-
-
-def _margin_why(placement: _Placement, doubted: Collection[int], lines: int, *, floor: float | None) -> str:
-    """The placement-margin clause of the trail note: the signal, its threshold, and what it doubts.
-
-    `doubted` is what the RULE flags and not what published `low`, which is why the wording says "doubts".
-    ONE SENTENCE PER SILENCE, because the reasons lead to different next steps and two used to be
-    byte-identical; the `fault` one is a BUG REPORT, so it names the exception type. `floor` comes off this
-    bundle's own calibration row. The trail names the RULE rather than a section number, an operator having no
-    document to resolve a citation against (docs/arch/04-alignment.md §6).
-    """
-    silent = {
-        "arm": (
-            "placement margins: not read, `conf-legacy` asked for the grading that preceded the "
-            "placement-margin rule"
-        ),
-        "uncalibrated": (
-            "placement margins: not read, this alignment bundle has no calibrated margin floor "
-            "(`lexical.Bands.margin_floor_nats`), so grading is as it was before the placement-margin rule"
-        ),
-        "graph": (
-            "placement margins: not read, `star-b` decoded through a graph whose stars are bypassable and "
-            "the margin rule knows only the plain topology, so grading is as it was before the rule"
-        ),
-        "already-low": (
-            "placement margins: not read, every line of this document is graded low before the rule is "
-            "reached, so no margin could change a grade"
-        ),
-        "fault": (
-            f"placement margins: not measured, `{placement.fault}` inside the two Viterbi passes, so "
-            "grading is as it was before the placement-margin rule"
-        ),
-        "unreadable": (
-            "placement margins: not measured, these frames and targets carry no path to compare, so "
-            "grading is as it was before the placement-margin rule"
-        ),
-    }
-    margins = placement.margins
-    if floor is None:
-        # Narrowed for the numbers below, and the one silence that can be read off the floor alone.
-        return silent["uncalibrated"]
-    if not margins:
-        return silent[placement.silence or "unreadable"]
-    ordered = sorted(margins.values())
-    tight = sum(1 for gap in ordered if gap < floor)
-    return (
-        f"placement margins over {len(ordered)} of {lines} lines: median "
-        f"{median(ordered):.0f} nats, min {ordered[0]:.0f}, {tight} under "
-        f"{floor:.0f} — {len(doubted)} doubted on ambiguity or a low score"
-    )
-
-
-def _repeats_why(repeats: Collection[int], *, applied: bool, silence: _MarginSilence | None) -> str:
-    """The `conf-fuzzy-repeats` clause: whether the arm acted, and when it did not, why not — a run recorded
-    under an arm's name having measured the DEFAULT path being worse than one that refused to start."""
-    if applied:
-        return f"near-repeat demotion (conf-fuzzy-repeats): {len(repeats)} line(s) flagged"
-    because = {
-        "arm": (
-            "`conf-legacy` asked for the grading that preceded the placement-margin rule, which has no "
-            "demotion to widen"
-        ),
-        "already-low": "every line of this document is graded low already",
-    }.get(silence or "", "the placement-margin rule stood down")
-    return f"near-repeat demotion (conf-fuzzy-repeats): requested, not applied — {because}"
-
-
-#: A repaired line whose decode landed within this of the window's LEFT EDGE "heard nothing": a forced path
-#: through flat emissions collapses leftward. Fitted where the errors clustered at exactly the pad width.
-_ADOPT_EDGE_SEC = 0.08
-
-#: How far below the song's own median line score a repaired line must sit to be called unheard. Scores
-#: compare WITHIN a song only; the measured good/gross medians were -0.95 against -1.76.
-_ADOPT_SCORE_GAP = 0.5
-
-#: Seconds of slack added around a repair window before re-decoding inside it, a window cut exactly to the
-#: claim clipping a note it started late on. Also the reach of `claim_run`'s hold-open: this close to the
-#: claim span is the same line measured twice, further away is a second hypothesis.
-_REPAIR_PAD_SEC = 1.0
-
-#: The widest BACKWARD move a re-opening may make, seconds. The rule exists for the 0.5-2 s band, and 2 s is
-#: where a gross line begins (the bench's own `GROSS_SEC`); `skipped_opening`'s other bound is the re-decode's
-#: own duration, which a merged cue outruns without ever biting (review r2-correctness-3).
-_REOPEN_MAX_SEC = 2.0
-
-#: Window a cue with no end of its own is given, seconds: enough to ANCHOR a re-decode, never a reading.
-_CLAIM_DEFAULT_END_SEC = 1.0
-
-
-@dataclass(frozen=True, slots=True)
-class _Claims:
-    """The sheet AS SERVED, read off the segments by position: before any clock maps it onto ours."""
-
-    starts: dict[int, float]
-    #: One window per claimed line. A cue whose end is missing gets `_CLAIM_DEFAULT_END_SEC`; one whose end is
-    #: at or before its start keeps its own zero length, which is what `ClaimMap.windows` preserves too.
-    windows: dict[int, tuple[float, float]]
-    #: Lines whose cue wrote a USABLE end of its own — after its start, so neither a defaulted end nor a
-    #: zero-length or reversed one. Only such an end may be READ (`skipped_opening`, `end_bias`): README,
-    #: "Caption cues: the two populations a duration floor separates"; review r2-correctness-4.
-    ends_given: set[int]
-
-
-def _claims_as_served(segments: Sequence[Segment]) -> _Claims:
-    """The claimed onsets, windows and written ends of `segments`. Untimed or malformed rows are skipped."""
-    starts: dict[int, float] = {}
-    windows: dict[int, tuple[float, float]] = {}
-    ends_given: set[int] = set()
-    for index, segment in enumerate(segments):
-        start, end = segment.get("start"), segment.get("end")
-        if not isinstance(start, (int, float)) or isinstance(start, bool):
-            continue
-        first = float(start)
-        written = float(end) if isinstance(end, (int, float)) and not isinstance(end, bool) else None
-        starts[index] = first
-        windows[index] = (first, max(first + _CLAIM_DEFAULT_END_SEC if written is None else written, first))
-        if written is not None and written > first:
-            ends_given.add(index)
-    return _Claims(starts=starts, windows=windows, ends_given=ends_given)
-
-
-class _Source(StrEnum):
-    """Where a line's published timing came from: the repair ladder's per-line provenance (XA-02), carried
-    because the stages are NOT equally independent of the claims and the timings alone cannot say."""
-
-    #: The global decode's own line: no claim chose where it was decoded (the never-sung rule only picks
-    #: which lines are decoded at all).
-    BLIND = "blind"
-    #: R3: re-decoded jointly between the unique lines around a repeated block. No claim is used, so where it
-    #: lands is independent of them: `high` where that is on its claim, on the blind verdict's clock.
-    ANCHORED = "anchored"
-    #: R1 / R2: re-decoded inside its padded claim window, on the target.
-    WINDOW = "window"
-    #: R4: re-decoded inside its padded claim window, on the MIX.
-    MIX = "mix"
-    #: The claim's own span, adopted because no window decode heard the line.
-    ADOPTED = "adopted"
-    #: The primed re-decode of the review's roadmap item 14: one global Viterbi in which the clock-mapped
-    #: claims are a BONUS at each line's first state. A claim chose nothing, but it tipped the path.
-    PRIMED = "primed"
-
-
-#: How many lines of one source the trail names by index before it only counts the rest: R1 re-decodes
-#: every claimed line, and a 90-line index list would bury the rest of the verdict note.
-_SOURCES_NAMED = 12
-
-
-def _sheet_why(reading: AsClaimed | None, off: OffSheet | None, *, demoted: bool) -> str:
-    """The trail's line for the coherence check: how far the published document sits from the sheet a viewer
-    holds, whether both witnesses convicted it, and whether that was allowed to demote it.
-
-    Printed on every claimed job, because "we checked and it is close" and "nobody checked" must not read
-    alike — that silence is what let a document 0.86 s off its captions publish `high` for eight waves. The
-    reading is AS CLAIMED: no offset removed, so this is the error a room would see. `demoted` is false
-    whenever `band-off-sheet` is off, which is the default: the conviction is still reported."""
-    from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
-
-    if reading is None:
-        return f"against the sheet as served: fewer than {rc.MIN_PAIRS} paired lines, not read"
-    if off is not None:
-        verdict = "every line graded low" if demoted else "not demoted (band-off-sheet is off)"
-        return f"against the sheet as served: {off.why()} — {verdict}"
-    return (
-        f"against the sheet as served: {reading.near:.0%} of {reading.pairs} lines within "
-        f"{reading.tolerance_sec:.2f} s of their own claim (median lag {reading.offset_sec:+.2f} s, spread "
-        f"{reading.spread_sec:.2f} s, {reading.together:.0%} of them carrying that lag), no coherent "
-        "displacement both witnesses confirm"
-    )
-
-
-def _ends_why(
-    before: Generated, after: Generated, experiments: frozenset[str], *, on_stem: bool = True
-) -> str:
-    """The trail's line for the word-end post-pass: how many ends moved, and by how much — a display change
-    no metric on the report can show. It states the ARM and the TARGET, the two reasons ends look raw."""
-    if "ends-raw" in experiments:
-        return "word ends: the raw decode's (ends-raw)"
-    if not on_stem:
-        return "word ends: the raw decode's (no vocals stem: the envelope's silence level is a stem's)"
-    moved = sorted(
-        after_word.end - before_word.end
-        for before_line, after_line in zip(before.lines, after.lines, strict=True)
-        for before_word, after_word in zip(before_line.words, after_line.words, strict=True)
-        if after_word.end > before_word.end
-    )
-    words = sum(len(line.words) for line in before.lines)
-    # The arm is named in BOTH branches: "nothing moved" under `ends-tile` is a different claim about the
-    # decode than the same sentence on the default.
-    arm = " tiling within each line (ends-tile)" if "ends-tile" in experiments else ""
-    if not moved:
-        return f"word ends: none of {words} extended{arm} (the envelope stops where the decode does)"
-    return (
-        f"word ends: held {len(moved)} of {words} through the singing{arm}, median "
-        f"+{moved[len(moved) // 2] * 1000:.0f} ms, worst +{moved[-1]:.2f}s"
-    )
-
-
-def _pulls_why(pulls: Mapping[int, float]) -> str:
-    """The trail's clause for the ends `_clamped_v2` pulled back onto a repair: how many, which, how far.
-
-    THE ONE PUBLISHED TIMING THIS WORKER CHANGES ON A LINE NO STAGE REPAIRED, and nothing else says so —
-    `provenance` is right not to move, so such a line still reports as the blind decode's. BY INDEX and capped
-    at `_SOURCES_NAMED`, the measured pull count per pass being around a hundred.
-    """
-    if not pulls:
-        return ""
-    ordered = sorted(pulls)
-    shown = " ".join(f"[{i}]" for i in ordered[:_SOURCES_NAMED])
-    more = f" +{len(ordered) - _SOURCES_NAMED} more" if len(ordered) > _SOURCES_NAMED else ""
-    return (
-        f"pulled {len(ordered)} line end(s) back onto the repair that followed them, median "
-        f"{median(pulls.values()):.2f}s of overrun removed (starts, order and grades unmoved): {shown}{more}"
-    )
-
-
-def _bundle_why(emissions: object) -> str:
-    """The trail's clause naming the ALIGNMENT BUNDLE a document's word timings came off.
-
-    NOTHING ELSE ON THE PRODUCTION RECORD NAMED IT, and two failures had no evidence without it: a bundle
-    flipped between a job's attempts, and a "the timings got worse" report from a box nobody recorded one for.
-    "unnamed" is not production — only an aligner older than the field, or a test's fake.
-    """
-    named = str(getattr(emissions, "model", "") or "")
-    return f"bundle {named or 'unnamed'}"
-
-
-def _units_why(rules: units.Rules, language_code: str) -> str:
-    """One trail sentence naming the W8 unit arms this attempt decoded under, and on which language."""
-    return (
-        f"units {rules.name} for {language_code!r} "
-        f"(domain.lyrics.units: words, syllables and vocabulary spelling are this script's, "
-        f"not the whitespace rule every recorded row was measured on)"
-    )
-
-
-def _linesep_why(separator: int | None, *, named: int | None) -> str:
-    """The trail's clause for the line separator, printed only under the `linesep` arm.
-
-    IT SAYS WHETHER THE ARM ACTUALLY DID ANYTHING, and WHICH OF THE TWO INERT CASES it was — they lead to
-    opposite next steps (docs/arch/04-alignment.md §14.1). `named` is the unfiltered reading, so a collision
-    names the column it collided with.
-    """
-    if separator is None and named is not None:
-        return (
-            "line separator: requested (linesep) but this vocabulary's `|` IS its blank column "
-            f"(id {named}), so the arm is inert and the targets are the default's"
-        )
-    if separator is None:
-        return (
-            "line separator: requested (linesep) but this vocabulary names none, so the targets are the "
-            "default's"
-        )
-    return f"line separator: `|` (id {separator}) between lines, its frames blank (linesep)"
-
-
-def _star_why(star: int | None) -> str:
-    """The trail's clause for the star column, printed only under the `star` arm: whether it did anything,
-    for `_linesep_why`'s reason. One inert case rather than two, no blank collision being possible."""
-    if star is None:
-        return "star: requested (star) but this matrix carries no star column, so the targets are default"
-    from encore_worker.adapters.ml import STAR_PENALTY_NATS  # noqa: PLC0415 - the arm's own constant
-
-    return f"star: one per line, id {star} = frame max − {STAR_PENALTY_NATS:g} nats, its frames blank (star)"
-
-
-def _built_why(graph: Graph) -> str:
-    """What a non-empty `viterbi.Graph` holds, for `_graph_why`'s decode note: the arcs, and their price."""
-    held: list[str] = []
-    if graph.stars:
-        held.append(f"{len(graph.stars)} star state(s) bypassable at {graph.star_penalty:g} nats")
-    if graph.bonus:
-        held.append(f"an onset prior on {len(graph.bonus)} first-character state(s)")
-    return "decoded through a graph of " + " and ".join(held)
-
-
-def _graph_why(notes: Sequence[str], *, vendored: bool) -> str:
-    """The trail's clause for W9's decode arms: what the graph did, or what the fusion did (XA-18).
-
-    `vendored` names the DECODER, which `claim-fusion` alone does not change — it changes the evidence —
-    so the clause has to say which of the two the reader is looking at. Under the bare `vendored` control
-    there is nothing to report, and saying so is the control's whole claim: the graph was empty, so the
-    kernel's own path is what published.
-    """
-    what = "vendored decoder" if vendored else "claim fusion"
-    if notes:
-        return f"{what}: " + "; ".join(notes)
-    if vendored:
-        return "vendored decoder: an empty graph, so this is torchaudio's own path (vendored)"
-    return "claim fusion: no claim to fuse inside (claim-fusion)"
-
-
-def _star_positions(flat: Any, matrix: Any) -> tuple[int, ...]:
-    """Which of `flat.targets` are `matrix`'s STAR token: the states phase B's graph bypasses for free.
-
-    Read the same way for the publishing decode and for the skip-arc detector, which have to decode one
-    topology (docs/arch/04-alignment.md §3.2).
-    """
-    from encore_worker.domain.lyrics.generate import star_of  # noqa: PLC0415
-
-    named = star_of(matrix)
-    return () if named is None else tuple(at for at, token in enumerate(flat.targets) if token == named)
-
-
-def _skipped_lines(
-    matrix: Any,
-    line_texts: Sequence[str],
-    *,
-    separate_lines: bool = False,
-    stars: bool = False,
-    star_penalty: float | None = None,
-    exempt: frozenset[int] = frozenset(),
-    units: units.Rules | None = None,
-) -> frozenset[int] | None:
-    """Which lines roadmap item 15's skip arcs leave unsung on `matrix` — the never-sung rule's COMPLEMENT.
-
-    A detector and not the publishing decode: the lines it names are blanked and the shipped decode runs
-    again without them, exactly as the never-sung rule drops a line. None where nothing could be read, which
-    the caller treats as no drop at all. `star_penalty` is phase B's, and makes the star targets bypassable
-    here as they are in the decode that publishes (docs/arch/04-alignment.md §3.2).
-    """
-    import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
-
-    from encore_worker.domain.lyrics import viterbi  # noqa: PLC0415
-    from encore_worker.domain.lyrics.generate import blank_of, char_targets, line_blocks  # noqa: PLC0415
-
-    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars, units=units)
-    if not flat.targets:
-        return None
-    indexes, arcs = viterbi.line_skips(line_blocks(flat), exempt)
-    if not arcs:
-        return frozenset()
-    try:
-        got = viterbi.align(
-            np.asarray(matrix.log_probs),
-            flat.targets,
-            blank_of(matrix),
-            graph=viterbi.Graph(
-                skips=arcs,
-                stars=_star_positions(flat, matrix) if star_penalty is not None else (),
-                star_penalty=float(star_penalty or 0.0),
-            ),
-        )
-    except InfraFault:
-        raise
-    except Exception:  # noqa: BLE001 - a detector that cannot read the matrix detects nothing
-        return None
-    return frozenset(indexes[at] for at in got.skipped)
-
-
-def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> str:
-    """The trail's per-line provenance for the published lines: how many each source timed, and which.
-
-    Blind lines are only counted; every other source names its lines by input index.
-    """
-    by_source: dict[_Source, list[int]] = {}
-    for index in indexes:
-        by_source.setdefault(provenance.get(index, _Source.BLIND), []).append(index)
-    parts: list[str] = []
-    for source in _Source:
-        named = by_source.get(source, [])
-        if not named:
-            continue
-        if source == _Source.BLIND:
-            parts.append(f"{len(named)} blind")
-            continue
-        shown = " ".join(f"[{i}]" for i in named[:_SOURCES_NAMED])
-        more = f" +{len(named) - _SOURCES_NAMED} more" if len(named) > _SOURCES_NAMED else ""
-        parts.append(f"{len(named)} {source.value} {shown}{more}")
-    return f"timing sources: {', '.join(parts)}"
-
-
-#: Seconds a repaired line is widened to WHEN IT IS RE-FITTED, and not a floor on the PUBLISHED width: a
-#: later `_pulled_end` can pull this line's end back, and the pull wins. What DOES bound the published width
-#: is `_pulled_end`'s own rule, one decoder frame per letter (docs/arch/04-alignment.md §4).
-_REPAIRED_MIN_SEC = 0.2
-
-
-def _with_lines(generated: Generated, repaired: Mapping[int, Line]) -> Generated:
-    """`generated` with repaired lines swapped in by index, and any it lacks INSERTED in index order —
-    which is the never-sung rule's spared lines coming back."""
-    from encore_worker.domain.lyrics.generate import Generated  # noqa: PLC0415
-
-    present = {line.index for line in generated.lines}
-    added = [line for index, line in repaired.items() if index not in present]
-    lines = [repaired.get(line.index, line) for line in generated.lines]
-    return Generated(
-        lines=tuple(sorted([*lines, *added], key=lambda line: line.index)) if added else tuple(lines),
-        language=generated.language,
-    )
-
-
-def _clamped(
-    generated: Generated, repaired: set[int], *, blind: Generated, frame_sec: float, ordered: bool
-) -> tuple[Generated, frozenset[int], dict[int, float]]:
-    """Repaired lines clipped to their neighbours; with `ordered`, fitted IN ORDER or refused to `blind`.
-
-    Returns `(clamped, reverted, pulled)` — the refusals (the arm only) and `{index: seconds of overrun
-    removed}` for each preceding line whose END the default pulled back, both being decisions no metric on
-    the report can show. DEFAULT is `_clamped_v2`, which never refuses; `ordered` IS THE `m2-order-clamp` ARM
-    (XA-07). README, "The order-clamp arm's own table", has what the arm bought and the gates it failed.
-    """
-    from encore_worker.domain.lyrics.generate import Generated  # noqa: PLC0415
-
-    if not ordered:
-        clamped, pulled = _clamped_v2(generated, repaired, frame_sec=frame_sec)
-        return clamped, frozenset(), pulled
-    lines = list(generated.lines)
-    # A repaired index is a blind line, except a never-sung line spared back in, which has no
-    # blind original: a refused run simply goes without it, which is what the never-sung rule did to it.
-    original = {line.index: line for line in blind.lines}
-    out: list[Line] = []
-    reverted: set[int] = set()
-    position = 0
-    while position < len(lines):
-        if lines[position].index not in repaired:
-            out.append(lines[position])
-            position += 1
-            continue
-        stop = position
-        while stop < len(lines) and lines[stop].index in repaired:
-            stop += 1
-        run = lines[position:stop]
-        ceiling = lines[stop].start if stop < len(lines) else math.inf
-        fitted = _fitted_run(run, out[-1] if out else None, ceiling, frame_sec)
-        if fitted is None:
-            fitted = [original[line.index] for line in run if line.index in original]
-            reverted.update(line.index for line in run)
-        out.extend(fitted)
-        position = stop
-    # The arm moves no trusted end at all (it refuses the run instead), so it reports no pulls.
-    return Generated(lines=tuple(out), language=generated.language), frozenset(reverted), {}
-
-
-def _clamped_v2(
-    generated: Generated, repaired: set[int], *, frame_sec: float
-) -> tuple[Generated, dict[int, float]]:
-    """The shipped default: the v2 clamp with a BOUNDED left floor (`_clamped` without `ordered`).
-
-    `(clamped, {index: seconds of overrun removed})`, the second half naming every PRECEDING line whose end
-    this pulled back — a published timing changed on a line the ladder did not repair. It never refuses, so a
-    repair landing past its successor still publishes backwards word starts (XA-07;
-    docs/arch/04-alignment.md §4; README, "The fix: resolve the overlap at the neighbour's END").
-    """
-    from encore_worker.domain.lyrics.generate import Generated, remapped  # noqa: PLC0415
-
-    lines = list(generated.lines)
-    out: list[Line] = []
-    pulls: dict[int, float] = {}
-    for position, line in enumerate(lines):
-        if line.index in repaired:
-            previous = out[position - 1] if position else None
-            previous_end = previous.end if previous is not None else 0.0
-            if previous is not None and previous_end > line.start:
-                pulled = _pulled_end(previous, line.start, frame_sec=frame_sec)
-                if pulled is not None:
-                    out[position - 1] = pulled
-                    pulls[previous.index] = previous_end - pulled.end
-                    previous_end = pulled.end
-            low = max(line.start, previous_end)
-            high = line.end
-            if position + 1 < len(lines) and lines[position + 1].index not in repaired:
-                high = min(high, lines[position + 1].start)
-            high = max(high, low + _REPAIRED_MIN_SEC)
-            if abs(low - line.start) > 1e-9 or abs(high - line.end) > 1e-9:
-                line = remapped(line, low, high)
-        out.append(line)
-    return Generated(lines=tuple(out), language=generated.language), pulls
-
-
-def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None:
-    """`line` ending at `boundary` instead of past it, or None where that would not be a decoded timing.
-
-    The one end `_clamped_v2` moves, and the START never moves with it, so a PULLED LINE'S PROVENANCE AND
-    GRADE DO NOT MOVE either — the trail owes the pull itself instead (`_pulls_why`). TWO REFUSALS, NEITHER A
-    NEW THRESHOLD: one decoder frame per letter, and `trimmed`'s own None. `frame_sec` goes through to
-    `trimmed` because the letter rule measures the WHOLE line (docs/arch/04-alignment.md §4; README, "The
-    anchor walk").
-    """
-    from encore_worker.domain.lyrics.generate import trimmed  # noqa: PLC0415
-
-    if boundary - line.start < max(1, sum(ch.isalpha() for ch in line.text)) * frame_sec:
-        return None
-    return trimmed(line, boundary, frame_sec=frame_sec)
-
-
-def _fitted_run(
-    run: Sequence[Line], previous: Line | None, ceiling: float, frame_sec: float
-) -> list[Line] | None:
-    """`run` clipped into the gap after `previous` and before `ceiling`, or None when it cannot keep order.
-
-    The acceptance test is `measure`'s own: word STARTS never decrease, from `previous`'s last word through
-    the run to `ceiling`. A line clipped below one frame per LETTER is refused as well — ordered, but no
-    longer a timing anyone decoded: CTC gives every target at least a frame, and the targets are letters
-    (a digit is out of vocabulary and interpolated, so counting it would refuse a tight but real decode).
-    """
-    from encore_worker.domain.lyrics.generate import remapped  # noqa: PLC0415
-
-    floor = previous.end if previous is not None else 0.0
-    last_start = (
-        max((word.start for word in previous.words), default=previous.start)
-        if previous is not None
-        else -math.inf
-    )
-    fitted: list[Line] = []
-    for line in run:
-        low = max(line.start, floor)
-        high = min(max(line.end, low + _REPAIRED_MIN_SEC), ceiling)
-        if high - low < max(1, sum(ch.isalpha() for ch in line.text)) * frame_sec:
-            return None
-        if abs(low - line.start) > 1e-9 or abs(high - line.end) > 1e-9:
-            line = remapped(line, low, high)
-        for word in line.words:
-            if word.start < last_start:
-                return None
-            last_start = word.start
-        fitted.append(line)
-        floor = line.end
-    return fitted if last_start <= ceiling else None
-
-
-def _backwards_why(
-    doc: dict[str, object], *, index_of: Sequence[int] | None = None, repaired: Collection[int] = ()
-) -> str:
-    """The trail's account of an out-of-order word document: how many starts run backwards, and where.
-
-    Lines are named `[i]` like the never-sung note, by INPUT index when `index_of` maps document positions to
-    it (the global decode drops unalignable lines, so position and input row differ), and marked when a repair
-    produced them — the first question an inversion raises.
-    """
-    positions = measure.backwards_lines(doc)
-    named = sorted({index_of[p] if index_of is not None else p for p in positions})
-    where = ", ".join(f"[{i}]{' (repaired)' if i in repaired else ''}" for i in named)
-    return f"{len(positions)} word starts run backwards, in lines {where}"
-
-
-def _anchored_runs(
-    lines: Sequence[Line], needs_fix: set[int], duration_sec: float
-) -> list[tuple[tuple[Line, ...], tuple[float, float]]]:
-    """Contiguous runs of to-be-repaired lines, each windowed between its nearest KEPT neighbours.
-
-    The kept lines are the anchors: a run's window opens where the previous trusted line ends and closes
-    where the next one starts (track edges at the ends), so a re-decode cannot wander outside the region
-    its anchors vouch for. Runs are decoded jointly to keep order within the run monotonic.
-    """
-    ordered = list(lines)
-    runs: list[tuple[tuple[Line, ...], tuple[float, float]]] = []
-    position = 0
-    while position < len(ordered):
-        if ordered[position].index not in needs_fix:
-            position += 1
-            continue
-        stop = position
-        while stop < len(ordered) and ordered[stop].index in needs_fix:
-            stop += 1
-        window_start = ordered[position - 1].end if position > 0 else 0.0
-        window_end = ordered[stop].start if stop < len(ordered) else duration_sec
-        runs.append((tuple(ordered[position:stop]), (window_start, window_end)))
-        position = stop
-    return runs
 
 
 def now_ms() -> int:

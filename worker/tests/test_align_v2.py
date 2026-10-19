@@ -652,7 +652,7 @@ def clamp(
     lines: Sequence[Line], blind: Sequence[Line], repaired: set[int]
 ) -> tuple[tuple[Line, ...], frozenset[int]]:
     """`_clamped`'s `m2-order-clamp` arm at the global decode's frame (20 ms), `blind` the fallback."""
-    from encore_worker.steps.align_steps import _clamped
+    from encore_worker.steps.align_geometry import _clamped
 
     got, refused, pulled = _clamped(
         Generated(lines=tuple(lines), language="en"),
@@ -765,7 +765,7 @@ def default_clamp(
     published timing changed on a line no stage repaired and therefore the one thing about this clamp the
     trail has to carry (W6 review r1-spec-15 / r1-tests-19, `_pulls_why`).
     """
-    from encore_worker.steps.align_steps import _clamped
+    from encore_worker.steps.align_geometry import _clamped
 
     got, refused, pulled = _clamped(
         Generated(lines=tuple(lines), language="en"),
@@ -945,7 +945,7 @@ def test_a_repaired_lines_width_floor_is_a_refit_floor_and_the_pull_outranks_it(
     pushes [1] to 10.2, which is the smeared-end failure the bounded floor exists to end — and what bounds
     the published width instead is `_pulled_end`'s frame per letter. Pinned because the floor's docstring
     promised the published width until this finding read the two against each other."""
-    from encore_worker.steps.align_steps import _REPAIRED_MIN_SEC
+    from encore_worker.steps.align_geometry import _REPAIRED_MIN_SEC
 
     oh = many_word_line(0, [10.0], start=10.0, end=10.02)
     night = many_word_line(1, [10.1, 10.6, 11.0, 11.4, 11.7], start=10.1, end=12.0)
@@ -990,9 +990,9 @@ def test_an_out_of_order_global_document_names_its_lines_on_the_trail(
     precedes the verdict note, so the last `align-global` note — the one the bench reads as the verdict —
     is still the verdict."""
     from encore_worker.domain.lyrics.generate import remapped
-    from encore_worker.steps import align_steps
+    from encore_worker.steps import align_geometry, align_steps
 
-    real = align_steps._clamped
+    real = align_geometry._clamped
 
     def inverting(
         generated: Generated, repaired: set[int], *, blind: Generated, frame_sec: float, ordered: bool
@@ -1286,7 +1286,7 @@ class _Stub:
 
 
 def test_anchored_runs_window_each_run_between_its_kept_neighbours() -> None:
-    from encore_worker.steps.align_steps import _anchored_runs
+    from encore_worker.steps.align_geometry import _anchored_runs
 
     lines = [_Stub(0, 5.0, 7.0), _Stub(1, 8.0, 10.0), _Stub(2, 12.0, 14.0), _Stub(3, 16.0, 18.0)]
     runs = _anchored_runs(lines, {1, 2}, duration_sec=40.0)  # type: ignore[arg-type]
@@ -1297,7 +1297,7 @@ def test_anchored_runs_window_each_run_between_its_kept_neighbours() -> None:
 
 
 def test_anchored_runs_use_the_track_edges_when_no_anchor_exists() -> None:
-    from encore_worker.steps.align_steps import _anchored_runs
+    from encore_worker.steps.align_geometry import _anchored_runs
 
     lines = [_Stub(0, 5.0, 7.0), _Stub(1, 8.0, 10.0), _Stub(2, 12.0, 14.0)]
     head = _anchored_runs(lines, {0}, duration_sec=40.0)  # type: ignore[arg-type]
@@ -1814,9 +1814,9 @@ def test_the_trail_records_the_ends_the_clamp_pulled_back(rig: Rig, monkeypatch:
     so `_sources_why` reads such a line as wholly the blind decode's and a "the ball hangs on the last
     word of this line" report had no answer short of re-running the ladder. The real clamp's pulls are
     asserted where they happen; this is the wiring, the rig's exact decoder leaving no line overlapping."""
-    from encore_worker.steps import align_steps
+    from encore_worker.steps import align_geometry, align_steps
 
-    real = align_steps._clamped
+    real = align_geometry._clamped
 
     def pulling(
         generated: Generated, repaired: set[int], *, blind: Generated, frame_sec: float, ordered: bool
@@ -1838,7 +1838,7 @@ def test_the_trail_records_the_ends_the_clamp_pulled_back(rig: Rig, monkeypatch:
 def test_the_pull_clause_says_nothing_when_no_end_moved() -> None:
     """A trail clause that fired on every document would be noise, and `_pulls_why`'s cap is what keeps the
     note readable on the songs where the clamp pulls dozens (101 a corpus pass is the measured figure)."""
-    from encore_worker.steps.align_steps import _SOURCES_NAMED, _pulls_why
+    from encore_worker.steps.align_notes import _SOURCES_NAMED, _pulls_why
 
     assert _pulls_why({}) == ""
     one = _pulls_why({7: 0.25})

@@ -353,7 +353,7 @@ class PoolCaptions:
 class PoolProvider:
     """`LyricsProvider` serving one prepared sheet under a chosen name and upstream.
 
-    `last_source` is read by `align_steps._provider_label`, so a multiplexer's text reaches the trail as
+    `last_source` is read by `align_text._provider_label`, so a multiplexer's text reaches the trail as
     `lrcmux:KuGou` — the label `policy.witness_of` folds into the single `providers` witness, and the one a
     row names when a wrong sheet publishes.
     """

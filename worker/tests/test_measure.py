@@ -119,7 +119,7 @@ def test_an_overlap_is_not_counted_as_a_gap() -> None:
 
 
 def lines_doc(*spans: tuple[float, float | None]) -> dict[str, object]:
-    """A LINE_SYNC document (`align_steps._line_doc`'s shape): timed lines, no words."""
+    """A LINE_SYNC document (`align_lines._line_doc`'s shape): timed lines, no words."""
     return {
         "language": "en",
         "lines": [{"text": f"line {i}", "start": s, "end": e} for i, (s, e) in enumerate(spans)],

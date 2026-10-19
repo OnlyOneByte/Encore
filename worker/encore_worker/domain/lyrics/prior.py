@@ -18,15 +18,16 @@ from typing import Any
 import numpy as np
 
 #: Nats added at the claimed onset frame itself — the bonus's peak, and so the cap on what a claim is worth.
-#: UNFITTED: the review never ran the arm that would fit it (README section above).
+#: FITTED over 0-20 in W10; 8.0 is the pool's optimum and this value is inside the safe region, not on it
+#: (README, "W10: fitting the claim prior's peak").
 ONSET_BONUS_NATS = 4.0
 
 #: The Gaussian's width in seconds. Wider than the ±300 ms the claims are scored at, because what the prior
-#: is for is a line the decode put SECONDS away.
+#: is for is a line the decode put SECONDS away. Still UNFITTED: W10 swept the peak only.
 ONSET_SIGMA_SEC = 0.6
 
 #: Where the bonus is truncated to zero. The cap in "capped Gaussian": past it a claim is no evidence at all,
-#: which is what keeps a mis-bound repeat from pulling a line across the song.
+#: which is what keeps a mis-bound repeat from pulling a line across the song. Still UNFITTED, as above.
 ONSET_REACH_SEC = 2.0
 
 

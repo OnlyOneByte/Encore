@@ -1,0 +1,140 @@
+# W10 CLOSE-OUT — THE NON-LATIN LANE WITH THE PER-LANGUAGE STAGE-2 TABLE ACTIVE, which is the shipped
+# default since W10. This REPLACES `gates/w8-lane.yaml` §1 and `gates/w8-nonlatin.yaml` §1 on the shipped
+# default: those two encode the pre-W10 rule ("the lane publishes LINES, never WORDS") as a MUST, and W10's
+# first two calibration rows — `("MMS_FA", "zh")` and `("jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
+# "ja")` — make it false for zh and ja by design. Narrative and every number: README, "W10: the close-out
+# sweep, and the lane at the rung a room sees".
+#
+#   cd worker && for L in zh ja ko; do .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --corpus nonlatin --language $L --songs amll-$L \
+#       --modes truth,wrongtext --wrong-k 3 --asr off --tag w10-nl-$L-ra \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w10.yaml ; done
+#
+# READ ONCE PER LANGUAGE, and EVERY RULE HERE IS TRUE OF EVERY ROUTED LANGUAGE — that is the whole
+# difference from `w8-lane.yaml`, whose §1 could only hold while no non-Latin pair was calibrated. The one
+# fact that is NOT universal (which rung a language publishes at) is gated as the universal thing it
+# implies: the rung is decided by the `(bundle, language)` PAIR, so a language never mixes rungs (§5).
+#
+# THERE IS NO `--compare` BASELINE AND THERE CANNOT BE ONE: `corpus` is a SETUP key
+# (`e2e_gates.SETUP_META`), so every recorded English row is a mismatch here rather than a comparison.
+# Every literal below is this set's own reading, written against the COUNTS the run reports so the file
+# holds for 1 song or for 40.
+#
+# ── MEASURED, 2026-10-19, code `35ebe339f1420309`, emitter `10bb06b8c2533a5b` ────────────────────────────
+# `results/w10-lane-{zh,ja,ko}-run_align.json` (`_runs/w10-nl-{zh,ja,ko}-ra`), 7 songs / 340 lines, the
+# table active. Readings, and the CONTROL beside each
+# (`ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted`, `results/w10-lane-*-unrouted-run_align.json`):
+#
+#   lang  bundle the table picked          rung          +-500   gross  high  high_bad  syllable PCO@300
+#   zh    MMS_FA                           4 word docs   98.98   0      189   0         95.90
+#   ja    whisperx's own `ja`              2 word docs   89.66   0      65    2  <-FAIL 82.03
+#   ko    MMS_FA (no row for the PAIR)     1 line-sync  100.00   0        0   0         n/a (no words)
+#
+#   zh unrouted  xlsr-53-chinese-zh-cn     4 line-sync  100.00   0        0   0         n/a
+#   ja unrouted  whisperx's own `ja`       2 word docs   89.66   0      65    2         10.88
+#   ko unrouted  xlsr-53-korean            1 line-sync  100.00   0        0   0         n/a
+#
+# THREE READINGS THIS TABLE SETTLES, each of them a thing nobody had measured before this run:
+#  * **THE PAIRED KEY WORKS, and MMS_FA is the proof.** The same bundle publishes 4 word documents for zh
+#    and declines one for ko, because `("MMS_FA", "zh")` is calibrated and `("MMS_FA", "ko")` is not. A
+#    bundle-only key could not express that, which is why W10 made the key a pair (XA-21).
+#  * **ko's ROUTE IS INERT AT THIS RUNG.** The table moves ko onto MMS_FA — the arm worth +20.00 points of
+#    syllable PCO@300 at `generate` — and ko publishes exactly what it published before: one line-synced
+#    document at +-500 100.00. The gain is unreachable until the `("MMS_FA", "ko")` pair has a row.
+#  * **`nonlatin-unrouted` DOES NOT reproduce the pre-W10 configuration for ja**, and the notes added to
+#    `w8-lane.yaml` / `w8-nonlatin.yaml` on 2026-10-19 say it does. ja's route keeps whisperx's own bundle
+#    and its calibration row is unconditional, so the ja control publishes the SAME 2 word documents with
+#    the SAME 65 `high` lines and the SAME +-500 89.66. All unrouting moves for ja is the unit rule, and it
+#    moves syllable PCO@300 82.03 -> 10.88. For zh and ko the note is correct (the bundle falls back to one
+#    with no row, so §5.4 declines).
+#
+# ── WHAT IS GATED ELSEWHERE, so this file is not read as the wave's whole reading ────────────────────────
+# ENGLISH is `gates/w8.yaml` (92/92 on `results/w10-time_text.json` AND on `results/w10-run_align.json`),
+# `gates/w8b.yaml` (154/154) and `gates/w8b-lines.yaml` (94/94 on `results/w10-lines-run_align.json`) — all
+# three re-read on the W10 tree against the W8 rows, with all 1088 cases byte-identical at every level.
+# The stage-2 ARMS are `gates/w8-units.yaml` at `generate` (`results/w10-s2-*-generate.json`): 10/10 on
+# every arm cell and on every `table` cell, 7/10 / 7/10 / 8/10 on the three whitespace controls.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
+
+# ── 0) MUST: the pool is the one this file claims to read ────────────────────────────────────────────────
+# Without these a `--songs` subset, or a `--wrong-k` other than 3, would gate a ratchet against some other
+# set. Relative to `truth.cases` throughout, so adding a song cannot make a rule vacuous.
+lane-songs-are-in-the-nonlatin-group: truth.nonlatin.cases == truth.cases
+lane-has-at-least-one-song: truth.cases >= 1
+lane-wrongtext-is-three-cross-pairs-a-song: wrongtext.cases == 3 * truth.cases
+
+# ── 1) MUST: every song gets a document, at one rung or the other ────────────────────────────────────────
+# The pre-W10 file could say `line_sync == cases`; it cannot now, because a calibrated pair publishes a WORD
+# document instead. What survives the change is the claim that actually matters to a room: no song in this
+# lane comes out with nothing. `no_lyrics` is the outcome stage 0 removed for the ko sheet and it must stay
+# removed.
+every-song-comes-out-with-a-document: truth.published + truth.line_sync == truth.cases
+truth-nothing-refused: truth.refused == 0
+truth-no-errors: truth.error == 0
+truth-no-song-ends-in-no-lyrics: truth.no_lyrics == 0
+
+# ── 2) MUST: the lane's LINE accuracy, at whichever rung published it ────────────────────────────────────
+# `gross` (a line more than 2 s from truth) is 0 on all six readings above, routed and unrouted, and that is
+# the strong claim: gaining word documents cost the lane no gross line.
+#
+# `lines-not-lost` is set by ja's 89.66 — the floor-setter, and the ONLY language the calibration rows moved
+# off +-500 100.00 (zh 100.00 -> 98.98, ko unmoved). 85.0 is 4.66 points of stated head-room, chosen for the
+# same reason W10 restated the ko floor to 72.0: a floor that passes by equality is not a floor. The W8
+# reading of this lane was 340 lines at 100.00 with band 0, and it is kept in README rather than here.
+no-gross-line-anywhere: truth.gross == 0
+lines-not-lost: truth.pm500 >= 85.0
+lines-within-a-second: truth.pm1000 >= 98.0
+every-truth-line-is-carried: truth.missing <= 0.01 * truth.in_text
+
+# ── 3) MUST: a calibration row may not vouch a BAD line ─────────────────────────────────────────────────
+# This is what a `lexical.CALIBRATED` row is FOR: `high` says "this line's timing is trustworthy", and
+# `high_bad` counts the ones that said it and were wrong. English reads 0 over 1 536 scored lines on both
+# engines (`results/w10-run_align.json`), so 0 is the standard the non-Latin rows are held to and not a
+# tightening invented here.
+#
+# **ja READS 2 AND THEREFORE FAILS `never-vouch-a-bad-line`**, both of them on `amll-ja-ragutorein` (15
+# `high` of 31 lines), and it reads 2 under `nonlatin-unrouted` as well — so it is the ROW's thresholds and
+# not the routing. Left FAILING and REPORTED rather than fixed: moving `refuse_below` / `ok_from` on the ja
+# row changes what the lane publishes, which is the owner's call and the next wave's measurement.
+never-vouch-a-bad-line: truth.high_bad == 0
+never-vouch-a-gross-line: truth.high_gross == 0
+no-high-lines-without-a-word-document: truth.high * (truth.published == 0) == 0
+
+# ── 4) MUST: the wrong-text path stays closed, with the table ACTIVE ────────────────────────────────────
+# Stage 0's whole purpose, re-read now that two pairs are calibrated and the global engine is therefore
+# reachable. 0 of 12 (zh), 0 of 6 (ja), 0 of 3 (ko) — every cross-pair refused, at both rungs, under both
+# arms. A line-synced wrong text would be a pass too, so both counts are gated, and `scored` holds that not
+# one wrong line was ever measured against this song's truth.
+#
+# `wrongtext_pass` is deliberately NOT read. zh and ja are calibrated now, so it IS readable on them
+# (`e2e_gates.UNCALIBRATED_METRICS` only ERRORs on an uncalibrated run, and ko still is one) — but the claim
+# here is the stronger and simpler one, that nothing was published AT ALL, and a file read once per language
+# cannot read a metric that ERRORs on one of them.
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+wrongtext-nothing-was-scored: wrongtext.scored == 0
+wrongtext-every-case-refused: wrongtext.refused == wrongtext.cases
+wrongtext-no-errors: wrongtext.error == 0
+wrongtext-never-high: wrongtext.high == 0
+wrongtext-times-no-words: wrongtext.word_aligned == 0
+
+# ── 5) MUST: the rung is the PAIR's, so a language never mixes rungs ───────────────────────────────────
+# The universal form of the rule §1 can no longer state directly. `may_time_words` reads the `(bundle,
+# language)` pair, which is a property of the RUN and not of the song, so within one language either every
+# song publishes a word document (zh 4/4, ja 2/2) or every song publishes the LINE_SYNC rung (ko 1/1).
+# A song-by-song decision — the shape a per-song confidence read would produce — fails this.
+lane-does-not-mix-rungs-within-a-language: truth.published * truth.line_sync == 0
+
+# ── 6) MUST: the syllable accounting still balances at this rung ────────────────────────────────────────
+# `w8-units.yaml` §2's identity, carried to `run_align`, where it is the only place the lane's accuracy is
+# gradeable at all: zh 1 385 + 23 + 0 + 8 == 1 416 and ja 1 207 + 5 + 1 + 0 == 1 213. ko publishes no words,
+# so all 535 of its truth syllables are `unpaired` and the identity still holds — which is why it is gated
+# as an identity and not as a floor.
+#
+# THE WORD-GRANULARITY READING IS NOT GATED AND CANNOT BE: the published tokens are script units or
+# romanised syllables and the AMLL truth's are original-script words, so 265 of zh's 288 and 95 of ja's 95
+# truth words are `mismatched` — no pairing exists. zh's word +-100 of 64.71 is 11 of 17 paired words, not
+# 288. Syllables are the lane's only gradeable sub-line unit; README says so at length.
+syllables-account-for-every-truth-span: truth.syllable_aligned + truth.syllable_interpolated + truth.syllable_unpaired + truth.syllable_unpublished == truth.syllable_in_text
+syllables-have-a-truth: truth.syllable_in_text >= 400

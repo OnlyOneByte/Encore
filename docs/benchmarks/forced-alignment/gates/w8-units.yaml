@@ -11,9 +11,12 @@
 # ONE LANGUAGE A RUN (`--language` takes one), so this file is evaluated once per language and §1 holds for
 # each. `--songs amll-<language>` is not optional: without it `discover` returns all 7 AMLL songs and the
 # other languages' would be decoded on this bundle under this language's unit rules (review r1-tests-18 —
-# e2e.py now refuses the combination rather than measuring it). The `generate` level is deliberate: §5.4 declines a WORD document off a bundle with no
-# `lexical.CALIBRATED` row, and neither the per-language whisperx bundles nor MMS_FA has one — so the raw
-# decode is the only place a syllable can be scored at all until a row is fitted.
+# e2e.py now refuses the combination rather than measuring it). The `generate` level is deliberate: §5.4
+# declines a WORD document off a bundle with no `lexical.CALIBRATED` row, and when these cells were measured
+# neither the per-language whisperx bundles nor MMS_FA had one — so the raw decode was the only place a
+# syllable could be scored at all. W10 fitted zh and ja, so a `run_align` reading is now possible for those
+# two; this file stays at `generate` because that is the level its floors below were read on, and the raw
+# decode is still the only reading ko and every unfitted language has.
 #
 # THERE IS NO `--compare` BASELINE: `corpus` is setup (`e2e_gates.SETUP_META`), so every recorded English row
 # is a mismatch here rather than a comparison. The floors below are §3.12's reject-if and the one-song
@@ -42,9 +45,13 @@ syllables-have-a-truth: truth.syllable_in_text >= 400
 # AND THE FOUR BUCKETS SUM TO THE DENOMINATOR (r1-spec-8). Before `syllable_unpublished` existed, a truth
 # syllable on a line the document never carried was in NO bucket: the ko cell read 481 + 30 + 0 against
 # 535, leaving 24 spans — 7 of its 55 lines — unremarked by every gate here. `unpublished` is a COVERAGE
-# reading and is bounded on its own: 24 of 535 (4.49%) is what the ko document costs today. A row written
-# before the bucket existed carries no `syllable_unpublished` and reads 0 for it, so the identity FAILS on
-# the 2026-10-15 rows by construction — it is answerable only by a run of this cell, not by re-gating them.
+# reading and is bounded on its own.
+#
+# ANSWERED BY A RUN, not by re-gating: a row written before the bucket existed carries no
+# `syllable_unpublished` and reads 0 for it, so the identity FAILED on the 2026-10-15 rows by construction.
+# All 10 cells were therefore RE-RUN on 2026-10-15 (`results/w8r1-*-generate.json`, `_runs/w8r1-*`), and the
+# identity holds on every one. Only ko has a non-zero reading — 24 of 535, 4.49%, both ko arms — which is
+# what the ko document costs today; zh and ja read 0. README, "W8 stages 1-2".
 syllables-account-for-every-truth-span: truth.syllable_aligned + truth.syllable_interpolated + truth.syllable_unpaired + truth.syllable_unpublished == truth.syllable_in_text
 syllables-mostly-on-published-lines: truth.syllable_unpublished <= 0.06 * truth.syllable_in_text
 
@@ -52,7 +59,18 @@ syllables-mostly-on-published-lines: truth.syllable_unpublished <= 0.06 * truth.
 # A GROUPING change may not move a line: the target sequence is the same characters in the same order under
 # `nonlatin-units` alone, so the line figures must read what the whitespace rule read (zh 96.77 / ja 96.43
 # on the songs above). A floor rather than an equality, `--language` making the pool a different one.
-lines-not-lost: truth.pm500 >= 75.0
+#
+# RESTATED IN W10, AND THE RESTATEMENT IS THE HONEST READING (W8 close-out, OPEN (b)). At 75.0 this floor
+# passed ko by EXACT EQUALITY: `amll-ko-gangnam-style` reads 36 of 48 scored lines within +-500 ms = 75.00,
+# on a ONE-SONG pool, so one line moving would have failed a gate ko is not even in SS3.12's reject-if for
+# (it names zh and ja). The owner was offered either a second Korean song or an honest restatement; the
+# evidence picks the restatement: the AMLL set holds exactly ONE Korean candidate, and `amll/_rejected/`
+# holds thirteen dropped on measurement with NOT ONE of them Korean, so there is no second ko song on this
+# box to admit and a new one needs audio this tree does not and cannot hold. 72.0 is one lost line of
+# stated head-room (35/48 = 72.92 passes, 34/48 = 70.83 fails) instead of zero implied. Every other cell
+# clears it by 15 points or more (zh 97.47 / 96.46, ja 87.36 on all three arms, ko 85.45 under `mms-roman`).
+# README, "W10: the ko floor, restated as the one-song reading it is".
+lines-not-lost: truth.pm500 >= 72.0
 lines-published: truth.published + truth.line_sync == truth.cases
 
 # ── 4) MUST: the gross population is a tenth of what the whitespace rule left ─────────────────────────

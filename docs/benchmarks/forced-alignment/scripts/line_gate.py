@@ -2,14 +2,14 @@
 """The LINE_SYNC rung's gate, measured rule by rule over every timed bench case on the stems. No model pass.
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/line_gate.py \\
-        [--songs a,b] [--out rows.json] [--from rows.json] [--model NAME]
+        [--songs a,b] [--out|--from f.json] [--model NAME] [--corpus C] [--language L]
 
 The rung publishes the text's OWN line timings, so its gate owes two answers: are these words sung, and do
 these TIMINGS describe this audio. This prices six candidate rules over the same cases — right texts refused,
 the published documents' accuracy, and wrong texts passed — with the documents built by the shipped functions
-and the decode read from the bench's emission cache. The six rules, what W1's gate cost and what "placed"
-means since the rung took its own claim-clock vote are in docs/benchmarks/forced-alignment/README.md, "The
-LINE_SYNC rung's gate".
+and the decode read from the bench's emission cache. The six rules, what W1's gate cost, what "placed" means
+since the rung's claim-clock vote, and why `--corpus nonlatin --language zh` fits that lane's share off its
+own songs: README, "The LINE_SYNC rung's gate" and "W10: the first non-Latin calibration rows".
 """
 
 from __future__ import annotations
@@ -35,9 +35,11 @@ except ImportError:  # pragma: no cover - only when run with a python that lacks
     sys.path.insert(0, str(REPO / "worker"))
 
 import e2e_lib as lib  # noqa: E402 - after the path setup above
+import lift_gate  # noqa: E402 - one same-language rule and one donor-mode list for both gate scripts
+from lift_gate import _same_language  # noqa: E402
 
 from encore_worker.domain.lyrics import lexical  # noqa: E402
-from encore_worker.domain.lyrics.clean import clean_line, clean_segments  # noqa: E402
+from encore_worker.domain.lyrics.clean import clean_indexed  # noqa: E402
 
 #: Every timed claim mode `--modes all` runs, and both wrong-text modes.
 TIMED_MODES = tuple(m for m in lib.ALL_MODES if m not in ("blind", "wrongtext"))
@@ -221,7 +223,7 @@ def distributions(rows: Sequence[Row]) -> list[str]:
 
 
 def _starts_of(segments: Sequence[Any]) -> dict[int, float]:
-    """Every segment's claimed start keyed by position, as `align_steps._claimed_starts` keys them."""
+    """Every segment's claimed start keyed by position, as `align_lines._claimed_starts` keys them."""
     return {i: float(s["start"]) for i, s in enumerate(segments) if isinstance(s.get("start"), (int, float))}
 
 
@@ -358,13 +360,15 @@ def claim_agreement(
     }
 
 
-def model_name(named: str | None, device: str) -> str:
-    """The bundle a row set was measured on, RESOLVED — never the placeholder "default": see
-    `lift_gate.model_name` for why a committed row set has to name the model it can be matched to
-    (W3 review r1), and why an absent `--model` resolves to `device`'s SHIPPED bundle (W4b)."""
+def model_name(named: str | None, device: str, language: str = "en", config: Any = None) -> str:
+    """The bundle a row set was measured on, RESOLVED — never the placeholder "default". Why, and why the
+    per-language stage-2 table decides it for a non-Latin language: `lift_gate.model_name`."""
     import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
 
-    return named or e2e.default_model("en", device)
+    if named:
+        return named
+    routed = e2e.nonlatin_routes(config).get(language) if config is not None else None
+    return routed or e2e.default_model(language, device)
 
 
 def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
@@ -376,10 +380,11 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
 
     from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
     from encore_worker.domain.audio import activity  # noqa: PLC0415
+    from encore_worker.domain.lyrics import units  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
     from encore_worker.domain.lyrics.policy import Tier  # noqa: PLC0415
     from encore_worker.host.config import Config  # noqa: PLC0415
-    from encore_worker.steps import align_steps  # noqa: PLC0415
+    from encore_worker.steps import align_lines, align_steps  # noqa: PLC0415
     from encore_worker.steps.records import (  # noqa: PLC0415
         TIMING_LINE,
         AudioRef,
@@ -389,48 +394,80 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
     )
 
     root = lib.bench_root()
-    corpus = lib.discover(root)
+    corpus = lib.discover(root, corpus=args.corpus)
     config = Config.from_env()
+    #: THE UNIT RULE THE LANE SHIPS, so the shuffles and the decode group this text as the rung does.
+    rules = units.rules_for(args.language, config.align_experiments)
     store = lib.EmissionStore(
         root / "_emissions",
-        model=model_name(args.model, device),
+        model=model_name(args.model, device, args.language, config),
         emitter=e2e.emitter_fingerprint(config),
     )
-    aligner = e2e.BenchAligner(device=device, model=args.model, store=store)
+    aligner = e2e.BenchAligner(
+        device=device,
+        model=args.model,
+        nonlatin_routes=e2e.nonlatin_routes(config),
+        store=store,
+    )
     impl = align_steps.AlignStepsImpl(config=config, adapters=align_steps.Adapters(), reporter=e2e.Trail())
     chosen = set(args.songs.split(",")) if args.songs else None
+    #: THE DONOR POOL IS THE RUN'S OWN LANGUAGE, and a pool under `WRONG_K` repeats donors
+    #: (`lift_gate.measure` carries both arguments, dedup's English caveat included).
+    donors = [song for song in corpus if _same_language(song, args.corpus, args.language)]
+    dedupe = args.corpus == lib.NONLATIN_CORPUS
     rows: list[dict[str, Any]] = []
     began = time.monotonic()
     for song in corpus:
         if chosen is not None and song.slug not in chosen:
             continue
-        emissions = aligner.emissions(str(song.vocals), "en")
+        if not _same_language(song, args.corpus, args.language):
+            continue
+        emissions = aligner.emissions(str(song.vocals), args.language)
         signal = load_audio_mono_16k(str(song.vocals))
         info = sf.info(str(song.vocals))
         duration = info.frames / info.samplerate
         #: Per distinct served text: (lift, the blind decode). Timing-only modes share the truth's text, and
         #: neither reads a timing.
         decoded: dict[tuple[str, ...], tuple[float | None, Any]] = {}
+        seen_donors: set[tuple[str, str]] = set()
         for mode in (*TIMED_MODES, *WRONG_MODES):
+            if mode in lift_gate.DONOR_MODES and len(donors) < 2:
+                continue
             for variant in range(lib.variants_of(mode)):
-                claims = lib.build_claims(song, mode, corpus=corpus, duration_sec=duration, variant=variant)
-                served = clean_segments(claims.segments())
-                kept = [i for i, line in enumerate(claims.lines) if clean_line(line.text)]
+                claims = lib.build_claims(song, mode, corpus=donors, duration_sec=duration, variant=variant)
+                if mode in WRONG_MODES and dedupe:
+                    # Here `ownclock` really does change the case, so the mode is half of the key.
+                    if claims.donor is None or (mode, claims.donor) in seen_donors:
+                        continue
+                    seen_donors.add((mode, str(claims.donor)))
+                # `clean_indexed` AND NOT `clean_line`: `clean_segments` drops a NON-LYRIC row as well as
+                # an empty one, so a `clean_line` filter kept the injected `[Chorus]` / `Verse 1:` headers
+                # that `served` had already dropped and every later line paired to the wrong truth line.
+                # Measured on `amll-zh-gaobai-qiqiu` headers: served 40, kept 45, every scored line gross.
+                indexed = clean_indexed(claims.segments())
+                served = tuple(segment for _at, segment in indexed)
+                kept = [at for at, _segment in indexed]
                 texts = tuple(str(s.get("text") or "") for s in served)
                 if texts not in decoded:
-                    got = lexical.lift(texts, emissions, decoder=forced_align_decoder)
-                    blind = generate(texts, emissions, decoder=forced_align_decoder, language="en")
+                    got = lexical.lift(texts, emissions, decoder=forced_align_decoder, units=rules)
+                    blind = generate(
+                        texts,
+                        emissions,
+                        decoder=forced_align_decoder,
+                        language=args.language,
+                        units=rules,
+                    )
                     decoded[texts] = (None if got is None else round(got.value, 4), blind)
                 lift, blind = decoded[texts]
                 blind_lines = blind.lines
-                fit = activity.fit_sheet_to_audio(signal, 16000, align_steps._sheet_spans(served))
+                fit = activity.fit_sheet_to_audio(signal, 16000, align_lines._sheet_spans(served))
                 request = TimeRequest(
                     job=JobRef(job_id=song.slug, media_id=song.slug, media_dir="", source_uri=None),
                     text=TextRef(
                         tier=Tier.CANDIDATE, label="captions:authored", segments=served, timing=TIMING_LINE
                     ),
                     audio=AudioRef(path=str(song.mix), vocals_path=str(song.vocals), duration_sec=duration),
-                    language="en",
+                    language=args.language,
                 )
 
                 # W3's placement (the unconditional activity shift) and W2's (the rung's own claim-clock
@@ -442,8 +479,8 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                     if (t := claims.lines[kept[i]].truth) is not None
                 }
                 w3_placed = _starts_of(impl._placed_by(request, fit))
-                clock = align_steps._line_sync_clock(fit, _starts_of(served), blind)
-                mapped, held, unheld = align_steps._in_claim_order(impl._placed_by(request, fit, clock=clock))
+                clock = align_lines._line_sync_clock(fit, _starts_of(served), blind)
+                mapped, held, unheld = align_lines._in_claim_order(impl._placed_by(request, fit, clock=clock))
                 placed = _starts_of(mapped)
                 errors = [at - truth_of[i] for i, at in placed.items() if i in truth_of]
                 w3_errors = [at - truth_of[i] for i, at in w3_placed.items() if i in truth_of]
@@ -455,13 +492,13 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                         "mode": mode,
                         "variant": variant,
                         "lift": lift,
-                        "sheet": align_steps._sheet_passes(fit),
+                        "sheet": align_lines._sheet_passes(fit),
                         "sheet_r": round(fit.correlation, 4),
                         "sheet_lag": round(fit.seconds, 3),
                         "placed_shift": round(fit.seconds, 3) if fit.usable else 0.0,
                         **{k: None if v is None else round(v, 4) for k, v in agreement.items()},
                         #: The sheet's CLAIMED lines, the denominator `pairs` is a share of: together they
-                        #: re-read `align_steps._LINE_SYNC_MIN_DECODED_SHARE` off a stored run (W3 review r2).
+                        #: re-read `align_lines._LINE_SYNC_MIN_DECODED_SHARE` off a stored run (W3 review r2).
                         "claims": len(placed),
                         "in_text": sum(
                             1 for i in range(len(served)) if claims.lines[kept[i]].truth is not None
@@ -508,6 +545,8 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     ap.add_argument("--model", default=None, help="torchaudio bundle (default: this device's shipped one)")
+    ap.add_argument("--corpus", choices=lib.CORPORA, default=lib.ENGLISH_CORPUS, help="which song set")
+    ap.add_argument("--language", default="en", help="the language whose share is fitted, ONE a run")
     ap.add_argument("--out", default=None, help="write every case's measurements here (JSON)")
     ap.add_argument("--from", dest="source", default=None, help="summarize a stored --out instead")
     ap.add_argument("--songs", default=None, help="comma-separated slugs (default: the whole corpus)")
@@ -517,38 +556,55 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     ap.add_argument("--tau", type=float, default=None, help="the lexical floor (default: the shipped one)")
     args = ap.parse_args(argv)
-    from encore_worker.steps import align_steps  # noqa: PLC0415
+    from encore_worker.steps import align_lines  # noqa: PLC0415
 
     # THE THRESHOLDS ARE THIS MODEL'S (W4b). `lexical.CALIBRATED` is keyed by bundle, so a run is scored at
     # the row of the bundle it MEASURED — the stored one under `--from`, else the named or this device's
     # shipped one; a model with NO row is what this script exists to fit, and it then scores with the shipped
     # row's numbers as a stated REFERENCE rather than pretending they are its own.
+    if args.corpus == lib.NONLATIN_CORPUS and args.language == "en" and not args.source:
+        print(
+            f"--corpus {lib.NONLATIN_CORPUS} needs --language (zh / ja / ko), ONE a run: left at 'en' these "
+            "songs would be decoded by the English bundle, whose share is not this lane's",
+            file=sys.stderr,
+        )
+        return 2
     stored = json.loads(Path(args.source).read_text(encoding="utf-8")) if args.source else None
     device = ""
+    config: Any = None
     if stored is None:
         import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
 
+        from encore_worker.host.config import Config  # noqa: PLC0415
+
         device = e2e.resolve_device(args.device)
-    asked = str(stored["model"]) if stored is not None else model_name(args.model, device)
-    row = lexical.CALIBRATED.get(asked)
+        config = Config.from_env()
+    else:
+        # The setup these rows were measured on, never this invocation's flags (`lift_gate.main`).
+        args.corpus = str(stored.get("corpus", lib.ENGLISH_CORPUS))
+        args.language = str(stored.get("language", "en"))
+    asked = (
+        str(stored["model"]) if stored is not None else model_name(args.model, device, args.language, config)
+    )
+    row = lexical.CALIBRATED.get((asked, args.language))
     if row is None:
         print(
-            f"-- {asked} has no calibration row: scoring with {lexical.BANDS.model}'s tau "
+            f"-- {asked}/{args.language} has no calibration row: scoring with {lexical.BANDS.model}'s tau "
             f"{lexical.BANDS.refuse_below} and share {lexical.BANDS.line_sync_min_agreement} as a REFERENCE. "
-            "Fit this model's own with lift_gate.py --model, and read the fitted share at the end.",
+            "Fit this pair's own with lift_gate.py --model --language, and read the fitted share at the end.",
             file=sys.stderr,
         )
         row = lexical.BANDS
     args.tau = row.refuse_below if args.tau is None else args.tau
     theta = row.line_sync_min_agreement
     if args.near is None:
-        args.near = align_steps._LINE_SYNC_NEAR_SEC
+        args.near = align_lines._LINE_SYNC_NEAR_SEC
     else:
         # A SWEEP MOVES BOTH READERS (W2). Since the rung maps the claims before reading them, `near` is the
         # band the claim-clock VOTE scores candidates in as well as the band the gate counts a line near in
         # (`_line_sync_clock`: "explains" must mean what the reader means by it). Re-deriving one without the
         # other would measure a rule the rung cannot be set to.
-        align_steps._LINE_SYNC_NEAR_SEC = args.near
+        align_lines._LINE_SYNC_NEAR_SEC = args.near
         print(f"-- near swept to {args.near}: the vote's band and the gate's both", file=sys.stderr)
     warnings.filterwarnings("ignore", message=r".*forced_align has been deprecated.*")
     warnings.filterwarnings("ignore", message=r"(?s).*torchcodec is not installed correctly.*")
@@ -557,7 +613,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         rows = measure(args, device)
         if args.out:
-            body = {"model": asked, "near_sec": args.near, "rows": rows}
+            body = {
+                "model": asked,
+                "near_sec": args.near,
+                "corpus": args.corpus,
+                "language": args.language,
+                "rows": rows,
+            }
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
     for line in summarize(rows, args.tau, theta):
         print(line)

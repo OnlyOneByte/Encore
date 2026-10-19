@@ -621,7 +621,7 @@ async def test_a_permanent_acquisition_fault_is_not_retried_and_fails_the_job_as
     requeued it, and each requeue's fork (`durable._run_id`) ran the step three more times until
     `maxAttempts`. Now the fault's own `retryable = False` stops DBOS retrying, and what reaches the transport
     is the fault itself: permanent, with its own message."""
-    from encore_worker.steps.align_steps import _Permanent
+    from encore_worker.steps.align_text import _Permanent
     from encore_worker.workflows import durable
     from encore_worker.workflows.dbos_align import DbosAlignSteps
 
@@ -678,7 +678,7 @@ def test_only_a_fault_that_says_so_is_spared_its_retries() -> None:
     """`should_retry` reads the fault's own flag, and an exception that has none (a network error) is
     retried as before."""
     from encore_worker.adapters.ml import ModelUnavailable
-    from encore_worker.steps.align_steps import _Permanent
+    from encore_worker.steps.align_text import _Permanent
     from encore_worker.workflows.dbos_align import _worth_retrying
 
     assert _worth_retrying(OSError("connection reset")) is True

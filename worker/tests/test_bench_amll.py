@@ -201,3 +201,56 @@ def test_a_drifted_syllable_offset_is_refused_rather_than_scored(tmp_path: Path)
     with pytest.raises(ValueError, match="which this truth does not have"):
         lib.load_truth_syllables(path, truth)
     assert lib.load_truth_syllables(directory / "absent.json", truth) is None
+
+
+def test_a_role_this_script_does_not_know_refuses_the_song_rather_than_shortening_its_truth(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`_syllables` drops a span with ANY `ttm:role`, while `parse` counted only the three it knows — so a
+    fourth role took timed spans out of `truth-*.json` with `dropped=[-]` printed beside it (review
+    r2-correctness-6). Every role is tallied now, and a name outside `DROPPED_ROLES` is a change to the
+    SOURCE FORMAT: the song is refused, by name, and `build` exits non-zero so a CI leg can see it.
+    """
+    unknown = (
+        '<p begin="00:04.000" end="00:05.000" ttm:agent="v1">'
+        '<span begin="00:04.000" end="00:04.500">啊</span>'
+        '<span ttm:role="x-lead" begin="00:04.500" end="00:05.000">哦</span></p>'
+    )
+    parsed = amll.parse(doc(TWO_WORDS, unknown))
+    assert parsed.dropped_roles == {"x-lead": 1}, "counted by what was DROPPED, not by what is recognised"
+    assert parsed.unknown_roles == ("x-lead",)
+    assert parsed.syllables == 6, "the unlisted role's span is not in the truth"
+
+    directory = tmp_path / lib.AMLL_DIR / "amll-zh-role"
+    directory.mkdir(parents=True)
+    (directory / "lyrics.ttml").write_text(doc(TWO_WORDS, unknown), encoding="utf-8")
+    assert amll.build(tmp_path) == 1, "non-zero: a source-format change is not a per-song reading"
+    said = capsys.readouterr().out
+    assert "SKIP — ttm:role x-lead" in said and "extend DROPPED_ROLES" in said
+    assert not list(directory.glob("truth-*.json")), "nothing written beside a truth it cannot trust"
+    assert amll.parse(doc(TWO_WORDS)).unknown_roles == (), "a file with only known roles is unaffected"
+
+
+def test_the_printed_next_step_is_the_command_that_actually_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review r2-tests-18: the hint read `truth_displacement.py --songs amll`, and these songs are only
+    discovered under `--corpus nonlatin` (`e2e_lib.discover`), so run as printed it died with
+    "--songs matched nothing" before measuring anything — on the one instruction an operator follows to
+    admit a newly ingested non-Latin song."""
+    directory = tmp_path / lib.AMLL_DIR / "amll-zh-ok"
+    directory.mkdir(parents=True)
+    (directory / "lyrics.ttml").write_text(doc(TWO_WORDS), encoding="utf-8")
+    assert amll.build(tmp_path) == 0
+    printed = [line for line in capsys.readouterr().out.splitlines() if line.startswith("next:")]
+    assert len(printed) == 1, printed
+    flags = printed[0].split("truth_displacement.py", 1)[1].split()
+    assert f"--corpus {lib.NONLATIN_CORPUS}" in " ".join(flags), printed[0]
+    # The printed flags must be ones the tool accepts, and must select the non-Latin corpus.
+    displacement: Any = _load("truth_displacement")
+    parser = displacement.argparse.ArgumentParser()
+    parser.add_argument("--songs", default=None)
+    parser.add_argument("--corpus", choices=lib.CORPORA, default=lib.ENGLISH_CORPUS)
+    parser.add_argument("--out", default=None)
+    parsed = parser.parse_args(["x" if flag == "<corpus-truth.json>" else flag for flag in flags])
+    assert (parsed.corpus, parsed.songs) == (lib.NONLATIN_CORPUS, "amll")

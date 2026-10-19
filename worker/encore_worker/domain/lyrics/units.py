@@ -1,11 +1,12 @@
-"""Script-aware units: what a WORD and a SYLLABLE are in a script the whitespace rule cannot read.
+"""Script-aware units, and WHICH measured route times each non-Latin language.
 
 A Chinese line carries no spaces, so `text.split()` makes the whole line one word with one syllable. Here a
 word is one hanzi, one fugashi token or one spaced Korean token, and a syllable is one hanzi, one mora or one
-Hangul block. ROUTED BY SCRIPT and never by vocabulary coverage. Two arms that only ever touch a non-Latin
-text live here too: the Traditional->Simplified fold the simplified-only zh-cn vocabulary needs, and the
-romanised target sequence MMS_FA reads (XA-20). PURE; every backend is an optional package.
-docs/arch/04-alignment.md §9.1; docs/benchmarks/forced-alignment/README.md, "W8 stages 1-2".
+Hangul block. Two arms that only ever touch a non-Latin text live here too: the Traditional->Simplified fold
+the simplified-only zh-cn vocabulary needs, and the romanised target sequence MMS_FA reads (XA-20). `ROUTED`
+says which of them ship for which language — a measurement per language, never one default (XA-21). PURE;
+every backend is an optional package.
+docs/arch/04-alignment.md §9.1, §9.2; README, "W10: the per-language stage-2 table".
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from functools import cache
 
 from encore_worker.domain.lyrics import language, romanize
 
-#: Scripts written WITHOUT spaces between their words, so every letter of one may open a unit. Korean is not
-#: here: Hangul is dense typographically and spaced grammatically (docs/arch/04-alignment.md §11.2).
+#: Scripts written WITHOUT spaces, so every letter of one may open a unit. Korean is not here: Hangul is
+#: dense typographically and spaced grammatically (docs/arch/04-alignment.md §11.2).
 DENSE_SCRIPTS: dict[str, frozenset[str]] = {
     "zh": frozenset({language.HAN}),
     "ja": frozenset({language.HAN, language.KANA}),
@@ -58,7 +59,7 @@ class Rules:
     words: Callable[[str], Sequence[str]]
     syllables: Callable[[str, str], list[str]]
     chars: Callable[[str], Sequence[tuple[int, str]]] | None = None
-    #: A character the vocabulary lacks -> one it may have, tried before the NFKD fold. None = no fold.
+    #: A character the vocabulary lacks -> one it may have, tried before the NFKD fold.
     fold: Callable[[str], str] | None = None
 
 
@@ -149,15 +150,94 @@ def rules(language_code: str, *, script_units: bool, simplify: bool, translitera
     )
 
 
+#: THE ARM NAMES, spelled once so the step layer, the composition root and the bench cannot differ.
+SCRIPT_UNITS, SIMPLIFY, TRANSLITERATE = "nonlatin-units", "zh-simplify", "mms-roman"
+
+#: The control that puts every non-Latin language back on the whitespace rule and whisperx's own table —
+#: the configuration every row recorded before W10 was measured on.
+UNROUTED = "nonlatin-unrouted"
+
+#: `Stage2.bundle` for "keep whisperx's own per-language table".
+OWN_BUNDLE = ""
+
+#: MMS_FA's name, restated because `domain/` may not import `adapters/` (a test pins the copies equal).
+#: CC-BY-NC weights, fetched at runtime and never redistributed (docs/arch/04-alignment.md §14.2).
+MMS_BUNDLE = "MMS_FA"
+
+
+@dataclass(frozen=True, slots=True)
+class Stage2:
+    """ONE non-Latin language's measured route: the arms that time it, and the bundle those arms need."""
+
+    language: str
+    arms: frozenset[str]
+    bundle: str
+    #: The syllable PCO@300 this route read on the AMLL truth, the number it was chosen on.
+    syllable_pco300: float
+
+
+#: EVERY ROUTED NON-LATIN LANGUAGE: a language absent from it is NOT routed and keeps the whitespace rule
+#: (XA-21). Alternatives, and why MMS stays REJECTED for ja: docs/arch/04-alignment.md §9.2.
+ROUTED: dict[str, Stage2] = {
+    "zh": Stage2(language="zh", arms=frozenset({TRANSLITERATE}), bundle=MMS_BUNDLE, syllable_pco300=97.03),
+    "ja": Stage2(language="ja", arms=frozenset({SCRIPT_UNITS}), bundle=OWN_BUNDLE, syllable_pco300=81.95),
+    "ko": Stage2(language="ko", arms=frozenset({TRANSLITERATE}), bundle=MMS_BUNDLE, syllable_pco300=92.52),
+}
+
+
+def route(language_code: str, experiments: Collection[str]) -> Stage2 | None:
+    """`language_code`'s measured stage-2 route, or None where this build has none — a decline and never a
+    default (XA-21). `UNROUTED` stands every row down."""
+    if UNROUTED in experiments:
+        return None
+    return ROUTED.get(language_code)
+
+
+def arms_for(language_code: str, experiments: Collection[str]) -> frozenset[str]:
+    """Every stage-2 arm in force for `language_code`: its routed row's, plus any an operator NAMED — so a
+    named arm reaches a language no row names, the route being the measured default and not a ceiling."""
+    routed = route(language_code, experiments)
+    asked = {name for name in (SCRIPT_UNITS, SIMPLIFY, TRANSLITERATE) if name in experiments}
+    return frozenset(asked | (set() if routed is None else set(routed.arms)))
+
+
 def rules_for(language_code: str, experiments: Collection[str]) -> Rules:
-    """`rules` read off an `ALIGN_EXPERIMENTS` set — THE one place the three W8 arm names are spelled, so
-    the step layer and the bench harness cannot name them differently."""
+    """`rules` under every arm `arms_for` puts in force for `language_code`."""
+    arms = arms_for(language_code, experiments)
     return rules(
         language_code,
-        script_units="nonlatin-units" in experiments,
-        simplify="zh-simplify" in experiments,
-        transliterate="mms-roman" in experiments,
+        script_units=SCRIPT_UNITS in arms,
+        simplify=SIMPLIFY in arms,
+        transliterate=TRANSLITERATE in arms,
     )
+
+
+def stage2_bundle(language_code: str, experiments: Collection[str]) -> str:
+    """The bundle `language_code`'s arms need, or `OWN_BUNDLE` for whisperx's own per-language table.
+
+    `OWN_BUNDLE` TOO WHERE THIS BOX CANNOT HONOUR THE ARM (`unhonoured`), so the bundle and the target
+    sequence can never disagree: MMS_FA's 26 Latin letters would otherwise be aimed at raw Han.
+    """
+    if TRANSLITERATE not in arms_for(language_code, experiments):
+        return OWN_BUNDLE
+    if not language_code or language_code in language.LATIN_LANGUAGES:
+        return OWN_BUNDLE
+    if unhonoured(language_code, experiments):
+        return OWN_BUNDLE
+    return MMS_BUNDLE
+
+
+def unhonoured(language_code: str, experiments: Collection[str]) -> frozenset[str]:
+    """The arm names in force for `language_code` this box cannot apply, its backend not being installed —
+    which is why `stage2_bundle` reads this function (docs/arch/04-alignment.md §9.1)."""
+    arms = arms_for(language_code, experiments)
+    out = set()
+    nonlatin = bool(language_code) and language_code not in language.LATIN_LANGUAGES
+    if TRANSLITERATE in arms and nonlatin and _transliterated(language_code) is None:
+        out.add(TRANSLITERATE)
+    if SIMPLIFY in arms and language_code == "zh" and _opencc() is None:
+        out.add(SIMPLIFY)
+    return frozenset(out)
 
 
 def _latin_syllables() -> Callable[[str, str], list[str]]:

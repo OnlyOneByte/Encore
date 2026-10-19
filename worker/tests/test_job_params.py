@@ -126,7 +126,7 @@ def test_a_re_picked_candidate_keeps_the_label_and_tier_it_was_written_under(
     inside the job. A machine track under EITHER worker's key stays MACHINE (review r1: the old
     `captions-auto` key read back as a CANDIDATE), though the frame now sends ANY pin's `textConfidence`
     `high` (W3; `test_a_re_picked_machine_caption_goes_out_as_the_persons_claim`)."""
-    from encore_worker.steps.align_steps import _pinned_label
+    from encore_worker.steps.align_text import _pinned_label
     from encore_worker.steps.records import tier_of_label
 
     assert _pinned_label(ref, "m1") == label
@@ -545,7 +545,7 @@ def test_a_re_pick_re_times_the_whole_text_even_when_the_stored_document_lost_li
 def test_a_document_that_lost_lines_records_its_whole_text_and_one_that_kept_them_does_not() -> None:
     """Written only when something is missing, so every document that kept its whole text is byte-for-byte
     what it was before the key existed."""
-    from encore_worker.steps.align_steps import _with_source_lines
+    from encore_worker.steps.align_text import _with_source_lines
 
     segments = tuple({"text": t} for t, _s, _e in UNIQUE)
     whole: dict[str, object] = {

@@ -537,8 +537,11 @@ VENV="$WORKER_DIR/.venv"
 
 # The extras a dev box needs. `ffmpeg` bundles a static FFmpeg 7.1 so publication does not depend on what
 # Homebrew installed; `audiosep` is the ~135-model zoo; `mlx` is marker-gated and installs nothing off
-# Apple Silicon.
+# Apple Silicon; `romanize` + `nonlatin` are the non-Latin lane's 49 MB, in the DEFAULT install since W10 so
+# a CJK sheet is readable and routable in a room rather than only in a test (docs/arch/04-alignment.md
+# §9.2, §11.2). They stay EXTRAS, so `uv sync --only-group dev` still installs neither.
 WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra cpu"
+WORKER_EXTRAS="$WORKER_EXTRAS --extra romanize --extra nonlatin"
 
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	if ! command -v uv >/dev/null 2>&1; then

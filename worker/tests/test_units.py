@@ -265,3 +265,139 @@ def test_the_target_romaniser_strips_tones_and_the_display_one_keeps_them() -> N
         pytest.skip("the `romanize` extra is not installed")
     assert display("花") == "huā"
     assert target("花") == "hua"
+
+
+def test_a_word_whose_targets_are_only_PARTLY_attributable_publishes_no_syllables() -> None:
+    """`WHOLE_WORD`'s rule is `all`, which is what makes the guard load-bearing (review r2-tests-15).
+
+    A `Rules.chars` answering a MIXED list — one fragment read on its own, the rest only as the whole word —
+    would otherwise publish one real span and a zero-width tail at the word's end, which is the defect
+    `WHOLE_WORD` exists for. `units._transliterated` answers homogeneous lists today, so this is the guard's
+    own test rather than a shipped path's (XA-20).
+    """
+    latin = han_dictionary(["abcdefghijklmnopqrstuvwxyz"])
+    emissions = FakeEmissions(log_probs=[0] * 600, frame_sec=0.02, dictionary=latin)
+    mixed = units.Rules(
+        name="mixed",
+        words=lambda text: [text],
+        syllables=lambda word, _language: list(word),
+        chars=lambda _word: [(0, "a"), (units.WHOLE_WORD, "b"), (units.WHOLE_WORD, "c")],
+    )
+    attributable = units.Rules(
+        name="attributable",
+        words=mixed.words,
+        syllables=mixed.syllables,
+        chars=lambda _word: [(0, "a"), (1, "b"), (1, "c")],
+    )
+    for rules, expected in ((mixed, 0), (attributable, 2)):
+        flat = char_targets([ZH[:2]], emissions, units=rules)
+        decoder = scripted_decoder(evenly(len(flat.targets)), 600)
+        got = generate([ZH[:2]], emissions, decoder=decoder, language="zh", units=rules)
+        (word,) = [word for line in got.lines for word in line.words]
+        assert word.word == ZH[:2] and word.start < word.end, "the word is timed either way"
+        assert len(word.syllables) == expected, "a target that names no grapheme publishes no syllable"
+
+
+# ── the per-language stage-2 table (W10) ──────────────────────────────────────────────────────────
+
+
+def test_every_routed_row_is_keyed_by_its_own_language_and_names_its_bundle() -> None:
+    """`ROUTED` is the ONE table, so a row filed under the wrong key would route one language on another's
+    measurement — and MMS_FA is the only bundle a row may name, being the only one the arms replace
+    whisperx's table with (XA-21; docs/arch/04-alignment.md §9.2)."""
+    assert units.ROUTED, "a build routing no language has no stage 2"
+    for code, row in units.ROUTED.items():
+        assert row.language == code, f"{code} is filed under another language's name"
+        assert row.arms, "a row with no arm is not a route"
+        assert row.arms <= {units.SCRIPT_UNITS, units.SIMPLIFY, units.TRANSLITERATE}
+        assert 0.0 < row.syllable_pco300 <= 100.0, "the number the row was chosen on is a percentage"
+        wants_mms = units.TRANSLITERATE in row.arms
+        assert row.bundle == (units.MMS_BUNDLE if wants_mms else units.OWN_BUNDLE)
+
+
+def test_the_mms_bundle_name_is_the_adapters_own_spelling() -> None:
+    """`domain/` may not import `adapters/`, so the bundle name is restated here — and a restatement that
+    drifts would route a language to a bundle no aligner loads."""
+    from encore_worker.adapters.ml import MMS_ALIGN_MODEL
+
+    assert units.MMS_BUNDLE == MMS_ALIGN_MODEL
+
+
+def test_japanese_is_routed_OFF_mms_and_the_rejection_is_the_shipped_rule() -> None:
+    """The licence clearing was not "turn MMS on": it reads 70.98 against `nonlatin-units`' 81.95 on ja, so
+    a blanket default would cost Japanese 11 points. The rejection is a ROW and not a default-off knob."""
+    assert units.ROUTED["ja"].arms == frozenset({units.SCRIPT_UNITS})
+    assert units.ROUTED["ja"].bundle == units.OWN_BUNDLE
+    assert units.stage2_bundle("ja", frozenset()) == units.OWN_BUNDLE
+    assert units.TRANSLITERATE not in units.arms_for("ja", frozenset())
+
+
+def test_an_unrouted_script_keeps_the_whitespace_rule_and_borrows_no_neighbours_row() -> None:
+    """A language no row names is NOT routed — the decline being the point: `SCRIPT_LANGUAGES` names 13
+    scripts no bundle exists for, and a neighbour's arms on them would be an assumption, not a reading."""
+    for code in ("th", "hi", "ta", "zz"):
+        assert code not in units.ROUTED
+        assert units.route(code, frozenset()) is None
+        assert units.arms_for(code, frozenset()) == frozenset()
+        assert units.stage2_bundle(code, frozenset()) == units.OWN_BUNDLE
+        assert units.rules_for(code, frozenset()).name == "plain"
+
+
+def test_an_operators_named_arm_still_reaches_a_language_no_row_names() -> None:
+    """The table is the measured DEFAULT and not a ceiling: a named arm has to reach an unrouted language,
+    which is how the next language's row gets measured in the first place."""
+    asked = frozenset({units.SCRIPT_UNITS})
+    assert units.arms_for("th", asked) == asked
+    assert units.arms_for("ja", asked) == asked, "ja's own row names the same arm"
+    assert units.arms_for("zh", asked) == frozenset({units.SCRIPT_UNITS, units.TRANSLITERATE}), (
+        "a named arm is added to the row's, never swapped for them"
+    )
+
+
+def test_the_unrouted_control_stands_every_row_down() -> None:
+    """The control that puts the whole lane back on whisperx's tables and the whitespace rule — the
+    configuration every row recorded before W10 was measured on, so a re-read of one is reproducible."""
+    control = frozenset({units.UNROUTED})
+    for code in units.ROUTED:
+        assert units.route(code, control) is None
+        assert units.arms_for(code, control) == frozenset()
+        assert units.stage2_bundle(code, control) == units.OWN_BUNDLE
+        assert units.rules_for(code, control).name == "plain"
+    assert units.arms_for("zh", control | {units.SCRIPT_UNITS}) == frozenset({units.SCRIPT_UNITS}), (
+        "the control stands the TABLE down, not an operator's own arm"
+    )
+
+
+@pytest.mark.skipif(pypinyin_installed, reason="this box CAN romanise zh, so the gap cannot be observed")
+def test_a_box_that_cannot_romanise_is_not_routed_to_mms() -> None:
+    """The bundle and the target sequence can never disagree: MMS_FA's 26 Latin letters aimed at raw Han is
+    a worse reading than whisperx's own table, so a missing transliterator un-routes rather than half-
+    applying (docs/arch/04-alignment.md §9.1)."""
+    assert units.unhonoured("zh", frozenset()) == frozenset({units.TRANSLITERATE})
+    assert units.stage2_bundle("zh", frozenset()) == units.OWN_BUNDLE
+
+
+def test_the_bundle_follows_the_resolved_arm_and_not_the_asked_one() -> None:
+    """`stage2_bundle` reads `unhonoured`, so whatever this box can do, the bundle it names and the target
+    sequence `rules_for` builds are the same decision read twice."""
+    for code in (*units.ROUTED, "th", "en", ""):
+        for asked in (frozenset(), frozenset({units.TRANSLITERATE}), frozenset({units.UNROUTED})):
+            romanised = "roman" in units.rules_for(code, asked).name
+            assert (units.stage2_bundle(code, asked) == units.MMS_BUNDLE) == romanised, (
+                f"{code!r} under {sorted(asked)}: the bundle and the target sequence disagree"
+            )
+
+
+def test_every_arm_name_this_module_spells_is_a_declared_experiment() -> None:
+    """W6 review r2-tests-15's defect, one wave over: every test and bench caller of the table builds
+    `Config(align_experiments=...)` DIRECTLY, so a name missing from `host.config.ALIGN_EXPERIMENTS` left
+    the suite green while `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` — the command docs/arch/04-alignment.md
+    §9.2 prescribes for reproducing a pre-W10 row — made the worker refuse to START. An off switch has to be
+    settable from the environment to be one, and `nonlatin-unrouted` was not until this test existed."""
+    from encore_worker.host.config import ALIGN_EXPERIMENTS, Config
+
+    spelled = {units.SCRIPT_UNITS, units.SIMPLIFY, units.TRANSLITERATE, units.UNROUTED}
+    assert spelled <= set(ALIGN_EXPERIMENTS)
+    read = Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": units.UNROUTED})
+    assert read.align_experiments == frozenset({units.UNROUTED})
+    assert units.route("zh", read.align_experiments) is None, "and it reaches the table it stands down"

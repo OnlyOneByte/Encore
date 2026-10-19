@@ -1,0 +1,496 @@
+{
+ "meta": {
+  "level": "generate",
+  "model": "MMS_FA",
+  "model_identity": {
+   "zh": "7345703a67e86f3e"
+  },
+  "device": "mps",
+  "language": "zh",
+  "seed": 0,
+  "wrong_k": 10,
+  "tfr_audio": "youtube",
+  "target": "stem",
+  "align_config": {
+   "align_experiments": [
+    "mms-roman",
+    "nonlatin-unrouted"
+   ]
+  },
+  "units": "units,roman",
+  "corpus": "nonlatin",
+  "modes": [
+   "truth"
+  ],
+  "songs": [
+   "amll-zh-gaobai-qiqiu",
+   "amll-zh-guangnian-zhiwai",
+   "amll-zh-qingtian",
+   "amll-zh-zaijian"
+  ],
+  "accuracy_excluded": {},
+  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "git": {
+   "head": "6a35abf25b5ef65a74d5df7f6d283b66bb177509",
+   "dirty_files": 95
+  },
+  "harness": "0b64baba29e441ea",
+  "code": "35ebe339f1420309",
+  "row_codes": [
+   "35ebe339f1420309"
+  ],
+  "emissions": {
+   "computed": 4
+  },
+  "started": "2026-10-19T13:30:01",
+  "seconds": 38.5,
+  "mode_seconds": {
+   "truth": 38.4
+  },
+  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w10-s2-zh-mms/rows.jsonl",
+  "gates": [
+   {
+    "file": "gates/w8-units.yaml",
+    "compare": null,
+    "result": [
+     "== gates: 10/10 pass"
+    ]
+   }
+  ]
+ },
+ "summary": {
+  "truth": {
+   "nonlatin": {
+    "lines": {
+     "cases": 4,
+     "published": 4,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 198,
+     "in_text": 198,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 198,
+     "gross": 3,
+     "band": 4,
+     "w500": 191,
+     "w1000": 193,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 96.46,
+     "w1000_pct": 97.47,
+     "w500_text_pct": 96.46,
+     "w1000_text_pct": 97.47,
+     "bias_ms": -61.5,
+     "mad_ms": 70.0,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 17,
+     "in_text": 288,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 271,
+     "gross": 0,
+     "w100_pct": 64.71,
+     "w250_pct": 100.0,
+     "w300_pct": 100.0,
+     "pco300_pct": 5.9,
+     "aae_ms": 84.4,
+     "medae_ms": 89.0,
+     "bias_ms": -89.0,
+     "end_scored": 17,
+     "end100_pct": 0.0,
+     "end250_pct": 23.53,
+     "end_bias_ms": -340.0,
+     "final_end_scored": 2,
+     "final_end100_pct": 0.0,
+     "final_end250_pct": 0.0,
+     "final_end_bias_ms": -565.0,
+     "published100_pct": 64.71,
+     "published250_pct": 100.0,
+     "published300_pct": 100.0,
+     "published_aae_ms": 84.4
+    },
+    "syllables": {
+     "aligned": 1416,
+     "in_text": 1416,
+     "interpolated": 0,
+     "unpaired": 0,
+     "unpublished": 0,
+     "gross": 14,
+     "w100_pct": 55.16,
+     "w250_pct": 94.7,
+     "w300_pct": 97.03,
+     "pco300_pct": 97.03,
+     "aae_ms": 145.2,
+     "medae_ms": 92.0,
+     "bias_ms": -42.5
+    },
+    "highlight": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "highlight_wiped": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "ci": {
+     "pm500": [
+      94.85,
+      98.02
+     ],
+     "text_pm500": [
+      94.85,
+      98.02
+     ],
+     "gross": [
+      0.0,
+      6.0
+     ],
+     "word_pm300": [
+      100.0,
+      100.0
+     ],
+     "word_pco300": [
+      0.0,
+      17.47
+     ],
+     "highlight": [
+      0.0,
+      0.44
+     ]
+    }
+   },
+   "scored": {
+    "lines": {
+     "cases": 4,
+     "published": 4,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 198,
+     "in_text": 198,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 198,
+     "gross": 3,
+     "band": 4,
+     "w500": 191,
+     "w1000": 193,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 96.46,
+     "w1000_pct": 97.47,
+     "w500_text_pct": 96.46,
+     "w1000_text_pct": 97.47,
+     "bias_ms": -61.5,
+     "mad_ms": 70.0,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 17,
+     "in_text": 288,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 271,
+     "gross": 0,
+     "w100_pct": 64.71,
+     "w250_pct": 100.0,
+     "w300_pct": 100.0,
+     "pco300_pct": 5.9,
+     "aae_ms": 84.4,
+     "medae_ms": 89.0,
+     "bias_ms": -89.0,
+     "end_scored": 17,
+     "end100_pct": 0.0,
+     "end250_pct": 23.53,
+     "end_bias_ms": -340.0,
+     "final_end_scored": 2,
+     "final_end100_pct": 0.0,
+     "final_end250_pct": 0.0,
+     "final_end_bias_ms": -565.0,
+     "published100_pct": 64.71,
+     "published250_pct": 100.0,
+     "published300_pct": 100.0,
+     "published_aae_ms": 84.4
+    },
+    "syllables": {
+     "aligned": 1416,
+     "in_text": 1416,
+     "interpolated": 0,
+     "unpaired": 0,
+     "unpublished": 0,
+     "gross": 14,
+     "w100_pct": 55.16,
+     "w250_pct": 94.7,
+     "w300_pct": 97.03,
+     "pco300_pct": 97.03,
+     "aae_ms": 145.2,
+     "medae_ms": 92.0,
+     "bias_ms": -42.5
+    },
+    "highlight": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "highlight_wiped": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "ci": {
+     "pm500": [
+      94.85,
+      98.02
+     ],
+     "text_pm500": [
+      94.85,
+      98.02
+     ],
+     "gross": [
+      0.0,
+      6.0
+     ],
+     "word_pm300": [
+      100.0,
+      100.0
+     ],
+     "word_pco300": [
+      0.0,
+      17.47
+     ],
+     "highlight": [
+      0.0,
+      0.46
+     ]
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 4,
+     "published": 4,
+     "line_sync": 0,
+     "refused": 0,
+     "error": 0,
+     "truth_lines": 198,
+     "in_text": 198,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 198,
+     "gross": 3,
+     "band": 4,
+     "w500": 191,
+     "w1000": 193,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 96.46,
+     "w1000_pct": 97.47,
+     "w500_text_pct": 96.46,
+     "w1000_text_pct": 97.47,
+     "bias_ms": -61.5,
+     "mad_ms": 70.0,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 17,
+     "in_text": 288,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 271,
+     "gross": 0,
+     "w100_pct": 64.71,
+     "w250_pct": 100.0,
+     "w300_pct": 100.0,
+     "pco300_pct": 5.9,
+     "aae_ms": 84.4,
+     "medae_ms": 89.0,
+     "bias_ms": -89.0,
+     "end_scored": 17,
+     "end100_pct": 0.0,
+     "end250_pct": 23.53,
+     "end_bias_ms": -340.0,
+     "final_end_scored": 2,
+     "final_end100_pct": 0.0,
+     "final_end250_pct": 0.0,
+     "final_end_bias_ms": -565.0,
+     "published100_pct": 64.71,
+     "published250_pct": 100.0,
+     "published300_pct": 100.0,
+     "published_aae_ms": 84.4
+    },
+    "syllables": {
+     "aligned": 1416,
+     "in_text": 1416,
+     "interpolated": 0,
+     "unpaired": 0,
+     "unpublished": 0,
+     "gross": 14,
+     "w100_pct": 55.16,
+     "w250_pct": 94.7,
+     "w300_pct": 97.03,
+     "pco300_pct": 97.03,
+     "aae_ms": 145.2,
+     "medae_ms": 92.0,
+     "bias_ms": -42.5
+    },
+    "highlight": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "highlight_wiped": {
+     "cases": 4,
+     "unpublished": 0,
+     "hit_sec": 1.22,
+     "sung_sec": 662.3,
+     "pct": 0.18
+    },
+    "ci": {
+     "pm500": [
+      94.84,
+      98.02
+     ],
+     "text_pm500": [
+      94.84,
+      98.02
+     ],
+     "gross": [
+      0.0,
+      6.0
+     ],
+     "word_pm300": [
+      100.0,
+      100.0
+     ],
+     "word_pco300": [
+      0.0,
+      17.47
+     ],
+     "highlight": [
+      0.0,
+      0.44
+     ]
+    }
+   }
+  }
+ },
+ "songs": {
+  "truth": {
+   "amll-zh-gaobai-qiqiu": {
+    "group": "nonlatin",
+    "cases": 1.0,
+    "published": 1.0,
+    "refused": 0.0,
+    "error": 0.0,
+    "scored": 40.0,
+    "missing": 0.0,
+    "unsung": 0.0,
+    "gross": 0.0,
+    "band": 2.0,
+    "bias_ms": -133.0,
+    "mad_ms": 35.5,
+    "pm500": 95.0,
+    "pm1000": 95.0,
+    "text_pm500": 95.0,
+    "high_gross": 0.0,
+    "word_pco300": 0.0,
+    "highlight": 0.0,
+    "onsets": "ae53e5cc75d663d4"
+   },
+   "amll-zh-guangnian-zhiwai": {
+    "group": "nonlatin",
+    "cases": 1.0,
+    "published": 1.0,
+    "refused": 0.0,
+    "error": 0.0,
+    "scored": 57.0,
+    "missing": 0.0,
+    "unsung": 0.0,
+    "gross": 2.0,
+    "band": 1.0,
+    "bias_ms": -13.0,
+    "mad_ms": 32.0,
+    "pm500": 94.74,
+    "pm1000": 96.49,
+    "text_pm500": 94.74,
+    "high_gross": 0.0,
+    "word_pco300": 0.0,
+    "highlight": 0.0,
+    "onsets": "e52981764e2e826f"
+   },
+   "amll-zh-qingtian": {
+    "group": "nonlatin",
+    "cases": 1.0,
+    "published": 1.0,
+    "refused": 0.0,
+    "error": 0.0,
+    "scored": 62.0,
+    "missing": 0.0,
+    "unsung": 0.0,
+    "gross": 1.0,
+    "band": 0.0,
+    "bias_ms": -94.5,
+    "mad_ms": 37.0,
+    "pm500": 98.39,
+    "pm1000": 98.39,
+    "text_pm500": 98.39,
+    "high_gross": 0.0,
+    "word_pm100": 64.71,
+    "word_pm300": 100.0,
+    "word_pco300": 22.08,
+    "word_published_pm100": 64.71,
+    "word_published_pm300": 100.0,
+    "word_bias_ms": -89.0,
+    "end_pm100": 0.0,
+    "final_end_pm100": 0.0,
+    "highlight": 0.54,
+    "onsets": "caaf3875f3877ad7"
+   },
+   "amll-zh-zaijian": {
+    "group": "nonlatin",
+    "cases": 1.0,
+    "published": 1.0,
+    "refused": 0.0,
+    "error": 0.0,
+    "scored": 39.0,
+    "missing": 0.0,
+    "unsung": 0.0,
+    "gross": 0.0,
+    "band": 1.0,
+    "bias_ms": 72.0,
+    "mad_ms": 23.0,
+    "pm500": 97.44,
+    "pm1000": 100.0,
+    "text_pm500": 97.44,
+    "high_gross": 0.0,
+    "word_pco300": 0.0,
+    "highlight": 0.0,
+    "onsets": "2f1964a664f91321"
+   }
+  }
+ }
+}

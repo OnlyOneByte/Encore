@@ -368,7 +368,7 @@ def run_global(args) -> None:
 
     if args.repair:
         from encore_worker.domain.lyrics.generate import regenerate
-        from encore_worker.steps.align_steps import _anchored_runs, _with_lines
+        from encore_worker.steps.align_geometry import _anchored_runs, _with_lines
 
         duration = emissions.frames * emissions.frame_sec
         normalized = [" ".join(t.lower().split()) for t in line_texts]
@@ -503,7 +503,7 @@ def run_global(args) -> None:
             )
 
     if args.rescue:
-        # The SHIPPED never-sung rule (steps/align_steps.py): score far below the song's norm AND span on
+        # The SHIPPED never-sung rule (steps/align_unsung.py): score far below the song's norm AND span on
         # silence AND chars/sec far below singing tempo — all three, then RE-DECODE without the dropped
         # text, because a never-sung line forced through the emissions steals its neighbours' frames.
         active_texts = list(line_texts)

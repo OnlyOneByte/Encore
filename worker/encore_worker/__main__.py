@@ -20,12 +20,13 @@ from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, 
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
-from encore_worker.domain.lyrics import language, lexical, romanize
+from encore_worker.domain.lyrics import language, lexical, romanize, units
 from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config, ConfigError
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
-from encore_worker.steps.align_steps import Adapters, AlignStepsImpl, Superseded, superseded_candidates
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
+from encore_worker.steps.align_text import Superseded, superseded_candidates
 from encore_worker.steps.api import asr_model_of, pin_of, sync_mode_of
 from encore_worker.steps.records import AlignOutcome, JobRef, tier_of_label
 from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
@@ -57,16 +58,17 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
             device=device,
             jobs=config.concurrency,
             model=align_model_for(config, device),
-            nonlatin_model=nonlatin_align_model_for(config),
+            nonlatin_routes=nonlatin_routes_for(config),
         ),
         diarizer=ml.build_diarizer(device=device),
         # Built ONCE per process: lingua holds n-gram models per language. None without the `text` extra,
         # which costs accuracy on non-English LATIN songs and nothing else, the script half of the decision
         # being stdlib `unicodedata`. See docs/arch/04-alignment.md §9.
         detector=language.lingua_detector(),
-        # DISPLAY-ONLY, and the factory rather than one romaniser: the language is a per-document fact and
-        # each backend is built once on first use (`romanize.build_romanizer`). None for every language
-        # without the `romanize` extra, which publishes what this worker always published (XA-19).
+        # DISPLAY-ONLY, and the factory rather than one romaniser: the language AND the script are
+        # per-document facts and each backend is built once on first use (`romanize.build_romanizer`). None
+        # for every language without the `romanize` extra, which publishes what this worker always did
+        # (XA-19).
         romanizer=romanize.build_romanizer,
     )
 
@@ -101,20 +103,45 @@ def align_model_for(config: Config, device: str) -> str:
     if named is not None and not lexical.is_calibrated(named):
         raise ConfigError(
             f"ENCORE_ALIGN_MODEL={named!r}: {lexical.uncalibrated(named)}. Expected one of "
-            f"{', '.join(sorted(lexical.CALIBRATED))}, or leave it unset for this device's default "
+            f"{', '.join(lexical.calibrated_pairs())}, or leave it unset for this device's default "
             f"({ml.default_align_model(device)})."
         )
     return named or ml.default_align_model(device)
 
 
-def nonlatin_align_model_for(config: Config) -> str | None:
-    """The bundle a NON-LATIN language aligns on, or None for whisperx's per-language table.
+def nonlatin_routes_for(config: Config) -> dict[str, str]:
+    """`{language: the bundle it aligns on}` for every non-Latin language `units.ROUTED` routes off
+    whisperx's own table — the startup reading of the per-language stage-2 table (XA-21).
 
-    Only the `mms-roman` arm answers anything, and only because MMS_FA's vocabulary is Latin: it has to be
-    paired with the romanised target sequence (`units.rules`). Its weights are CC-BY-NC — an arm an operator
-    switches on, never a default (docs/arch/04-alignment.md §9.1, §14).
+    A box with no transliterator for that language is NOT routed (`units.stage2_bundle`) and keeps the
+    script-unit rule; only an operator who NAMED `mms-roman` with no transliterator at all is refused
+    outright. MMS_FA's weights are CC-BY-NC (docs/arch/04-alignment.md §9.2, §14.2).
     """
-    return ml.MMS_ALIGN_MODEL if "mms-roman" in config.align_experiments else None
+    if "mms-roman" in config.align_experiments and not any(
+        romanize.build_transliterator(code) is not None for code in romanize.BACKENDS
+    ):
+        raise ConfigError(
+            "ENCORE_ALIGN_EXPERIMENTS=mms-roman pairs MMS_FA's 26-letter Latin vocabulary with a romanised "
+            "target sequence, and this box can build no transliterator for any language: install the "
+            "`romanize` extra (pypinyin, cutlet, uroman) or drop the arm."
+        )
+    routes = {code: units.stage2_bundle(code, config.align_experiments) for code in sorted(units.ROUTED)}
+    return {code: bundle for code, bundle in routes.items() if bundle != units.OWN_BUNDLE}
+
+
+def _routes_described(config: Config) -> str:
+    """The per-language stage-2 table as this box resolved it, for the startup line: which arms each routed
+    language gets, on which bundle, and which arms this box could not honour for want of a backend."""
+    routes = nonlatin_routes_for(config)
+    out = []
+    for code in sorted(units.ROUTED):
+        arms = ",".join(sorted(units.arms_for(code, config.align_experiments))) or "none"
+        bundle = ml.align_model_name(code, None, routes)
+        missing = sorted(units.unhonoured(code, config.align_experiments))
+        absent = f" [no backend for {','.join(missing)}]" if missing else ""
+        words = "words may publish" if lexical.is_calibrated(bundle, code) else "LINES ONLY"
+        out.append(f"{code}={arms} on {bundle} ({words}){absent}")
+    return "; ".join(out)
 
 
 def device_for(config: Config, report: hardware.Report) -> str:
@@ -150,6 +177,7 @@ async def main() -> None:
     # line says what `build_adapters` resolves below — and refuses an uncalibrated name before any work.
     print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
     print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
+    print(f"[worker] non-Latin routes {_routes_described(config)}", flush=True)
     if not caps:
         # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which beats a
         # process that exits and leaves an operator wondering where the worker went.

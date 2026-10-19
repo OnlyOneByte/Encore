@@ -313,7 +313,7 @@ def test_lead_never_produces_a_negative_or_inverted_span() -> None:
     assert all(s <= e for s, e, _sc in led2)
 
 
-# ── `trimmed`: the one geometric operation W6's bounded clamp needs (`align_steps._pulled_end`) ──
+# ── `trimmed`: the one geometric operation W6's bounded clamp needs (`align_geometry._pulled_end`) ──
 
 
 def a_line(*words: tuple[str, float, float], start: float, end: float) -> Line:
@@ -350,7 +350,7 @@ def test_trimmed_keeps_every_onset_before_the_boundary_and_re_fits_only_the_tail
 
 
 def test_trimmed_never_moves_the_first_onset_so_it_cannot_invert_against_its_predecessor() -> None:
-    """`align_steps._pulled_end` carried an order guard against exactly this while it used `remapped`
+    """`align_geometry._pulled_end` carried an order guard against exactly this while it used `remapped`
     (measured at 0 firings on the corpus); `trimmed` makes it unreachable. Leading silence is the shape:
     affine pulls the first word back toward the line's start, this does not move it at all."""
     from encore_worker.domain.lyrics.generate import remapped, trimmed
