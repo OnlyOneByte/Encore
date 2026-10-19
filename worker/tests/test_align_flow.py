@@ -351,7 +351,7 @@ async def test_the_words_publish_when_the_rungs_gate_refuses_the_sheet_and_are_n
     retried, which publishes (the refusal says the SHEET'S CLOCK is unreadable, not that the words are
     wrong — they passed the same lexical gate). And a text this job PUBLISHES must not ride out on
     `outcome.refused`, which is what makes the frame withdraw an earlier job's candidate for those same
-    words (`align_steps.superseded_candidates`): withdrawing them here would delete the document we just
+    words (`align_text.superseded_candidates`): withdrawing them here would delete the document we just
     published from the room's alternatives."""
     fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[UNRELATED, LINE_REFUSED])
     outcome = await run_align(JOB, fake)

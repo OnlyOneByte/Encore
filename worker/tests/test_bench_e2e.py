@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import inspect
 import json
 import math
 import os
@@ -1375,7 +1376,7 @@ GATES_DIR = SCRIPTS.parent / "gates"
 
 def lines_rows(mode: str, songs: int, *, refused: int = 0) -> list[Any]:
     """A `--sync-mode lines` run's shape: every committed case is a LINE_SYNC document whose lines are graded
-    `low` (`align_steps._line_doc` + `_write(..., "low")`), here placed exactly on truth."""
+    `low` (`align_lines._line_doc` + `_write(..., "low")`), here placed exactly on truth."""
     rows = []
     for i in range(songs):
         song = song_of(TEN, slug=f"s{i}")
@@ -1953,6 +1954,24 @@ def test_an_explicit_romanize_shipped_fails_closed_where_its_package_is_absent(
         e2e.build_romanizer_factory("shipped", "zh")
 
 
+#: EVERY RESULTS ROW WRITTEN BEFORE THE DETECTOR STAMP EXISTED (W8a). Named as the CLOSED set it is, rather
+#: than allow-listing the waves that may carry the stamp — the past cannot grow, so this cannot go stale, and
+#: it still catches a pre-stamp row that somehow gains one.
+PRE_DETECTOR_STAMP_ROWS = (
+    "baseline-v2",
+    "w0-",
+    "w1-",
+    "w2-",
+    "w3-",
+    "w4-",
+    "w4b-",
+    "w5-",
+    "w5r2-",
+    "w6-",
+    "w7-",
+)
+
+
 def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_recorded_one(
     tmp_path: Path,
 ) -> None:
@@ -1971,7 +1990,7 @@ def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_reco
         if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
     }
     assert set(recorded.values()) <= set(e2e.DETECTORS), f"unreadable detector stamp: {recorded}"
-    assert all(path.startswith(("w8a-", "w8b-", "w9-", "w8-", "w8s12-")) for path in recorded), (
+    assert not [path for path in recorded if path.startswith(PRE_DETECTOR_STAMP_ROWS)], (
         "W8a's sweeps are the first runs to carry the stamp; anything earlier is silent by construction"
     )
 
@@ -2114,7 +2133,7 @@ def test_a_text_with_nothing_to_align_walks_the_whole_ladder_to_no_lyrics(
     assert (second["knob"], second["result"], second["decision"]) == ("line-sync", "refused", "next")
     assert [e["verdict"] for e in row["trail"]] == ["retime", "next", "asr-fallback", "give-up"]
     # "bundle unnamed" because this rig's matrices are numpy fakes: the shipped `ml.Emissions` always names
-    # its bundle and the rung's note opens with it (W4b review r1, `align_steps._bundle_why`).
+    # its bundle and the rung's note opens with it (W4b review r1, `align_notes._bundle_why`).
     assert str(row["trail"][1]["why"]).startswith("line sync refused: bundle unnamed; sheet-span envelope r=")
     assert row["asr_requested"] is True
     assert row["transcriptions"] == [
@@ -2461,7 +2480,7 @@ def test_a_documents_source_lines_do_not_read_as_a_changed_document() -> None:
     a later re-pick. The TV never reads it, so the digest is of the bytes the worker writes WITHOUT it — a
     document written before the key existed and the same document with it compare equal — while any
     change to what the TV renders still changes it."""
-    from encore_worker.steps.align_steps import _with_source_lines
+    from encore_worker.steps.align_text import _with_source_lines
 
     doc: dict[str, object] = {"language": "en", "lines": [{"text": "hello", "start": 0.1 + 0.2, "end": 1.5}]}
     before = json.dumps(doc, ensure_ascii=False).encode("utf-8")
@@ -3194,6 +3213,52 @@ def test_an_uncalibrated_bundle_is_announced_recorded_and_ungatable(
     assert "has NO lexical calibration row" in gates.format_compare(flagged, calibrated)
 
 
+def test_the_banner_reads_the_PAIR_so_a_routed_bundle_is_not_called_uncalibrated(tmp_path: Path) -> None:
+    """W10 FINAL REVIEW. `lexical.CALIBRATED`'s key became `(bundle, LANGUAGE)` and this call site kept the
+    one-argument form, whose default language is `en` — so `("MMS_FA", "en")` is absent, and every zh and ja
+    run was stamped `uncalibrated` the moment W10 fitted their rows. The stamp is not cosmetic: it makes
+    `wrongtext_pass` an ERROR for every gate, which is the one metric a lane that has just started
+    publishing WORDS most needs read, and it says a worker would refuse to start on a bundle production
+    routes to by default."""
+    from encore_worker.domain.lyrics import lexical
+
+    assert ("MMS_FA", "zh") in lexical.CALIBRATED and ("MMS_FA", "en") not in lexical.CALIBRATED
+    assert e2e.uncalibrated_banner("MMS_FA", "zh") is None, "zh's own pair is fitted"
+    assert e2e.uncalibrated_banner("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja") is None
+
+    # ko ROUTES to MMS_FA and has no row of its own, which is the case the banner exists for (XA-21).
+    ko = e2e.uncalibrated_banner("MMS_FA", "ko")
+    assert ko is not None and "'ko'" in ko and "--language" in ko
+    assert e2e.uncalibrated_banner("MMS_FA") is not None, "the ENGLISH pair is still absent"
+    # And English is untouched: `--language` defaults to `en`, so every recorded row reads what it read.
+    assert e2e.uncalibrated_banner("HUBERT_ASR_LARGE", "en") is None
+    assert e2e.uncalibrated_banner("WAV2VEC2_LARGE_XLSR_53_DE", "en") is not None
+    assert "language" in inspect.signature(e2e.uncalibrated_banner).parameters, (
+        "the pair is the key, so the call site cannot be allowed to forget the language"
+    )
+
+
+def test_a_calibrated_pair_is_not_stamped_uncalibrated_in_run_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The consequence of the row above, at the level a gate reads: `run.json`'s `uncalibrated` is what makes
+    `wrongtext_pass` an ERROR, so a run on a pair that IS fitted must not carry it."""
+    from encore_worker.host.config import Config
+
+    monkeypatch.setattr(e2e.Config, "from_env", staticmethod(lambda env=None: Config()))
+    monkeypatch.setattr(e2e.lib, "discover", lambda *_a, **_k: [])
+    monkeypatch.setattr(e2e, "git_state", lambda: {"head": None, "dirty": None})
+    argv = ["--device", "cpu", "--emissions-cache", "off", "--model", "MMS_FA"]
+    fitted = tmp_path / "zh"
+    assert e2e.main([*argv, "--out", str(fitted), "--language", "zh"]) == 3, "no cases ran"
+    assert "CALIBRATION" not in capsys.readouterr().err
+    assert "uncalibrated" not in json.loads((fitted / "run.json").read_text())
+    unfitted = tmp_path / "ko"
+    assert e2e.main([*argv, "--out", str(unfitted), "--language", "ko"]) == 3
+    assert "FOR 'ko'" in capsys.readouterr().err, "the language the pair is missing is named"
+    assert json.loads((unfitted / "run.json").read_text())["uncalibrated"] is True
+
+
 def test_summarize_and_a_rows_baseline_carry_the_setup_their_run_recorded(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -3285,7 +3350,7 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
     from encore_worker.adapters import ml
 
     host = set(inspect.signature(ml.build_aligner).parameters)
-    assert host == {"device", "jobs", "model", "nonlatin_model"}, (
+    assert host == {"device", "jobs", "model", "nonlatin_routes"}, (
         "a new production factory argument: forward it to BenchAligner too"
     )
     assert set(inspect.signature(ml.WhisperXAligner.__init__).parameters) == {"self", *host}
@@ -3297,11 +3362,12 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
     # whisperx's per-language table (the base model, on every box).
     assert built._model == ml.default_align_model("cpu") == e2e.default_model("en", "cpu")
     assert e2e.BenchAligner(device="cpu", model="HUBERT_ASR_XLARGE")._model == "HUBERT_ASR_XLARGE"
-    # AND W8 STAGE 2's BUNDLE, which is a NON-LATIN language's and reaches a different field: a run with
-    # `--mms` off must keep whisperx's per-language table, those weights being CC-BY-NC.
-    assert e2e.BenchAligner(device="cpu")._nonlatin_model is None
-    armed = e2e.BenchAligner(device="cpu", nonlatin_model=ml.MMS_ALIGN_MODEL)
+    # AND W10's PER-LANGUAGE STAGE-2 TABLE, which reaches a different field: a bare constructor routes
+    # nothing, and a table routes the language it NAMES and no neighbour of it (XA-21).
+    assert e2e.BenchAligner(device="cpu")._nonlatin_routes == {}
+    armed = e2e.BenchAligner(device="cpu", nonlatin_routes={"zh": ml.MMS_ALIGN_MODEL})
     assert armed._bundle_of("zh") == ml.MMS_ALIGN_MODEL
+    assert armed._bundle_of("ko") is None, "a language the table does not name keeps whisperx's own"
     assert armed._bundle_of("en") == ml.default_align_model("cpu"), "English is never routed to it"
 
 
@@ -3769,7 +3835,7 @@ def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -
     MIX paragraphs now, and this holds them to the rows they were read from — the check the module's own
     recipe ("where the truth texts' blind decodes stop being poor") cannot make in a docstring.
     """
-    from encore_worker.domain.lyrics import lexical
+    from encore_worker.domain.lyrics import language, lexical
 
     results = SCRIPTS.parent / "results"
 
@@ -3782,7 +3848,7 @@ def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -
         }
 
     large, step = truth_lifts("w4b-lift-mix-hubert-large.json"), 0.05
-    ok_from = lexical.CALIBRATED["HUBERT_ASR_LARGE"].mix_ok_from
+    ok_from = lexical.CALIBRATED[("HUBERT_ASR_LARGE", language.ENGLISH)].mix_ok_from
     poor, good = large["never-be-alone"], large["The_Rinn_-_Voices__2017_Version_"]
     assert poor == pytest.approx((0.2507, 0.1277), abs=5e-5), "the last poor blind decode above the mix floor"
     assert good == pytest.approx((0.4231, 0.7609), abs=5e-5), "and the first good one above it"
@@ -3791,7 +3857,7 @@ def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -
     assert ok_from + step > good[0], f"and 0.40 is the LARGEST {step} step in it, which is what makes it 0.40"
 
     xlarge = truth_lifts("w4b-lift-mix-hubert-xlarge.json")
-    xl_ok_from = lexical.CALIBRATED["HUBERT_ASR_XLARGE"].mix_ok_from
+    xl_ok_from = lexical.CALIBRATED[("HUBERT_ASR_XLARGE", language.ENGLISH)].mix_ok_from
     admitted, below = xlarge["Pure_Mids_-_The_Leader"], xlarge["Slingshot_Miracle_-_Whistler"]
     assert admitted == pytest.approx((0.3109, 0.30), abs=5e-5)
     assert admitted[0] > xl_ok_from and admitted[1] < 0.35, "the ONE poor decode this row's band grades OK"
@@ -3882,9 +3948,9 @@ def test_the_procedure_reproduces_the_hubert_rows_too(
     asserted both as the number and as the property the rule exists for: the band holds a drop50 and no
     protected right text. Head-room is asserted per model, L clearing the wrong population by 28x the base
     row's margin and XL by 9x, which is why XL's caveats are written down where its row is."""
-    from encore_worker.domain.lyrics import lexical
+    from encore_worker.domain.lyrics import language, lexical
 
-    row = lexical.CALIBRATED[model]
+    row = lexical.CALIBRATED[(model, language.ENGLISH)]
     results = SCRIPTS.parent / "results"
     assert lift_gate.main(["--from", str(results / f"w4b-lift-stem-hubert-{slug}.json")]) == 0
     stem = capsys.readouterr().out
@@ -4261,16 +4327,16 @@ def test_the_wave_baselines_are_w7s_own_rows_re_summarised() -> None:
 def test_the_committed_unsung_rows_hold_the_never_sung_floors_record() -> None:
     """`results/w4b-unsung-gate.json` (192 song-modes) holds the never-sung floor's record to its rows.
 
-    `align_steps._NEVER_SUNG_ENV` says the absolute 0.10 beats every per-song relative floor, and this is
+    `align_unsung._NEVER_SUNG_ENV` says the absolute 0.10 beats every per-song relative floor, and this is
     the row set it says it on, so neither can drift and this is the test to re-read when a later wave or a
     new model re-runs `scripts/unsung_gate.py`. The three claims in order: the rule pays for itself against
     a floor at 0; a relative floor at the song's own median gap is a NO-OP, the level between lines being
     at or above 0.10 on nearly every song; and the lower quantiles that would spare
     `Pure_Mids_-_The_Leader`'s real line spare INJECTED lines too, which is an `unsung-not-up-*` rise."""
-    from encore_worker.steps import align_steps
+    from encore_worker.steps import align_unsung
 
     body = json.loads((SCRIPTS.parent / "results" / "w4b-unsung-gate.json").read_text(encoding="utf-8"))
-    assert body["floor"] == align_steps._NEVER_SUNG_ENV, "the rows were measured at the shipped floor"
+    assert body["floor"] == align_unsung._NEVER_SUNG_ENV, "the rows were measured at the shipped floor"
     rows = body["rows"]
     assert len(rows) == 192, "32 songs x 6 text modes"
 
@@ -4296,7 +4362,7 @@ def test_the_committed_unsung_rows_hold_the_never_sung_floors_record() -> None:
 
     medians = [row["gap_median"] for row in rows if row["mode"] == "truth"]
     assert len(medians) == 32
-    assert sum(1 for value in medians if value >= align_steps._NEVER_SUNG_ENV) == 29, (
+    assert sum(1 for value in medians if value >= align_unsung._NEVER_SUNG_ENV) == 29, (
         "the level BETWEEN lines is above the absolute floor on 29 of 32 stems (review L2's bleed)"
     )
     assert totals("gapq0.5-capped")["moved"] == 0, "so a capped median floor is a no-op on every song-mode"
@@ -4352,13 +4418,13 @@ def test_unsung_gate_floors_are_capped_and_never_turn_the_rule_off() -> None:
 
 def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> None:
     """W2 re-derived the rung's agreement share and `_LINE_SYNC_NEAR_SEC` on MAPPED claims, and the numbers in
-    `align_steps`' docstrings are read off these rows — so the row set has to say which band it was measured
+    `align_lines`' docstrings are read off these rows — so the row set has to say which band it was measured
     in and carry BOTH placements, or the delta it is cited for (88 -> 33 refused) cannot be recomputed."""
     from encore_worker.domain.lyrics import lexical
-    from encore_worker.steps import align_steps
+    from encore_worker.steps import align_lines
 
     body = json.loads((SCRIPTS.parent / "results" / "w2-line-gate.json").read_text(encoding="utf-8"))
-    assert body["near_sec"] == align_steps._LINE_SYNC_NEAR_SEC
+    assert body["near_sec"] == align_lines._LINE_SYNC_NEAR_SEC
     rows = body["rows"]
     assert len(rows) == 1056
     for key in ("near", "w3_near", "w3_w500", "w3_scored", "map", "map_applied", "held"):
@@ -4390,11 +4456,11 @@ def test_the_committed_w4_rows_re_read_the_line_sync_thresholds_on_the_exact_clo
     import statistics
 
     from encore_worker.domain.lyrics import lexical
-    from encore_worker.steps import align_steps
+    from encore_worker.steps import align_lines
 
     share = lexical.BANDS.line_sync_min_agreement
     body = json.loads((SCRIPTS.parent / "results" / "w4-line-gate.json").read_text(encoding="utf-8"))
-    assert body["near_sec"] == align_steps._LINE_SYNC_NEAR_SEC
+    assert body["near_sec"] == align_lines._LINE_SYNC_NEAR_SEC
     rows = body["rows"]
     assert len(rows) == 1056
     right = [r for r in rows if not str(r["mode"]).startswith("wrongtext")]
@@ -5502,3 +5568,92 @@ def test_every_results_file_that_excluded_a_song_says_so_in_its_meta() -> None:
             continue
         assert recorded is not None, f"{path.name}: its rows exclude {sorted(per_song)}, its meta is silent"
         assert set(recorded) == per_song, f"{path.name}: {sorted(recorded)} against {sorted(per_song)}"
+
+
+def test_the_summary_records_the_unit_rule_that_actually_ran() -> None:
+    """Review r2-spec-11: `align_config` records the ARM NAMES, and `mms-roman` switches the bundle to MMS_FA
+    on the name alone while the romanised targets it pairs with need an optional backend — so two runs whose
+    decodes read different spellings were byte-identical in metadata. `meta["units"]` is the RESOLVED
+    `units.Rules.name`, and it has no `lib.RUN_DEFAULTS` entry, so an older row stays silent instead of
+    claiming `plain`.
+    """
+    from encore_worker.domain.lyrics import units
+
+    assert "units" in gates.COMPARED_META
+    assert "units" not in lib.RUN_DEFAULTS, "a row written before the stamp must not read as `plain`"
+    assert units.rules_for("en", frozenset()).name == "plain"
+    # `UNROUTED` here and not an empty set: since W10 zh's own routed row romanises, so the whole point of
+    # the stamp is that `units` and `units,roman` are two different decodes (XA-21).
+    unrouted = frozenset({units.UNROUTED})
+    assert units.rules_for("zh", unrouted | {"nonlatin-units"}).name == "units"
+    assert units.rules_for("zh", unrouted | {"nonlatin-units", "zh-simplify"}).name == "units,t2s"
+    # zh's SHIPPED route romanises, so the stamp reads `units,roman` — or `units` on a box with no
+    # transliterator, which is the whole reason the stamp records the RESOLVED rule and not the arm names.
+    routed = "units" if units.unhonoured("zh", frozenset()) else "units,roman"
+    assert units.rules_for("zh", frozenset()).name == routed
+
+    armed = gates.View(modes={}, songs={}, meta={"units": "units,roman", "align_config": {}})
+    silent = gates.View(modes={}, songs={}, meta={"align_config": {}})
+    assert "units differs" in gates.format_compare(
+        armed, gates.View(modes={}, songs={}, meta={"units": "units", "align_config": {}})
+    )
+    assert "units differs" not in gates.format_compare(armed, silent), "silent is not a claim"
+
+
+def test_every_shipped_stage2_route_is_the_measured_WINNER_on_the_recorded_cells() -> None:
+    """W10's table is a MEASUREMENT and not a preference, so the suite reads the ten committed `w8r1-*`
+    `generate` cells and re-picks the winner: a route edited to a losing arm has to fail here.
+
+    `syllable_pco300` on the AMLL truth's own spans is the number each row was chosen on (README, "W10: the
+    per-language stage-2 table"), and the arm names map to the recorded run slugs: `base` is the whitespace
+    rule, `units` is `nonlatin-units`, `mms` is `mms-roman`.
+    """
+    from encore_worker.domain.lyrics import units
+
+    results = SCRIPTS.parent / "results"
+    arms = {
+        "base": frozenset(),
+        "units": frozenset({units.SCRIPT_UNITS}),
+        "mms": frozenset({units.TRANSLITERATE}),
+    }
+
+    def pco300(language: str, slug: str) -> float:
+        body = json.loads((results / f"w8r1-{language}-{slug}-generate.json").read_text(encoding="utf-8"))
+        return float(body["summary"]["truth"]["nonlatin"]["syllables"]["pco300_pct"])
+
+    for code, row in units.ROUTED.items():
+        read = {slug: pco300(code, slug) for slug in arms}
+        best = max(read, key=lambda slug: read[slug])
+        assert arms[best] <= row.arms, (
+            f"{code} is routed to {sorted(row.arms)} and the recorded cells make {best} the winner: {read}"
+        )
+        assert row.syllable_pco300 == pytest.approx(read[best], abs=5e-3), (
+            f"{code}'s row carries {row.syllable_pco300} and its winning cell reads {read[best]}"
+        )
+    # AND THE ONE THE TABLE EXISTS FOR: a blanket `mms-roman` default would cost Japanese 11 points, which
+    # is the whole argument against a switch — asserted as the gap, so a re-measurement moves it honestly.
+    assert pco300("ja", "units") - pco300("ja", "mms") == pytest.approx(10.97, abs=5e-3)
+    assert pco300("zh", "mms") > pco300("zh", "units") and pco300("ko", "mms") > pco300("ko", "units")
+
+
+def test_the_parity_check_reports_a_missing_fixture_rather_than_crashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review r2-correctness-7: the second fixture's rewrite dropped `--check`'s `is_file()` guard, so on a
+    tree where either file has not been generated the run died with a `FileNotFoundError` traceback instead
+    of the actionable line — and an exit code a CI leg reads cannot tell a crash from a stale fixture."""
+    tv_parity: Any = _load("tv_parity")
+    monkeypatch.setattr(tv_parity, "FIXTURE", tmp_path / "bench-highlight-parity.json")
+    monkeypatch.setattr(tv_parity, "CJK_FIXTURE", tmp_path / "cjk-join-ranges.json")
+
+    assert tv_parity.main(["--check"]) == 1, "an ungenerated fixture is a non-zero exit, not a traceback"
+    said = capsys.readouterr().out
+    assert said.count("MISSING — re-run without --check") == 2, said
+    assert tv_parity.main([]) == 0, "and writing them is what the message asks for"
+    capsys.readouterr()
+    assert tv_parity.main(["--check"]) == 0
+    assert capsys.readouterr().out.count("up to date") == 2
+    (tmp_path / "cjk-join-ranges.json").write_text("[]", encoding="utf-8")
+    assert tv_parity.main(["--check"]) == 1
+    printed = capsys.readouterr().out
+    assert "STALE — re-run without --check" in printed and "up to date" in printed, printed

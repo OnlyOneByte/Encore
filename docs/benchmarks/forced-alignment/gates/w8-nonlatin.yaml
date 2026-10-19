@@ -15,6 +15,13 @@
 # metric an ERROR: with the emission-scale gates stood down it would be the envelope gate's reading. The claim
 # here is a different one — nothing published AT ALL — so §2 gates the outcome counts it is derived from.
 #
+# ── SUPERSEDED ON THE SHIPPED DEFAULT BY W10 (2026-10-19 final review); see `gates/w8-lane.yaml`'s own
+# note, which this file is the four-song hand-counted companion to. W10 fitted `("MMS_FA", "zh")`, so zh IS
+# calibrated now: §1's `truth-times-no-words` / `truth-never-high` / `truth-line-synced-four` are expected
+# to FAIL on the shipped default, the paragraph above is no longer true of zh, and
+# `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` reproduces what they were written for. README, "W10: the
+# first non-Latin calibration rows". ──
+#
 # Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
 
 # ── 1) MUST: the lane publishes LINES, never WORDS ──────────────────────────────────────────────────────

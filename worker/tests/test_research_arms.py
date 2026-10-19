@@ -24,7 +24,7 @@ from encore_worker.adapters.ml import STAR_PENALTY_NATS
 from encore_worker.domain.lyrics import viterbi
 from encore_worker.domain.lyrics.generate import char_targets, line_blocks
 from encore_worker.host.config import ALIGN_EXPERIMENTS, Config
-from encore_worker.steps import align_steps
+from encore_worker.steps import align_steps, align_unsung
 from tests.ctc_fixture import FRAME_SEC, Matrix, alignable, sung_matrix
 from tests.test_align_provenance import (
     DIC,
@@ -190,10 +190,10 @@ def test_the_arcs_do_cost_a_sung_line_when_the_sheet_misorders_it() -> None:
     """
     texts = [text for text, _s, _e in UNIQUE]
     matrix = FakeEmissions(log_probs=packed(UNIQUE, UNIQUE_DURATION), frame_sec=FRAME_SEC, dictionary=DIC)
-    assert align_steps._skipped_lines(matrix, texts) == frozenset(), "in order, nothing may be dropped"
+    assert align_unsung._skipped_lines(matrix, texts) == frozenset(), "in order, nothing may be dropped"
 
     misordered = [*texts[:5], texts[6], texts[5], *texts[7:]]
-    unsung = align_steps._skipped_lines(matrix, misordered)
+    unsung = align_unsung._skipped_lines(matrix, misordered)
     assert unsung == frozenset({5}), f"the misordered sheet must cost a sung line: {unsung}"
     assert misordered[5] in texts, "and the line it cost is one the recording sings"
 
@@ -204,7 +204,7 @@ def test_a_repeated_line_is_exempt_from_the_arcs(tmp_path: Path, monkeypatch: py
     likely to drop the sung occurrence as the unsung one.
     """
     seen: list[frozenset[int]] = []
-    real = align_steps._skipped_lines
+    real = align_unsung._skipped_lines
 
     def spy(*args: Any, exempt: frozenset[int] = frozenset(), **kwargs: Any) -> Any:
         seen.append(exempt)
@@ -235,7 +235,7 @@ def test_a_line_printed_exactly_twice_is_already_a_repeat(
     on a matrix that charges for a character — so the rule cannot be weakened in either direction.
     """
     seen: list[frozenset[int]] = []
-    real = align_steps._skipped_lines
+    real = align_unsung._skipped_lines
 
     def spy(*args: Any, exempt: frozenset[int] = frozenset(), **kwargs: Any) -> Any:
         seen.append(exempt)
@@ -260,7 +260,7 @@ def test_a_line_printed_exactly_twice_is_already_a_repeat(
     # step's rule is the only thing standing between the pair and an arc.
     texts = [text for text, _s, _e in UNIQUE] + [repeated, unsung]
     matrix = FakeEmissions(log_probs=packed(UNIQUE, UNIQUE_DURATION), frame_sec=FRAME_SEC, dictionary=DIC)
-    unexempted = align_steps._skipped_lines(matrix, texts)
+    unexempted = align_unsung._skipped_lines(matrix, texts)
     assert unexempted is not None and len(UNIQUE) in unexempted, (
         f"without the exemption an occurrence of the pair is bypassed: {unexempted}"
     )
@@ -318,7 +318,7 @@ def test_the_detector_reads_the_matrix_and_the_graph_the_publishing_decode_reads
     path must spend a frame on, which is evidence the publishing path never has to buy.
     """
     widths: list[int] = []
-    real = align_steps._skipped_lines
+    real = align_unsung._skipped_lines
 
     def spy(matrix: Any, *args: Any, **kwargs: Any) -> Any:
         widths.append(int(np.asarray(matrix.log_probs).shape[1]))

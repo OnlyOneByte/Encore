@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from encore_worker.domain.lyrics import lexical
+from encore_worker.domain.lyrics import language, lexical
 from encore_worker.domain.lyrics.generate import generate
 from tests.ctc_fixture import ctc_viterbi, sung_matrix
 from tests.test_align_provenance import DIC, UNIQUE, UNIQUE_DURATION, FakeEmissions
@@ -195,7 +195,7 @@ def test_the_shipped_defaults_bands_keep_its_own_populations_apart() -> None:
     from above with +0.0343 of head-room, the base row's to four places."""
     from encore_worker.adapters import ml
 
-    bands = lexical.CALIBRATED[ml.default_align_model("mps")]
+    bands = lexical.CALIBRATED[(ml.default_align_model("mps"), language.ENGLISH)]
     assert bands.model == "HUBERT_ASR_LARGE", "W5 flipped the default; this row is what a job reads"
     assert 0.219 < bands.refuse_below <= 0.766, "the stem floor sits in the gap, clear of every wrong text"
     assert 0.766 < bands.ok_from <= 0.828, (
@@ -210,18 +210,59 @@ def test_the_shipped_defaults_bands_keep_its_own_populations_apart() -> None:
     )
 
 
+def test_the_two_non_latin_rows_keep_their_own_populations_apart() -> None:
+    """W10's FIRST NON-LATIN ROWS, held to the fits that chose them rather than to any English row's shape.
+
+    Both separate by two thirds of a nat per letter — wider than any English bundle's — and both abstain on
+    the placement margin, nobody having read one of these trellises. The populations, the mix halves' much
+    thinner head-room and the per-song exhibits: README, "W10: the first non-Latin calibration rows";
+    `_runs/w10-nonlatin-cal/` carries the runs.
+    """
+    zh = lexical.CALIBRATED[("MMS_FA", "zh")]
+    ja = lexical.CALIBRATED[("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja")]
+    # (the weakest right text of all, the strongest wrong one, the weakest PROTECTED right text)
+    fitted = {zh: (0.6925, 0.0402, 1.4112), ja: (0.6864, 0.0457, 1.1771)}
+    for row, (weakest, wrong_max, protected) in fitted.items():
+        assert wrong_max < row.refuse_below <= weakest, (
+            f"{row.model}/{row.language}: the stem floor must sit in the gap the two populations open"
+        )
+        assert weakest < row.ok_from <= protected, (
+            "`ok_from` is the step above the weakest drop50 and never above the weakest protected right "
+            "text — the same restated rule every English row is fitted by"
+        )
+        assert row.refuse_below - wrong_max > 0.3, "two thirds of a nat of gap buys a wide head-room"
+        assert row.margin_floor_nats is None, (
+            "no one has read a trellis of this bundle, so the placement-ambiguity rule must ABSTAIN rather "
+            "than read 10 nats off an English scale"
+        )
+        assert row.mix_floor < row.refuse_below, "a mix is heard less well, and its floor is lower"
+    # THE LANE'S WEAKEST NUMBER, written down where the row is: zh's mix floor clears its wrong population
+    # by +0.0092 with ONE wrong text inside the half-step under it, which is inside HuBERT-XL's precedent
+    # (+0.0021, 3 inside) and is what a later wave should widen first.
+    assert zh.mix_floor - 0.0408 == pytest.approx(0.0092, abs=5e-5)
+    assert ja.mix_floor - 0.0222 == pytest.approx(0.0278, abs=5e-5)
+    # AND ko HAS NO ROW: one song, so no same-language donor and no wrong-text population to separate. The
+    # absence is the measurement, and it keeps Korean on the line-sync-only rule (XA-21).
+    assert ("MMS_FA", "ko") not in lexical.CALIBRATED
+    assert lexical.line_sync_share(None) == lexical.LINE_SYNC_SHARE_UNCALIBRATED
+
+
 def test_every_calibration_row_is_keyed_by_its_own_model_and_ordered() -> None:
     """W4b: `CALIBRATED` is the ONE table, so a row filed under the wrong key would gate one model on
     another's numbers — the exact defect the table exists to prevent — and a paste error is the realistic way
-    that happens. Every row is also held to the shape a calibration must have: ordered, non-empty bands and a
-    share in (0, 1]."""
+    that happens. W10 makes the key a PAIR, MMS_FA serving zh and ko on lifts that are not each other's, so
+    both halves are held here. Every row is also held to the shape a calibration must have: ordered,
+    non-empty bands and a share in (0, 1]."""
     assert lexical.CALIBRATED, "a worker with no calibrated model gates nothing"
-    for key, row in lexical.CALIBRATED.items():
-        assert row.model == key, f"{key} is filed under another model's name"
+    for (model, code), row in lexical.CALIBRATED.items():
+        assert row.model == model, f"{model}/{code} is filed under another model's name"
+        assert row.language == code, f"{model}/{code} is filed under another language's name"
         assert 0.0 < row.refuse_below < row.ok_from
         assert 0.0 < row.mix_floor < row.mix_ok_from
         assert 0.0 < row.line_sync_min_agreement <= 1.0
-    assert lexical.BANDS is lexical.CALIBRATED[lexical.BANDS.model], "BANDS is the table's row, not a copy"
+    assert lexical.BANDS is lexical.CALIBRATED[(lexical.BANDS.model, lexical.BANDS.language)], (
+        "BANDS is the table's row, not a copy"
+    )
 
 
 def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
@@ -251,7 +292,7 @@ def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() 
     from encore_worker.adapters import ml
 
     for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):
-        row = lexical.CALIBRATED[ml.default_align_model(device)]
+        row = lexical.CALIBRATED[(ml.default_align_model(device), language.ENGLISH)]
         assert row.margin_floor_nats is not None, (
             f"{device} defaults to {row.model}, whose placement-margin floor was never fitted: W6's rule "
             "would abstain on every job (see Bands.margin_floor_nats)"
@@ -260,7 +301,7 @@ def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() 
             assert getattr(row, field) > 0.0, f"{row.model}'s {field} is not a measurement"
     # The fifth value is the one W4b's own review found missing from `align_steps` rather than from a row, so
     # the default's share must be the row's and not the model-independent floor by coincidence of value.
-    default = lexical.CALIBRATED[ml.default_align_model("mps")]
+    default = lexical.CALIBRATED[(ml.default_align_model("mps"), language.ENGLISH)]
     assert lexical.line_sync_share(default) == default.line_sync_min_agreement
     assert lexical.margin_floor(default) == default.margin_floor_nats
 
@@ -281,9 +322,16 @@ def test_a_matrix_is_calibrated_by_its_own_model_or_by_nothing() -> None:
     assert lexical.calibration(Matrix("WAV2VEC2_LARGE_XLSR_53_DE")) is None
     assert lexical.is_calibrated(lexical.BANDS.model)
     assert not lexical.is_calibrated("WAV2VEC2_LARGE_XLSR_53_DE")
+    # AND THE LANGUAGE IS HALF THE KEY (W10): one bundle may serve several, so the English row must not
+    # answer for a language nobody fitted on it — "borrow a neighbour's row" is the defect the pair prevents.
+    assert lexical.calibration(Matrix(lexical.BANDS.model), "zh") is None
+    assert lexical.calibration(Matrix(""), "zh") is None, "an unnamed matrix is the ENGLISH default's only"
+    assert not lexical.is_calibrated(lexical.BANDS.model, "zh")
     said = lexical.uncalibrated("WAV2VEC2_LARGE_XLSR_53_DE")
     assert "WAV2VEC2_LARGE_XLSR_53_DE" in said and lexical.BANDS.model in said
-    assert "lift_gate.py --model WAV2VEC2_LARGE_XLSR_53_DE" in said, "the reason names the way to fix it"
+    assert "lift_gate.py --model WAV2VEC2_LARGE_XLSR_53_DE --language en" in said, (
+        "the reason names the way to fix it, language included"
+    )
 
 
 def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
@@ -300,7 +348,7 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
         line_sync_min_agreement=0.6,
         margin_floor_nats=25.0,
     )
-    monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
+    monkeypatch.setitem(lexical.CALIBRATED, (other.model, other.language), other)
 
     class Matrix:
         model = "HUBERT_ASR_LARGE"
@@ -323,7 +371,7 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
     assert lexical.margin_floor(other) == 25.0, "this model's own floor"
     assert lexical.margin_floor(lexical.BANDS) == lexical.BANDS.margin_floor_nats
     assert lexical.margin_floor(None) is None, "no row at all: the placement-margin rule must not apply"
-    assert lexical.margin_floor(lexical.CALIBRATED["HUBERT_ASR_XLARGE"]) is None, (
+    assert lexical.margin_floor(lexical.CALIBRATED[("HUBERT_ASR_XLARGE", "en")]) is None, (
         "a row whose floor was never fitted is the SAME answer as no row, which is why the field is optional"
     )
 

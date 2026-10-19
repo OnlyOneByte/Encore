@@ -35,7 +35,8 @@ from encore_worker.domain.lyrics.generate import (
 )
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import ALIGN_EXPERIMENTS, Config
-from encore_worker.steps.align_steps import Adapters, AlignStepsImpl, _linesep_why
+from encore_worker.steps.align_notes import _linesep_why
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import AudioRef, JobRef, TextRef, TimedDoc, TimeRequest
 from tests.ctc_fixture import FRAME_SEC, Matrix, char_frames, ctc_viterbi, sung_matrix
 

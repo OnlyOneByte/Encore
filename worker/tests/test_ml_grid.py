@@ -16,6 +16,7 @@ import pytest
 
 from encore_worker.adapters import ml
 from encore_worker.adapters.ports import InfraFault
+from encore_worker.domain.lyrics import units
 
 torch: Any = pytest.importorskip("torch")
 
@@ -476,9 +477,9 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
         device: str,
         jobs: int = 1,
         model: str | None = None,
-        nonlatin_model: str | None = None,
+        nonlatin_routes: Any = None,
     ) -> Any:
-        seen.update(device=device, jobs=jobs, model=model, nonlatin_model=nonlatin_model)
+        seen.update(device=device, jobs=jobs, model=model, nonlatin_routes=nonlatin_routes)
         return _Rigged(_LocalModel(), jobs=jobs)
 
     monkeypatch.setattr(adapters_ml, "build_aligner", spy)
@@ -489,14 +490,15 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
         "device": "cpu",
         "jobs": 3,
         "model": adapters_ml.default_align_model("cpu"),
-        # W8 stage 2: a non-Latin language keeps whisperx's per-language table unless `mms-roman` is on,
-        # those weights being CC-BY-NC (docs/arch/04-alignment.md §9.1).
-        "nonlatin_model": None,
+        # W10: the per-language stage-2 table, resolved at the composition root. zh and ko route to
+        # MMS_FA where this box can romanise them; ja stays on whisperx's own, MMS losing it by 11 points
+        # (docs/arch/04-alignment.md §9.2).
+        "nonlatin_routes": entry.nonlatin_routes_for(Config(concurrency=3)),
     }, "the host must hand the factory its own concurrency and its own bundle"
     entry.build_adapters(Config(align_model="HUBERT_ASR_XLARGE"), device="cpu")
     assert seen["model"] == "HUBERT_ASR_XLARGE", "and an operator's name reaches it unchanged"
-    entry.build_adapters(Config(align_experiments=frozenset({"mms-roman"})), device="cpu")
-    assert seen["nonlatin_model"] == adapters_ml.MMS_ALIGN_MODEL, "and the arm's bundle reaches it too"
+    entry.build_adapters(Config(align_experiments=frozenset({units.UNROUTED})), device="cpu")
+    assert seen["nonlatin_routes"] == {}, "and the control that stands the table down reaches it too"
     built = adapters.aligner
     assert isinstance(built, ml.WhisperXAligner)
     assert built._matrices == ml._emission_cache_size(3), "and the LRU is sized from it"

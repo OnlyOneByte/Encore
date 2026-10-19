@@ -48,6 +48,7 @@ def test_every_non_latin_language_the_router_can_name_has_a_backend() -> None:
 def test_a_latin_language_gets_no_romaniser_at_all() -> None:
     for code in sorted(language.LATIN_LANGUAGES):
         assert romanize.build_romanizer(code) is None, code
+    assert romanize.build_romanizer("en", language.LATIN) is None, "a Latin script routes nothing either"
 
 
 def test_an_unknown_language_code_is_not_an_error() -> None:
@@ -101,6 +102,41 @@ def test_a_backend_that_raises_costs_that_line_its_romanisation_and_nothing_else
         raise RuntimeError(f"no dictionary for {text!r}")
 
     assert romanize.romanization_of(LINES["zh"], explode) is None
+
+
+def test_a_script_no_language_can_be_named_for_is_routed_by_the_SCRIPT(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review r2-correctness-2: `language.detect` answers `en` for Thai, Bengali, Armenian and ten other
+    scripts `SCRIPT_LANGUAGES` cannot name — a FALLBACK, not a script decision — and `en` has no backend, so
+    those lines reached the TV unreadable though uroman's universal tables read them. The router is the
+    text's own script where its language has no backend (docs/arch/04-alignment.md §11.2).
+    """
+    asked: list[str | None] = []
+
+    def built(code: str | None) -> romanize.Romanizer:
+        asked.append(code)
+        return lambda text: f"u:{text}"
+
+    monkeypatch.setattr(romanize, "_uroman", built)
+    romanize.build_romanizer.cache_clear()
+    try:
+        assert romanize.build_romanizer("en", "Thai") is not None
+        assert asked == [None], "uroman's UNIVERSAL tables: no language code to pass, and none invented"
+        assert romanize.build_romanizer("en") is None, "no script, no routing: the pre-W8 answer"
+    finally:
+        romanize.build_romanizer.cache_clear()
+
+
+def test_a_script_routed_romanisation_reads_the_line_the_language_router_could_not() -> None:
+    """The same path through the REAL backend, which is what makes the routing worth having: a Thai line has
+    no `SCRIPT_LANGUAGES` entry, so before this it got no second script at all."""
+    if find_spec("uroman") is None:
+        pytest.skip("uroman is not installed: the `romanize` extra is optional by design")
+    thai = "กขคงจ"
+    assert language.detect([thai]).language == language.ENGLISH, "the fallback the router had to work around"
+    said = romanize.romanization_of(thai, romanize.build_romanizer("en", language.nonlatin_script([thai])))
+    assert said is not None and said.isascii() and said.strip(), said
 
 
 def test_the_factory_builds_each_language_once() -> None:

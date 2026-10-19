@@ -65,7 +65,7 @@ def quantile(values: Sequence[float], q: float) -> float | None:
 
 
 def floors(shipped: float) -> dict[str, Callable[[Sequence[float]], float]]:
-    """Every candidate floor as `gap levels -> floor`. `shipped` is `align_steps._NEVER_SUNG_ENV`, which is
+    """Every candidate floor as `gap levels -> floor`. `shipped` is `align_unsung._NEVER_SUNG_ENV`, which is
     both a swept value and the cap on the relative rules."""
 
     def absolute(level: float) -> Callable[[Sequence[float]], float]:
@@ -104,10 +104,10 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     from encore_worker.domain.audio import activity  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import Generated, generate  # noqa: PLC0415
     from encore_worker.host.config import Config  # noqa: PLC0415
-    from encore_worker.steps import align_steps  # noqa: PLC0415
+    from encore_worker.steps import align_unsung  # noqa: PLC0415
 
-    shipped = align_steps._NEVER_SUNG_ENV
-    score_gap, rate_max = align_steps._NEVER_SUNG_SCORE_GAP, align_steps._NEVER_SUNG_RATE
+    shipped = align_unsung._NEVER_SUNG_ENV
+    score_gap, rate_max = align_unsung._NEVER_SUNG_SCORE_GAP, align_unsung._NEVER_SUNG_RATE
     every = floors(shipped)
     root = lib.bench_root()
     corpus = lib.discover(root)
@@ -136,7 +136,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
         duration = sf.info(str(target)).frames / sf.info(str(target)).samplerate
 
         def level(start: float, end: float, env: Any = env) -> float:
-            """`align_steps`' own read: the envelope's mean over the span, at least one frame wide."""
+            """`align_unsung`' own read: the envelope's mean over the span, at least one frame wide."""
             first = int(start / activity.HOP_SEC)
             last = max(int(end / activity.HOP_SEC), first + 1)
             window = env[max(0, first) : min(last, len(env))]
@@ -371,9 +371,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
 
-        from encore_worker.steps import align_steps  # noqa: PLC0415
+        from encore_worker.steps import align_unsung  # noqa: PLC0415
 
-        shipped = align_steps._NEVER_SUNG_ENV
+        shipped = align_unsung._NEVER_SUNG_ENV
         target = str(args.target)
         rows = measure(args)
         if args.out:

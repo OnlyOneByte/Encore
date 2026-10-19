@@ -329,9 +329,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = ap.parse_args(argv)
     written = {FIXTURE: dump(build()), CJK_FIXTURE: cjk_ranges()}
     if args.check:
-        stale = [path for path, text in written.items() if path.read_text(encoding="utf-8") != text]
+        # `is_file()` FIRST: an ungenerated fixture is the state `--check` exists to report, and reading it
+        # for the comparison raised `FileNotFoundError` instead of saying so (review r2-correctness-7).
+        stale = [
+            path
+            for path, text in written.items()
+            if not path.is_file() or path.read_text(encoding="utf-8") != text
+        ]
         for path in written:
-            print(f"{path}: {'STALE — re-run without --check' if path in stale else 'up to date'}")
+            missing = not path.is_file()
+            state = "up to date" if path not in stale else "MISSING" if missing else "STALE"
+            print(f"{path}: {state}{'' if path not in stale else ' — re-run without --check'}")
         return 1 if stale else 0
     for path, text in written.items():
         path.write_text(text, encoding="utf-8")

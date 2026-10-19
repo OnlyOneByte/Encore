@@ -353,7 +353,7 @@ def test_sheet_spans_cap_an_end_that_is_only_the_next_lines_start() -> None:
     """An LRC has onsets, not ends: `parse_lrc` ends each line at the next stamp, so its spans tile the
     song and the envelope degenerates to one block any text matches (measured: 31 of 320 bench wrong texts
     passed in that shape uncapped). Such an end is capped; a caption's own end is kept."""
-    from encore_worker.steps.align_steps import _SHEET_SPAN_CAP_SEC, _sheet_spans
+    from encore_worker.steps.align_lines import _SHEET_SPAN_CAP_SEC, _sheet_spans
 
     lrc: list[Segment] = [
         {"text": "a", "start": 1.0, "end": 20.0},
@@ -374,7 +374,7 @@ def test_a_cue_whose_end_is_not_after_its_start_wrote_no_end_at_all() -> None:
     The WINDOWS are unchanged: such a cue keeps its own zero length, as `claimmap.ClaimMap.windows` preserves
     it; only the claim to have WRITTEN an end is withdrawn.
     """
-    from encore_worker.steps.align_steps import _CLAIM_DEFAULT_END_SEC, _claims_as_served
+    from encore_worker.steps.align_claims import _CLAIM_DEFAULT_END_SEC, _claims_as_served
 
     served = _claims_as_served(
         [
@@ -405,7 +405,7 @@ def test_the_rungs_clock_abstains_rather_than_voting_no(monkeypatch: pytest.Monk
     from encore_worker.domain.lyrics import claimmap
     from encore_worker.domain.lyrics import reconcile as rc
     from encore_worker.domain.lyrics.generate import Generated, Line
-    from encore_worker.steps.align_steps import _line_sync_clock
+    from encore_worker.steps.align_lines import _line_sync_clock
 
     def decoded(starts: Sequence[float]) -> Generated:
         return Generated(
@@ -466,7 +466,7 @@ def test_the_rungs_gate_and_its_clock_read_a_decode_at_one_bar() -> None:
     from encore_worker.domain.lyrics import claimmap
     from encore_worker.domain.lyrics import reconcile as rc
     from encore_worker.domain.lyrics.generate import Generated, Line
-    from encore_worker.steps.align_steps import _agreement_of, _enough_decoded, _line_sync_clock
+    from encore_worker.steps.align_lines import _agreement_of, _enough_decoded, _line_sync_clock
 
     assert claimmap.MIN_PAIRS > rc.MIN_PAIRS, "the gap this test exists for"
     fit = ShiftFit(seconds=-2.0, correlation=0.8)
@@ -507,7 +507,7 @@ def test_a_line_document_never_publishes_a_backwards_claim() -> None:
     mutated (a `TextRef` is checkpointed and replayed), an untimed line passes through untouched, and a held
     line keeps BOTH edges in order — its end PAST its predecessor's, not nested inside it and not equal to it.
     Idempotent, so `_line_doc`'s own guarantee is not a second rule (Tom_Orlando jit: 1 of 72 held)."""
-    from encore_worker.steps.align_steps import _in_claim_order, _line_doc
+    from encore_worker.steps.align_lines import _in_claim_order, _line_doc
 
     sheet: list[Segment] = [
         {"text": "a", "start": 5.0, "end": 7.0},
@@ -536,7 +536,8 @@ def test_a_held_claim_is_not_nested_inside_the_line_before_it() -> None:
     fixture — b's own end (13.8) is already below a's (14.5), so b came back byte-identical to a — hence
     the stretch of `_REPAIRED_MIN_SEC` past the floor, 14.7 here. The invariant is `<=`, not `<`, because
     the equal-span case is the one that shipped."""
-    from encore_worker.steps.align_steps import _REPAIRED_MIN_SEC, _in_claim_order
+    from encore_worker.steps.align_geometry import _REPAIRED_MIN_SEC
+    from encore_worker.steps.align_lines import _in_claim_order
 
     sheet: list[Segment] = [
         {"text": "a", "start": 12.0, "end": 14.5},
@@ -564,7 +565,7 @@ def test_a_held_claims_stretch_stops_at_the_next_lines_stamp() -> None:
 
     Here a ends at 14.5 and c is stamped 0.05 s later, so b's stretch is cut from 14.7 to 14.55; in the second
     sheet c is stamped at a's own end, so there is no room and b comes back at 14.5."""
-    from encore_worker.steps.align_steps import _in_claim_order
+    from encore_worker.steps.align_lines import _in_claim_order
 
     room: list[Segment] = [
         {"text": "a", "start": 12.0, "end": 14.5},
@@ -587,7 +588,7 @@ def test_mapping_a_reversed_caption_cue_holds_its_end_at_its_start() -> None:
     next sorted stamp and cannot. Without the hold such a cue publishes 18.0 -> 16.5 s, a span running
     backwards. The well-formed cue beside it is mapped end and all, so real spans are not flattened."""
     from encore_worker.domain.lyrics import claimmap as cm
-    from encore_worker.steps.align_steps import _mapped
+    from encore_worker.steps.align_lines import _mapped
 
     clock = cm.ClaimMap(pieces=(cm.Piece(from_sec=0.0, offset_sec=-2.0, scale=1.0),), applied=True)
     sheet: list[Segment] = [
@@ -612,7 +613,7 @@ def test_one_late_stamp_does_not_drag_the_lines_after_it() -> None:
     start, which is what tells a stray stamp from a run.
 
     The trail says which happened, because "found clean" and "could not be normalised" are different facts."""
-    from encore_worker.steps.align_steps import _in_claim_order
+    from encore_worker.steps.align_lines import _in_claim_order
 
     starts = [10.0, 60.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 90.0, 95.0]
     sheet: list[Segment] = [
@@ -634,7 +635,7 @@ def test_a_drag_inside_the_held_share_is_still_refused_by_the_recovery_test() ->
     can refuse them: line 5 reads 41.0 for 30.0, lines 6 and 7 are then backwards and neither recovers
     above the last kept start, so the sheet is left as it came and `decide` sees the defect. Held, both
     would sit at 41.0 — two correctly-stamped lines moved, `out_of_order` 0, the sheet published clean."""
-    from encore_worker.steps.align_steps import _MAX_HELD_SHARE, _in_claim_order
+    from encore_worker.steps.align_lines import _MAX_HELD_SHARE, _in_claim_order
 
     starts = [10.0 + 4.0 * i for i in range(40)]
     starts[5] = 41.0
@@ -654,7 +655,7 @@ def test_too_many_strays_leave_the_sheet_alone() -> None:
     and normalising that quietly would hide the one defect `policy.decide` drops a text for. Measured cost of
     the cap: none. Over the 1056 committed gate cases the largest `held` is ONE (Tom_Orlando and
     never-be-alone under `jit`), so nothing in the corpus comes near it."""
-    from encore_worker.steps import align_steps as st
+    from encore_worker.steps import align_lines as st
 
     #: Alternating strays: each is isolated (the sheet recovers above the last kept start every time), so only
     #: the cap can refuse them.
@@ -678,7 +679,7 @@ def test_the_sheet_gate_does_not_trust_zero_lag() -> None:
     """Tier 2 of the envelope gate (weak r at zero lag) is evidence for a DECODE measured on this audio;
     a broad sheet envelope best-fits near zero lag whatever the text, so the sheet gate drops it."""
     from encore_worker.domain.audio.activity import ShiftFit
-    from encore_worker.steps.align_steps import _envelope_passes, _sheet_passes
+    from encore_worker.steps.align_lines import _envelope_passes, _sheet_passes
 
     weak_in_place = ShiftFit(seconds=0.0, correlation=0.3)
     assert _envelope_passes(weak_in_place) and not _sheet_passes(weak_in_place)
@@ -944,7 +945,7 @@ async def test_the_rung_gates_on_the_matrixs_own_row_and_not_the_shipped_one(
         line_sync_min_agreement=0.5,
         margin_floor_nats=10.0,
     )
-    monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
+    monkeypatch.setitem(lexical.CALIBRATED, (other.model, other.language), other)
     stem, inner = hearing(tmp_path, monkeypatch)
     shipped = await steps(tmp_path, aligner=inner, reporter=Reporter()).time_text(
         line_sync(tmp_path, worded(SUNG_WORDS), stem)
@@ -987,7 +988,7 @@ async def test_the_rung_reads_the_agreement_share_off_the_matrixs_row_too(
         line_sync_min_agreement=0.1,
         margin_floor_nats=10.0,
     )
-    monkeypatch.setitem(lexical.CALIBRATED, lenient.model, lenient)
+    monkeypatch.setitem(lexical.CALIBRATED, (lenient.model, lenient.language), lenient)
     named = tmp_path / "named"
     named.mkdir()
     stem2, inner2 = hearing(named, monkeypatch, envelope=warped)
@@ -1020,7 +1021,7 @@ async def test_a_sheet_refused_for_its_words_never_votes_a_clock(
         line_sync_min_agreement=0.5,
         margin_floor_nats=10.0,
     )
-    monkeypatch.setitem(lexical.CALIBRATED, refusing.model, refusing)
+    monkeypatch.setitem(lexical.CALIBRATED, (refusing.model, refusing.language), refusing)
     stem, inner = hearing(tmp_path, monkeypatch)
     impl = steps(tmp_path, aligner=NamingAligner(inner, refusing.model), reporter=Reporter())
     words = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS), stem))

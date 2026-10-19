@@ -389,7 +389,7 @@ async def test_the_windowed_engine_routes_the_same_way(tmp_path: Path) -> None:
 def test_the_published_document_carries_the_texts_language_and_not_the_bundles() -> None:
     """Core reads `language` off the document (`contract/lyrics/lyrics.ts`), so a German sheet timed by the
     English bundle must still publish as German — which is also what W8's CJK line joining will read."""
-    from encore_worker.steps.align_steps import _line_doc, _word_doc
+    from encore_worker.steps.align_lines import _line_doc, _word_doc
 
     assert _word_doc(({"text": "a", "start": 0.0, "end": 1.0, "words": ()},), "de")["language"] == "de"
     assert _line_doc(({"text": "a", "start": 0.0, "end": 1.0},), "de")["language"] == "de"

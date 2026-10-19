@@ -1,9 +1,10 @@
 """Display-only romanisation: a second script BESIDE the original line, never instead of it.
 
-Routed by the TEXT's language, because the script has already decided that (`language.detect`) and a kanji
-has to be read as Japanese rather than as Chinese. Every backend is an OPTIONAL package, so a box without
-one publishes exactly the document it published before — the same degradation lingua's absence gets. A
-romanisation is never an alignment target and never replaces the original text: invariant XA-19,
+Routed by the TEXT's language where there is one to route by — a kanji has to be read as Japanese rather
+than as Chinese — and by its SCRIPT where `language.SCRIPT_LANGUAGES` can name no language for it, since
+`detect` answers `en` for those. Every backend is an OPTIONAL package, so a box without one publishes
+exactly the document it published before — the same degradation lingua's absence gets. A romanisation is
+never an alignment target and never replaces the original text: invariant XA-19,
 docs/arch/04-alignment.md §11.2.
 """
 
@@ -81,11 +82,14 @@ def romanization_of(text: str, romanizer: Romanizer | None) -> str | None:
 
 
 @cache
-def build_romanizer(language_code: str) -> Romanizer | None:
+def build_romanizer(language_code: str, script: str = "") -> Romanizer | None:
     """The backend for `language_code`, built ONCE per process, or None when its package is absent.
 
-    Built once because uroman spends ~2 s loading its tables and cutlet loads a MeCab dictionary, against
-    microseconds a line afterwards. Pure: the same code answers the same backend on a replay.
+    `script` is the TEXT's own dominant non-Latin script, and it decides for every script
+    `language.SCRIPT_LANGUAGES` cannot name a language for: `detect` answers `ENGLISH` for those, which has
+    no backend, so uroman's UNIVERSAL tables read them with no language code (docs/arch/04-alignment.md
+    §11.2). Built once because uroman spends ~2 s loading its tables and cutlet loads a MeCab dictionary,
+    against microseconds a line afterwards. Pure: the same code answers the same backend on a replay.
     """
     match BACKENDS.get(language_code):
         case "pypinyin":
@@ -95,7 +99,7 @@ def build_romanizer(language_code: str) -> Romanizer | None:
         case "uroman":
             return _uroman(UROMAN_CODES[language_code])
         case _:
-            return None
+            return _uroman(None) if script and script != language.LATIN else None
 
 
 @cache
@@ -141,8 +145,12 @@ def _cutlet() -> Romanizer | None:
     return romanize
 
 
-def _uroman(code: str) -> Romanizer | None:
-    """Every other non-Latin script, through uroman's universal tables. Apache-2.0."""
+def _uroman(code: str | None) -> Romanizer | None:
+    """Every other non-Latin script, through uroman's universal tables. Apache-2.0.
+
+    `code` selects one language's rules; None asks for the universal tables alone, which is the honest
+    answer for a script this module can name no language for.
+    """
     try:
         import uroman  # noqa: PLC0415
     except ImportError:
@@ -153,6 +161,6 @@ def _uroman(code: str) -> Romanizer | None:
         return None  # its data tables are a package resource; a broken install is not a failed publish
 
     def romanize(text: str) -> str:
-        return str(engine.romanize_string(text, lcode=code))
+        return str(engine.romanize_string(text) if code is None else engine.romanize_string(text, lcode=code))
 
     return romanize

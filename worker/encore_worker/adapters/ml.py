@@ -144,17 +144,22 @@ def _has_default_align_model(language: str) -> bool:
     return bool(language in DEFAULT_ALIGN_MODELS_TORCH or language in DEFAULT_ALIGN_MODELS_HF)
 
 
-def align_model_name(language: str, model: str | None = None, nonlatin: str | None = None) -> str:
+def align_model_name(
+    language: str, model: str | None = None, nonlatin: Mapping[str, str] | None = None
+) -> str:
     """The alignment bundle `_aligner` loads for `language` — the name, without loading anything.
 
     `model` wins for `ENGLISH` and for an UNDETECTED language, which `_bundle_of` loads it for too, and
-    `nonlatin` for a non-Latin one (the `mms-roman` arm); the rest comes off whisperx's tables, so this and
-    `_aligner` name the same thing, which is what a calibrated reader trusts (XA-06).
+    `nonlatin` is the PER-LANGUAGE stage-2 table (`units.ROUTED`, resolved at the composition root): a
+    language it names takes that bundle, a language it does not keeps whisperx's own, so no language borrows
+    a neighbour's route (XA-21). The rest comes off whisperx's tables, so this and `_aligner` name the same
+    thing, which is what a calibrated reader trusts (XA-06).
     """
     if model is not None and (language == ENGLISH or not language):
         return model
-    if nonlatin is not None and language and not _is_latin(language):
-        return nonlatin
+    routed = (nonlatin or {}).get(language)
+    if routed and language and not _is_latin(language):
+        return routed
     try:
         from whisperx.alignment import (  # noqa: PLC0415
             DEFAULT_ALIGN_MODELS_HF,
@@ -516,7 +521,7 @@ class WhisperXAligner:
         device: str = "cpu",
         jobs: int = 1,
         model: str | None = None,
-        nonlatin_model: str | None = None,
+        nonlatin_routes: Mapping[str, str] | None = None,
     ) -> None:
         self._device = device
         #: The emission LRU's bound, from the box's configured concurrency (`_emission_cache_size`).
@@ -525,16 +530,17 @@ class WhisperXAligner:
         #: constructor keeps: the per-device policy lives in `build_aligner`, so this class stays "load what
         #: you were told to load".
         self._model = model
-        #: The bundle that REPLACES whisperx's table for a non-Latin language (`MMS_ALIGN_MODEL` under the
-        #: `mms-roman` arm), or None for the table. Off by default: those weights are CC-BY-NC.
-        self._nonlatin_model = nonlatin_model
+        #: `{language: bundle}` where the per-language stage-2 table REPLACES whisperx's own (today MMS_FA
+        #: for the languages `units.ROUTED` sends there). Resolved at the composition root; a language
+        #: absent from it keeps whisperx's table rather than a neighbour's bundle (XA-21).
+        self._nonlatin_routes = dict(nonlatin_routes or {})
 
     def _bundle_of(self, language: str) -> str | None:
         """The bundle to LOAD for `language`: the configured English one (an UNDETECTED language too,
-        whisperx having no row for `""`), the arm's non-Latin one, else None = whisperx's own table."""
+        whisperx having no row for `""`), its routed non-Latin one, else None = whisperx's own table."""
         if language == ENGLISH or not language:
             return self._model
-        return self._nonlatin_model if not _is_latin(language) else None
+        return None if _is_latin(language) else self._nonlatin_routes.get(language)
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
         bundle = self._bundle_of(language)
@@ -568,7 +574,7 @@ class WhisperXAligner:
     def _bundle_name(self, language: str) -> str:
         """The bundle `_aligner` loads for `language`, for `Emissions.model` — resolved, never a placeholder:
         a calibrated reader trusts it and the cache keys on it (XA-06)."""
-        return align_model_name(language, self._model, self._nonlatin_model)
+        return align_model_name(language, self._model, self._nonlatin_routes)
 
     def emissions(self, audio_path: str, language: str) -> Emissions:
         """The full song's per-frame character log-probabilities, computed ONCE and reusable: THE EVIDENCE
@@ -719,11 +725,16 @@ def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | N
 
 
 def build_aligner(
-    *, device: str, jobs: int = 1, model: str | None = None, nonlatin_model: str | None = None
+    *,
+    device: str,
+    jobs: int = 1,
+    model: str | None = None,
+    nonlatin_routes: Mapping[str, str] | None = None,
 ) -> WhisperXAligner | None:
     """The aligner, or None on a box with no whisperx. `jobs` is `Config.concurrency` and sizes the emission
     LRU; `model` is the English bundle, already checked for a calibration row by `__main__.align_model_for`,
-    and unset takes THIS DEVICE's default. `nonlatin_model` is the `mms-roman` arm's, off by default."""
+    and unset takes THIS DEVICE's default. `nonlatin_routes` is the per-language stage-2 table as
+    `__main__.nonlatin_routes_for` resolved it (XA-21)."""
     from encore_worker.host.hardware import module_available
 
     if not module_available("whisperx"):
@@ -732,7 +743,7 @@ def build_aligner(
         device=device,
         jobs=jobs,
         model=model or default_align_model(device),
-        nonlatin_model=nonlatin_model,
+        nonlatin_routes=nonlatin_routes,
     )
 
 

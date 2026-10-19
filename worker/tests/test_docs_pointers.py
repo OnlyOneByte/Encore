@@ -241,7 +241,7 @@ def _every_line_of(source: str) -> str:
     """The WHOLE module, comment markers stripped and whitespace collapsed — prose and code alike.
 
     `_prose_of` is the wrong input for the anchor rule: a `§` inside a runtime STRING is CODE to `ast`, so the
-    five silence sentences of `align_steps._margin_why` shipped `review §3.7` on the job's audit trail with
+    five silence sentences of `align_notes._margin_why` shipped `review §3.7` on the job's audit trail with
     this invariant green (W7b review r2-correctness-3). The trail is read by an operator who has no document
     to resolve a citation against, which makes it the worst place of all for a bare section mark.
     """

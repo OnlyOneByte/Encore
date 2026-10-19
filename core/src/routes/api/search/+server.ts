@@ -115,7 +115,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		return media;
 	});
 
-	const { ready, processing, unacquired } = partitionSearch(q, [...app.mediaById.values()], materialized);
-	// `results` keeps its name for the unacquired group: it is what still needs work to become karaoke.
-	return json({ ready, processing, results: unacquired });
+	const { ready, processing, unacquired, clipped } = partitionSearch(q, [...app.mediaById.values()], materialized);
+	/* `results` keeps its name for the unacquired group: it is what still needs work to become karaoke.
+	   `clipped` is REPORTED rather than acted on here: the phone already reveals in pages and can say "there
+	   are more" honestly, and a route that silently truncated would be the same class of lie as the zero-state
+	   that used to claim a failed search found nothing. */
+	return json({ ready, processing, results: unacquired, clipped });
 };

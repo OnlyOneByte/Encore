@@ -1621,6 +1621,18 @@ the ball in the lowest-alpha slice. `band` must be the CLIPPED `clientHeight`. T
 must agree. An edge with NO context rows is not faded at all — with `linesBefore: 0` the current line IS
 the top row.
 
+**The viewport's height is `--lyrics-rows` x a ROW BUDGET, and a romanised row is taller than its
+leading.** The budget is `--lyrics-row-h` (the text line's leading, which `.row` reads too) plus
+`--lyrics-row-extra`, which is `0em` until `.lyrics` carries the `romanized` class — set when any line of
+the doc has a `romanization`, because EVERY row of the reel renders its own second script and not just the
+current one. The extra is computed from the three tokens `.romanization` itself renders at
+(`--romanization-size` x (`--romanization-leading` + `--romanization-gap`), 0.62em x (1.25 + 0.15) =
+0.868em), so the rendered height and the height the viewport reserves cannot drift. Without it a zh/ja/ko
+song on a worker with the `romanize` extra fitted 3.4 rows into a 5-row box with `overflow: hidden` and
+lost a context row per edge (worker review r2-correctness-1). The edge-fade cap stays off
+`--lyrics-row-h` alone — it is the ramp the fade was tuned to, and `measureReel` mirrors that exact number
+in px. `tests/unit/lib/tv/reel-offset.test.ts` recomputes the budget from the component's own declarations.
+
 The reel's `max-height` is EXACTLY `calc(100vh - var(--tv-chrome-h))` and must not subtract a further
 `--tv-safe-y`: the box is centred, so charging one against its height buys half of it as top inset while
 removing a full one of reel, and `--tv-chrome-h` already contains one. It does bite at the default five

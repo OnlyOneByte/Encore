@@ -2,14 +2,14 @@
 """The lexical-lift gates' calibration: every bench text's lift on each song's stem (or mix) matrix.
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lift_gate.py \\
-        [--target stem|mix] [--model NAME] [--songs a,b] [--out rows.json] [--from rows.json]
+        [--target stem|mix] [--model NAME] [--corpus C] [--language L] [--songs a,b] [--out|--from f.json]
 
-It fits `lexical.lift`'s per-bundle bands for both consumers — the LINE_SYNC rung and the global engine's
-word documents — over every right and wrong text the bench serves, through the SHIPPED helper and decoder off
-the bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, ready to paste into
-`lexical.CALIBRATED`, or a refusal to pick one where the populations overlap; `line_sync_min_agreement` comes
-from `line_gate.py` instead. What each block means and the mix reading's stated under-count are in
-docs/benchmarks/forced-alignment/README.md, "The lexical calibration rows, exhibit by exhibit".
+It fits `lexical.lift`'s bands for both consumers — the LINE_SYNC rung and the global engine's word
+documents — over every right and wrong text the bench serves, through the SHIPPED helper and decoder off the
+bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, or a refusal to pick one where the
+populations overlap; `line_sync_min_agreement` comes from `line_gate.py`. A row is one (bundle, LANGUAGE)
+pair's, so `--corpus nonlatin --language zh` fits that lane's row off its own songs. README, "The lexical
+calibration rows, exhibit by exhibit" and "W10: the first non-Latin calibration rows".
 """
 
 from __future__ import annotations
@@ -45,8 +45,11 @@ RIGHT_MODES = ("truth", "headers", "credit", "extraverse", "drop20", "drop50")
 #: <= 20% missing lines"): all but drop50, which is reported on its own.
 PROTECTED = ("truth", "headers", "credit", "extraverse", "drop20")
 WRONG_MODES = ("wrongtext", "wrongtext+ownclock")
+#: Modes that BORROW another song's lines, so a one-song pool cannot build them at all.
+DONOR_MODES = (*WRONG_MODES, "extraverse")
 THRESHOLDS = (0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.8)
-SPLITS = (lib.JAMENDO, lib.YOUTUBE)
+#: The English corpus's two truth kinds: the held-out fit trains on one and scores on the other.
+ENGLISH_SPLITS = (lib.JAMENDO, lib.YOUTUBE)
 TARGETS = ("stem", "mix")
 
 RESULTS = HERE.parent / "results"
@@ -54,6 +57,9 @@ RESULTS = HERE.parent / "results"
 W1_RUN_ALIGN = RESULTS / "w1-run_align.cases.jsonl"
 #: The W1 time_text bench: every case's outcome under the shipped (envelope-only) gate.
 W1_TIME_TEXT = (RESULTS / "w1-time_text.cases.jsonl", RESULTS / "w1-ownclock-time_text.cases.jsonl")
+
+#: The groups of the corpus under measurement, set by `main` (`splits_of`).
+SPLITS: tuple[str, ...] = ENGLISH_SPLITS
 
 Row = Mapping[str, Any]
 
@@ -115,6 +121,9 @@ def fitted_tau(rows: Sequence[Row], split: str) -> tuple[float, float, float] | 
 
 
 def held_out(rows: Sequence[Row]) -> list[str]:
+    if len(SPLITS) < 2:
+        # One pool cannot be held out of itself, and fitting on the songs scored reads as a validation.
+        return [f"{SPLITS[0]} is a single pool: no held-out split, so the pooled sweep below is the fit"]
     lines = []
     for fit in SPLITS:
         check = next(s for s in SPLITS if s != fit)
@@ -425,11 +434,13 @@ def fitted(rows: Sequence[Row], target: str) -> list[str]:
 
 def blind_timing(song: lib.Song, claims: lib.Claims, lines: Sequence[Any]) -> dict[str, Any]:
     """How well the truth text's BLIND decode (no claims, no repair) is timed: the fraction of its lines
-    starting within 1 s of the truth, and how many are over 2 s off. Each decoded line is paired back to its
-    truth line through the lines `clean_segments` kept (it drops a line whose text cleans to nothing)."""
-    from encore_worker.domain.lyrics.clean import clean_line  # noqa: PLC0415
+    starting within 1 s of the truth, and how many are over 2 s off. Each decoded line is paired back
+    through the lines `clean_segments` kept, read off `clean_indexed` — which drops a NON-LYRIC row as well
+    as an empty one, so a `clean_line` filter shifted the pairing (`line_gate.measure` carries the case)."""
+    from encore_worker.domain.lyrics.clean import clean_indexed  # noqa: PLC0415
 
-    kept = [line.truth for line in claims.lines if clean_line(line.text)]
+    at = [index for index, _segment in clean_indexed(claims.segments())]
+    kept = [claims.lines[index].truth for index in at]
     errors = [abs(ln.start - song.truth[kept[ln.index]].start) for ln in lines if kept[ln.index] is not None]
     return {
         "blind_pm1": round(sum(e <= 1.0 for e in errors) / len(errors), 4) if errors else None,
@@ -472,18 +483,32 @@ def _band_of(row: Row, target: str, bands: lexical.Bands) -> str:
     return lexical.band(float(row["lift"]), on_stem=target == "stem", bands=bands).value
 
 
-def model_name(named: str | None, device: str) -> str:
+def _same_language(song: lib.Song, corpus: str, language: str) -> bool:
+    """Is `song` one of `language`'s? Every English-corpus song is, the AMLL slugs DECLARE theirs."""
+    if corpus != lib.NONLATIN_CORPUS:
+        return True
+    return lib.nonlatin_language_of(song.slug) == language
+
+
+def splits_of(corpus: str) -> tuple[str, ...]:
+    """The groups a run over `corpus` can hold out across — one for the non-Latin corpus, so `held_out`
+    declines rather than fitting and scoring on the same songs."""
+    return ENGLISH_SPLITS if corpus != lib.NONLATIN_CORPUS else (lib.NONLATIN,)
+
+
+def model_name(named: str | None, device: str, language: str = "en", config: Any = None) -> str:
     """The bundle a row set was measured on, RESOLVED — never the placeholder "default" (W3 review r1).
 
-    `lexical.CALIBRATED` is keyed by bundle name, and the rows a row's thresholds were derived from have to be
-    matchable to it: a committed row set saying "default" cannot prove which model produced which thresholds,
-    and W4b's 6b adds a second model to the table. Resolved the way the harness resolves the emission cache's
-    key AND the way `ml.build_aligner` resolves an unset `ENCORE_ALIGN_MODEL` — so `--model` absent names the
-    SHIPPED default for `device` (`e2e.default_model`), which is what this run then loads.
+    `CALIBRATED` is keyed by (bundle, language), so a committed row set has to name the pair it can be
+    matched to. `--model` absent names what `language` actually loads, THE PER-LANGUAGE STAGE-2 TABLE
+    INCLUDED (`e2e.nonlatin_routes`, which is production's own rule).
     """
     import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
 
-    return named or e2e.default_model("en", device)
+    if named:
+        return named
+    routed = e2e.nonlatin_routes(config).get(language) if config is not None else None
+    return routed or e2e.default_model(language, device)
 
 
 def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
@@ -496,35 +521,66 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
 
     from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
     from encore_worker.domain.audio import activity  # noqa: PLC0415
+    from encore_worker.domain.lyrics import units  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import excluded_of, generate  # noqa: PLC0415
     from encore_worker.host.config import Config  # noqa: PLC0415
-    from encore_worker.steps import align_steps  # noqa: PLC0415
+    from encore_worker.steps import align_lines  # noqa: PLC0415
 
     root = lib.bench_root()
-    corpus = lib.discover(root)
+    corpus = lib.discover(root, corpus=args.corpus)
     config = Config.from_env()
+    #: THE UNIT RULE THE LANE SHIPS: with the whitespace rule a CJK line is one token, so a "shuffle" only
+    #: reorders lines — the degraded contrast W8 refused to fit off (`lexical.shuffles_of`).
+    rules = units.rules_for(args.language, config.align_experiments)
     store = lib.EmissionStore(
         root / "_emissions",
-        model=model_name(args.model, device),
+        model=model_name(args.model, device, args.language, config),
         emitter=e2e.emitter_fingerprint(config),
     )
-    aligner = e2e.BenchAligner(device=device, model=args.model, store=store)
+    aligner = e2e.BenchAligner(
+        device=device,
+        model=args.model,
+        nonlatin_routes=e2e.nonlatin_routes(config),
+        store=store,
+    )
     chosen = set(args.songs.split(",")) if args.songs else None
+    #: THE DONOR POOL IS THE RUN'S OWN LANGUAGE: a cross-script wrong text is refused by the script rule
+    #: (`lexical.may_time_words`) before a lift reads it, so it is another gate's work, not this one's.
+    donors = [song for song in corpus if _same_language(song, args.corpus, args.language)]
+    #: One wrong text counted twice is not two this gate separated, and a pool under `WRONG_K` repeats
+    #: donors. ONLY on the non-Latin corpus, where the pool is small: the English rows are recorded with
+    #: both wrong modes serving the same texts, and dedup would silently re-measure the procedure.
+    dedupe = args.corpus == lib.NONLATIN_CORPUS
+    if dedupe and len(donors) < 2:
+        print(
+            f"-- {args.language}: {len(donors)} song(s), so there is NO wrong-text population and no row "
+            "can be fitted: this language keeps the line-sync-only rule",
+            file=sys.stderr,
+        )
     rows: list[dict[str, Any]] = []
     began = time.monotonic()
     for song in corpus:
         if chosen is not None and song.slug not in chosen:
             continue
+        if not _same_language(song, args.corpus, args.language):
+            continue
         audio = song.vocals if args.target == "stem" else song.mix
-        emissions = aligner.emissions(str(audio), "en")
+        emissions = aligner.emissions(str(audio), args.language)
         info = sf.info(str(song.vocals))  # the duration the claims are built for, as e2e.py builds them
         duration = info.frames / info.samplerate
         signal = load_audio_mono_16k(str(audio)) if args.target == "mix" else None
+        seen_donors: set[str] = set()
         for mode in (*RIGHT_MODES, *WRONG_MODES):
+            if mode in DONOR_MODES and len(donors) < 2:
+                continue
             for variant in range(lib.variants_of(mode)):
-                claims = lib.build_claims(song, mode, corpus=corpus, duration_sec=duration, variant=variant)
+                claims = lib.build_claims(song, mode, corpus=donors, duration_sec=duration, variant=variant)
+                if mode in WRONG_MODES and dedupe:
+                    if claims.donor is None or claims.donor in seen_donors:
+                        continue
+                    seen_donors.add(str(claims.donor))
                 texts = [str(s.get("text") or "") for s in clean_segments(claims.segments())]
-                got = lexical.lift(texts, emissions, decoder=forced_align_decoder)
+                got = lexical.lift(texts, emissions, decoder=forced_align_decoder, units=rules)
                 row: dict[str, Any] = {
                     "song": song.slug,
                     "group": song.group,
@@ -536,10 +592,18 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                     # The matrix's OWN non-character columns, not a literal 0 (review M9, threaded in W4;
                     # widened to every special in W4b): a recalibration on another bundle must count the
                     # letters THAT bundle's decode publishes, and `excluded_of` is the filter it uses.
-                    "letters": len(lexical.letters_of(texts, emissions.dictionary, excluded_of(emissions))),
+                    "letters": len(
+                        lexical.letters_of(texts, emissions.dictionary, excluded_of(emissions), rules)
+                    ),
                 }
                 generated = (
-                    generate(texts, emissions, decoder=forced_align_decoder, language="en")
+                    generate(
+                        texts,
+                        emissions,
+                        decoder=forced_align_decoder,
+                        language=args.language,
+                        units=rules,
+                    )
                     if signal is not None or mode == "truth"
                     else None
                 )
@@ -547,7 +611,7 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                     fit = activity.fit_sheet_to_audio(
                         signal, 16000, [(ln.start, ln.end) for ln in generated.lines]
                     )
-                    row["env_pass"] = align_steps._envelope_passes(fit)
+                    row["env_pass"] = align_lines._envelope_passes(fit)
                     row["env_r"] = round(fit.correlation, 4)
                     row["env_lag"] = round(fit.seconds, 3)
                 if generated is not None and mode == "truth":
@@ -561,6 +625,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     ap.add_argument("--target", choices=TARGETS, default="stem", help="which matrix the texts are lifted on")
     ap.add_argument("--model", default=None, help="torchaudio bundle (default: this device's shipped one)")
+    ap.add_argument("--corpus", choices=lib.CORPORA, default=lib.ENGLISH_CORPUS, help="which song set")
+    ap.add_argument("--language", default="en", help="the language whose row is fitted, ONE a run")
     ap.add_argument("--out", default=None, help="write every text's lift here (JSON)")
     ap.add_argument("--from", dest="source", default=None, help="summarize a stored --out instead")
     ap.add_argument("--songs", default=None, help="comma-separated slugs (default: the whole corpus)")
@@ -569,37 +635,60 @@ def main(argv: Sequence[str] | None = None) -> int:
     warnings.filterwarnings("ignore", message=r".*forced_align has been deprecated.*")
     warnings.filterwarnings("ignore", message=r"(?s).*torchcodec is not installed correctly.*")
 
+    global SPLITS  # noqa: PLW0603 - which groups this corpus has is one fact every block reads
+    if args.corpus == lib.NONLATIN_CORPUS and args.language == "en" and not args.source:
+        print(
+            f"--corpus {lib.NONLATIN_CORPUS} needs --language (zh / ja / ko), ONE a run: left at 'en' these "
+            "songs would be lifted on the English bundle, whose row is not this lane's",
+            file=sys.stderr,
+        )
+        return 2
     if args.source:
         stored = json.loads(Path(args.source).read_text(encoding="utf-8"))
         rows: list[dict[str, Any]] = list(stored["rows"])
         target = str(stored["target"])
-        # THE ROW OF THE MODEL THESE ROWS MEASURED (W4b), not the shipped `en` one: `lexical.CALIBRATED` is
-        # keyed by bundle, and a model with no row is exactly what this script exists to fit — it then scores
-        # against the shipped row as a stated REFERENCE and prints the row it fits at the end.
+        # THE SETUP THESE ROWS WERE MEASURED ON, not this invocation's flags: scoring a stored set under
+        # another corpus or language reads one lane's rows as another's. The (model, language) pair with no
+        # row is what this script exists to fit; it scores against the shipped row as a stated REFERENCE.
+        args.corpus = str(stored.get("corpus", lib.ENGLISH_CORPUS))
+        args.language = str(stored.get("language", "en"))
         asked = str(stored["model"])
     else:
         import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
 
+        from encore_worker.host.config import Config  # noqa: PLC0415
+
         device = e2e.resolve_device(args.device)
-        asked = model_name(args.model, device)
+        asked = model_name(args.model, device, args.language, Config.from_env())
         rows = measure(args, device)
         target = args.target
         if args.out:
-            body = {"target": target, "model": asked, "rows": rows}
+            body = {
+                "target": target,
+                "model": asked,
+                "corpus": args.corpus,
+                "language": args.language,
+                "rows": rows,
+            }
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
-    bands = lexical.CALIBRATED.get(asked)
+    SPLITS = splits_of(args.corpus)
+    bands = lexical.CALIBRATED.get((asked, args.language))
     if bands is None:
         print(
-            f"-- {asked} has no calibration row: the band tables below are scored against "
-            f"{lexical.BANDS.model}'s as a REFERENCE. THE ROW THIS RUN FITS is printed at the end.",
+            f"-- {asked}/{args.language} has no calibration row: the band tables below are scored against "
+            f"{lexical.BANDS.model}/{lexical.BANDS.language}'s as a REFERENCE. THE ROW THIS RUN FITS is "
+            "printed at the end.",
             file=sys.stderr,
         )
         bands = lexical.BANDS
+    # The combination table reads the English bench's cases one by one, so on another song set every
+    # lookup would miss and the table would read all-zero.
+    english = args.corpus != lib.NONLATIN_CORPUS
     for line in summarize(
         rows,
         target=target,
-        cases=bench_cases(W1_TIME_TEXT),
-        synced=line_synced(W1_RUN_ALIGN),
+        cases=bench_cases(W1_TIME_TEXT) if english else [],
+        synced=line_synced(W1_RUN_ALIGN) if english else [],
         bands=bands,
     ):
         print(line)

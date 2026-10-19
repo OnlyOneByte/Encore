@@ -199,7 +199,19 @@ text = [
 # AN EXTRA AND NOT A BASE DEPENDENCY, and `domain/lyrics/romanize.py` degrades rather than raising without
 # it: `build_romanizer` answers None for every language, no line gains a `romanization` field, and every
 # recorded row reproduces — which is the configuration all of `docs/benchmarks/forced-alignment/results/`
-# was measured on.
+# was measured on, the `results/w8-lane-*-romanized-run_align` rows aside.
+#
+# IN THE DEFAULT INSTALL SINCE W10 even so: `dev.sh` and `docker/worker.Dockerfile` both sync it, because
+# the lane is otherwise readable in a test and not in a room, and because the per-language stage-2 table
+# needs the TARGET-side transliteration to route zh or ko to MMS_FA at all (docs/arch/04-alignment.md §9.2).
+# Still an extra, so `uv sync --only-group dev` installs none of it and the hermetic tests keep asserting
+# the absent behaviour.
+#
+# MMS_FA ITSELF IS NOT HERE AND IS NOT A PYTHON PACKAGE: `torchaudio.pipelines.MMS_FA` (torchaudio is
+# BSD-2-Clause) fetches Meta AI's forced-aligner weights into the user's own torch hub cache at runtime.
+# Those weights are CC-BY-**NC** 4.0 — usable here, Encore being non-commercial — and nothing is
+# redistributed by this tree, but the BY term still asks for attribution: _MMS: Scaling Speech Technology
+# to 1,000+ Languages_, Pratap et al., Meta AI (2023). Full note: docs/arch/04-alignment.md §14.2.
 romanize = [
     "pypinyin==0.55.0",
     "cutlet==0.5.2",
@@ -218,6 +230,9 @@ romanize = [
 #   * opencc-python-reimplemented 0.1.7 — Apache-2.0, PURE PYTHON (the `opencc` binding needs platform
 #     wheels), Traditional -> Simplified for the simplified-only zh-cn vocabulary. 0.015 s to build the
 #     converter and 20 us a conversion, and it is reached only for a character the vocabulary lacks.
+#
+# IN THE DEFAULT INSTALL SINCE W10, with `romanize`, for the same reason and under the same caveat: fugashi
+# with no dictionary falls back to the mora rule, so the two extras are synced together (see `romanize`).
 nonlatin = [
     "fugashi==1.5.2",
     "opencc-python-reimplemented==0.1.7",

@@ -38,6 +38,38 @@ specifically: a fake in a test file imports nothing from the ports module, it ju
 tensor, an open file or a model handle would make the step unserializable. Ports return paths, refs and
 records; bytes stay on disk.
 
+### 1.1 The align step is seven modules, not one
+
+`steps/align_steps.py` reached **3 696 lines** — the longest module in the repo, and the PLAN's
+longest-standing structural debt. W7b declined to split it and W7c recorded why: ~14 module-level privates
+were imported BY NAME from 4 test modules and 6 bench scripts, so the split was an API break that a
+no-behaviour-change wave could not take. W10 took it, as a **pure move**: `align_steps.py` keeps `Adapters`,
+`Reporter`, `AlignStepsImpl` and `now_ms` (**2 530** lines, the engines and the repair ladder still inside
+`_time_text_global`), and the module-level helpers went to six siblings by what they are —
+
+| module | what it owns |
+| ------ | ------------ |
+| `align_text.py` | what a provider's payload is timed TO, and the pinned re-time (`superseded_candidates`) |
+| `align_lines.py` | the LINE_SYNC lane: the two document shapes, the envelope gates, the agreement read, the claim clock's near-band, the claim-ordered sheet, the lexical lift |
+| `align_unsung.py` | the never-sung rule's three thresholds, the spare arm's speech-mass read, and the skip-arc arm's trellis read |
+| `align_claims.py` | the claim window's constants, claims as served, and the placement-ambiguity read |
+| `align_notes.py` | every sentence the audit trail prints |
+| `align_geometry.py` | the repair clamp's interval arithmetic |
+
+**The proof it was a pure move.** All **80** top-level definitions are AST-identical modulo docstrings
+(two docstrings lost a narrative paragraph each, both now in [`04-alignment.md`](04-alignment.md) §5.3 and
+§7); 78 of the 80 are identical including their docstrings. End to end, `_runs/w10-split-smoke`
+(`--level run_align --songs hello,Avercage --modes truth`) republishes both documents and both onset series
+digest-identical to `_runs/w8s0-english-smoke` — `hello` `4851b178858ce19f` / `75391ffb463bfe9d`,
+`Avercage_-_Embers` `005ddbf71545685a` / `1171b22563741216`.
+
+**Three names stay patched on `align_steps`, not on their owner.** `_NEVER_SUNG_RATE`, `_clamped` and
+`_skipped_lines` are read by `AlignStepsImpl` out of its OWN module globals, so
+`monkeypatch.setattr(align_steps, …)` is the only patch the step can see. `tests/test_align_modules.py`
+holds that: it scans the test tree for patch targets and fails if one of them is ALSO read inside a
+sibling, where the spy would never be called. It also holds the module set, that no sibling imports the
+step back, and that `align_steps.py` stays under 2 600 lines.
+
 ## 2. Separation
 
 ### 2.1 A registry, not an "any Hugging Face model" adapter
@@ -960,12 +992,19 @@ can read every one of them, so the two scopes cannot drift apart again silently.
 **THOSE TWO PAIRS ARE W7c's HISTORY, NOT THE LIVE MANIFEST'S** (review W9 r2-correctness-5). The
 pre-widening pair is the preserved `$ENCORE_BENCH_ROOT/_prose/numbers.three-roots.w7c-start.json`, which still
 names its own tree (`frozen_from: "shadow tag w7c-start (2026-10-02 15:58:51 -0500), all three roots,
-STRICT"`); the four-root file the arrow points at has since been superseded. The manifest the gate actually
-reads — `_prose/numbers.json`, re-frozen 2026-10-05 — holds **4 081** numbers and **2 894** strict-substantive
-rows over all four roots, and reports `frozen_from: "UNRECORDED — this manifest cannot say which tree it
-speaks for"`, because that freeze was run without `--frozen-from`. The 2 894 is the figure the paragraph below
-quotes, and `prose_scan.py` now REQUIRES `--frozen-from`, so no later freeze can leave its counts
-unattributable to a tree.
+STRICT"`); the four-root file the arrow points at has since been superseded twice.
+
+**THE LIVE MANIFEST IS W10's, AND IT NAMES ITS TREE.** The 2026-10-05 freeze — **4 081** numbers, **2 894**
+strict-substantive rows — was run before `prose_scan.py` required `--frozen-from`, so it reported
+`frozen_from: "UNRECORDED — this manifest cannot say which tree it speaks for"` and the gate's baseline spoke
+for a tree nobody had written down. W10 re-froze from the `w10-start` TREE, extracted from the shadow repo:
+`_prose/numbers.json` now holds **4 565** numbers and **3 196** strict-substantive rows over **175** files in
+all four roots and reports `frozen_from: "shadow tag w10-start (2026-10-16 20:23:10 -0500), all four roots,
+STRICT"`, verified **0 LOST** under Python 3.12 — 2 979 code, 206 doc, 11 fixture. (The one row that first
+came back `LOST` was real and pre-existing: `domain/lyrics/prior.py`'s `Huang 2022` citation had no durable
+home outside the gitignored review, and it is now in [`04-alignment.md`](04-alignment.md) §3.2 with both
+arxiv ids.) The superseded freeze is preserved beside it as `_prose/numbers.unrecorded-2026-10-05.json`, so
+the 4 081 / 2 894 pair this paragraph quotes is still readable where it was measured.
 
 **A FIXTURE'S OWN NUMBERS ARE TERMINAL, and the gate now says so (W9).** Widening the scan to `worker/tests`
 left a contradiction behind it. W7b ruled that a fixture's numbers belong BESIDE the fixture and kept the
@@ -982,8 +1021,9 @@ still not a home; a line like "line [4] is heard … by its own window and … b
 three lines of setup under it, is committed, and has no document it could move to that would not make the
 fixture unreadable. (The eleven magnitudes are deliberately NOT quoted here: a doc home would be the one
 thing the ruling says they do not need, and quoting them would make the count below stale on the day it
-shipped.) The reading on the shipped tree, Python 3.12: 2 894 strict-substantive rows, **0 LOST**, 11 of them
-terminal fixture prose. The `code` / `doc` split of the other 2 883 is NOT quoted, because one doc edit moves
+shipped.) The reading on the shipped tree, Python 3.12, against W10's `w10-start` manifest: **3 196**
+strict-substantive rows, **0 LOST**, 11 of them terminal fixture prose (W9 read 2 894 rows and the same 11
+against the 2026-10-05 manifest). The `code` / `doc` split of the rest is NOT quoted, because one doc edit moves
 a row across it and the gate checks magnitudes rather than homes, so it cannot catch the drift: it read
 2 695 / 188 when this paragraph was written and 2 696 / 187 two doc edits later (review W9 r1-tests-17). Run
 the gate for the live split. It is not a blanket pass, which was checked on a throwaway tree: deleting the

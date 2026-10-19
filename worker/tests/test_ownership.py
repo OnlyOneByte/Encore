@@ -229,29 +229,73 @@ def test_the_alignment_model_is_unset_unless_named() -> None:
     assert Config.from_env({"ENCORE_ALIGN_MODEL": " HUBERT_ASR_LARGE "}).align_model == "HUBERT_ASR_LARGE"
 
 
-#: The modules allowed to READ an arm name, and what each is. The step is where almost every branch lives;
-#: `units.rules_for` is W8's one reader of three arm names, and keeping them there rather than in the step is
-#: what stops the bench harness from spelling them a second time (docs/arch/04-alignment.md §9.1).
-ARM_READERS = ("steps/align_steps.py", "domain/lyrics/units.py", "__main__.py")
+#: The modules BESIDE the align step allowed to READ an arm name. `units` is the one reader of the four
+#: stage-2 names, and keeping them there rather than in the step is what stops the bench harness from
+#: spelling them a second time (docs/arch/04-alignment.md §9.1).
+ARM_READERS = ("domain/lyrics/units.py", "__main__.py")
+
+#: The align step itself, as ONE source: W10 moved its module-level helpers into siblings, so an arm named
+#: in one of them is still named by the step (docs/arch/05-worker.md §1.1).
+STEP_GLOB = "steps/align_*.py"
 
 
 def test_every_declared_arm_is_read_by_the_step() -> None:
     """The other half of the typo guard, and the one the config cannot catch: an arm the CONFIG accepts and
     NOTHING reads is measured as the default path under the arm's name, and a whole bench run says "no
     change" for the most honest-looking reason there is. Every name in `ALIGN_EXPERIMENTS` must therefore
-    appear as a literal in one of `ARM_READERS` (W2; source text, not an import, because reading them is a
-    branch deep inside `_time_text_global` that no unit call can enumerate)."""
+    appear as a literal in the step or in one of `ARM_READERS` (W2; source text, not an import, because
+    reading them is a branch deep inside `_time_text_global` that no unit call can enumerate)."""
     from pathlib import Path
 
     package = Path(__file__).resolve().parent.parent / "encore_worker"
-    source = "\n".join((package / name).read_text() for name in ARM_READERS)
+    step_files = sorted(package.glob(STEP_GLOB))
+    assert len(step_files) >= 7, f"the step's module set has shrunk to {[p.name for p in step_files]}"
+    step = "\n".join(path.read_text() for path in step_files)
+    source = "\n".join([step, *((package / name).read_text() for name in ARM_READERS)])
     unread = [arm for arm in ALIGN_EXPERIMENTS if f'"{arm}"' not in source]
     assert not unread, f"declared but never switched on anything: {', '.join(unread)}"
-    step = (package / "steps/align_steps.py").read_text()
     delegated = [arm for arm in ALIGN_EXPERIMENTS if f'"{arm}"' not in step]
-    assert delegated == ["nonlatin-units", "zh-simplify", "mms-roman"], (
+    assert delegated == ["nonlatin-units", "zh-simplify", "mms-roman", "nonlatin-unrouted"], (
         "an arm the step itself does not name must be read by a module this test lists, and the list of "
         f"such arms is part of the claim: {delegated}"
+    )
+
+
+#: The arms table's heading, how it spells a control arm, and the words `config.py` counts them in.
+_ARMS_TABLE = "## 14. The experiments knob"
+_CONTROL_CELL = "| **control**"
+_COUNTED = {"four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+def test_the_index_in_config_agrees_with_the_table_it_points_at() -> None:
+    """W10 FINAL REVIEW. `ALIGN_EXPERIMENTS`' own comment is the INDEX into the arms table — it says how many
+    of the names are controls over a default-ON feature — and it had drifted: it read "five" against six rows
+    and W10 bumped it to "six" against seven, so the number has never been the table's. A count nobody checks
+    is a count a reader trusts, and the arms are the one place this build says "default-off" out loud.
+
+    Held as a pair: every declared arm has a row, and the spelled-out number is the table's `**control**`
+    count (docs/arch/04-alignment.md §14).
+    """
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    table = (repo / "docs" / "arch" / "04-alignment.md").read_text(encoding="utf-8")
+    section = table.split(_ARMS_TABLE, 1)[1].split("### 14.1", 1)[0]
+    rows = [line for line in section.splitlines() if line.startswith("| `")]
+    named = {line.split("`")[1] for line in rows}
+    declared = set(ALIGN_EXPERIMENTS)
+    assert named == declared, (
+        f"the arms table and `ALIGN_EXPERIMENTS` disagree: only in the table {sorted(named - declared)}, "
+        f"only in the code {sorted(declared - named)}"
+    )
+
+    controls = [line.split("`")[1] for line in rows if _CONTROL_CELL in line]
+    config_doc = (repo / "worker" / "encore_worker" / "host" / "config.py").read_text(encoding="utf-8")
+    said = [word for word in _COUNTED if f"{word} of these" in config_doc]
+    assert len(said) == 1, f"config.py's arm comment names {said or 'no'} count of the controls"
+    assert _COUNTED[said[0]] == len(controls), (
+        f"config.py says {said[0]} of the arms are controls; the table marks {len(controls)}: "
+        f"{sorted(controls)}"
     )
 
 

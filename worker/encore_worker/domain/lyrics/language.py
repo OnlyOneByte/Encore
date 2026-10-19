@@ -148,6 +148,14 @@ def dominant_of(counts: Mapping[str, int]) -> tuple[str, float]:
     return best, counts[best] / total
 
 
+def nonlatin_script(texts: Sequence[str]) -> str:
+    """The NON-LATIN writing system `texts` is mostly written in, or `""` — a fact about the TEXT, asked
+    where `detect`'s LANGUAGE cannot carry it: a script `SCRIPT_LANGUAGES` cannot name falls back to
+    `ENGLISH`, whose bundle maps none of it (docs/arch/04-alignment.md §5.4, §11.2)."""
+    script, _share = dominant_of(script_histogram(texts))
+    return script if script and script != LATIN else ""
+
+
 def detect(
     texts: Sequence[str],
     *,
@@ -161,8 +169,7 @@ def detect(
     lingua-py over Latin script. THE ORDER, and the argument for each step, is docs/arch/04-alignment.md §9.
     DETERMINISTIC AND PURE, a replayed DBOS step having to reach the same bundle.
     """
-    # One histogram for the whole decision: `dominant_of` reads the counts already in hand rather than
-    # re-walking the sheet's characters through the UCD a second time.
+    # One histogram for the whole decision: `dominant_of` reads the counts already in hand.
     counts = script_histogram(texts)
     total = sum(counts.values())
     if not total:
@@ -264,10 +271,9 @@ def routing_note(language: str, bundle_language: str, *, on_mix: bool) -> str | 
 def fold_to_base(ch: str) -> str:
     """`ch` with its diacritics removed, for a vocabulary that lacks the composed letter.
 
-    NFKD and nothing else, the only fold with no judgement in it; an ATOMIC letter comes back unchanged and is
-    still dropped, mapping those being a measured change of its own. `ch` UNCHANGED when the fold yields
-    nothing usable.
-    """
+    NFKD and nothing else, the only fold with no judgement in it; an ATOMIC letter comes back unchanged and
+    is still dropped (mapping those is a measured change of its own). `ch` UNCHANGED when the fold yields
+    nothing usable."""
     folded = "".join(c for c in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(c))
     return folded or ch
 

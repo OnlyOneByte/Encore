@@ -34,7 +34,7 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 
 from encore_worker.domain.document import Segment  # noqa: E402
 from encore_worker.domain.lyrics.clean import clean_segments  # noqa: E402
-from encore_worker.steps import align_steps  # noqa: E402
+from encore_worker.steps import align_lines  # noqa: E402
 
 SHAPES = ("caption", "lrc")
 
@@ -60,13 +60,13 @@ def measure_case(signal: Any, served: Sequence[Segment]) -> dict[str, dict[str, 
 
     row: dict[str, dict[str, object]] = {}
     for shape, segments in (("caption", list(served)), ("lrc", lrc_shaped(served))):
-        fit = activity.fit_sheet_to_audio(signal, 16000, align_steps._sheet_spans(segments))
-        raw = activity.fit_sheet_to_audio(signal, 16000, align_steps._timed_spans(segments))
+        fit = activity.fit_sheet_to_audio(signal, 16000, align_lines._sheet_spans(segments))
+        raw = activity.fit_sheet_to_audio(signal, 16000, align_lines._timed_spans(segments))
         row[shape] = {
             "r": round(fit.correlation, 4),
             "lag": round(fit.seconds, 2),
-            "passes": align_steps._sheet_passes(fit),
-            "literal": align_steps._envelope_passes(raw),
+            "passes": align_lines._sheet_passes(fit),
+            "literal": align_lines._envelope_passes(raw),
         }
     return row
 

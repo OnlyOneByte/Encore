@@ -92,6 +92,13 @@ class Parsed:
     restamped_lines: int
 
     @property
+    def unknown_roles(self) -> tuple[str, ...]:
+        """Roles outside `DROPPED_ROLES` this file carries. `_syllables` drops a span with ANY role, so a
+        fourth name is timed truth leaving the set — a change to the SOURCE FORMAT rather than a per-song
+        fact, and `build` refuses the song instead of reporting it (review r2-correctness-6)."""
+        return tuple(sorted(role for role in self.dropped_roles if role not in DROPPED_ROLES))
+
+    @property
     def agents(self) -> tuple[str, ...]:
         return tuple(sorted({line.agent for line in self.lines if line.agent}))
 
@@ -149,9 +156,12 @@ def parse(xml: str) -> Parsed:
     for paragraph in root.iter():
         if paragraph.tag not in (f"{TTML}p", "p"):
             continue
+        # EVERY role, not only the three known ones: `_syllables` drops a span on `role is not None`, so a
+        # tally of the recognised names alone would lose timed truth with nothing in the report saying it
+        # (review r2-correctness-6).
         for span in paragraph.iter():
             role = span.get(f"{TTM}role")
-            if role in DROPPED_ROLES:
+            if role is not None:
                 dropped[role] = dropped.get(role, 0) + 1
         words: list[Word] = []
         for text, start, end, breaks in _syllables(paragraph):
@@ -210,9 +220,7 @@ def write(directory: pathlib.Path, parsed: Parsed, ttml: pathlib.Path) -> None:
                 "music_name": parsed.meta.get("musicName", ""),
                 "artists": parsed.meta.get("artists", ""),
                 "agents": list(parsed.agents),
-                "lines": [
-                    {"start": line.start, "end": line.end, "text": line.text} for line in parsed.lines
-                ],
+                "lines": [{"start": line.start, "end": line.end, "text": line.text} for line in parsed.lines],
             },
             ensure_ascii=False,
             indent=1,
@@ -225,9 +233,7 @@ def write(directory: pathlib.Path, parsed: Parsed, ttml: pathlib.Path) -> None:
             {
                 "source": f"{SOURCE}: {ttml.name}",
                 "words": [
-                    {"start": word.start, "end": word.end}
-                    for line in parsed.lines
-                    for word in line.words
+                    {"start": word.start, "end": word.end} for line in parsed.lines for word in line.words
                 ],
                 "tokens": [word.text for line in parsed.lines for word in line.words],
             },
@@ -260,14 +266,29 @@ def write(directory: pathlib.Path, parsed: Parsed, ttml: pathlib.Path) -> None:
 
 
 def build(root: pathlib.Path) -> int:
-    """Every `<root>/amll/<slug>/lyrics.ttml` converted; one line of report per song."""
+    """Every `<root>/amll/<slug>/lyrics.ttml` converted; one line of report per song.
+
+    Non-zero when a song was refused for a `ttm:role` this script does not know, that being a source-format
+    change a CI leg must see rather than a per-song reading (review r2-correctness-6).
+    """
     songs = sorted(path.parent for path in (root / lib.AMLL_DIR).glob("*/lyrics.ttml"))
     if not songs:
         print(f"no {root / lib.AMLL_DIR}/*/lyrics.ttml to read", file=sys.stderr)
         return 2
+    refused = 0
     for directory in songs:
         ttml = directory / "lyrics.ttml"
         parsed = parse(ttml.read_text(encoding="utf-8"))
+        unknown = parsed.unknown_roles
+        if unknown:
+            refused += 1
+            print(
+                f"{directory.name:<28} SKIP — ttm:role {', '.join(unknown)} is not one of "
+                f"{', '.join(DROPPED_ROLES)}, and every role's spans are dropped: this song's truth would "
+                f"be short by them. Read the TTML and extend DROPPED_ROLES.",
+                flush=True,
+            )
+            continue
         broken = out_of_order(parsed.lines)
         if broken:
             print(f"{directory.name:<28} SKIP — line starts run backwards at {broken}", flush=True)
@@ -282,8 +303,13 @@ def build(root: pathlib.Path) -> int:
             f"restamped={parsed.restamped_lines}",
             flush=True,
         )
-    print("next: separate vocals, then truth_displacement.py --songs amll --out <corpus-truth.json>")
-    return 0
+    # `--corpus nonlatin` is not optional: these songs are only discovered there (`e2e_lib.discover`), and
+    # without it the next step dies on "--songs matched nothing" (review r2-tests-18).
+    print(
+        "next: separate vocals, then "
+        "truth_displacement.py --corpus nonlatin --songs amll --out <corpus-truth.json>"
+    )
+    return 1 if refused else 0
 
 
 def main(argv: list[str] | None = None) -> int:

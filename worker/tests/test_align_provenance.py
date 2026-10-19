@@ -28,7 +28,8 @@ from encore_worker.domain.lyrics import claimmap
 from encore_worker.domain.lyrics.generate import ONSET_LEAD_SEC, generate
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import Config
-from encore_worker.steps.align_steps import _REOPEN_MAX_SEC, Adapters, AlignStepsImpl
+from encore_worker.steps.align_claims import _REOPEN_MAX_SEC
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import AudioRef, JobRef, TextRef, TimedDoc, TimeRequest
 from tests.ctc_fixture import Decode, Matrix, char_frames, ctc_viterbi, misheard, sung_matrix
 

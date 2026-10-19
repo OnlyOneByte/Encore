@@ -152,9 +152,9 @@ MAD 41-101 ms against 101-162 ms on the mix, and 100% of lines within ±1 s on a
 97.3%. It also reduces the inherent lag (+59 ms against +131 ms) and the gross-failure count at a 2 s
 offset (54/75 against 62/75).
 
-This **validates existing behaviour rather than asking for a change**: `align_steps._align_audio` already
-prefers `vocals_key` and treats the mix as a `Knob.ALIGN_ON_MIX` fallback. The number to take from it is
-that the fallback is a real quality step down, not an equivalent path.
+This **validates existing behaviour rather than asking for a change**: `records.AudioRef.align_target`
+already prefers the vocals stem and `policy.decide` treats the mix as a `Knob.ALIGN_ON_MIX` fallback. The
+number to take from it is that the fallback is a real quality step down, not an equivalent path.
 
 ### 5. An untimed sheet is not usable as word timing on this song
 
@@ -439,7 +439,7 @@ Three songs that still have gross lines and why:
 - **Gate the OR of blind and repaired fits.** The gate refuses only when both blind and repaired
   envelope fits fail, and passes on a high-correlation fit at any lag (the shape agrees; the lag is an
   offset, not wrong text). Its **three calibration points**, which are the three tiers of
-  `align_steps._envelope_passes` (design in `docs/arch/04-alignment.md` §5.2): **r ≥ 0.40**
+  `align_lines._envelope_passes` (design in `docs/arch/04-alignment.md` §5.2): **r ≥ 0.40**
   (`activity.MIN_CORRELATION`, the `usable` threshold) within **±0.5 s**; **r ≥ 0.25** with
   **|lag| ≤ 0.1 s**, the zero-lag null that only timings measured on this audio may be held to; and
   **r ≥ 0.60** at **any** lag, this bullet's offset case. `_sheet_passes` — the gate on a sheet's own
@@ -1119,7 +1119,7 @@ cannot place (hello, rap-god, bohemian-rhapsody off15 / off3: every line off), 2
 gross lines had they published), half a sheet missing (drop50: its decode strays into the gaps). The false
 ones: never-be-alone (9 modes, 0.37–0.49; its blind decode is poor) and drop50. Where the decode cannot be read
 (no emission matrix, a decode that raised, fewer than 3 lines paired, or — W3 review r2 —
-`align_steps._LINE_SYNC_MIN_DECODED_SHARE` of the sheet's claimed lines not decoded, since the share's
+`align_lines._LINE_SYNC_MIN_DECODED_SHARE` of the sheet's claimed lines not decoded, since the share's
 denominator is the decoded lines alone and a mixed-script sheet decodes only its Latin ones) the sheet gate
 decides as W1 shipped it, and the document goes out UNVOUCHED because nothing read its words. The envelope fit
 still places the lines. Cost: one `generate` decode beside the lift's four — and only AFTER the lexical
@@ -1388,7 +1388,7 @@ The LINE_SYNC rung publishes the SHEET's timings, and until this pass it placed 
 whenever `ShiftFit.usable` held (r ≥ 0.40) and by nothing else. That single rule paid twice: W3 measured 12
 right texts REFUSED at `run_align` whose lift was +0.46…+3.60 — the words were right and only the clock was
 wrong — and 23 published documents with NO line within ±500 ms of truth because the fit moved a sheet that was
-already right. Both are now one call: `align_steps._line_sync_clock` runs the same `claimmap.consensus` vote
+already right. Both are now one call: `align_lines._line_sync_clock` runs the same `claimmap.consensus` vote
 the global engine runs, over no-shift / the envelope lag the gate already measured / the rung's own blind
 decode median / a bounded Theil–Sen tempo, and `_placed_by` applies the winner. Two deliberate differences
 from the global call: candidates are scored in `_LINE_SYNC_NEAR_SEC` (1.0 s) rather than
@@ -2162,7 +2162,7 @@ shipped configurations (the run dirs keep the old names; a re-run under the ship
 
 And "terminal" understates it, which the bench cannot show because it runs one job per song: a refused text
 rides out on `AlignOutcome.refused`, and the completion frame WITHDRAWS an earlier job's stored candidate for
-those same words (`align_steps.superseded_candidates`, review W1 r2). So a mix refusal does not merely fail to
+those same words (`align_text.superseded_candidates`, review W1 r2). So a mix refusal does not merely fail to
 publish — it takes down whatever an earlier run of the same media had published for that text.
 
 ### The decision, and it is not the one W3 shipped — TAKEN in W4 review r1
@@ -2251,7 +2251,7 @@ There is deliberately **no second copy of the rung's lexical floor** — W3 revi
 W4b did not bring it back. `Emissions.model` names the bundle, `lexical.calibration(emissions)` answers with
 that model's row or with `None`, and `None` is never a substitute:
 
-* the lift is unmeasurable (`align_steps._measured_lift`), so the envelope gate keeps the verdict and
+* the lift is unmeasurable (`align_lines._measured_lift`), so the envelope gate keeps the verdict and
   `TimedDoc.vouched` is false — the shape W3 review r2 already built for a foreign matrix;
 * the rung's SHARE, by contrast, is still read — and this is the one asymmetry (W4b review r1 fixed the
   original, which stood both down). The share is a fraction of lines within a tolerance in SECONDS, not a
@@ -2313,7 +2313,7 @@ tfr-chosen's spoken credit line **0.0892**, while their songs' gap quantiles ord
 placed them 32.5 s and 54.3 s from the truth — so the rule's three signals are reading one fact (a line the
 decode could not place) rather than three independent witnesses, and the envelope mean over a span the decode
 chose says more about the decode than about the audio. The floor stays 0.10, the whole record is at
-`align_steps._NEVER_SUNG_ENV`, and one correction goes with it: `gates/w4.yaml` said the `m6-window-spare` arm
+`align_unsung._NEVER_SUNG_ENV`, and one correction goes with it: `gates/w4.yaml` said the `m6-window-spare` arm
 puts this line back "more than 2 s out", and its own recorded row (`_runs/w4r2-puremids-wspare`) puts it back
 at **−0.048 s** with 20/20 scored and gross unchanged. The arm's cost was measured before both the claim clock
 and this clock, so its default is an open corpus question and not a settled one.
@@ -2523,7 +2523,7 @@ songs. Rows: `results/w4b-lift-{stem,mix}-hubert-large.json` and `results/w4b-li
 - `domain/lyrics/ends.py`'s **θ = 0.1** reads the AUDIO's vocal envelope, not the emission scale, so a model
   swap does not move it. (Its known calibration axis is stem-vs-mix, which is why the post-pass is skipped on a
   mix target — see "Word ends, held through the singing".)
-- `align_steps._NEVER_SUNG_ENV` = 0.10 is the same kind of number (an envelope level), and W4b measured it
+- `align_unsung._NEVER_SUNG_ENV` = 0.10 is the same kind of number (an envelope level), and W4b measured it
   corpus-wide: no relative floor helps. What the model change does to it is not a threshold question at all —
   HuBERT-L simply stops the rule firing on Pure_Mids' real line, because that rule's other two signals are
   the DECODE's (see the probe below).
@@ -4910,7 +4910,7 @@ with a 0.5 s lead, choosing the sheet over the agreeing SDH track is worth **20.
 **0.8 pt** in `forced`.
 
 **And in `lines` there is already an audio-grounded score that costs no model pass.** The rung's own gate
-computes `activity.fit_sheet_to_audio` over each text's claimed spans (`align_steps._sheet_spans`) — an
+computes `activity.fit_sheet_to_audio` over each text's claimed spans (`align_lines._sheet_spans`) — an
 ENVELOPE correlation and lag, no emissions — and `sheet_gate.py` has its populations: caption-shaped truth
 spans pass 241/416 right texts at 0/320 wrong, median r 0.33 on the mix against the wrong texts' 0.17. Ranking
 the `lines` pool by that `r` (or simply by |lag|, which is exactly what an SDH lead IS) would be "prefer the
@@ -5341,7 +5341,7 @@ after two comments had just been written to cite it.
 
 **The review of those pointer ratchets found three of them weaker than they read, and all three are closed.**
 (1) The `§N` anchor rule scanned DOCSTRINGS AND COMMENTS only, so six `§` in runtime STRING literals — five
-silence sentences of `align_steps._margin_why` and one decline note — shipped `review §3.7` on the audit trail
+silence sentences of `align_notes._margin_why` and one decline note — shipped `review §3.7` on the audit trail
 with the rule green; it now scans the whole module text, with a self-test on a synthetic `{"why": "... §3.7"}`
 proving a code string is read (r2-correctness-3). (2) The `module`'s-NAME-section rule matched **zero**
 citations, so it asserted over an empty loop with no non-vacuity floor, and its resolver returned the FIRST
@@ -5934,7 +5934,7 @@ tokens reach the internal-hyphen path the ladder used to mangle.
 ### The envelope gate's three tiers, and the points behind them
 
 The gate is `r ≥ 0.40` within ±0.5 s **or** `r ≥ 0.25` with a lag inside ±0.1 s **or** `r ≥ 0.60` at any lag
-(`align_steps._envelope_passes`; the design is §5.2 of
+(`align_lines._envelope_passes`; the design is §5.2 of
 [`../../arch/04-alignment.md`](../../arch/04-alignment.md), which keeps this tier numbering).
 
 The SECOND tier exists because this caller's null hypothesis is not the LRC-shift one: timings measured **on
@@ -9132,7 +9132,9 @@ nonlatin`, `--modes truth`, one song a language, scored against the AMLL TTML's 
 | `amll-ko-gangnam-style` | `mms-roman` | 535/535 | 70.09 | 91.96 | **92.52** | 20 | 197.4 ms |
 
 `results/w8s12-*` (ten published rows, `_runs/w8s12-*`), each read by `gates/w8-units.yaml`, which passes
-**8/8 on every armed run and 5/8 — REJECT — on the whitespace baseline**, so the gate is not vacuous.
+**8/8 on every armed run and 5/8 — REJECT — on the whitespace baseline**, so the gate is not vacuous. Those
+are the 8 readings the file held on the day; r1-spec-8 grew it to 10, and the corpus cell below re-runs every
+arm rather than re-gating these rows.
 **§3.12's reject-if is cleared with room to spare**: it fails
 the stages if AMLL zh/ja syllable ±300 is below 70%, and the measured pair is **97.55 / 95.78** against a
 whitespace baseline of 16.80 / 11.54. THE SAMPLE IS ONE SONG A LANGUAGE — a signal, not a verdict; the
@@ -9203,11 +9205,17 @@ carries the index of the grapheme it came from and the published text is never r
 **THE LICENCE IS THE DECISION, AND IT IS THE OWNER'S.** MMS weights are **CC-BY-NC**: non-commercial use
 only. That is compatible with a local or personal room and incompatible with shipping it as anybody's
 default, so the arm exists, is measured, and is off. Nothing in this tree selects it without
-`ENCORE_ALIGN_EXPERIMENTS=mms-roman`, and `__main__.nonlatin_align_model_for` is the one function that can
-answer its name. Every other dependency these stages add is permissive: **fugashi 1.5.2** MIT and
-**opencc-python-reimplemented 0.1.7** Apache-2.0, in a new `nonlatin` extra that is absent by default
-(`units.rules` then answers the whitespace rule and `units.simplified` is the identity, which is the
-configuration every row under `results/` was measured on).
+`ENCORE_ALIGN_EXPERIMENTS=mms-roman`. Every other dependency these stages add is permissive:
+**fugashi 1.5.2** MIT and **opencc-python-reimplemented 0.1.7** Apache-2.0, in a new `nonlatin` extra that
+is absent by default (`units.rules` then answers the whitespace rule and `units.simplified` is the identity,
+which is the configuration every row under `results/` was measured on).
+
+> **SUPERSEDED on both counts by W10, 2026-10-19, and kept because the measurement above is unchanged.** The
+> owner cleared the CC-BY-NC weights on 2026-10-16 (Encore is non-commercial), so `mms-roman` DOES ship as a
+> default — for the languages the per-language table routes it to and no others, MMS still losing ja by 11
+> points: "W10: the per-language stage-2 table". The function that answers the bundle is now
+> `__main__.nonlatin_routes_for` (a table, not one name), and `romanize` + `nonlatin` are in the default
+> install.
 
 ### The unit rules, and their cost
 
@@ -9248,13 +9256,49 @@ exists so an unpairable span cannot quietly leave the denominator.
 The three stages above were built and measured a song at a time. This is the wave's bench cell: the whole
 7-song truth set at the rung a room would actually see, every default-off arm over every song of its
 language, and — first, because a capability wave that costs accuracy has failed — the English regression.
-`results/w8-*.json` (23 rows, each with its per-case digest), `gates/w8.yaml`, `gates/w8-lane.yaml`.
+`results/w8-*.json` (23 rows, each with its per-case digest), `gates/w8.yaml`, `gates/w8-lane.yaml`. The
+review's round-1 fixes then re-measured the 10 non-Latin `generate` cells and nothing else:
+`results/w8r1-*-generate.json`, read on `gates/w8-units.yaml`.
 
 **What the wave paid.** `adapters/ml.py`'s bytes are in the emission key, so the store was COLD: emitter
 `14c8c0a4bfba8627` → **`cca402ad70419f05`**. ONE HuBERT-Large pass covers the English half — 61 matrices
 computed in `_runs/w8-tt` (1727 s), after which `_runs/w8-ra` (1258 s) and `_runs/w8-lines` (1202 s) read
 the store warm at 60 and 32 disk hits and **0 computed**. The non-Latin cells carry their own matrices per
 bundle and per arm, 15 to 25 s a song. One tree throughout: code `0125c5457b5c8bf8`.
+
+**What round 1 paid, and what it did NOT have to.** Code `0125c5457b5c8bf8` → **`30df17ce9f70433f`** and the
+default emitter `cca402ad70419f05` → **`937ff602c752457e`** (`domain/lyrics/generate.py` entered the key
+with `adapters/ml.py`), so the store is cold for the next runner and `--resume` into a W8 run is refused.
+The bill was paid only where a reading could move or was unanswerable: **10 cells, 25 cases, 25 matrices,
+276 s** — the 9 `generate` cells that carry no `syllable_unpublished` (23 cases, 245.5 s) plus the one
+`mms-roman` cell r1 actually moved (2 cases, 30.0 s). **No English or Jamendo row was re-run and none is owed**: Latin languages take
+`units.plain()`, so `generate`'s new attribution test is always true and the fragments are `split(...)` as
+before; `align_model_name`'s new clause fires only for `language == ""`; `OWN_STAR_NAME` touches only a
+vocabulary that ships a `*` column, which among the bundles in play is MMS_FA alone and no recorded row
+pairs `mms-roman` with `star`; and the windowed PIN branch needs a pinned job on an aligner with no
+`emissions`, which no bench row is.
+
+**What review round 2 changed, and why NO recorded row moves.** Nineteen findings, and the one that
+changed a shipped behaviour is the lane's own rule: a script `language.SCRIPT_LANGUAGES` can name no
+language for (Thai, Bengali, Tamil, Armenian, Khmer — thirteen of them) reaches `detect` as `en`, which IS a
+`lexical.CALIBRATED` bundle, so `may_time_words` found a row and the lane's rule never fired — a 6-line
+Thai sheet with one English phrase per line published WORD timings, `high` and VOUCHED, off a lift measured
+over 93 Latin letters against 244 Thai ones. Both engines now read `language.nonlatin_script(texts)` beside
+the row (docs/arch/04-alignment.md §5.4). **No row under `results/` is in that shape**: every English row is
+Latin-dominant, the ten non-Latin `generate` cells carry their own per-language bundle (uncalibrated, so
+they already declined) and the three `w8-lane-*-ungated-run_align` rows set `h3-ungated-words`, which
+bypasses this gate by construction. The other threading fixes are inert on the default path by
+construction — `units.plain()` IS `str.split` with no spelling and no fold, so `parts.split` and the
+LINE_SYNC rung's decode check compute what they computed before, and all 13 recorded arm rows are
+`--level generate`, which runs neither. The windowed engine's pin now grades every published LINE `low`
+(it graded only the record), and no bench row pins a job on an aligner without `emissions`.
+**What it DOES cost the next runner: the emission store is COLD.** `domain/lyrics/language.py` is inside
+`WhisperXAligner.emissions`' import closure, so the default emitter moves
+`937ff602c752457e` → **`870238b803f071ae`** and code `30df17ce9f70433f` → **`113c7ab079fc8c73`**; the
+matrices themselves are unchanged in content (nothing in the emission pass moved), and a `--resume` into a
+round-1 directory is refused as the code change it is. Summaries also gain `meta["units"]` — the resolved
+`units.Rules.name`, since `align_config` records the arm NAMES and `mms-roman` switches the bundle whether
+or not its romanised targets had a backend.
 
 ### English does not move, and the proof is byte identity rather than a tolerance
 
@@ -9329,37 +9373,66 @@ one language a run), scored against the AMLL TTML's own syllable spans.
 found this section claiming the opposite. `aligned/truth` is the coverage those columns are conditioned on,
 and the reading on the TRUTH's denominator is `syllable_pco300`, which is what `gates/w8-units.yaml` now
 evaluates §3.12's reject-if on: zh 25.35 / **95.55** / 95.55 / **97.03** (whitespace / `nonlatin-units` /
-`+zh-simplify` / `mms-roman`), ja 10.72 / **81.95** / **73.78**, ko 51.78 / **72.52** / **92.52**. Only the
+`+zh-simplify` / `mms-roman`), ja 10.72 / **81.95** / **70.98**, ko 51.78 / **72.52** / **92.52**. Only the
 rows that lose spans move — ko `nonlatin-units` by 8.15 pt (80.67 → 72.52 over 481 aligned of 535) and ja
 `nonlatin-units` by 0.40 — and **no verdict in this section turns on the difference**: `nonlatin-units`
 still clears the 70 % floor on both named languages and `mms-roman` still reads below it on ja
-(73.78 against 81.95, −8.17 pt).
+(70.98 against 81.95, −10.97 pt).
 
-| language | songs | arm | aligned/truth | ±100 | ±250 | **±300** | gross | AAE | `gates/w8-units.yaml` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| zh | 4 | — (whitespace) | 1416/1416 | 10.59 | 22.18 | **25.35** | 253 | 1112.5 ms | 5/8 REJECT |
-| zh | 4 | `nonlatin-units` | 1400/1416 | 58.50 | 94.21 | **96.64** | 9 | 124.4 ms | **8/8** |
-| zh | 4 | `nonlatin-units,zh-simplify` | 1400/1416 | 58.50 | 94.21 | **96.64** | 9 | 124.4 ms | **8/8** |
-| zh | 4 | `mms-roman` | 1416/1416 | 55.16 | 94.70 | **97.03** | 14 | 145.2 ms | **8/8** |
-| ja | 2 | — (whitespace) | 1213/1213 | 2.64 | 8.66 | **10.72** | 503 | 1980.0 ms | 5/8 REJECT |
-| ja | 2 | `nonlatin-units` | 1207/1213 | 49.88 | 79.20 | **82.35** | 9 | 192.0 ms | **8/8** |
-| ja | 2 | `mms-roman` | 1208/1213 | 42.80 | 68.38 | **74.09** | 50 | 786.6 ms | 7/8 REJECT |
-| ko | 1 | — (whitespace) | 481/535 | 36.38 | 44.70 | **57.59** | 14 | 431.9 ms | 6/8 REJECT |
-| ko | 1 | `nonlatin-units` | 481/535 | 71.10 | 79.42 | **80.67** | 18 | 341.6 ms | **8/8** |
-| ko | 1 | `mms-roman` | 535/535 | 70.09 | 91.96 | **92.52** | 20 | 197.4 ms | **8/8** |
+| language | songs | arm | aligned/truth | unpub | ±100 | ±250 | **±300** | pco300 | gross | AAE | `gates/w8-units.yaml` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| zh | 4 | — (whitespace) | 1416/1416 | 0 | 10.59 | 22.18 | **25.35** | 25.35 | 253 | 1112.5 ms | 7/10 REJECT |
+| zh | 4 | `nonlatin-units` | 1400/1416 | 0 | 58.50 | 94.21 | **96.64** | 95.55 | 9 | 124.4 ms | **10/10** |
+| zh | 4 | `nonlatin-units,zh-simplify` | 1400/1416 | 0 | 58.50 | 94.21 | **96.64** | 95.55 | 9 | 124.4 ms | **10/10** |
+| zh | 4 | `mms-roman` | 1416/1416 | 0 | 55.16 | 94.70 | **97.03** | 97.03 | 14 | 145.2 ms | **10/10** |
+| ja | 2 | — (whitespace) | 1213/1213 | 0 | 2.64 | 8.66 | **10.72** | 10.72 | 503 | 1980.0 ms | 7/10 REJECT |
+| ja | 2 | `nonlatin-units` | 1207/1213 | 0 | 49.88 | 79.20 | **82.35** | 81.95 | 9 | 192.0 ms | **10/10** |
+| ja | 2 | `mms-roman` | 1208/1213 | 0 | 40.56 | 66.23 | **71.27** | 70.98 | 49 | 766.0 ms | **9/10** REJECT |
+| ko | 1 | — (whitespace) | 481/535 | **24** | 36.38 | 44.70 | **57.59** | 51.78 | 14 | 431.9 ms | 8/10 REJECT |
+| ko | 1 | `nonlatin-units` | 481/535 | **24** | 71.10 | 79.42 | **80.67** | 72.52 | 18 | 341.6 ms | **10/10** |
+| ko | 1 | `mms-roman` | 535/535 | 0 | 70.09 | 91.96 | **92.52** | 92.52 | 20 | 197.4 ms | **10/10** |
 
-**THE `gates/w8-units.yaml` COLUMN IS THE 8-RULE FILE THESE RUNS WERE GATED ON.** r1-spec-8 renamed its
-reject-if to `syllable_pco300` and added two accounting rules, so the file now holds 9 and the verdicts here
-are out of 8. The pco300 readings above say every PASS stands; the one rule no recorded row can answer is
-`syllables-account-for-every-truth-span`, `syllable_unpublished` not existing when they were written — the
-next run of this cell is what gives it a reading (ko's is 24 of 535, 4.49 %, from the arithmetic of its own
-recorded row).
+**EVERY ROW OF THIS TABLE IS RE-RUN, and the gate column is the 10-reading file read on the run itself**
+(`results/w8r1-{zh,ja,ko}-{base,units,t2s,mms}-generate.json`, `_runs/w8r1-*`, each with its per-case
+digest). r1-spec-8 renamed the reject-if to `syllable_pco300` and added two accounting rules, so the file
+now reads 10 (9 rules and the built-in `no-error-rows`) — and the one rule no OLDER row could answer is
+`syllables-account-for-every-truth-span`, because `syllable_unpublished` did not exist when the 2026-10-15
+rows were written and reads 0 on them by absence. Re-gating would have FAILED it by construction, so the
+nine remaining cells were re-run rather than re-gated (the tenth, ja `mms-roman`, was already re-measured
+for r1-tests-15 below). The identity now holds on all ten, and **the `unpub` column is the reading it
+bought**: zh and ja publish every truth span's line, ko leaves **24 of 535 (4.49 %) on lines its document
+never carried** — 7 of its 55 lines — which is a COVERAGE cost of the ko document and not an accuracy one,
+bounded on its own by `syllables-mostly-on-published-lines` at 24 ≤ 32.1.
+
+**THE RE-RUN MOVED NOTHING, and that is measured rather than argued.** Over the **23 cases** of the nine
+cells, every field of the per-case digest is IDENTICAL to the recorded `results/w8-arm-*-generate` row —
+`doc_sha256`, `onsets_sha256`, `scored`, `gross`, `w500`, `high_bad`, `words` and `repair_faults`, 0
+differences — and in the summaries the ONLY key that differs anywhere is the new `syllables.unpublished`
+itself. The r1 fixes could not reach these cells and now do not have to be trusted not to: `_READ_PER_WORD`
+is `{ja}` and only `mms-roman` consults it, so for zh/ko `Rules.chars` computes the same fragments at the
+same indexes, and the ja whisperx arms take no reading at all. Cost of the proof: **245.5 s and 23 freshly
+computed matrices** — the emission key carries the arm, so each of the ten cells pays for its own, and the
+store was cold anyway at code `0125c5457b5c8bf8` → **`30df17ce9f70433f`**.
+
+**THE ja `mms-roman` ROW IS RE-MEASURED** (`results/w8r1-ja-mms-generate.json`, `_runs/w8r1-ja-mms`, both
+ja songs, same bundle and same mode): review r1-tests-15 found that the arm romanised per fugashi TOKEN and
+tagged every Latin target with grapheme 0, so the first mora of a multi-mora token absorbed the token's whole
+span and **every later mora was published ZERO-WIDTH at the token's END** — 511 of these 1 229 ja truth
+morae. With the attribution fixed (a token whose morae do not rebuild its own reading publishes no syllables,
+`units.WHOLE_WORD`) the row reads ±100 **42.80 → 40.56**, ±250 68.38 → 66.23, ±300 **74.09 → 71.27**,
+pco300 73.78 → 70.98, AAE **786.6 → 766.0 ms**, gross 50 → 49, and `bias_ms` **+83 → −47** — which is the
+mechanism itself: those morae used to be scored against their token's end and are now scored against its
+start. Every LINE field is identical to the digit (±500 87.36, gross 3), and zh and ko are untouched, their
+fragments reading as their words do — which the nine-cell re-run above then proved case by case rather than
+by construction. **So 74.09 was the confound's number and 71.27 is the arm's.** The row is 9/10 on
+`gates/w8-units.yaml` and the one FAIL is `syllable-pm250-not-below-seventy` at 66.23, so the verdict is
+unchanged in kind as well as in direction.
 
 **§3.12's reject-if has two clauses and the corpus separates the arms on the second.** `nonlatin-units`
 clears both: zh **96.64** and ja **82.35** against the 70 % floor, and it IS the per-language whisperx
-bundle, so there is nothing for it to be below. `mms-roman` clears the floor (zh 97.03, ja 74.09) but the
-clause "or below the blank-fixed whisperx models" is where it fails: on ja it reads **74.09 against
-82.35**, −8.26 pt, with gross 50 against 9 and AAE 786.6 ms against 192.0. It wins on zh by +0.39 and on ko
+bundle, so there is nothing for it to be below. `mms-roman` clears the floor (zh 97.03, ja 71.27) but the
+clause "or below the blank-fixed whisperx models" is where it fails: on ja it reads **71.27 against
+82.35**, −11.08 pt, with gross 49 against 9 and AAE 766.0 ms against 192.0. It wins on zh by +0.39 and on ko
 by +11.85, both on COVERAGE rather than acoustics (535/535 and 1416/1416 spans, a romanised target being
 unable to be out-of-vocabulary). **So MMS_FA is REJECTED on §3.12's own second clause and stays
 default-off**, which is also where its CC-BY-NC weights leave it: the owner's call, not a measurement's.
@@ -9380,3 +9453,373 @@ with it); nothing here is evidence for it or against it.
 words off a bundle with no `lexical.CALIBRATED` row — so every syllable number above is the RAW DECODE's,
 and fitting such a row for a non-Latin bundle is a later wave's. ko is one song and is not in §3.12's
 reject-if, which names zh and ja. No transliteration QUALITY is measured anywhere.
+
+## W10: the per-language stage-2 table (2026-10-16)
+
+The owner cleared MMS_FA's CC-BY-NC weights on 2026-10-16 (*"this is a non-commercial project so we are
+clear"*), which removed the one non-measurement blocking stage 2. It did **not** make MMS the default,
+because W8 measured it **losing** on Japanese. Re-read off the committed `results/w8r1-*-generate` rows,
+on the AMLL truth's own syllable spans (`syllable_pco300`, the denominator that cannot be flattered):
+
+| language | whitespace | `nonlatin-units` | `mms-roman` | shipped route | margin over the runner-up |
+| -------- | ---------- | ---------------- | ----------- | ------------- | ------------------------- |
+| zh (4 songs) | 25.35 | 95.55 | **97.03** | `mms-roman` on MMS_FA | **+1.48** |
+| ja (2 songs) | 10.72 | **81.95** | 70.98 | `nonlatin-units` on whisperx's `ja` | **+10.97** |
+| ko (1 song) | 51.78 | 72.52 | **92.52** | `mms-roman` on MMS_FA | **+20.00** |
+
+Gross syllables (more than 2 s from truth) read the same way: zh 253 → **9** / 14, ja 503 → **9** / 49,
+ko 14 → 18 / **20** — ja's is the clearest of the three, 49 against 9, and AAE says it louder still
+(ja 192.0 ms under `nonlatin-units` against **766.0 ms** under MMS). **A blanket `mms-roman` default would
+cost Japanese 10.97 points of PCO@300 and five times its gross population**, so the shipping form is a
+TABLE and not a switch: `units.ROUTED`, one frozen row per language, in the shape `lexical.CALIBRATED` has
+had since W4b. The design rules — unrouted means unrouted, an operator's named arm still reaches any
+language, the bundle and the target sequence cannot disagree — are `docs/arch/04-alignment.md` §9.2 and
+invariant **XA-21**.
+
+Three consequences worth stating, because each is a thing the table does rather than says:
+
+* **ko's route is the only arm that reaches its coverage gap.** `kresnik/wav2vec2-large-xlsr-korean` tables
+  1 202 of 11 172 Hangul blocks, and 24 of ko's 535 truth syllables (4.49%, on 7 of its 55 lines) sat on
+  lines its document never carried. A romanised target cannot be out of vocabulary, which is why ko gains
+  20 points on coverage rather than on acoustics.
+* **ja keeps MMS REJECTED, and the rejection is now a shipped rule** rather than a default-off knob: the
+  `ja` row names `nonlatin-units`, and `ENCORE_ALIGN_EXPERIMENTS=mms-roman` is what reproduces the 70.98
+  cell.
+* **The 49 MB this needs is in the default install now.** `romanize` + `nonlatin` are synced by `dev.sh`
+  and `docker/worker.Dockerfile`, because without a transliterator `units.stage2_bundle` cannot route zh or
+  ko to MMS_FA at all — it keeps whisperx's own bundle and the script-unit rule, which is the 95.55 / 72.52
+  column rather than a failure. They stay EXTRAS, so `uv sync --only-group dev` installs neither and the
+  hermetic tests keep asserting the absent behaviour. MMS_FA's own attribution (CC-BY-**NC** 4.0, nothing
+  redistributed, weights fetched at runtime) is `docs/arch/04-alignment.md` §14.2.
+
+## W10: the ko floor, restated as the one-song reading it is (2026-10-16)
+
+`gates/w8-units.yaml`'s `lines-not-lost` read `truth.pm500 >= 75.0` and ko passed it by **exact equality**:
+`amll-ko-gangnam-style` is **36 of 48** scored lines within ±500 ms = **75.00**, on a ONE-SONG pool, with
+7 further lines its document never carried. Zero margin, on a gate ko is not even in §3.12's reject-if for
+(it names zh and ja). The owner was offered two ways out — a second Korean song, or an honest restatement.
+
+**The evidence picks the restatement.** The AMLL set holds exactly ONE Korean candidate; `amll/_rejected/`
+holds **13** candidates dropped on measurement and **not one of them is Korean**. So there is no second ko
+song on this box to admit, and acquiring one needs audio this tree does not and cannot hold. The floor is
+now **72.0** — one lost line of stated head-room (35/48 = 72.92 passes, 34/48 = 70.83 fails) instead of
+zero implied. Every other cell clears it by 15 points or more, re-read off the committed rows rather than
+quoted: zh **97.47** (`nonlatin-units`, 193 of 198) and **96.46** (`mms-roman`), ja **87.36** (76 of 87, the
+same on all three arms, its lines being the whitespace rule's either way), ko **85.45** under `mms-roman`,
+whose romanised target carries the 7 lines the Hangul vocabulary lost. The 75.00 reading is kept here and in
+the gate file's comment: the number does not leave the repo, it stops being a floor.
+
+## W10: the first non-Latin calibration rows (2026-10-16)
+
+W8 named a `lexical.CALIBRATED` row for a non-Latin bundle as the ONE thing between stages 1-2 and a room:
+without one §5.4 declines every word document and the lane publishes LINES by rule. Two rows now exist, one
+does not, and the one that does not is the honest outcome rather than a gap.
+
+Every number below was re-read from the scripts on 2026-10-19 and the runs are kept:
+`encore-align-bench/_runs/w10-nonlatin-cal/` holds the six `lift_gate.py` fits (zh / ja / ko x stem / mix)
+and the three `line_gate.py` sweeps, each as its printed report plus the per-text `--out` JSON. The six
+commands are `lift_gate.py --corpus nonlatin --language <zh|ja|ko> --target <stem|mix>` and
+`line_gate.py --corpus nonlatin --language <zh|ja|ko>`, run from `worker/` with `ENCORE_BENCH_ROOT` set;
+the emission cache makes each one 20-45 s, so these are re-runnable without a sweep.
+
+**The shuffle had to become script-aware first.** `lexical.lift` contrasts a text with `shuffles_of` it, and
+`shuffles_of` permutes the UNIT RULE's tokens. The module has taken `units` since W8 — but neither
+`lift_gate.py` nor `line_gate.py` passed it, so a CJK sheet with one whitespace token a line was contrasted
+with *reordered lines*, not reordered words. Both scripts now build `units.rules_for(language, …)` once and
+thread it through the lift, `letters_of` and `generate`, which is why W8 declined to fit a row off them.
+Three further things the scripts needed, each a measured decision:
+
+* **`--corpus nonlatin --language zh|ja|ko`**, one language a run, refusing `en` on that corpus for the same
+  reason `e2e.py` does — the English bundle has a row and it is not this lane's.
+* **A SAME-LANGUAGE donor pool.** A zh song paired with a ja sheet is refused by the script rule
+  (`lexical.may_time_words` + `language.nonlatin_script`) long before a lift reads it, so scoring it as a
+  wrong text this gate separated counts another gate's work. Donors repeat once the pool is under `WRONG_K`,
+  so a repeated donor is skipped — on the non-Latin corpus only, the English rows being recorded with both
+  wrong modes serving the same texts.
+* **A pairing bug the non-Latin `headers` cases exposed.** `line_gate.measure` built its truth pairing from
+  `clean_line` while `served` came from `clean_segments`, which also drops a NON-LYRIC row — so the injected
+  `[Chorus]` / `Verse 1:` headers stayed in the index map and every later line paired to the wrong truth
+  line. Measured on `amll-zh-gaobai-qiqiu` headers: served 40, kept 45, **176 of 176 scored lines gross and
+  ±500 exactly 0.0%**, which is what made the first zh share read "no share shows 0 gross". Both scripts now
+  read `clean_indexed`. The fix reaches the ENGLISH `headers` cases too, so the English share should be
+  re-read from a fresh `line_gate.py` run; no shipped number moves, the share being 0.5 either way.
+
+### The rows, and what each was fitted on
+
+The stem columns are the three numbers the fit is made of, in the script's own words: the weakest right text
+of all (`protected + drop50`, which is what the floor has to sit under), the strongest wrong text, and the
+gap between those two. The weakest PROTECTED right text — the cap on `ok_from` — is its own column, because
+on every row here it is a nat clear of the weakest `drop50`.
+
+| pair | route | stem: weakest right / wrong max / **gap** | weakest protected | fitted | head-room |
+| ---- | ----- | ---------------------------------------- | ----------------- | ------ | --------- |
+| **MMS_FA / zh** (4 songs, 24 right texts, 12 wrong) | `mms-roman` | +0.6925 / +0.0402 / **+0.6523** | +1.4112 | `refuse_below` **0.35**, `ok_from` **0.70** | **+0.3098** |
+| **…xlsr-53-japanese / ja** (2 songs, 12 right, 2 wrong) | `nonlatin-units` | +0.6864 / +0.0457 / **+0.6407** | +1.1771 | `refuse_below` **0.35**, `ok_from` **0.70** | **+0.3043** |
+| **ko** (1 song, 5 right, **0 wrong**) | `mms-roman` | — | +1.8909 | **NO ROW** | — |
+
+Both populations separate by two thirds of a nat per letter, which is a wider gap than any English bundle's
+(base +0.072, HuBERT-Large +0.547): every one of the **20 zh and 10 ja PROTECTED** right texts reads above
++1.17 and the 4 + 2 `drop50` cases above +0.68, while every wrong text reads **below +0.046** — so the whole
+wrong population is REFUSE at the 0.2 the base row uses, let alone at 0.35. `drop50` is the band the
+`ok_from` cap comes from, as on every English row: the weakest reads +0.6925 (zh) and +0.6864 (ja), so 0.70
+is the step above it and sits far under the weakest protected right text (+1.4112 / +1.1771).
+
+**The mix halves are much thinner, and that is the lane's weakest number.** `--target mix`: zh `mix_floor`
+**0.05** with **+0.0092** of head-room and **one** wrong text (+0.0408) inside the half-step under the
+floor; ja `mix_floor` **0.05** with **+0.0278** and none. For comparison the shipped English rows read
++0.0349 (base), +0.0343 (HuBERT-L) and **+0.0021** with 3 in the half-step (HuBERT-XL, which shipped). zh's
+is therefore inside precedent and ja's is comfortable, but zh's is the margin a later wave should widen
+first. `mix_ok_from` is the per-band read a person makes, by the stem rule's own shape — the step above the
+weakest drop50, capped at the weakest protected right text: zh +0.229 → **0.25** (cap +0.767); ja +0.217 →
+0.25, capped at +0.187 → **0.15**. The blind envelope gate alone on the same mix matrices, for contrast,
+refuses 6 of zh's 24 right texts and passes **6 of its 12** wrong texts (ja: 5 of 12 refused, 0 of 2
+passed), which is why the lift is the gate on the mix too and not the envelope.
+
+**`margin_floor_nats` is None on both rows, deliberately.** Nobody has read a trellis of MMS_FA or of the ja
+bundle for placement margins, so the rule ABSTAINS rather than reading 10 nats off an English scale — the
+same answer `HUBERT_ASR_XLARGE`'s row gives for the same reason.
+
+### `line_sync_min_agreement` is 0.5, and the sweep says why
+
+`line_gate.py --corpus nonlatin` reads **0 gross lines at every swept share from 0.3 to 0.8** on all three
+languages, so the sweep has no discriminating power here and the script's own tie-break ("the lowest share
+with no gross line") printed **0.3** for zh, ja and ko alike. The rows ship **0.5** instead, and the reason
+is stated rather than assumed: the shares differ only in right texts refused — zh 0 / 1 / 2 / 4 / 4 / 6 of
+52 across 0.3…0.8, ja 0 / 0 / 0 / 1 / 2 / 2 of 26, ko 0 / 1 / 1 / 1 / 2 / 2 of 12, the zh and ko costs both
+being `drop50` cases — and wrong texts pass **0 of 12 (zh) and 0 of 2 (ja) at every share**, the lift
+refusing them all. Taking 0.3 would read signal this corpus does not carry; 0.5 is what all three English
+rows independently fit and what `lexical.LINE_SYNC_SHARE_UNCALIBRATED` already applied to this lane, **so
+the rung's behaviour is byte-unchanged and the row's only effect is the word gate.** The cost is exact: 2 of
+zh's 52 right texts and 0 of ja's 26, all `drop50`.
+
+With the rows in, the rung's own table reads (every timed mode, `decode(0.5)`): zh right refused 2/52,
+**2 387 lines shown, 0 gross, ±500 95.1%**, wrong texts 0/12; ja 0/26, **1 070 lines, 0 gross, ±500
+99.2%**, wrong 0/2. `sheet+lift` — the rule W1 shipped — refuses 14/52 and 11/26 by comparison, which is
+the envelope's cost on a lane whose sheets are authored TTML.
+
+### ko has no row, and that is a measurement
+
+ko is **one song**. A lift row is fitted from the gap between a right-text population and a wrong-text one,
+and a one-song pool has **no same-language donor**, so there is no wrong-text population to separate: the
+script prints *"no population to fit"* and `lexical.CALIBRATED` gets no ko entry. `extraverse` cannot be
+built either, for the same reason. ko's right texts read a lift of **+1.912** on truth, so nothing suggests
+the row would be hard to fit — only that it has not been fitted. **ko therefore keeps the W8
+line-sync-only rule**, which was the outcome the wave required to stay reachable: its route still says
+`mms-roman` on MMS_FA (the only arm that closes its 4.49% coverage gap), its lines still publish at ±500
+100.0, and its words do not. And because the calibration key is a PAIR, zh's `MMS_FA` row cannot answer for
+it — `calibration(emissions, "ko")` reads None on the very bundle zh is gated on, which is invariant XA-21
+doing the one thing it exists for.
+
+### What this moves, and what it does not
+
+* **zh and ja may now publish WORD documents** off their own calibrated pairs: `may_time_words` declines a
+  non-Latin text whose bundle language is `en` (the fallback case review r2-spec-8 found) and no longer
+  declines one on its own row. This is the first behaviour change the non-Latin lane has made to what a room
+  sees, and the bench agent's `run_align` cells are what price it.
+* **ENGLISH DOES NOT MOVE.** The routing table fires only for a non-Latin language; `units.plain()` is still
+  `str.split` for every Latin one; the English rows are byte-identical under the paired key, `(model, "en")`
+  holding exactly the three values they held before. The one English-facing change is the `line_gate.py`
+  pairing fix, which is a harness correction and feeds no committed `results/` row.
+* **ko, and every other non-Latin language, keeps lines only** — 13 scripts `SCRIPT_LANGUAGES` names no
+  language for included, which answer `en` and are declined by the script rule.
+
+**ONE SONG THROUGH `run_align`, AND THE TWO W8 GATE FILES IT RETIRES (n = 1, NOT the verdict; W10 final
+review, `_runs/w10-rev-zh-words`, code `35ebe339f1420309`, MMS_FA matrix served warm, 15 s).**
+`amll-zh-qingtian` at `truth` now publishes a **WORD** document where W8 line-synced it: **61 of 62 lines,
+gross 0, ±500 100.0, ±500/text 98.4, band 0**, and **60 of the 61 lines graded `high`** with none more than
+0.5 s out. Words **17 of 77** paired at ±100 **64.7** / ±250 **100.0** / AAE **84 ms**; syllables **480 of
+494** at ±300 **99.2** / PCO@0.3 **96.4** / AAE **99 ms**; TV highlight **2.7 %** of 224 s sung. Per-line
+`margin_floor_nats` is None on this row, so the placement-ambiguity demotion ABSTAINED for all 61.
+**`gates/w8-lane.yaml` reads 9/20 — REJECT — and that is the gate file being out of date, not a
+regression**: the five it fails are `truth-no-word-document` [1 == 0], `truth-every-song-line-synced`
+[0 == 1], `truth-never-high` [60 == 0], `truth-no-word-timed` [17 == 0] and `truth-clock-moved-nothing`
+(bias **−94 ms** at MAD **35 ms**, where the LINE_SYNC rung's clock was a literal no-op). All five encode
+the pre-calibration rule as a MUST; `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` reproduces what they were
+written for. Restating them needs the corpus cell, which is the bench agent's. The same note is in the two
+gate headers.
+
+## W10: the step split, and the byte-identity smoke that proves it (2026-10-19)
+
+`steps/align_steps.py` went **3 696 → 2 530** lines, its module-level helpers moved to six siblings. The
+split's design is [`../../arch/05-worker.md`](../../arch/05-worker.md) §1.1; this is its measurement.
+
+* **AST identity, total over the move.** All **80** top-level definitions of the pre-split module are
+  AST-identical to their post-split selves modulo docstrings; **78** of the 80 are identical including the
+  docstring. The two that are not are `align_lines._enough_decoded` and `align_lines._mapped`, each of which
+  lost a narrative paragraph to [`../../arch/04-alignment.md`](../../arch/04-alignment.md) §5.3 and §7 — the
+  hard-rule-1 move the per-module prose ratchet demanded once the prose-dense helpers were concentrated in
+  one module (`align_lines.py` reads **0.528** prose/code against the 0.55 bound; the package's worst module
+  is still `domain/lyrics/policy.py` at 0.544).
+* **End to end on two songs.** `_runs/w10-split-smoke` (`--level run_align --songs hello,Avercage --modes
+  truth --asr off --romanize off --model HUBERT_ASR_LARGE`) republishes both documents and both onset series
+  **digest-identical** to `_runs/w8s0-english-smoke`: `hello` `doc_sha256 4851b178858ce19f` /
+  `onsets_sha256 75391ffb463bfe9d` at ±500 **63/63** gross 0, `Avercage_-_Embers` `005ddbf71545685a` /
+  `1171b22563741216` at ±500 **39** of 42 lines, gross 0.
+* **`tests/test_align_modules.py`** (9 tests) holds the three properties a later wave could break silently:
+  the module set, that no sibling imports the step back, and that every name a test patches on `align_steps`
+  is read by the step ALONE — a patch cannot reach a sibling's own globals.
+
+## W10: the three owed `run_align` cells, probed on two songs (2026-10-19)
+
+W9 left `vendored`, `claim-priors` and `priors-decide` without a `run_align` cell, and
+`gates/w9-research.yaml` unread. The corpus cells are 2-3 hours each and belong to the bench agent; these are
+the cheap probes that say what the gate will be reading, on `hello,Avercage` at `truth`, same config as the
+smoke above.
+
+| arm | `hello` | `Avercage_-_Embers` | reading |
+| --- | ------- | ------------------- | ------- |
+| base (knob unset) | 63/63 ±500, gross 0 | 39 ±500, gross 0 | the reference |
+| `vendored` | **digest-identical** | **digest-identical** | the CONTROL holds: `doc_sha256` and `onsets_sha256` both unchanged, which is section 1's `doc_changed == 0` on a 2-song pool |
+| `claim-priors` | 63/63, gross 0, digest moved | **40** ±500, gross 0 | one line better, nothing worse |
+| `priors-decide` | **54**/63, **gross 2** | **37** ±500, **gross 1** | the deciding arm LOSES, and it is the one that bypasses the ladder |
+
+**`gates/w9-research.yaml` has now been READ** — offline, against `results/w9-r1-run_align.json` as both
+candidate and base (`_tools/offline_gates.py`): its **83** rules read as **84 verdicts — 80 PASS, 4 FAIL, 0 ERROR** (one rule
+expands over two modes). Zero ERROR rows is
+the point: every rule's keys resolve against a real `run_align` summary, so the bench agent's corpus run
+cannot be wasted on a malformed gate file. The 4 FAIL are exactly the clauses that cannot pass a self-compare
+because they require the arm to WIN — `drop50-gross-down`, `drop50-text-pm500-up`, `blind-gross-down`,
+`pooled-gross-down`. On the two-song probe `priors-decide` moves all four the wrong way.
+
+## W10: fitting the claim prior's peak (2026-10-19)
+
+W9 shipped `prior.ONSET_BONUS_NATS = 4.0` CHOSEN, not fitted, and named the missing experiment: a
+decode-only sweep over the peak. It cost **101.6 s** — `_runs/w10-prior/peak_sweep.py`, published as
+`results/w10-prior-peak-sweep.json`: **8 songs × 4 claim modes × 7 cells = 224 rows**, 374 in-text lines a
+mode (1 496 pooled), HuBERT-Large matrices at emitter `1a2fd6852bd30243`, global decode through the vendored
+graph, `scored_row`'s denominators (`text_pm500 = w500 / in_text`).
+
+| peak (nats) | pooled gross | pooled ±500/text | pooled AAE | `truth` gross | `jit` | `tempo102` | `off3` |
+| ----------- | ------------ | ---------------- | ---------- | ------------- | ----- | ---------- | ------ |
+| `off` (torchaudio) | 44 | 88.77 | 413.2 ms | 11 | 11 | 11 | 11 |
+| 0 | **44** | **88.77** | **413.2 ms** | 11 | 11 | 11 | 11 |
+| 1 | 37 | 89.44 | 361.7 ms | 7 | 9 | 10 | 11 |
+| 2 | 28 | 90.17 | 341.7 ms | 4 | 4 | 9 | 11 |
+| **4.0 (ships)** | 26 | 91.31 | 314.4 ms | 4 | 3 | 8 | 11 |
+| **8** | **23** | 92.05 | 269.2 ms | 2 | 2 | 8 | 11 |
+| 20 | 30 | 92.58 | 215.0 ms | **0** | **0** | 11 | **19** |
+
+* **The graph with no bonus IS torchaudio's path.** `peak 0` reproduces the `off` control to the last digit
+  in all four modes — a free second reading of the `vendored` control, at the decode level.
+* **8.0 is the pool's optimum and it DOMINATES the shipped 4.0**: in none of the 32 song-modes is 8 worse
+  than 4 on either gross or ±500. Pooled gross 26 → 23, AAE 314.4 → 269.2 ms.
+* **20 is where a claim stops being evidence.** `truth` and `jit` keep improving (gross 0), but a 2 % tempo
+  error goes back to the control (8 → 11) and a 3 s offset gets much worse than reading no claim at all
+  (gross 11 → **19**, ±500 88.77 → 86.36). That is the failure the reach cap exists for, and it says the
+  peak's ceiling is set by the WRONG-clock modes, not by the right ones.
+* **The shipped value is unchanged, deliberately.** The arm is default-off, the pool is 8 songs on one
+  emitter, the sweep is decode-only (no claim clock, so `off3` here is the clock-failed worst case rather
+  than the shipped path), and W9's recorded `claim-priors` readings are at 4.0 — moving the constant now
+  would make the owed corpus cell incomparable with them. The honest statement is no longer "unfitted": it
+  is "4.0 is inside the safe region, 8.0 is this pool's optimum, and σ / reach are still unfitted".
+
+## W10: the close-out sweep, and the lane at the rung a room sees (2026-10-19)
+
+The build's last corpus sweep, on the W10 tree (code `35ebe339f1420309`, emitter `10bb06b8c2533a5b`, HuBERT-Large
+on `mps`). It answers four questions nobody had measured on a corpus: did the `align_steps` split and the two
+calibration rows cost English anything; what the non-Latin lane publishes now that the per-language stage-2
+table is the shipped default; whether the table really picks each language's winner; and what the three
+`run_align` cells W9 owed read on the 28-song accuracy basis.
+
+### English did not move, and the proof is 3 264 byte-identical documents
+
+The emission store was cold (W8's r2 moved the emitter, and W10 moved it again to `10bb06b8c2533a5b`), so the
+`time_text` level paid the full pass — **59 matrices computed, 1 419 s** — and the other two levels read it off
+disk. Every level was then compared to its W8 row CASE BY CASE on `doc_sha256` and `onsets_sha256`, which is a
+stronger claim than any tolerance: a summary can hold its headline steady while individual documents move.
+
+| level | row | cases | documents moved | gate file | reading |
+| ----- | --- | ----- | --------------- | --------- | ------- |
+| `time_text --modes all,wrongtext+ownclock` | `results/w10-time_text.json` | 1 088 | **0 of 1 088** | `gates/w8.yaml` | **92/92** |
+| `run_align --modes all,wrongtext+ownclock` | `results/w10-run_align.json` | 1 088 | **0 of 1 088** | `gates/w8.yaml`, `w8b.yaml` | **92/92**, **154/154** |
+| `run_align --sync-mode lines` | `results/w10-lines-run_align.json` | 1 088 | **0 of 1 088** | `gates/w8b-lines.yaml` | **94/94** |
+
+So every headline number is W8's, re-read rather than quoted: 28-song `scored` truth ±500 **97.27** at
+`run_align` and **97.31** at `time_text`, gross **0** in all 12 right-text modes, `high_bad` **0**,
+zero-gross songs **28/28**, Jamendo words ±100 **85.54** / ±300 **97.23** / AAE **70.6 ms**, highlight
+**81.50**, wrong text **0/320 + 0/320 + 0/640**, and the LINE_SYNC rung **100.00** at band 0 over 28 songs.
+**This is also the `align_steps` split's proof as a pure move at corpus scale** — `_runs/w10-split-smoke`
+proved it on two songs, and this proves it on 3 264 documents across 16 claim modes and three rungs.
+
+One pre-existing gate reading, recorded so it is not mistaken for a regression: `gates/w9.yaml` reads
+**87/88** with `word-pco300-truth` (`truth.jamendo.word_pco300 >= 91.78`) FAILING at **91.76**. It fails
+identically on `results/w8-run_align.json` and `results/w9-r1-run_align.json`, and that gate file's own header
+already says section 1 fails on the post-flip tree by construction. It is a stale literal, not a move.
+
+### The lane with the table active: zh and ja publish words, ko still publishes lines
+
+`results/w10-lane-{zh,ja,ko}-run_align.json` (7 songs, 340 lines, 3 wrong-text cross-pairs a song), beside the
+control `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` in `results/w10-lane-*-unrouted-run_align.json`. The gate
+file is the new `gates/w10.yaml`, which replaces `w8-lane.yaml` §1 on the shipped default.
+
+| language | bundle the table picked | calibrated pair? | rung | ±500 | gross | `high` | `high_bad` | syllable PCO@300 | wrong text | `gates/w10.yaml` |
+| -------- | ----------------------- | ---------------- | ---- | ---- | ----- | ------ | ---------- | ---------------- | ---------- | ---------------- |
+| zh (4 songs) | **MMS_FA** | yes | 4 word docs | 98.98 | **0** | 189 | **0** | **95.90** | **0 of 12** | **24/24** |
+| ja (2 songs) | whisperx's own `ja` | yes | 2 word docs | 89.66 | **0** | 65 | **2** | **82.03** | **0 of 6** | 23/24 |
+| ko (1 song) | **MMS_FA** | **no row for the PAIR** | 1 line-sync | 100.00 | **0** | 0 | **0** | n/a | **0 of 3** | **24/24** |
+| zh unrouted | `xlsr-53-chinese-zh-cn` | no | 4 line-sync | 100.00 | 0 | 0 | 0 | n/a | 0 of 12 | 24/24 |
+| ja unrouted | whisperx's own `ja` | yes | 2 word docs | 89.66 | 0 | 65 | **2** | **10.88** | 0 of 6 | 23/24 |
+| ko unrouted | `xlsr-53-korean` | no | 1 line-sync | 100.00 | 0 | 0 | 0 | n/a | 0 of 3 | 24/24 |
+
+* **THE WRONG-TEXT PATH IS STILL CLOSED, and this is the reading that mattered most.** 0 of 21 cross-pairs
+  published, per language and in total, with the table active and the global engine therefore reachable for the
+  first time on this corpus. Every case REFUSED; `scored` 0, so not one wrong line was ever measured against a
+  song's truth. W8 bought this with no calibration row in existence; it survives two of them.
+* **THE PAIRED KEY WORKS, and MMS_FA is its own proof.** The same bundle publishes 4 word documents for zh and
+  declines one for ko, because `("MMS_FA", "zh")` has a row and `("MMS_FA", "ko")` does not. A bundle-only key
+  could not express that — which is exactly why W10 made the key a pair (**XA-21**).
+* **ko's ROUTE IS INERT AT THIS RUNG.** The table moves ko onto MMS_FA, the arm worth +20.00 points of
+  syllable PCO@300 at `generate`, and ko then publishes precisely what it published before the table existed:
+  one line-synced document at ±500 100.00, `high` 0, 0 word timings. The gain is real and unreachable until
+  the `("MMS_FA", "ko")` pair has a calibration row. Nothing is wrong; the route is simply not yet connected.
+* **THE ROWS COST LINE ACCURACY, and the cost is now priced.** Gaining word documents moved zh and ja off the
+  gated LINE_SYNC rung: zh ±500 100.00 → **98.98** (one of 198 lines now missing), ja 100.00 → **89.66** with
+  band 0 → **9**. ko is unmoved. Gross stays **0** on all six readings, so no line went more than 2 s wrong —
+  the lane traded a little line precision for word documents, and lost no line outright.
+* **ja's ROW VOUCHES TWO BAD LINES.** `high_bad` reads **2** of 65 `high` lines, both on
+  `amll-ja-ragutorein` (15 `high` of its 31 lines), and it reads 2 under `nonlatin-unrouted` too — so it is
+  the `("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja")` row's thresholds and not the routing.
+  English reads `high_bad` **0** over 1 536 scored lines, so 0 is the standard and not a tightening.
+  `gates/w10.yaml`'s `never-vouch-a-bad-line` is left FAILING on ja rather than relaxed: moving `refuse_below`
+  / `ok_from` on that row changes what the lane publishes.
+* **`nonlatin-unrouted` DOES NOT reproduce the pre-W10 configuration for ja**, and the notes added to
+  `gates/w8-lane.yaml` and `gates/w8-nonlatin.yaml` on 2026-10-19 say it does. ja's route keeps whisperx's own
+  bundle and the ja calibration row is unconditional, so the unrouted ja control publishes the SAME 2 word
+  documents, the SAME 65 `high` lines, the SAME `high_bad` 2 and the SAME ±500 89.66. All unrouting changes
+  for ja is the UNIT rule, and it moves syllable PCO@300 **82.03 → 10.88** — which is the strongest single
+  reading of the `nonlatin-units` arm anywhere in this build, because it is measured at the publishing rung
+  rather than on the raw decode. For zh and ko the note IS correct: the bundle falls back to one with no row,
+  so §5.4 declines a word document and the lane returns to lines.
+
+### The lane's word timings are not gradeable at WORD granularity, and syllables are why that is survivable
+
+`words.mismatched` reads **265 of zh's 288** truth words and **95 of ja's 95** under the routed arm: the
+published tokens are script units (ja) or romanised syllables (zh) and the AMLL truth's are original-script
+words, so no word-level pairing exists for them. zh's word ±100 of **64.71** is 11 of **17** paired words, not
+of 288, and its word PCO@300 of **5.90** is the honest statement of that coverage. The SYLLABLE spans do pair —
+zh 1 385 of 1 416 aligned (23 interpolated, 8 on lines the document never carried), ja 1 207 of 1 213 (5
+interpolated, 1 unpaired) — and `gates/w10.yaml` §6 gates the identity rather than a floor so that a language
+publishing no words at all (ko: 535 of 535 `unpaired`) still balances. **Syllables are this lane's only
+gradeable sub-line unit, and every accuracy number quoted for it above is a syllable number.**
+
+### The per-language table picks each language's winner, measured arm by arm
+
+`results/w10-s2-{zh,ja,ko}-{white,units,mms,table}-generate.json` — 12 cells, `gates/w8-units.yaml` on every
+one. `nonlatin-unrouted` stands the routed row down, so naming it with ONE arm isolates that arm, naming it
+alone is the whitespace control, and naming nothing is the table's own pick. Every number reproduces the
+committed W8 cell exactly, and the `table` column is the measurement that was owed: it is the shipped default's
+own reading, not an inference from the arm cells.
+
+| language | whitespace | `nonlatin-units` | `mms-roman` | **`table` (shipped)** | bundle the table used | margin |
+| -------- | ---------- | ---------------- | ----------- | --------------------- | --------------------- | ------ |
+| zh | 25.35 (7/10) | 95.55 (10/10) | **97.03** (10/10) | **97.03** (10/10) | MMS_FA | +1.48 |
+| ja | 10.72 (7/10) | **81.95** (10/10) | 70.98 (**9/10**) | **81.95** (10/10) | `xlsr-53-japanese` | +10.97 |
+| ko | 51.78 (8/10) | 72.52 (10/10) | **92.52** (10/10) | **92.52** (10/10) | MMS_FA | +20.00 |
+
+**The table picks the winner in all three languages, and ja does NOT get MMS** — its `table` cell is byte-equal
+to its `nonlatin-units` cell (PCO@300 81.95, ±250 79.20, gross 9, AAE 192.0 ms) and nowhere near MMS's 70.98 /
+66.23 / 49 / 766.0 ms. The three whitespace controls REJECT at 7/10, 7/10 and 8/10, which is what makes the
+other nine cells a measurement rather than a tautology; ja's `mms-roman` cell REJECTS at 9/10 on
+`syllable-pm250-not-below-seventy` (66.23), the single clause that encodes §3.12's reject-if for it. Line ±500
+clears the restated ko floor of 72.0 everywhere: zh 97.47 / 96.46, ja 87.36 on all three arms, ko 75.00 (both
+whisperx arms) and **85.45** under the route.

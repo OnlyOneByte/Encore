@@ -2,7 +2,7 @@
 // song appears EXACTLY ONCE — the old source-tab UI could show the same song as both "processed in the
 // library" and "raw on YouTube", which is the confusion this partition exists to prevent.
 import { test, expect } from 'bun:test';
-import { readinessOf, matchesQuery, partitionSearch } from '$lib/server/media/readiness';
+import { readinessOf, matchesQuery, partitionSearch, SEARCH_GROUP_LIMIT } from '$lib/server/media/readiness';
 import type { Media } from '$lib/contract';
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
@@ -82,4 +82,36 @@ test('no duplicates when the same media arrives from both catalog and results', 
 	const song = m('a', { title: 'Take On Me' });
 	const p = partitionSearch('take on me', [song, song], [song, song]);
 	expect(p.unacquired).toHaveLength(1);
+});
+
+/* THE PER-GROUP CAP. The resolvers were always capped (PER_SOURCE_LIMIT is 12, and LocalLibrary.search honours
+   its limit in SQL) — the uncapped path was this partition, which is handed the WHOLE durable catalog. Measured
+   before the cap: one query returned 3,284 rows, 54,000 DOM nodes and 914ms before a tap registered. */
+test('each group is capped, and the cap is declared rather than silently applied', () => {
+	const many = Array.from({ length: SEARCH_GROUP_LIMIT + 25 }, (_, i) => ready(`r${i}`, { title: 'Caroline ' + i }));
+	const p = partitionSearch('caroline', many, []);
+	expect(p.ready).toHaveLength(SEARCH_GROUP_LIMIT);
+	// DECLARED, because a route that truncates in silence is the same class of lie as a zero-state that claims
+	// a failed search found nothing.
+	expect(p.clipped).toBe(true);
+});
+
+test('a result set inside the cap is not reported as clipped', () => {
+	// The ordinary case still has to be honest in the other direction, or the "there are more" hint cries wolf.
+	const few = Array.from({ length: 3 }, (_, i) => ready(`r${i}`, { title: 'Caroline ' + i }));
+	const p = partitionSearch('caroline', few, []);
+	expect(p.ready).toHaveLength(3);
+	expect(p.clipped).toBe(false);
+});
+
+test('the cap keeps the BEST unacquired rows, not an arbitrary slice', () => {
+	/* `unacquired` is the one group with a relevance order to lose: it is sorted by the resolver's own ranking
+	   before the slice, so capping must happen AFTER that sort. Here the catalog holds the cap plus ten extra
+	   and the resolver returns one late-ranked row; that row must survive the cut because the resolver ranked
+	   it, which is exactly what a pre-sort slice would have dropped. */
+	const catalog = Array.from({ length: SEARCH_GROUP_LIMIT + 10 }, (_, i) => m(`c${i}`, { title: 'Caroline ' + i }));
+	const resolverHit = m('pick-me', { title: 'Caroline the resolver ranked first' });
+	const p = partitionSearch('caroline', catalog, [resolverHit]);
+	expect(p.unacquired).toHaveLength(SEARCH_GROUP_LIMIT);
+	expect(p.unacquired[0]!.id).toBe('pick-me');
 });

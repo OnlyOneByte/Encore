@@ -336,3 +336,77 @@ it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): 
 	expect(/--lyrics-fade-top\s*:\s*calc\(var\(--lyrics-fade-cap\)/.test(CODE)).toBe(true);
 	expect(/--lyrics-fade-bot\s*:\s*calc\(var\(--lyrics-fade-cap\)/.test(CODE)).toBe(true);
 });
+
+// ── the ROW BUDGET: a romanised row is taller than its leading ────────────────────────────────────────
+//
+// The viewport is a FIXED height — `--lyrics-rows` x the per-row budget, with `overflow: hidden` — so the
+// budget has to be what a row actually renders. Every row of the reel draws its own `romanization` (not just
+// the current one), which adds a second, smaller line plus a gap; with the budget at the text leading alone,
+// a zh/ja/ko doc fitted 3 rows where the room asked for 5 and lost a context row per edge. The arithmetic
+// here is computed from the component's OWN declarations, so it fails if either side moves alone.
+const SNUG = parseFloat(readFileSync(at('src/app.css'), 'utf8').match(/--lh-snug:\s*([\d.]+)/)![1]);
+
+/** A custom property's declared value, read out of the component's stylesheet. */
+function declared(name: string, from: string = OVERLAY): string {
+	const found = from.match(new RegExp(`${name}:\\s*([^;]+);`));
+	expect(found, `${name} is declared`).not.toBeNull();
+	return found![1].trim();
+}
+
+/** One `em` number out of a declaration like `1.9em` or a bare `0.15`. */
+function em(value: string): number {
+	return parseFloat(value.replace(/em$/, ''));
+}
+
+/** The `.lyrics.romanized .viewport` block, which is where the extra enters the budget. */
+function romanizedBlock(): string {
+	const found = OVERLAY.match(/\.lyrics\.romanized\s+\.viewport\s*\{([\s\S]*?)\}\s*\n/);
+	expect(found, 'a romanised doc overrides the row budget').not.toBeNull();
+	return found![1];
+}
+
+it('the viewport height is rows x the ROW BUDGET, not rows x the text leading (a romanised row is taller than its leading)', () => {
+	// The height must multiply the budget. Reverting to `--lyrics-row-h` here is the defect itself.
+	expect(/height:\s*calc\(var\(--lyrics-rows,\s*5\)\s*\*\s*var\(--lyrics-row-budget\)\)/.test(OVERLAY)).toBe(true);
+	expect(/--lyrics-row-budget:\s*calc\(var\(--lyrics-row-h\)\s*\+\s*var\(--lyrics-row-extra\)\)/.test(OVERLAY)).toBe(
+		true
+	);
+	// ...and the extra must be 0 by default, so an English doc reserves exactly what it always did.
+	expect(em(declared('--lyrics-row-extra'))).toBe(0);
+});
+
+it('the row budget of a romanised doc covers what a romanised row RENDERS, computed from the same declarations', () => {
+	const rowH = em(declared('--lyrics-row-h'));
+	const size = em(declared('--romanization-size'));
+	const gap = em(declared('--romanization-gap'));
+	// What a row with a romanisation renders: its own leading, plus the second script's line (its leading is
+	// a multiple of ITS font-size) plus the gap (a margin on the romanisation, so also in its own em).
+	const rendered = rowH + size * SNUG + size * gap;
+	// What the viewport reserves for it, read out of the override block the `romanized` flag turns on.
+	const extra = romanizedBlock().match(/--lyrics-row-extra:\s*calc\(([\s\S]*?)\)\s*;/);
+	expect(extra, 'the extra is a calc of the romanisation tokens').not.toBeNull();
+	expect(extra![1]).toContain('--romanization-size');
+	expect(extra![1]).toContain('--romanization-leading');
+	expect(extra![1]).toContain('--romanization-gap');
+	const reserved = rowH + size * (SNUG + gap);
+	expect(reserved).toBeCloseTo(rendered, 9);
+	expect(reserved).toBeGreaterThan(rowH); // the whole point: the budget grew
+	// The default room setting is 2 before + 1 + 2 after. With the pre-fix budget those five rows needed
+	// 5 x 2.768em of a 5 x 1.9em box — 3.4 rows fit, so a context row per edge was clipped.
+	const DEFAULT_ROWS = 5;
+	expect(DEFAULT_ROWS * rowH).toBeLessThan(DEFAULT_ROWS * rendered);
+	expect(DEFAULT_ROWS * reserved).toBeGreaterThanOrEqual(DEFAULT_ROWS * rendered);
+});
+
+it('the romanisation renders at the tokens the budget is computed from (one source, so the two cannot drift)', () => {
+	const block = OVERLAY.match(/\.romanization\s*\{([\s\S]*?)\n\t\}/);
+	expect(block, '.romanization is declared').not.toBeNull();
+	expect(block![1]).toContain('font-size: var(--romanization-size)');
+	expect(block![1]).toContain('line-height: var(--romanization-leading)');
+	expect(block![1]).toContain('margin-top: calc(var(--romanization-gap) * 1em)');
+});
+
+it('the budget is turned on by the DOC carrying a romanisation, not by the language or a prop', () => {
+	expect(/romanized\s*=\s*\$derived\(!!doc\?\.lines\.some\(\(l\)\s*=>\s*l\.romanization\)\)/.test(CODE)).toBe(true);
+	expect(/class=\{\['lyrics',[\s\S]{0,160}?romanized/.test(CODE)).toBe(true);
+});

@@ -50,7 +50,7 @@ import e2e_lib as lib  # noqa: E402
 from encore_worker.adapters import ml, ports  # noqa: E402
 from encore_worker.adapters.ml import Emissions, WhisperXAligner  # noqa: E402
 from encore_worker.artifacts import keys  # noqa: E402
-from encore_worker.domain.lyrics import language, lexical, romanize  # noqa: E402
+from encore_worker.domain.lyrics import language, lexical, romanize, units  # noqa: E402
 from encore_worker.domain.lyrics.clean import clean_indexed, clean_segments  # noqa: E402
 from encore_worker.domain.lyrics.policy import Tier  # noqa: E402
 from encore_worker.host.config import Config, ConfigError  # noqa: E402
@@ -247,37 +247,39 @@ def resolve_bundle(named: str | None, config: Any, language: str) -> tuple[str |
     return (named or from_env), None
 
 
-def nonlatin_bundle(config: Any) -> str | None:
-    """The bundle a NON-LATIN language aligns on, or None for whisperx's per-language table.
+def nonlatin_routes(config: Any) -> dict[str, str]:
+    """`{language: bundle}` for every non-Latin language routed off whisperx's own table.
 
-    READ OFF THE FUNCTION PRODUCTION READS (`__main__.nonlatin_align_model_for`), so the harness cannot
-    drift from the composition root: only `ENCORE_ALIGN_EXPERIMENTS=mms-roman` answers anything, and what it
-    answers has CC-BY-NC weights (docs/arch/04-alignment.md §9.1).
+    READ OFF THE FUNCTION PRODUCTION READS (`__main__.nonlatin_routes_for`), so the harness cannot drift
+    from the composition root: the per-language stage-2 table decides, and the bundle it sends zh and ko to
+    has CC-BY-NC weights (docs/arch/04-alignment.md §9.2).
     """
-    from encore_worker.__main__ import nonlatin_align_model_for  # noqa: PLC0415
+    from encore_worker.__main__ import nonlatin_routes_for  # noqa: PLC0415
 
-    return nonlatin_align_model_for(config)
+    return nonlatin_routes_for(config)
 
 
-def uncalibrated_banner(model: str) -> str | None:
-    """The loud stderr banner for a run whose bundle has no `lexical.CALIBRATED` row, or None when it has one.
+def uncalibrated_banner(model: str, language: str = ml.ENGLISH) -> str | None:
+    """The loud stderr banner for a run whose `(bundle, language)` PAIR has no `lexical.CALIBRATED` row.
 
-    THE ONE PLACE THE HARNESS IS MORE PERMISSIVE THAN PRODUCTION, and deliberately: `__main__
-    .align_model_for` refuses to start a worker on an uncalibrated bundle, but the wave procedure is
-    measure-then-paste-the-row, so a new bundle's first corpus run is uncalibrated by construction. What must
-    not happen is that its numbers read like a calibrated bundle's: with no row the wrong-text verdict falls
-    back to the sheet-span envelope gate — 125/320 wrongtext passes on this corpus — so the banner names the
-    bundle and the fix, the meta carries `uncalibrated: true`, and `e2e_gates` ERRORs the moved metrics."""
-    if lexical.is_calibrated(model):
+    THE LANGUAGE IS HALF THE KEY and must be passed, MMS_FA serving more than one (XA-21). More permissive
+    than production, deliberately: a new bundle's first corpus run is uncalibrated by construction, so it is
+    announced rather than refused — but its numbers must not read like a calibrated bundle's, since with no
+    row the wrong-text verdict falls back to the sheet-span envelope gate (125/320 wrongtext passes on this
+    corpus). So the banner names the pair and the fix, the meta carries `uncalibrated: true`, and
+    `e2e_gates` ERRORs the moved metrics. README, "W10: the first non-Latin calibration rows"."""
+    if lexical.is_calibrated(model, language):
         return None
     return (
-        f"!! {model} HAS NO LEXICAL CALIBRATION ROW — every emission-scale gate stands down on this run.\n"
-        f"!! {lexical.uncalibrated(model)}\n"
+        f"!! {model} HAS NO LEXICAL CALIBRATION ROW FOR {language!r} — every emission-scale gate stands "
+        "down on this run.\n"
+        f"!! {lexical.uncalibrated(model, language)}\n"
         "!! So this run's wrongtext_pass / lift columns are the sheet-span envelope gate's readings, NOT "
         "this bundle's (the envelope gate passes 125/320 wrong texts on this corpus). The rows are marked "
         "`uncalibrated` and any gate reading them is an ERROR.\n"
-        "!! Production would REFUSE to start on it (encore_worker.__main__.align_model_for); measure first "
-        "(scripts/lift_gate.py --model, scripts/line_gate.py --model), paste the row, then sweep."
+        "!! A worker NAMED onto this bundle would refuse to start (encore_worker.__main__.align_model_for); "
+        "a language ROUTED onto it publishes lines only. Measure first (scripts/lift_gate.py --model "
+        "--language, scripts/line_gate.py --model --language), paste the row, then sweep."
     )
 
 
@@ -347,7 +349,7 @@ class BenchAligner(WhisperXAligner):
         device: str,
         jobs: int = 1,
         model: str | None = None,
-        nonlatin_model: str | None = None,
+        nonlatin_routes: Mapping[str, str] | None = None,
         store: lib.EmissionStore | None = None,
         read: bool = True,
         write: Literal["always", "missing"] = "missing",
@@ -357,7 +359,7 @@ class BenchAligner(WhisperXAligner):
             device=device,
             jobs=jobs,
             model=model or ml.default_align_model(device),
-            nonlatin_model=nonlatin_model,
+            nonlatin_routes=nonlatin_routes,
         )
         self._store = store
         self._read = read
@@ -1622,10 +1624,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     #: W8 stage 2: the `mms-roman` arm replaces whisperx's table for a NON-LATIN language, so the label,
     #: the emission store's key and the loaded weights stay one fact (`resolve_bundle`'s reason).
-    mms = nonlatin_bundle(config)
-    routed_mms = mms if mms and args.language not in language.LATIN_LANGUAGES else None
-    model_label = named or routed_mms or default_model(args.language, device)
-    banner = uncalibrated_banner(model_label)
+    routes = nonlatin_routes(config)
+    routed = routes.get(args.language) if args.language not in language.LATIN_LANGUAGES else None
+    model_label = named or routed or default_model(args.language, device)
+    banner = uncalibrated_banner(model_label, args.language)
     if banner is not None:
         print(banner, file=sys.stderr)
     store = (
@@ -1697,7 +1699,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     aligner = BenchAligner(
         device=device,
         model=named,
-        nonlatin_model=mms,
+        nonlatin_routes=routes,
         store=store,
         read=args.emissions_cache == "use",
         write="always" if args.emissions_cache == "refresh" else "missing",
@@ -1773,6 +1775,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "tfr_audio": args.tfr_audio,
         "target": run_config["target"],
         "align_config": run_config["align_config"],
+        #: THE UNIT RULE THAT ACTUALLY RAN, resolved for this run's language rather than read off the arm
+        #: names, which cannot say whether `mms-roman`'s romanised targets had a backend. No
+        #: `lib.RUN_DEFAULTS` entry, so an older row stays silent rather than claiming `plain`.
+        "units": units.rules_for(args.language, config.align_experiments).name,
         **({"uncalibrated": True} if banner is not None else {}),
         **({"corpus": args.corpus} if args.corpus != lib.ENGLISH_CORPUS else {}),
         "modes": modes,
@@ -2004,7 +2010,7 @@ def verify_cache(
         aligner = BenchAligner(
             device=device,
             model=bundle,
-            nonlatin_model=nonlatin_bundle(config),
+            nonlatin_routes=nonlatin_routes(config),
             store=store,
             read=read,
             write="missing",

@@ -557,3 +557,69 @@ def test_without_the_arm_the_adlib_words_are_decoded_and_nothing_says_ad_libs(
     assert 6.8 <= echo["words"][0]["start"] <= 7.6, "the default decodes it as a target of its own"
     notes = " ".join(str(state) for state in rig[0]._out.states)  # type: ignore[attr-defined]  # noqa: SLF001
     assert "ad-libs:" not in notes
+
+
+# ── the unit rule reaches R1's own question (review r2-correctness-5) ─────────────────────────────────
+
+
+def test_a_dense_script_line_is_split_and_restored_on_the_units_own_words() -> None:
+    """R1's words and the decode's must be ONE list, or `_woven` cannot pair them.
+
+    `split` was the one reader of the target filter never given `units.Rules`: it read a Chinese line as one
+    whitespace token while the arm's decode answers one word per hanzi, so a Han line with a parenthetical
+    reached `_woven` with six decoded words for one non-aside position — a `ValueError` out of `time_text`,
+    which XA-17 says may raise nothing but an `InfraFault`.
+    """
+    from encore_worker.domain.lyrics import units
+
+    han = "山水风云雨雪"
+    aside = "(啊啊)"
+    vocab = {ch: index + 1 for index, ch in enumerate(sorted(set(han + "啊")))}
+    matrix = FakeEmissions(sung_matrix([(han, 1.0, 3.0)], vocab, 6.0), 0.02, vocab)
+    rules = units.rules("zh", script_units=True, simplify=False, transliterate=False)
+    texts = [f"{han} {aside}"]
+
+    threaded = parts.split(texts, emissions=matrix, units=rules)
+    assert threaded.hosts[0].words == (*han, "(", "啊", "啊)"), "the words are the unit rule's"
+    assert threaded.lead_texts[0] == " ".join(han), "the parenthetical is held out, hanzi by hanzi"
+
+    decoded = generate(
+        texts and [threaded.lead_texts[0]],
+        matrix,
+        decoder=ctc_viterbi,
+        language="zh",
+        units=rules,
+    )
+    restored = parts.restored(decoded, threaded, until=6.0)
+    published = [word.word for line in restored.lines for word in line.words]
+    assert published == [*han, "(", "啊", "啊)"], "every served word comes back, in order"
+    assert restored.lines[0].text == texts[0], "and the published text is the served one (XA-20)"
+
+    # The unthreaded call is the defect: its word list is the whitespace rule's, and pairing it with THIS
+    # decode raises rather than publishing.
+    with pytest.raises(ValueError, match="decoded words for lead text"):
+        parts.restored(decoded, parts.split(texts, emissions=matrix), until=6.0)
+
+
+def test_the_lead_test_counts_the_targets_the_arms_decode_will_build() -> None:
+    """The filter's other half: under a romanising rule a Han lead IS alignable on a 26-letter Latin
+    vocabulary, which is MMS_FA's shape — asked without the rule it reads zero and R1 keeps an aside the
+    decode could have held out (XA-20; docs/arch/04-alignment.md §9.1)."""
+    from encore_worker.domain.lyrics import units
+
+    latin = {ch: index + 1 for index, ch in enumerate("abcdefghijklmnopqrstuvwxyz")}
+    matrix = FakeEmissions(sung_matrix([("aaa bbb", 1.0, 2.0)], latin, 5.0), 0.02, latin)
+    romanising = units.Rules(
+        name="roman",
+        words=lambda text: units.words(text, "zh"),
+        syllables=lambda word, _language: list(word),
+        chars=lambda word: [(index, "a") for index, _ch in enumerate(word)],
+    )
+    texts = ["aaa bbb", "山水风 (ccc ddd)", "eee fff"]
+
+    raw = parts.split(texts, emissions=matrix)
+    assert 1 not in raw.hosts, "raw hanzi against a Latin vocabulary: nothing left to align"
+
+    spelled = parts.split(texts, emissions=matrix, units=romanising)
+    assert 1 in spelled.hosts, "romanised, the lead has three targets of its own"
+    assert spelled.lead_texts[1] == "山 水 风"

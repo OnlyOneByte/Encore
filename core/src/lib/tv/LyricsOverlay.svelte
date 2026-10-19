@@ -205,6 +205,11 @@
 		return () => ro.disconnect();
 	});
 	const unverified = $derived(isAutoTranscribed(provenance));
+	// EVERY row of the reel renders its own `romanization`, not just the current one, so a romanised doc makes
+	// every row taller than `--lyrics-row-h` — and the viewport height is rows x that. The flag adds the second
+	// script's own height to the row BUDGET, so `linesBefore`/`linesAfter` still fit. See
+	// docs/FRONTEND.md#the-lyrics-reel.
+	const romanized = $derived(!!doc?.lines.some((l) => l.romanization));
 	/** Only the `word` treatment needs spans; plain text keeps the row one text node for the ResizeObserver. */
 	const wordLevel = $derived(highlight === 'word');
 	// The type as custom properties, so the stylesheet keeps owning the geometry. `--lyrics-rows` is the
@@ -233,7 +238,7 @@
 </script>
 
 {#if show && doc && curLine}
-	<div class={['lyrics', `hl-${highlight}`, { unverified }]} role="presentation" style={typeStyle}>
+	<div class={['lyrics', `hl-${highlight}`, { unverified, romanized }]} role="presentation" style={typeStyle}>
 		<!--
 			A SCROLLING REEL, not a two-slot swap: every line is a persistent keyed node in one column and only the
 			column transform changes, so the singer keeps the line they just sang in view.
@@ -371,12 +376,23 @@
 		   percentages, which were tuned for five rows and at three reached into the current line. An edge with NO
 		   context rows is not faded at all, which is why the two edges are separate variables. */
 		--lyrics-row-h: 1.9em;
+		/* The second script's own type, declared ONCE here and read by both `.romanization` and the row budget
+		   below, so the rendered height and the height the viewport reserves cannot drift. The gap is unitless
+		   because `margin-top` on `.romanization` resolves against ITS font-size, not the row's. */
+		--romanization-size: 0.62em;
+		--romanization-leading: var(--lh-snug);
+		--romanization-gap: 0.15;
+		/* A ROW IS ITS LEADING PLUS WHATEVER ELSE IT RENDERS. 0 by default; `.lyrics.romanized` adds the second
+		   script's line, since every row of a romanised doc carries one. */
+		--lyrics-row-extra: 0em;
+		--lyrics-row-budget: calc(var(--lyrics-row-h) + var(--lyrics-row-extra));
 		/* Capped, so the two ramps can never eat the box and leave no opaque plateau for the sung row. `100%` is this
-		   box's own POST-CAP height, and measureReel mirrors this exact cap in px. */
+		   box's own POST-CAP height, and measureReel mirrors this exact cap in px — off the TEXT line's leading, which
+		   is what the ramp was tuned to, so the two stay the same number. */
 		--lyrics-fade-cap: min(var(--lyrics-row-h), calc((100% - var(--lyrics-row-h)) / 2));
 		--lyrics-fade-top: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-top-on, 1));
 		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
-		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
+		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-budget));
 		/*
 		 * EXACTLY the parent band, and it must NOT subtract a further `--tv-safe-y`: the box is centred, so charging
 		 * one against its height buys only half of it as top inset while removing a full one of reel — and
@@ -412,10 +428,16 @@
 		   transform still changes every line under Reduce Motion — it jumps instead of gliding. */
 		will-change: transform;
 	}
+	/* The ROW BUDGET the viewport reserves per row, grown by the second script's own line — every row of a
+	   romanised doc renders one, so without this the fixed-height viewport clipped a context row per edge. */
+	.lyrics.romanized .viewport {
+		--lyrics-row-extra: calc(var(--romanization-size) * (var(--romanization-leading) + var(--romanization-gap)));
+	}
 	.row {
 		/* LOOSE LEADING IS LOAD-BEARING: the ball is absolutely positioned above its word, so at tight leading it
-		   lands on the previous wrapped line — which is also why leading is not a room setting. Reads the same
-		   variable the viewport height is computed from, so leading and row count cannot disagree. */
+		   lands on the previous wrapped line — which is also why leading is not a room setting. This is the TEXT
+		   line's leading alone; what the viewport reserves per row is `--lyrics-row-budget`, which adds the
+		   romanisation's own height when the doc carries one, so leading and row count cannot disagree. */
 		line-height: var(--lyrics-row-h, 1.9em);
 		max-width: 100%;
 		color: rgba(255, 255, 255, 0.62); /* upcoming — must be READ, not merely sensed */
@@ -425,9 +447,10 @@
 	}
 	/* Inherits the row's colour transition, so it fades in step with its line rather than at one fixed brightness. */
 	.romanization {
-		font-size: 0.62em;
-		line-height: var(--lh-snug);
-		margin-top: 0.15em;
+		/* The three tokens the row budget is computed from (`.viewport`), never literals of their own. */
+		font-size: var(--romanization-size);
+		line-height: var(--romanization-leading);
+		margin-top: calc(var(--romanization-gap) * 1em);
 		/* DERIVED FROM THE ROW'S INK, not an opacity on it — which is what keeps the "fades in step with its line"
 		   behaviour above while making the dim a colour. As a subtree alpha it multiplied the row's own 0.62 to an
 		   effective ~0.48 that no reading of either rule revealed. Still dim by design: a second script is a hint

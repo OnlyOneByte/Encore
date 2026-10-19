@@ -346,7 +346,7 @@ def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on(
     `BANDS` is ONE bundle's calibration and whisperx picks the bundle PER LANGUAGE, so `align_model_name`
     reads that choice from whisperx's own tables without loading anything: this test fails the day a
     whisperx upgrade moves the `en` default, which would otherwise apply thresholds fitted elsewhere. A
-    language with no default is named as such and `align_steps._measured_lift` declines to judge. `BANDS`
+    language with no default is named as such and `align_lines._measured_lift` declines to judge. `BANDS`
     stays the row an UNNAMED matrix is read as — a test's fake, a bench cache written before
     `Emissions.model` existed — while the shipped default's row is `CALIBRATED[default_align_model()]`."""
     from encore_worker.adapters.ml import align_model_name, default_align_model
@@ -364,7 +364,7 @@ def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on(
     # matrix an unknown row and decline the words it is allowed to publish.
     from encore_worker.adapters.ml import MMS_ALIGN_MODEL, WhisperXAligner
 
-    aligner = WhisperXAligner(device="cpu", model=named, nonlatin_model=MMS_ALIGN_MODEL)
+    aligner = WhisperXAligner(device="cpu", model=named, nonlatin_routes={"zh": MMS_ALIGN_MODEL})
     for language in ("en", "", "de", "zh", "zz"):
         loaded, reported = aligner._bundle_of(language), aligner._bundle_name(language)
         assert loaded is None or loaded == reported, f"{language!r} loads {loaded} and reports {reported}"

@@ -13,11 +13,6 @@ from dataclasses import dataclass
 from encore_worker.steps.api import NotOurJob, SeparateSteps
 from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 
-STATE_DECODE = "decode"
-STATE_SEPARATE = "separate"
-STATE_PROBE = "probe-silence"
-STATE_PUBLISH = "publish"
-
 #: Peak level below which an instrumental is digital silence rather than a quiet mix. 16-bit silence
 #: measures around -91 dBFS; -90 leaves headroom for dither so a legitimately quiet passage is not refused.
 SILENCE_FLOOR_DBFS = -90.0

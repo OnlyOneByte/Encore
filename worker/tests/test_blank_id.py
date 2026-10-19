@@ -226,10 +226,10 @@ def test_the_lexical_lift_is_measured_on_the_same_targets_the_decode_publishes(
 def test_the_mix_witness_reads_the_blank_column_it_is_told_about(
     evidence: tuple[Emitted, Emitted, Unaware],
 ) -> None:
-    """`align_steps._speech_mass` is `1 - p(blank)`: on a permuted vocabulary the literal 0 read the
+    """`align_unsung._speech_mass` is `1 - p(blank)`: on a permuted vocabulary the literal 0 read the
     probability of a LETTER, so a sung span scored as silence and a silent one as speech — which inverts
     every never-sung spare and every claim adoption that number gates."""
-    from encore_worker.steps.align_steps import _speech_mass
+    from encore_worker.steps.align_unsung import _speech_mass
 
     plain, aware, unaware = evidence
     sung = _speech_mass(plain, 0.4, 2.2)

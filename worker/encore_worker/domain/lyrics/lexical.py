@@ -17,13 +17,14 @@ from typing import Any
 
 from encore_worker.domain.lyrics.generate import Decoder as _Decoder
 from encore_worker.domain.lyrics.generate import blank_of, char_ids, excluded_of
+from encore_worker.domain.lyrics.language import ENGLISH
 from encore_worker.domain.lyrics.units import Rules
 
 #: The decoder contract, imported rather than restated, so the lift measures on the decode that publishes.
 Decoder = _Decoder
 
-#: How many shuffles the text is contrasted with, the BEST of them being the reference. A noisy estimator at
-#: the bands' scale, so it moves with `CALIBRATED` or not at all.
+#: How many shuffles the text is contrasted with, the BEST of them being the reference. Noisy at the bands'
+#: scale, so it moves with `CALIBRATED` or not at all.
 SHUFFLES = 3
 
 #: Fewer alignable letters than this and the contrast is noise, a handful of words having few distinct orders.
@@ -41,7 +42,6 @@ class Lift:
 
     def why(self) -> str:
         # Three decimals on the lift: at two, a text at +0.195 read "lift +0.20 ..., below the gate (0.2)".
-        # The per-letter reading stays at two, being a scale rather than a number anything is compared to.
         return (
             f"lexical lift {self.value:+.3f} nats/letter over {self.letters} letters "
             f"(the text {self.per_letter:.2f}/letter against the best of {SHUFFLES} shuffles of its words)"
@@ -71,7 +71,7 @@ def shuffles_of(
     own word count — so every copy holds exactly the text's letters, on the text's own lines.
 
     THE SHUFFLE IS THE UNIT RULE'S: with the whitespace rule a Chinese line is one word, so a "shuffle"
-    only permutes whole lines and the contrast is a much weaker one than any Latin text's.
+    only permutes whole LINES, and the contrast is far weaker than any Latin text's (XA-21).
     """
     words_of: Callable[[str], Sequence[str]] = units.words if units is not None else str.split
     words = [word for text in line_texts for word in words_of(text)]
@@ -138,20 +138,18 @@ class Band(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Bands:
-    """ONE emission model's calibrated thresholds: the lift's bands in nats per letter plus the two other
-    emission-scale numbers here. The table is `CALIBRATED` and every fit is in the README."""
+    """ONE (emission model, language) pair's calibrated thresholds: the lift's bands in nats per letter plus
+    the two other emission-scale numbers here. The table is `CALIBRATED` and every fit is in the README."""
 
-    #: The model they were calibrated on (`adapters.ml.Emissions.model`), which is also this row's key.
+    #: The model they were calibrated on (`adapters.ml.Emissions.model`), half of this row's key.
     model: str
     #: On a stem: under it, REFUSE. ALSO the LINE_SYNC rung's lexical floor, so one recalibration moves both.
     refuse_below: float
     #: On a stem: from `refuse_below` up to it, DOUBT; from it, OK.
     ok_from: float
-    #: On the mix: under it, REFUSE — a verdict, and DOUBT only under `h3-mix-envelope` (README, "The
-    #: stemless mode").
+    #: On the mix: under it, REFUSE — DOUBT only under `h3-mix-envelope` (README, "The stemless mode").
     mix_floor: float
-    #: On the mix: from `mix_floor` up to it, DOUBT; from it, OK. A GRADING threshold, never the words'
-    #: standing.
+    #: From `mix_floor` up to it, DOUBT; from it, OK. A GRADING threshold, never the words' standing.
     mix_ok_from: float
     #: The LINE_SYNC rung's timing gate: the share of a text's DECODED lines that must start near their mapped
     #: claim (docs/arch/04-alignment.md §5.3; `line_gate.py --model <bundle>` fits it).
@@ -161,12 +159,20 @@ class Bands:
     #: log-probabilities (docs/arch/04-alignment.md §6; README, "The confidence rule").
     margin_floor_nats: float | None
 
+    #: The BUNDLE's language, the other half of this row's key: MMS_FA serves zh and ko, and their lifts
+    #: are not each other's (XA-21).
+    language: str = ENGLISH
 
-#: EVERY CALIBRATED MODEL, keyed by `Emissions.model`: the ONE source of truth for every emission-scale
-#: threshold here, and a model absent from it is not gated (XA-06). Each row was measured on THAT bundle's
-#: matrices over the whole bench corpus (README, "Per-model calibration").
-CALIBRATED: dict[str, Bands] = {
-    "WAV2VEC2_ASR_BASE_960H": Bands(
+
+#: THE ROW KEY: a bundle alone cannot name a calibration, MMS_FA serving more than one language.
+Key = tuple[str, str]
+
+
+#: EVERY CALIBRATED (MODEL, LANGUAGE): the ONE source of truth for every emission-scale threshold here, and
+#: a pair absent from it is not gated (XA-06, XA-21). README, "Per-model calibration" and "W10: the first
+#: non-Latin calibration rows".
+CALIBRATED: dict[Key, Bands] = {
+    ("WAV2VEC2_ASR_BASE_960H", ENGLISH): Bands(
         model="WAV2VEC2_ASR_BASE_960H",
         refuse_below=0.2,
         ok_from=0.3,
@@ -175,7 +181,7 @@ CALIBRATED: dict[str, Bands] = {
         line_sync_min_agreement=0.5,
         margin_floor_nats=10.0,
     ),
-    "HUBERT_ASR_LARGE": Bands(
+    ("HUBERT_ASR_LARGE", ENGLISH): Bands(
         model="HUBERT_ASR_LARGE",
         refuse_below=0.45,
         ok_from=0.8,
@@ -184,7 +190,31 @@ CALIBRATED: dict[str, Bands] = {
         line_sync_min_agreement=0.5,
         margin_floor_nats=10.0,
     ),
-    "HUBERT_ASR_XLARGE": Bands(
+    #: THE FIRST NON-LATIN ROWS (W10), fitted on the AMLL corpus rather than the English 32: zh on MMS_FA
+    #: under `mms-roman`, ja on whisperx's own bundle under `nonlatin-units`, each its own route's (XA-21).
+    #: ko has no row — one song, so no wrong-text population to separate.
+    ("MMS_FA", "zh"): Bands(
+        model="MMS_FA",
+        language="zh",
+        refuse_below=0.35,
+        ok_from=0.70,
+        mix_floor=0.05,
+        mix_ok_from=0.25,
+        line_sync_min_agreement=0.5,
+        #: Nobody has read one of MMS_FA's trellises, so the placement-ambiguity rule abstains.
+        margin_floor_nats=None,
+    ),
+    ("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja"): Bands(
+        model="jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
+        language="ja",
+        refuse_below=0.35,
+        ok_from=0.70,
+        mix_floor=0.05,
+        mix_ok_from=0.15,
+        line_sync_min_agreement=0.5,
+        margin_floor_nats=None,
+    ),
+    ("HUBERT_ASR_XLARGE", ENGLISH): Bands(
         model="HUBERT_ASR_XLARGE",
         refuse_below=0.35,
         ok_from=0.5,
@@ -198,12 +228,12 @@ CALIBRATED: dict[str, Bands] = {
 }
 
 #: WHISPERX'S `en` TABLE DEFAULT, AND NO LONGER THIS WORKER'S. A reader that means "the model these frames
-#: came from" must go through `calibration(emissions)`.
-BANDS = CALIBRATED["WAV2VEC2_ASR_BASE_960H"]
+#: came from" must go through `calibration(emissions, language)`.
+BANDS = CALIBRATED[("WAV2VEC2_ASR_BASE_960H", ENGLISH)]
 
 #: THE LINE_SYNC RUNG'S SHARE FOR A MATRIX WITH NO ROW, and the ONE threshold a missing calibration does not
-#: switch off, being a count of lines. All three calibrated rows independently fit it
-#: (docs/arch/04-alignment.md §5.3, §5.4).
+#: switch off, being a count of lines. The three ENGLISH rows each fit it; the two non-Latin rows TAKE it
+#: (README, "`line_sync_min_agreement` is 0.5, and the sweep says why"; docs/arch/04-alignment.md §5.4).
 LINE_SYNC_SHARE_UNCALIBRATED = 0.5
 
 
@@ -214,15 +244,24 @@ def line_sync_share(bands: Bands | None) -> float:
     return bands.line_sync_min_agreement if bands is not None else LINE_SYNC_SHARE_UNCALIBRATED
 
 
-#: Wrong texts the v2 ENVELOPE gate let through — the only gate an uncalibrated bundle has left.
+#: Wrong texts the v2 ENVELOPE gate let through — an uncalibrated bundle's only other gate.
 ENVELOPE_WRONG_TEXT_PASSES = "189 of 380"
 
 
-def may_time_words(bands: Bands | None, *, heard_on_this_audio: bool) -> bool:
+def may_time_words(bands: Bands | None, *, heard_on_this_audio: bool, nonlatin_script: str = "") -> bool:
     """Whether a WORD document may publish off a matrix whose calibration row is `bands`: only where a
-    witness read THESE WORDS, the lift against that row or a transcript of this recording being the two
-    (XA-06; docs/arch/04-alignment.md §5.4)."""
-    return bands is not None or heard_on_this_audio
+    witness read THESE WORDS — that row's lift, or a transcript of this recording.
+
+    A NON-LATIN text timed by an ENGLISH row found a FALLBACK and not this lane's witness, so it is declined
+    even though the row exists; a non-Latin text on its OWN calibrated pair is not (XA-06, XA-21;
+    docs/arch/04-alignment.md §5.4). The row's LANGUAGE is read off the row, a second argument for it being
+    able to disagree with the row it describes.
+    """
+    if heard_on_this_audio:
+        return True
+    if bands is None:
+        return False
+    return not (nonlatin_script and bands.language == ENGLISH)
 
 
 def words_ungated(why: str) -> str:
@@ -234,34 +273,51 @@ def words_ungated(why: str) -> str:
     )
 
 
+def unnamed_script(script: str, bundle: str) -> str:
+    """Why `bundle`'s calibration row cannot read a text in `script`: `language.SCRIPT_LANGUAGES` names no
+    language for it, so the text routes to English by FALLBACK (docs/arch/04-alignment.md §5.4)."""
+    return (
+        f"this text is written in {script}, which no alignment bundle here is for, so {bundle} timed it — "
+        f"and that row's bands were fitted on text this bundle's vocabulary can spell"
+    )
+
+
 def margin_floor(bands: Bands | None) -> float | None:
     """The placement-margin floor in nats for a matrix whose calibration is `bands`, else None — which is
     ABSTAIN. The mirror image of `line_sync_share`: a share counts lines, a margin sums log-probabilities."""
     return bands.margin_floor_nats if bands is not None else None
 
 
-def is_calibrated(model: str) -> bool:
-    """Whether `model` has a calibration row — what an operator knob that NAMES a model must check before a
-    worker starts on it, so the refusal is loud rather than a job whose gates silently stop gating."""
-    return model in CALIBRATED
+def calibrated_pairs() -> list[str]:
+    """Every calibrated `(model, language)` as `MODEL/language`, for the one sentence a refusal prints."""
+    return sorted(f"{model}/{code}" for model, code in CALIBRATED)
 
 
-def calibration(emissions: Any) -> Bands | None:
-    """The calibrated row for the matrix `emissions` came from, or None when that model has none — never
-    "use the default" (XA-06). A matrix that names no model is `BANDS`' by construction."""
+def is_calibrated(model: str, language: str = ENGLISH) -> bool:
+    """Whether `(model, language)` has a calibration row — what an operator knob that NAMES a model must
+    check before a worker starts on it, so the refusal is loud rather than a job whose gates stop gating."""
+    return (model, language) in CALIBRATED
+
+
+def calibration(emissions: Any, language: str = ENGLISH) -> Bands | None:
+    """The calibrated row for the matrix `emissions` came from while serving `language`, or None when that
+    pair has none — never "use the default", and never a NEIGHBOUR's row on the same bundle (XA-06, XA-21).
+
+    `language` is the BUNDLE's, so every Latin text on the English bundle keeps the English row.
+    """
     named = str(getattr(emissions, "model", "") or "")
-    if not named or named == BANDS.model:
+    if not named and language == ENGLISH:
         return BANDS
-    return CALIBRATED.get(named)
+    return CALIBRATED.get((named or BANDS.model, language))
 
 
-def uncalibrated(model: str) -> str:
-    """Why a matrix from `model` cannot be judged here — the one sentence every reader prints, so the trail
-    says the same thing wherever the refusal to gate happened."""
+def uncalibrated(model: str, language: str = ENGLISH) -> str:
+    """Why a matrix from `model` serving `language` cannot be judged here — the one sentence every reader
+    prints, so the trail says the same thing wherever the refusal to gate happened."""
     return (
-        f"no lexical calibration for {model} (the alignment model is chosen per language, and these "
-        f"thresholds are {', '.join(sorted(CALIBRATED))}'s): recalibrate with scripts/lift_gate.py --model "
-        f"{model} before reading it as a verdict"
+        f"no lexical calibration for {model} on {language!r} (a row is one bundle's AND one language's, and "
+        f"these thresholds are {', '.join(calibrated_pairs())}'s): recalibrate with scripts/lift_gate.py "
+        f"--model {model} --language {language} before reading it as a verdict"
     )
 
 

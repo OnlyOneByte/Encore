@@ -25,15 +25,12 @@ from encore_worker.domain.lyrics.generate import (
     alignable_chars,
 )
 from encore_worker.domain.lyrics.policy import normalised_words
+from encore_worker.domain.lyrics.units import Rules
 
 #: The most of its host's words an echo tail may repeat before it reads as a lyric line of its own. Measured
 #: on the corpus's own echoes, 1-3 words against hosts of 4-9: all 23 are caught and a near-complete repeat
 #: is still refused, being a REPEATED LYRIC and the ladder's business (docs/arch/04-alignment.md §8).
 MAX_ECHO_SHARE = 0.5
-
-#: One balanced parenthetical group, no nesting. Nesting is not a shape caption tracks or lyric sheets
-#: write, and the pattern refusing it is what keeps `(a (b) c)` out of R1 rather than splitting it wrong.
-_GROUP = re.compile(r"^\([^()]*\)$")
 
 _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
@@ -94,15 +91,16 @@ def untouched(line_texts: Sequence[str]) -> Split:
     return Split(lead_texts=tuple(line_texts), hosts={})
 
 
-def split(line_texts: Sequence[str], *, emissions: Any | None = None) -> Split:
+def split(line_texts: Sequence[str], *, emissions: Any | None = None, units: Rules | None = None) -> Split:
     """Take the ad-libs out of `line_texts` (R1, R2) without changing one published word.
 
     The returned `lead_texts` is PARALLEL to the input, every consumer pairing on position. `emissions` IS THE
     MATRIX THE LEAD DECODE WILL RUN ON, and R1 reads its DICTIONARY: as a LETTER test "something is left to
-    align" let the ARM LOSE A LINE the default path publishes.
+    align" let the ARM LOSE A LINE the default path publishes. `units` IS THE ATTEMPT'S OWN UNIT RULE, so the
+    words this pairs on and the targets it counts are the decode's (docs/arch/04-alignment.md §9.1).
     """
-    alignable = _alignable_with(emissions)
-    words = [tuple(text.split()) for text in line_texts]
+    alignable = _alignable_with(emissions, units)
+    words = [tuple(units.words(text)) if units is not None else tuple(text.split()) for text in line_texts]
     aside = [_aside_flags(line, alignable) for line in words]
     #: A line nothing was taken out of keeps its text BYTE-IDENTICALLY, never the re-joined tokens: re-joining
     #: silently rewrote the whitespace of 7 published lines on one measured song.
@@ -218,12 +216,13 @@ def unmeasured_lines(generated: Generated) -> frozenset[int]:
     )
 
 
-def _alignable_with(emissions: Any | None) -> Callable[[str], bool]:
-    """ "Can the lead decode align anything in this text?" — read off the MATRIX when there is one, so the
-    question R1 asks is exactly the question `generate` will answer; else the letter test."""
+def _alignable_with(emissions: Any | None, units: Rules | None = None) -> Callable[[str], bool]:
+    """ "Can the lead decode align anything in this text?" — read off the MATRIX when there is one, through
+    the attempt's own unit rule, so the question R1 asks is exactly the question `generate` will answer; else
+    the letter test."""
     if emissions is None:
         return lambda text: bool(_LETTER.search(text))
-    return lambda text: alignable_chars(text, emissions) > 0
+    return lambda text: alignable_chars(text, emissions, units) > 0
 
 
 def _aside_flags(words: Sequence[str], alignable: Callable[[str], bool]) -> tuple[bool, ...]:

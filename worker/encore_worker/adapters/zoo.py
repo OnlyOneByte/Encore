@@ -168,18 +168,13 @@ def capability_for(token: str) -> str:
     return f"{MODEL_CAPABILITY_PREFIX}{token}"
 
 
-def model_capabilities() -> frozenset[str]:
-    """One capability per runnable zoo model. NOT called from `host.capabilities`: that runs before
-    registration and this is slow, so it goes in a follow-up frame (docs/arch/05-worker.md §2.3)."""
-    return frozenset(capability_for(m.token) for m in catalogue())
-
-
 def announcement() -> tuple[frozenset[str], tuple[Any, ...]]:
     """`(extra capability tokens, offers)` for the `worker:catalogue` frame. Satisfies `client.Catalogue`.
 
     Lives here rather than in the transport because WHICH models exist is this module's question; the client
-    only knows when to ask it. Returns empty tuples on a box without the extra, which the client reads as
-    "nothing to announce" and skips the frame entirely.
+    only knows when to ask it. A FOLLOW-UP FRAME and not `host.capabilities`, which runs before registration
+    where reading the catalogue is slow (docs/arch/05-worker.md §2.3). Returns empty tuples on a box without
+    the extra, which the client reads as "nothing to announce" and skips the frame entirely.
     """
     from encore_worker.protocol.frames import SeparatorOffer  # noqa: PLC0415 - avoids an import cycle
 

@@ -210,7 +210,7 @@ def test_an_unreadable_matrix_measures_nothing_rather_than_doubting_everything()
         {2}
     ), (
         "an EMPTY mapping is one line-less song, not a fault: the score half still applies. The fault path "
-        "does not come through here at all — `align_steps._placement_margins` answers None and its caller "
+        "does not come through here at all — `align_claims._placement_margins` answers None and its caller "
         "never calls this (W6 review r1-correctness-2), which is the divergence this assertion used to hide"
     )
 
@@ -239,11 +239,14 @@ def test_the_margin_floor_is_required_and_comes_off_the_bundles_own_row() -> Non
     parameter = inspect.signature(margin.low_lines).parameters["min_margin_nats"]
     assert parameter.default is inspect.Parameter.empty, "a default floor is a cross-bundle threshold borrow"
     assert not hasattr(margin, "MIN_MARGIN_NATS"), "the floor lives in `lexical.Bands.margin_floor_nats`"
-    assert {name: row.margin_floor_nats for name, row in lexical.CALIBRATED.items()} == {
-        "WAV2VEC2_ASR_BASE_960H": 10.0,
-        "HUBERT_ASR_LARGE": 10.0,
-        # Measured on neither bundle's trellis, so the rule abstains instead of borrowing (the row's comment).
-        "HUBERT_ASR_XLARGE": None,
+    assert {key: row.margin_floor_nats for key, row in lexical.CALIBRATED.items()} == {
+        ("WAV2VEC2_ASR_BASE_960H", "en"): 10.0,
+        ("HUBERT_ASR_LARGE", "en"): 10.0,
+        # Measured on none of these three bundles' trellises, so the rule abstains instead of borrowing (each
+        # row's own comment). The two non-Latin rows W10 fitted are nats on an unread scale too.
+        ("HUBERT_ASR_XLARGE", "en"): None,
+        ("MMS_FA", "zh"): None,
+        ("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja"): None,
     }
 
 
