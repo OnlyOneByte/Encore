@@ -22,14 +22,16 @@
 <div class="youre-up your-turn rise-in" style="--singer:{singerColor}" bind:clientHeight={height}>
 	<p class="who" aria-hidden="true"><span class="dot"></span>{YOURE_UP}</p>
 	<p class="song" aria-hidden="true">{title}</p>
-	<Button class="ok" onclick={ondismiss}>OK</Button>
+	<!-- The words above are hidden from assistive tech, so the button carries their context; it still starts with its
+		visible label, so a voice command for "OK" finds it. -->
+	<Button class="ok" aria-label="OK, dismiss {YOURE_UP}" onclick={ondismiss}>OK</Button>
 </div>
 
 <style>
 	/* Above the dock, in the On deck heads-up's colour (app.css `.your-turn`). */
 	.youre-up {
 		position: fixed;
-		inset-inline: var(--space-lg);
+		inset-inline: var(--sheet-gutter);
 		inset-block-end: calc(var(--dock-h, 0px) + var(--space-lg));
 		z-index: var(--z-dock);
 		max-width: var(--sheet-max);

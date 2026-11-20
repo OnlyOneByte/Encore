@@ -94,9 +94,9 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(live).toHaveAttribute('role', 'status');
 		await expect(live.getByRole('button')).toHaveCount(0);
 		// What assistive tech is given: the words ONCE (the sheet's own copy is hidden from it), and the OK button.
-		const tree = await theo.locator('body').ariaSnapshot();
-		expect(tree.match(/You’re up/g) ?? [], tree).toHaveLength(1);
-		await expect(youreUp.getByRole('button', { name: 'OK' })).toBeVisible();
+		// The sheet itself gives assistive tech ONLY its button: its words are the live region's, and read once there.
+		// The button's name carries the context the hidden words would have given it.
+		expect(await youreUp.ariaSnapshot()).toBe('- button "OK, dismiss You’re up": OK');
 		// Nobody else is told it is their turn.
 		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
@@ -324,29 +324,54 @@ test('when your own stale skip makes it your turn, the toast stacks above "You�
 		const s = (await sheet.boundingBox())!;
 		const t = (await toast.boundingBox())!;
 		expect(t.y + t.height, `toast ${JSON.stringify(t)} vs sheet ${JSON.stringify(s)}`).toBeLessThanOrEqual(s.y);
+		// The two stacked notices share one gutter token, so their edges line up (review r3, 976-3).
+		expect(Math.abs(t.x - s.x), `left edges: toast ${t.x}, sheet ${s.x}`).toBeLessThanOrEqual(1);
+		expect(Math.abs(t.x + t.width - (s.x + s.width)), 'right edges').toBeLessThanOrEqual(1);
+		// ...because both read the SAME token, not because sonner's default happens to equal it today: the toaster's
+		// phone sides are `--sheet-gutter`, as the sheet's are.
+		const toasterSides = await theo
+			.locator('[data-sonner-toaster]')
+			.first()
+			.evaluate((el) => [
+				(el as HTMLElement).style.getPropertyValue('--mobile-offset-left').trim(),
+				(el as HTMLElement).style.getPropertyValue('--mobile-offset-right').trim()
+			]);
+		expect(toasterSides).toEqual(['var(--sheet-gutter)', 'var(--sheet-gutter)']);
 
-		// The sheet goes at the TV's 2.5 s and the toast lives 4 s: the toast must STAY where it is, not drop the
-		// sheet's height in one frame (review r2, 976-1). Sampled every frame from just before the sheet leaves.
-		const ys = await theo.evaluate(
+		// The sheet goes at the TV's 2.5 s and the toast lives 4 s. Sampled EVERY frame until the toast's node has
+		// left the page, its closing frames included: it may not move while it is up, and it may never jump. The
+		// round-2 fix held the offset only until sonner said "closing", and the toast dropped 143 px at full opacity
+		// on the first frame of its exit (review r3, 976-M1); sonner's own exit slide moves a few px a frame.
+		const frames = await theo.evaluate(
 			() =>
-				new Promise<number[]>((resolve) => {
-					const out: number[] = [];
+				new Promise<{ y: number; removed: boolean }[]>((resolve) => {
+					const out: { y: number; removed: boolean }[] = [];
 					const t0 = performance.now();
 					const tick = () => {
-						const el = [...document.querySelectorAll('[data-sonner-toast]')].find((n) =>
-							n.textContent?.includes('That song already ended.')
-						) as HTMLElement | undefined;
-						const gone = !document.querySelector('.youre-up');
-						if (el && el.dataset.removed !== 'true') out.push(el.getBoundingClientRect().y);
-						if (performance.now() - t0 > 3_000 || (gone && out.length > 0 && performance.now() - t0 > 2_000))
-							return resolve(out);
+						const el = document.querySelector('[data-sonner-toast].transport-notice') as HTMLElement | null;
+						if (el) out.push({ y: el.getBoundingClientRect().y, removed: el.dataset.removed === 'true' });
+						if ((!el && out.length > 0) || performance.now() - t0 > 8_000) return resolve(out);
 						requestAnimationFrame(tick);
 					};
 					tick();
 				})
 		);
 		await expect(sheet).toHaveCount(0);
-		expect(Math.max(...ys) - Math.min(...ys), `toast y while open: ${ys.slice(0, 3)}…${ys.slice(-3)}`).toBeLessThan(2);
+		await expect(toast).toHaveCount(0);
+		const open = frames.filter((f) => !f.removed).map((f) => f.y);
+		expect(
+			frames.some((f) => f.removed),
+			'sampled through the toast’s exit'
+		).toBe(true);
+		expect(
+			Math.max(...open) - Math.min(...open),
+			`toast y while open: ${open.slice(0, 2)}…${open.slice(-2)}`
+		).toBeLessThan(2);
+		const steps = frames.slice(1).map((f, i) => Math.abs(f.y - frames[i]!.y));
+		expect(
+			Math.max(...steps),
+			`largest one-frame move of the toast: ${JSON.stringify(frames.filter((f) => f.removed).slice(0, 4))}`
+		).toBeLessThan(24);
 	} finally {
 		await worker.stop();
 	}

@@ -48,7 +48,8 @@ test('the notice carries a stable id, so a mash is one notice rather than a towe
 	/* Sonner keys toasts by `id`: a create against an id already on screen UPDATES that toast (and sets
 	   `updated`, which resets its auto-close timer) instead of pushing another. Without the id, a guest tapping
 	   skip five times at a dead socket gets five stacked error toasts over the dock. */
-	expect(layout).toContain("{ id: 'transport-dropped', duration: 4000, onAutoClose: closed, onDismiss: closed }");
+	expect(layout).toContain("id: 'transport-dropped',");
+	expect(layout).toContain('duration: 4000,');
 	/* `toast.error`, not `toast.warning`, and the severity split FRONTEND.md states is the reason: --warn is for
 	   a transient failure and the dock's bar is correctly one, because the socket self-heals on the next backoff
 	   tick. This does not — the command is gone and only the guest can reissue it. (The assertion is on the
@@ -79,7 +80,10 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 	   invisible in a diff. */
 	// `--youre-up-h` is 0 except while the "You're up" sheet is up, when the toast stacks above it instead of on it.
 	expect(layout).toContain("offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}");
-	expect(layout).toContain("mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)' }}");
+	// The sides are named too, but as the sheet's gutter token, never the bottom's calc: see the scalar trap above.
+	expect(layout).toContain("bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',");
+	expect(layout).toContain("left: 'var(--sheet-gutter)',");
+	expect(layout).toContain("right: 'var(--sheet-gutter)'");
 });
 
 test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a number', () => {

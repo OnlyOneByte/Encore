@@ -149,8 +149,10 @@
 	/* The spec's target for a control the audience hits in a burst without looking (the reaction row). */
 	--tap-lg: 64px;
 
-	/* The width of a floating notice over the dock: the toast and the "You're up" sheet, which stack, so they line up. */
+	/* The width and side gutter of a floating notice over the dock: the toast and the "You're up" sheet stack, so both
+	   use these two and their edges line up. --space-2xl is sonner's own phone gutter, so the toast keeps its look. */
 	--sheet-max: 420px;
+	--sheet-gutter: var(--space-2xl);
 
 	/* THE LIST-ROW VIDEO FRAME, 16:9 so the source frame is neither letterboxed nor cropped. A token PAIR rather than
 	   two literals in SongRow, because the search skeleton has to stand in for this exact box and numbering it
@@ -774,11 +776,11 @@ body {
 		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
 	}
 }
-/* The same entrance for something anchored to the BOTTOM edge (the "You're up" sheet over the dock): it rises into
-   place where `.pop-in` drops from above. */
+/* `.pop-in`'s entrance for something anchored to the BOTTOM edge (the "You're up" sheet over the dock): it rises into
+   place where `.pop-in` drops from above, on the --motion-base token. */
 @media (prefers-reduced-motion: no-preference) {
 	.rise-in {
-		animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+		animation: rise var(--motion-base) cubic-bezier(0.2, 0.9, 0.3, 1.3);
 	}
 }
 @keyframes rise {

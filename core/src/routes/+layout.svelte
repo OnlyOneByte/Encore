@@ -263,11 +263,37 @@
 		};
 	});
 	/** The one transport notice (a mash updates it in place rather than stacking a tower), tracked so the stack above
-	 *  can hold while it is open. */
+	 *  can hold while it is on screen. */
+	let stopWatchingToast: (() => void) | null = null;
 	function transportNotice(message: string): void {
+		stopWatchingToast?.();
 		transportToastOpen = true;
-		const closed = () => (transportToastOpen = false);
-		toast.error(message, { id: 'transport-dropped', duration: 4000, onAutoClose: closed, onDismiss: closed });
+		/* "OPEN" LASTS UNTIL THE NODE HAS LEFT THE PAGE, not until sonner says it is closing: `onAutoClose` and
+		   `onDismiss` fire as the exit STARTS, with the toast still at full opacity, and clearing the offset there
+		   dropped it the sheet's height in one frame (review r3, 976-M1). */
+		const closed = () => {
+			stopWatchingToast?.();
+			stopWatchingToast = untilGone('[data-sonner-toast].transport-notice', () => (transportToastOpen = false));
+		};
+		toast.error(message, {
+			id: 'transport-dropped',
+			duration: 4000,
+			class: 'transport-notice',
+			onAutoClose: closed,
+			onDismiss: closed
+		});
+	}
+	/** Call `done` once nothing matches `selector`. Returns a canceller. */
+	function untilGone(selector: string, done: () => void): () => void {
+		const check = () => {
+			if (document.querySelector(selector)) return;
+			observer.disconnect();
+			done();
+		};
+		const observer = new MutationObserver(check);
+		observer.observe(document.body, { childList: true, subtree: true });
+		check();
+		return () => observer.disconnect();
 	}
 </script>
 
@@ -298,12 +324,17 @@
 	(VIEWPORT_OFFSET 24px, MOBILE_VIEWPORT_OFFSET 16px) are the rungs the library's own spacing is drawn at.
 	AN OBJECT, NOT A BARE STRING, and this is measured too: a scalar offset is `assignAll`ed to top, right, bottom
 	AND left, so a bottom inset of `--dock-h + 16px` also became a 132px inset on each side — the toast narrowed
-	to 126px of the 390 viewport and the one sentence wrapped onto four lines. Naming only `bottom` leaves the
-	other three at the library's defaults, which is what the full-width toast was relying on by accident before. -->
+	to 126px of the 390 viewport and the one sentence wrapped onto four lines. So each side is named on its own: on a
+	phone the left and right are the "You're up" sheet's gutter token (--sheet-gutter, sonner's own 16px), so the two
+	stacked notices' edges line up; the top stays at the library's default. -->
 <Toaster
 	position="bottom-center"
 	offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
-	mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)' }}
+	mobileOffset={{
+		bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
+		left: 'var(--sheet-gutter)',
+		right: 'var(--sheet-gutter)'
+	}}
 	style="--width: min(92vw, var(--sheet-max));"
 />
 
