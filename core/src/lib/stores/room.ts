@@ -99,7 +99,8 @@ export class RoomLink {
 		this.#errorHandlers.add(fn);
 		return () => this.#errorHandlers.delete(fn);
 	}
-	/** THIS phone's skip/restart/seek named a song that had already ended, so the server did nothing. Returns a disposer. */
+	/** THIS phone's skip, restart, seek, key or guide named a song that had already ended, so the server did nothing.
+	 *  Returns a disposer. */
 	onStaleTransport(fn: () => void): () => void {
 		this.#staleHandlers.add(fn);
 		return () => this.#staleHandlers.delete(fn);

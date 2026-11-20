@@ -44,6 +44,8 @@ export interface GuideSend {
 	/** The gesture ended here. Always sends, and cancels the trailing send it supersedes — the value the guest
 	 *  stopped on is the one that matters, so it may not be the one the throttle drops. */
 	commit(pct: number): void;
+	/** The song changed: drop a trailing send still waiting on the throttle, which belonged to the last song. */
+	cancel(): void;
 }
 
 /** One command per window at most. The guide level is a continuous drag against a room-wide broadcast, so an
@@ -113,6 +115,7 @@ export function createGuideSend(opt: GuideSendOptions): GuideSend {
 		commit(pct: number): void {
 			cancelTrailing();
 			fire(pct);
-		}
+		},
+		cancel: cancelTrailing
 	};
 }

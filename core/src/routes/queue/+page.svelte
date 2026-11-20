@@ -146,12 +146,15 @@
 	   `null` means "no local opinion", which is what lets a key change from the TV or another phone take over
 	   immediately rather than being pinned behind this phone's last tap. */
 	let keyDraft = $state<number | null>(null);
-	/* The draft is dropped the moment the server agrees with it, and whenever the song changes — a per-song value
-	   held across a song change would show the previous song's shift against the new song's range. */
+	/* The ENTRY the draft was made on. A skip goes straight from one entry to the next, so `nowEntry` is never null in
+	   between: a draft is only shown, and only stepped from, while it belongs to the song on the card. Otherwise the
+	   next singer's card read the previous song's "+1" and the next tap sent +2 over their On deck preset. */
+	let keyDraftFor = $state<string | null>(null);
+	/* The draft is dropped the moment the server agrees with it; the song changing is the reset effect below. */
 	$effect(() => {
-		if (keyDraft !== null && (playback.keyShift === keyDraft || !nowEntry)) keyDraft = null;
+		if (keyDraft !== null && playback.keyShift === keyDraft) keyDraft = null;
 	});
-	const keyShift = $derived(keyDraft ?? playback.keyShift);
+	const keyShift = $derived(keyDraft !== null && keyDraftFor === nowEntry?.id ? keyDraft : playback.keyShift);
 
 	/* ±7 is the range both keycaps already bound themselves to; named once here so the step, the two `disabled`
 	   tests and the clamp cannot drift apart. */
@@ -170,6 +173,7 @@
 		if (!nowEntry) return;
 		if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;
 		keyDraft = next;
+		keyDraftFor = nowEntry.id;
 		// Your own song: this phone remembers the key for the next time you queue it.
 		if (nowEntry && nowEntry.singerId === me?.id) rememberKey(nowEntry.mediaId, next);
 	}
@@ -220,19 +224,45 @@
 	   The throttle, the trailing send and the drop-on-refusal rule are `$lib/guide-send`, where a bun test can
 	   reach them; what stays here is the reactive half. */
 	let guideDraft = $state<number | null>(null);
-	const guidePct = $derived(guideDraft ?? guideServerPct);
-	/* Dropped the moment the room agrees, and whenever the song changes — the override is per-song, so a draft
-	   held across a song change would show the previous song's level against the new song's default. The same two
-	   arms `keyDraft`'s effect has, for the same two reasons. */
+	/* THE ENTRY THE GESTURE BEGAN ON, captured at its first input and held until it commits. Every send of the gesture
+	   names it — the throttled ones, the trailing one and the release — so a drag that is still going when the song
+	   changes keeps naming the song it started on, and the server drops it as stale instead of moving the next
+	   singer's guide over their On deck preset. Reading `nowEntry` at SEND time named the new song. */
+	let guideGestureFor = $state<string | null>(null);
+	// The draft is shown only for the song it belongs to: the rest of a stale drag must not move the new song's readout.
+	const guidePct = $derived(guideDraft !== null && guideGestureFor === nowEntry?.id ? guideDraft : guideServerPct);
+	// Dropped the moment the room agrees; the song changing is the reset effect below.
 	$effect(() => {
-		if (guideDraft !== null && (guideServerPct === guideDraft || !nowEntry)) guideDraft = null;
+		if (guideDraft !== null && guideServerPct === guideDraft) guideDraft = null;
 	});
 	const guideSend = createGuideSend({
 		send: (pct) => {
-			if (!nowEntry) return false;
-			return room.command({ cmd: 'guide', level: pct / 100, entryId: nowEntry.id });
+			if (!guideGestureFor) return false;
+			return room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor });
 		},
 		onDraft: (pct) => (guideDraft = pct)
+	});
+	function guideInput(pct: number): void {
+		guideGestureFor ??= nowEntry?.id ?? null;
+		guideSend.input(pct);
+	}
+	function guideCommit(pct: number): void {
+		guideGestureFor ??= nowEntry?.id ?? null;
+		guideSend.commit(pct);
+		guideGestureFor = null;
+	}
+
+	/* THE SONG CHANGED: both drafts belonged to the last one, and so does a trailing guide send still waiting on the
+	   throttle. Keyed on the entry ID, not on `nowEntry` going null, which a skip never passes through. A gesture
+	   still in progress keeps its `guideGestureFor`, so the rest of it is sent as stale and dropped. */
+	let draftsFor: string | undefined;
+	$effect(() => {
+		const id = nowEntry?.id;
+		if (id === draftsFor) return;
+		draftsFor = id;
+		keyDraft = null;
+		guideDraft = null;
+		guideSend.cancel();
 	});
 
 	/* REORDERING, MOVED VERBATIM FROM THE HOME PAGE rather than re-derived. It is a live sort with no mode:
@@ -530,12 +560,7 @@
 					</div>
 				</div>
 
-				<GuidingTrack
-					pct={guidePct}
-					available={guideEnabled}
-					oninput={(pct) => guideSend.input(pct)}
-					oncommit={(pct) => guideSend.commit(pct)}
-				/>
+				<GuidingTrack pct={guidePct} available={guideEnabled} oninput={guideInput} oncommit={guideCommit} />
 
 				<RangeBar profile={profile} keyShift={keyShift} />
 
