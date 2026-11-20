@@ -46,16 +46,17 @@
 			animation: encore-alert-in var(--motion-fast) ease-out;
 		}
 	}
-	/* Both keyframes carry the resting `translate(-50%, -50%)`: animating `transform` without it snaps the
-	   dialog to the viewport centre's top-left corner for the duration. */
+	/* Scale ONLY. The centring is Tailwind v4's `-translate-*-1/2`, which sets the separate `translate` property,
+	   and `translate` composes with `transform` rather than being replaced by it: a `translate(-50%, -50%)` here
+	   is applied a SECOND time, and the dialog draws half its own size up-left until the animation ends. */
 	@keyframes encore-alert-in {
 		from {
 			opacity: 0;
-			transform: translate(-50%, -50%) scale(0.96);
+			transform: scale(0.96);
 		}
 		to {
 			opacity: 1;
-			transform: translate(-50%, -50%) scale(1);
+			transform: scale(1);
 		}
 	}
 </style>

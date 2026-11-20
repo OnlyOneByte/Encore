@@ -129,3 +129,45 @@ test('the confirm names no cost until the cost has answered', async ({ world }) 
 	// And the count still lands behind it, so the neutral copy is a window and not a replacement.
 	await expect(description).toHaveText("Your 1 queued song will be removed, and you'll need to rejoin to sing again.");
 });
+
+// THE OPENING IS CENTRED ON EVERY FRAME, not only at rest. `encore-alert-in` once carried the centring
+// `translate(-50%, -50%)` in its keyframes while the class list ALSO centred with Tailwind v4's `translate`
+// property, so the two stacked and the dialog drew half its size up-left for the whole 120 ms, then snapped.
+// The resting frame is always right, which is why this pauses the animation and seeks it: t=0 and t=50%.
+test('the confirm opens centred on every frame of its animation', async ({ world }) => {
+	const phone = await world.openPhone('P20Centre');
+	await phone.goto('/settings/you');
+	// Paused AS IT STARTS: --motion-fast is over before a round trip from here could catch it.
+	await phone.evaluate(() =>
+		document.addEventListener(
+			'animationstart',
+			(e) => (e.target as Element).getAnimations().forEach((a) => a.pause()),
+			{
+				capture: true
+			}
+		)
+	);
+	await phone.getByRole('button', { name: 'Leave the room' }).click();
+	const dialog = phone.locator('[role="alertdialog"]');
+	await dialog.waitFor({ state: 'attached' });
+
+	for (const at of [0, 0.5]) {
+		const off = await dialog.evaluate((el, at) => {
+			const anims = el.getAnimations();
+			for (const a of anims) {
+				a.pause();
+				a.currentTime = Number(a.effect?.getTiming().duration ?? 0) * at;
+			}
+			const r = el.getBoundingClientRect();
+			return {
+				animated: anims.length,
+				dx: r.left + r.width / 2 - innerWidth / 2,
+				dy: r.top + r.height / 2 - innerHeight / 2
+			};
+		}, at);
+		// Non-vacuity: a run that caught no animation would pass on the broken keyframes.
+		expect(off.animated, `t=${at}`).toBeGreaterThan(0);
+		expect(Math.abs(off.dx), `t=${at} dx`).toBeLessThan(1);
+		expect(Math.abs(off.dy), `t=${at} dy`).toBeLessThan(1);
+	}
+});
