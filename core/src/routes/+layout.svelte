@@ -56,6 +56,8 @@
 	let connected = $state(true);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
+	// The row is for the AUDIENCE: hidden on the singer's own phone and when the room has reactions off.
+	let canReact = $state(false);
 
 	onMount(() => {
 		const sync = () => {
@@ -81,6 +83,7 @@
 			   promise a turn the server will skip. */
 			queueCount = room.entries.filter((e) => e.status === 'queued').length;
 			connected = room.connected;
+			canReact = !!entry && entry.singerId !== me && room.settings.room.tvReactions;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -263,6 +266,7 @@
 			onrestart={() => transport({ cmd: 'restart' })}
 			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
 			onskip={() => transport({ cmd: 'skip' })}
+			onreact={canReact ? (kind) => room.react(kind) : undefined}
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>

@@ -9,6 +9,7 @@
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
+	import Reactions from '$lib/tv/Reactions.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		effectiveGuideLevel,
@@ -249,7 +250,11 @@
 		}, songIntroMs);
 	}
 
+	// Mounted only on the stage branch, so between songs this is undefined and a late reaction is simply dropped.
+	let reactions = $state<Reactions | undefined>();
+
 	function handleEvent(e: ServerEvent) {
+		if (e.type === 'room:reacted') reactions?.add(e);
 		if (e.type === 'queue:sync') {
 			entries = e.entries;
 			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
@@ -719,6 +724,7 @@
 				<span class="un-song">{songDisplay(nextMedia).title}</span>
 			</div>
 		{/if}
+		<Reactions bind:this={reactions} />
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
 		<JoinBadge
 			qrDataUrl={data.qrDataUrl}

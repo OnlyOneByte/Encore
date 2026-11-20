@@ -5,6 +5,7 @@
 // which the runtime image never copies — an alias here type-checks locally but fails in the container.
 import {
 	graceMsOf,
+	roomTvTopic,
 	type ClientEvent,
 	type ServerEvent,
 	type WorkerMessage,
@@ -23,7 +24,8 @@ import { workerTokenMatches } from './src/lib/server/jobs/worker-token';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
-import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/lib/server/realtime/room-scope';
+import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from './src/lib/server/realtime/room-scope';
+import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 
@@ -57,6 +59,9 @@ app.reaper.start();
 
 // Dedupes resent client ops across reconnects, so a retry never double-applies.
 const seenOps = new Set<string>();
+
+// One bucket per singer for `room:react`, shared across that singer's sockets so a second tab buys no extra taps.
+const reactionLimiter = createReactionLimiter(() => app.now());
 
 // Guarded so WS still boots pre-build.
 type SvelteHandler = (req: Request, server: import('bun').Server<SocketData>) => Response | Promise<Response>;
@@ -163,6 +168,9 @@ const server = Bun.serve<SocketData>({
 			// Own room topic only: isolation is between rooms, not against a viewer of the room this box
 			// serves. An unscoped spectator defaults to the served room.
 			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));
+			// TVs ALSO hear the TV-only topic; a phone never subscribes to it, so it cannot receive `room:reacted`.
+			const tvTopic = tvTopicFor(ws.data.role, ws.data.roomId, app.activeRoomId);
+			if (tvTopic) ws.subscribe(tvTopic);
 			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
@@ -245,6 +253,19 @@ const server = Bun.serve<SocketData>({
 					if (ws.data.role !== 'tv') break;
 					handleTelemetry({ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId }, deps);
 					break;
+				case 'room:react': {
+					const current = state.entries.find((e) => e.id === state.playback.currentEntryId);
+					handleReaction(evt.kind, {
+						actorSingerId: ws.data.singerId,
+						currentSingerId: current?.singerId ?? null,
+						enabled: app.settings.getRoom(app.activeRoomId).tvReactions,
+						colorOf: (id) => app.singers.byId(id)?.color ?? null,
+						limiter: reactionLimiter,
+						// The TV topic, NEVER `broadcast`: phones are not subscribed to it.
+						publishToTv: (e) => server.publish(roomTvTopic(app.activeRoomId), JSON.stringify(e))
+					});
+					break;
+				}
 			}
 		},
 		close(ws) {
