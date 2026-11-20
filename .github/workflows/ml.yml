@@ -1,0 +1,70 @@
+# The worker's full suite with the real ML stack (proposal 06): every test, the `ml` ones included, so each test
+# the fast suite skips for want of models is still checked. Twice a month, the owner's call, to keep the private
+# repo inside its free Actions minutes; it downloads several GB a run. The cadence is the one cron line below.
+# Skipped when main has not moved since the last successful run; running it by hand always runs.
+#
+# Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
+name: Worker ML
+
+on:
+  schedule:
+    - cron: '0 6 1,15 * *' # 06:00 UTC on the 1st and 15th
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ml
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: 0.9.30
+
+jobs:
+  moved:
+    name: main moved?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          last=$(gh run list --repo "$REPO" --workflow ml.yml --branch main --status success --limit 1 \
+            --json headSha --jq '.[0].headSha // ""' || true)
+          if [ "$EVENT" != workflow_dispatch ] && [ "$last" = "$HEAD_SHA" ]; then
+            echo "main is still at $HEAD_SHA, which the last successful run tested: skipping."
+            echo run=false >> "$GITHUB_OUTPUT"
+          else
+            echo run=true >> "$GITHUB_OUTPUT"
+          fi
+
+  worker-ml:
+    name: worker · ml
+    needs: moved
+    if: needs.moved.outputs.run == 'true'
+    # x86_64: the torch and torchcodec wheels the `ml` extra pins exist here, and not on linux-aarch64 (TL-01).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No uv cache: the ML set is several GB and would crowd the repo's 10 GB cache out of the per-PR jobs.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv sync --frozen --extra cpu --extra ml --extra ffmpeg
+      - run: uv run --no-sync pytest -q
