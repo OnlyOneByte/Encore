@@ -2,7 +2,7 @@
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { RosterMember } from './screen';
-	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { OVERDUE_LABEL, processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { joinAddressLabel } from './join-address';
 
 	interface Props {
@@ -19,6 +19,8 @@
 		unreachable?: boolean;
 		/** Without it, the state a latecomer walks in on is the one state with no typed way in. */
 		roomCode?: string | null;
+		/** A song being made is past its estimate (`etaSec < 0`): the phone's card says so, and so must this. */
+		overdue?: boolean;
 	}
 
 	let {
@@ -28,7 +30,8 @@
 		overflow = 0,
 		pendingCount = 0,
 		unreachable = false,
-		roomCode = null
+		roomCode = null,
+		overdue = false
 	}: Props = $props();
 
 	const count = $derived(roster.length + overflow);
@@ -63,9 +66,9 @@
 		// Not "pick a song" while something is processing — they already did, and the honest answer is that the wait is
 		// the karaoke being made. "karaoke", not "the vocals"/"separation": the guest word.
 		if (processing) {
-			return count > 0
-				? `${count} in the room · making the karaoke, this takes a minute`
-				: 'Making the karaoke — this takes a minute';
+			// Overdue: the phone says "Taking longer than usual", so the TV must not still promise a minute.
+			const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
+			return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
 		}
 		return count > 0
 			? `${count} in the room · search on your phone and pick a song`

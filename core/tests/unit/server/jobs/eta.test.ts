@@ -35,16 +35,17 @@ test('with history: what is left of this step plus every later step in full', ()
 });
 
 test('a small overrun reads 0 and does not stretch the later steps', () => {
-	// 100 s expected; 150 s is inside the grace of max(60, 50) s.
+	// 100 s expected; 150 s is inside the minute's grace.
 	expect(etaSec({ audioSec: 200, elapsedSec: 150, current: 0.5, later: [] })).toBe(0);
 	expect(etaSec({ audioSec: 200, elapsedSec: 150, current: 0.5, later: [0.1] })).toBe(20);
 });
 
-test('well past the estimate it is OVERDUE, so the card stops promising "under a minute"', () => {
+test('a minute past the estimate it is OVERDUE, so the card stops promising "under a minute"', () => {
 	expect(etaSec({ audioSec: 200, elapsedSec: 161, current: 0.5, later: [0.1] })).toBe(ETA_OVERDUE);
-	// A long step's grace is half of it: 1000 s expected, overdue only past 1500 s.
-	expect(overdueAfterSec(1000)).toBe(1500);
-	expect(etaSec({ audioSec: 2000, elapsedSec: 1400, current: 0.5, later: [] })).toBe(0);
+	// The same minute on a long step: 1000 s expected, overdue past 1060 s, not 5 minutes later.
+	expect(overdueAfterSec(1000)).toBe(1060);
+	expect(etaSec({ audioSec: 2000, elapsedSec: 1060, current: 0.5, later: [] })).toBe(0);
+	expect(etaSec({ audioSec: 2000, elapsedSec: 1061, current: 0.5, later: [] })).toBe(ETA_OVERDUE);
 });
 
 test('history is matched on the engine FAMILY and the model', () => {

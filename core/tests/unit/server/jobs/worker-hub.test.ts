@@ -1158,6 +1158,30 @@ test('a figure that falls within a stage is ignored; the bar never runs back', (
 	expect(pcts).toEqual([10, 10, 20, 20, 30, 5]);
 });
 
+test("a retried attempt's bar starts over, not at the failed attempt's figure", () => {
+	const h = harness();
+	const jobId = running(h);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 80 });
+	// The lease lapses and the same worker, back from a reconnect, takes it again: a new attempt from scratch.
+	h.jobs.requeue(jobId, h.jobs.byId(jobId)!.attempts + 1, T0 + 31_000);
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	expect(h.jobs.byId(jobId)!.status).toBe('assigned');
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 5 });
+	expect(h.jobs.byId(jobId)!.progressPct).toBe(5);
+	expect((h.broadcasts.at(-1) as { pct: number }).pct).toBe(5);
+});
+
+test("a finished step hands the song on at the next step's floor, not at its own 100", () => {
+	const h = harness();
+	const jobId = running(h); // stems on m1, whose lyrics are not timed yet, so the song moves on to align
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 90 });
+	h.hub.handle({ type: 'job:complete', workerId: 'w1', jobId, mediaUri: 'media/m1-instrumental.mp3' });
+	const handoff = h.broadcasts.filter((e) => e.type === 'media:status').at(-1) as { status: string; pct: number };
+	expect(handoff.status).not.toBe('ready');
+	expect(handoff.pct).toBe(0);
+});
+
 test('with no finished run of a step left to do, progress carries no ETA at all', () => {
 	const h = harness();
 	const jobId = running(h);

@@ -95,11 +95,18 @@ test('a song well past its time says so, instead of "under a minute" for as long
 	const slow = await startFakeWorker(world, { workerId: 'box', hang: 'stems', keepaliveMs: 2_000, ranAsAsked: true });
 	try {
 		const maya = await world.openPhone('Maya');
+		const tv = await world.openTv();
 		await sing(maya, world, 'caroline');
 		const card = maya.locator(SEL.processing).first();
+		const lobby = tv.locator(SEL.lobby);
 		await expect(card).toContainText('under a minute', { timeout: 30_000 });
+		await expect(lobby).toContainText('this takes a minute');
 		await expect(card).toContainText('Taking longer than usual', { timeout: 120_000 });
+		// The TV says the same thing, not "this takes a minute" while the phone says otherwise.
+		await expect(lobby).toContainText('taking longer than usual', { timeout: 15_000 });
+		await expect(lobby).not.toContainText('this takes a minute');
 		await maya.screenshot({ path: join(out, 'phone-390-overdue.png') });
+		await tv.screenshot({ path: join(out, 'tv-overdue.png') });
 		await maya.setViewportSize({ width: 320, height: 700 });
 		await card.screenshot({ path: join(out, 'card-320-overdue.png') });
 	} finally {

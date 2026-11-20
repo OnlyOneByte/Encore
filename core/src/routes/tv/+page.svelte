@@ -327,6 +327,7 @@
 				onVisibleEnded();
 			}
 		}
+		if (e.type === 'media:status') noteOverdue(e.mediaId, (e.etaSec ?? 0) < 0);
 		// ONE upsert for both: a JOIN after the initial sync would otherwise leave the lower-third saying "Someone" for a
 		// late joiner, and a RENAME would leave the roster chip and lower-third on the old name until the next full sync.
 		if (e.type === 'singer:joined' || e.type === 'singer:updated') {
@@ -413,6 +414,17 @@
 			return !m || !isPlayable(m);
 		}).length
 	);
+	// Songs whose process is past its estimate (`media:status` with `etaSec < 0`), so the lobby says what the
+	// singer's phone says rather than "this takes a minute".
+	let overdueMedia = $state(new Set<string>());
+	const overdue = $derived(entries.some((e) => overdueMedia.has(e.mediaId)));
+	function noteOverdue(mediaId: string, isOverdue: boolean): void {
+		if (isOverdue === overdueMedia.has(mediaId)) return;
+		const next = new Set(overdueMedia);
+		if (isOverdue) next.add(mediaId);
+		else next.delete(mediaId);
+		overdueMedia = next;
+	}
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
 	// is the TV's: kept, it sat over the next singer's song (or its waiting card, which never reports ready).
@@ -716,6 +728,7 @@
 			roster={roster.shown}
 			overflow={roster.overflow}
 			pendingCount={pendingCount}
+			overdue={overdue}
 			unreachable={joinUnreachable}
 			roomCode={data.roomCode}
 		/>

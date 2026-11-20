@@ -47,13 +47,16 @@ export function workPerAudioSec(runs: readonly FinishedRun[]): number | null {
 	return rates.length % 2 ? rates[mid]! : (rates[mid - 1]! + rates[mid]!) / 2;
 }
 
-/** `etaSec` once the running step is well past its estimate: the card says "Taking longer than usual" rather
- *  than "under a minute" for as long as it runs. The one negative value, so the wire needs no new field. */
+/** `etaSec` once the running step is past its estimate: the card says "Taking longer than usual" rather than
+ *  "under a minute" for as long as it runs. The one negative value, so the wire needs no new field. */
 export const ETA_OVERDUE = -1;
 
-/** How far past its estimate a step may run before it is OVERDUE: half the estimate again, at least a minute. */
+/** The minute an overrun may say "under a minute" for: no longer, or the room watches the claim fail. */
+export const OVERDUE_GRACE_SEC = 60;
+
+/** When a step whose estimate is `expectedSec` becomes OVERDUE: one minute past it, however long the step. */
 export function overdueAfterSec(expectedSec: number): number {
-	return expectedSec + Math.max(60, expectedSec / 2);
+	return expectedSec + OVERDUE_GRACE_SEC;
 }
 
 /**
