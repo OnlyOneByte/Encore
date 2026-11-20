@@ -179,8 +179,8 @@
 	.song {
 		min-width: 4ch;
 		overflow: hidden;
-		white-space: nowrap;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 		color: var(--ink-dim);
 	}
 
