@@ -120,7 +120,7 @@ fi
 # core cannot find. These three also OUTRANK .env — which is why the loader runs above, not below — since
 # the container-correct values it ships (relative paths, `core` as compose DNS) are all wrong natively.
 # The override is announced rather than silently dropped.
-for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
+for v in MEDIA_DIR DATA_DIR ENCORE_CORE_URL; do
 	case " ${env_set[*]:-} " in
 		*" $v "*) echo "note: $v from ${ENV_FILE##*/} overridden — a native run needs absolute paths and localhost" ;;
 	esac

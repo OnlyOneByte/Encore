@@ -37,6 +37,22 @@ test('nothing server.ts loads at runtime imports a SvelteKit alias ($lib, $app, 
 	expect(offenders).toEqual([]);
 });
 
+test('compose hands ENCORE_WORKER_TOKEN to both core and the worker', () => {
+	// compose's docker/.env only feeds `${}` substitution: a key a service does not list never reaches it.
+	const compose = Bun.YAML.parse(readFileSync(join(CORE, '../docker/compose.yaml'), 'utf8')) as {
+		services: Record<string, { environment: string[] }>;
+	};
+	for (const service of ['core', 'worker']) {
+		expect(compose.services[service]!.environment).toContain('ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}');
+	}
+});
+
+test('VOLUME is declared after the chown, so the volumes start owned by the app user', () => {
+	// Docker discards changes a later RUN makes to a path already declared a VOLUME.
+	const dockerfile = readFileSync(join(CORE, '../docker/core.Dockerfile'), 'utf8');
+	expect(dockerfile.indexOf('VOLUME [')).toBeGreaterThan(dockerfile.indexOf('chown -R bun:bun /app'));
+});
+
 test('the image copies every patch file bun install needs, in both stages', () => {
 	const pkg = JSON.parse(readFileSync(join(CORE, 'package.json'), 'utf8'));
 	const dockerfile = readFileSync(join(CORE, '../docker/core.Dockerfile'), 'utf8');

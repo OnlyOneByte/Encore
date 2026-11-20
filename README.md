@@ -63,19 +63,22 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 
 ### The process worker
 
-To run it natively instead of in Docker:
+To run it natively instead of in Docker. The worker is a [uv](https://docs.astral.sh/uv/) project, so
+install uv first (`brew install uv`, `pipx install uv`, or the installer on that page):
 
 ```bash
 cd worker
 uv sync --frozen --extra cpu --extra ml --extra text   # torch + demucs + whisperx (multi-GB); cu128 for NVIDIA
 
+# ENCORE_WORKER_TOKEN must be the same value core was started with; leave it empty only if core's is unset.
 ENCORE_CORE_URL='ws://localhost:3000/ws?role=worker' \
   ENCORE_MEDIA_DIR="$PWD/../core/media" \
+  ENCORE_WORKER_TOKEN="${ENCORE_WORKER_TOKEN:-}" \
 uv run python -m encore_worker                         # uv run puts .venv/bin on PATH for demucs/yt-dlp
 ```
 
-Those two variables are the whole configuration — the worker measures the rest and prints what it
-found, including one line per capability with the evidence for it. A capability whose tool is
+Those three variables are the whole configuration (the token only when core sets one, which the
+Security section below says it should). The worker measures the rest and prints what it found, including one line per capability with the evidence for it. A capability whose tool is
 **missing** is reported as loudly as one that is present, because that line is what explains a song
 stuck at 0%. `ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The
 full model is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
@@ -156,7 +159,9 @@ would want it for.
 /api/settings`** — which includes the separator engine and which Whisper weights the fleet loads.
 > - **Set `ENCORE_WORKER_TOKEN`.** Without it, `role=worker` WebSocket upgrades are unauthenticated:
 >   anything that can reach the port can register as a worker and start receiving job assignments.
->   Core logs one loud warning at startup when it is unset.
+>   Core logs one loud warning at startup when it is unset. The token travels in **cleartext**, as the
+>   `token=` query of a plain `ws://` URL: it keeps stray LAN devices out, not anyone who can watch
+>   the LAN's traffic. It is for a trusted LAN only.
 > - `/metrics` and `/api/audit/*` are **ungated** — they expose worker ids, host details, model names,
 >   file paths and error strings (no singer identities and no media bytes).
 >

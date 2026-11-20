@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, assert_never
 from urllib.parse import urlencode
 
-from encore_worker.host.config import Config
+from encore_worker.host.config import Config, redact_token
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Action, Stage, serves
 from encore_worker.transport.ownership import Ownership, Reason
@@ -363,7 +363,9 @@ class Client:
         return self.ownership.may_publish(job_id)
 
     def _note(self, line: str) -> None:
-        print(f"[transport] {line}", flush=True)
+        # Redacted HERE so every note is covered: a transport error (websockets' InvalidURI, for one) can
+        # echo the dialled URL, and that URL carries the worker token.
+        print(f"[transport] {redact_token(line)}", flush=True)
 
 
 def dial_url(config: Config) -> str:

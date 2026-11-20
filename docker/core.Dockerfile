@@ -46,12 +46,14 @@ ENV PORT=3000 \
 	DATA_DIR=/app/data \
 	MEDIA_DIR=/app/media \
 	MEDIA_STORE=local
-VOLUME ["/app/data", "/app/media"]
 EXPOSE 3000
 
 # Run as the non-root `bun` user shipped by the base image: the app never needs root. Own the writable
 # volumes + app tree to `bun` so SQLite/media writes work.
 RUN mkdir -p /app/data /app/media && chown -R bun:bun /app
+# AFTER the chown: Docker discards changes a later RUN makes to a declared volume path, which would leave a
+# bare `docker run` (or a fresh named volume) root-owned and core dying with SQLITE_CANTOPEN.
+VOLUME ["/app/data", "/app/media"]
 USER bun
 
 # server.ts owns Bun.serve (SvelteKit handler + WS hub) — the single process.

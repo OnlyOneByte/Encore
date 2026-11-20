@@ -439,6 +439,25 @@ async def test_a_refused_token_is_named_not_reported_as_a_lost_connection(
     assert "ENCORE_WORKER_TOKEN" in out and "connection lost" not in out
 
 
+async def test_a_transport_error_that_echoes_the_url_never_prints_the_token(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """websockets' InvalidURI repeats the whole dialled URL; the reconnect loop prints it every attempt."""
+
+    class InvalidURI(Exception):
+        pass
+
+    async def echoes(url: str) -> FakeSocket:
+        raise InvalidURI(f"{url} isn't a valid URI: scheme isn't ws or wss")
+
+    cfg = Config(core_url="ws://core.test/ws?role=worker", worker_token="s3 cr&t=/SECRET")
+    c = Client(config=cfg, connect=echoes, run_job=_never, capabilities=CAPS, backoff=no_backoff)
+    await asyncio.wait_for(c.serve_forever(max_attempts=2), 5.0)
+    out = capsys.readouterr().out
+    assert out.count("token=<redacted>") == 2, out
+    assert "SECRET" not in out, out
+
+
 def test_the_default_backoff_is_jittered() -> None:
     """Several workers lost the same core at the same instant; an unjittered schedule keeps them in
     lockstep forever, hammering the core each time it returns."""

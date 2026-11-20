@@ -196,6 +196,28 @@ def test_an_unknown_backend_is_refused_at_the_boundary() -> None:
         Config.from_env({"ENCORE_SEPARATOR_BACKEND": "cuda-maybe"})
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://core:3000/ws?role=worker",
+        "core:3000/ws?role=worker",
+        "ws:/core:3000/ws",
+        "ws:///ws?role=worker",
+    ],
+)
+def test_a_core_url_that_is_not_ws_is_refused_at_the_boundary(url: str) -> None:
+    """Otherwise it fails at dial time, and websockets' InvalidURI echoes the dialled URL, token included,
+    into the reconnect log on every attempt. The refusal itself never prints a `token=` value."""
+    with pytest.raises(ConfigError, match="ENCORE_CORE_URL") as refused:
+        Config.from_env({"ENCORE_CORE_URL": f"{url}&token=SECRET", "ENCORE_WORKER_TOKEN": "SECRET"})
+    assert "SECRET" not in str(refused.value)
+
+
+def test_a_ws_or_wss_core_url_is_accepted() -> None:
+    for url in ("ws://core:3000/ws?role=worker", "wss://karaoke.example/ws?role=worker"):
+        assert Config.from_env({"ENCORE_CORE_URL": url}).core_url == url
+
+
 def test_an_unknown_asr_checkpoint_is_refused() -> None:
     with pytest.raises(ConfigError, match="ENCORE_ASR_MODEL"):
         Config.from_env({"ENCORE_ASR_MODEL": "enormous"})
