@@ -1,6 +1,6 @@
 // "How long is this file?" A library scan finds filenames, and no filename says how long a song runs — but
 // `LocalTrack.durationSec` feeds the queue's wait estimate. So it is MEASURED, never defaulted: this repo
-// omits an unknown estimate rather than zeroing it (see `waitShort`), and a 0 here would read as a
+// omits an unknown estimate rather than zeroing it (see `waitWords`), and a 0 here would read as a
 // zero-length song rather than as an unknown one. A file whose length cannot be read is not indexed at all.
 
 import { runCapturing } from './spawn-capture';

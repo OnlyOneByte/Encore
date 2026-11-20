@@ -13,7 +13,7 @@ worth knowing what was NOT recovered in the move, at the bottom of this file.
 
 | Project | Must it fail a build?                         | What it holds                                             |
 | ------- | --------------------------------------------- | --------------------------------------------------------- |
-| `gate`  | **Yes** — it is leg 7 of `bun run gates`      | 8 specs: CLAIM 1-7 on real resolved geometry, plus the register's own shape |
+| `gate`  | **Yes** — it is leg 8 of `bun run gates`      | 8 specs: CLAIM 1-7 on real resolved geometry, plus the register's own shape |
 | `flow`  | not yet wired into `gates`                    | long multi-client scenarios: party, playback, lobby, fuzz |
 | `probe` | no — run when you want the answer             | 26 specs, one subject each                                |
 | `shot`  | **cannot** — a screenshot cannot fail a build | 20 frames, each driven INTO its state                     |
@@ -78,7 +78,8 @@ by exact revision, and a cache holding build 1223 against an `@playwright/test` 
 "Executable doesn't exist" while a perfectly good browser sits there.
 
 A per-file `test.use({ launchOptions })` **REPLACES** the config's rather than merging, so it silently
-drops `executablePath`. Use `launchWith([...extraArgs])` from `world/chromium.ts`.
+drops `executablePath`. Repeat `executablePath: resolveChromium()` and spread `BASE_LAUNCH_ARGS`, both from
+`world/chromium.ts`.
 
 ## Autoplay: this box cannot refuse it
 

@@ -21,11 +21,10 @@ const config: KnipConfig = {
 		'src/routes/**/+layout.{svelte,ts}',
 		'src/routes/**/+server.ts',
 		'tests/**/*.test.ts',
-		// Playwright discovers specs by its own `testDir`, so nothing imports them either — but unlike the old
-		// `.mjs` drivers they are not spawned by name, which is why the config is the entry point that reaches
-		// them. `world/**` IS imported by the specs, so the graph covers it from here.
-		'tests/playwright/**/*.spec.ts',
-		'playwright.config.ts'
+		// Playwright discovers specs by its own `testDir`, so nothing imports them either. `world/**` IS imported
+		// by the specs, so the graph covers it from here. `playwright.config.ts` is auto-detected by knip's
+		// Playwright plugin, like the configs above.
+		'tests/playwright/**/*.spec.ts'
 	],
 	project: ['src/**/*.{ts,svelte}', 'tests/**/*.{ts,mjs}'],
 	// shadcn-generated: the library exposes its whole surface on purpose and `shadcn-svelte add <name>`
@@ -34,12 +33,12 @@ const config: KnipConfig = {
 	// Both are real and neither is ever imported: `shadcn-svelte` is the re-vendoring CLI, and
 	// `svelte-check` is invoked through `bun --bun`, which knip cannot see.
 	ignoreDependencies: ['shadcn-svelte', 'svelte-check'],
-	// The worker is Python; `python3` is spawned by the gates, not resolved as a JS binary.
-	ignoreBinaries: ['python3'],
+	// The worker is Python and uv-managed; the gates call `uv`, which is not a JS binary.
+	ignoreBinaries: ['uv'],
 	// SvelteKit/Vite virtual modules — synthesised at build time. No test resolves them any more: the
 	// component-mount harness that stubbed `$app/*` under `bun test` is gone, and so are the tests that
 	// mounted route components.
-	ignoreUnresolved: [/^\$app\//, /^\$env\//, /^\$service-worker$/],
+	ignoreUnresolved: [/^\$app\//, /^\$service-worker$/],
 	// An export used inside its own file is over-exported, not dead.
 	ignoreExportsUsedInFile: true,
 	tags: ['-knipignore'],

@@ -31,6 +31,7 @@
 // not present and yellow.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
+import { openQueue } from '../../world/actors';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { METRICS_FIXTURE, METRICS_READY_TEXT } from './metrics-fixture';
@@ -252,9 +253,8 @@ const FRAMES: Frame[] = [
 			await page.locator(SEL.search).fill('believin');
 			// The library tracks are raw, so the action a row offers is SING — process and take a turn — not add.
 			await page.locator(SEL.sing).first().click();
-			// Back to the rotation by CLEARING the query, which is the whole way back: the queue is not rendered
-			// beside results. The processing card is what proves the slot is held.
-			await page.locator(SEL.clearSearch).click();
+			// The rotation is its own tab, /queue. The processing card there is what proves the slot is held.
+			await openQueue(page);
 			await expect(page.locator(SEL.processing).first()).toBeVisible();
 		}
 	},
@@ -389,9 +389,12 @@ const FRAMES: Frame[] = [
 		viewport: METRICS_DESKTOP,
 		// THE ONE BASELINE. Every pixel on this frame comes from `metrics-fixture.ts` — no room code, no
 		// port, no date, no measured number — and what the frame is FOR is wording and column headers, which
-		// is exactly what a pixel baseline protects. Playwright suffixes the snapshot with the platform, so a
-		// first run on a new OS or a bumped Chromium fails once with "writing actual" and is re-based by hand;
-		// that is louder and more honest than a tolerance wide enough to hide a changed heading.
+		// is exactly what a pixel baseline protects. Playwright suffixes the snapshot with the platform, and
+		// it has to: the same fixture rasterises its glyphs differently on macOS and Linux (about 2 % of
+		// pixels, all text). So each OS carries its own PNG; the Linux one is shot in the pinned
+		// mcr.microsoft.com/playwright:v1.56.1 image on aarch64; x86_64 is unverified until CI (proposal 06)
+		// runs it, and may need its own re-base. A bumped Chromium fails once and is re-based by hand,
+		// which is louder and more honest than a tolerance wide enough to hide a changed heading.
 		baseline: true,
 		setup: openMetrics
 	},

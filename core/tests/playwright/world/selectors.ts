@@ -338,6 +338,3 @@ export const SEL = {
 	adminDelete: "[data-act='arm-delete']",
 	adminConfirmDelete: "[data-act='confirm-delete']"
 } as const;
-
-/** Picked by NAME, because that is what a screen reader — and therefore a role query — sees. Never by hex. */
-export const PRESET_COLOUR_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'] as const;

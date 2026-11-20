@@ -314,7 +314,10 @@ test('the blocked latch survives the idle window: the hint returns with a song b
 			'the scrim never cleared, so this spec cannot tell a survived latch from a stuck one'
 		).toBe(false);
 
-		// The song is READY by now, so the home row offers the plain add rather than the process-and-queue action.
+		// The song is READY by now, so its row offers the plain add rather than the process-and-queue action. The
+		// Sing tab lists rows only under a query, so search for it again first.
+		await openBrowseFromHome(room.phone);
+		await room.phone.locator(SEL.search).fill(SONG);
 		await room.phone.locator(SEL.addTurn).first().click();
 		await expect(room.tv.locator(SEL.mediaEl)).not.toHaveCount(0, { timeout: 25_000 });
 		await expect
