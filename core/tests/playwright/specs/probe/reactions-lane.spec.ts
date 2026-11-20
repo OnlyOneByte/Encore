@@ -9,7 +9,7 @@
  * GEOMETRY: while phones burst, every sample reads what the layout engine resolved. Each disc must lie inside the
  * safe area ([safe-x, vw - safe-x]) and clear of every lyric row, the lyrics' content box, the lower-third, Up
  * next, the corner QR, the fullscreen button and the status dot — at 720p, 1080p and 4K, and at the largest
- * lyric scale. The on-screen bound is the release spacing's, ceil(2400 / 350) = 7.
+ * lyric scale. No two discs may touch, and the on-screen bound is the release spacing's, ceil(2400 / 650) = 4.
  */
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
@@ -19,9 +19,11 @@ import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 import type { Page } from '@playwright/test';
 
 const SAMPLE_MS = 80;
-const SAMPLE_WINDOW_MS = 3_000;
+const SAMPLE_WINDOW_MS = 4_500;
 /** ceil(RISE_MS / SPACING_MS) in tv/Reactions.svelte: the most discs the release spacing ever has on screen. */
-const ON_SCREEN_BOUND = 7;
+const ON_SCREEN_BOUND = 4;
+/** MAX_WAITING in tv/Reactions.svelte. */
+const MAX_WAITING = 6;
 /** Taps each phone fires in a burst, three times the bucket. */
 const TAPS_PER_PHONE = 9;
 /** Long enough for any frame the server sends to have arrived. */
@@ -267,6 +269,7 @@ test('bursts stay inside the safe area and clear of the lyrics and TV chrome, at
 	try {
 		const hits: unknown[] = [];
 		const outside: unknown[] = [];
+		const touching: unknown[] = [];
 		const cases = [
 			{ w: 1920, h: 1080, scale: 100 },
 			{ w: 1280, h: 720, scale: 100 },
@@ -303,9 +306,15 @@ test('bursts stay inside the safe area and clear of the lyrics and TV chrome, at
 					for (const ch of s.chrome)
 						if (overlap(d, ch.box) > 0) hits.push({ label, sample: i, cls: ch.cls, disc: d, box: ch.box });
 				}
+			// Disc against disc: the release spacing must keep every pair apart for the whole rise.
+			for (const [i, s] of samples.entries())
+				for (let a = 0; a < s.discs.length; a++)
+					for (let b = a + 1; b < s.discs.length; b++)
+						if (overlap(s.discs[a], s.discs[b]) > 0) touching.push({ label, sample: i, a: s.discs[a], b: s.discs[b] });
 		}
 		expect(outside, 'a reaction disc left the safe area').toEqual([]);
 		expect(hits, 'a reaction disc intersected the lyrics or the TV chrome').toEqual([]);
+		expect(touching, 'two reaction discs overlapped each other').toEqual([]);
 		expect([...frames.fans.flat(), ...frames.star], 'a phone received room:reacted').toEqual([]);
 	} finally {
 		await worker.stop();
@@ -317,12 +326,12 @@ test('a room of five bursting at once: the waiting line drops the oldest, the sc
 }) => {
 	const { worker, fans, tv } = await stage(world, 5);
 	try {
-		// 5 x 3 = 15 through the server's buckets; the TV's waiting line holds 12.
+		// 5 x 3 = 15 through the server's buckets; the TV's waiting line holds MAX_WAITING.
 		await burst(fans);
-		const samples = await sampleWindow(tv, 6_000);
+		const samples = await sampleWindow(tv, 8_000);
 		const n = await mounted(tv);
 		expect(peakOf(samples)).toBeLessThanOrEqual(ON_SCREEN_BOUND);
-		expect(n, 'the stream should deliver the full waiting line').toBeGreaterThanOrEqual(12);
+		expect(n, 'the stream should deliver the full waiting line').toBeGreaterThanOrEqual(MAX_WAITING);
 		expect(n, 'the oldest waiting reactions should have dropped out').toBeLessThan(15);
 	} finally {
 		await worker.stop();

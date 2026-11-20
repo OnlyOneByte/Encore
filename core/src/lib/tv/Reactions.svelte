@@ -21,11 +21,15 @@
 	/** One rise, written to --rise-ms below so script and CSS share one number. */
 	const RISE_MS = 2400;
 	/** The lane is one disc wide, so taps that arrive together would stack exactly; spacing them makes a burst a
-	 *  stream. It also bounds what is on screen: at most ceil(RISE_MS / SPACING_MS) = 7 discs at once. */
-	const SPACING_MS = 350;
-	/** The waiting line. Past this the oldest waiting cheer drops, so a full line is at most 12 x 350 ms = 4.2 s
+	 *  stream. 650 ms is what keeps two discs from TOUCHING: the climb is linear, so neighbours stay one constant
+	 *  distance apart (speed x spacing). At this spacing the closest pair still clears by 13 px at 720p, 24 px at
+	 *  1080p and 47 px at 4K, which is 130-170 ms of slack for a disc whose animation starts a few frames late on a
+	 *  busy TV. 550 ms left ~55 ms and touched under load at 4K; an eased climb, which slows the disc ahead near the
+	 *  top, overlaps at any spacing here. The probe asserts it. At most ceil(RISE_MS / SPACING_MS) = 4 on screen. */
+	const SPACING_MS = 650;
+	/** The waiting line. Past this the oldest waiting cheer drops, so a full line is at most 6 x 650 ms = 3.9 s
 	 *  behind the tap that joined it last — late, but still during the song it was for. */
-	const MAX_WAITING = 12;
+	const MAX_WAITING = 6;
 	/** Reduced motion: each disc fades in place on one of these rows. Its whole fade lasts SLOTS x SPACING_MS, so a
 	 *  row is free again by the time the release order comes back round to it. */
 	const SLOTS = 4;
@@ -35,6 +39,7 @@
 	let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 	let seq = 0;
 
+	/** @knipignore Called through `bind:this` from routes/tv/+page.svelte, which knip cannot follow. */
 	export function add(e: Reacted): void {
 		waiting = [...waiting, { id: ++seq, kind: e.kind, color: e.color }].slice(-MAX_WAITING);
 		if (releaseTimer === undefined) release();
@@ -117,6 +122,8 @@
 		12% {
 			opacity: 1;
 			transform: translateY(calc(var(--rise-h) * -0.1)) scale(1);
+			/* LINEAR from here to the top, so the gap to the disc ahead never closes (see SPACING_MS). */
+			animation-timing-function: linear;
 		}
 		70% {
 			opacity: 1;
