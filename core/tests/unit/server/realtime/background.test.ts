@@ -106,7 +106,7 @@ test('reset path 1 — an explicit skip clears the override', () => {
 	handlePlayerCommand({ cmd: 'background', style: 'singer' }, deps);
 	expect(state.playback.background).toBe('singer');
 
-	handlePlayerCommand({ cmd: 'skip' }, deps);
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, deps);
 	expect(state.playback.currentEntryId).toBe('q2'); // we really did change song
 	expect(state.playback.background).toBeNull();
 });
@@ -156,8 +156,8 @@ test('the override survives pause, resume, restart and seek — only a SONG chan
 	for (const cmd of [
 		{ cmd: 'pause' } as const,
 		{ cmd: 'play' } as const,
-		{ cmd: 'restart' } as const,
-		{ cmd: 'seek', positionSec: 30 } as const
+		{ cmd: 'restart', entryId: 'q1' } as const,
+		{ cmd: 'seek', positionSec: 30, entryId: 'q1' } as const
 	]) {
 		handlePlayerCommand(cmd, deps);
 		expect(state.playback.background).toBe('solid');

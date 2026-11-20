@@ -97,21 +97,29 @@ export type ServerEvent =
 	| { type: 'settings:changed'; settings: EffectiveSettings }
 	| { type: 'op:reject'; clientOpId: string; reason: string }
 	// TV-ONLY, published on `roomTvTopic`. `color` rides along so the TV draws the disc without a directory lookup.
-	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string };
+	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string }
+	// To the ORIGIN only: a transport command named a song that is no longer current, so nothing happened.
+	| { type: 'player:stale'; cmd: TargetedCommand['cmd'] };
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.
 export type PlayerCommand =
 	| { cmd: 'play' }
 	| { cmd: 'pause' }
-	| { cmd: 'skip' }
-	| { cmd: 'restart' }
-	| { cmd: 'seek'; positionSec: number }
-	// Clamped to ±MAX_KEY_SHIFT, and only accepted once the song's stems are ready.
-	| { cmd: 'key'; semitones: number }
+	// The TRANSPORT names the entry it was pressed on, and the server drops one that is no longer current: two
+	// phones tapping skip at the end of a song must take one song, not the next singer's turn too.
+	| { cmd: 'skip'; entryId: string }
+	| { cmd: 'restart'; entryId: string }
+	| { cmd: 'seek'; positionSec: number; entryId: string }
+	// Clamped to ±MAX_KEY_SHIFT, and only accepted once the song's stems are ready. Per-song, so it names its
+	// song too: a late key tap must not re-pitch the next singer's song over their On deck preset.
+	| { cmd: 'key'; semitones: number; entryId: string }
 	| { cmd: 'background'; style: TvBackgroundStyle | null }
 	// 0..1, and only accepted for a song that actually has a vocals stem.
-	| { cmd: 'guide'; level: number | null };
+	| { cmd: 'guide'; level: number | null; entryId: string };
+
+/** The commands that name the song they were pressed on; the server drops one naming a song that has gone. */
+export type TargetedCommand = Extract<PlayerCommand, { entryId: string }>;
 
 export type ClientEvent =
 	| { type: 'queue:command'; command: ClientCommand }

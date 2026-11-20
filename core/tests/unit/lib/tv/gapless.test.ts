@@ -99,7 +99,7 @@ test('swap alternates slots A->B->A across two transitions', () => {
 test('enterInterstitial opens the intro from a state that is otherwise ready to play', () => {
 	const c = new GaplessController();
 	c.onNowPlaying(e('q1'), null); // → loading
-	expect(c.state).toBe('loading');
+	c.onVisibleReady(); // the page opens the first intro once the song can play
 	c.enterInterstitial();
 	expect(c.state).toBe('interstitial');
 	c.onInterstitialDone();
@@ -118,4 +118,27 @@ test('enterInterstitial refuses states where an intro would be a lie', () => {
 	c.enterWaiting();
 	c.enterInterstitial();
 	expect(c.state).toBe('waiting');
+});
+
+// UI-02: a skip puts the intro card up over a slot that is still LOADING the new song. The hold must not end in
+// `playing` over an element with nothing in it.
+test('an intro raised over a loading slot ends in loading, unless the slot got ready meanwhile', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onNowPlaying(e('q2'), e('q3')); // a skip: the server moved on
+	expect(c.state).toBe('loading');
+	c.enterInterstitial();
+	expect(c.state).toBe('interstitial');
+	c.onInterstitialDone();
+	expect(c.state).toBe('loading');
+	c.onVisibleReady();
+	expect(c.state).toBe('playing');
+
+	c.onNowPlaying(e('q3'), null);
+	c.enterInterstitial();
+	c.onVisibleReady(); // buffered under the card
+	expect(c.state).toBe('interstitial');
+	c.onInterstitialDone();
+	expect(c.state).toBe('playing');
 });

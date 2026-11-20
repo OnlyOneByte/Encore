@@ -7,6 +7,7 @@
 	import { nextPlayableEntryId } from '$lib/readiness';
 	import { room } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
+	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -51,6 +52,11 @@
 	let positionSec = $state(0);
 	let durationSec = $state(0);
 	let hasSong = $state(false);
+	/* The entry skip and restart NAME, so the server can drop a tap on a song that already went: the one on the strip,
+	   or for a second after it changed, the one before it (`$lib/transport-target`). Plain, not $state: only the tap
+	   reads it, at tap time. */
+	let target: TransportTarget = NO_TARGET;
+	const tapTarget = () => transportTarget(target, performance.now());
 	let canStart = $state(false);
 	// For the dock's offline cue — see the banner in the markup for why it lives here and not on a route.
 	let connected = $state(true);
@@ -73,6 +79,7 @@
 			positionSec = room.playback.positionSec;
 			durationSec = media?.durationSec ?? 0;
 			hasSong = !!entry;
+			target = observeShown(target, entry?.id ?? null, performance.now());
 			/* PLAYABLE, not merely queued. `some(status === 'queued')` was wrong and it reproduced the exact defect the
 			   strip was built to remove. The app's one compound action queues a turn AND starts stem separation, so
 			   immediately afterwards there is a queued entry with no stems: the server's `play` handler finds no
@@ -92,7 +99,15 @@
 				) !== null;
 		};
 		sync();
-		return room.subscribe(sync);
+		const unsubscribe = room.subscribe(sync);
+		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
+		const unstale = room.onStaleTransport(() =>
+			toast.error('That song already ended.', { id: 'transport-dropped', duration: 4000 })
+		);
+		return () => {
+			unsubscribe();
+			unstale();
+		};
 	});
 
 	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference. This is the ROOT layout, so it is not
@@ -160,6 +175,11 @@
 	function transport(command: PlayerCommand): void {
 		if (room.command(command)) return;
 		toast.error("Not connected — the TV didn't hear that.", { id: 'transport-dropped', duration: 4000 });
+	}
+	// Skip and restart act on ONE song, so they name it; see `target` above for which.
+	function targeted(cmd: 'skip' | 'restart'): void {
+		const entryId = tapTarget();
+		if (entryId) transport({ cmd, entryId });
 	}
 
 	// A guest on the landing page has no room to be a remote for.
@@ -269,9 +289,9 @@
 			hasSong={hasSong}
 			canStart={canStart}
 			queueCount={queueCount}
-			onrestart={() => transport({ cmd: 'restart' })}
+			onrestart={() => targeted('restart')}
 			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
-			onskip={() => transport({ cmd: 'skip' })}
+			onskip={() => targeted('skip')}
 			onreact={canReact ? (kind) => room.react(kind) : undefined}
 		/>
 		<TabBar pathname={page.url.pathname} />

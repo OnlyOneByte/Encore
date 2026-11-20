@@ -244,7 +244,7 @@ const server = Bun.serve<SocketData>({
 				case 'player:command':
 					// player:control requires only being IN the room; see src/lib/server/capabilities.ts.
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
-					handlePlayerCommand(evt.command, deps);
+					handlePlayerCommand(evt.command, deps, sendToOrigin);
 					break;
 				case 'tv:telemetry':
 					// Not from phone-app sockets, where `ended` was a free skip and position a free seek. shortcut: `role` is

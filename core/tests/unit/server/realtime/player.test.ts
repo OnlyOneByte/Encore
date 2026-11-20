@@ -61,9 +61,11 @@ test('pause toggles isPlaying false', () => {
 
 test('seek sets clamped position', () => {
 	const { state, deps } = harness();
-	handlePlayerCommand({ cmd: 'seek', positionSec: 42 }, deps);
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 42, entryId: 'q1' }, deps);
 	expect(state.playback.positionSec).toBe(42);
-	handlePlayerCommand({ cmd: 'seek', positionSec: -5 }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: -5, entryId: 'q1' }, deps);
 	expect(state.playback.positionSec).toBe(0);
 });
 
@@ -73,12 +75,11 @@ test('seek sets clamped position', () => {
 // NaN and an Infinity seek must leave playback untouched — and never persist a non-finite value.
 test('a NaN seek is ignored and leaves playback unchanged', () => {
 	const { deps } = harness();
-	handlePlayerCommand({ cmd: 'seek', positionSec: 42 }, deps); // a good position first
 	const persisted: unknown[] = [];
 	// wire a persistence sink so we can assert nothing non-finite is ever written through
 	const guarded = new AuthoritativeState({ persist: (snap) => persisted.push(snap.playback.positionSec) });
-	guarded.setPlayback({ positionSec: 42 });
-	handlePlayerCommand({ cmd: 'seek', positionSec: NaN }, { ...deps, state: guarded });
+	guarded.setPlayback({ positionSec: 42, currentEntryId: 'q1' });
+	handlePlayerCommand({ cmd: 'seek', positionSec: NaN, entryId: 'q1' }, { ...deps, state: guarded });
 	expect(guarded.playback.positionSec).toBe(42); // unchanged
 	guarded.flushNow();
 	expect(persisted.every((p) => Number.isFinite(p))).toBe(true);
@@ -86,9 +87,11 @@ test('a NaN seek is ignored and leaves playback unchanged', () => {
 
 test('an Infinity seek is ignored and leaves playback unchanged', () => {
 	const { state, deps } = harness();
-	handlePlayerCommand({ cmd: 'seek', positionSec: 7 }, deps);
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 7, entryId: 'q1' }, deps);
 	expect(state.playback.positionSec).toBe(7);
-	handlePlayerCommand({ cmd: 'seek', positionSec: Infinity }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: Infinity, entryId: 'q1' }, deps);
 	expect(state.playback.positionSec).toBe(7); // unchanged
 });
 
@@ -109,7 +112,7 @@ test('skip marks current done and advances to next', () => {
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
-	handlePlayerCommand({ cmd: 'skip' }, deps); // -> q2
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, deps); // -> q2
 	expect(state.playback.currentEntryId).toBe('q2');
 	// q1 is marked done -> pruned from the queue (terminal entries don't linger, Finding #3a)
 	expect(state.entries.find((e) => e.id === 'q1')).toBeUndefined();
@@ -120,8 +123,8 @@ test('restart resets position', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handlePlayerCommand({ cmd: 'seek', positionSec: 50 }, deps);
-	handlePlayerCommand({ cmd: 'restart' }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 50, entryId: 'q1' }, deps);
+	handlePlayerCommand({ cmd: 'restart', entryId: 'q1' }, deps);
 	expect(state.playback.positionSec).toBe(0);
 	expect(state.playback.isPlaying).toBe(true);
 });
@@ -142,7 +145,7 @@ test('THE BUG: skip broadcasts a queue:patch so the song leaves `queued` immedia
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	published.length = 0;
 
-	handlePlayerCommand({ cmd: 'skip' }, deps);
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, deps);
 
 	const patches = queuePatches(published);
 	expect(patches.length).toBeGreaterThan(0);
@@ -159,7 +162,7 @@ test('the skip patch carries the authoritative rev and the media inline', () => 
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	published.length = 0;
 
-	handlePlayerCommand({ cmd: 'skip' }, deps);
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, deps);
 
 	const patch = queuePatches(published).at(-1)!;
 	expect(patch.patch.rev).toBe(state.rev);
@@ -211,8 +214,8 @@ test('play still RESUMES a loaded-but-paused song (currentEntryId set) to isPlay
 // since store hydrate only clears the DANGLING non-null case). Twin of the `play` guard above.
 test('THE BUG: restart in an idle room with nothing loaded stays stopped, not (null, isPlaying:true)', () => {
 	const { state, deps } = harness();
-	// no entries added, nothing to restart
-	handlePlayerCommand({ cmd: 'restart' }, deps);
+	// no entries added, nothing to restart: the tap names a song that is gone
+	handlePlayerCommand({ cmd: 'restart', entryId: 'q1' }, deps);
 	expect(state.playback.currentEntryId).toBeNull();
 	expect(state.playback.isPlaying).toBe(false); // NOT true — (null, true) is illegal
 });
@@ -221,8 +224,8 @@ test('restart still REWINDS a loaded song to (positionSec:0, isPlaying:true)', (
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 becomes current + playing
-	handlePlayerCommand({ cmd: 'seek', positionSec: 30 }, deps);
-	handlePlayerCommand({ cmd: 'restart' }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 30, entryId: 'q1' }, deps);
+	handlePlayerCommand({ cmd: 'restart', entryId: 'q1' }, deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(state.playback.positionSec).toBe(0);
 	expect(state.playback.isPlaying).toBe(true);
@@ -234,6 +237,6 @@ test('pause/seek do NOT emit a queue:patch (nothing about the queue changed)', (
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	published.length = 0;
 	handlePlayerCommand({ cmd: 'pause' }, deps);
-	handlePlayerCommand({ cmd: 'seek', positionSec: 10 }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 10, entryId: 'q1' }, deps);
 	expect(queuePatches(published)).toHaveLength(0);
 });

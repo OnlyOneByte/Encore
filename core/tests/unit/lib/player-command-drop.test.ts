@@ -38,9 +38,10 @@ test('the transport buttons go through one reporting helper, not three bare send
 	// One helper, because three copies of the same `if (!room.command(...))` is how two of them keep the old copy.
 	expect(layout).toContain('function transport(command: PlayerCommand): void {');
 	expect(layout).toContain('if (room.command(command)) return;');
-	expect(layout).toContain("onrestart={() => transport({ cmd: 'restart' })}");
+	expect(layout).toContain("onrestart={() => targeted('restart')}");
 	expect(layout).toContain("ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}");
-	expect(layout).toContain("onskip={() => transport({ cmd: 'skip' })}");
+	expect(layout).toContain("onskip={() => targeted('skip')}");
+	expect(layout).toContain('if (entryId) transport({ cmd, entryId });');
 });
 
 test('the notice carries a stable id, so a mash is one notice rather than a tower of them', () => {
@@ -84,7 +85,10 @@ test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a
 	   synchronously, so the readout fell through to a server echo that had not arrived yet even when the command
 	   had landed. A nullable draft cannot express that state. */
 	expect(queuePage).toContain('let guideDraft = $state<number | null>(null);');
-	expect(queuePage).toContain('const guidePct = $derived(guideDraft ?? guideServerPct);');
+	// Shown only for the song its gesture began on, so the rest of a drag that outlived the song cannot move the next one.
+	expect(queuePage).toContain(
+		'const guidePct = $derived(guideDraft !== null && guideGestureFor === nowEntry?.id ? guideDraft : guideServerPct);'
+	);
 	/* The two defective SHAPES, not the bare word — the comment above the draft names what it replaced, which is
 	   the account a reader needs and which a file-wide negative would forbid writing down. */
 	expect(queuePage).not.toContain('let guideDragging');
@@ -92,17 +96,20 @@ test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a
 });
 
 test('the guide draft is cleared by the ROOM agreeing, and by a song change', () => {
-	/* The same two arms `keyDraft`'s effect has. The first is the only event that proves the command landed; the
-	   second is because the override is per-song, so a draft carried across a song change would show the previous
-	   song's level against the new song's default. */
-	expect(queuePage).toContain(
-		'if (guideDraft !== null && (guideServerPct === guideDraft || !nowEntry)) guideDraft = null;'
-	);
+	/* The first arm is the only event that proves the command landed. The second is keyed on the entry ID, because a
+	   skip goes straight from one entry to the next and `nowEntry` is never null in between: the old `!nowEntry` arm
+	   never fired, and both drafts outlived the song (review r2, 974-M1). */
+	expect(queuePage).toContain('if (guideDraft !== null && guideServerPct === guideDraft) guideDraft = null;');
+	expect(queuePage).not.toContain('|| !nowEntry)');
+	expect(queuePage).toContain('if (id === draftsFor) return;');
+	expect(queuePage).toContain('guideSend.cancel();');
 	// The draft is written by the send module's verdict, never by the input handler directly — that is what makes
 	// a dropped command clear it. guide-send.test.ts drives the verdict itself.
 	expect(queuePage).toContain('onDraft: (pct) => (guideDraft = pct)');
-	expect(queuePage).toContain('oninput={(pct) => guideSend.input(pct)}');
-	expect(queuePage).toContain('oncommit={(pct) => guideSend.commit(pct)}');
+	expect(queuePage).toContain('oninput={guideInput}');
+	expect(queuePage).toContain('oncommit={guideCommit}');
+	// Every send of a gesture names the entry it BEGAN on, not the one on the card when the send fires.
+	expect(queuePage).toContain("room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor })");
 });
 
 test('the guide slider is CONTROLLED, so a refused command cannot leave the thumb out there', () => {
@@ -138,7 +145,7 @@ test('the guide slider is CONTROLLED, so a refused command cannot leave the thum
 
 test('the ± keycaps still refuse to move the draft on a dropped command', () => {
 	// The site that already had the treatment, pinned so the pattern cannot be undone at one of the five.
-	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next })) return;");
+	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;");
 });
 
 test('the scan this file rests on reaches every file that can host a call site', () => {
