@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
-import { notYetTarget, minutesLeft, buzzOnce, HEADS_UP_BUZZ } from '$lib/on-deck';
-import type { QueueEntry } from '$lib/contract';
+import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_BUZZ } from '$lib/on-deck';
+import { applyAndReseq, type QueueEntry } from '$lib/contract';
 
 const e = (id: string, singerId: string, over: Partial<QueueEntry> = {}): QueueEntry => ({
 	id,
@@ -18,9 +18,36 @@ test('Not yet steps behind the next singer, landing right after them', () => {
 	expect(notYetTarget(q, 'a', all)).toEqual({ toIdx: 1, singerId: 'theo' });
 });
 
-test('Not yet skips a song still cooking, and my own next pick', () => {
-	const q = [e('a', 'maya'), e('b', 'theo'), e('c', 'maya'), e('d', 'ana')];
-	expect(notYetTarget(q, 'a', (x) => x.id !== 'b')).toEqual({ toIdx: 3, singerId: 'ana' });
+/** Press Not yet on `id` the way the card does, and return the queue the server commits. */
+function pressNotYet(q: QueueEntry[], id: string, playable: (x: QueueEntry) => boolean = all) {
+	const queue = q.map((x, i) => ({ ...x, rotationSeq: i }));
+	const t = notYetTarget(queue, id, playable);
+	if (!t) return null;
+	const after = applyAndReseq(queue, { op: 'not-yet', id, toIdx: t.toIdx });
+	return { named: t.singerId, order: after.map((x) => x.id), next: after.find(playable)?.singerId };
+}
+
+test('Not yet lets the NEXT OTHER singer go first, even with my own next pick in between', () => {
+	// The bug: [maya1, maya2, theo1] became [maya2, theo1, maya1] — Maya still next, Theo never let through.
+	expect(pressNotYet([e('maya1', 'maya'), e('maya2', 'maya'), e('theo1', 'theo')], 'maya1')).toEqual({
+		named: 'theo',
+		order: ['theo1', 'maya1', 'maya2'],
+		next: 'theo'
+	});
+});
+
+test('Not yet skips a song still cooking, and the singer it names is the one who sings next', () => {
+	const r = pressNotYet([e('a', 'maya'), e('b', 'theo'), e('c', 'maya'), e('d', 'ana')], 'a', (x) => x.id !== 'b');
+	// Theo's cooking song keeps its place; both of Maya's picks step behind Ana.
+	expect(r).toEqual({ named: 'ana', order: ['b', 'd', 'a', 'c'], next: 'ana' });
+});
+
+test('the on-deck card is for my next song while SOMEONE ELSE sings — never during my own song, never idle', () => {
+	const q = [e('a', 'maya'), e('b', 'theo')];
+	expect(deckEntryOf(q, 'a', 'theo', 'maya')?.id).toBe('a');
+	expect(deckEntryOf(q, 'a', 'maya', 'maya')).toBeUndefined();
+	expect(deckEntryOf(q, 'a', undefined, 'maya')).toBeUndefined();
+	expect(deckEntryOf(q, 'b', 'ana', 'maya')).toBeUndefined();
 });
 
 test('Not yet hides when nobody is behind, and once it is spent', () => {

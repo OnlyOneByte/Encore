@@ -10,8 +10,8 @@ export const HEADS_UP_BUZZ = [60, 40, 60];
 /**
  * Where "Not yet" moves `id` (an index into the whole QUEUED list, for `not-yet`), and who goes first instead —
  * or null, which HIDES the button. The singer let through is the next one whose song can actually play: stepping
- * behind a song still cooking would leave this entry next anyway. Moving to that entry's index lands right after
- * it, because taking this entry out shifts it up one.
+ * behind a song still cooking would leave this entry next anyway. The op (`letThroughTo`) moves this entry AND my
+ * picks between it and the target behind the target, so my next pick cannot slide into the turn instead.
  */
 export function notYetTarget(
 	queued: QueueEntry[],
@@ -23,6 +23,21 @@ export function notYetTarget(
 	if (!me || me.deferred) return null;
 	const toIdx = queued.findIndex((e, i) => i > from && e.singerId !== me.singerId && playable(e));
 	return toIdx < 0 ? null : { toIdx, singerId: queued[toIdx]!.singerId };
+}
+
+/**
+ * The entry the on-deck card is for: MY entry that plays next, while SOMEONE ELSE sings. Never during my own song —
+ * the card would sit under my own "Singing now" and tell me to grab the mic I am holding — and never in an idle room,
+ * where the server starts a ready song at once and the card would only flash.
+ */
+export function deckEntryOf(
+	queued: QueueEntry[],
+	nextPlayableId: string | null,
+	nowSingerId: string | undefined,
+	meId: string | undefined
+): QueueEntry | undefined {
+	if (!nowSingerId || !meId || nowSingerId === meId) return undefined;
+	return queued.find((e) => e.id === nextPlayableId && e.singerId === meId);
 }
 
 /** "~2 min" until the current song ends; null when its length is unknown. */

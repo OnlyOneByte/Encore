@@ -15,7 +15,7 @@
 		isPlayable,
 		hasGuidingTrack,
 		effectiveGuideLevel,
-		originalKeyLabel,
+		soundingKeyLabel,
 		type QueueEntry,
 		type Media,
 		type PublicSinger,
@@ -48,7 +48,7 @@
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import OnDeckCard from '$lib/components/OnDeckCard.svelte';
-	import { notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
+	import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { NOW_SINGING } from '$lib/phrasing/turn-phrasing';
@@ -422,13 +422,10 @@
 		void room.requestProcess(mediaId);
 	}
 
-	/* ON DECK: MY entry is what plays next, while someone else's song is on. Not shown in an idle room, where the
-	   server starts a ready song at once and the card would only flash. The key and guide go onto the ENTRY
-	   (`set-entry-prefs`), which the server applies when the song starts — through the queue store, so the change is
-	   optimistic and survives a dropped socket like any other queue op. */
-	const deckEntry = $derived(
-		nowEntry ? queued.find((e) => e.id === nextPlayableId && e.singerId === me?.id) : undefined
-	);
+	/* ON DECK: MY entry is what plays next, while someone else's song is on (`deckEntryOf`). The key and guide go onto
+	   the ENTRY (`set-entry-prefs`), which the server applies when the song starts — through the queue store, so the
+	   change is optimistic and survives a dropped socket like any other queue op. */
+	const deckEntry = $derived(deckEntryOf(queued, nextPlayableId, nowEntry?.singerId, me?.id));
 	const deckMedia = $derived(deckEntry ? mediaCatalog.get(deckEntry.mediaId) : undefined);
 	const deckDisplay = $derived(songDisplay(deckMedia));
 	const deckKey = $derived(deckEntry?.keyShift ?? 0);
@@ -678,7 +675,9 @@
 						mine={e.singerId === me?.id}
 						singerAway={awaySingers.has(e.singerId)}
 						up={e.id === nextPlayableId}
-						subtitle={originalKeyLabel(media?.songProfile ?? null) ?? ''}
+						subtitle={e.id === deckEntry?.id
+							? ''
+							: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
 						pending={pendingKind.get(e.id) ?? null}
 						removable={e.singerId === me?.id}
 						grip={gripsVisible}

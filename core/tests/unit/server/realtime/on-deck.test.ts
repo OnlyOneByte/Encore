@@ -123,6 +123,20 @@ test('Not yet is refused with nobody behind, for a forward move, and for someone
 	);
 });
 
+test('Not yet past my own next pick moves both picks behind the singer it names', () => {
+	const { state, deps } = harness([entry('m1', 'maya'), entry('m2', 'maya'), entry('t1', 'theo')]);
+	// Letting my own pick through lets nobody go first, so the server refuses it.
+	expect(validateCommand(cmd({ op: 'not-yet', id: 'm1', toIdx: 1 }), deps)).toBe('invalid toIdx: 1');
+	expect(handleQueueCommand(cmd({ op: 'not-yet', id: 'm1', toIdx: 2 }), deps)).not.toBeNull();
+	expect(state.entries.map((e) => e.id)).toEqual(['t1', 'm1', 'm2']);
+});
+
+test('a client cannot mint a spent "Not yet": `deferred` is stripped from an add', () => {
+	const { state, deps } = harness([]);
+	expect(handleQueueCommand(cmd({ op: 'add', entry: entry('n', 'maya', { deferred: true }) }), deps)).not.toBeNull();
+	expect(state.entries.find((e) => e.id === 'n')?.deferred).toBeUndefined();
+});
+
 // ---- persistence ----------------------------------------------------------------------------------------------
 
 test('the preset and the spent deferral survive a reboot', () => {

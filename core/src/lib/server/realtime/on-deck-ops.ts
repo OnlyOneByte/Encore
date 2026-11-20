@@ -1,6 +1,8 @@
 // The two entry ops the on-deck card sends. OWNER ONLY, unlike `remove`/`move`, which have an `-any` capability:
 // a preset is the singer's own voice, and "Not yet" spends the singer's own turn — nobody else may do either.
 // Values are REJECTED, never clamped: a server-side rewrite would desync the sender's optimistic copy.
+// "Once per entry" fences THIS op only. The owner can still `move-to-index` their own entry anywhere, which is fine
+// on a trusted LAN; `deferred` itself is server-owned, and the hub strips it from a client add.
 
 import { MAX_KEY_SHIFT, clampGuideLevel, type QueueOp } from '../../contract';
 import type { HubDeps } from './hub';
@@ -38,5 +40,7 @@ export function onDeckOpRefusal(op: OnDeckOp, deps: HubDeps): string | null {
 	// Strictly BACK and strictly inside the list: with nobody behind there is nobody to let go first.
 	if (!Number.isInteger(op.toIdx) || op.toIdx <= from || op.toIdx >= queued.length)
 		return `invalid toIdx: ${String(op.toIdx)}`;
+	// The entry let through must be someone else's: letting your own next pick through lets nobody go first.
+	if (queued[op.toIdx]!.singerId === target.singerId) return `invalid toIdx: ${String(op.toIdx)}`;
 	return null;
 }

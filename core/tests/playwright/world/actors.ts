@@ -151,15 +151,20 @@ export async function readySong(world: Pick<World, 'awaitDemoTrack'>, phone: Pag
  * EITHER signal counts, because which one arrives depends on whether the room was idle: `inQueue` is
  * `queued.some(...)` and a turn that starts PLAYING immediately leaves `queued`, so the row's button
  * re-enables and the strip names the song instead.
+ *
+ * THE ROW IS THE ONE MATCHING THE QUERY, never `.first()` of the list: on a second call the previous answer is
+ * still on screen when the box is filled, so the first row was the LAST song again — and its disabled button then
+ * passed the acknowledgement below for a turn nobody asked for.
  */
 export async function queueReady(phone: Page, query: string): Promise<void> {
 	await openBrowseFromHome(phone);
 	await phone.locator(SEL.search).fill(query);
-	await phone.locator(SEL.addTurn).first().click();
+	const add = phone.locator(SEL.songRow, { hasText: query }).locator(SEL.addAction).first();
+	await add.click();
 	await expect
 		.poll(
 			async () => {
-				if (await phone.locator(SEL.addTurn).first().isDisabled()) return true;
+				if (await add.isDisabled()) return true;
 				const strip = (await phone.locator(SEL.npStripTitle).first().textContent()) ?? '';
 				return strip.toLowerCase().includes(query);
 			},
