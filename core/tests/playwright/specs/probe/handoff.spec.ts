@@ -166,6 +166,7 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		const { maya, theo, ana } = await keyGuideRoom(world);
+		await theo.getByRole('link', { name: 'Queue' }).click();
 		const slider = ana.locator('.now [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
@@ -179,7 +180,21 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await ana.waitForTimeout(200);
 		const theoStart = (await serverPlayback(world.baseURL)).state;
+		// Ana's readout is the ROOM's level for Theo's song, the same as Theo's own phone shows: neither the draft from
+		// Maya's song nor the rest of the stale drag may show on Theo's card.
+		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const readouts = async () => [
+			await slider.getAttribute('aria-valuenow'),
+			await theoSlider.getAttribute('aria-valuenow')
+		];
+		const same = ([a, t]: (string | null)[]) => a !== null && a === t;
+		await expect
+			.poll(async () => same(await readouts()), { message: 'Ana kept the last song’s draft on Theo’s card' })
+			.toBe(true);
 		await ana.mouse.move(track.x + track.width * 0.9, y, { steps: 4 });
+		await ana.waitForTimeout(300);
+		expect(same(await readouts()), `the stale drag moved Theo’s card on Ana’s phone: ${await readouts()}`).toBe(true);
 		await ana.mouse.up();
 		await ana.waitForTimeout(800);
 		const after = (await serverPlayback(world.baseURL)).state;
