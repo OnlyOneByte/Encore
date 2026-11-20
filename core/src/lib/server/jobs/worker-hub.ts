@@ -389,12 +389,16 @@ export class WorkerHub {
 		this.#emitStatus(updated);
 	}
 
-	/** Worker declined (capability/transient) → back to queued, free the slot, try another worker. */
+	/** Worker declined (capability/transient) → back to queued, hold the worker, try another worker. */
 	#onReject(msg: Extract<WorkerMessage, { type: 'job:reject' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
-		// REJECT frees the slot via the machine's slot-release hook (reads the owner pre-write).
+		// REJECT frees the slot via the machine's slot-release hook (reads the owner pre-write)...
 		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT');
+		// ...and the HOLD then backs off: a worker that refused "no free slots" got its slot back from the
+		// release and was re-assigned the same job at network speed until its running job ended. Its next
+		// heartbeat (sent right after a reject) restores the real count.
+		this.#d.registry.hold(msg.workerId);
 		this.dispatch();
 	}
 
@@ -423,6 +427,18 @@ export class WorkerHub {
 		// Verifying spawns ffmpeg and decodes the whole file, so it gates completion ASYNCHRONOUSLY and
 		// re-checks staleness on entry — the reaper can fail this job while the probe is still decoding.
 		const reported = msg.artifacts?.stems?.instrumental;
+		if (publishesInstrumental(job.jobType) && !reported && !msg.mediaUri) {
+			// A completion that names no instrumental anywhere is not one: readying it would derive a key for a
+			// file nobody wrote, and the TV would 404 on a "ready" song. Retryable, like any worker fault.
+			this.#onFailed({
+				type: 'job:failed',
+				workerId: msg.workerId,
+				jobId: msg.jobId,
+				error: 'the worker reported a completion with no instrumental',
+				retryable: true
+			});
+			return;
+		}
 		if (this.#d.verifyInstrumental && publishesInstrumental(job.jobType) && reported) {
 			void this.#d.verifyInstrumental(reported).then(
 				(verdict) => {

@@ -60,6 +60,8 @@ class Client:
     run_job: RunJob
     capabilities: frozenset[str]
     backend: str | None = None
+    #: `Hello.host`, what `hardware.probe()` measured. Diagnostic only, so None simply omits it.
+    host: dict[str, object] | None = None
 
     #: Builds the selectable-model catalogue, or None on a box that offers none. Called OFF the event loop
     #: (docs/arch/05-worker.md §7.1) and injected, so a test can supply one without the extra installed.
@@ -74,11 +76,15 @@ class Client:
     #: `(job_id, resumable)` — called once per job when its run ends. Injected because scratch layout is
     #: `artifacts`' business while only this layer knows the outcome (docs/arch/05-worker.md §4).
     on_settled: Callable[[str, bool], None] | None = None
+    #: The heartbeat timer's sleep. Injected for the same reason as `keepalive`'s: a test drives the beat.
+    sleep: Sleep | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait rather than guess. Replaced on
     #: every disconnect, the previous round's answer being stale.
     _confirmed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+    #: The periodic heartbeat, started by `worker:welcome` and ended with the session.
+    _beat: asyncio.Task[None] | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         # Seeded from config so a core that announces nothing — an older one — still publishes at a valid
@@ -124,6 +130,9 @@ class Client:
             # and until the core answers, `may_publish` refuses — so a workflow that finishes in this
             # window waits rather than racing another worker to the same artifact.
             await self._claim_pending()
+            # Core resets this worker's free slots to `concurrency` on every hello, so a reconnect mid-job
+            # would be offered work it must refuse. One heartbeat says what is really running.
+            await self.heartbeat()
             # AFTER the claim, and not awaited: the catalogue is a UI nicety, so it must not sit in front of
             # either registration or re-claiming ownership of in-flight work.
             catalogue_task = asyncio.create_task(self._announce_catalogue())
@@ -134,6 +143,9 @@ class Client:
             # and a pending 4.8 s enumeration would hold the reconnect open for no benefit.
             if catalogue_task is not None:
                 catalogue_task.cancel()
+            if self._beat is not None:
+                self._beat.cancel()
+                self._beat = None
             self._socket = None
             with contextlib.suppress(Exception):
                 await socket.close()
@@ -170,6 +182,7 @@ class Client:
             version=self.config.version,
             backend=self.backend,
             device=self.config.device,
+            host=self.host,
         )
 
     # ── inbound ──────────────────────────────────────────────────────────────────────────────────
@@ -217,6 +230,10 @@ class Client:
                             f"(was {self.publish_stem_format!r})"
                         )
                     self.publish_stem_format = welcome.publish_stem_format
+                if welcome.heartbeat_interval_sec is not None:
+                    if self._beat is not None:
+                        self._beat.cancel()
+                    self._beat = asyncio.create_task(self._heartbeat_every(welcome.heartbeat_interval_sec))
             case f.Ping():
                 pass  # liveness needs no local state
             case _ as unreachable:
@@ -227,6 +244,8 @@ class Client:
         ok, why = self._can_accept(assign)
         if not ok:
             await self._send(f.Reject(self.config.worker_id, assign.job_id, why))
+            # Core holds a rejecting worker at zero free slots until it hears the real count, so say it now.
+            await self.heartbeat()
             return
         self.ownership.accepted(assign.job_id)
         await self._send(f.Accept(self.config.worker_id, assign.job_id))
@@ -334,6 +353,12 @@ class Client:
                 running_job_ids=tuple(sorted(self.ownership.running())),
             )
         )
+
+    async def _heartbeat_every(self, every_sec: float) -> None:
+        wait = self.sleep if self.sleep is not None else asyncio.sleep
+        while True:
+            await wait(every_sec)
+            await self.heartbeat()
 
     async def _claim_pending(self) -> None:
         pending = self.ownership.pending_claims()

@@ -79,6 +79,10 @@ class PublishedStems:
     instrumental: str
     vocals: str | None = None
     guide_mix: str | None = None
+    #: The separator that MADE these stems, for the completion facts: a `stems-upgrade` builds its own per
+    #: job, so the box's startup separator is not the one to report.
+    engine: str | None = None
+    model: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +200,9 @@ class AlignOutcome:
     #: their words, a refused attempt writing nothing. Empty for a pinned job, and never the text this job
     #: PUBLISHED (docs/arch/04-alignment.md §11).
     refused: tuple[TextRef, ...] = ()
+    #: True when publication was REFUSED for ownership (`NotOurJob`), so `published is None` means "never
+    #: placed", not "found no lyrics". The transport sends it as a retryable failure, not a completion.
+    abandoned: bool = False
 
     def __setstate__(self, state: Sequence[object]) -> None:
         restore_appended(self, state)
