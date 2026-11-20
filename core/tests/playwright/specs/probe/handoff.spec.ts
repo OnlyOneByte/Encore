@@ -93,6 +93,10 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(live).toHaveAttribute('data-probe-same', 'yes');
 		await expect(live).toHaveAttribute('role', 'status');
 		await expect(live.getByRole('button')).toHaveCount(0);
+		// What assistive tech is given: the words ONCE (the sheet's own copy is hidden from it), and the OK button.
+		const tree = await theo.locator('body').ariaSnapshot();
+		expect(tree.match(/You’re up/g) ?? [], tree).toHaveLength(1);
+		await expect(youreUp.getByRole('button', { name: 'OK' })).toBeVisible();
 		// Nobody else is told it is their turn.
 		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
