@@ -6,88 +6,121 @@
 //   bun run ui:review:publish-media -- <pr> [--dir <name>] [--slow] [row ...]
 //       Copies each row's clip.gif and filmstrip.png (and metrics.json) to pr-<pr>/<dir>/<row>/, commits and
 //       pushes without force, then prints the Markdown for the comment. Refuses a row whose media is over the cap.
-//   bun run ui:review:prune-media -- [--keep <pr,pr>] [--apply]
+//   bun run ui:review:prune-media -- --keep <pr,pr> [--apply]      (or --keep=<pr,pr>, or --keep-none)
 //       Re-roots the branch as ONE new parentless commit holding only the kept PRs' folders, so every older
 //       object stops being reachable. Dry-run unless --apply; the push is pinned to the commit it read.
+//
+// Both work in a THROWAWAY clone of origin under the OS temp dir, removed at the end, so the clone you run them
+// from never fetches the branch: an opt-out clone (docs/UI-CHECKLIST.md) stays opted out.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const BRANCH = 'ui-review-media';
-const REMOTE_REF = `refs/remotes/origin/${BRANCH}`;
 const REPO_URL = 'https://github.com/OnlyOneByte/Encore';
 /** Per file. Two media files per row (the GIF and the strip) keeps a four-row PR under about 12 MB. */
 const MAX_FILE_BYTES = 1.5 * 1024 * 1024;
 /** Re-root when the branch's reachable objects pass this, or once a quarter, whichever comes first. */
 const PRUNE_AT_BYTES = 200 * 1024 * 1024;
+/** A folder or row name: one path segment, never `.` or `..`, so it cannot climb out of the clone. */
+const SEGMENT = /^(?!\.{1,2}$)[\w.-]+$/;
 
-const git = (args: string[], cwd?: string) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-const fail = (message: string): never => {
-	console.error(`ui-review-media: ${message}`);
-	process.exit(1);
+class Refused extends Error {}
+const git = (args: string[], cwd?: string, input?: string) =>
+	execFileSync('git', args, { cwd, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+const segment = (what: string, value: string) => {
+	if (!SEGMENT.test(value)) throw new Refused(`${what} "${value}" must be one plain name (letters, digits, . _ -)`);
+	return value;
 };
-const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/** False when the branch does not exist yet, which only the first publish ever sees. */
-function fetchBranch(): boolean {
+/** The remote tip, read without downloading anything. Null when the branch does not exist yet. */
+function remoteTip(url: string): string | null {
+	const line = git(['ls-remote', url, `refs/heads/${BRANCH}`]);
+	return line ? line.split(/\s/)[0] : null;
+}
+
+/** Run `fn` in a scratch clone of just this branch (or a fresh orphan when there is none), then delete it. */
+function inScratchClone<T>(url: string, opts: { bare: boolean; depth?: number }, fn: (dir: string) => T): T {
+	const root = mkdtempSync(join(tmpdir(), 'ui-review-media-'));
+	const dir = join(root, 'clone');
 	try {
-		git(['fetch', 'origin', `+refs/heads/${BRANCH}:${REMOTE_REF}`]);
-		return true;
-	} catch {
-		return false;
+		if (remoteTip(url)) {
+			const depth = opts.depth ? ['--depth', String(opts.depth)] : [];
+			const bare = opts.bare ? ['--bare'] : [];
+			git(['clone', '--quiet', '--no-tags', '--single-branch', '--branch', BRANCH, ...depth, ...bare, url, dir]);
+		} else {
+			git(['init', '--quiet', dir]);
+			git(['checkout', '--quiet', '--orphan', BRANCH], dir);
+			git(['remote', 'add', 'origin', url], dir);
+		}
+		return fn(dir);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 }
 
-/** What a clone pays for this branch: every object reachable from its tip, history included. */
-const reachableBytes = () => Number(git(['rev-list', '--objects', '--disk-usage', REMOTE_REF]));
+/** A refused push is a race with another publish or prune, not a crash: say so in one line. */
+function push(args: string[], cwd: string) {
+	try {
+		git(['push', '--quiet', ...args], cwd);
+	} catch (e) {
+		const stderr = String((e as { stderr?: string }).stderr ?? e);
+		const why = stderr.split('\n').find((l) => /rejected|error|fatal/.test(l));
+		throw new Refused(
+			`origin refused the push (${why?.trim() ?? 'no reason given'}). Someone published or pruned in the ` +
+				'meantime; nothing was lost, run it again.'
+		);
+	}
+}
 
-function publish(args: string[]) {
-	const pr = args.shift();
-	if (!pr || !/^\d+$/.test(pr)) fail('usage: publish <pr> [--dir <name>] [--slow] [row ...]');
+function publish(args: string[], url: string) {
+	const pr = args.shift() ?? '';
+	if (!/^\d+$/.test(pr)) throw new Refused('usage: publish <pr> [--dir <name>] [--slow] [row ...]');
 	let dir = 'after';
 	let gif = 'clip.gif';
 	const rows: string[] = [];
 	while (args.length) {
 		const a = args.shift()!;
-		if (a === '--dir') dir = args.shift() ?? fail('--dir needs a name');
+		if (a === '--dir') dir = segment('--dir', args.shift() ?? '');
 		else if (a === '--slow') gif = 'clip-slow4x.gif';
-		else rows.push(a);
+		else rows.push(segment('row', a));
 	}
 	const out = resolve(process.env.MOTION_OUT ?? 'tests/playwright/.artifacts/motion');
-	if (!existsSync(out)) fail(`${out} does not exist: run bun run ui:review first, or set MOTION_OUT`);
-	const picked = rows.length ? rows : readdirSync(out).filter((r) => existsSync(join(out, r, 'metrics.json')));
-	if (!picked.length) fail(`no rows under ${out}`);
+	if (!existsSync(out)) throw new Refused(`${out} does not exist: run bun run ui:review first, or set MOTION_OUT`);
+	const picked = rows.length
+		? rows
+		: readdirSync(out).filter((r) => SEGMENT.test(r) && existsSync(join(out, r, 'metrics.json')));
+	if (!picked.length) throw new Refused(`no rows under ${out}`);
 	for (const row of picked)
 		for (const file of [gif, 'filmstrip.png']) {
 			const path = join(out, row, file);
-			if (!existsSync(path)) fail(`${path} is missing`);
+			if (!existsSync(path)) throw new Refused(`${path} is missing`);
 			const size = statSync(path).size;
 			if (size > MAX_FILE_BYTES)
-				fail(`${row}/${file} is ${mb(size)}, over the ${mb(MAX_FILE_BYTES)} cap: lower the row's scale or crop it`);
+				throw new Refused(
+					`${row}/${file} is ${size} bytes, over the ${MAX_FILE_BYTES}-byte (1.5 MB) cap: lower the row's scale or crop it`
+				);
 		}
 
-	const existed = fetchBranch();
-	const work = join(mkdtempSync(join(tmpdir(), 'ui-review-media-')), 'tree');
-	git(
-		existed ? ['worktree', 'add', '--detach', work, REMOTE_REF] : ['worktree', 'add', '--orphan', '-b', BRANCH, work]
-	);
-	try {
+	const tipBytes = inScratchClone(url, { bare: false, depth: 1 }, (clone) => {
 		for (const row of picked) {
-			const dest = join(work, `pr-${pr}`, dir, row);
+			const dest = join(clone, `pr-${pr}`, dir, row);
 			rmSync(dest, { recursive: true, force: true });
 			mkdirSync(dest, { recursive: true });
 			for (const file of [gif, 'filmstrip.png', 'metrics.json']) cpSync(join(out, row, file), join(dest, file));
 		}
-		git(['add', '--all'], work);
-		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], work);
-		git(['push', 'origin', `HEAD:refs/heads/${BRANCH}`], work);
-	} finally {
-		git(['worktree', 'remove', '--force', work]);
-		if (!existed) git(['branch', '-D', BRANCH]);
-	}
-	if (fetchBranch() && reachableBytes() > PRUNE_AT_BYTES)
-		console.warn(`ui-review-media: the branch is past ${mb(PRUNE_AT_BYTES)}; run bun run ui:review:prune-media`);
+		git(['add', '--all'], clone);
+		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone);
+		push(['origin', `HEAD:refs/heads/${BRANCH}`], clone);
+		return git(['ls-tree', '-r', '-l', '--full-tree', 'HEAD'], clone)
+			.split('\n')
+			.reduce((n, l) => n + (Number(l.split(/\s+/)[3]) || 0), 0);
+	});
+	// The tip alone: history holds more, so past the threshold here the branch certainly is too.
+	if (tipBytes > PRUNE_AT_BYTES)
+		console.warn(`ui-review-media: the branch tip holds ${mb(tipBytes)}; run bun run ui:review:prune-media`);
 	const base = `${REPO_URL}/blob/${BRANCH}/pr-${pr}/${dir}`;
 	for (const row of picked)
 		console.log(
@@ -95,39 +128,71 @@ function publish(args: string[]) {
 		);
 }
 
-function prune(args: string[]) {
-	const apply = args.includes('--apply');
-	const keepArg = args[args.indexOf('--keep') + 1];
-	const keep = new Set(args.includes('--keep') && keepArg ? keepArg.split(',').map((n) => `pr-${n.trim()}`) : []);
-	if (!fetchBranch()) fail(`origin has no ${BRANCH} branch; nothing to prune`);
-	const tip = git(['rev-parse', REMOTE_REF]);
-	const entries = git(['ls-tree', '--full-tree', tip]).split('\n').filter(Boolean);
-	const kept = entries.filter((e) => {
-		const name = e.split('\t')[1];
-		return name === 'README.md' || keep.has(name);
-	});
-	const dropped = entries.length - kept.length;
-	console.log(
-		`${BRANCH} at ${tip.slice(0, 8)}: ${mb(reachableBytes())} reachable, ${entries.length} top-level entries`
-	);
-	console.log(`keep: ${kept.map((e) => e.split('\t')[1]).join(', ') || '(nothing)'} · drop: ${dropped}`);
-	console.log('Links in every dropped PR then 404. Pass --keep <pr,pr> for the PRs still open.');
-	if (!apply) return console.log('dry run: pass --apply to re-root and force-push.');
-
-	const tree = execFileSync('git', ['mktree'], { input: kept.join('\n') + '\n', encoding: 'utf8' }).trim();
-	const root = git([
-		'commit-tree',
-		tree,
-		'-m',
-		`media: re-rooted from ${tip.slice(0, 8)}, kept ${[...keep].join(' ')}`
-	]);
-	// Pinned to the tip just read, so a publish that landed in between is refused rather than overwritten.
-	git(['push', `--force-with-lease=refs/heads/${BRANCH}:${tip}`, 'origin', `${root}:refs/heads/${BRANCH}`]);
-	fetchBranch();
-	console.log(`re-rooted at ${root.slice(0, 8)}: ${mb(reachableBytes())} reachable on this clone's view of it`);
+/** `--keep 973,980`, `--keep 973 980` and `--keep=973,980` all mean the same; anything not a PR number is refused. */
+function parseKeep(args: string[]): { keep: string[]; keepNone: boolean; apply: boolean } {
+	const keep: string[] = [];
+	let keepNone = false;
+	let apply = false;
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === '--apply') apply = true;
+		else if (a === '--keep-none') keepNone = true;
+		else if (a === '--keep' || a.startsWith('--keep=')) {
+			const values = a === '--keep' ? [] : [a.slice('--keep='.length)];
+			if (a === '--keep') while (i + 1 < args.length && !args[i + 1].startsWith('--')) values.push(args[++i]);
+			const items = values
+				.flatMap((v) => v.split(','))
+				.map((v) => v.trim())
+				.filter(Boolean);
+			if (!items.length) throw new Refused(`${a} needs PR numbers, e.g. --keep 973,980`);
+			for (const n of items) if (!/^\d+$/.test(n)) throw new Refused(`--keep: "${n}" is not a PR number`);
+			keep.push(...items);
+		} else throw new Refused(`unknown argument "${a}"`);
+	}
+	if (keepNone && keep.length) throw new Refused('--keep-none and --keep together make no sense; pick one');
+	return { keep: [...new Set(keep)], keepNone, apply };
 }
 
-const [command, ...rest] = process.argv.slice(2);
-if (command === 'publish') publish(rest);
-else if (command === 'prune') prune(rest);
-else fail('usage: ui-review-media.ts publish <pr> [...] | prune [--keep <pr,pr>] [--apply]');
+function prune(args: string[], url: string) {
+	const { keep, keepNone, apply } = parseKeep(args);
+	if (!remoteTip(url)) throw new Refused(`origin has no ${BRANCH} branch; nothing to prune`);
+	inScratchClone(url, { bare: true }, (clone) => {
+		const ref = `refs/heads/${BRANCH}`;
+		const tip = git(['rev-parse', ref], clone);
+		const bytes = Number(git(['rev-list', '--objects', '--disk-usage', ref], clone));
+		const entries = git(['ls-tree', '--full-tree', tip], clone).split('\n').filter(Boolean);
+		const nameOf = (entry: string) => entry.split('\t')[1];
+		const held = entries.map(nameOf).filter((n) => /^pr-\d+$/.test(n));
+		const keepDirs = keep.map((n) => `pr-${n}`);
+		console.log(`${BRANCH} at ${tip.slice(0, 8)}: ${mb(bytes)} reachable, holding ${held.join(', ') || 'no PRs'}`);
+		console.log(`keep: ${keepDirs.join(', ') || (keepNone ? 'none (--keep-none)' : '(none given)')}`);
+		const missing = keepDirs.filter((d) => !held.includes(d));
+		if (missing.length) throw new Refused(`the branch holds no ${missing.join(', ')}: check the PR numbers`);
+		if (!keep.length && !keepNone)
+			throw new Refused("give the PRs still open with --keep <pr,pr>, or --keep-none to drop every PR's media");
+		const kept = entries.filter((e) => nameOf(e) === 'README.md' || keepDirs.includes(nameOf(e)));
+		const dropped = held.filter((d) => !keepDirs.includes(d));
+		console.log(`drop: ${dropped.join(', ') || 'nothing'}. Every dropped PR's media links then 404.`);
+		if (!apply) return console.log('dry run: add --apply to re-root and force-push.');
+
+		const tree = git(['mktree'], clone, kept.map((e) => e + '\n').join(''));
+		const label = keepDirs.join(' ') || 'nothing';
+		const root = git(['commit-tree', tree, '-m', `media: re-rooted from ${tip.slice(0, 8)}, kept ${label}`], clone);
+		// Pinned to the tip just read, so a publish that landed in between is refused rather than overwritten.
+		push([`--force-with-lease=${ref}:${tip}`, 'origin', `${root}:${ref}`], clone);
+		const after = Number(git(['rev-list', '--objects', '--disk-usage', root], clone));
+		console.log(`re-rooted at ${root.slice(0, 8)}: ${mb(after)} reachable (was ${mb(bytes)})`);
+	});
+}
+
+try {
+	const [command, ...rest] = process.argv.slice(2);
+	const url = git(['remote', 'get-url', 'origin']);
+	if (command === 'publish') publish(rest, url);
+	else if (command === 'prune') prune(rest, url);
+	else throw new Refused('usage: ui-review-media.ts publish <pr> [...] | prune --keep <pr,pr> [--apply]');
+} catch (e) {
+	if (!(e instanceof Refused)) throw e;
+	console.error(`ui-review-media: ${e.message}`);
+	process.exit(1);
+}

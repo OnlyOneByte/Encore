@@ -1,7 +1,8 @@
 // THE MOTION TABLE — the `shot` project's sibling for things that MOVE. A frame table (frames.spec.ts) proves a
 // state at rest; this proves the trip between two states, as a GIF for a human and a ms-labelled filmstrip for
 // an agent reviewer. Evidence, not assertions: like every `shot` spec it cannot fail a build on taste, only on
-// the capture itself breaking (no motion caught where motion is expected, or motion caught where a cut is).
+// the capture itself breaking (no motion caught where motion is expected, or motion caught where a cut is), and
+// on a moving element whose duration or colour is a literal instead of a token (`literalsAllowed` says why not).
 //
 // `bun run ui:review` runs it; `-- -g <name>` runs one row. Output: tests/playwright/.artifacts/motion/<name>/,
 // or MOTION_OUT/<name>/. What a reviewer checks against it is docs/UI-CHECKLIST.md.
@@ -84,6 +85,7 @@ const SCENARIOS: Record<string, Make> = {
 				.catch(() => {});
 		},
 		only: '.phrase-line',
+		literalsAllowed: 'phrase-fade is 0.6s on purpose: a slower swap for a screen nobody is acting on (tv/+page.svelte)',
 		observe: (page) =>
 			page.evaluate(() => ({
 				phraseBefore: (window as unknown as { __phrase0: string }).__phrase0,
@@ -236,11 +238,14 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 					process.env.MOTION_OUT ?? join(testInfo.project.outputDir, 'motion')
 				);
 				const declared = (result.metrics.declared as unknown[]).length;
+				const tokens = result.metrics.tokens as { problems: string[]; allowed: string | null };
 				testInfo.annotations.push({ type: 'motion', description: `${result.dir} in ${Date.now() - t} ms` });
 				for (const [file, { path }] of Object.entries(result.files)) await testInfo.attach(file, { path });
 				// The one thing this spec asserts: the capture saw what this row says is there.
 				if (CUTS.has(name)) expect(declared, `${name}: motion appeared; take it out of CUTS`).toBe(0);
 				else expect(declared, `${name}: no animation was caught after the trigger`).toBeGreaterThan(0);
+				// Check 3 and the colour half of check 8: what the CSS authored, not what it measured.
+				if (!tokens.allowed) expect(tokens.problems, `${name}: literal durations or colours`).toEqual([]);
 			} finally {
 				for (const fn of cleanups) await fn();
 			}

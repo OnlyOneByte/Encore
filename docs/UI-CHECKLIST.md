@@ -34,7 +34,12 @@ A new row is `{ name, what, open, trigger, only, stepMs }`: `open` gets a fresh 
 `stepMs` 33 for motion of 0.5 s or more and 12 for `--motion-fast`. Drive the product's own trigger, never a
 hand-set class: a row that fakes the state change records a frame the product never shows. A row that needs a
 longer song adds one to `LIBRARY` (the fixture's are 8 s), and `startFakeWorker(world, { seconds })` makes the
-stems match. A row whose honest record is a cut goes in `CUTS`, and the PR that gives it motion takes it out.
+stems match. A row whose honest record is a cut goes in `CUTS`, and the PR that gives it motion takes it out. A
+row whose literal duration or colour is a deliberate exception says why in `literalsAllowed`.
+
+**What fails the run, beyond "no motion caught":** a caught animation whose duration, or whose animated colour, is
+authored as a literal instead of a `var()` token. `metrics.json` records what the built CSS says for each one
+(`declared[].source`), the strip's subtitle prints the verdict, and `tokens.problems` lists every literal.
 
 ## The checks
 
@@ -44,10 +49,11 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
 2. **No jump at either end.** Compare `before` with `0 ms`, and the last frame with the settled state. Anything
    that changes at `0 ms` without being in `declared` is a jump, unless it is a content change that is meant to be
    instant (new text, a removed label) and the PR says so.
-3. **The duration is a token in the source.** The CSS or the transition says `var(--motion-fast)`,
-   `var(--motion-base)` or `var(--motion-slow)`. The 120 / 250 / 400 in `declared[].durationMs` is how to spot
-   one, not the proof: a literal `0.4s` with the right number still fails. A literal is a fail unless the PR, and
-   a comment at the literal, say why. Ease-out to enter, ease-in to leave.
+3. **The duration is a token in the source.** The CSS says `var(--motion-fast)`, `var(--motion-base)` or
+   `var(--motion-slow)`. **The tool checks this:** `declared[].source.duration` is the authored text from the built
+   CSS (`durationMs` alone is the same 400 for a token and a literal `0.4s`), and a literal fails the run unless
+   the row's `literalsAllowed`, and a comment at the literal, say why. A motion timed by script
+   (`element.animate`) is listed under `tokens.unchecked`: read its diff. Ease-out to enter, ease-in to leave.
 4. **Reduced motion:** `reducedMotion.honoured` is true for the subject, and `reducedMotion.noVestibularMotion`
    is true for the page (a fade may stay, a slide or scale may not). The guard is the house
    `@media (prefers-reduced-motion: no-preference)` form, not an `animation: none` override.
@@ -58,10 +64,15 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
    This was the leave confirm bug.
 7. **A comment that describes the motion matches the strip.** "Crossfade" must be a crossfade.
 8. **No hard-coded durations or colours, and each keyframe is defined once.** Colours come from theme variables.
-   A keyframe that already exists (for example `app.css`'s `.pop-in`) is reused, not copied into the component.
-9. **The live run did not get worse.** `live.droppedFrames` and `live.longAnimationFrames.count` are read against
-   the same row on `main`, on the same box. A new non-zero value, or a rise, is a regression the PR explains.
-   These are headless numbers (see Limits), so compare them, never quote them as a phone's.
+   **The tool checks the colours that animate** (a transition's end-state rules, an animation's keyframes) and fails
+   the run on a literal such as `#ff2d95`. Colours that don't animate, and whether a keyframe that already exists
+   (for example `app.css`'s `.pop-in`) is reused rather than copied into the component, are read from the diff.
+9. **The live run did not get worse.** One run is noise (the on-deck row gave 4 to 12 dropped frames on identical
+   code), so the live pass runs 3 times (`MOTION_LIVE_RUNS`) and records the **median and range** in
+   `live.droppedFramesAcrossRuns` and `live.longAnimationFramesAcrossRuns`. Run the row on `main` and on the branch,
+   on the same box. A regression is the branch's **median above main's maximum**; anything inside main's range is
+   noise. A row with a TV playing in the same browser (`phone-on-deck-heads-up`) is the noisiest. These are headless
+   numbers (see Limits), so compare them, never quote them as a phone's.
 10. **It is readable.** `clip.gif` is at most 1.5 MB and 4 s; `filmstrip.png` is at most 2000 px a side (crop with
     `stripClip`, shrink with `scale`).
 
@@ -94,6 +105,10 @@ bun run ui:review:prune-media -- --keep 973,980          # dry run: size now, wh
 bun run ui:review:prune-media -- --keep 973,980 --apply  # re-root and force-push
 ```
 
+`--keep 973,980`, `--keep 973 980` and `--keep=973,980` are the same. The command prints the keep list and refuses
+to go on when an item is not a PR number, when a kept PR has no media on the branch (a typo), or when the list is
+empty: dropping every PR's media takes an explicit `--keep-none`.
+
 Keep the PRs that are still open. **Every dropped PR's media links then 404, for good**: a merged PR's GIFs are
 history, and the strip that mattered was read in its review. The force-push is pinned to the tip the command read,
 so a publish that lands in between is refused rather than lost; run it again. GitHub keeps unreachable objects
@@ -109,7 +124,8 @@ git config --add remote.origin.fetch '^refs/heads/ui-review-media'              
 git branch -dr origin/ui-review-media                                            # and drop what it already has
 ```
 
-The publish and prune commands fetch the branch by name, so they work from a clone that skips it.
+The publish and prune commands never fetch the branch into the clone they run from: each works in a throwaway
+clone of just that branch under the OS temp dir and deletes it at the end. An opted-out clone stays opted out.
 
 ## Limits
 
@@ -119,7 +135,8 @@ The publish and prune commands fetch the branch by name, so they work from a clo
   exact by construction.
 - **Only seekable motion.** CSS animations and transitions and WAAPI (Svelte 5 transitions included) step
   exactly. A script tween (the lyrics reel), `<video>` and canvas do not.
-- **Clock-driven rows pay their clock three times** (seek, live, reduced). The TV attract phrase takes about 34 s,
-  and the on-deck crossing waits about 6 s of song per run.
+- **Clock-driven rows pay their clock five times** (seek, three live runs, reduced). The TV attract phrase takes
+  about 50 s and the on-deck crossing, which waits about 6 s of song per run, about 48 s; all four rows together
+  take under a minute on 4 workers.
 - **The trigger is a Playwright click**, so tap-to-first-frame latency on a real touch screen is not measured.
 - **GIFs use a 256-colour palette per frame**, so the TV's gradients band slightly. The strips are lossless.

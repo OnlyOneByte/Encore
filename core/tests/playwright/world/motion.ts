@@ -63,6 +63,9 @@ export interface MotionScenario {
 	only?: string;
 	/** Scenario-specific facts read after each run (e.g. "did the phrase change"), kept in metrics.json. */
 	observe?(page: Page): Promise<unknown>;
+	/** Why a literal duration or colour in this motion is a deliberate exception. Written into metrics.json; without
+	 *  it, `tokens.problems` is what the spec fails on. */
+	literalsAllowed?: string;
 }
 
 export interface AnimationRecord {
@@ -79,6 +82,22 @@ export interface AnimationRecord {
 	 *  `prefers-reduced-motion` exists to stop; opacity and colour fades are not. */
 	properties: string[];
 	vestibular: boolean;
+	/** Where the timing and the colours were AUTHORED, read from the built CSS (the CSSOM rules that match the
+	 *  target), because `durationMs` is the same 400 for `var(--motion-slow)` and a literal `0.4s`. */
+	source: TokenSource;
+}
+
+export interface TokenSource {
+	/** The authored `transition`/`animation` text that sets this duration, or null when no CSS rule does (an
+	 *  `element.animate()` call: script-timed, so only the diff can tell). */
+	duration: string | null;
+	/** True when that text uses a `var(--motion-*)` token. */
+	durationIsToken: boolean;
+	/** Authored values of the animated colour properties: the matching rules for a transition's end state, the
+	 *  keyframes for an animation. */
+	colours: string[];
+	/** The subset of `colours` that is a literal (`#ff2d95`, `rgb(…)`, `oklch(…)`, …) rather than a variable. */
+	literalColours: string[];
 }
 
 export interface LiveReport {
@@ -219,9 +238,11 @@ function describeCaught(which: string): AnimationRecord[] {
 			kind === 'CSSAnimation' && effect?.target
 				? getComputedStyle(effect.target).animationTimingFunction
 				: String(effect?.getTiming().easing ?? '');
+		const name =
+			(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? (a.id || 'element.animate');
 		return {
 			kind,
-			name: (a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? (a.id || 'element.animate'),
+			name,
 			target: label(effect?.target),
 			durationMs: Number(timing?.duration ?? 0),
 			delayMs: Number(timing?.delay ?? 0),
@@ -230,9 +251,81 @@ function describeCaught(which: string): AnimationRecord[] {
 			iterations: Number(timing?.iterations ?? 1),
 			fill: String(timing?.fill ?? ''),
 			properties,
-			vestibular: properties.some((p) => MOVES.test(p))
+			vestibular: properties.some((p) => MOVES.test(p)),
+			source: authored(kind, name, effect?.target ?? null, properties)
 		};
 	});
+
+	/** Read the authored values off the page's own stylesheets. Cross-origin sheets are skipped (there are none:
+	 *  the app's CSS is same-origin). shortcut: matching ignores the cascade, so a literal in ANY matching rule
+	 *  that sets the property counts, even one a later rule overrides; tighten if that ever flags a real token. */
+	function authored(kind: string, animName: string, target: Element | null, props: string[]): TokenSource {
+		const COLOURISH = /colou?r|background|border|outline|fill|stroke|shadow/;
+		const LITERAL = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i;
+		const rules: CSSRule[] = [];
+		const walk = (list: CSSRuleList) => {
+			for (const r of list) {
+				rules.push(r);
+				if ('cssRules' in r) walk((r as CSSGroupingRule).cssRules);
+			}
+		};
+		for (const sheet of document.styleSheets) {
+			try {
+				walk(sheet.cssRules);
+			} catch {
+				// cross-origin
+			}
+		}
+		const styleRules = rules.filter((r): r is CSSStyleRule => r instanceof CSSStyleRule);
+		const matching = target
+			? styleRules.filter((r) => {
+					try {
+						return target.matches(r.selectorText);
+					} catch {
+						return false;
+					}
+				})
+			: [];
+		const valueOf = (names: string[]) =>
+			matching.flatMap((r) => names.map((n) => r.style.getPropertyValue(n)).filter(Boolean));
+		// Every matching rule that times this kind of motion, so a literal anywhere among them shows. The longhand
+		// reads empty when its shorthand holds a var() (pending substitution), so both are read.
+		const durations =
+			kind === 'CSSTransition'
+				? valueOf(['transition', 'transition-duration'])
+				: kind === 'CSSAnimation'
+					? valueOf(['animation', 'animation-duration']).filter((v) => v.includes(animName) || !v.includes(' '))
+					: [];
+		const duration = durations.length ? durations.join(' | ') : null;
+		let colours: string[] = [];
+		if (kind === 'CSSTransition') {
+			// `border-top-color` is also set by `border-color`, `border-top` and `border`; `background-color` by `background`.
+			const names = props
+				.filter((p) => COLOURISH.test(p))
+				.flatMap((p) => {
+					const parts = p.split('-');
+					const out = [p];
+					if (parts[0] === 'border' && parts.length === 3) out.push('border-color', `border-${parts[1]}`, 'border');
+					else if (parts.length > 1) out.push(parts[0]);
+					return out;
+				});
+			colours = names.length ? valueOf(names) : [];
+		} else if (kind === 'CSSAnimation') {
+			const kf = rules.find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === animName);
+			colours = kf
+				? [...kf.cssRules].flatMap((k) => {
+						const st = (k as CSSKeyframeRule).style;
+						return [...st].filter((p) => COLOURISH.test(p)).map((p) => st.getPropertyValue(p));
+					})
+				: [];
+		}
+		return {
+			duration,
+			durationIsToken: durations.length > 0 && durations.every((d) => d.includes('var(--motion-')),
+			colours,
+			literalColours: colours.filter((c) => LITERAL.test(c.replace(/var\([^)]*\)/g, '')))
+		};
+	}
 }
 
 // ── runs ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -439,6 +532,29 @@ async function filmstrip(
 	return png;
 }
 
+/** Live runs per capture; `MOTION_LIVE_RUNS` overrides. Three is the fewest that has a median. */
+const LIVE_RUNS = Math.max(1, Number(process.env.MOTION_LIVE_RUNS ?? 3));
+
+/** Check 3 and the colour half of check 8, from what the CSS authored rather than from the measured numbers. */
+function tokenReport(animations: AnimationRecord[], allowed: string | undefined) {
+	const problems: string[] = [];
+	const unchecked: string[] = [];
+	for (const a of animations) {
+		const what = `${a.name} on ${a.target}`;
+		if (a.kind !== 'CSSTransition' && a.kind !== 'CSSAnimation')
+			unchecked.push(`${what}: timed by script; read the diff`);
+		else if (!a.source.durationIsToken)
+			problems.push(`${what}: duration ${a.source.duration ?? '(no CSS rule found)'} is not a var(--motion-*) token`);
+		for (const c of new Set(a.source.literalColours)) problems.push(`${what}: literal colour ${c}`);
+	}
+	const summary = !animations.length
+		? 'tokens: nothing caught to check'
+		: problems.length
+			? `TOKENS: ${problems.length} literal(s)${allowed ? ' (allowed: ' + allowed + ')' : ''}`
+			: 'tokens: durations and colours are var() tokens';
+	return { problems, unchecked, allowed: allowed ?? null, summary };
+}
+
 // ── the entry point ──────────────────────────────────────────────────────────────────────────────────────
 
 export interface CaptureResult {
@@ -496,6 +612,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			? seek.gifRun.frames.map((f) => ({ ms: f.ms, png: crop(f.png, seek.stripClip!, seek.gifClip, scale) }))
 			: seek.gifRun.frames;
 	const motionEnd = Math.max(0, ...seek.gifRun.animations.map((a) => a.endTimeMs));
+	const tokens = tokenReport(seek.gifRun.animations, s.literalsAllowed);
 
 	await clock('encodeMs', async () => {
 		write('clip.gif', encodeGif(seek.gifRun.frames, step));
@@ -505,17 +622,34 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			await filmstrip(
 				browser,
 				`${s.name} — seek-rendered, ${step} ms steps`,
-				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples`,
+				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples · ${tokens.summary}`,
 				stripFrames,
 				cols
 			)
 		);
 	});
 
-	// 2. LIVE — real-time cadence, long frames, CLS.
-	const live = await clock('liveMs', () =>
-		withPage({}, async (page) => ({ ...(await liveRun(page, s)), observed: await s.observe?.(page) }))
-	);
+	// 2. LIVE — real-time cadence, long frames, CLS. One run is noise (the same row gave 5 to 12 dropped frames on
+	// identical code), so it runs LIVE_RUNS times and the median is the number to compare.
+	const liveRuns: (LiveReport & { observed: unknown })[] = [];
+	await clock('liveMs', async () => {
+		for (let i = 0; i < LIVE_RUNS; i++)
+			liveRuns.push(
+				await withPage({}, async (page) => ({ ...(await liveRun(page, s)), observed: await s.observe?.(page) }))
+			);
+	});
+	const median = (pick: (r: LiveReport) => number) => {
+		const v = liveRuns.map(pick).sort((a, b) => a - b);
+		return { median: v[Math.floor(v.length / 2)], min: v[0], max: v[v.length - 1] };
+	};
+	const live = {
+		...liveRuns[0],
+		runs: liveRuns.length,
+		droppedFramesAcrossRuns: median((r) => r.droppedFrames),
+		longAnimationFramesAcrossRuns: median((r) => r.longAnimationFrames.count),
+		p95AcrossRuns: median((r) => r.frameIntervalsMs.p95),
+		clsMaxAcrossRuns: Math.max(...liveRuns.map((r) => r.cls.total))
+	};
 
 	// 3. REDUCED — the same trigger with the OS preference set.
 	const reduced = await clock('reducedMs', () =>
@@ -547,6 +681,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		stepMs: step,
 		scale,
 		declared: seek.gifRun.animations,
+		tokens,
 		motionEndMs: motionEnd,
 		seekFrames: seek.gifRun.frames.length,
 		seekObserved: seek.observed,
