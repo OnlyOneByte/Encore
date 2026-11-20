@@ -97,7 +97,15 @@ export class JobReaper {
 	/** Start the periodic reaper. Idempotent. */
 	start(): void {
 		if (this.#timer) return;
-		this.#timer = setInterval(() => this.tick(), this.#tickMs);
+		// tick() writes SQLite (requeue/fail): a throw out of this interval (SQLITE_FULL, SQLITE_BUSY) is an
+		// uncaught exception that kills the party. Log it; the next tick retries.
+		this.#timer = setInterval(() => {
+			try {
+				this.tick();
+			} catch (err) {
+				console.error('[reaper] tick failed, retrying next tick:', err);
+			}
+		}, this.#tickMs);
 		(this.#timer as { unref?: () => void }).unref?.();
 	}
 
