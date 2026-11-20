@@ -239,7 +239,9 @@ nonlatin = [
 ]
 
 [dependency-groups]
-# PEP 735. `uv sync --only-group dev` installs the gates with no ML download at all.
+# PEP 735. A plain `uv sync` (base + this group) runs the fast suite, `pytest -m "not ml"`, and the lint and
+# type gates, with no ML download at all. `--only-group dev` drops the base dependencies, so it runs ruff and
+# nothing else.
 dev = [
     "pytest==8.4.2",
     # asyncio_mode=auto is this plugin's setting — without it every async test is silently skipped
@@ -251,6 +253,15 @@ dev = [
     # `ruff format --check` red on files nobody touched.
     "ruff==0.16.8",
     "mypy==2.3.1",
+    # THE `ml` EXTRA'S LIGHT HALF, which the fast suite needs and which pulls no torch. The tests write
+    # their audio fixtures with soundfile and reach loudness, filters and syllables through the rest, so
+    # without these 20 test modules fail at import on a bare `uv sync` (TL-01). Same specs as `ml`, so the
+    # lock resolves them once; each ships wheels (or is pure Python) for every platform this project builds.
+    "soundfile>=0.13",
+    "pyloudnorm==0.2.0",
+    "scipy==1.16.2",
+    "cmudict==1.1.1",
+    "pyphen==0.17.2",
 ]
 
 [build-system]

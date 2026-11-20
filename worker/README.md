@@ -424,8 +424,8 @@ on the job row where `/metrics` and the operator can read it.
 
 ```bash
 uv python install 3.12        # worker boxes ship older interpreters; uv fetches a pinned one
-uv sync --only-group dev      # gates only: no multi-GB torch download
-uv run pytest
+uv sync                       # base + the dev group: no multi-GB torch download
+uv run pytest -m "not ml"     # the fast suite, green on that install
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 
@@ -451,9 +451,9 @@ comment saying "do not simplify this" does not survive a plausible-looking clean
 ### The three suites
 
 ```bash
-uv run pytest                     # everything
-uv run pytest -m 'not ml and not dbos'   # the fast one: 416 tests, <1s, no models, no DBOS
-uv run pytest -m dbos             # 10 tests through a real DBOS on temp SQLite, ~11s
+uv run pytest                     # everything; needs the `ml` extra for the model-backed tests
+uv run pytest -m 'not ml'         # the fast one: ~2,450 tests, ~3 min, no torch, no models
+uv run pytest -m dbos             # 20 tests through a real DBOS on temp SQLite (needs SQLite >= 3.42)
 uv run pytest -m ml               # 10 tests against real models and synthesised speech, ~17s
 ```
 

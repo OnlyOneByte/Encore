@@ -772,6 +772,7 @@ def test_the_model_override_loads_the_named_bundle_and_leaves_the_default_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`--model` is the review harness's override: the named torchaudio bundle, cached under its own key."""
+    pytest.importorskip("torch", reason="the bundle loader moves the model onto a torch device")
     from encore_worker.adapters import ml
 
     calls: list[dict[str, object]] = []

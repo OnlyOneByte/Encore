@@ -77,7 +77,15 @@ def test_an_explicit_env_var_reaches_the_config() -> None:
 
 # ── the binary actually runs, and does what this worker needs ────────────────────────────────────
 
+#: These need SOME ffmpeg on the box: the `ffmpeg` extra's bundled build or one on PATH. A bare
+#: `uv sync` has neither, and the fast suite must still run there (TL-01); CI installs the extra.
+needs_ffmpeg = pytest.mark.skipif(
+    ffmpeg.probe_version(ffmpeg.resolve(None)) is None,
+    reason="no runnable ffmpeg here: install the `ffmpeg` extra or put one on PATH",
+)
 
+
+@needs_ffmpeg
 def test_the_resolved_binary_runs() -> None:
     """`probe_version` returning None is exactly the state that makes `stems` unavailable, so a green here
     is what says this box can separate at all."""
@@ -97,6 +105,7 @@ def test_describe_never_raises_on_a_binary_that_cannot_run() -> None:
     assert "will not run" in ffmpeg.describe("/nonexistent/my-ffmpeg")
 
 
+@needs_ffmpeg
 @pytest.mark.parametrize(
     "codec",
     [
@@ -125,6 +134,7 @@ def test_the_resolved_binary_carries_every_codec_this_worker_uses(codec: str) ->
     )
 
 
+@needs_ffmpeg
 @pytest.mark.parametrize("filt", ["amix", "join", "volume"])
 def test_the_resolved_binary_carries_the_filters_the_guide_mix_needs(filt: str) -> None:
     """`join` with an explicit channel map is how the guide mix folds two stems into one four-channel
@@ -180,8 +190,9 @@ def test_pyannote_itself_accepts_that_input_without_touching_torchcodec() -> Non
     `module_available("pyannote.audio")` advertised the `diarize` capability on a box where diarization
     could not decode one file. Feeding a preloaded waveform takes torchcodec off the runtime path, which
     pyannote's own warning text prescribes, so this is the supported route rather than a trick."""
-    if importlib.util.find_spec("pyannote.audio") is None:
-        pytest.skip("pyannote.audio is not installed here")
+    # `importorskip`, not `find_spec("pyannote.audio")`: find_spec imports the parent package, so on a box
+    # without pyannote it RAISES ModuleNotFoundError instead of answering None.
+    pytest.importorskip("pyannote.audio", reason="pyannote.audio is not installed here")
     import sys
 
     from pyannote.audio import Audio

@@ -411,6 +411,7 @@ def test_the_shipped_worker_wires_the_factory_and_not_one_romaniser() -> None:
 def test_a_script_no_bundle_exists_for_falls_back_to_english_and_detect_says_so() -> None:
     """The premise, read off the shipped detector: `SCRIPT_LANGUAGES` names no language for Thai, so the
     fallback answers `en` with source `default` while the SCRIPT says what the text really is."""
+    pytest.importorskip("whisperx", reason="the English bundle's name is read off whisperx's own tables")
     detected = language.detect(list(MIXED_SHEET))
     assert (detected.language, detected.script, detected.source) == ("en", "Thai", "default")
     assert language.nonlatin_script(list(MIXED_SHEET)) == "Thai"
@@ -425,6 +426,7 @@ async def test_a_script_no_bundle_exists_for_times_no_words_on_the_calibrated_en
     the English bundle, found its calibration row and published word timings `high` and VOUCHED — the lift
     having measured the Latin remnant of a text whose bulk no vocabulary here spells. The rule is the TEXT's
     script now, so the attempt declines and the LINE_SYNC rung is what the room gets."""
+    pytest.importorskip("whisperx", reason="the English bundle's name is read off whisperx's own tables")
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
     stem = sung_stem(tmp_path)
     out = Reporter()

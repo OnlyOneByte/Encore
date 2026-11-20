@@ -337,7 +337,7 @@ bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flo
 
 # Worker (worker) — uv owns the env; `uv run` syncs it before it runs anything:
 cd worker && uv python install 3.12   # .python-version pins it; uv fetches the interpreter
-uv run --extra ml pytest -q  # worker unit tests (asyncio_mode=auto) — the extra is NOT optional, see below
+uv run pytest -q -m "not ml"  # the fast worker suite (asyncio_mode=auto): no torch, no models, ~3 min
 uv run ruff check .          # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
 uv run ruff format --check . # format gate (ruff is the formatter; no separate black)
 uv run mypy                  # type-check encore_worker/ (config in pyproject.toml)
@@ -348,15 +348,16 @@ pytest-timeout, ruff, mypy) and `uv.lock` holds the resolution, so the gates abo
 repo alone. `[tool.pytest.ini_options]` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the
 async tests are silently skipped as un-awaited coroutines rather than failing.
 
-**`--extra ml` is load-bearing on the pytest leg, and that is a KNOWN GAP, not the design.** The intent
-is the one `worker/README.md` still states — `uv sync --only-group dev` installs the gates with no
-multi-GB torch download, because every heavy seam is faked. The suite has outgrown it: on a dev-only
-install three modules (`test_align_v2`, `test_audiosep`, `test_ffmpeg`) fail COLLECTION on `soundfile`,
-and 15 further tests carrying no `ml` marker fail on `whisperx`, `pyannote` or an unprovable `stems`
-capability. Closing the gap means marking or faking those tests, not installing more — until then the
-pytest leg of `bun run gates` runs the `ml` install, because `-m 'not ml'` on the light one is still red.
-`ruff check`, `ruff format --check` and `mypy` all exit 0 on a clean tree; any non-zero exit is a real
-finding.
+**The pytest leg needs no `ml` extra.** A plain `uv sync` installs the base dependencies plus the `dev`
+group, which carries the `ml` extra's light half (soundfile, scipy, pyloudnorm, cmudict, pyphen) and no
+torch. On that install `pytest -m "not ml"` is green in about 3 minutes: about 2,375 tests pass and 70
+skip on Ubuntu 24.04 (what CI runs), and about 2,350 and 90 on Debian bookworm, whose SQLite is too old
+for the 20 DBOS tests. The alignment tests reach whisperx through one seam, `ml.load_audio_mono_16k`, and
+`tests/conftest.py` stands in for it when whisperx is absent. The skips each name what the box lacks: the
+real model stack (whisperx, torch, pyannote), a runnable ffmpeg (the `ffmpeg` extra or one on PATH), or a
+SQLite new enough for DBOS (3.42). `uv run --extra ml pytest -q` still runs everything, where the torch
+wheels install (x86_64 Linux, macOS). `ruff check`, `ruff format --check` and `mypy` all exit 0 on a clean
+tree; any non-zero exit is a real finding.
 
 - `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
   browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in
