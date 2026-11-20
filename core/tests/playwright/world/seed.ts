@@ -24,8 +24,6 @@ export const DEMO_LIBRARY: DemoTrack[] = [
 	{ file: 'livin-on-a-prayer.wav', seconds: 8, hz: [293.66, 369.99, 440.0] }
 ];
 
-export const DEMO_SOURCE_REFS: string[] = DEMO_LIBRARY.map((t) => `library/${t.file}`);
-
 /** Write the fixture into `mediaDir/library`. Must run BEFORE core boots — the scan is a boot pass. */
 export function seedDemoLibrary(mediaDir: string): { dir: string; written: number; total: number } {
 	const dir = join(mediaDir, 'library');

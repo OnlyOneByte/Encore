@@ -404,7 +404,7 @@
 		subtitle="after Liam"
 	/>
 
-	<!-- Its own section so numbering restarts at 1. The three `waitShort` states, last an UNKNOWN wait: no clause. -->
+	<!-- Its own section so numbering restarts at 1. The three wait states, last an UNKNOWN wait: no clause. -->
 	<h2 class="section">QueueRow · the wait</h2>
 	<QueueRow seq={1} title="Forever Young" singerName="You" singerColor={PINK} mine up subtitle="up next · ~3 min" />
 	<QueueRow seq={2} title="Africa" singerName="You" singerColor={PINK} mine subtitle="<1 min" />

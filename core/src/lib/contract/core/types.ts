@@ -226,23 +226,9 @@ export interface JobAttempt {
 	selection: string | null;
 
 	/** The worker's own decision history — which text was tried, which knob was varied, why each attempt was
-	 *  rejected. Stored whole because nothing queries inside it; parse with `attemptTrail()`. This is the
+	 *  rejected. Stored whole because nothing queries inside it. This is the
 	 *  answer to "why did this job publish THESE lyrics" weeks later, which no counter can give. */
 	trail: string | null;
-}
-
-/** [] for absent or malformed JSON, for the same reason as `attemptStages`: a corrupt diagnostic must never
- *  throw inside a dashboard render. Entries are shape-checked rather than trusted, because they arrive from a
- *  worker over a socket. */
-export function attemptTrail(a: Pick<JobAttempt, 'trail'>): Array<Record<string, unknown>> {
-	if (!a.trail) return [];
-	try {
-		const parsed = JSON.parse(a.trail);
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter((e) => !!e && typeof e === 'object' && typeof e.state === 'string');
-	} catch {
-		return [];
-	}
 }
 
 /** [] for absent or malformed JSON: a corrupt diagnostic must never throw inside a dashboard render. */

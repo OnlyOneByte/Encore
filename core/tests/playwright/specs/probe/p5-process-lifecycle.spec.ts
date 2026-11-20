@@ -21,7 +21,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 // `ws`, not Node's global, for the reason world/presence.ts gives: one WebSocket implementation per suite.
@@ -404,8 +404,8 @@ test('removing a song mid-process settles CANCELED, not FAILED', async ({ world 
 				.toBe(true);
 
 			// Removed through the REAL affordance — the processing card's own "remove from queue" button, by its
-			// accessible name. Back to the rotation first: the card is not rendered beside search results.
-			await phone.locator(SEL.clearSearch).click();
+			// accessible name. The card lives on /queue since the Sing/Queue/Library tabs, so go there first.
+			await openQueue(phone);
 			await phone.getByRole('button', { name: 'remove from queue' }).first().click();
 
 			await expect

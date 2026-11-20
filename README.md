@@ -4,8 +4,8 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-Every surface has a capture recipe in [`tests/playwright/specs/shot/frames.spec.ts`](tests/playwright/specs/shot/frames.spec.ts), which drives the
-real app into each state and writes the frame set to `docs/mocks/`. The frames themselves are generated
+Every surface has a capture recipe in [`core/tests/playwright/specs/shot/frames.spec.ts`](core/tests/playwright/specs/shot/frames.spec.ts), which drives the
+real app into each state and writes the frame set under `core/tests/playwright/.artifacts/` (`bun run pw:shot`). The frames themselves are generated
 rather than committed, so regenerate them locally when you want to look. Design and rationale live in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -324,7 +324,7 @@ bash dev.sh       # run core + a NATIVE worker locally — `--help` lists nine f
 bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # app, server entry and the test tree
-bun run gates     # the full seven-leg release gate (test, worker pytest, types, lint, format,
+bun run gates     # the full eight-leg release gate (test, worker pytest, worker ruff+mypy, types, lint, format,
                   # build, gate:measured). The last leg needs a Chromium.
 bun run deadcode  # knip; a clean run is ZERO findings
 bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flow|probe|shot` for one project)

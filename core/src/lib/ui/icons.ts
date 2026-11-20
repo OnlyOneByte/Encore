@@ -57,6 +57,3 @@ export type IconName = keyof typeof ICON_PATHS;
 /** Marks drawn as solid shapes. Fill must be OPT-IN per mark rather than applied to every rect and polygon: `pause` is
  * two filled bars, but `mic` uses a rect for its capsule and filling it turns the microphone into a blob. */
 export const SOLID_ICONS: readonly IconName[] = ['prev', 'play', 'pause', 'next'];
-
-/** Every mark, for the gallery and for the guard test to assert the set stays renderable. */
-export const ICON_NAMES = Object.keys(ICON_PATHS) as IconName[];

@@ -52,16 +52,6 @@ export function waitWords(nowRemainingSec: number | null, aheadDurationsSec: Arr
 	return `Roughly ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
 }
 
-/** The same wait as a BYLINE FRAGMENT rather than a sentence, because it sits mid-line after a separator and a
- * capitalised sentence there reads as two sentences welded together. A SECOND FORMATTER, NEVER A SECOND SUM: both
- * spellings call `waitSeconds`, so they cannot disagree about how long the wait is. */
-export function waitShort(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): string | null {
-	const total = waitSeconds(nowRemainingSec, aheadDurationsSec);
-	if (total === null) return null;
-	if (total < SUB_MINUTE_SEC) return '<1 min';
-	return `~${Math.round(total / 60)} min`;
-}
-
 /** The wait in seconds, or `null` — the one place the sum and its unknown rule live, so every formatter above agrees
  * on both. Unknown when the playing song's remaining time is unknown, or when ANY entry ahead has no resolvable length:
  * a partial sum UNDERSTATES the wait, and a guest who wanders off is worse than one who waits. */
