@@ -36,6 +36,7 @@
 	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
 
@@ -181,6 +182,16 @@
 			return;
 		}
 		ctl.onNowPlaying(cur, next);
+		// ONE HANDOFF, however the last song ended. A natural end already raised the card in `onVisibleEnded`; a skip
+		// or a removal arrives only here, and used to drop the next singer straight into their song with no card (UI-02).
+		// It names `cur`, the entry ACTUALLY starting, never `upNext`. Not before the evening's first song, which
+		// `onFirstSongReady` opens once it can play.
+		const alreadyIntroduced = tvState === 'interstitial' && introEntry?.id === cur?.id;
+		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced) {
+			introEntry = cur;
+			ctl.enterInterstitial();
+			holdSongIntro();
+		}
 		syncSlots();
 	}
 
@@ -737,7 +748,7 @@
 		{#if upNext && upNext.id !== current?.id}
 			{@const nextMedia = mediaOf(upNext)}
 			<div class="upnext" bind:this={upnextEl}>
-				<span class="un-label">Up next</span>
+				<span class="un-label">{UP_NEXT}</span>
 				<span class="un-name"
 					><span class="un-dot" style="--singer: {singers.get(upNext.singerId)?.color ?? 'var(--ink-dim)'}"
 					></span>{singerName(upNext.singerId)}</span
@@ -763,8 +774,8 @@
 		{@const m = mediaOf(introEntry)}
 		{@const d = songDisplay(m)}
 		<div class="interstitial takeover state-next">
-			<!-- "Next up" for the first song of the evening is untrue: there is no previous song it follows. -->
-			<div class="up-label">{openedOnce && introEntry.id !== current?.id ? 'Next up' : 'Now singing'}</div>
+			<!-- "Up next" only in the beat before the server confirms the swap; the entry that IS current is "Now singing". -->
+			<div class="up-label">{introEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
 			<div class="up-name hero-name">{singerName(introEntry.singerId)}</div>
 			<div class="up-song">
 				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
@@ -779,7 +790,7 @@
 			<div class="up-song">{skipNotice}</div>
 			{#if upNext && upNext.id !== current?.id}
 				<div class="up-replaces">
-					Up next — {singerName(upNext.singerId)} · {songDisplay(mediaOf(upNext)).title}
+					{UP_NEXT} — {singerName(upNext.singerId)} · {songDisplay(mediaOf(upNext)).title}
 				</div>
 			{/if}
 		</div>
@@ -808,7 +819,7 @@
 			lower-third does rather than deriving a second copy of it.
 		-->
 		<div class="interstitial takeover state-next">
-			<div class="up-label">{openedOnce ? 'Up next' : 'Loading'}</div>
+			<div class="up-label">{NOW_SINGING}</div>
 			<div class="up-name hero-name">{singerName(current?.singerId)}</div>
 			<div class="up-song">
 				{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="up-artist-inline"

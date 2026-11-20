@@ -98,7 +98,7 @@ test('play tracking: advancing to the next song feeds the new entry, and only ge
 	h.state.applyQueueOp({ op: 'add', entry: entry('q1', 'ana', 1, 'm1') });
 	h.state.applyQueueOp({ op: 'add', entry: entry('q2', 'ana', 2, 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, h.deps); // starts q1
-	handlePlayerCommand({ cmd: 'skip' }, h.deps); // advances to q2
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, h.deps); // advances to q2
 	// Two distinct entries → two logged plays fed through the hook. A no-op'd hook logs nothing.
 	expect(h.playsLogged).toEqual([
 		['m1', 'q1'],

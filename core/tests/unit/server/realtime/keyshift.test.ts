@@ -99,6 +99,6 @@ test('keyShift resets to 0 when the song changes (skip)', () => {
 	handlePlayerCommand({ cmd: 'key', semitones: 5 }, deps);
 	expect(state.playback.keyShift).toBe(5);
 
-	handlePlayerCommand({ cmd: 'skip' }, deps); // → q2, fresh song
+	handlePlayerCommand({ cmd: 'skip', entryId: 'q1' }, deps); // → q2, fresh song
 	expect(state.playback.keyShift).toBe(0);
 });

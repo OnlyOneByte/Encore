@@ -50,7 +50,7 @@ test('play: the preset applies at start, and the NEXT entry starts reset', () =>
 	const { state, deps } = harness([entry('a', 'maya', preset), entry('b', 'theo')]);
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	expect(state.playback).toMatchObject({ currentEntryId: 'a', keyShift: -2, guideLevel: 0.2 });
-	handlePlayerCommand({ cmd: 'skip' }, deps);
+	handlePlayerCommand({ cmd: 'skip', entryId: 'a' }, deps);
 	expect(state.playback).toMatchObject({ currentEntryId: 'b', keyShift: 0, guideLevel: null });
 });
 

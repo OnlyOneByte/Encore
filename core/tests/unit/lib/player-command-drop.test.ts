@@ -38,9 +38,9 @@ test('the transport buttons go through one reporting helper, not three bare send
 	// One helper, because three copies of the same `if (!room.command(...))` is how two of them keep the old copy.
 	expect(layout).toContain('function transport(command: PlayerCommand): void {');
 	expect(layout).toContain('if (room.command(command)) return;');
-	expect(layout).toContain("onrestart={() => transport({ cmd: 'restart' })}");
+	expect(layout).toContain("onrestart={() => shownEntryId && transport({ cmd: 'restart', entryId: shownEntryId })}");
 	expect(layout).toContain("ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}");
-	expect(layout).toContain("onskip={() => transport({ cmd: 'skip' })}");
+	expect(layout).toContain("onskip={() => shownEntryId && transport({ cmd: 'skip', entryId: shownEntryId })}");
 });
 
 test('the notice carries a stable id, so a mash is one notice rather than a tower of them', () => {

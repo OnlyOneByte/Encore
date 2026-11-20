@@ -51,6 +51,7 @@
 	import { notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
+	import { NOW_SINGING } from '$lib/phrasing/turn-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
@@ -455,7 +456,7 @@
 	gone. Beating it wants a settled-state read on the shared link, applied to all three tabs at once; leaving
 	/queue the odd one out in the other direction is worse. -->
 {#if me}
-	<PageHeader title="Up next" icon="clock" />
+	<PageHeader title="Queue" icon="clock" />
 
 	<!-- `--row-h` is the dragged row's measured height, published for the neighbours' transform to read: a
 	shifted row slides by exactly one row rather than by a guess. Measured once at press time and 0 otherwise. -->
@@ -464,7 +465,7 @@
 			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
 			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
 			<div class="now">
-				<p class="now-eyebrow">Singing now</p>
+				<p class="now-eyebrow">{NOW_SINGING}</p>
 				<h2 class="now-title">{nowDisplay.title || nowMedia?.title || 'Untitled'}</h2>
 				<p class="now-by">
 					<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>

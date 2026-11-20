@@ -366,18 +366,28 @@ export async function serverPlayback(
  */
 export async function sendPlayerCommand(phone: Page, command: Record<string, unknown>): Promise<void> {
 	await phone.evaluate(async () => {
-		const w = window as unknown as { probeWs?: WebSocket };
+		const w = window as unknown as { probeWs?: WebSocket; probeCurrent?: string | null };
 		if (w.probeWs && w.probeWs.readyState === WebSocket.OPEN) return;
 		const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`);
+		// The socket FOLLOWS the current entry, because skip/restart/seek must name it (the server drops a stale one).
+		// Resolved on the hello's playback:state, so the first command already knows what is playing.
 		await new Promise<void>((resolve, reject) => {
-			ws.onopen = () => resolve();
+			ws.onmessage = (ev) => {
+				const e = JSON.parse(String(ev.data));
+				if (e.type !== 'playback:state') return;
+				w.probeCurrent = e.state.currentEntryId;
+				resolve();
+			};
+			ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
 			ws.onerror = () => reject(new Error('the probe socket would not open from the phone page'));
 		});
 		w.probeWs = ws;
 	});
 	await phone.evaluate((cmd) => {
-		const w = window as unknown as { probeWs: WebSocket };
-		w.probeWs.send(JSON.stringify({ type: 'player:command', command: cmd }));
+		const w = window as unknown as { probeWs: WebSocket; probeCurrent?: string | null };
+		const named = ['skip', 'restart', 'seek'].includes(String(cmd.cmd)) && !('entryId' in cmd);
+		const frame = named ? { ...cmd, entryId: w.probeCurrent } : cmd;
+		w.probeWs.send(JSON.stringify({ type: 'player:command', command: frame }));
 	}, command);
 }
 

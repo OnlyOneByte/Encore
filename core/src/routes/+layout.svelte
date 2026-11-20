@@ -51,6 +51,8 @@
 	let positionSec = $state(0);
 	let durationSec = $state(0);
 	let hasSong = $state(false);
+	// The entry the strip is SHOWING, which skip and restart name so the server can drop a tap on a song that already went.
+	let shownEntryId = $state<string | null>(null);
 	let canStart = $state(false);
 	// For the dock's offline cue — see the banner in the markup for why it lives here and not on a route.
 	let connected = $state(true);
@@ -73,6 +75,7 @@
 			positionSec = room.playback.positionSec;
 			durationSec = media?.durationSec ?? 0;
 			hasSong = !!entry;
+			shownEntryId = entry?.id ?? null;
 			/* PLAYABLE, not merely queued. `some(status === 'queued')` was wrong and it reproduced the exact defect the
 			   strip was built to remove. The app's one compound action queues a turn AND starts stem separation, so
 			   immediately afterwards there is a queued entry with no stems: the server's `play` handler finds no
@@ -92,7 +95,15 @@
 				) !== null;
 		};
 		sync();
-		return room.subscribe(sync);
+		const unsubscribe = room.subscribe(sync);
+		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
+		const unstale = room.onStaleTransport(() =>
+			toast.error('That song already ended.', { id: 'transport-dropped', duration: 4000 })
+		);
+		return () => {
+			unsubscribe();
+			unstale();
+		};
 	});
 
 	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference. This is the ROOT layout, so it is not
@@ -269,9 +280,9 @@
 			hasSong={hasSong}
 			canStart={canStart}
 			queueCount={queueCount}
-			onrestart={() => transport({ cmd: 'restart' })}
+			onrestart={() => shownEntryId && transport({ cmd: 'restart', entryId: shownEntryId })}
 			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
-			onskip={() => transport({ cmd: 'skip' })}
+			onskip={() => shownEntryId && transport({ cmd: 'skip', entryId: shownEntryId })}
 			onreact={canReact ? (kind) => room.react(kind) : undefined}
 		/>
 		<TabBar pathname={page.url.pathname} />
