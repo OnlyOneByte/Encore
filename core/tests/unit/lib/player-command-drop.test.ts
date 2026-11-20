@@ -48,13 +48,14 @@ test('the notice carries a stable id, so a mash is one notice rather than a towe
 	/* Sonner keys toasts by `id`: a create against an id already on screen UPDATES that toast (and sets
 	   `updated`, which resets its auto-close timer) instead of pushing another. Without the id, a guest tapping
 	   skip five times at a dead socket gets five stacked error toasts over the dock. */
-	expect(layout).toContain("{ id: 'transport-dropped', duration: 4000 }");
+	expect(layout).toContain("{ id: 'transport-dropped', duration: 4000, onAutoClose: closed, onDismiss: closed }");
 	/* `toast.error`, not `toast.warning`, and the severity split FRONTEND.md states is the reason: --warn is for
 	   a transient failure and the dock's bar is correctly one, because the socket self-heals on the next backoff
 	   tick. This does not — the command is gone and only the guest can reissue it. (The assertion is on the
 	   CHANNEL, which is the decision; sonner paints its error toast on its own surface rather than on --danger.)
 	   4000ms matches /queue's own error sink, so two notices on one surface do not linger for different spans. */
-	expect(layout).toMatch(/toast\.error\("Not connected — the TV didn't hear that\."/);
+	expect(layout).toContain('toast.error(message, {');
+	expect(layout).toContain('transportNotice("Not connected — the TV didn\'t hear that.");');
 });
 
 test('the dock keeps its own offline bar, which answers the OTHER question', () => {

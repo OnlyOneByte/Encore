@@ -11,6 +11,7 @@
 	import { buzzOnce } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
+	import { YOURE_UP } from '$lib/phrasing/turn-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -132,9 +133,7 @@
 		sync();
 		const unsubscribe = room.subscribe(sync);
 		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
-		const unstale = room.onStaleTransport(() =>
-			toast.error('That song already ended.', { id: 'transport-dropped', duration: 4000 })
-		);
+		const unstale = room.onStaleTransport(() => transportNotice('That song already ended.'));
 		return () => {
 			unsubscribe();
 			unstale();
@@ -206,7 +205,7 @@
 	   timer rather than stacking a tower of them over the dock. */
 	function transport(command: PlayerCommand): void {
 		if (room.command(command)) return;
-		toast.error("Not connected — the TV didn't hear that.", { id: 'transport-dropped', duration: 4000 });
+		transportNotice("Not connected — the TV didn't hear that.");
 	}
 	// Skip and restart act on ONE song, so they name it; see `target` above for which.
 	function targeted(cmd: 'skip' | 'restart'): void {
@@ -245,13 +244,31 @@
 	   in the same moment it becomes that phone's turn. The toaster rides --dock-h plus this, so it clears the sheet
 	   by the same gap the sheet keeps above the dock. */
 	let youreUpH = $state(0);
+	/* THE STACK HOLDS UNTIL BOTH ARE GONE. The sheet leaves at the TV's 2.5 s and the toast lives 4 s, so dropping the
+	   offset with the sheet dropped the toast ~143 px in one frame. Once the two have been up together, the offset
+	   stays until the toast has closed too, so the toast never moves while it is on screen. */
+	let transportToastOpen = $state(false);
+	let stacked = $state(false);
+	let stackH = 0;
 	$effect(() => {
-		if (!youreUp || !youreUpH) return;
-		document.documentElement.style.setProperty('--youre-up-h', `calc(${youreUpH}px + var(--space-lg))`);
+		if (youreUp && youreUpH) stackH = youreUpH;
+		if (youreUp && transportToastOpen) stacked = true;
+		else if (!youreUp && !transportToastOpen) stacked = false;
+	});
+	$effect(() => {
+		if (!stacked || !stackH) return;
+		document.documentElement.style.setProperty('--youre-up-h', `calc(${stackH}px + var(--space-lg))`);
 		return () => {
 			document.documentElement.style.removeProperty('--youre-up-h');
 		};
 	});
+	/** The one transport notice (a mash updates it in place rather than stacking a tower), tracked so the stack above
+	 *  can hold while it is open. */
+	function transportNotice(message: string): void {
+		transportToastOpen = true;
+		const closed = () => (transportToastOpen = false);
+		toast.error(message, { id: 'transport-dropped', duration: 4000, onAutoClose: closed, onDismiss: closed });
+	}
 </script>
 
 <svelte:head>
@@ -341,13 +358,14 @@
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
-	<!-- THE LIVE REGION IS MOUNTED EMPTY, with the chrome, and the sheet renders INTO it: a screen reader often stays
-		silent for a region inserted with its text already in it, so "You're up" would be seen but not heard. -->
-	<div class="youre-up-live" role="status">
-		{#if youreUp}
-			<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={youreUpH} />
-		{/if}
-	</div>
+	<!-- THE LIVE REGION IS MOUNTED EMPTY, with the chrome, and only its TEXT changes: a screen reader often stays silent
+		for a region inserted with its text already in it. It holds the words alone, so the announcement is "You're up,
+		<song>" and not "…, OK": the sheet's button sits outside it, and the sheet's own copy of the words is hidden from
+		assistive tech so they are not read twice. -->
+	<p class="vh" role="status" data-youre-up-live>{youreUp ? `${YOURE_UP}, ${youreUp.title}` : ''}</p>
+	{#if youreUp}
+		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={youreUpH} />
+	{/if}
 {/if}
 
 <style>

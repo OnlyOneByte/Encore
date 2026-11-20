@@ -17,10 +17,11 @@
 	let { title, singerColor, ondismiss, height = $bindable(0) }: Props = $props();
 </script>
 
-<!-- Not a dialog: it takes no focus and blocks nothing. -->
+<!-- Not a dialog: it takes no focus and blocks nothing. The words are announced by the layout's live region, which
+	holds them alone; this copy is for the eyes, so it is hidden from assistive tech rather than read twice. -->
 <div class="youre-up your-turn rise-in" style="--singer:{singerColor}" bind:clientHeight={height}>
-	<p class="who"><span class="dot" aria-hidden="true"></span>{YOURE_UP}</p>
-	<p class="song">{title}</p>
+	<p class="who" aria-hidden="true"><span class="dot"></span>{YOURE_UP}</p>
+	<p class="song" aria-hidden="true">{title}</p>
 	<Button class="ok" onclick={ondismiss}>OK</Button>
 </div>
 

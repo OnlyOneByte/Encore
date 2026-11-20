@@ -65,6 +65,12 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		// tap named Theo's song. The settle window (`$lib/transport-target`) keeps it naming Maya's.
 		// Theo is on another tab: "You're up" must reach him wherever he is.
 		await theo.getByRole('link', { name: 'Library' }).click();
+		// The live region is MOUNTED EMPTY before the change, and the same node carries the words after it: a region
+		// inserted with its text already in it is one a screen reader often never announces.
+		const live = theo.locator('[data-youre-up-live]');
+		await expect(live).toHaveCount(1);
+		await expect(live).toHaveText('');
+		await live.evaluate((el) => ((el as HTMLElement).dataset.probeSame = 'yes'));
 		const t0 = Date.now();
 		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 2_000 });
@@ -79,10 +85,14 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(intro).toContainText('Now singing');
 		await expect(intro).toContainText('Theo');
 		const theoId = await theoEntry();
-		// Rendered INTO a live region that was mounted empty, so a screen reader announces it.
-		const youreUp = theo.getByRole('status').filter({ hasText: 'You’re up' }).locator('.youre-up');
+		const youreUp = theo.locator('.youre-up');
 		await expect(youreUp).toBeVisible({ timeout: 500 });
 		await expect(youreUp).toContainText(/believin/i);
+		// Announced as the words alone ("You're up, <song>"), from the SAME node; the OK button is not in it.
+		await expect(live).toHaveText(/^You’re up, .*believin/i);
+		await expect(live).toHaveAttribute('data-probe-same', 'yes');
+		await expect(live).toHaveAttribute('role', 'status');
+		await expect(live.getByRole('button')).toHaveCount(0);
 		// Nobody else is told it is their turn.
 		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
@@ -310,6 +320,29 @@ test('when your own stale skip makes it your turn, the toast stacks above "You�
 		const s = (await sheet.boundingBox())!;
 		const t = (await toast.boundingBox())!;
 		expect(t.y + t.height, `toast ${JSON.stringify(t)} vs sheet ${JSON.stringify(s)}`).toBeLessThanOrEqual(s.y);
+
+		// The sheet goes at the TV's 2.5 s and the toast lives 4 s: the toast must STAY where it is, not drop the
+		// sheet's height in one frame (review r2, 976-1). Sampled every frame from just before the sheet leaves.
+		const ys = await theo.evaluate(
+			() =>
+				new Promise<number[]>((resolve) => {
+					const out: number[] = [];
+					const t0 = performance.now();
+					const tick = () => {
+						const el = [...document.querySelectorAll('[data-sonner-toast]')].find((n) =>
+							n.textContent?.includes('That song already ended.')
+						) as HTMLElement | undefined;
+						const gone = !document.querySelector('.youre-up');
+						if (el && el.dataset.removed !== 'true') out.push(el.getBoundingClientRect().y);
+						if (performance.now() - t0 > 3_000 || (gone && out.length > 0 && performance.now() - t0 > 2_000))
+							return resolve(out);
+						requestAnimationFrame(tick);
+					};
+					tick();
+				})
+		);
+		await expect(sheet).toHaveCount(0);
+		expect(Math.max(...ys) - Math.min(...ys), `toast y while open: ${ys.slice(0, 3)}…${ys.slice(-3)}`).toBeLessThan(2);
 	} finally {
 		await worker.stop();
 	}
