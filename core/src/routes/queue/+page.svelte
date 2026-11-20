@@ -9,7 +9,6 @@
 	   not in the queued list, so putting them under the list would separate a control from its subject by the whole
 	   scroll height of a party's queue. */
 	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import {
 		SINGER_COLORS,
 		songDisplay,
@@ -110,17 +109,8 @@
 			queueSynced = room.queue?.synced ?? false;
 		};
 		sync();
-		const stopMirror = room.subscribe(sync);
-		/* THE SURFACE THAT OWNS THE TRANSPORT HAD NO ERROR SINK, where `/`, `/library` and `/song/[mediaId]` all
-		   register one — so a server-side refusal of a queue op ("Couldn't do that: …") was composed by the store and
-		   then dropped on the only screen that can issue one. The `<Toaster>` is the single app-wide mount in
-		   `+layout.svelte`, so this needs no renderer of its own. This is NOT the dead-socket cue: that is the dock's
-		   `.offline-bar`, which the fixed chrome shows on every joined surface including this one. */
-		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
-		return () => {
-			stopMirror();
-			stopErrors();
-		};
+		// A queue op's refusal reaches the guest through the root layout's one `room.onError` sink.
+		return room.subscribe(sync);
 	});
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));

@@ -4,7 +4,15 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { RoomRepository } from '$lib/server/rooms/repository';
-import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '$lib/contract';
+import {
+	PALETTE_STOP_ARC_DEG,
+	SINGER_COLORS,
+	SINGER_HUES,
+	hueDistance,
+	hueToHex,
+	nearestPaletteStop,
+	type ServerEvent
+} from '$lib/contract';
 import { LocalLibrary } from '$lib/server/media/local';
 import { YouTubeResolver } from '$lib/server/media/youtube';
 import { SpotifyResolver } from '$lib/server/media/spotify-resolver';
@@ -108,10 +116,47 @@ test('the singer:joined broadcast carries NO session token', () => {
 	expect((ev.singer as Record<string, unknown>).sessionToken).toBeUndefined();
 });
 
-test('invalid color falls back to the first palette color', () => {
+/* A guest who never touched the ring sends NO colour, and the room picks one at join time. Guests scan the TV
+   together, so every phone read the same room preview: a client-side default gave all four the same violet. */
+const stopOf = (hex: string) => nearestPaletteStop(hex);
+
+test('an unusable colour gets the same free pick as no colour, not the first preset', () => {
+	// Maya holds the first preset's stop, so falling back to the first preset would hand Sam and Kai her colour.
+	for (const bad of ['#nonsense', '#000000']) {
+		const { app } = appHarness();
+		doJoin(app, { displayName: 'Maya' });
+		const untouched = appHarness().app;
+		doJoin(untouched, { displayName: 'Maya' });
+		const expected = doJoin(untouched, { displayName: 'Sam' }).singer.color;
+		const got = doJoin(app, { displayName: 'Sam', color: bad }).singer.color;
+		expect(got, bad).toBe(expected);
+		expect(stopOf(got).i, bad).not.toBe(stopOf(SINGER_COLORS[0]).i);
+	}
+});
+
+test('four guests who opened the join screen together and never touched the ring get four colours', () => {
 	const { app } = appHarness();
-	const { singer } = doJoin(app, { displayName: 'Sam', color: '#nonsense' });
-	expect(singer.color).toBe(SINGER_COLORS[0]);
+	const colours = ['Sim1', 'Sim2', 'Sim3', 'Sim4'].map((n) => doJoin(app, { displayName: n }).singer.color);
+	expect(new Set(colours.map((c) => stopOf(c).i)).size).toBe(4);
+	// The first default is still the first preset, snapped to the ring.
+	expect(colours[0]).toBe(stopOf(SINGER_COLORS[0]).fill);
+});
+
+test('twenty default joins spread round the wheel instead of walking one arc', () => {
+	const { app } = appHarness();
+	const hues = Array.from({ length: 20 }, (_, k) => stopOf(doJoin(app, { displayName: `G${k}` }).singer.color).hue);
+	const minGap = (hs: number[]) => Math.min(...hs.flatMap((a, i) => hs.slice(i + 1).map((b) => hueDistance(a, b))));
+	// Sixteen defaults sit at least two stops apart (48 stops, so ~22° spacing is the best possible)...
+	expect(minGap(hues.slice(0, 16))).toBeGreaterThanOrEqual(2 * PALETTE_STOP_ARC_DEG - 1);
+	// ...and twenty still share no stop.
+	expect(new Set(hues).size).toBe(20);
+	expect(minGap(hues)).toBeGreaterThan(PALETTE_STOP_ARC_DEG / 2);
+});
+
+test('a colour the guest picked is kept even when someone already holds it', () => {
+	const { app } = appHarness();
+	doJoin(app, { displayName: 'Maya', color: '#ff5cae' });
+	expect(doJoin(app, { displayName: 'Theo', color: '#ff5cae' }).singer.color).toBe('#ff5cae');
 });
 
 test('a wheel hue is KEPT, not rewritten to a preset', () => {
@@ -127,7 +172,8 @@ test('a wheel hue is KEPT, not rewritten to a preset', () => {
 test('a colour whose dot would vanish on the dark surfaces is refused', () => {
 	const { app } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Kai', color: '#000000' });
-	expect(singer.color).toBe(SINGER_COLORS[0]);
+	// An empty room's free pick: the first preset, snapped to the ring.
+	expect(singer.color).toBe(stopOf(SINGER_COLORS[0]).fill);
 });
 
 test('shorthand hex is canonicalised on the way in', () => {

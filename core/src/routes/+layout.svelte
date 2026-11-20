@@ -130,6 +130,12 @@
 		});
 	});
 
+	/* THE ONE SINK FOR THE LINK'S ERROR CHANNEL. The link drops a message nobody listens for, so a sink per route left
+	   every route without one (all of /settings) silent. The layout outlives every navigation, as the link does.
+	   It registers on /tv, /admin and /metrics too, deliberately: the link never connects there (`NOT_PHONE`), so
+	   nothing reaches it. */
+	onMount(() => room.onError((message) => toast.error(message, { duration: 4000 })));
+
 	/* THE TRANSPORT'S DROPPED-COMMAND NOTICE, and the argument for it, because a toast per tap needs one.
 	   `room.command` reports whether the frame reached the wire; false means the socket was absent or not OPEN, so
 	   the server never heard it. A player command is NOT resent on resync the way a queue add is, so dropped means

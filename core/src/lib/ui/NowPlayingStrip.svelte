@@ -166,9 +166,15 @@
 		border-radius: var(--radius-pill);
 	}
 
+	/* NEVER SHRINKS, so a short name always shows whole; a long one stops at the cap and ellipsises there, leaving the
+	   title its room. `min-width: 0` here let a two-letter name shrink with the title to one clipped glyph. */
 	.who {
 		font-weight: 600;
 		white-space: nowrap;
+		flex-shrink: 0;
+		max-width: 60%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.sep {
@@ -176,12 +182,14 @@
 	}
 
 	/* The title is what gives up width: the singer's name is the fact you are checking at a glance, and a truncated
-	   name reads as the wrong person where a truncated song title still reads as the right song. */
+	   name reads as the wrong person where a truncated song title still reads as the right song. The name's 60% cap
+	   on `.who` is what keeps a long name from taking the title away; `min-width` only stops the title collapsing
+	   below a few letters when the row itself is that narrow. */
 	.song {
-		min-width: 0;
+		min-width: 4ch;
 		overflow: hidden;
-		white-space: nowrap;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 		color: var(--ink-dim);
 	}
 

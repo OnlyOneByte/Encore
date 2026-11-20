@@ -1,12 +1,13 @@
 // A pure-ish handler so it unit-tests without HTTP; the route is a thin wrapper around it.
 
-import { normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
+import { canonicalHex, freeSingerColor, isLegibleSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
 import type { Room } from '../rooms/repository';
 
 export interface JoinInput {
 	displayName: string;
-	color: string;
+	/** Absent = the guest never touched the ring, so the room picks a free colour at join time. */
+	color?: string;
 	/** Room join code (TV QR or typed). Absent = the core's single active room ({@link EncoreApp.activeRoomId}); present = that room specifically — an unknown code is refused, never silently defaulted, so a mistyped code can't drop a guest into the wrong party. */
 	code?: string;
 }
@@ -100,6 +101,19 @@ function resolveJoinRoom(app: EncoreApp, rawCode: string): Room {
 	return room;
 }
 
+/**
+ * The colour a singer gets for a requested one, at join AND on a profile edit, so the two cannot disagree. A legible
+ * colour is kept as asked, even if someone holds it. Anything else (none sent, unparseable, illegible) gets the free
+ * stop farthest from every colour held in the room, never the first preset, which could be someone else's.
+ * `exceptId` leaves the editing singer's own colour out of what is held.
+ */
+export function resolveSingerColor(app: EncoreApp, roomId: string, requested: unknown, exceptId?: string): string {
+	const picked = typeof requested === 'string' ? canonicalHex(requested) : null;
+	if (picked && isLegibleSingerColor(picked)) return picked;
+	const { here, away } = roomMembership(app, roomId);
+	return freeSingerColor([...here, ...away].filter((s) => s.id !== exceptId).map((s) => s.color));
+}
+
 /** Validate + create a singer, then broadcast singer:joined. Throws on invalid input. */
 export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	const room = resolveJoinRoom(app, (input.code ?? '').trim());
@@ -108,7 +122,9 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	if (!name) throw new Error('display name required');
 	// In-room uniqueness: a name is free if no one still in THIS room holds it.
 	assertNameFree(app, room.id, name);
-	const color = normalizeSingerColor(input.color);
+	// Resolved HERE, inside one synchronous handler, so phones that read the same room preview still get distinct
+	// colours: each join sees every join before it.
+	const color = resolveSingerColor(app, room.id, input.color);
 
 	const singer = app.singers.create(name, color, app.now(), room.id);
 
