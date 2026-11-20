@@ -355,8 +355,9 @@ finding.
 - `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
   browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in
   silence — three selector families moved at once while the suite stayed green, which is why the
-  registry exists. Note the guard that used to verify each selector against its source anchor is gone
-  with `tests/guards/`, so nothing now catches a rotted selector until a spec opens the page.
+  registry exists. `tests/unit/playwright/selectors-exist.test.ts` fails when a class or data/aria hook a
+  selector names is in no file under `src/`. It checks existence only, not that the hook is on the surface
+  the spec opens, so a hook that moved to another route still only shows up when a spec opens the page.
 - `tests/playwright/specs/flow/party.spec.ts` — the full two-phone + TV flow.
 - `tests/playwright/specs/shot/frames.spec.ts` — 20 frames, each DRIVEN into its state rather than
   photographed as it loads. `bun run pw:shot`.

@@ -78,7 +78,8 @@ by exact revision, and a cache holding build 1223 against an `@playwright/test` 
 "Executable doesn't exist" while a perfectly good browser sits there.
 
 A per-file `test.use({ launchOptions })` **REPLACES** the config's rather than merging, so it silently
-drops `executablePath`. Use `launchWith([...extraArgs])` from `world/chromium.ts`.
+drops `executablePath`. Repeat `executablePath: resolveChromium()` and spread `BASE_LAUNCH_ARGS`, both from
+`world/chromium.ts`.
 
 ## Autoplay: this box cannot refuse it
 

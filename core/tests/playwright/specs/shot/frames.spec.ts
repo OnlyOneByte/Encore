@@ -392,7 +392,8 @@ const FRAMES: Frame[] = [
 		// is exactly what a pixel baseline protects. Playwright suffixes the snapshot with the platform, and
 		// it has to: the same fixture rasterises its glyphs differently on macOS and Linux (about 2 % of
 		// pixels, all text). So each OS carries its own PNG; the Linux one is shot in the pinned
-		// mcr.microsoft.com/playwright:v1.56.1 image. A bumped Chromium fails once and is re-based by hand,
+		// mcr.microsoft.com/playwright:v1.56.1 image on aarch64; x86_64 is unverified until CI (proposal 06)
+		// runs it, and may need its own re-base. A bumped Chromium fails once and is re-based by hand,
 		// which is louder and more honest than a tolerance wide enough to hide a changed heading.
 		baseline: true,
 		setup: openMetrics
