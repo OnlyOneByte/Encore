@@ -30,9 +30,12 @@ def redact_token(text: str) -> str:
 #: or the reaper requeues a healthy job.
 KEEPALIVE_SEC = 10.0
 
-#: How long the keepalive vouches for one job before it lets core's lease lapse (`transport.keepalive`). Two
-#: hours: twice `cli.run`'s own deadline, so a long roformer pass on a CPU box is never mistaken for a hang.
-JOB_CEILING_SEC = 7200.0
+# A BACKSTOP, not the hang detector: `cli.run`'s silence deadline catches a hung subprocess in minutes, so
+# this bounds only what nothing can kill (the in-process zoo), well past a slow CPU zoo pass on a long song.
+# shortcut: fixed, not derived from history; core could fail a job past max(3600, 3 × its ETA) instead.
+
+#: Seconds, from JOB start, that the keepalive vouches for a job before core's lease may lapse.
+JOB_CEILING_SEC = 6 * 3600.0
 
 #: Backends this worker knows how to build a separator for.
 BACKENDS = ("torch", "mlx")

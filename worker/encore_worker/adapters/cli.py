@@ -15,9 +15,10 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 
 from encore_worker.adapters.ports import InfraFault, ProgressSink
 from encore_worker.domain.document import Segment
@@ -100,10 +101,20 @@ class CancelToken:
     def cancelled(self) -> bool:
         return self._stop.is_set()
 
-    def wait_idle(self, timeout_sec: float) -> bool:
-        """Block until no child of this job is alive. False if one still is at the timeout."""
+    def wait_idle(self, timeout_sec: float | None) -> bool:
+        """Block until no child of this job is alive (None: however long). False if one still is."""
         with self._idle:
             return self._idle.wait_for(lambda: self._live == 0, timeout_sec)
+
+    @contextlib.contextmanager
+    def busy(self) -> Iterator[None]:
+        """Count work that is not a `run` child (an in-process separator) as alive, so its slot is held too.
+        Entered in the WORKER THREAD, never around the `await`: a cancelled await would leave it at once."""
+        self._started()
+        try:
+            yield
+        finally:
+            self._ended()
 
     def _started(self) -> None:
         with self._idle:
@@ -113,6 +124,25 @@ class CancelToken:
         with self._idle:
             self._live -= 1
             self._idle.notify_all()
+
+
+def in_job[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Call `fn` counted on the running job's token. For `asyncio.to_thread(in_job, port.method, …)`."""
+    token = current_token.get()
+    if token is None:
+        return fn(*args, **kwargs)
+    with token.busy():
+        return fn(*args, **kwargs)
+
+
+class Stalled(ToolFailed):
+    """A tool printed nothing for its whole idle allowance: hung, not slow.
+
+    NOT retryable. The same source stalls the same way on the next attempt, and three attempts of a hung
+    download were three hours of "Making karaoke…" before the room was told; this way it is about a minute.
+    """
+
+    retryable = False
 
 
 #: The running job's token. A context variable rather than a parameter on every adapter, because
@@ -129,13 +159,14 @@ def run(
     *,
     on_progress: ProgressSink | None = None,
     timeout_sec: float = 3600.0,
+    idle_sec: float | None = None,
     cancel: CancelToken | None = None,
 ) -> str:
     """Run a command to completion, returning its combined output.
 
     SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. The child gets its own
-    process group, so a kill takes the whole tree. The deadline and the token are a WATCHDOG thread's to
-    enforce, because reading output blocks until the child closes it (WK-03); a kill raises `ToolFailed`.
+    process group, so a kill takes the whole tree. The deadline, the token and `idle_sec` (no output for
+    that long: `Stalled`) are a WATCHDOG thread's to enforce, because reading output blocks (WK-03).
     """
     token = cancel if cancel is not None else current_token.get()
     if token is not None and token.cancelled:
@@ -154,14 +185,18 @@ def run(
         token._started()
     done = threading.Event()
     why: list[str] = []  # set by the watchdog before it kills, read after the child is reaped
+    heard = [time.monotonic()]  # when the child last printed a line; written by the reader below
 
     def watch() -> None:
         deadline = time.monotonic() + timeout_sec
         while not done.wait(_WATCH_SEC):
+            now = time.monotonic()
             if token is not None and token.cancelled:
                 why.append("cancelled")
-            elif time.monotonic() >= deadline:
+            elif now >= deadline:
                 why.append(f"timed out after {timeout_sec:.0f}s")
+            elif idle_sec is not None and now - heard[0] >= idle_sec:
+                why.append(f"stalled: no output for {idle_sec:.0f}s")
             else:
                 continue
             _kill_group(proc)
@@ -175,6 +210,7 @@ def run(
         if stream is None:  # pragma: no cover - unreachable with stdout=PIPE
             raise ToolFailed(argv, -1, "no stdout pipe")
         for line in stream:
+            heard[0] = time.monotonic()
             lines.append(line)
             if on_progress is not None:
                 pct = parse_pct(line)
@@ -191,7 +227,7 @@ def run(
         if token is not None:
             token._ended()
     if why:
-        raise ToolFailed(argv, -1, why[0])
+        raise (Stalled if why[0].startswith("stalled") else ToolFailed)(argv, -1, why[0])
     output = "".join(lines)
     if code != 0:
         if looks_like_oom(output):
@@ -221,6 +257,13 @@ def parse_pct(line: str) -> int | None:
 # ── argv builders (pure) ─────────────────────────────────────────────────────────────────────────
 
 
+#: yt-dlp's own per-socket read timeout: a dead connection errors out rather than waiting forever.
+YTDLP_SOCKET_TIMEOUT_SEC = 30
+
+#: yt-dlp prints a progress line many times a second, so this long without one is a hang (`Stalled`).
+YTDLP_IDLE_SEC = 60.0
+
+
 def audio_argv(source_uri: str, out_dir: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
     """Download the best audio-only stream as a single file.
 
@@ -231,7 +274,10 @@ def audio_argv(source_uri: str, out_dir: str, ytdlp_bin: str = "yt-dlp") -> list
     return [
         ytdlp_bin,
         "--no-playlist",
-        # Newline-delimited progress, so `run` can parse a percentage out of it line by line.
+        "--socket-timeout",
+        str(YTDLP_SOCKET_TIMEOUT_SEC),
+        # Newline-delimited progress, so `run` can parse a percentage out of it line by line — and so a
+        # silence of `YTDLP_IDLE_SEC` means a hang rather than a long line.
         "--newline",
         "-f",
         "bestaudio/best",
@@ -254,6 +300,8 @@ def caption_argv(
     return [
         ytdlp_bin,
         "--no-playlist",
+        "--socket-timeout",
+        str(YTDLP_SOCKET_TIMEOUT_SEC),
         "--skip-download",
         "--write-auto-subs" if automatic else "--write-subs",
         "--sub-langs",
@@ -314,7 +362,7 @@ class YtDlpAudio:
         self._bin = ytdlp_bin
 
     def fetch(self, source_uri: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> str:
-        run(audio_argv(source_uri, out_dir, self._bin), on_progress=on_progress)
+        run(audio_argv(source_uri, out_dir, self._bin), on_progress=on_progress, idle_sec=YTDLP_IDLE_SEC)
         found = sorted(glob.glob(os.path.join(out_dir, "original.*")))
         if not found:
             raise ToolFailed([self._bin], 0, f"yt-dlp reported success but wrote nothing into {out_dir}")
@@ -330,7 +378,7 @@ class YtDlpCaptions:
     def fetch(self, source_uri: str, out_dir: str, *, automatic: bool) -> Sequence[Segment]:
         template = os.path.join(out_dir, "captions.%(ext)s")
         try:
-            run(caption_argv(source_uri, template, self._bin, automatic=automatic))
+            run(caption_argv(source_uri, template, self._bin, automatic=automatic), idle_sec=YTDLP_IDLE_SEC)
         except ToolFailed:
             return ()  # a video with no track of this kind is the common case
         path = find_caption_file(out_dir)

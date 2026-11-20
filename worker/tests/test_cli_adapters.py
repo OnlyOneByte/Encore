@@ -523,3 +523,43 @@ def test_the_running_job_token_reaches_a_run_in_a_worker_thread() -> None:
 
 def test_a_child_that_finishes_in_time_is_untouched() -> None:
     assert cli.run(["sh", "-c", "echo ok"], timeout_sec=5.0) == "ok\n"
+
+
+def test_a_child_that_goes_quiet_is_killed_as_stalled_long_before_its_deadline() -> None:
+    """The review's (a): the deadline is an hour, so only a SILENCE can turn a hang into a failure in about
+    a minute. Stalled is not retryable, so the job is not given two more hung hours."""
+    started = time.monotonic()
+    with pytest.raises(cli.Stalled, match="stalled: no output for 1s") as stalled:
+        cli.run(["sh", "-c", "echo starting; sleep 30"], timeout_sec=3600.0, idle_sec=1.0)
+    assert time.monotonic() - started < 2.5
+    assert stalled.value.retryable is False
+
+
+def test_a_child_that_keeps_printing_is_not_stalled() -> None:
+    script = "for i in 1 2 3 4 5 6; do echo $i; sleep 0.3; done"
+    assert cli.run(["sh", "-c", script], idle_sec=1.0).split() == ["1", "2", "3", "4", "5", "6"]
+
+
+def test_yt_dlp_gives_up_on_a_dead_socket_itself() -> None:
+    for argv in (audio_argv("u", "/tmp/w"), caption_argv("u", "/tmp/c", automatic=True)):
+        assert argv[argv.index("--socket-timeout") + 1] == "30"
+
+
+def test_work_counted_in_job_holds_the_token_busy_until_it_returns() -> None:
+    """The in-process zoo has no child to kill, so without this a stop freed its slot while it ran."""
+    token = cli.CancelToken()
+
+    def separation() -> str:
+        time.sleep(0.6)
+        return "done"
+
+    def in_thread() -> str:
+        cli.current_token.set(token)
+        return cli.in_job(separation)
+
+    worker = threading.Thread(target=in_thread)
+    worker.start()
+    time.sleep(0.2)
+    assert token.wait_idle(0.0) is False, "still separating"
+    assert token.wait_idle(2.0) is True
+    worker.join()

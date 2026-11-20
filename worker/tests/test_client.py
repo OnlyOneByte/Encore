@@ -1139,4 +1139,4 @@ async def test_keepalive_goes_quiet_past_its_ceiling() -> None:
             keepalive(c, "j1", Stage.SEPARATING, every_sec=10.0, ceiling_sec=35.0, sleep=no_sleep), 1.0
         )
 
-    assert sock.types().count("job:progress") == 4, "ticks at 10, 20, 30 and 40 s, then nothing"
+    assert sock.types().count("job:progress") == 3, "ticks at 10, 20 and 30 s, none past the 35 s ceiling"

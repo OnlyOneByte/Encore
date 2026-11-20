@@ -442,7 +442,7 @@ async def keepalive(
     """
     wait = sleep if sleep is not None else asyncio.sleep
     waited = 0.0
-    while ceiling_sec is None or waited < ceiling_sec:
+    while ceiling_sec is None or waited + every_sec <= ceiling_sec:
         await wait(every_sec)
         waited += every_sec
         await client.progress(job_id, stage, pct)

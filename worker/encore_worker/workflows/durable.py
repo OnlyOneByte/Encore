@@ -36,16 +36,18 @@ def register(
     *,
     align_steps_for: AlignStepsFor,
     stems_steps_for: SeparateStepsFor,
+    bind_job: Callable[[JobRef], None] | None = None,
 ) -> None:
     """Register both workflows against a launched DBOS, or record the providers and run direct without one.
 
     Called ONCE from the composition root, before the first job: `DBOS.workflow` mutates a global registry, so
     registering on first use would put that mutation in a job's critical path and surface a name collision as
-    a failed job. `dbos=None` is a supported state — a box without durable state is degraded, not broken.
+    a failed job. `dbos=None` is a supported state; `bind_job` is docs/arch/05-worker.md §8.1.
     """
     global _align_flow, _stems_flow, _align_steps_for, _stems_steps_for
     _align_steps_for = align_steps_for
     _stems_steps_for = stems_steps_for
+    bind = bind_job or (lambda _job: None)
 
     if dbos is None:
         # Explicitly CLEARED: a stale workflow would send jobs down a path whose DBOS instance is gone.
@@ -59,11 +61,13 @@ def register(
     @DBOS.workflow(name="encore-align")
     async def align_flow(job: JobRef) -> AlignOutcome:
         assert _align_steps_for is not None
+        bind(job)
         return await run_align(job, _align_steps_for(job))
 
     @DBOS.workflow(name="encore-stems")
     async def stems_flow(job: JobRef) -> StemsOutcome:
         assert _stems_steps_for is not None
+        bind(job)
         return await run_stems(job, _stems_steps_for(job))
 
     _align_flow = align_flow
@@ -162,23 +166,17 @@ async def _run_id(job_id: str) -> str:
 
 
 def _ended_without_result(status: Any) -> bool:
-    """Did this run end with nothing a requeue should be handed back?
-
-    ERROR, as before. CANCELLED too: `cancel` below marks a run the core took back, and DBOS answers a start
-    under a cancelled id with the cancellation, so a requeue onto this box would fail in an instant until its
-    attempts ran out. And a stems run that ABANDONED its publication (`workflows.stems.ABANDONED`): it
-    finished SUCCESS, but what it recorded is a lost race for ownership, not an outcome, and replaying it
-    was the same burn (the #968 review's open High).
-    """
+    """ERROR, CANCELLED or an ABANDONED publication: docs/arch/05-worker.md §8.1."""
     if status.status in ("ERROR", "CANCELLED"):
         return True
     output = getattr(status, "output", None)
+    if isinstance(output, AlignOutcome):
+        return bool(getattr(output, "abandoned", False))
     return isinstance(output, StemsOutcome) and output.published is None and output.why.startswith(ABANDONED)
 
 
 async def cancel(job_id: str) -> None:
-    """Cancel job `job_id`'s live run, so DBOS starts none of its remaining steps. A no-op without DBOS, or
-    when no run is live: a requeue then forks the cancelled one (`_run_id`)."""
+    """Cancel job `job_id`'s live run, so DBOS starts none of its remaining steps."""
     if _align_flow is None and _stems_flow is None:
         return
     from dbos import DBOS  # noqa: PLC0415

@@ -68,6 +68,11 @@ class Stems:
 
 # ── torch demucs ─────────────────────────────────────────────────────────────────────────────────
 
+#: torch demucs redraws its tqdm bar every chunk, so this long silent is a hang (`cli.Stalled`). Generous,
+#: because loading the model prints nothing. Only torch demucs: demucs-mlx and bs-roformer-infer have not
+#: been seen to print steadily, so they keep `run`'s wall-clock deadline alone.
+DEMUCS_IDLE_SEC = 300.0
+
 
 def demucs_argv(
     input_wav: str, out_dir: str, model: str = "htdemucs", *, device: str = "cpu", jobs: int = 1
@@ -124,6 +129,7 @@ class TorchDemucs:
         run(
             demucs_argv(input_wav, out_dir, self._model, device=self._device, jobs=self._jobs),
             on_progress=on_progress,
+            idle_sec=DEMUCS_IDLE_SEC,
         )
         return demucs_paths(out_dir, input_wav, self._model)
 

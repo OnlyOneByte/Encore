@@ -6,14 +6,20 @@ file, and the rules here are about which id `durable` picks, not about DBOS.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import contextlib
+import threading
+import time
 from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from encore_worker.steps.records import PublishedStems
+from encore_worker import __main__ as wm
+from encore_worker.adapters import cli
+from encore_worker.steps.records import AlignOutcome, AudioRef, JobRef, PublishedStems
 from encore_worker.workflows import durable
 from encore_worker.workflows.stems import ABANDONED, StemsOutcome
 
@@ -50,6 +56,23 @@ class FakeDbos:
         self._pinned = workflow_id
         yield
         self._pinned = None
+
+    def workflow(self, *, name: str) -> Any:
+        return lambda fn: fn
+
+    async def start_workflow_async(self, flow: Any, job: Any) -> Any:
+        """Run the workflow as DBOS runs a fork or a recovered run: on ITS OWN loop, in another thread, in a
+        context that never saw the caller's — a plain thread starts with an empty one."""
+        done: concurrent.futures.Future[Any] = concurrent.futures.Future()
+
+        def body() -> None:
+            try:
+                done.set_result(asyncio.run(flow(job)))
+            except BaseException as failed:  # noqa: BLE001 - handed back to the awaiting handle
+                done.set_exception(failed)
+
+        threading.Thread(target=body, daemon=True).start()
+        return SimpleNamespace(get_result=lambda: asyncio.wrap_future(done))
 
 
 @pytest.fixture
@@ -100,3 +123,56 @@ async def test_cancel_leaves_a_settled_run_alone(fake: FakeDbos) -> None:
     await durable.cancel("j1")
     await durable.cancel("never-ran")
     assert fake.cancelled == []
+
+
+async def test_a_requeue_after_an_abandoned_align_forks_it(fake: FakeDbos) -> None:
+    """The same burn as stems', for align (#968 marks its lost publication `abandoned`). Align's publish is a
+    recorded step, so the fork resumes there."""
+    fake.runs["j1"] = (
+        "SUCCESS",
+        AlignOutcome(published=None, why="abandoned before publishing: x", abandoned=True),
+    )
+    assert await durable._run_id("j1") == "j1~requeue-1"
+
+
+async def test_a_finished_align_is_replayed_not_forked(fake: FakeDbos) -> None:
+    fake.runs["j1"] = ("SUCCESS", AlignOutcome(published=None, why="no lyrics found"))
+    assert await durable._run_id("j1") == "j1"
+
+
+class HangingSteps:
+    """Stems steps whose separation is a child that never ends on its own."""
+
+    async def acquire_audio(self, job: JobRef) -> AudioRef:
+        return AudioRef(path="/dev/null", duration_sec=1.0)
+
+    async def decode_to_wav(self, job: JobRef, audio: AudioRef) -> str:
+        return "/dev/null"
+
+    async def separate(self, job: JobRef, input_wav: str) -> AudioRef:
+        await asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"])
+        raise AssertionError("unreachable: the child only ends by being killed")
+
+
+async def test_a_run_dbos_executes_on_its_own_loop_still_carries_the_jobs_token(
+    fake: FakeDbos, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The review's #975 must-fix 3. A fork or a recovered run executes on DBOS's loop, whose context never
+    saw `_run` set the token, so a cancel stopped the DBOS row and left the child running. The workflow body
+    binds the job's token itself (`__main__._bind_token`)."""
+    for name in ("_align_flow", "_stems_flow", "_align_steps_for", "_stems_steps_for"):
+        monkeypatch.setattr(durable, name, getattr(durable, name))
+    durable.register(
+        fake,
+        align_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+        stems_steps_for=lambda _job: HangingSteps(),  # type: ignore[arg-type,return-value]
+        bind_job=wm._bind_token,
+    )
+    job = JobRef(job_id="j-fork", media_id="m1", media_dir="/tmp", source_uri="")
+    token = cli.CancelToken()
+    monkeypatch.setitem(wm._tokens, job.job_id, token)
+    asyncio.get_running_loop().call_later(0.5, token.cancel)
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        await asyncio.wait_for(durable.stems(job), 10.0)
+    assert time.monotonic() - started < 3.0, "the child was killed by the token, not left to run"

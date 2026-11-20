@@ -265,7 +265,9 @@ async def main() -> None:
             publish_stem_format=client.publish_stem_format,
         )
 
-    durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
+    durable.register(
+        dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for, bind_job=_bind_token
+    )
 
     # The SECOND reclaim mechanism, not redundant with `settled` above: it reaches the two leaks a run-end
     # hook cannot (a crash, and retries exhausting unseen). See docs/arch/05-worker.md §4.
@@ -591,24 +593,35 @@ async def _run(
 #: The cancel token of every job this worker is running, for `_stop`.
 _tokens: dict[str, cli.CancelToken] = {}
 
-#: How long a stop waits for a killed child to be reaped. A SIGKILL lands in milliseconds; this only bounds
-#: a child stuck in uninterruptible IO.
+#: How long a stop waits before it says the job's work is still running. It goes on waiting: a SIGKILLed
+#: child is reaped in milliseconds, so what outlives this is in-process work (the zoo), which holds the box.
 _STOP_WAIT_SEC = 10.0
+
+
+def _bind_token(job: JobRef) -> None:
+    """Make job `job`'s token the current one. Called INSIDE each workflow body (`durable.register`): DBOS
+    runs a fork or a recovered run on its own loop, whose context never saw `_run` set it."""
+    cli.current_token.set(_tokens.get(job.job_id))
 
 
 async def _stop(job_id: str) -> None:
     """Stop a job the core took back: its workflow first, so DBOS starts no further step, then its children.
 
-    Returns once the children have exited, which is what keeps the slot counted until then (WK-02). Work
-    running in-process (the zoo separator) cannot be killed; the workflow still stops when it returns.
+    Returns once the job's work has ended (its `run` children and any in-process call counted by
+    `cli.in_job`), which is what keeps the slot counted until then (WK-02).
     """
     token = _tokens.pop(job_id, None)
     await durable.cancel(job_id)
     if token is None:
         return
     token.cancel()
-    if not await asyncio.to_thread(token.wait_idle, _STOP_WAIT_SEC):
-        print(f"[worker] job {job_id}: a child still lives {_STOP_WAIT_SEC:.0f}s after its kill", flush=True)
+    if await asyncio.to_thread(token.wait_idle, _STOP_WAIT_SEC):
+        return
+    print(
+        f"[worker] job {job_id}: still running {_STOP_WAIT_SEC:.0f}s after its stop; holding its slot",
+        flush=True,
+    )
+    await asyncio.to_thread(token.wait_idle, None)
 
 
 #: The stage a keepalive reports for each action, so the phone shows the right word while a long step runs.
