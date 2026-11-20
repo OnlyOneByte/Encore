@@ -189,10 +189,14 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 export interface TvTelemetry {
 	positionSec: number;
 	ended?: boolean;
-	/** Optional, for a TV that omits it. When PRESENT, an `ended` naming an entry that is no longer
-	 *  currentEntryId is stale and ignored, so one bad track cannot consume the next singer's turn. */
+	/** Optional for a position frame. REQUIRED for `ended`, which is ignored without it. When present, a frame
+	 *  naming an entry that is no longer currentEntryId is stale and ignored, so one bad track cannot consume
+	 *  the next singer's turn. */
 	entryId?: string;
 }
+
+// Once per process: a stale TV would otherwise send one of these per song.
+let warnedIdlessEnded = false;
 
 /** The authoritative position advances on what ACTUALLY happened on screen. */
 export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
@@ -203,6 +207,14 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 	// `ended` double-advances and position seeks using the old song's playhead.
 	if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
 	if (t.ended) {
+		// `ended` must name the entry that ended: an id-less one would skip whoever is current.
+		if (t.entryId === undefined) {
+			if (!warnedIdlessEnded) {
+				warnedIdlessEnded = true;
+				console.warn('[telemetry] ignored an ended with no entryId; is a TV running a stale page?');
+			}
+			return;
+		}
 		advance(deps);
 		deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		emitNowPlaying(deps);

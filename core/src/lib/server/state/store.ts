@@ -37,6 +37,7 @@ export class AuthoritativeState {
 	#persistence: StatePersistence;
 	#flushTimer: ReturnType<typeof setTimeout> | null = null;
 	#flushDelayMs: number;
+	#flushFailures = 0;
 	#orderingOf: () => Ordering;
 	// Monotonic source of the server-owned `addedAt` stamp, re-stamped on every add at the hub seam (nextAddedAt) so the ordering input a room ranks singers by is never client-minted. Seeded on hydrate from the max persisted stamp so the monotonic guarantee holds across a reboot, not just within one process lifetime.
 	#lastAddedAt = 0;
@@ -127,12 +128,23 @@ export class AuthoritativeState {
 		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}
 
-	#scheduleFlush(): void {
+	#scheduleFlush(delayMs = this.#flushDelayMs): void {
 		if (this.#flushTimer) return; // coalesce bursts into one write
 		this.#flushTimer = setTimeout(() => {
 			this.#flushTimer = null;
-			this.#persistence.persist({ entries: this.entries, playback: this.playback });
-		}, this.#flushDelayMs);
+			try {
+				this.#persistence.persist({ entries: this.entries, playback: this.playback });
+				this.#flushFailures = 0;
+			} catch (err) {
+				// A throw out of this timer is an uncaught exception that kills the party (SQLITE_FULL on a disk
+				// filling with stems, SQLITE_BUSY past busy_timeout). Memory stays authoritative, so log loudly and
+				// retry with backoff; the retry writes the latest snapshot.
+				this.#flushFailures++;
+				const retryMs = Math.min(Math.max(this.#flushDelayMs, 1) * 2 ** this.#flushFailures, 30_000);
+				console.error(`[state] write-behind flush failed (${this.#flushFailures}x), retrying in ${retryMs}ms:`, err);
+				this.#scheduleFlush(retryMs);
+			}
+		}, delayMs);
 	}
 
 	/** Force a synchronous flush (e.g. on graceful shutdown / in tests). */
@@ -142,5 +154,6 @@ export class AuthoritativeState {
 			this.#flushTimer = null;
 		}
 		this.#persistence.persist({ entries: this.entries, playback: this.playback });
+		this.#flushFailures = 0;
 	}
 }
