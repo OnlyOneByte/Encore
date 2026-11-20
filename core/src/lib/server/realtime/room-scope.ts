@@ -9,7 +9,7 @@
 // only to its OWN topic; SPECTATOR (no room) is a legitimate VIEWER still refused mutation by the per-command
 // gates — isolation is BETWEEN rooms, and an unscoped viewer of the served room is not a cross-room leak.
 
-import { roomTopic } from '../../contract';
+import { roomTopic, roomTvTopic } from '../../contract';
 
 /** Resolved from the session token at WS upgrade. `undefined` = never joined, i.e. a spectator. */
 export type SocketRoomId = string | undefined;
@@ -29,4 +29,11 @@ export function subscribeTopicFor(socketRoomId: SocketRoomId, servedRoomId: stri
 /** ONLY `roomTopic(servedRoomId)`, which a foreign room's sockets never subscribed to. */
 export function broadcastTopicFor(servedRoomId: string): string {
 	return roomTopic(servedRoomId);
+}
+
+/** The TV-only topic a socket ALSO subscribes to, or null. Only `role=tv` gets one, so the phone client never hears a
+ *  TV-only frame (`room:reacted`): Bun delivers a topic only to its subscribers. `role` is the client's own query
+ *  param, so this separates surfaces, not trust — see `roomTvTopic`. */
+export function tvTopicFor(role: string, socketRoomId: SocketRoomId, servedRoomId: string): string | null {
+	return role === 'tv' ? roomTvTopic(socketRoomId ?? servedRoomId) : null;
 }

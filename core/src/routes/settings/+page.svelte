@@ -258,6 +258,15 @@
 				/>
 			{/if}
 
+			<label class="check" for="tv-reactions">
+				<Switch
+					id="tv-reactions"
+					checked={settings.room.tvReactions}
+					onCheckedChange={(v) => onroom({ tvReactions: v })}
+				/>
+				Reactions on TV
+			</label>
+
 			<label class="check" for="song-intro-on">
 				<Switch
 					id="song-intro-on"

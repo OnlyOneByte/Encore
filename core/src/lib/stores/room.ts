@@ -15,6 +15,7 @@ import {
 	type MediaStatus,
 	type PlaybackState,
 	type PlayerCommand,
+	type ReactionKind,
 	type PublicSinger,
 	type QueueEntry
 } from '$lib/contract';
@@ -211,6 +212,11 @@ export class RoomLink {
 	 *  the guest a state the room does not have. `ws.send()` has always returned this; this method discarded it. */
 	command(command: PlayerCommand): boolean {
 		return this.#ws?.send({ type: 'player:command', command }) ?? false;
+	}
+
+	/** A cheer for whoever is singing. Fire-and-forget like a player command; the server rate-limits it silently. */
+	react(kind: ReactionKind): void {
+		this.#ws?.send({ type: 'room:react', kind });
 	}
 
 	#onServerEvent(e: ServerEvent): void {
