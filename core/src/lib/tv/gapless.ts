@@ -20,6 +20,9 @@ export class GaplessController {
 	#current: string | null = null; // entryId in the visible slot
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
+	// The intro card went up over a visible slot that was still LOADING (a skip, a missed preload), so the hold must end
+	// back in `loading` unless the slot reported ready meanwhile, or the stage plays over an element with nothing in it.
+	#introOverLoad = false;
 	// Exposed READ-ONLY and set only through this controller's own transition methods: a public writable field lets any
 	// caller stomp the state machine from outside.
 	#state: TvState = 'attract';
@@ -56,6 +59,7 @@ export class GaplessController {
 		if (current.id !== this.#current) {
 			this.#current = current.id;
 			this.#state = 'loading'; // visible slot must (re)load the new current
+			this.#introOverLoad = false;
 		}
 		if (upNext && upNext.id !== this.#warmingId && upNext.id !== this.#readyId) {
 			this.#warmingId = upNext.id;
@@ -69,6 +73,7 @@ export class GaplessController {
 	/** Visible slot reports it can play through. */
 	onVisibleReady(): void {
 		if (this.#state === 'loading') this.#state = 'playing';
+		if (this.#state === 'interstitial') this.#introOverLoad = false;
 	}
 
 	/** Hidden slot reports it's buffered for its warming target. */
@@ -97,7 +102,8 @@ export class GaplessController {
 			this.#current = upNext.id;
 			this.#warmingId = null;
 			this.#readyId = null;
-			this.#state = 'interstitial'; // page shows brief "Next up", then -> playing
+			this.#state = 'interstitial'; // page shows the intro card, then -> playing
+			this.#introOverLoad = false; // the warmed slot is buffered already
 		} else {
 			// missed the window: load upNext into (new) visible slot now
 			this.#current = upNext.id;
@@ -108,15 +114,19 @@ export class GaplessController {
 
 	/** Interstitial timer elapsed → playing. */
 	onInterstitialDone(): void {
-		if (this.#state === 'interstitial') this.#state = 'playing';
+		if (this.#state === 'interstitial') this.#state = this.#introOverLoad ? 'loading' : 'playing';
+		this.#introOverLoad = false;
 	}
 
 	/**
-	 * Hold on the song-intro card from a state that is otherwise ready to play. `onEnded` reaches the interstitial via a
-	 * gapless swap, which exists only between two songs, so the FIRST song of a session needs its own way in.
+	 * Hold on the song-intro card. `onEnded` reaches the interstitial via a gapless swap, which exists only between two
+	 * songs, so the FIRST song of a session and a server-driven change (a skip) need their own way in.
 	 */
 	enterInterstitial(): void {
-		if (this.#state === 'playing' || this.#state === 'loading') this.#state = 'interstitial';
+		if (this.#state === 'playing' || this.#state === 'loading') {
+			this.#introOverLoad = this.#state === 'loading';
+			this.#state = 'interstitial';
+		}
 	}
 
 	/** Mark the current entry's media as not-ready (held slot): show waiting. */

@@ -216,6 +216,9 @@
 	 */
 	async function tryPlayMaster(): Promise<void> {
 		if (!master) return;
+		// The song this play() is FOR. A rejection that arrives after the slot moved on to another song is that song's
+		// load superseding it (the browser rejects the old promise with AbortError), not a failure of either song.
+		const requestedSrc = master.getAttribute('src');
 		try {
 			await master.play();
 			// Guarded on the latch, so a normal successful play does not spam the callback.
@@ -225,6 +228,11 @@
 			}
 		} catch (err: unknown) {
 			const name = err instanceof Error ? err.name : String(err);
+			/* SUPERSEDED, so nobody is told. Measured on every natural end: the slot's play() for the song being left
+			   rejected with AbortError once the next song's src landed, the element was already playing the NEW song,
+			   and "This song won't play" flashed over the "Now singing" card, filed against the new song. The play()
+			   the new src triggers reports its own outcome. */
+			if (master?.getAttribute('src') !== requestedSrc) return;
 			if (name === 'NotAllowedError') {
 				// Recoverable by a gesture, so latch rather than treat as final. Announced only from the slot on screen.
 				if (!autoplayBlocked) {

@@ -295,6 +295,8 @@ interface FuzzWindow {
 	__fz?: FuzzSocket;
 	__fzRev?: number;
 	__fzRejects?: string[];
+	/** The room's current entry, which a seek must name or the server drops it as stale. */
+	__fzCurrent?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -687,6 +689,7 @@ async function openWire(page: Page): Promise<void> {
 						if (e.type === 'queue:sync') w.__fzRev = e.rev;
 						else if (e.type === 'queue:patch') w.__fzRev = e.patch.rev;
 						else if (e.type === 'op:reject') w.__fzRejects?.push(e.reason);
+						else if (e.type === 'playback:state') w.__fzCurrent = e.state.currentEntryId;
 					} catch {
 						/* a frame this socket does not model */
 					}
@@ -706,7 +709,8 @@ async function wirePlayer(page: Page, command: Record<string, unknown>): Promise
 	return page.evaluate((cmd) => {
 		const w = window as unknown as FuzzWindow;
 		if (!w.__fz || w.__fz.readyState !== 1) return 'closed';
-		w.__fz.send(JSON.stringify({ type: 'player:command', command: cmd }));
+		const frame = ['seek', 'key', 'guide'].includes(String(cmd.cmd)) ? { ...cmd, entryId: w.__fzCurrent } : cmd;
+		w.__fz.send(JSON.stringify({ type: 'player:command', command: frame }));
 		return 'sent';
 	}, command);
 }

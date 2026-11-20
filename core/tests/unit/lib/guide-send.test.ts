@@ -171,3 +171,15 @@ test('a commit ignores the throttle', () => {
 	r.guide.commit(41);
 	expect(r.sent).toEqual([40, 41]);
 });
+
+test('cancel drops the trailing send a song change left behind, and sends nothing itself', () => {
+	// The route calls it when the song on the card changes: a trailing send armed on the last song must not fire.
+	const r = rig();
+	r.guide.input(40);
+	r.advance(20);
+	r.guide.input(70);
+	expect(r.pending()).not.toBeNull();
+	r.guide.cancel();
+	expect(r.pending()).toBeNull();
+	expect(r.sent).toEqual([40]);
+});
