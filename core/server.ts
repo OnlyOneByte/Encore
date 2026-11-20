@@ -258,7 +258,7 @@ const server = Bun.serve<SocketData>({
 					handleReaction(evt.kind, {
 						actorSingerId: ws.data.singerId,
 						currentSingerId: current?.singerId ?? null,
-						enabled: app.settings.getRoom(app.activeRoomId).tvReactions,
+						isEnabled: () => app.settings.getRoom(app.activeRoomId).tvReactions,
 						colorOf: (id) => app.singers.byId(id)?.color ?? null,
 						limiter: reactionLimiter,
 						// The TV topic, NEVER `broadcast`: phones are not subscribed to it.

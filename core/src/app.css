@@ -146,6 +146,8 @@
 	/* The measured gate resolves THIS declaration at runtime (tests/playwright/specs/gate/measured-design-support.ts),
 	   so a control must express var(--tap) and never the literal. */
 	--tap: 44px;
+	/* The spec's target for a control the audience hits in a burst without looking (the reaction row). */
+	--tap-lg: 64px;
 
 	/* THE LIST-ROW VIDEO FRAME, 16:9 so the source frame is neither letterboxed nor cropped. A token PAIR rather than
 	   two literals in SongRow, because the search skeleton has to stand in for this exact box and numbering it
@@ -401,6 +403,12 @@
 	);
 	/* Published by /tv. The 0px fallback stands before the first measure and whenever no next song is queued. */
 	--tv-upnext-h: 0px;
+	/* THE REACTION LANE's width: one disc, INSIDE the safe area, against its right edge. vw for the same reason as
+	   --tv-safe-x (geometry, not type); the floor keeps a disc readable at 720p. */
+	--tv-reaction-w: clamp(48px, 3.6vw, 140px);
+	/* What the lyrics reel gives up on EACH side so a centred row never reaches the lane. Published by /tv only
+	   while the room has reactions on; the 0px fallback leaves the reel exactly as wide as before. */
+	--tv-reaction-reserve: 0px;
 
 	/* Aliases, not new colours. Defining these names is what makes a vendored component work UNEDITED. */
 	--primary: var(--accent);

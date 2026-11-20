@@ -3,6 +3,7 @@
 	   other control on the dock moves the playhead; these only reach the TV, as a disc rising up its right edge.
 	   The caller renders this only when a song is on and it is not yours, so the singer's own phone never shows it. */
 	import { REACTIONS, type ReactionKind } from '$lib/contract';
+	import ReactionGlyph from '$lib/ui/ReactionGlyph.svelte';
 
 	let { singerName, onreact }: { singerName: string | null; onreact: (kind: ReactionKind) => void } = $props();
 
@@ -16,7 +17,7 @@
 <div class="cheers" role="group" aria-label="Cheer for {singerName ?? 'the singer'}">
 	{#each REACTIONS as r (r.id)}
 		<button class="cheer" onclick={() => send(r.id)} aria-label={r.label}>
-			<span aria-hidden="true">{r.emoji}</span>
+			<span class="pic"><ReactionGlyph kind={r.id} /></span>
 		</button>
 	{/each}
 </div>
@@ -32,16 +33,20 @@
 		border-top: 1px solid var(--line);
 	}
 
+	/* --tap-lg, not --tap: the spec's 64 px, because these are hit in a burst, eyes on the TV. */
 	.cheer {
-		min-height: var(--tap);
+		min-height: var(--tap-lg);
 		display: grid;
 		place-items: center;
 		padding: 0;
 		border: 0;
 		border-radius: var(--radius-pill);
 		background: var(--card2);
-		font-size: var(--ph-text-xl);
-		line-height: var(--lh-none);
+	}
+
+	.pic {
+		width: calc(var(--tap-lg) / 2);
+		height: calc(var(--tap-lg) / 2);
 	}
 
 	@media (prefers-reduced-motion: no-preference) {

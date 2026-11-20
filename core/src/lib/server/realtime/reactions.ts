@@ -36,16 +36,19 @@ export interface ReactionDeps {
 	actorSingerId: string | undefined;
 	/** The singer on stage right now, or null when nothing is playing. */
 	currentSingerId: string | null;
-	enabled: boolean;
+	/** Read LAST, after the bucket, so a tap the bucket drops never costs the settings read behind it. */
+	isEnabled: () => boolean;
 	colorOf: (singerId: string) => string | null;
 	limiter: ReactionLimiter;
 	/** Publishes on `roomTvTopic` ONLY. There is deliberately no room-wide `publish` in these deps. */
 	publishToTv: (event: Extract<ServerEvent, { type: 'room:reacted' }>) => void;
 }
 
-/** Why a reaction is refused, or null when it may go out. Checked before the bucket, so a refused tap costs no token. */
-export function reactionRefusal(kind: unknown, deps: Omit<ReactionDeps, 'publishToTv' | 'limiter'>): string | null {
-	if (!deps.enabled) return 'reactions are off';
+/** Why a reaction is refused before the bucket, or null. In-memory checks only, so a refused tap costs no token. */
+export function reactionRefusal(
+	kind: unknown,
+	deps: Omit<ReactionDeps, 'publishToTv' | 'limiter' | 'isEnabled'>
+): string | null {
 	if (!deps.actorSingerId) return 'join the room first';
 	if (!isReactionKind(kind)) return 'unknown reaction';
 	if (!deps.currentSingerId) return 'nobody is singing';
@@ -60,6 +63,7 @@ export function handleReaction(kind: unknown, deps: ReactionDeps): boolean {
 	if (reactionRefusal(kind, deps) !== null) return false;
 	const singerId = deps.actorSingerId!;
 	if (!deps.limiter.take(singerId)) return false;
+	if (!deps.isEnabled()) return false;
 	deps.publishToTv({ type: 'room:reacted', singerId, kind: kind as ReactionKind, color: deps.colorOf(singerId)! });
 	return true;
 }

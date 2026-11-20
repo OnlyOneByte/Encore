@@ -1,86 +1,79 @@
 <script lang="ts">
 	/* THE ROOM'S CHEERS, up the right edge of the TV. Self-contained on purpose: the TV page is the most-fixed file
-	   in the repo, so its only link to this component is the mount and one `add()` call from its event handler.
+	   in the repo, so its links to this component are the mount and one `add()` call from its event handler.
 
-	   THE LANE IS THE RIGHT SAFE-AREA GUTTER, and that is the whole readability argument. The lyrics reel pads both
-	   edges by --tv-safe-x and ends --tv-chrome-h above the bottom, so a disc no wider than the gutter and no lower
-	   than the chrome band cannot cover a word, the lower-third or the corner QR — the probe
-	   tests/playwright/specs/probe/reactions-lane.spec.ts measures exactly that while two phones burst.
+	   THE LANE IS INSIDE THE SAFE AREA, against its right edge (--tv-safe-x), because the gutter outside it is the
+	   part of the picture a TV may overscan away. The lyrics reel gives up --tv-reaction-reserve on both sides while
+	   reactions are on, so a centred row never reaches the lane; the lane ends --tv-chrome-h above the bottom, so it
+	   never reaches the lower-third or the corner QR. tests/playwright/specs/probe/reactions-lane.spec.ts measures
+	   both while phones burst.
 
-	   COMPOSITOR ONLY: each disc animates transform and opacity and nothing else, so the reel's rAF loop and its
-	   layout are never touched. The server already rate-limits each singer to 3 burst, 1/s; MAX_ON_SCREEN is the
-	   TV's own cap for a room full of people tapping at once. */
+	   CHEAP TO COMPOSITE: each disc animates transform and opacity only, over an OPAQUE fill with a plain border —
+	   no translucency to blend against the stage, no shadow to repaint, no glyph to rasterise (the picture is a
+	   bundled SVG, decoded once). */
 	import { onDestroy } from 'svelte';
-	import { REACTIONS, type ServerEvent } from '$lib/contract';
+	import type { ServerEvent } from '$lib/contract';
+	import ReactionGlyph from '$lib/ui/ReactionGlyph.svelte';
 
 	type Reacted = Extract<ServerEvent, { type: 'room:reacted' }>;
-	type Item = { id: number; emoji: string; color: string };
+	type Item = { id: number; kind: Reacted['kind']; color: string };
 
-	/** Oldest drops out past this, on screen and in the waiting line alike, so the whole room tapping stays a stream. */
-	const MAX_ON_SCREEN = 12;
 	/** One rise, written to --rise-ms below so script and CSS share one number. */
 	const RISE_MS = 2400;
-	/** The gutter fits one column, so taps that arrive together would stack exactly; spacing them makes a burst a
-	 *  stream instead. */
+	/** The lane is one disc wide, so taps that arrive together would stack exactly; spacing them makes a burst a
+	 *  stream. It also bounds what is on screen: at most ceil(RISE_MS / SPACING_MS) = 7 discs at once. */
 	const SPACING_MS = 350;
-	/** A small sway inside the gutter, so the stream does not read as a single rigid column. */
-	const DRIFTS = 3;
-	/** Reduced motion places discs in fixed rows instead of rising; this many rows before one is reused. */
+	/** The waiting line. Past this the oldest waiting cheer drops, so a full line is at most 12 x 350 ms = 4.2 s
+	 *  behind the tap that joined it last — late, but still during the song it was for. */
+	const MAX_WAITING = 12;
+	/** Reduced motion: each disc fades in place on one of these rows. Its whole fade lasts SLOTS x SPACING_MS, so a
+	 *  row is free again by the time the release order comes back round to it. */
 	const SLOTS = 4;
 
 	let items = $state<Item[]>([]);
-	let pending: Item[] = [];
+	let waiting: Item[] = [];
 	let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 	let seq = 0;
 
 	export function add(e: Reacted): void {
-		const emoji = REACTIONS.find((r) => r.id === e.kind)?.emoji;
-		if (!emoji) return;
-		pending = [...pending, { id: ++seq, emoji, color: e.color }].slice(-MAX_ON_SCREEN);
+		waiting = [...waiting, { id: ++seq, kind: e.kind, color: e.color }].slice(-MAX_WAITING);
 		if (releaseTimer === undefined) release();
 	}
 
 	function release(): void {
-		const next = pending.shift();
+		const next = waiting.shift();
 		if (!next) {
 			releaseTimer = undefined;
 			return;
 		}
-		items = [...items.slice(-(MAX_ON_SCREEN - 1)), next];
+		items = [...items, next];
 		releaseTimer = setTimeout(release, SPACING_MS);
 	}
 
-	// Removed when its own animation ends, rise and reduced-motion fade alike. A hidden TV defers the event, and
-	// MAX_ON_SCREEN bounds what can pile up meanwhile.
+	// Removed when its own animation ends, rise and reduced-motion fade alike.
 	const done = (id: number) => (items = items.filter((i) => i.id !== id));
 
 	onDestroy(() => clearTimeout(releaseTimer));
 </script>
 
-<div class="reaction-lane" aria-hidden="true" style:--rise-ms="{RISE_MS}ms">
+<div class="reaction-lane" aria-hidden="true" style:--rise-ms="{RISE_MS}ms" style:--fade-ms="{SLOTS * SPACING_MS}ms">
 	{#each items as it (it.id)}
-		<span
-			class="reaction"
-			style:--singer={it.color}
-			style:--drift={(it.id % DRIFTS) - 1}
-			style:--slot={it.id % SLOTS}
-			onanimationend={() => done(it.id)}>{it.emoji}</span
-		>
+		<span class="reaction" style:--singer={it.color} style:--slot={it.id % SLOTS} onanimationend={() => done(it.id)}>
+			<span class="pic"><ReactionGlyph kind={it.kind} /></span>
+		</span>
 	{/each}
 </div>
 
 <style>
 	.reaction-lane {
-		/* Geometry: the gutter's width, a rise of 40% of the stage, sitting on top of the measured chrome band. Nothing
-		   else lives in the gutter above it — Up next, the status dot and the fullscreen button all sit inboard of it. */
-		--disc: calc(var(--tv-safe-x) * 0.66);
+		/* Geometry: one disc wide, a rise of 40% of the stage, standing on the measured chrome band. */
 		--rise-h: 40vh;
 		position: absolute;
-		right: 0;
+		right: var(--tv-safe-x);
 		bottom: var(--tv-chrome-h);
-		width: var(--tv-safe-x);
+		width: var(--tv-reaction-w);
 		height: var(--rise-h);
-		/* The reel's tier, legal because the two are disjoint in SPACE: the reel never paints inside the gutter. */
+		/* The reel's tier, legal because the two are disjoint in SPACE: the reel is pulled in by the reserve. */
 		z-index: var(--z-tv-reel);
 		pointer-events: none;
 	}
@@ -88,27 +81,31 @@
 	.reaction {
 		position: absolute;
 		bottom: 0;
-		left: calc(50% - var(--disc) / 2 + var(--drift) * (var(--tv-safe-x) - var(--disc)) / 4);
-		width: var(--disc);
-		height: var(--disc);
+		left: 0;
+		width: var(--tv-reaction-w);
+		height: var(--tv-reaction-w);
 		display: grid;
 		place-items: center;
+		box-sizing: border-box;
 		border-radius: 50%;
-		/* The sender's colour, as a custom property for the same reason as the lower-third's dot. */
-		background: color-mix(in oklab, var(--singer) 72%, transparent);
-		box-shadow: 0 0 0 max(2px, 0.07rem) var(--singer);
-		font-size: calc(var(--disc) * 0.55);
-		line-height: var(--lh-none);
+		/* OPAQUE: the sender's colour mixed toward the page, never toward transparent, so the disc blends with nothing
+		   and neighbouring singers keep their own hue on any stage. The ring is the colour itself. */
+		background: color-mix(in oklab, var(--singer) 62%, var(--bg));
+		border: max(2px, 0.07rem) solid var(--singer);
 		opacity: 0;
-		will-change: transform, opacity;
-		animation: fade var(--rise-ms) ease-out forwards;
-		transform: translateY(calc(var(--slot) * var(--disc) * -1.15));
+		animation: fade var(--fade-ms) ease-out forwards;
+		transform: translateY(calc(var(--slot) * var(--tv-reaction-w) * -1.15));
+	}
+
+	.pic {
+		width: 62%;
+		height: 62%;
 	}
 
 	@media (prefers-reduced-motion: no-preference) {
 		.reaction {
 			transform: none;
-			animation-name: rise;
+			animation: rise var(--rise-ms) ease-out forwards;
 		}
 	}
 
@@ -126,7 +123,7 @@
 		}
 		100% {
 			opacity: 0;
-			transform: translateY(calc(var(--disc) - var(--rise-h))) scale(1);
+			transform: translateY(calc(var(--tv-reaction-w) - var(--rise-h))) scale(1);
 		}
 	}
 
@@ -136,8 +133,8 @@
 		100% {
 			opacity: 0;
 		}
-		15%,
-		70% {
+		20%,
+		75% {
 			opacity: 1;
 		}
 	}

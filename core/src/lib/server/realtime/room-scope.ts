@@ -31,8 +31,9 @@ export function broadcastTopicFor(servedRoomId: string): string {
 	return roomTopic(servedRoomId);
 }
 
-/** The TV-only topic a socket ALSO subscribes to, or null. Only `role=tv` gets one, which is the whole guarantee
- *  that a TV-only frame (`room:reacted`) never reaches a phone: Bun delivers a topic only to its subscribers. */
+/** The TV-only topic a socket ALSO subscribes to, or null. Only `role=tv` gets one, so the phone client never hears a
+ *  TV-only frame (`room:reacted`): Bun delivers a topic only to its subscribers. `role` is the client's own query
+ *  param, so this separates surfaces, not trust — see `roomTvTopic`. */
 export function tvTopicFor(role: string, socketRoomId: SocketRoomId, servedRoomId: string): string | null {
 	return role === 'tv' ? roomTvTopic(socketRoomId ?? servedRoomId) : null;
 }

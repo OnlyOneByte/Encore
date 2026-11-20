@@ -11,18 +11,20 @@ export function roomTopic(roomId: string): string {
 	return `room:${roomId}`;
 }
 
-/** The served room's TELEVISIONS only. A separate pub/sub topic rather than a filter at send time, so a phone
- *  cannot receive a TV-only frame: it never subscribed to the topic the frame is published on. */
+/** The served room's TELEVISIONS only. A separate pub/sub topic rather than a filter at send time: the phone client
+ *  never subscribes to it, so it never hears a TV-only frame. `role=tv` is a client-supplied query param, so this
+ *  keeps reactions off phones, not secret from the LAN; the payload (`singerId`, `kind`, `color`) is harmless. */
 export function roomTvTopic(roomId: string): string {
 	return `${roomTopic(roomId)}:tv`;
 }
 
-/** The whole allowed list for `room:react`, in the order the phone lays the buttons out. */
+/** The whole allowed list for `room:react`, in the order the phone lays the buttons out. The pictures are bundled
+ *  artwork (`ui/ReactionGlyph.svelte`), not emoji text, so a TV with no emoji font still draws them. */
 export const REACTIONS = [
-	{ id: 'clap', emoji: '👏', label: 'Clap' },
-	{ id: 'fire', emoji: '🔥', label: 'Fire' },
-	{ id: 'laugh', emoji: '😂', label: 'Laugh' },
-	{ id: 'heart', emoji: '❤️', label: 'Love it' }
+	{ id: 'clap', label: 'Clap' },
+	{ id: 'fire', label: 'Fire' },
+	{ id: 'laugh', label: 'Laugh' },
+	{ id: 'heart', label: 'Love it' }
 ] as const;
 
 export type ReactionKind = (typeof REACTIONS)[number]['id'];

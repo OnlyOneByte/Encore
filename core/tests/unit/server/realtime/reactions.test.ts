@@ -1,8 +1,9 @@
-// `room:react` — the allowed list, the per-singer token bucket, and the TV-only delivery.
+// `room:react` — the allowed list, the per-singer token bucket, and the TV-only topic helpers.
 //
-// The delivery test runs a REAL Bun.serve with one phone and one TV socket subscribed exactly as server.ts
-// subscribes them, because "a phone never receives it" is a property of the pub/sub topics, not of the
-// handler: a handler test with a fake sink can only prove which function it called.
+// The socket test below proves the TOPIC HELPERS (`subscribeTopicFor` + `tvTopicFor`) keep a frame off a phone
+// under real Bun pub/sub. It rebuilds the subscriptions, so it does NOT prove server.ts wires them, publishes on
+// the right topic, or passes the right singer and setting: that is
+// tests/playwright/specs/probe/reactions-lane.spec.ts, which drives the real core and reads the phones' sockets.
 import { test, expect, afterEach } from 'bun:test';
 import {
 	DEFAULT_ROOM_SETTINGS,
@@ -27,7 +28,7 @@ function deps(over: Partial<ReactionDeps> = {}, sent: Reacted[] = []): ReactionD
 	return {
 		actorSingerId: 'fan',
 		currentSingerId: 'star',
-		enabled: true,
+		isEnabled: () => true,
 		colorOf: (id) => (id === 'fan' || id === 'star' ? '#ff5cae' : null),
 		limiter: createReactionLimiter(() => 0),
 		publishToTv: (e) => sent.push(e),
@@ -52,8 +53,7 @@ test('a kind off the allowed list is refused and sends nothing', () => {
 	expect(reactionRefusal('boo', deps())).toBe('unknown reaction');
 });
 
-test('refused when off, when nobody is singing, when not joined, and for the singer cheering themselves', () => {
-	expect(reactionRefusal('clap', deps({ enabled: false }))).toBe('reactions are off');
+test('refused when nobody is singing, when not joined, and for the singer cheering themselves', () => {
 	expect(reactionRefusal('clap', deps({ currentSingerId: null }))).toBe('nobody is singing');
 	expect(reactionRefusal('clap', deps({ actorSingerId: undefined }))).toBe('join the room first');
 	expect(reactionRefusal('clap', deps({ actorSingerId: 'star' }))).toBe('you are the one singing');
@@ -85,6 +85,15 @@ test('the bucket is per singer: one guest spending theirs does not spend anyone 
 	expect(handleReaction('clap', deps({ limiter, colorOf, actorSingerId: 'b' }))).toBe(true);
 });
 
+test('switched off: nothing is sent, and the settings read happens only for a tap the bucket let through', () => {
+	let reads = 0;
+	const sent: Reacted[] = [];
+	const d = deps({ isEnabled: () => (reads++, false) }, sent);
+	for (let i = 0; i < 10; i++) expect(handleReaction('clap', d)).toBe(false);
+	expect(sent).toEqual([]);
+	expect(reads).toBe(REACTION_BURST);
+});
+
 test('a refused tap costs no token', () => {
 	const limiter = createReactionLimiter(() => 0);
 	for (let i = 0; i < 10; i++) handleReaction('boo', deps({ limiter }));
@@ -111,7 +120,7 @@ afterEach(() => {
 	server = null;
 });
 
-test('end to end over real sockets: the TV receives room:reacted, a phone in the same room never does', async () => {
+test('topic helpers over real sockets: the TV receives room:reacted, a phone in the same room does not', async () => {
 	const ROOM = 'r1';
 	server = Bun.serve<{ role: string }>({
 		port: 0,

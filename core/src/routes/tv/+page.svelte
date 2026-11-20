@@ -361,7 +361,12 @@
 	let measuredUpnextPx = $state<number | null>(null);
 	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
 	const tvStyle = $derived(
-		[chromeBandStyle, measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`]
+		[
+			chromeBandStyle,
+			measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`,
+			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
+			settings.room.tvReactions ? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))' : undefined
+		]
 			.filter(Boolean)
 			.join('; ') || undefined
 	);
@@ -724,7 +729,9 @@
 				<span class="un-song">{songDisplay(nextMedia).title}</span>
 			</div>
 		{/if}
-		<Reactions bind:this={reactions} />
+		{#if settings.room.tvReactions}
+			<Reactions bind:this={reactions} />
+		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
 		<JoinBadge
 			qrDataUrl={data.qrDataUrl}
