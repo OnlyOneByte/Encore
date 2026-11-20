@@ -27,15 +27,16 @@ file lives in [`docker/`](docker/) alongside both Dockerfiles and `.env`, so the
 > a separate process. There is no error on screen; the song just never processes. This is the single most
 > common first-run surprise.
 
-**Local dev (Bun ≥ 1.3), from the repo root:**
+**Local dev (Bun ≥ 1.3).** The TypeScript project lives in `core/`, with its own `package.json`:
 
 ```bash
-bun install                        # workspaces; uses public npm via the repo's .npmrc
+cd core
+bun install                        # uses public npm via core/.npmrc
 bun run build && bun run start     # prod build, served on :3000
 # or: bun run dev                  # vite dev server — UI HMR only, no realtime (see below)
 ```
 
-`data/` and `media/` are created on first boot and migrations apply automatically, so there is no
+`core/data/` and `core/media/` are created on first boot and migrations apply automatically, so there is no
 separate migrate step. `ENCORE_EPHEMERAL=1` gives an in-memory DB that leaves nothing behind.
 
 Then open **`/tv`** on the television, and **scan the QR** with phones.
@@ -62,24 +63,26 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 
 ### The process worker
 
-To run it natively instead of in Docker:
+You can also run the worker natively instead of in Docker. It is a [uv](https://docs.astral.sh/uv/)
+project, so install uv first (`brew install uv`, `pipx install uv`, or the installer on that page):
 
 ```bash
 cd worker
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt        # torch + demucs + whisperx (multi-GB)
+uv sync --frozen --extra cpu --extra ml --extra text   # torch + demucs + whisperx (multi-GB); cu128 for NVIDIA
 
-PATH="$PWD/.venv/bin:$PATH" \
-  ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
-  MEDIA_DIR=../media \
-.venv/bin/python -m src.dial_home
+# ENCORE_WORKER_TOKEN must be the same value core was started with; leave it empty only if core's is unset.
+ENCORE_CORE_URL='ws://localhost:3000/ws?role=worker' \
+  ENCORE_MEDIA_DIR="$PWD/../core/media" \
+  ENCORE_WORKER_TOKEN="${ENCORE_WORKER_TOKEN:-}" \
+uv run python -m encore_worker                         # uv run puts .venv/bin on PATH for demucs/yt-dlp
 ```
 
-Those two variables are the whole configuration — the worker measures the rest and prints what it
-found, including one line per capability with the evidence for it. A capability whose tool is
-**missing** is reported as loudly as one that is present, because that line is what explains a song
-stuck at 0%. `ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The
-full model is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
+Those three variables are the whole configuration (the token only when core sets one, which the
+Security section below says it should). The worker measures the rest and prints what it found,
+including one line per capability with the evidence for it. A capability whose tool is **missing** is
+reported as loudly as one that is present, because that line is what explains a song stuck at 0%.
+`ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The full model is
+in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
 
 The worker **dials home** to core, never the reverse, and shells out to `yt-dlp`, `ffmpeg` and
 `demucs` **by name via PATH** — hence the `PATH` prefix above, and why capabilities are probed against
@@ -157,7 +160,9 @@ would want it for.
 /api/settings`** — which includes the separator engine and which Whisper weights the fleet loads.
 > - **Set `ENCORE_WORKER_TOKEN`.** Without it, `role=worker` WebSocket upgrades are unauthenticated:
 >   anything that can reach the port can register as a worker and start receiving job assignments.
->   Core logs one loud warning at startup when it is unset.
+>   Core logs one loud warning at startup when it is unset. The token travels in **cleartext**, as the
+>   `token=` query of a plain `ws://` URL: it keeps stray LAN devices out, not anyone who can watch
+>   the LAN's traffic. It is for a trusted LAN only.
 > - `/metrics` and `/api/audit/*` are **ungated** — they expose worker ids, host details, model names,
 >   file paths and error strings (no singer identities and no media bytes).
 >
@@ -178,16 +183,16 @@ container for core; a Python **separator + WhisperX** worker joins as container 
 ## Layout
 
 ```
-server.ts             ← Container 1's entry: Bun.serve, HTTP + native WS pub/sub hub, ONE process
-src/               ← everything that entry serves. `src/` until the rename; SvelteKit finds none of
-                        it by convention any more, so vite.config.ts declares `kit.files`
-  src/lib/contract/  the realtime contract, made physical — imported by client, server AND worker
-  src/lib/server/    authoritative backend (state, rotation, playback, jobs, media, db)
-  src/lib/           client: optimistic store, ws client, components, TV gapless controller
-  src/routes/        phone (+page), /tv, /settings, /stats, /metrics, /song, /api
+core/                 ← Container 1: the TypeScript project (own package.json, bun.lock, node_modules)
+  server.ts           Container 1's entry: Bun.serve, HTTP + native WS pub/sub hub, ONE process
+  src/lib/contract/   the realtime contract, made physical — imported by client, server AND worker
+  src/lib/server/     authoritative backend (state, rotation, playback, jobs, media, db)
+  src/lib/            client: optimistic store, ws client, components, TV gapless controller
+  src/routes/         phone (+page), /tv, /settings, /stats, /metrics, /song, /api
+  tests/              unit/ (bun) + playwright/ (Chromium: gate | flow | probe | shot)
+  config/ drizzle/    drizzle + knip configs; migrations
 worker/               ← Container 2: Python stems/align (dials home; `--profile stems`)
-tests/                  unit/ (bun) + playwright/ (Chromium: gate | flow | probe | shot)
-docker/ config/       ← Dockerfile; drizzle + knip configs
+docker/               ← both Dockerfiles, compose files and .env
 docs/                 ← the written record; see the index below
 ```
 
@@ -243,10 +248,10 @@ reads directly. A missing bucket falls back to `local` rather than failing to bo
 
 **Worker** — two settings, and everything else is measured.
 
-| Env              | Purpose                                                                           |
-| ---------------- | --------------------------------------------------------------------------------- |
-| `ENCORE_CORE_WS` | where core is. No probe can guess this                                            |
-| `MEDIA_DIR`      | the volume core is also using. Must match, or core serves a file that isn't there |
+| Env                | Purpose                                                                           |
+| ------------------ | --------------------------------------------------------------------------------- |
+| `ENCORE_CORE_URL`  | where core is. No probe can guess this                                            |
+| `ENCORE_MEDIA_DIR` | the volume core is also using. Must match, or core serves a file that isn't there |
 
 Everything else is an **override**, unset by default and present only for when a measurement is wrong
 or you want to deliberately limit a box:
@@ -321,7 +326,8 @@ bash dev.sh       # run core + a NATIVE worker locally — `--help` lists nine f
                   # --core-only, --ui, --reset and --fresh. On a Mac this is the only way to get
                   # Metal: see docs/deploy/README.md for why a containerised worker cannot.
 
-bun test          # unit/integration tests — runnable from the root
+cd core           # every bun command below runs from core/
+bun test          # unit/integration tests
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # app, server entry and the test tree
 bun run gates     # the full eight-leg release gate (test, worker pytest, worker ruff+mypy, types, lint, format,
