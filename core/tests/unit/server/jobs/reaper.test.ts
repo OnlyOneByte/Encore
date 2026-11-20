@@ -7,7 +7,7 @@ import { reportTerminalFailure, settleGatesForFailedJob } from '$lib/server/jobs
 import { JobReaper } from '$lib/server/jobs/reaper';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
-import { expect, spyOn, test } from 'bun:test';
+import { expect, jest, spyOn, test } from 'bun:test';
 
 // A stalled job requeues; boot recovery clears in-flight. Drives the real JobRepository (in-memory sqlite) through the
 // reaper with an injected clock — no wall-clock waits.
@@ -415,7 +415,7 @@ test('no phantom assignment lands on the still-busy worker after a reaper FAIL',
 	expect(plan).toEqual([]);
 });
 
-test('a tick that throws (SQLITE_FULL) is logged and the next tick still runs: the interval cannot kill the server', async () => {
+test('a tick that throws (SQLITE_FULL) is logged and the next tick still runs: the interval cannot kill the server', () => {
 	let calls = 0;
 	const jobs = {
 		listByStatus: () => {
@@ -424,16 +424,18 @@ test('a tick that throws (SQLITE_FULL) is logged and the next tick still runs: t
 		}
 	} as unknown as JobRepository;
 	let ticked = 0;
-	const reaper = new JobReaper(jobs, { tickMs: 5, onTick: () => ticked++ });
+	const reaper = new JobReaper(jobs, { tickMs: 3_000, onTick: () => ticked++ });
 	const logged: unknown[] = [];
 	const err = spyOn(console, 'error').mockImplementation((...args: unknown[]) => void logged.push(args));
+	jest.useFakeTimers();
 	try {
 		reaper.start();
-		await new Promise((r) => setTimeout(r, 60));
+		jest.advanceTimersByTime(6_000); // exactly two ticks: the first throws, the second runs to onTick
 	} finally {
 		reaper.stop();
+		jest.useRealTimers();
 		err.mockRestore();
 	}
 	expect(logged).toHaveLength(1);
-	expect(ticked).toBeGreaterThan(0);
+	expect(ticked).toBe(1);
 });

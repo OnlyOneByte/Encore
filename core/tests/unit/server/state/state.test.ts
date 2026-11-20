@@ -1,5 +1,5 @@
 // Mutate -> rev bumps -> async persist -> reload-from-db equals memory.
-import { test, expect } from 'bun:test';
+import { test, expect, jest, spyOn } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { sqlitePersistence } from '$lib/server/state/persistence';
@@ -149,6 +149,32 @@ test('a throwing flush is logged and retried, not thrown out of the timer (BE-05
 	}
 	expect(logged).toHaveLength(1);
 	expect(persisted).toEqual([true]);
+});
+
+test('flushNow() resets the failure count after a good write, so the next failure backs off from the start', () => {
+	// Calls 1 and 3 fail, call 2 (the flushNow) succeeds. Without the reset, call 3 logs "(2x) ... 1000ms".
+	let calls = 0;
+	const s = new AuthoritativeState({
+		persist: () => {
+			if (++calls !== 2) throw new Error('SQLITE_FULL: database or disk is full');
+		}
+	});
+	const logged: string[] = [];
+	const err = spyOn(console, 'error').mockImplementation((msg: unknown) => void logged.push(String(msg)));
+	jest.useFakeTimers();
+	try {
+		s.setPlayback({ isPlaying: true });
+		jest.advanceTimersByTime(250); // call 1 fails, backoff armed
+		s.flushNow(); // call 2 succeeds and clears the backoff timer
+		s.setPlayback({ isPlaying: false });
+		jest.advanceTimersByTime(250); // call 3 fails
+	} finally {
+		jest.useRealTimers();
+		err.mockRestore();
+	}
+	expect(calls).toBe(3);
+	expect(logged).toHaveLength(2);
+	expect(logged[1]).toContain('(1x), retrying in 500ms');
 });
 
 test('setPosition does NOT bump rev (Finding #1 — no resync storm from ontimeupdate)', () => {

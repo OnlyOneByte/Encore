@@ -1,5 +1,5 @@
 // Ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
-import { test, expect } from 'bun:test';
+import { test, expect, spyOn } from 'bun:test';
 import { read } from '$test';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
@@ -234,4 +234,25 @@ test('the TV wires sendTelemetry through the pure telemetryFrame(status, current
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
 	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current
 	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the stale-frame bug
+});
+
+test('a dropped id-less ended warns once per process, not once per frame', async () => {
+	// The latch is module state, so a fresh instance of player.ts is imported: another test in this process may
+	// already have tripped the shared one.
+	const fresh: typeof import('$lib/server/realtime/player') = await import(
+		`../../../../src/lib/server/realtime/player.ts?warn-once=${Date.now()}`
+	);
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	fresh.handlePlayerCommand({ cmd: 'play' }, deps);
+	const warned: unknown[] = [];
+	const warn = spyOn(console, 'warn').mockImplementation((...args: unknown[]) => void warned.push(args));
+	try {
+		fresh.handleTelemetry({ positionSec: 100, ended: true }, deps);
+		fresh.handleTelemetry({ positionSec: 100, ended: true }, deps);
+	} finally {
+		warn.mockRestore();
+	}
+	expect(warned).toHaveLength(1);
+	expect(state.playback.currentEntryId).toBe('q1');
 });
