@@ -185,7 +185,9 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 	   card. Both are section headings over blocks, which is precisely what the register is for, so the growth is
 	   correct and the old "exactly two, a third means the eyebrow came back" reading of this list no longer holds.
 	   What still holds is the clause below it: not one of these three sits on a field label. */
+	// +1 with the on-deck card: its `.eyebrow` heads the card exactly as `.now-eyebrow` heads the one above it.
 	expect(onPhLadder.sort()).toEqual([
+		'lib/components/OnDeckCard.svelte .eyebrow',
 		'routes/queue/+page.svelte .grouphead',
 		'routes/queue/+page.svelte .now-eyebrow',
 		'routes/song/[mediaId]/+page.svelte .lab'
