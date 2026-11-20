@@ -174,8 +174,9 @@
 	}
 
 	/* The title is what gives up width: the singer's name is the fact you are checking at a glance, and a truncated
-	   name reads as the wrong person where a truncated song title still reads as the right song. Never below a few
-	   letters, though, so a long name cannot take the title away entirely. */
+	   name reads as the wrong person where a truncated song title still reads as the right song. The name's 60% cap
+	   on `.who` is what keeps a long name from taking the title away; `min-width` only stops the title collapsing
+	   below a few letters when the row itself is that narrow. */
 	.song {
 		min-width: 4ch;
 		overflow: hidden;
