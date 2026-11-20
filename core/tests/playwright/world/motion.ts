@@ -63,9 +63,9 @@ export interface MotionScenario {
 	only?: string;
 	/** Scenario-specific facts read after each run (e.g. "did the phrase change"), kept in metrics.json. */
 	observe?(page: Page): Promise<unknown>;
-	/** Why a literal duration or colour in this motion is a deliberate exception. Written into metrics.json; without
-	 *  it, `tokens.problems` is what the spec fails on. */
-	literalsAllowed?: string;
+	/** ONE literal that is a deliberate exception: `match` is the exact `tokens.problems` line it waives (e.g.
+	 *  `phrase-fade on div.phrase-line: literal timing 0.6s`), `reason` says why. Any other literal still fails. */
+	literalsAllowed?: { match: string; reason: string };
 }
 
 export interface AnimationRecord {
@@ -91,8 +91,10 @@ export interface TokenSource {
 	/** The authored `transition`/`animation` text that sets this duration, or null when no CSS rule does (an
 	 *  `element.animate()` call: script-timed, so only the diff can tell). */
 	duration: string | null;
-	/** True when that text uses a `var(--motion-*)` token. */
+	/** True when that text uses a `var(--motion-*)` token and no literal timing (a duration or a delay). */
 	durationIsToken: boolean;
+	/** Literal times left once the `var()` calls are taken out: a hard-coded duration or delay (`0s` is fine). */
+	literalTimings: string[];
 	/** Authored values of the animated colour properties: the matching rules for a transition's end state, the
 	 *  keyframes for an animation. */
 	colours: string[];
@@ -263,8 +265,12 @@ function describeCaught(which: string): AnimationRecord[] {
 		const COLOURISH = /colou?r|background|border|outline|fill|stroke|shadow/;
 		const LITERAL = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i;
 		const rules: CSSRule[] = [];
+		// Only rules the browser applies now: a block under a media query or @supports that doesn't hold is skipped,
+		// so a `reduce` override or a wide-screen variant is not read as this capture's timing.
 		const walk = (list: CSSRuleList) => {
 			for (const r of list) {
+				if (r instanceof CSSMediaRule && !matchMedia(r.media.mediaText).matches) continue;
+				if (r instanceof CSSSupportsRule && !CSS.supports(r.conditionText)) continue;
 				rules.push(r);
 				if ('cssRules' in r) walk((r as CSSGroupingRule).cssRules);
 			}
@@ -292,9 +298,11 @@ function describeCaught(which: string): AnimationRecord[] {
 		// reads empty when its shorthand holds a var() (pending substitution), so both are read.
 		const durations =
 			kind === 'CSSTransition'
-				? valueOf(['transition', 'transition-duration'])
+				? valueOf(['transition', 'transition-duration', 'transition-delay'])
 				: kind === 'CSSAnimation'
-					? valueOf(['animation', 'animation-duration']).filter((v) => v.includes(animName) || !v.includes(' '))
+					? valueOf(['animation', 'animation-duration', 'animation-delay']).filter(
+							(v) => v.includes(animName) || !v.includes(' ')
+						)
 					: [];
 		const duration = durations.length ? durations.join(' | ') : null;
 		let colours: string[] = [];
@@ -319,9 +327,16 @@ function describeCaught(which: string): AnimationRecord[] {
 					})
 				: [];
 		}
+		let bare = durations.join(' , ');
+		for (let prev = ''; prev !== bare;) [prev, bare] = [bare, bare.replace(/var\([^()]*\)/g, '')];
+		const literalTimings = [...new Set(bare.match(/(?<![\w.-])\d*\.?\d+m?s\b/g) ?? [])].filter(
+			(t) => parseFloat(t) !== 0
+		);
 		return {
 			duration,
-			durationIsToken: durations.length > 0 && durations.every((d) => d.includes('var(--motion-')),
+			durationIsToken:
+				durations.length > 0 && !literalTimings.length && durations.every((d) => d.includes('var(--motion-')),
+			literalTimings,
 			colours,
 			literalColours: colours.filter((c) => LITERAL.test(c.replace(/var\([^)]*\)/g, '')))
 		};
@@ -536,23 +551,32 @@ async function filmstrip(
 const LIVE_RUNS = Math.max(1, Number(process.env.MOTION_LIVE_RUNS ?? 3));
 
 /** Check 3 and the colour half of check 8, from what the CSS authored rather than from the measured numbers. */
-function tokenReport(animations: AnimationRecord[], allowed: string | undefined) {
-	const problems: string[] = [];
+function tokenReport(animations: AnimationRecord[], allowed: MotionScenario['literalsAllowed']) {
+	const found: string[] = [];
 	const unchecked: string[] = [];
 	for (const a of animations) {
 		const what = `${a.name} on ${a.target}`;
-		if (a.kind !== 'CSSTransition' && a.kind !== 'CSSAnimation')
+		if (a.kind !== 'CSSTransition' && a.kind !== 'CSSAnimation') {
 			unchecked.push(`${what}: timed by script; read the diff`);
-		else if (!a.source.durationIsToken)
-			problems.push(`${what}: duration ${a.source.duration ?? '(no CSS rule found)'} is not a var(--motion-*) token`);
-		for (const c of new Set(a.source.literalColours)) problems.push(`${what}: literal colour ${c}`);
+			continue;
+		}
+		if (!a.source.duration) found.push(`${what}: no CSS rule sets its timing`);
+		for (const t of a.source.literalTimings) found.push(`${what}: literal timing ${t}`);
+		if (a.source.duration && !a.source.literalTimings.length && !a.source.durationIsToken)
+			found.push(`${what}: timing ${a.source.duration} is not a var(--motion-*) token`);
+		for (const c of new Set(a.source.literalColours)) found.push(`${what}: literal colour ${c}`);
 	}
+	// The waiver covers the one line it names, exactly; a second literal on the same row is still a problem.
+	const waived = allowed ? found.filter((p) => p.endsWith(allowed.match)) : [];
+	const problems = found.filter((p) => !waived.includes(p));
 	const summary = !animations.length
 		? 'tokens: nothing caught to check'
 		: problems.length
-			? `TOKENS: ${problems.length} literal(s)${allowed ? ' (allowed: ' + allowed + ')' : ''}`
-			: 'tokens: durations and colours are var() tokens';
-	return { problems, unchecked, allowed: allowed ?? null, summary };
+			? `TOKENS: ${problems.length} literal(s)`
+			: waived.length
+				? `tokens: var() tokens, plus 1 waived literal (${allowed!.reason})`
+				: 'tokens: durations and colours are var() tokens';
+	return { problems, waived, waiver: allowed ?? null, unchecked, summary };
 }
 
 // ── the entry point ──────────────────────────────────────────────────────────────────────────────────────
@@ -642,13 +666,18 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		const v = liveRuns.map(pick).sort((a, b) => a - b);
 		return { median: v[Math.floor(v.length / 2)], min: v[0], max: v[v.length - 1] };
 	};
+	// Only the median and range of each cadence number: a single run's value is the noise this exists to avoid.
+	// What ran in the window (subject and others) is the same every run, so the first run's list stands for all.
 	const live = {
-		...liveRuns[0],
 		runs: liveRuns.length,
-		droppedFramesAcrossRuns: median((r) => r.droppedFrames),
-		longAnimationFramesAcrossRuns: median((r) => r.longAnimationFrames.count),
-		p95AcrossRuns: median((r) => r.frameIntervalsMs.p95),
-		clsMaxAcrossRuns: Math.max(...liveRuns.map((r) => r.cls.total))
+		animations: liveRuns[0].animations,
+		others: liveRuns[0].others,
+		observed: liveRuns[0].observed,
+		droppedFrames: median((r) => r.droppedFrames),
+		longAnimationFrames: median((r) => r.longAnimationFrames.count),
+		longAnimationFramesSupported: liveRuns[0].longAnimationFrames.supported,
+		frameIntervalP95Ms: median((r) => r.frameIntervalsMs.p95),
+		clsMax: Math.max(...liveRuns.map((r) => r.cls.total))
 	};
 
 	// 3. REDUCED — the same trigger with the OS preference set.

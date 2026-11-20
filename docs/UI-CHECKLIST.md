@@ -35,10 +35,12 @@ A new row is `{ name, what, open, trigger, only, stepMs }`: `open` gets a fresh 
 hand-set class: a row that fakes the state change records a frame the product never shows. A row that needs a
 longer song adds one to `LIBRARY` (the fixture's are 8 s), and `startFakeWorker(world, { seconds })` makes the
 stems match. A row whose honest record is a cut goes in `CUTS`, and the PR that gives it motion takes it out. A
-row whose literal duration or colour is a deliberate exception says why in `literalsAllowed`.
+row with one deliberate literal names it in `literalsAllowed: { match, reason }`; that waives that one line only.
 
-**What fails the run, beyond "no motion caught":** a caught animation whose duration, or whose animated colour, is
-authored as a literal instead of a `var()` token. `metrics.json` records what the built CSS says for each one
+**What fails the run, beyond "no motion caught":** a caught animation whose duration, delay or animated colour is
+authored as a literal instead of a `var()` token. Only the rules the browser applies during the capture are read:
+a block under a media query or `@supports` that does not hold (a `reduce` override, a wide-screen variant) is
+skipped. `metrics.json` records what the built CSS says for each one
 (`declared[].source`), the strip's subtitle prints the verdict, and `tokens.problems` lists every literal.
 
 ## The checks
@@ -50,10 +52,12 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
    that changes at `0 ms` without being in `declared` is a jump, unless it is a content change that is meant to be
    instant (new text, a removed label) and the PR says so.
 3. **The duration is a token in the source.** The CSS says `var(--motion-fast)`, `var(--motion-base)` or
-   `var(--motion-slow)`. **The tool checks this:** `declared[].source.duration` is the authored text from the built
-   CSS (`durationMs` alone is the same 400 for a token and a literal `0.4s`), and a literal fails the run unless
-   the row's `literalsAllowed`, and a comment at the literal, say why. A motion timed by script
-   (`element.animate`) is listed under `tokens.unchecked`: read its diff. Ease-out to enter, ease-in to leave.
+   `var(--motion-slow)`, and has no literal delay either. **The tool checks this:** `declared[].source.duration` is
+   the authored text from the built CSS (`durationMs` alone is the same 400 for a token and a literal `0.4s`), and
+   any literal time left once the `var()`s are taken out (a duration or a delay; `0s` is fine) fails the run. A
+   row's `literalsAllowed` can waive exactly one named literal, with a reason, and the source needs a comment at
+   that literal too; any other literal on the row still fails. A motion timed by script (`element.animate`) is
+   listed under `tokens.unchecked`: read its diff. Ease-out to enter, ease-in to leave.
 4. **Reduced motion:** `reducedMotion.honoured` is true for the subject, and `reducedMotion.noVestibularMotion`
    is true for the page (a fade may stay, a slide or scale may not). The guard is the house
    `@media (prefers-reduced-motion: no-preference)` form, not an `animation: none` override.
@@ -69,7 +73,7 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
    (for example `app.css`'s `.pop-in`) is reused rather than copied into the component, are read from the diff.
 9. **The live run did not get worse.** One run is noise (the on-deck row gave 4 to 12 dropped frames on identical
    code), so the live pass runs 3 times (`MOTION_LIVE_RUNS`) and records the **median and range** in
-   `live.droppedFramesAcrossRuns` and `live.longAnimationFramesAcrossRuns`. Run the row on `main` and on the branch,
+   `live.droppedFrames` and `live.longAnimationFrames` (each `{ median, min, max }`; no single-run value is kept). Run the row on `main` and on the branch,
    on the same box. A regression is the branch's **median above main's maximum**; anything inside main's range is
    noise. A row with a TV playing in the same browser (`phone-on-deck-heads-up`) is the noisiest. These are headless
    numbers (see Limits), so compare them, never quote them as a phone's.

@@ -61,16 +61,21 @@ function inScratchClone<T>(url: string, opts: { bare: boolean; depth?: number },
 	}
 }
 
-/** A refused push is a race with another publish or prune, not a crash: say so in one line. */
+/** One line, never a stack. It blames a race only when git says the ref moved under us (the lease, a
+ *  non-fast-forward, a lock); any other refusal (auth, network, a hook) passes git's own reason through. */
 function push(args: string[], cwd: string) {
 	try {
 		git(['push', '--quiet', ...args], cwd);
 	} catch (e) {
-		const stderr = String((e as { stderr?: string }).stderr ?? e);
-		const why = stderr.split('\n').find((l) => /rejected|error|fatal/.test(l));
+		const lines = String((e as { stderr?: string }).stderr ?? e)
+			.split('\n')
+			.map((l) => l.trim())
+			.filter(Boolean);
+		const reason = lines.filter((l) => /rejected|error|fatal|denied|remote:/i.test(l)).join(' / ') || lines.join(' / ');
+		const raced = /stale info|fetch first|non-fast-forward|cannot lock ref/i.test(reason);
 		throw new Refused(
-			`origin refused the push (${why?.trim() ?? 'no reason given'}). Someone published or pruned in the ` +
-				'meantime; nothing was lost, run it again.'
+			`the push was refused: ${reason || 'git gave no reason'}` +
+				(raced ? '. Someone published or pruned in the meantime; nothing was lost, run it again.' : '')
 		);
 	}
 }
