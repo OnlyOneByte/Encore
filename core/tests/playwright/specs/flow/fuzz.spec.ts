@@ -709,7 +709,7 @@ async function wirePlayer(page: Page, command: Record<string, unknown>): Promise
 	return page.evaluate((cmd) => {
 		const w = window as unknown as FuzzWindow;
 		if (!w.__fz || w.__fz.readyState !== 1) return 'closed';
-		const frame = cmd.cmd === 'seek' ? { ...cmd, entryId: w.__fzCurrent } : cmd;
+		const frame = ['seek', 'key', 'guide'].includes(String(cmd.cmd)) ? { ...cmd, entryId: w.__fzCurrent } : cmd;
 		w.__fz.send(JSON.stringify({ type: 'player:command', command: frame }));
 		return 'sent';
 	}, command);

@@ -166,7 +166,9 @@
 		   honest by accident (it read the server value and so simply did not move).
 		   A player command is fire-and-forget and is NOT resent on resync the way a queue add is, so "dropped"
 		   really does mean lost — there is nothing to be optimistic about. */
-		if (!room.command({ cmd: 'key', semitones: next })) return;
+		// The key is per-song, so it names the song: a tap that lands after a skip must not re-pitch the next one.
+		if (!nowEntry) return;
+		if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;
 		keyDraft = next;
 		// Your own song: this phone remembers the key for the next time you queue it.
 		if (nowEntry && nowEntry.singerId === me?.id) rememberKey(nowEntry.mediaId, next);
@@ -226,7 +228,10 @@
 		if (guideDraft !== null && (guideServerPct === guideDraft || !nowEntry)) guideDraft = null;
 	});
 	const guideSend = createGuideSend({
-		send: (pct) => room.command({ cmd: 'guide', level: pct / 100 }),
+		send: (pct) => {
+			if (!nowEntry) return false;
+			return room.command({ cmd: 'guide', level: pct / 100, entryId: nowEntry.id });
+		},
 		onDraft: (pct) => (guideDraft = pct)
 	});
 

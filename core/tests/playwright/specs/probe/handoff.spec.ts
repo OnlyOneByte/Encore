@@ -77,3 +77,47 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		await worker.stop();
 	}
 });
+
+test('a stale tap through the strip changes nothing and tells THAT phone "That song already ended."', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		for (const q of ['caroline', 'believin']) await readySong(world, maya, q);
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+
+		// Ana's socket is HELD from the moment Maya skips, so her strip still shows Maya's song when she taps.
+		let hold = false;
+		const held: (string | Buffer)[] = [];
+		let toAna: ((m: string | Buffer) => void) | null = null;
+		await ana.routeWebSocket(/\/ws/, (ws) => {
+			const server = ws.connectToServer();
+			toAna = (m) => ws.send(m);
+			server.onMessage((m) => (hold ? held.push(m) : ws.send(m)));
+			ws.onMessage((m) => server.send(m));
+		});
+		await ana.reload();
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
+
+		hold = true;
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await ana.waitForTimeout(300);
+		hold = false;
+		for (const m of held.splice(0)) toAna!(m);
+
+		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 3_000 });
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		// Only the sender is told, and Theo keeps his song.
+		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
+		await theo.waitForTimeout(1_000);
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+	} finally {
+		await worker.stop();
+	}
+});

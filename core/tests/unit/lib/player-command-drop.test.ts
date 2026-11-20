@@ -138,7 +138,7 @@ test('the guide slider is CONTROLLED, so a refused command cannot leave the thum
 
 test('the ± keycaps still refuse to move the draft on a dropped command', () => {
 	// The site that already had the treatment, pinned so the pattern cannot be undone at one of the five.
-	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next })) return;");
+	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;");
 });
 
 test('the scan this file rests on reaches every file that can host a call site', () => {

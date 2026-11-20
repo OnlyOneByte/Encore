@@ -93,6 +93,24 @@ test('a seek naming an old song does not move the current one', () => {
 	expect(state.playback.positionSec).toBe(40);
 });
 
+test('a late key or guide tap does not land on the next singer’s song or their On deck preset', () => {
+	const { state, deps, send, toOrigin } = room();
+	state.applyQueueOp({ op: 'set-entry-prefs', id: 'bob', keyShift: -2, guideLevel: 0.2 });
+	handlePlayerCommand({ cmd: 'skip', entryId: 'alice' }, deps);
+	const bobStart = { keyShift: state.playback.keyShift, guideLevel: state.playback.guideLevel };
+	expect(bobStart).toEqual({ keyShift: -2, guideLevel: 0.2 });
+	handlePlayerCommand({ cmd: 'key', semitones: 5, entryId: 'alice' }, deps, send);
+	handlePlayerCommand({ cmd: 'guide', level: 0.9, entryId: 'alice' }, deps, send);
+	expect({ keyShift: state.playback.keyShift, guideLevel: state.playback.guideLevel }).toEqual(bobStart);
+	expect(toOrigin).toEqual([
+		{ type: 'player:stale', cmd: 'key' },
+		{ type: 'player:stale', cmd: 'guide' }
+	]);
+	// Aimed at Bob's song, the key lands.
+	handlePlayerCommand({ cmd: 'key', semitones: 3, entryId: 'bob' }, deps);
+	expect(state.playback.keyShift).toBe(3);
+});
+
 test('a transport frame with no entryId off the wire is dropped, never a free skip', () => {
 	const { state, deps } = room();
 	handlePlayerCommand({ cmd: 'skip' } as never, deps);

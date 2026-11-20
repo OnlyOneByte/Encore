@@ -186,6 +186,8 @@
 		// or a removal arrives only here, and used to drop the next singer straight into their song with no card (UI-02).
 		// It names `cur`, the entry ACTUALLY starting, never `upNext`. Not before the evening's first song, which
 		// `onFirstSongReady` opens once it can play.
+		// `alreadyIntroduced` only protects the hold TIMER: after a natural end the card is already up for this entry,
+		// and re-entering would restart the hold and keep the card up one round trip longer. The card is right either way.
 		const alreadyIntroduced = tvState === 'interstitial' && introEntry?.id === cur?.id;
 		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced) {
 			introEntry = cur;

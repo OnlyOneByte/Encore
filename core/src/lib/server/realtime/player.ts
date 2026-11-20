@@ -120,11 +120,14 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps, sendToOri
 	// A malformed frame must be dropped here, not dereferenced — same invariant as the queue path.
 	if (!cmd || typeof cmd !== 'object' || typeof cmd.cmd !== 'string') return;
 	const { state } = deps;
-	// The same rule as telemetry's stale `ended` below, but REQUIRED rather than optional: a transport command naming
-	// a song that is no longer current (or naming none) does NOTHING, or the second of two skips takes the next
-	// singer's turn and a late restart restarts their song. Only the sender hears about it.
+	// The same rule as telemetry's stale `ended` below, but REQUIRED rather than optional: a command for one song
+	// naming a song that is no longer current (or naming none) does NOTHING, or the second of two skips takes the
+	// next singer's turn, a late restart restarts their song, and a late key tap overwrites their On deck preset.
+	// Only the sender hears about it.
 	if (
-		(cmd.cmd === 'skip' || cmd.cmd === 'restart' || cmd.cmd === 'seek') &&
+		cmd.cmd !== 'play' &&
+		cmd.cmd !== 'pause' &&
+		cmd.cmd !== 'background' &&
 		(typeof cmd.entryId !== 'string' || cmd.entryId !== state.playback.currentEntryId)
 	) {
 		sendToOrigin?.({ type: 'player:stale', cmd: cmd.cmd });

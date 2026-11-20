@@ -385,7 +385,7 @@ export async function sendPlayerCommand(phone: Page, command: Record<string, unk
 	});
 	await phone.evaluate((cmd) => {
 		const w = window as unknown as { probeWs: WebSocket; probeCurrent?: string | null };
-		const named = ['skip', 'restart', 'seek'].includes(String(cmd.cmd)) && !('entryId' in cmd);
+		const named = ['skip', 'restart', 'seek', 'key', 'guide'].includes(String(cmd.cmd)) && !('entryId' in cmd);
 		const frame = named ? { ...cmd, entryId: w.probeCurrent } : cmd;
 		w.probeWs.send(JSON.stringify({ type: 'player:command', command: frame }));
 	}, command);
