@@ -2,10 +2,9 @@
 	See docs/FRONTEND.md#the-join-screen. -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { SINGER_COLORS, nearestPaletteStop } from '$lib/contract';
+	import { SINGER_COLORS, freeSingerColor, nearestPaletteStop } from '$lib/contract';
 	import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
 	import ColourRing from '$lib/components/ColourRing.svelte';
-	import { defaultJoinColor } from '$lib/join-colour';
 	import CodeEntry from '$lib/components/CodeEntry.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { goto } from '$app/navigation';
@@ -18,8 +17,8 @@
 	let name = $state('');
 	/* SNAPPED to a ring stop, because the ring can only return one of its own fills: seeded with a raw preset the
 	   knob would sit on the nearest stop while the value said something the control never offered. */
-	/* What the page last seeded, so a resolved preview moves an untouched default to a FREE colour and never overwrites
-	   one the guest picked. */
+	/* What the page last seeded: a SUGGESTION from the preview, never sent. While the ring still shows it the join
+	   carries no colour and the server picks a free one, because phones that scanned together read the same preview. */
 	let seededColor = nearestPaletteStop(SINGER_COLORS[0]).fill;
 	let color = $state<string>(seededColor);
 	/** The TYPED path's code, distinct from `scannedCode` below. */
@@ -98,7 +97,7 @@
 			} else {
 				preview = body as RoomPreview;
 				previewCode = code;
-				if (color === seededColor) color = seededColor = defaultJoinColor(preview.colors ?? []);
+				if (color === seededColor) color = seededColor = freeSingerColor(preview.colors ?? []);
 			}
 		} catch {
 			previewError = 'Network error — try again.';
@@ -134,7 +133,11 @@
 			const res = await fetch('/api/join', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ displayName: name.trim(), color, code: joinCode || undefined })
+				body: JSON.stringify({
+					displayName: name.trim(),
+					color: color === seededColor ? undefined : color,
+					code: joinCode || undefined
+				})
 			});
 			if (!res.ok) {
 				error = (await res.json()).error ?? 'Could not join';

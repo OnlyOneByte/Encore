@@ -1,12 +1,13 @@
 // A pure-ish handler so it unit-tests without HTTP; the route is a thin wrapper around it.
 
-import { normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
+import { freeSingerColor, normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
 import type { Room } from '../rooms/repository';
 
 export interface JoinInput {
 	displayName: string;
-	color: string;
+	/** Absent = the guest never touched the ring, so the room picks a free colour at join time. */
+	color?: string;
 	/** Room join code (TV QR or typed). Absent = the core's single active room ({@link EncoreApp.activeRoomId}); present = that room specifically — an unknown code is refused, never silently defaulted, so a mistyped code can't drop a guest into the wrong party. */
 	code?: string;
 }
@@ -108,7 +109,12 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	if (!name) throw new Error('display name required');
 	// In-room uniqueness: a name is free if no one still in THIS room holds it.
 	assertNameFree(app, room.id, name);
-	const color = normalizeSingerColor(input.color);
+	// Picked HERE, inside one synchronous handler, so phones that read the same room preview still get distinct
+	// colours: each join sees every join before it.
+	const { here, away } = roomMembership(app, room.id);
+	const color = input.color
+		? normalizeSingerColor(input.color)
+		: freeSingerColor([...here, ...away].map((s) => s.color));
 
 	const singer = app.singers.create(name, color, app.now(), room.id);
 

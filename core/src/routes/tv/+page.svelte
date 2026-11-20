@@ -71,6 +71,12 @@
 	let pitchBlocked = $state(false);
 	// An error NO gesture can lift (decode failure, AbortError), so the page must SAY the room is silent.
 	let playbackFailedReason: string | null = $state(null);
+	/** The ENTRY that failed, so a `nowplaying` landing after the slot already swapped does not clear its own failure. */
+	let playbackFailedFor: string | null = null;
+	function onPlaybackFailed(reason: string, entryId: string | null): void {
+		playbackFailedReason = reason;
+		playbackFailedFor = entryId;
+	}
 	// The honest counterpart to `isPlaying`, which is the ROOM'S INTENT from the server: the room can intend
 	// to play while the element does not, and the reel must freeze in exactly those cases.
 	let masterAdvancing = $state(false);
@@ -376,10 +382,13 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	// A failure belongs to ONE song, so a drained room drops it, unlike the autoplay block, which is the TV's: kept, it
-	// came back over the next singer's song until that slot reported ready.
+	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
+	// is the TV's: kept, it sat over the next singer's song (or its waiting card, which never reports ready).
+	// Keyed on the ID, a primitive: `current` is a fresh object on every sync, which would clear a live failure.
+	// `playbackFailedFor` is plain (not `$state`), so setting a failure does not re-run this and clear it at once.
+	const currentId = $derived(current?.id ?? null);
 	$effect(() => {
-		if (isAttract) playbackFailedReason = null;
+		if (isAttract || currentId !== playbackFailedFor) playbackFailedReason = null;
 	});
 	// The WHOLE roster, no "+N more": Infinity caps nothing, and TvLobby steps the chip size down instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
@@ -580,7 +589,7 @@
 		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
-		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
+		onplaybackfailed={(reason) => onPlaybackFailed(reason, slotEntryId[visible])}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -616,7 +625,7 @@
 		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
-		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
+		onplaybackfailed={(reason) => onPlaybackFailed(reason, slotEntryId[visible])}
 	/>
 
 	<LyricsOverlay

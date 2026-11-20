@@ -12,7 +12,7 @@
 // function from `$lib/tv/lyrics`, which p6-lyrics.spec.ts still does, the other a constant from `$lib/sheet-snap`,
 // a module since deleted with the now-playing sheet. One live example is enough to keep the hazard real.
 import registry from './player-palette-48.json' with { type: 'json' };
-import { canonicalHex, hueDistance, hueOfColor } from './colors';
+import { SINGER_COLORS, canonicalHex, hueDistance, hueOfColor } from './colors';
 
 /** A SUBSET of the JSON's per-stop fields: the rest are generator inputs, and naming them here would invite
  *  a consumer to depend on a generator detail. */
@@ -93,6 +93,28 @@ export function nearestPaletteStop(input: string): PaletteStop {
 		}
 	}
 	return best;
+}
+
+/**
+ * The colour a guest gets when they never touch the ring: the free stop whose HUE is farthest from every colour
+ * already held, so each default is as far as possible from the others on the TV. An empty room starts at the
+ * first preset, and a full ring (no stop free) falls back to it. Held colours are compared by stop, as the ring's
+ * taken pips are. Chosen at join time by the server, so guests who opened the join screen together still differ.
+ */
+export function freeSingerColor(taken: readonly string[]): string {
+	const first = nearestPaletteStop(SINGER_COLORS[0]);
+	const held = taken.map((c) => nearestPaletteStop(c).hue);
+	if (!held.length) return first.fill;
+	let best = first;
+	let bestGap = 0;
+	for (const s of PALETTE_STOPS) {
+		const gap = Math.min(...held.map((h) => hueDistance(s.hue, h)));
+		if (gap > bestGap) {
+			bestGap = gap;
+			best = s;
+		}
+	}
+	return best.fill;
 }
 
 /** So the emitted CSS reads 7.5 rather than 7.500000001. */

@@ -149,7 +149,9 @@
 	   ONE NOTICE, NOT ONE PER TAP: sonner keys toasts by `id`, so a mash updates the single notice and resets its
 	   timer rather than stacking a tower of them over the dock. */
 	/* THE ONE SINK FOR THE LINK'S ERROR CHANNEL. The link drops a message nobody listens for, so a sink per route left
-	   every route without one (all of /settings) silent. The layout outlives every navigation, as the link does. */
+	   every route without one (all of /settings) silent. The layout outlives every navigation, as the link does.
+	   It registers on /tv, /admin and /metrics too, deliberately: the link never connects there (`NOT_PHONE`), so
+	   nothing reaches it. */
 	onMount(() => room.onError((message) => toast.error(message, { duration: 4000 })));
 
 	function transport(command: PlayerCommand): void {
