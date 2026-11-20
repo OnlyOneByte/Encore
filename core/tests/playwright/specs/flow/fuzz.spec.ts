@@ -18,6 +18,10 @@
  * anything else, and each input's own draws follow in the old order. Nothing here may read `Math.random` or
  * the clock. The seed is printed first, in the summary, and in every failure message.
  *
+ * WHICH SEEDS RUN. `FUZZ_SEED` replays that one seed. Without it, the run replays `fuzz-seeds.ts`, one test per
+ * seed: the seeds that broke an invariant once, so a PR run is the same run every time and a found bug stays
+ * found. `FUZZ_RANDOM=1` draws a fresh seed instead, which is what the nightly job does to look for new ones.
+ *
  * THE ASYNCHRONY SPLIT IS BY DESIGN. I2/I3/I5 are CROSS-SURFACE — a value has to cross the server's socket,
  * the TV and two phones — so they are retried against FRESH snapshots until they hold or CROSS_MS runs out.
  * I1/I4/I6 are single-surface and read ONCE. Polling everything would hide a real violation behind a retry;
@@ -74,7 +78,7 @@
  * nothing sends one.
  */
 import { test, expect } from '../../world/fixtures';
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 // `ws`, not the global: the same choice world/workers.ts makes, and for the same reason — a failed upgrade is
 // legible here rather than an opaque error event.
 import { WebSocket } from 'ws';
@@ -83,21 +87,24 @@ import { openBrowseFromHome } from '../../world/actors';
 import { startFakeWorker, type FakeWorkerFaults } from '../../world/workers';
 import type { World } from '../../world/fixtures';
 import { DEFAULT_LYRICS_LEAD_MS } from '$lib/contract';
+import { KNOWN_SEEDS, type InvariantId, type KnownSeed } from './fuzz-seeds';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seed and knobs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The seed. An unparseable `FUZZ_SEED` draws a fresh one, exactly as the old driver did. */
-const SEED = Number.isFinite(Number(process.env.FUZZ_SEED))
-	? Number(process.env.FUZZ_SEED) >>> 0
-	: (Math.random() * 0xffffffff) >>> 0;
+/** `FUZZ_SEED`, or null when it is unset or unparseable (then the known seeds run, or `FUZZ_RANDOM` draws one). */
+const ENV_SEED = Number.isFinite(Number(process.env.FUZZ_SEED)) ? Number(process.env.FUZZ_SEED) >>> 0 : null;
 
 /** Tens, not thousands — a human must be able to replay it. */
-const N_INPUTS = Number(process.env.FUZZ_INPUTS ?? 24);
+const ENV_INPUTS = Number(process.env.FUZZ_INPUTS ?? 24);
+
+/** This run's seed and length, set by `startRun()`: one module runs a test per known seed. */
+let SEED = 0;
+let N_INPUTS = ENV_INPUTS;
 
 /** The line a reader copies to reproduce this run. Printed first, and again beside every violation. */
-const REPLAY = `FUZZ_SEED=${SEED} FUZZ_INPUTS=${N_INPUTS} bunx playwright test tests/playwright/specs/flow/fuzz.spec.ts`;
+let REPLAY = '';
 
 /**
  * Let one input LAND before the single-surface invariants read it. A MEASUREMENT INTERVAL, not a stand-in for
@@ -121,7 +128,7 @@ const TAP_SETTLE_MS = 1_200;
 /** Ceiling on waiting for the opening add to actually be playing before the tap decision is made. */
 const FIRST_PLAYBACK_MS = 20_000;
 /** Setup (core boot, three processes, two phones and a TV) plus a generous per-input cost. */
-const TIME_BUDGET_MS = 240_000 + N_INPUTS * 20_000;
+const timeBudgetMs = (inputs: number): number => 240_000 + inputs * 20_000;
 
 /**
  * FAULT INJECTION, as typed options on the fake worker rather than the old `FAKE_*` env strings — one per row
@@ -136,7 +143,6 @@ const FAULTS: FakeWorkerFaults = {};
 // Types. Only the fields this flow reads, as with every other spec in the tree.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type InvariantId = 'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6';
 type InputName = keyof typeof BASE_WEIGHT;
 
 /** Everything driven so far, in order — this list IS the reproduction recipe. */
@@ -310,7 +316,7 @@ function mulberry32(a: number): () => number {
  * state across a RETRY, so a `const` here would replay a retry from wherever the first attempt left the
  * generator — which is the one thing the seed exists to prevent.
  */
-let rnd = mulberry32(SEED);
+let rnd = mulberry32(0);
 const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
 const int = (lo: number, hi: number): number => lo + Math.floor(rnd() * (hi - lo + 1));
 /** A deterministic Crockford-ish id, so even the clientOpIds a replay sends are identical. */
@@ -360,7 +366,10 @@ let wsBase = '';
 let tv: Page;
 const phones: Page[] = [];
 
-function startRun(): void {
+function startRun(seed: number, inputs: number): void {
+	SEED = seed;
+	N_INPUTS = inputs;
+	REPLAY = `FUZZ_SEED=${SEED} FUZZ_INPUTS=${N_INPUTS} bunx playwright test tests/playwright/specs/flow/fuzz.spec.ts`;
 	rnd = mulberry32(SEED);
 	idCounter = 0;
 	sequence.length = 0;
@@ -1076,6 +1085,13 @@ async function checkI6(w: Room): Promise<Violation | null> {
 	// claiming to be playing too, so re-read the server rather than trusting the element.
 	const srv2 = await serverSnapshot().catch(() => null);
 	if (srv2 && srv2.playback?.isPlaying !== true) return skip('I6', 'playback was stopped between the two samples');
+	// THE ENTRY, not just the src: a song queued twice in a row keeps its src across the advance, so a song that
+	// ended between the samples hands the second one a FRESH element at 0 for the same file. Comparing its bytes
+	// with the old element's reported that advance as a silent room (seed 3070909777, the second entry decoding
+	// normally at 0.8 s).
+	if (srv2 && srv2.playback?.currentEntryId !== w.current?.id) {
+		return skip('I6', 'the entry advanced between the two samples (a repeat of the same song keeps its src)');
+	}
 	if ((m2.decoded ?? 0) <= before.decoded) {
 		return violation(
 			'I6',
@@ -1396,9 +1412,10 @@ async function maybeDeliverTap(world: Room): Promise<void> {
 // The run.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('the six invariants hold after every input', async ({ world }, testInfo) => {
-	test.setTimeout(TIME_BUDGET_MS);
-	startRun();
+/** One seeded run. `known` is the seed's `fuzz-seeds.ts` row, which decides whether its failure is expected. */
+async function fuzzRun(world: World, testInfo: TestInfo, seed: number, inputs: number, known?: KnownSeed) {
+	test.setTimeout(timeBudgetMs(inputs));
+	startRun(seed, inputs);
 	// The seed FIRST, before anything can fail.
 	console.log(`fuzz seed=${SEED}`);
 	console.log(`fuzz replay: ${REPLAY}   (inputs=${N_INPUTS}, policy=gestureless)`);
@@ -1496,6 +1513,11 @@ test('the six invariants hold after every input', async ({ world }, testInfo) =>
 		}
 
 		console.log(summaryText());
+		// A KNOWN BUG, held open: expected to fail, but only on ITS invariant. Marked here rather than at the top
+		// of the body, so the same seed breaking another invariant, or failing setup, still goes red.
+		const heldOpen = known?.open === true;
+		const holdReason = `seed ${SEED} breaks ${known?.invariant} (${known?.note}): a known bug, held open until its fix lands`;
+		if (heldOpen && found?.id === known.invariant) test.fail(true, holdReason);
 		if (found) {
 			console.log(foundReport);
 			await testInfo.attach('fuzz-run.txt', {
@@ -1517,8 +1539,31 @@ test('the six invariants hold after every input', async ({ world }, testInfo) =>
 					`${[...stats.I6.why].join(' | ') || '(no reason recorded — the loop never reached it)'}\n\n${worker.log()}`
 			).toBeGreaterThan(0);
 			console.log('\nall six invariants held after every input.');
+			// Nothing broke on a seed listed as an open bug: the bug is fixed or the seed no longer reaches it.
+			// `test.fail` on a run that passes is what turns that red, so someone flips the row to `open: false`.
+			if (heldOpen) test.fail(true, `${holdReason}, and this run held every invariant: set open: false`);
 		}
 	} finally {
 		await worker.stop();
 	}
-});
+}
+
+if (ENV_SEED !== null || process.env.FUZZ_RANDOM) {
+	// NO RETRIES. Playwright runs a retry in a fresh worker that loads this module again, so a random seed would
+	// be redrawn and a failing seed could come back green as `flaky` (the config retries once under CI). A seed
+	// that breaks an invariant has to fail on its first run. No `fuzz-seeds.ts` hold here either: a replay of a
+	// known seed is someone looking at the bug, and it should fail in front of them.
+	const seed = ENV_SEED ?? (Math.random() * 0xffffffff) >>> 0;
+	test.describe(() => {
+		test.describe.configure({ retries: 0 });
+		test('the six invariants hold after every input', async ({ world }, testInfo) => {
+			await fuzzRun(world, testInfo, seed, ENV_INPUTS);
+		});
+	});
+} else {
+	for (const known of KNOWN_SEEDS) {
+		test(`known seed ${known.seed} · ${known.invariant} · ${known.note}`, async ({ world }, testInfo) => {
+			await fuzzRun(world, testInfo, known.seed, known.inputs, known);
+		});
+	}
+}

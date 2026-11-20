@@ -1211,11 +1211,16 @@ text = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "cmudict" },
     { name = "mypy" },
+    { name = "pyloudnorm" },
+    { name = "pyphen" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-timeout" },
     { name = "ruff" },
+    { name = "scipy" },
+    { name = "soundfile" },
 ]
 
 [package.metadata]
@@ -1260,11 +1265,16 @@ provides-extras = ["cpu", "cu128", "ml", "mlx", "audiosep", "ffmpeg", "text", "r
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cmudict", specifier = "==1.1.1" },
     { name = "mypy", specifier = "==2.3.1" },
+    { name = "pyloudnorm", specifier = "==0.2.0" },
+    { name = "pyphen", specifier = "==0.17.2" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
     { name = "pytest-timeout", specifier = "==2.4.0" },
     { name = "ruff", specifier = "==0.16.8" },
+    { name = "scipy", specifier = "==1.16.2" },
+    { name = "soundfile", specifier = ">=0.13" },
 ]
 
 [[package]]
