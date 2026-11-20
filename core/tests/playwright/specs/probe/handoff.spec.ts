@@ -1,7 +1,8 @@
 // ONE HANDOFF MOMENT (UI-02, BE-04), in a real room. Maya is singing on the TV, Theo is next, Ana after him. Ana and
 // Theo both tap skip, a human double-tap apart. The TV must put up the same "Now singing Theo" card a natural end
-// gets, within half a second, and only ONE song may go: Theo's turn must survive the second tap. The held-socket test
-// below covers the other half: a tap that was still in flight when the song changed.
+// gets, within half a second, Theo's phone must say "You're up" on whatever tab it is on, and only ONE song may go:
+// Theo's turn must survive the second tap. The held-socket test below covers the other half: a tap that was still in
+// flight when the song changed.
 //
 // Before this change the TV dropped Theo straight into his lyrics with no card (the sweep's `flow-03` frame), and the
 // second skip — aimed at Maya's song — advanced past Theo to Ana.
@@ -36,7 +37,9 @@ async function queueReady(phone: Page, query: string): Promise<void> {
 	await phone.locator(SEL.addTurn).first().click();
 }
 
-test('a double skip shows the handoff card for the next singer, and takes only one song', async ({ world }) => {
+test('a double skip shows the handoff card for the next singer, tells their phone, and takes only one song', async ({
+	world
+}) => {
 	const worker = await startFakeWorker(world);
 	try {
 		const maya = await world.openPhone('Maya');
@@ -60,6 +63,8 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		// TWO REAL TAPS, the second 40-100 ms after the first and AFTER Theo's strip has already redrawn to his own
 		// song: the case the server's stale guard alone could not catch (review r2, 974-M2), because by then the
 		// tap named Theo's song. The settle window (`$lib/transport-target`) keeps it naming Maya's.
+		// Theo is on another tab: "You're up" must reach him wherever he is.
+		await theo.getByRole('link', { name: 'Library' }).click();
 		const t0 = Date.now();
 		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 2_000 });
@@ -74,6 +79,11 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		await expect(intro).toContainText('Now singing');
 		await expect(intro).toContainText('Theo');
 		const theoId = await theoEntry();
+		const youreUp = theo.getByRole('status').filter({ hasText: 'You’re up' });
+		await expect(youreUp).toBeVisible({ timeout: 500 });
+		await expect(youreUp).toContainText(/believin/i);
+		// Nobody else is told it is their turn.
+		await expect(ana.getByRole('status').filter({ hasText: 'You’re up' })).toHaveCount(0);
 
 		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. The phone whose
 		// tap was dropped is told why; the other is not.
@@ -84,6 +94,8 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(intro).toContainText('Theo');
+		// It goes by itself, with the TV's card.
+		await expect(youreUp).toHaveCount(0, { timeout: 5_000 });
 	} finally {
 		await worker.stop();
 	}

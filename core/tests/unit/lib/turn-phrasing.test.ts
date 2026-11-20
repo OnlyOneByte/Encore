@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { read } from '$test';
-import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
+import { NOW_SINGING, UP_NEXT, YOURE_UP } from '$lib/phrasing/turn-phrasing';
 
 /*
  * guard: whose turn it is has ONE wording (UI-12). The TV's intro card said "Next up", its loading card "Up next" or
@@ -15,15 +15,16 @@ function strip(source: string): string {
 		.replace(/\/\/.*$/gm, '');
 }
 
-const SURFACES = ['src/routes/tv/+page.svelte', 'src/routes/queue/+page.svelte'];
+const SURFACES = ['src/routes/tv/+page.svelte', 'src/routes/queue/+page.svelte', 'src/lib/components/YoureUp.svelte'];
 
 test('the turn labels are spelled once, in turn-phrasing', () => {
 	expect(NOW_SINGING).toBe('Now singing');
 	expect(UP_NEXT).toBe('Up next');
+	expect(YOURE_UP).toBe('You’re up');
 	for (const path of SURFACES) {
 		const body = strip(read(path));
 		expect(body).toContain("from '$lib/phrasing/turn-phrasing'");
-		for (const literal of [/Now singing/, /Singing now/, /Up next/, /Next up/, />\s*Loading\s*</]) {
+		for (const literal of [/Now singing/, /Singing now/, /Up next/, /Next up/, /You.re up/, />\s*Loading\s*</]) {
 			expect({ path, hit: literal.test(body) }).toEqual({ path, hit: false });
 		}
 	}

@@ -8,6 +8,9 @@
 	import { room } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
+	import { buzzOnce } from '$lib/on-deck';
+	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
+	import YoureUp from '$lib/components/YoureUp.svelte';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -65,6 +68,17 @@
 	// The row is for the AUDIENCE: hidden on the singer's own phone and when the room has reactions off.
 	let canReact = $state(false);
 
+	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
+	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
+	let youreUp = $state<{ id: string; title: string; color: string } | null>(null);
+	let youreUpTimer: ReturnType<typeof setTimeout> | undefined;
+	// Plain, not $state: only `sync` reads it, to see the current entry CHANGE.
+	let lastCurrentId: string | null = null;
+	function dismissYoureUp() {
+		clearTimeout(youreUpTimer);
+		youreUp = null;
+	}
+
 	onMount(() => {
 		const sync = () => {
 			me = room.me?.id ?? null;
@@ -80,6 +94,23 @@
 			durationSec = media?.durationSec ?? 0;
 			hasSong = !!entry;
 			target = observeShown(target, entry?.id ?? null, performance.now());
+			const mine = youreUpTurn({
+				previousId: lastCurrentId,
+				currentId: room.playback.currentEntryId,
+				positionSec: room.playback.positionSec,
+				entries: room.entries,
+				meId: me
+			});
+			// The song moved on (a skip during the sheet): what it said is no longer true.
+			if (youreUp && youreUp.id !== room.playback.currentEntryId) dismissYoureUp();
+			lastCurrentId = room.playback.currentEntryId;
+			if (mine) {
+				youreUp = { id: mine.id, title: title ?? '', color: singerColor ?? SINGER_COLORS[0] };
+				// The SAME once-per-entry buzz as On deck's heads-up: a phone that buzzed with 30 s left stays still now.
+				buzzOnce(mine.id, navigator.vibrate?.bind(navigator));
+				clearTimeout(youreUpTimer);
+				youreUpTimer = setTimeout(dismissYoureUp, youreUpMs(room.settings.room));
+			}
 			/* PLAYABLE, not merely queued. `some(status === 'queued')` was wrong and it reproduced the exact defect the
 			   strip was built to remove. The app's one compound action queues a turn AND starts stem separation, so
 			   immediately afterwards there is a queued entry with no stems: the server's `play` handler finds no
@@ -107,6 +138,7 @@
 		return () => {
 			unsubscribe();
 			unstale();
+			clearTimeout(youreUpTimer);
 		};
 	});
 
@@ -296,6 +328,9 @@
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
+	{#if youreUp}
+		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} />
+	{/if}
 {/if}
 
 <style>
