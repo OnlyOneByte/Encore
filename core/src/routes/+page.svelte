@@ -43,10 +43,6 @@
 	// is what every `store?.` call site below reads.
 	let store = $state<QueueStore | undefined>(undefined);
 
-	function mediaTitle(id: string): string {
-		const m = mediaCatalog.get(id);
-		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : id;
-	}
 	/* `sync()` runs ONCE before subscribing: the link is a singleton that outlives this component, so on a return
 	   to `/` it is already live and subscribing alone renders an empty queue until the room happens to speak. */
 	onMount(() => {
@@ -61,12 +57,9 @@
 		};
 		sync();
 		const stopMirror = room.subscribe(sync);
-		// The link holds no opinion about how a failure is shown, so the toast stays a route decision.
-		const stopErrors = room.onError((message) => showError(message));
 		void room.connect();
 		return () => {
 			stopMirror();
-			stopErrors();
 			/* THE SEARCH DEBOUNCE DIES WITH THE TAB. 150 ms is easy to leave inside — typing, then thumbing the
 			   Queue or Library tab — and an uncleared timer fires `/api/search` from a component that is already
 			   gone: measured at one full abandoned request per mid-debounce departure. That is a resolver fan-out
@@ -322,7 +315,7 @@
 		   appearing is its own confirmation" — and no row appears on this screen at all, so a screen-reader guest
 		   adding three songs off one search heard three silences. Assigned directly rather than routed through that
 		   function: its whole job is the diff that suppresses news I caused, and this is news I caused and want. */
-		liveMsg = `Added ${mediaTitle(mediaId)} to the queue`;
+		liveMsg = `Added ${room.titleOf(mediaId)} to the queue`;
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 	function singThis(mediaId: string) {
@@ -337,7 +330,7 @@
 	 * THE REQUEST ITSELF MOVED TO `RoomLink.requestProcess`, where /queue's stalled-card retry can reach it: the
 	 * optimistic set, the rollback-the-mark-not-the-turn rule and the refusal notice are the correctness of that
 	 * call, and a second copy of the three is how they drift. What stays here is the haptic, which is a DOM read
-	 * the link may not make, and the refusal still lands on this page's toast through `room.onError` above. */
+	 * the link may not make, and the refusal lands on the root layout's `room.onError` toast. */
 	async function processMedia(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
 		await room.requestProcess(mediaId);

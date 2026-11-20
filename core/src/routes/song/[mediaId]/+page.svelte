@@ -14,7 +14,6 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Button } from '$lib/components/ui/button';
-	import { toast } from 'svelte-sonner';
 
 	const mediaId = $derived(page.params.mediaId ?? '');
 
@@ -52,16 +51,9 @@
 		};
 		sync();
 		const stop = room.subscribe(sync);
-		/* THE ONE ROUTE THAT CAN PRODUCE A RE-TIME REFUSAL IS THE ONE ROUTE THAT NEVER LISTENED FOR ONE. `reselectLyrics`
-		   is called from here and nowhere else, and the link's own doc says an unhandled message is dropped — so the
-		   server's already-human-worded 401/409/400 refusals, and the dropped-request message, went nowhere at all. Same
-		   registration /library makes; the `<Toaster>` the layout mounts is what renders it. */
-		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
+		// `reselectLyrics`' refusals reach the guest through the root layout's one `room.onError` sink.
 		void room.connect();
-		return () => {
-			stop();
-			stopErrors();
-		};
+		return stop;
 	});
 
 	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference — the same trap `+layout.svelte`
@@ -115,7 +107,7 @@
 		loading = false;
 		/* NO TOAST FOR THIS SENTENCE. The failure arm below is a `role="alert"` carrying the same words AND the control
 		   that acts on them, so toasting it too announced it twice to a screen reader and put the copy somewhere that
-		   expires. The `room.onError` registration above is a different channel — store messages only. */
+		   expires. The layout's `room.onError` sink is a different channel — store messages only. */
 	}
 
 	const display = $derived(songDisplay(media ?? undefined));

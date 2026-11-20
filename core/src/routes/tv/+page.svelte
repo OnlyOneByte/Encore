@@ -215,6 +215,8 @@
 	let openedOnce = $state(false);
 
 	function onVisibleEnded() {
+		// The failure belonged to the song that just ended.
+		playbackFailedReason = null;
 		const next = ctl.onEnded(upNext);
 		tvState = next;
 		sendTelemetry('ended');
@@ -374,6 +376,11 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
+	// A failure belongs to ONE song, so a drained room drops it, unlike the autoplay block, which is the TV's: kept, it
+	// came back over the next singer's song until that slot reported ready.
+	$effect(() => {
+		if (isAttract) playbackFailedReason = null;
+	});
 	// The WHOLE roster, no "+N more": Infinity caps nothing, and TvLobby steps the chip size down instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
@@ -849,14 +856,13 @@
 		</button>
 	{/if}
 
-	<!-- An error a tap CANNOT lift, so NOT a button: a plain on-screen say that the room is silent. -->
-	{#if playbackFailedReason}
+	<!-- An error a tap CANNOT lift, so NOT a button: a plain on-screen say that the room is silent. GATED ON `!isAttract`
+		as well as cleared there, so the frame before that effect runs cannot paint it over the join QR. The browser's
+		reason is TvPlayer's console line, never the room's to read. -->
+	{#if playbackFailedReason && !isAttract}
 		<div class="silent-room" role="status" aria-live="polite">
 			<span class="sr-mark"><Icon name="warning" /></span>
 			<span class="sr-head">This song <span class="grad-text">won’t play</span></span>
-			<span class="sr-sub"
-				>The audio could not be started ({playbackFailedReason}) — the room is silent. The next song may play normally.</span
-			>
 		</div>
 	{/if}
 
@@ -1480,11 +1486,5 @@
 		font-weight: 800;
 		line-height: var(--lh-tight);
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
-	}
-	.sr-sub {
-		font-size: var(--tv-body);
-		color: var(--ink-dim);
-		max-width: 60ch;
-		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 	}
 </style>

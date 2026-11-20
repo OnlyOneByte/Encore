@@ -5,6 +5,7 @@
 	import { SINGER_COLORS, nearestPaletteStop } from '$lib/contract';
 	import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
 	import ColourRing from '$lib/components/ColourRing.svelte';
+	import { defaultJoinColor } from '$lib/join-colour';
 	import CodeEntry from '$lib/components/CodeEntry.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { goto } from '$app/navigation';
@@ -17,7 +18,10 @@
 	let name = $state('');
 	/* SNAPPED to a ring stop, because the ring can only return one of its own fills: seeded with a raw preset the
 	   knob would sit on the nearest stop while the value said something the control never offered. */
-	let color = $state<string>(nearestPaletteStop(SINGER_COLORS[0]).fill);
+	/* What the page last seeded, so a resolved preview moves an untouched default to a FREE colour and never overwrites
+	   one the guest picked. */
+	let seededColor = nearestPaletteStop(SINGER_COLORS[0]).fill;
+	let color = $state<string>(seededColor);
 	/** The TYPED path's code, distinct from `scannedCode` below. */
 	let typedCode = $state('');
 	let submitting = $state(false);
@@ -94,6 +98,7 @@
 			} else {
 				preview = body as RoomPreview;
 				previewCode = code;
+				if (color === seededColor) color = seededColor = defaultJoinColor(preview.colors ?? []);
 			}
 		} catch {
 			previewError = 'Network error — try again.';

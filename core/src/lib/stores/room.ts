@@ -8,6 +8,7 @@
 import {
 	DEFAULT_EFFECTIVE_SETTINGS,
 	singHistoryFrom,
+	songDisplay,
 	type ServerEvent,
 	type ClientCommand,
 	type EffectiveSettings,
@@ -91,7 +92,7 @@ export class RoomLink {
 		this.#subs.add(fn);
 		return () => this.#subs.delete(fn);
 	}
-	/** A failure a human should see. Returns a disposer. No handler = the message is dropped. */
+	/** A failure a human should see. Returns a disposer. No handler = the message is dropped; `+layout.svelte` holds the one. */
 	onError(fn: (message: string) => void): () => void {
 		this.#errorHandlers.add(fn);
 		return () => this.#errorHandlers.delete(fn);
@@ -107,7 +108,10 @@ export class RoomLink {
 	/** A song's display title, for a message about it. The catalog is right here, so nothing else needs to pass it. */
 	titleOf(mediaId: string): string {
 		const m = this.mediaCatalog.get(mediaId);
-		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : mediaId;
+		if (!m) return mediaId;
+		// `songDisplay`, as the TV and /queue read it: the raw title and the uploader are not what a guest saw.
+		const d = songDisplay(m);
+		return d.artist ? `${d.title} — ${d.artist}` : d.title;
 	}
 
 	/** IDEMPOTENT and browser-only: the layout calls it on mount, and calling it again (a second mount, a navigation)
@@ -366,7 +370,7 @@ export class RoomLink {
 	 * is what keeps the card off `queueCardKind`'s stalled arm during the window before the first broadcast.
 	 *
 	 * THE NOTICE GOES THROUGH `#fail`, not a toast — this class holds no opinion about how a failure is shown, and
-	 * both surfaces that can reach this register a sink (`/` and `/queue` both route `onError` to `toast.error`). */
+	 * the root layout routes `onError` to `toast.error` on every surface. */
 	async requestProcess(mediaId: string): Promise<void> {
 		this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
 		try {

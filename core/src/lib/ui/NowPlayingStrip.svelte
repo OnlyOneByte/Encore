@@ -158,9 +158,14 @@
 		border-radius: var(--radius-pill);
 	}
 
+	/* Capped, so a long name ellipsises before it runs under the transport and leaves the title room to show. */
 	.who {
 		font-weight: 600;
 		white-space: nowrap;
+		min-width: 0;
+		max-width: 60%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.sep {
