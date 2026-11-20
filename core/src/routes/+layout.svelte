@@ -239,6 +239,19 @@
 			document.documentElement.style.removeProperty('--dock-h');
 		};
 	});
+
+	/* THE TOAST STACKS ABOVE "YOU'RE UP", never over it. The double-tap race this sheet exists for is exactly when
+	   both appear at once: the second phone's skip named a song that had gone, so it gets "That song already ended."
+	   in the same moment it becomes that phone's turn. The toaster rides --dock-h plus this, so it clears the sheet
+	   by the same gap the sheet keeps above the dock. */
+	let youreUpH = $state(0);
+	$effect(() => {
+		if (!youreUp || !youreUpH) return;
+		document.documentElement.style.setProperty('--youre-up-h', `calc(${youreUpH}px + var(--space-lg))`);
+		return () => {
+			document.documentElement.style.removeProperty('--youre-up-h');
+		};
+	});
 </script>
 
 <svelte:head>
@@ -272,9 +285,9 @@
 	other three at the library's defaults, which is what the full-width toast was relying on by accident before. -->
 <Toaster
 	position="bottom-center"
-	offset={{ bottom: 'calc(var(--dock-h, 0px) + 24px)' }}
-	mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + 16px)' }}
-	style="--width: min(92vw, 420px);"
+	offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
+	mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)' }}
+	style="--width: min(92vw, var(--sheet-max));"
 />
 
 <div class="app-shell">
@@ -328,9 +341,13 @@
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
-	{#if youreUp}
-		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} />
-	{/if}
+	<!-- THE LIVE REGION IS MOUNTED EMPTY, with the chrome, and the sheet renders INTO it: a screen reader often stays
+		silent for a region inserted with its text already in it, so "You're up" would be seen but not heard. -->
+	<div class="youre-up-live" role="status">
+		{#if youreUp}
+			<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={youreUpH} />
+		{/if}
+	</div>
 {/if}
 
 <style>

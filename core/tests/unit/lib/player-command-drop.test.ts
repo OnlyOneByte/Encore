@@ -76,8 +76,9 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 	       and right by 132px: the toast narrowed to 126px of 390 and one sentence wrapped onto four lines.
 	   Naming only `bottom`, on both props, is what satisfies both. A string here is the regression, and it is
 	   invisible in a diff. */
-	expect(layout).toContain("offset={{ bottom: 'calc(var(--dock-h, 0px) + 24px)' }}");
-	expect(layout).toContain("mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + 16px)' }}");
+	// `--youre-up-h` is 0 except while the "You're up" sheet is up, when the toast stacks above it instead of on it.
+	expect(layout).toContain("offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}");
+	expect(layout).toContain("mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)' }}");
 });
 
 test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a number', () => {

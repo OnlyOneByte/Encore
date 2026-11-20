@@ -24,8 +24,8 @@ export function youreUpTurn(input: YoureUpInput): QueueEntry | null {
 	return entry && entry.singerId === meId ? entry : null;
 }
 
-/** As long as the TV holds its "Now singing" card. With the card switched off the phone still says it, for the
- *  default hold: the guest is the one who most needs it. */
+/** The TV's hold for its "Now singing" card when the card is on, or the default hold when it is off: with no card the
+ *  sheet is the only handoff the singer gets, so it still shows. */
 export function youreUpMs(room: Pick<RoomSettings, 'songIntroEnabled' | 'songIntroMs'>): number {
 	return effectiveSongIntroMs(room) || DEFAULT_ROOM_SETTINGS.songIntroMs;
 }

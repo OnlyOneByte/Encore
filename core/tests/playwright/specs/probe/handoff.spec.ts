@@ -79,11 +79,12 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(intro).toContainText('Now singing');
 		await expect(intro).toContainText('Theo');
 		const theoId = await theoEntry();
-		const youreUp = theo.getByRole('status').filter({ hasText: 'You’re up' });
+		// Rendered INTO a live region that was mounted empty, so a screen reader announces it.
+		const youreUp = theo.getByRole('status').filter({ hasText: 'You’re up' }).locator('.youre-up');
 		await expect(youreUp).toBeVisible({ timeout: 500 });
 		await expect(youreUp).toContainText(/believin/i);
 		// Nobody else is told it is their turn.
-		await expect(ana.getByRole('status').filter({ hasText: 'You’re up' })).toHaveCount(0);
+		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
 		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. The phone whose
 		// tap was dropped is told why; the other is not.
@@ -263,6 +264,52 @@ test('a natural end hands over with no "won’t play" flash over the Now singing
 		await expect(intro).toContainText('Theo', { timeout: 30_000 });
 		await expect(intro).toBeHidden({ timeout: 10_000 });
 		expect(await tv.evaluate(() => (window as unknown as { flashes: string[] }).flashes)).toEqual([]);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('when your own stale skip makes it your turn, the toast stacks above "You’re up" instead of over it', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		for (const q of ['caroline', 'believin']) await readySong(world, maya, q);
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+
+		// Theo's socket is held, so his strip still shows Maya's song when he taps skip on it.
+		let hold = false;
+		const held: (string | Buffer)[] = [];
+		let toTheo: ((m: string | Buffer) => void) | null = null;
+		await theo.routeWebSocket(/\/ws/, (ws) => {
+			const server = ws.connectToServer();
+			toTheo = (m) => ws.send(m);
+			server.onMessage((m) => (hold ? held.push(m) : ws.send(m)));
+			ws.onMessage((m) => server.send(m));
+		});
+		await theo.reload();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
+
+		hold = true;
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await theo.waitForTimeout(300);
+		hold = false;
+		for (const m of held.splice(0)) toTheo!(m);
+
+		const sheet = theo.locator('.youre-up');
+		const toast = theo.locator('[data-sonner-toast]').filter({ hasText: 'That song already ended.' });
+		await expect(sheet).toBeVisible({ timeout: 2_000 });
+		await expect(toast).toBeVisible({ timeout: 2_000 });
+		// Let the toast's own entrance settle before measuring.
+		await theo.waitForTimeout(600);
+		const s = (await sheet.boundingBox())!;
+		const t = (await toast.boundingBox())!;
+		expect(t.y + t.height, `toast ${JSON.stringify(t)} vs sheet ${JSON.stringify(s)}`).toBeLessThanOrEqual(s.y);
 	} finally {
 		await worker.stop();
 	}
