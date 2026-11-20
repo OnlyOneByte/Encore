@@ -45,6 +45,7 @@ import {
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { completedStatusFor, mediaStatusFor, shouldBroadcastProcess } from './media-status';
+import { ETA_SAMPLE, etaSec, laterSteps, workPerAudioSec } from './eta';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -411,12 +412,32 @@ export class WorkerHub {
 			{
 				stage: msg.stage,
 				progressPct: msg.pct,
-				etaSec: msg.etaSec ?? null,
+				// A worker's own figure wins; today's workers send none, so core works it out from this box's history.
+				etaSec: msg.etaSec ?? this.#etaFor(job),
 				leaseExpiresAt: progressDeadline(this.#d.now(), this.#config)
 			},
 			this.#d.now()
 		);
 		this.#emitStatus(updated, msg.stage);
+	}
+
+	/** Seconds until the SONG is ready (`eta.ts`): the running step from the history of the worker running it,
+	 *  the later steps from any worker's. Null without a ledger, a length, or history for every step left.
+	 *  shortcut: matched on the BOX, not the engine — the request and the report name an engine differently
+	 *  (`demucs` asked, `demucs-mlx` reported), so an engine match never found history. After an engine change
+	 *  the median follows within about five songs; key on the reported engine if that proves too slow. */
+	#etaFor(job: Job): number | null {
+		const ledger = this.#d.attempts;
+		const open = ledger?.openFor(job.id);
+		if (!ledger || open?.startedAt == null) return null;
+		const rate = (type: Job['jobType'], workerId?: string | null) =>
+			workPerAudioSec(ledger.recentReady(type, workerId, ETA_SAMPLE));
+		return etaSec({
+			audioSec: open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec,
+			elapsedSec: (this.#d.now() - open.startedAt) / 1000,
+			current: rate(job.jobType, job.workerId),
+			later: laterSteps(job.jobType).map((type) => rate(type))
+		});
 	}
 
 	/** running → ready (terminal): publish the instrumental, free the slot, reconcile playback. */

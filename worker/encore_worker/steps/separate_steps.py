@@ -20,7 +20,8 @@ from encore_worker.artifacts.ports import ArtifactStore
 from encore_worker.domain.audio import profile as audio_profile
 from encore_worker.domain.identity import Identified, identify_from_title
 from encore_worker.host.config import Config
-from encore_worker.steps.align_steps import AlignStepsImpl, Reporter
+from encore_worker.protocol.vocabulary import Stage
+from encore_worker.steps.align_steps import AlignStepsImpl, Reporter, progress_sink
 from encore_worker.steps.api import NotOurJob
 from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 
@@ -74,10 +75,15 @@ class SeparateStepsImpl:
         """
         if self._sep is None:
             raise _Permanent("this worker has no separator engine, so it cannot serve a stems job")
+        # The subprocess engines forward what their own bar prints (WK-07). The in-process zoo gets no sink:
+        # its heartbeat is a CLOCK, not a measurement (`audiosep._heartbeat`); the phone shows the ETA alone.
+        sink = None
+        if not str(getattr(self._sep, "name", "")).startswith("audiosep:"):
+            sink = progress_sink(self._out, job.job_id, Stage.SEPARATING)
         # `in_job` counts the call on the job's token IN its thread, so a stop holds the slot until the
         # separation returns even when it is in-process (the zoo) and there is no child to kill (WK-02).
         stems = await asyncio.to_thread(
-            cli.in_job, self._sep.separate, input_wav, self._work(job), on_progress=None
+            cli.in_job, self._sep.separate, input_wav, self._work(job), on_progress=sink
         )
         return AudioRef(
             path=stems.instrumental_path,
@@ -211,7 +217,8 @@ class FetchStepsImpl:
         self._annotator = annotator
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
-        return await self._audio.acquire_audio(job)
+        # The one job whose bar IS the download, so the one that forwards yt-dlp's percentage.
+        return await self._audio.acquire_audio(job, report_download=True)
 
     async def annotate(self, job: JobRef, audio: AudioRef) -> Identified:
         """Identify the song. Never raises — not knowing is a real answer, not a failure.

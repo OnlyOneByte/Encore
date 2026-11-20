@@ -1082,3 +1082,35 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 		{ label: 'captions-stub', score: null }
 	]);
 });
+
+// ── the ETA on media:status (proposal 05) ────────────────────────────────────────────────────────
+
+/** One finished run in the ledger: `sec` seconds of work on 100 s of audio, on `workerId`. */
+function seedRun(h: ReturnType<typeof harness>, id: string, jobType: 'stems' | 'align', sec: number, workerId = 'w1') {
+	h.attempts.open({ id, mediaId: 'm2', processingId: 'p-old', jobType }, T0 - 500_000);
+	h.attempts.assigned(id, workerId, { audioSec: 100 }, T0 - 500_000);
+	h.attempts.started(id, T0 - 400_000);
+	h.attempts.closed(id, 'ready', T0 - 400_000 + sec * 1000);
+}
+
+test("progress carries an ETA from this box's own history when the worker sends none", () => {
+	const h = harness();
+	const jobId = running(h); // stems on m1, 200 s of audio, started at T0, on w1
+	seedRun(h, 'old-s', 'stems', 50); // 0.5 s of work per second of audio
+	seedRun(h, 'other-box', 'stems', 900, 'w2'); // another box's separations say nothing about this one's
+	seedRun(h, 'old-a', 'align', 10, 'w2'); // 0.1, and align may run anywhere
+
+	h.setClock(T0 + 40_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	// 200 × 0.5 = 100 s of separation, 40 spent, then 200 × 0.1 = 20 s of align.
+	expect(h.broadcasts.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', etaSec: 80 });
+});
+
+test('with no finished run of a step left to do, progress carries no ETA at all', () => {
+	const h = harness();
+	const jobId = running(h);
+	seedRun(h, 'old-s', 'stems', 50); // no align history
+	h.setClock(T0 + 40_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect((h.broadcasts.at(-1) as { etaSec?: number }).etaSec).toBeUndefined();
+});

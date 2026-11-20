@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'bun:test';
-import { processStageLabel } from '$lib/phrasing/process-phrasing';
+import { processReadout, processStageLabel } from '$lib/phrasing/process-phrasing';
+
+describe('processReadout', () => {
+	it('shows the real percentage and the time', () => {
+		expect(processReadout(64.4, 55, 130)).toBe('64% · ~2 min');
+		expect(processReadout(64, 55, 20)).toBe('64% · under a minute');
+	});
+
+	it('says only the time while the engine has reported no figure of its own', () => {
+		// The bar keeps the stage floor (20%); printing it would read as a measurement.
+		expect(processReadout(20, 0, 130)).toBe('~2 min');
+	});
+
+	it('says nothing it has no basis for', () => {
+		expect(processReadout(64, 55)).toBe('64%');
+		expect(processReadout(20, 0, null)).toBe('');
+	});
+});
 
 describe('processStageLabel', () => {
 	it('says the guest word for a finished process', () => {

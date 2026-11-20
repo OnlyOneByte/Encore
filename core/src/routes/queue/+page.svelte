@@ -653,6 +653,7 @@
 						singerAway={awaySingers.has(e.singerId)}
 						status={live?.status}
 						pct={live?.pct ?? 0}
+						etaSec={live?.etaSec}
 						pending={pendingKind.get(e.id) ?? null}
 						onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
 						onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}

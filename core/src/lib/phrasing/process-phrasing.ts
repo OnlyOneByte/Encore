@@ -1,7 +1,8 @@
 // The ONE place the "process" is described to a guest. Both SongRow and ProcessingCard call this, so there is no
-// second vocabulary to drift into. The percentage and ETA stay with the caller; this owns only the words, in the
-// guest's terms — what a guest waits for is a karaoke track, not "separating vocals".
+// second vocabulary to drift into. The figures come from the caller; this owns only the words, in the guest's
+// terms — what a guest waits for is a karaoke track, not "separating vocals".
 import type { MediaStatus } from '$lib/contract';
+import { minutesLeft } from '$lib/on-deck';
 
 /** The guest-facing stage line — the sentence under the title while a song processes. `pct` is appended when present;
  * a caller that shows it separately can omit it. */
@@ -13,6 +14,15 @@ export function processStageLabel(status: MediaStatus, opts: { pct?: number } = 
 	if (status === 'canceled') return '';
 	const pct = typeof opts.pct === 'number' ? ` ${opts.pct}%` : '';
 	return `Making karaoke…${pct}`;
+}
+
+/** The figures beside that line: "64% · ~2 min", either half alone, or nothing. The percentage only once the
+ * worker has reported a real one for this step (`stepPct > 0`): an engine with no figure (roformer) keeps the
+ * stage floor on the bar but says only the time. The time in the on-deck card's words, so the phone has one
+ * way of saying it, and no time at all when the box has no history to base one on. */
+export function processReadout(overallPct: number, stepPct: number, etaSec?: number | null): string {
+	const time = etaSec == null ? null : minutesLeft(etaSec);
+	return [stepPct > 0 ? `${Math.round(overallPct)}%` : null, time].filter(Boolean).join(' · ');
 }
 
 /** A TURN NOBODY IS MAKING KARAOKE FOR — the stalled queue card's line.

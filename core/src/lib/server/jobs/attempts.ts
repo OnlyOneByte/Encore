@@ -124,6 +124,25 @@ export class AttemptLedger {
 			.all();
 	}
 
+	/** The latest successful runs of one step, newest first, for the ETA (`eta.ts`); on one worker when
+	 *  `workerId` is given, on any otherwise. */
+	recentReady(jobType: JobAttempt['jobType'], workerId: string | null | undefined, limit: number): JobAttempt[] {
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(
+				and(
+					eq(jobAttempts.jobType, jobType),
+					eq(jobAttempts.outcome, 'ready'),
+					isNotNull(jobAttempts.startedAt),
+					workerId ? eq(jobAttempts.workerId, workerId) : undefined
+				)
+			)
+			.orderBy(desc(jobAttempts.finishedAt))
+			.limit(limit)
+			.all();
+	}
+
 	/** The honest denominator behind a windowed sample. */
 	countFinished(): number {
 		const row = this.#db

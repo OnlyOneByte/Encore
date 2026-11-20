@@ -617,9 +617,9 @@ def counting_acquire(impl: AlignStepsImpl) -> list[int]:
     calls: list[int] = []
     real = impl.acquire_audio
 
-    async def counted(job: JobRef) -> AudioRef:
+    async def counted(job: JobRef, **kw: Any) -> AudioRef:
         calls.append(1)
-        return await real(job)
+        return await real(job, **kw)
 
     impl.acquire_audio = counted  # type: ignore[method-assign]
     return calls
