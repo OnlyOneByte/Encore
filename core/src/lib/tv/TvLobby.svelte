@@ -1,8 +1,8 @@
 <script lang="ts">
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import type { RosterMember } from './screen';
-	import { OVERDUE_LABEL, processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { lobbyLine, type RosterMember } from './screen';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { joinAddressLabel } from './join-address';
 
 	interface Props {
@@ -59,21 +59,8 @@
 			: 'Waiting for someone to pick a song…'
 	);
 
-	// With a rehydrated queue but nobody reconnected the roster is empty, so say something true rather than "0 in the
-	// room". THE PROMPT SAYS "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY, with the words surviving
-	// as `aria-label`s alone, so naming a control sends a whole room looking for a label no phone displays.
-	const sub = $derived.by(() => {
-		// Not "pick a song" while something is processing — they already did, and the honest answer is that the wait is
-		// the karaoke being made. "karaoke", not "the vocals"/"separation": the guest word.
-		if (processing) {
-			// Overdue: the phone says "Taking longer than usual", so the TV must not still promise a minute.
-			const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
-			return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
-		}
-		return count > 0
-			? `${count} in the room · search on your phone and pick a song`
-			: 'Scan to join, then search on your phone and pick a song';
-	});
+	// The line under the headline, in `screen.ts` so a unit test can read every wording of it.
+	const sub = $derived(lobbyLine(count, processing, overdue));
 </script>
 
 <!--

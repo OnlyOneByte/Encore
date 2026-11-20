@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tvScreen, lobbyRoster, lyricsAdvancing, processStep, PROCESS_STEPS } from '$lib/tv/screen';
+import {
+	tvScreen,
+	lobbyRoster,
+	lobbyLine,
+	lobbyOverdue,
+	lyricsAdvancing,
+	processStep,
+	PROCESS_STEPS
+} from '$lib/tv/screen';
 import type { QueueEntry } from '$lib/contract';
 import { at } from '$test';
 
@@ -219,5 +227,44 @@ describe('processStep', () => {
 		for (const s of ['failed', 'canceled', undefined] as const) {
 			expect(processStep(s).index).toBe(0);
 		}
+	});
+});
+
+// The TV must say what the singer's phone says: once core calls a song overdue (`etaSec < 0`) the phone card reads
+// "Taking longer than usual", and the lobby may no longer promise "this takes a minute" (proposal 05).
+describe('the lobby line, and an overdue song', () => {
+	it('promises a minute while the song is on time', () => {
+		expect(lobbyLine(3, true, false)).toBe('3 in the room · making the karaoke, this takes a minute');
+		expect(lobbyLine(0, true, false)).toBe('Making the karaoke — this takes a minute');
+	});
+
+	it('says it is taking longer than usual once the song is overdue, and no longer promises a minute', () => {
+		expect(lobbyLine(3, true, true)).toBe('3 in the room · making the karaoke, taking longer than usual');
+		expect(lobbyLine(0, true, true)).toBe('Making the karaoke — taking longer than usual');
+		expect(lobbyLine(3, true, true)).not.toContain('a minute');
+	});
+
+	it('asks for a song when nothing is being made, overdue or not', () => {
+		for (const overdue of [false, true]) {
+			expect(lobbyLine(2, false, overdue)).toBe('2 in the room · search on your phone and pick a song');
+			expect(lobbyLine(0, false, overdue)).toBe('Scan to join, then search on your phone and pick a song');
+		}
+	});
+
+	it('calls the lobby overdue only while a queued song is one of the overdue ones', () => {
+		const queue = [entry('a'), entry('b')];
+		expect(lobbyOverdue(queue, new Set(['m-b']))).toBe(true);
+		expect(lobbyOverdue(queue, new Set(['m-gone']))).toBe(false);
+		expect(lobbyOverdue(queue, new Set())).toBe(false);
+	});
+
+	it('is wired: the TV page records every media:status by its etaSec and hands the lobby the answer', () => {
+		const route = stripComments(readFileSync(join(at('src/routes/tv'), '+page.svelte'), 'utf8'));
+		const lobby = stripComments(readFileSync(join(at('src/lib/tv'), 'TvLobby.svelte'), 'utf8'));
+		expect(route).toMatch(/if \(e\.type === 'media:status'\) noteOverdue\(e\.mediaId, \(e\.etaSec \?\? 0\) < 0\);/);
+		expect(route).toMatch(/if \(isOverdue\) overdueMedia\.add\(mediaId\);\s*else overdueMedia\.delete\(mediaId\);/);
+		expect(route).toMatch(/const overdue = \$derived\(lobbyOverdue\(entries, overdueMedia\)\);/);
+		expect(route).toMatch(/<TvLobby[^>]*\boverdue=\{overdue\}/);
+		expect(lobby).toMatch(/lobbyLine\(count, processing, overdue\)/);
 	});
 });

@@ -1,4 +1,5 @@
 import type { MediaStatus, QueueEntry } from '$lib/contract';
+import { OVERDUE_LABEL } from '$lib/phrasing/process-phrasing';
 import type { TvState } from './gapless';
 
 /**
@@ -52,6 +53,29 @@ export interface RosterMember {
 	color: string;
 	/** `here` holds a live socket; `away` is in the room but unreachable (locked phone, pocket). */
 	state: 'here' | 'away';
+}
+
+/**
+ * The lobby's line under its headline. With a rehydrated queue but nobody reconnected the roster is empty, so it says
+ * something true rather than "0 in the room". It says "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY,
+ * so naming a control sends a whole room looking for a label no phone displays. While something is processing it says
+ * the wait is the karaoke being made, and once that song is `overdue` (`etaSec < 0`) it says what the singer's phone
+ * says ("Taking longer than usual") instead of still promising a minute.
+ */
+/** Is any queued song one whose process core has called past its estimate? `overdueIds` holds the media ids whose
+ *  last `media:status` carried `etaSec < 0`. */
+export function lobbyOverdue(entries: readonly QueueEntry[], overdueIds: ReadonlySet<string>): boolean {
+	return entries.some((e) => overdueIds.has(e.mediaId));
+}
+
+export function lobbyLine(count: number, processing: boolean, overdue: boolean): string {
+	if (processing) {
+		const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
+		return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
+	}
+	return count > 0
+		? `${count} in the room · search on your phone and pick a song`
+		: 'Scan to join, then search on your phone and pick a song';
 }
 
 /**

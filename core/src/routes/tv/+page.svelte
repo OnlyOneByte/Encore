@@ -27,6 +27,7 @@
 	import {
 		tvScreen,
 		lobbyRoster,
+		lobbyOverdue,
 		isUnreachableJoinOrigin,
 		lyricsAdvancing,
 		processStep,
@@ -418,7 +419,7 @@
 	// Songs whose process is past its estimate (`media:status` with `etaSec < 0`), so the lobby says what the
 	// singer's phone says rather than "this takes a minute". A `SvelteSet`: one id flips at a time, in place.
 	const overdueMedia = new SvelteSet<string>();
-	const overdue = $derived(entries.some((e) => overdueMedia.has(e.mediaId)));
+	const overdue = $derived(lobbyOverdue(entries, overdueMedia));
 	function noteOverdue(mediaId: string, isOverdue: boolean): void {
 		if (isOverdue) overdueMedia.add(mediaId);
 		else overdueMedia.delete(mediaId);
