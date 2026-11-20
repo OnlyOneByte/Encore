@@ -1,0 +1,60 @@
+# The worker's checks on every PR that can change their result (proposal 06). Split from
+# ci.yml so a core-only or docs-only change spends no minutes here; ml.yml still runs every test.
+#
+# Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
+#
+# PATH FILTERS AND REQUIRED CHECKS DO NOT MIX: if `worker` is ever made a required status check, a PR this
+# filter skips waits forever on "Expected". Drop `paths` (or add an always-run stub job) before requiring it.
+name: CI · worker
+
+# What the worker's tests read: their own tree; core's wire contract, media paths and the cross-language
+# fixtures under core/tests/unit (worker-align-contract.json, bench-highlight-parity.json, cjk-join-ranges.json);
+# the benchmark scripts they import; docs/arch, whose alignment design doc two tests read; and the top-level
+# docs/*.md the worker's code cites, so the PR that breaks a pointer (test_docs_pointers) is the one that fails.
+# No `push: main`: a merge is a squash of a PR head that already passed here.
+on:
+  pull_request:
+    paths:
+      - 'worker/**'
+      - 'core/src/lib/**'
+      - 'core/tests/unit/contract/**'
+      - 'core/tests/unit/lib/tv/*.json'
+      - 'docs/benchmarks/**'
+      - 'docs/arch/**'
+      - 'docs/*.md'
+      - '.github/workflows/ci-worker.yml'
+
+permissions:
+  contents: read
+
+# A new push to a PR cancels the run it replaces.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: 0.9.30
+
+jobs:
+  worker:
+    name: worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: worker/uv.lock
+      # Base + dev, no torch. `ffmpeg` (a bundled binary) is the one extra, so the codec checks run too.
+      - run: uv sync --frozen --extra ffmpeg
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync mypy
+      - run: uv run --no-sync pytest -q -m "not ml"
