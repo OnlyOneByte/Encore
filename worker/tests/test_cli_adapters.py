@@ -596,3 +596,25 @@ def test_torch_demucs_carries_its_silence_allowance(monkeypatch: pytest.MonkeyPa
     calls = _record_run(monkeypatch, separate)
     separate.TorchDemucs(model="htdemucs").separate("/in.wav", "/out")
     assert [c.get("idle_sec") for c in calls] == [300.0]
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc/self"), reason="reads /proc, Linux's")
+def test_a_group_of_only_zombies_is_gone_but_a_running_one_is_not() -> None:
+    """A killed child's group is waited out before its slot is freed, and a zombie never reaped (a container
+    whose PID 1 reaps nothing) must not hold that wait for good."""
+    import subprocess  # noqa: PLC0415
+
+    live = subprocess.Popen(["sleep", "30"], start_new_session=True)  # noqa: S607
+    dead = subprocess.Popen(["true"], start_new_session=True)  # noqa: S607
+    try:
+        deadline = time.monotonic() + 5
+        while Path(f"/proc/{dead.pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z":
+            assert time.monotonic() < deadline, "the child never exited"
+            time.sleep(0.01)
+        assert cli._group_alive(live.pid) is True
+        assert cli._group_alive(dead.pid) is False, "a zombie is not alive"
+    finally:
+        live.kill()
+        live.wait()
+        dead.wait()
+    assert cli._group_alive(live.pid) is False

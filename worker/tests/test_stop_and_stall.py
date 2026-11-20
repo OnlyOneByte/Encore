@@ -41,14 +41,14 @@ def _pids(pidfile: Path) -> list[int]:
     return [int(x) for x in pidfile.read_text().split()] if pidfile.exists() else []
 
 
-def _separate_steps(c: Client, separator: object) -> SeparateStepsImpl:
+def _separate_steps(c: Client, separator: object, root: Path) -> SeparateStepsImpl:
     """The real stems steps around `separator`, reporting through `c` as the composition root wires them."""
     reporter = _ReporterFor(c)
     return SeparateStepsImpl(
         config=CFG,
         audio=AlignStepsImpl(config=CFG, adapters=Adapters(), reporter=reporter),
         reporter=reporter,
-        store=LocalArtifactStore(Roots.under("/nonexistent")),
+        store=LocalArtifactStore(Roots.under(str(root / "media"))),
         separator=separator,  # type: ignore[arg-type]
     )
 
@@ -127,7 +127,7 @@ async def test_a_cancelled_in_process_separation_keeps_its_slot_until_it_returns
 
     async def step(a: f.Assign, job: JobRef, *_: object) -> f.Complete:
         # The REAL step, so the line that counts the separation on the token is what is under test.
-        await _separate_steps(c, Zoo()).separate(replace(job, media_dir=str(tmp_path)), "/dev/null")
+        await _separate_steps(c, Zoo(), tmp_path).separate(replace(job, media_dir=str(tmp_path)), "/dev/null")
         return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="x")
 
     _real_run(c, monkeypatch, step)

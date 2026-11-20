@@ -229,10 +229,15 @@ def run(
     except BaseException:
         _kill_group(proc)
         proc.wait()
+        why.append("raised")
         raise
     finally:
         done.set()
         watchdog.join()
+        if why:
+            # Reaping the child is not the group being gone: its own children die a moment later, and the slot
+            # this count holds must outlast them.
+            _await_group_gone(proc.pid)
         if token is not None:
             token._ended()
     if why:
@@ -253,6 +258,42 @@ def _kill_group(proc: subprocess.Popen[str]) -> None:
     """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
+
+
+#: The longest a killed group's stragglers are waited for. They die in milliseconds; this only bounds a box
+#: where the group cannot be inspected.
+_GROUP_GONE_SEC = 2.0
+
+
+def _await_group_gone(pgid: int) -> None:
+    """Block until no LIVE process of group `pgid` is left, or `_GROUP_GONE_SEC` has passed."""
+    deadline = time.monotonic() + _GROUP_GONE_SEC
+    while time.monotonic() < deadline and _group_alive(pgid):
+        time.sleep(0.02)
+
+
+def _group_alive(pgid: int) -> bool:
+    """Does group `pgid` have a member that is not a zombie? On Linux, read off /proc, because a zombie stays
+    a member until it is reaped, and a container whose PID 1 reaps nothing (the worker image) never does.
+    Elsewhere, any member at all counts."""
+    if not os.path.isdir("/proc/self"):
+        try:
+            os.killpg(pgid, 0)
+        except (ProcessLookupError, PermissionError):
+            return False
+        return True
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat") as stat:
+                # `pid (comm) state ppid pgrp …`; comm may hold spaces, so split after its closing paren.
+                fields = stat.read().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == pgid and fields[0] != "Z":
+            return True
+    return False
 
 
 def parse_pct(line: str) -> int | None:
