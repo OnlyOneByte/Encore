@@ -8,6 +8,10 @@
 	import { room } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
+	import { buzzOnce } from '$lib/on-deck';
+	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
+	import YoureUp from '$lib/components/YoureUp.svelte';
+	import { YOURE_UP } from '$lib/phrasing/turn-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -65,6 +69,17 @@
 	// The row is for the AUDIENCE: hidden on the singer's own phone and when the room has reactions off.
 	let canReact = $state(false);
 
+	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
+	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
+	let youreUp = $state<{ id: string; title: string; color: string } | null>(null);
+	let youreUpTimer: ReturnType<typeof setTimeout> | undefined;
+	// Plain, not $state: only `sync` reads it, to see the current entry CHANGE.
+	let lastCurrentId: string | null = null;
+	function dismissYoureUp() {
+		clearTimeout(youreUpTimer);
+		youreUp = null;
+	}
+
 	onMount(() => {
 		const sync = () => {
 			me = room.me?.id ?? null;
@@ -80,6 +95,23 @@
 			durationSec = media?.durationSec ?? 0;
 			hasSong = !!entry;
 			target = observeShown(target, entry?.id ?? null, performance.now());
+			const mine = youreUpTurn({
+				previousId: lastCurrentId,
+				currentId: room.playback.currentEntryId,
+				positionSec: room.playback.positionSec,
+				entries: room.entries,
+				meId: me
+			});
+			// The song moved on (a skip during the sheet): what it said is no longer true.
+			if (youreUp && youreUp.id !== room.playback.currentEntryId) dismissYoureUp();
+			lastCurrentId = room.playback.currentEntryId;
+			if (mine) {
+				youreUp = { id: mine.id, title: title ?? '', color: singerColor ?? SINGER_COLORS[0] };
+				// The SAME once-per-entry buzz as On deck's heads-up: a phone that buzzed with 30 s left stays still now.
+				buzzOnce(mine.id, navigator.vibrate?.bind(navigator));
+				clearTimeout(youreUpTimer);
+				youreUpTimer = setTimeout(dismissYoureUp, youreUpMs(room.settings.room));
+			}
 			/* PLAYABLE, not merely queued. `some(status === 'queued')` was wrong and it reproduced the exact defect the
 			   strip was built to remove. The app's one compound action queues a turn AND starts stem separation, so
 			   immediately afterwards there is a queued entry with no stems: the server's `play` handler finds no
@@ -101,12 +133,11 @@
 		sync();
 		const unsubscribe = room.subscribe(sync);
 		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
-		const unstale = room.onStaleTransport(() =>
-			toast.error('That song already ended.', { id: 'transport-dropped', duration: 4000 })
-		);
+		const unstale = room.onStaleTransport(() => transportNotice('That song already ended.'));
 		return () => {
 			unsubscribe();
 			unstale();
+			clearTimeout(youreUpTimer);
 		};
 	});
 
@@ -174,7 +205,7 @@
 	   timer rather than stacking a tower of them over the dock. */
 	function transport(command: PlayerCommand): void {
 		if (room.command(command)) return;
-		toast.error("Not connected — the TV didn't hear that.", { id: 'transport-dropped', duration: 4000 });
+		transportNotice("Not connected — the TV didn't hear that.");
 	}
 	// Skip and restart act on ONE song, so they name it; see `target` above for which.
 	function targeted(cmd: 'skip' | 'restart'): void {
@@ -207,6 +238,63 @@
 			document.documentElement.style.removeProperty('--dock-h');
 		};
 	});
+
+	/* THE TOAST STACKS ABOVE "YOU'RE UP", never over it. The double-tap race this sheet exists for is exactly when
+	   both appear at once: the second phone's skip named a song that had gone, so it gets "That song already ended."
+	   in the same moment it becomes that phone's turn. The toaster rides --dock-h plus this, so it clears the sheet
+	   by the same gap the sheet keeps above the dock. */
+	let youreUpH = $state(0);
+	/* THE STACK HOLDS UNTIL BOTH ARE GONE. The sheet leaves at the TV's 2.5 s and the toast lives 4 s, so dropping the
+	   offset with the sheet dropped the toast ~143 px in one frame. Once the two have been up together, the offset
+	   stays until the toast has closed too, so the toast never moves while it is on screen. */
+	let transportToastOpen = $state(false);
+	let stacked = $state(false);
+	let stackH = 0;
+	$effect(() => {
+		if (youreUp && youreUpH) stackH = youreUpH;
+		if (youreUp && transportToastOpen) stacked = true;
+		else if (!youreUp && !transportToastOpen) stacked = false;
+	});
+	$effect(() => {
+		if (!stacked || !stackH) return;
+		document.documentElement.style.setProperty('--youre-up-h', `calc(${stackH}px + var(--space-lg))`);
+		return () => {
+			document.documentElement.style.removeProperty('--youre-up-h');
+		};
+	});
+	/** The one transport notice (a mash updates it in place rather than stacking a tower), tracked so the stack above
+	 *  can hold while it is on screen. */
+	let stopWatchingToast: (() => void) | null = null;
+	function transportNotice(message: string): void {
+		stopWatchingToast?.();
+		transportToastOpen = true;
+		/* "OPEN" LASTS UNTIL THE NODE HAS LEFT THE PAGE, not until sonner says it is closing: `onAutoClose` and
+		   `onDismiss` fire as the exit STARTS, with the toast still at full opacity, and clearing the offset there
+		   dropped it the sheet's height in one frame (review r3, 976-M1). */
+		const closed = () => {
+			stopWatchingToast?.();
+			stopWatchingToast = untilGone('[data-sonner-toast].transport-notice', () => (transportToastOpen = false));
+		};
+		toast.error(message, {
+			id: 'transport-dropped',
+			duration: 4000,
+			class: 'transport-notice',
+			onAutoClose: closed,
+			onDismiss: closed
+		});
+	}
+	/** Call `done` once nothing matches `selector`. Returns a canceller. */
+	function untilGone(selector: string, done: () => void): () => void {
+		const check = () => {
+			if (document.querySelector(selector)) return;
+			observer.disconnect();
+			done();
+		};
+		const observer = new MutationObserver(check);
+		observer.observe(document.body, { childList: true, subtree: true });
+		check();
+		return () => observer.disconnect();
+	}
 </script>
 
 <svelte:head>
@@ -236,13 +324,18 @@
 	(VIEWPORT_OFFSET 24px, MOBILE_VIEWPORT_OFFSET 16px) are the rungs the library's own spacing is drawn at.
 	AN OBJECT, NOT A BARE STRING, and this is measured too: a scalar offset is `assignAll`ed to top, right, bottom
 	AND left, so a bottom inset of `--dock-h + 16px` also became a 132px inset on each side — the toast narrowed
-	to 126px of the 390 viewport and the one sentence wrapped onto four lines. Naming only `bottom` leaves the
-	other three at the library's defaults, which is what the full-width toast was relying on by accident before. -->
+	to 126px of the 390 viewport and the one sentence wrapped onto four lines. So each side is named on its own: on a
+	phone the left and right are the "You're up" sheet's gutter token (--sheet-gutter, sonner's own 16px), so the two
+	stacked notices' edges line up; the top stays at the library's default. -->
 <Toaster
 	position="bottom-center"
-	offset={{ bottom: 'calc(var(--dock-h, 0px) + 24px)' }}
-	mobileOffset={{ bottom: 'calc(var(--dock-h, 0px) + 16px)' }}
-	style="--width: min(92vw, 420px);"
+	offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
+	mobileOffset={{
+		bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
+		left: 'var(--sheet-gutter)',
+		right: 'var(--sheet-gutter)'
+	}}
+	style="--width: min(92vw, var(--sheet-max));"
 />
 
 <div class="app-shell">
@@ -296,6 +389,14 @@
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
+	<!-- THE LIVE REGION IS MOUNTED EMPTY, with the chrome, and only its TEXT changes: a screen reader often stays silent
+		for a region inserted with its text already in it. It holds the words alone, so the announcement is "You're up,
+		<song>" and not "…, OK": the sheet's button sits outside it, and the sheet's own copy of the words is hidden from
+		assistive tech so they are not read twice. -->
+	<p class="vh" role="status" data-youre-up-live>{youreUp ? `${YOURE_UP}, ${youreUp.title}` : ''}</p>
+	{#if youreUp}
+		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={youreUpH} />
+	{/if}
 {/if}
 
 <style>

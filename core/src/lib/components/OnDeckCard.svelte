@@ -49,7 +49,7 @@
 	const facts = $derived(songFacts(profile, keyShift));
 </script>
 
-<section class={['deck', { 'heads-up': headsUp }]} style="--singer:{singerColor}" aria-label="On deck">
+<section class={['deck', 'your-turn', { 'heads-up': headsUp }]} style="--singer:{singerColor}" aria-label="On deck">
 	<p class="eyebrow">
 		<!-- role=status so the switch to "You're next" is spoken; it changes once per turn, not every second. -->
 		<span role="status">{headsUp ? 'You’re next — grab the mic' : 'On deck'}</span>
@@ -108,11 +108,11 @@
 			var(--shadow-sm),
 			inset 0 1px 0 var(--edge-hi);
 	}
-	/* The heads-up is the singer's OWN colour: the one signal on the phone that is unmistakably "you". Mixed into the
-	   card surface rather than filled, so the controls keep their contrast on every singer colour. */
+	/* The heads-up is the singer's OWN colour: the one signal on the phone that is unmistakably "you". The surface is
+	   app.css `.your-turn`, shared with the "You're up" sheet. */
 	.heads-up {
 		border-color: var(--singer);
-		background: color-mix(in srgb, var(--singer) 22%, var(--card-tint));
+		background: var(--your-turn-surface);
 	}
 
 	.eyebrow {
