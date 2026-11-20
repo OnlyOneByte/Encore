@@ -12,8 +12,19 @@ test('only the exact token matches, whatever the lengths', () => {
 	expect(workerTokenMatches(null, 's3 cr&t=/')).toBe(false);
 });
 
+const CORE = resolve(import.meta.dir, '../../../..');
+
+test('the comparison itself is constant-time: timingSafeEqual over SHA-256 digests', () => {
+	// A plain `===` passes every behavioural case above, so the timing property is pinned in the source.
+	const helper = readFileSync(join(CORE, 'src/lib/server/jobs/worker-token.ts'), 'utf8');
+	const body = helper.slice(helper.indexOf('export function workerTokenMatches'));
+	expect(helper).toContain("createHash('sha256')");
+	expect(body).toMatch(/timingSafeEqual\(\s*digest\(presented\),\s*digest\(expected\)\s*\)/);
+	expect(body).not.toMatch(/presented\s*===?\s*expected/);
+});
+
 test('server.ts gates the upgrade through it, not a plain string compare', () => {
-	const server = readFileSync(join(resolve(import.meta.dir, '../../../..'), 'server.ts'), 'utf8');
+	const server = readFileSync(join(CORE, 'server.ts'), 'utf8');
 	expect(server).toContain("!workerTokenMatches(url.searchParams.get('token'), WORKER_TOKEN)");
 	expect(server).not.toMatch(/get\('token'\)\s*!==/);
 });

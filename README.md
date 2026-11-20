@@ -63,8 +63,8 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 
 ### The process worker
 
-To run it natively instead of in Docker. The worker is a [uv](https://docs.astral.sh/uv/) project, so
-install uv first (`brew install uv`, `pipx install uv`, or the installer on that page):
+You can also run the worker natively instead of in Docker. It is a [uv](https://docs.astral.sh/uv/)
+project, so install uv first (`brew install uv`, `pipx install uv`, or the installer on that page):
 
 ```bash
 cd worker
@@ -78,10 +78,11 @@ uv run python -m encore_worker                         # uv run puts .venv/bin o
 ```
 
 Those three variables are the whole configuration (the token only when core sets one, which the
-Security section below says it should). The worker measures the rest and prints what it found, including one line per capability with the evidence for it. A capability whose tool is
-**missing** is reported as loudly as one that is present, because that line is what explains a song
-stuck at 0%. `ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The
-full model is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
+Security section below says it should). The worker measures the rest and prints what it found,
+including one line per capability with the evidence for it. A capability whose tool is **missing** is
+reported as loudly as one that is present, because that line is what explains a song stuck at 0%.
+`ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The full model is
+in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
 
 The worker **dials home** to core, never the reverse, and shells out to `yt-dlp`, `ffmpeg` and
 `demucs` **by name via PATH** — hence the `PATH` prefix above, and why capabilities are probed against
