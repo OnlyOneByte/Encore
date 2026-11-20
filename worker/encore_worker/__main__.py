@@ -265,9 +265,7 @@ async def main() -> None:
             publish_stem_format=client.publish_stem_format,
         )
 
-    durable.register(
-        dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for, bind_job=_bind_token
-    )
+    durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
 
     # The SECOND reclaim mechanism, not redundant with `settled` above: it reaches the two leaks a run-end
     # hook cannot (a crash, and retries exhausting unseen). See docs/arch/05-worker.md §4.
@@ -566,7 +564,7 @@ async def _run(
         params=assign.params or {},
     )
     # Set BEFORE the keepalive task exists, so every task and thread this job starts carries it.
-    token = _tokens[job.job_id] = cli.CancelToken()
+    token = cli.tokens[job.job_id] = cli.CancelToken()
     bound = cli.current_token.set(token)
     # One task per job, cancelled in `finally` below.
     keeper = asyncio.create_task(
@@ -574,6 +572,7 @@ async def _run(
             client,
             job.job_id,
             _STAGE_FOR.get(assign.action, Stage.SEPARATING),
+            every_sec=config.keepalive_sec,
             ceiling_sec=config.job_ceiling_sec,
         )
     )
@@ -587,21 +586,12 @@ async def _run(
         # A cancelled run leaves its token for `_stop`, which runs after this unwinds.
         task = asyncio.current_task()
         if task is None or not task.cancelling():
-            _tokens.pop(job.job_id, None)
+            cli.tokens.pop(job.job_id, None)
 
-
-#: The cancel token of every job this worker is running, for `_stop`.
-_tokens: dict[str, cli.CancelToken] = {}
 
 #: How long a stop waits before it says the job's work is still running. It goes on waiting: a SIGKILLed
 #: child is reaped in milliseconds, so what outlives this is in-process work (the zoo), which holds the box.
 _STOP_WAIT_SEC = 10.0
-
-
-def _bind_token(job: JobRef) -> None:
-    """Make job `job`'s token the current one. Called INSIDE each workflow body (`durable.register`): DBOS
-    runs a fork or a recovered run on its own loop, whose context never saw `_run` set it."""
-    cli.current_token.set(_tokens.get(job.job_id))
 
 
 async def _stop(job_id: str) -> None:
@@ -610,7 +600,7 @@ async def _stop(job_id: str) -> None:
     Returns once the job's work has ended (its `run` children and any in-process call counted by
     `cli.in_job`), which is what keeps the slot counted until then (WK-02).
     """
-    token = _tokens.pop(job_id, None)
+    token = cli.tokens.pop(job_id, None)
     await durable.cancel(job_id)
     if token is None:
         return

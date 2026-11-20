@@ -851,7 +851,7 @@ publish. Fetch is not durable and replays nothing.
 
 **The cancel token is bound inside each workflow body**, not only where the job starts. DBOS runs a fork
 or a recovered run on its own loop, in a context that never saw the transport set the token, so without
-the body binding it (`register(bind_job=…)`) a cancel stopped the DBOS row and left the child running.
+each body binding it first (`steps.cancel.bind_cancel_token`) a cancel stopped the DBOS row and left the child running.
 
 ## 9. Configuration and capability
 

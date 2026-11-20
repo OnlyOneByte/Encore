@@ -12,15 +12,17 @@ suite is milliseconds.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from encore_worker.adapters import ports
+from encore_worker.adapters import cli, ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.domain.document import TIMING_LINE
 from encore_worker.domain.lyrics.policy import Tier
@@ -715,3 +717,90 @@ async def test_a_box_without_dbos_still_runs_the_flow(tmp_path: Path) -> None:
 
     outcome = await durable.align(job_of(tmp_path))
     assert outcome.published is not None
+
+
+# ── a cancel reaches the run DBOS executes (proposal 05; the #975 round-2 review's probe) ────────────
+
+
+class FailingThenHangingSteps:
+    """Stems steps whose first separation fails, so the requeue FORKS, and whose second hangs in a child."""
+
+    def __init__(self, runs: list[str]) -> None:
+        self.runs = runs
+
+    async def acquire_audio(self, job: JobRef) -> AudioRef:
+        return AudioRef(path="/dev/null", duration_sec=1.0)
+
+    async def decode_to_wav(self, job: JobRef, audio: AudioRef) -> str:
+        return "/dev/null"
+
+    async def separate(self, job: JobRef, input_wav: str) -> AudioRef:
+        self.runs.append("separate")
+        if len(self.runs) == 1:
+            raise RuntimeError("the first attempt fails, so the requeue forks")
+        await asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"])
+        raise AssertionError("unreachable: only a kill ends the child")
+
+
+async def _forked_and_hanging(dbos_instance: object, tmp_path: Path, job_id: str) -> tuple[JobRef, list[str]]:
+    """Register the stems flow, and run it once so its ERROR row makes the next start a fork."""
+    from encore_worker.workflows import durable
+
+    runs: list[str] = []
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+        stems_steps_for=lambda _job: FailingThenHangingSteps(runs),  # type: ignore[arg-type,return-value]
+    )
+    job = JobRef(job_id=job_id, media_id="m1", media_dir=str(tmp_path), source_uri="")
+    with pytest.raises(RuntimeError, match="first attempt"):
+        await durable.stems(job)
+    return job, runs
+
+
+async def test_a_forked_run_is_killed_by_its_jobs_token(
+    dbos_instance: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DBOS executes the fork itself, in a context this test never set the token in: only the workflow body's
+    own binding (`steps.cancel.bind_cancel_token`) can let the cancel reach the fork's child."""
+    from dbos import DBOS
+
+    from encore_worker.workflows import durable
+
+    job, runs = await _forked_and_hanging(dbos_instance, tmp_path, "cancel-1")
+    token = cli.CancelToken()
+    monkeypatch.setitem(cli.tokens, job.job_id, token)
+    assert cli.current_token.get() is None
+    asyncio.get_running_loop().call_later(1.0, token.cancel)
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        await asyncio.wait_for(durable.stems(job), 20.0)
+    assert runs == ["separate", "separate"], runs
+    assert time.monotonic() - started < 4.0, "the fork's child outlived the cancel"
+    assert await DBOS.get_workflow_status_async("cancel-1~requeue-1") is not None, "the second run was a fork"
+
+
+async def test_cancelling_a_live_fork_makes_the_next_requeue_fork_again(
+    dbos_instance: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dbos import DBOS
+
+    from encore_worker.workflows import durable
+
+    job, runs = await _forked_and_hanging(dbos_instance, tmp_path, "cancel-2")
+    token = cli.CancelToken()
+    monkeypatch.setitem(cli.tokens, job.job_id, token)
+    task = asyncio.create_task(durable.stems(job))
+    for _ in range(100):
+        await asyncio.sleep(0.05)
+        if len(runs) == 2 and await DBOS.get_workflow_status_async("cancel-2~requeue-1") is not None:
+            break
+    await durable.cancel(job.job_id)
+    token.cancel()
+    with pytest.raises(BaseException):  # noqa: B017 - DBOS's cancellation or the killed child: either ends it
+        await asyncio.wait_for(task, 10.0)
+    status: Any = await DBOS.get_workflow_status_async("cancel-2~requeue-1")
+    assert status is not None and status.status == "CANCELLED", status
+    assert await durable._run_id(job.job_id) == "cancel-2~requeue-2", (
+        "a cancelled run is forked, not replayed"
+    )

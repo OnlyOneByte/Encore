@@ -8,14 +8,21 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from encore_worker import __main__ as wm
+from encore_worker.__main__ import _ReporterFor
 from encore_worker.adapters import cli
+from encore_worker.adapters.separate import Stems
+from encore_worker.artifacts.local import LocalArtifactStore, Roots
+from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import JobRef
+from encore_worker.steps.separate_steps import SeparateStepsImpl
 from encore_worker.transport.client import Client
 from tests.test_client import CFG, LiveSocket, Session, assign, client
 
@@ -34,10 +41,22 @@ def _pids(pidfile: Path) -> list[int]:
     return [int(x) for x in pidfile.read_text().split()] if pidfile.exists() else []
 
 
-def _real_run(c: Client, monkeypatch: pytest.MonkeyPatch, step: object) -> None:
+def _separate_steps(c: Client, separator: object) -> SeparateStepsImpl:
+    """The real stems steps around `separator`, reporting through `c` as the composition root wires them."""
+    reporter = _ReporterFor(c)
+    return SeparateStepsImpl(
+        config=CFG,
+        audio=AlignStepsImpl(config=CFG, adapters=Adapters(), reporter=reporter),
+        reporter=reporter,
+        store=LocalArtifactStore(Roots.under("/nonexistent")),
+        separator=separator,  # type: ignore[arg-type]
+    )
+
+
+def _real_run(c: Client, monkeypatch: pytest.MonkeyPatch, step: object, config: Config = CFG) -> None:
     """Wire the client to the composition root's own `_run` and `_stop`; only `_dispatch` is `step`."""
     monkeypatch.setattr(wm, "_dispatch", step)
-    c.run_job = lambda a: wm._run(a, CFG, None, None, c, None)  # type: ignore[arg-type]
+    c.run_job = lambda a: wm._run(a, config, None, None, c, None)  # type: ignore[arg-type]
     c.stop_job = wm._stop
 
 
@@ -83,26 +102,34 @@ async def test_a_cancel_kills_the_childs_group_and_holds_the_slot_until_it_is_go
     assert freed_with_children == [], "the slot was freed while a child of the cancelled job ran"
     assert [s["jobId"] for s in sock.sent if s.get("type") == "job:reject"] == ["j2"]
     assert "j3" in [s["jobId"] for s in sock.sent if s.get("type") == "job:accept"]
-    assert "j1" not in wm._tokens, "the token went with the job"
+    assert "j1" not in cli.tokens, "the token went with the job"
 
 
 async def test_a_cancelled_in_process_separation_keeps_its_slot_until_it_returns(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The zoo runs in the worker's own process: there is nothing to kill, so the slot must wait for it. A
     freed slot let the requeued job start a second separation on top of the first."""
     finished: list[float] = []
 
-    def zoo_separation() -> None:
-        time.sleep(2.0)
-        finished.append(time.monotonic())
+    class Zoo:
+        """An in-process separator: no `cli.run` child, only the worker's own thread."""
 
-    async def step(a: f.Assign, *_: object) -> f.Complete:
-        await asyncio.to_thread(cli.in_job, zoo_separation)
-        return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="x")
+        name = "audiosep:test"
+
+        def separate(self, input_wav: str, out_dir: str, *, on_progress: object = None) -> Stems:
+            time.sleep(2.0)
+            finished.append(time.monotonic())
+            return Stems(instrumental_path=f"{out_dir}/no_vocals.wav", engine=self.name)
 
     sock = LiveSocket([assign("j1", "stems")])
     c = client(sock)
+
+    async def step(a: f.Assign, job: JobRef, *_: object) -> f.Complete:
+        # The REAL step, so the line that counts the separation on the token is what is under test.
+        await _separate_steps(c, Zoo()).separate(replace(job, media_dir=str(tmp_path)), "/dev/null")
+        return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="x")
+
     _real_run(c, monkeypatch, step)
     async with Session(c, sock):
         await asyncio.sleep(0.3)
@@ -145,3 +172,39 @@ async def test_a_hung_download_fails_the_job_within_a_minute_not_three_hours(
     assert len(failed) == 1 and failed[0]["retryable"] is False, sock.sent
     assert "stalled" in str(failed[0]["error"])
     assert took < 4.0, f"{took:.1f}s"
+
+
+async def test_the_keepalive_lets_the_lease_lapse_at_the_configured_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ceiling as `_run` wires it: past `job_ceiling_sec` (6 h in production; 0.3 s here, with a 0.05 s
+    beat) the keepalive goes quiet while the job runs on, so core's reaper can take what nothing can kill."""
+    release = asyncio.Event()
+
+    async def step(a: f.Assign, *_: object) -> f.Complete:
+        await release.wait()
+        return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="x")
+
+    sock = LiveSocket([assign("j1", "stems")])
+    c = client(sock)
+    _real_run(c, monkeypatch, step, replace(CFG, keepalive_sec=0.05, job_ceiling_sec=0.3))
+
+    def beats() -> int:
+        return sum(1 for s in sock.sent if s.get("type") == "job:progress")
+
+    async with Session(c, sock):
+        await asyncio.sleep(0.6)
+        at_ceiling = beats()
+        await asyncio.sleep(0.4)
+        after = beats()
+        release.set()
+        await c.drain(timeout_sec=5.0)
+        await sock.later.put(None)
+
+    assert 1 <= at_ceiling <= 6, at_ceiling
+    assert after == at_ceiling, "the keepalive went on past its ceiling"
+
+
+def test_the_ceiling_is_a_six_hour_backstop_the_operator_can_move() -> None:
+    assert Config().job_ceiling_sec == 6 * 3600.0
+    assert Config.from_env({"ENCORE_JOB_CEILING_SEC": "900"}).job_ceiling_sec == 900.0

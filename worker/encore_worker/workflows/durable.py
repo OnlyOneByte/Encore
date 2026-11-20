@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from encore_worker.steps.api import AlignSteps, SeparateSteps
+from encore_worker.steps.cancel import bind_cancel_token
 from encore_worker.steps.records import AlignOutcome, JobRef
 from encore_worker.workflows.align import run_align
 from encore_worker.workflows.stems import ABANDONED, StemsOutcome, run_stems
@@ -36,18 +37,16 @@ def register(
     *,
     align_steps_for: AlignStepsFor,
     stems_steps_for: SeparateStepsFor,
-    bind_job: Callable[[JobRef], None] | None = None,
 ) -> None:
     """Register both workflows against a launched DBOS, or record the providers and run direct without one.
 
     Called ONCE from the composition root, before the first job: `DBOS.workflow` mutates a global registry, so
     registering on first use would put that mutation in a job's critical path and surface a name collision as
-    a failed job. `dbos=None` is a supported state; `bind_job` is docs/arch/05-worker.md §8.1.
+    a failed job. `dbos=None` is a supported state; `bind_cancel_token` is docs/arch/05-worker.md §8.1.
     """
     global _align_flow, _stems_flow, _align_steps_for, _stems_steps_for
     _align_steps_for = align_steps_for
     _stems_steps_for = stems_steps_for
-    bind = bind_job or (lambda _job: None)
 
     if dbos is None:
         # Explicitly CLEARED: a stale workflow would send jobs down a path whose DBOS instance is gone.
@@ -61,13 +60,13 @@ def register(
     @DBOS.workflow(name="encore-align")
     async def align_flow(job: JobRef) -> AlignOutcome:
         assert _align_steps_for is not None
-        bind(job)
+        bind_cancel_token(job)
         return await run_align(job, _align_steps_for(job))
 
     @DBOS.workflow(name="encore-stems")
     async def stems_flow(job: JobRef) -> StemsOutcome:
         assert _stems_steps_for is not None
-        bind(job)
+        bind_cancel_token(job)
         return await run_stems(job, _stems_steps_for(job))
 
     _align_flow = align_flow

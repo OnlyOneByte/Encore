@@ -150,6 +150,15 @@ class Stalled(ToolFailed):
 #: under it, however deep, can be stopped.
 current_token: ContextVar[CancelToken | None] = ContextVar("encore_cancel_token", default=None)
 
+#: Every running job's token, by job id: set by the transport's job runner, read back by `bind` and `_stop`.
+tokens: dict[str, CancelToken] = {}
+
+
+def bind(job_id: str) -> None:
+    """Make job `job_id`'s token the current one, on whichever loop and context this runs."""
+    current_token.set(tokens.get(job_id))
+
+
 #: How often the watchdog looks at the deadline and the token. Bounds how late a kill can land.
 _WATCH_SEC = 0.5
 

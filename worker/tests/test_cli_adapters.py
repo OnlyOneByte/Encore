@@ -563,3 +563,36 @@ def test_work_counted_in_job_holds_the_token_busy_until_it_returns() -> None:
     assert token.wait_idle(0.0) is False, "still separating"
     assert token.wait_idle(2.0) is True
     worker.join()
+
+
+def _record_run(monkeypatch: pytest.MonkeyPatch, module: object) -> list[dict[str, object]]:
+    """Replace `module.run` with a recorder of each call's keyword arguments."""
+    calls: list[dict[str, object]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> str:
+        calls.append(kwargs)
+        return ""
+
+    monkeypatch.setattr(module, "run", fake_run)
+    return calls
+
+
+def test_every_yt_dlp_call_carries_the_silence_allowance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A minute: yt-dlp prints progress many times a second, so 60 s without a line is a hang."""
+    assert cli.YTDLP_IDLE_SEC == 60.0
+    calls = _record_run(monkeypatch, cli)
+    (tmp_path / "original.webm").write_bytes(b"x")
+    cli.YtDlpAudio("yt-dlp").fetch("u", str(tmp_path))
+    cli.YtDlpCaptions("yt-dlp").fetch("u", str(tmp_path), automatic=True)
+    assert [c.get("idle_sec") for c in calls] == [60.0, 60.0]
+
+
+def test_torch_demucs_carries_its_silence_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Five minutes: demucs redraws its bar every chunk, but loading the model prints nothing."""
+    from encore_worker.adapters import separate  # noqa: PLC0415
+
+    calls = _record_run(monkeypatch, separate)
+    separate.TorchDemucs(model="htdemucs").separate("/in.wav", "/out")
+    assert [c.get("idle_sec") for c in calls] == [300.0]

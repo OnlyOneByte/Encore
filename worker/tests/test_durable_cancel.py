@@ -17,7 +17,6 @@ from typing import Any
 
 import pytest
 
-from encore_worker import __main__ as wm
 from encore_worker.adapters import cli
 from encore_worker.steps.records import AlignOutcome, AudioRef, JobRef, PublishedStems
 from encore_worker.workflows import durable
@@ -67,9 +66,13 @@ class FakeDbos:
 
         def body() -> None:
             try:
-                done.set_result(asyncio.run(flow(job)))
+                result = asyncio.run(flow(job))
             except BaseException as failed:  # noqa: BLE001 - handed back to the awaiting handle
-                done.set_exception(failed)
+                if not done.cancelled():
+                    done.set_exception(failed)
+            else:
+                if not done.cancelled():  # the awaiting test gave up: nobody is left to hand it to
+                    done.set_result(result)
 
         threading.Thread(target=body, daemon=True).start()
         return SimpleNamespace(get_result=lambda: asyncio.wrap_future(done))
@@ -141,9 +144,11 @@ async def test_a_finished_align_is_replayed_not_forked(fake: FakeDbos) -> None:
 
 
 class HangingSteps:
-    """Stems steps whose separation is a child that never ends on its own."""
+    """Steps whose work is a child that never ends on its own: align's first step, and stems' separation."""
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
+        if job.job_id.endswith("align"):
+            await asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"])
         return AudioRef(path="/dev/null", duration_sec=1.0)
 
     async def decode_to_wav(self, job: JobRef, audio: AudioRef) -> str:
@@ -154,25 +159,25 @@ class HangingSteps:
         raise AssertionError("unreachable: the child only ends by being killed")
 
 
+@pytest.mark.parametrize("flow", ["stems", "align"])
 async def test_a_run_dbos_executes_on_its_own_loop_still_carries_the_jobs_token(
-    fake: FakeDbos, monkeypatch: pytest.MonkeyPatch
+    fake: FakeDbos, monkeypatch: pytest.MonkeyPatch, flow: str
 ) -> None:
     """The review's #975 must-fix 3. A fork or a recovered run executes on DBOS's loop, whose context never
-    saw `_run` set the token, so a cancel stopped the DBOS row and left the child running. The workflow body
-    binds the job's token itself (`__main__._bind_token`)."""
+    saw `_run` set the token, so a cancel stopped the DBOS row and left the child running. Each workflow body
+    binds the job's token itself (`steps.cancel.bind_cancel_token`), with no registration wiring to forget."""
     for name in ("_align_flow", "_stems_flow", "_align_steps_for", "_stems_steps_for"):
         monkeypatch.setattr(durable, name, getattr(durable, name))
     durable.register(
         fake,
-        align_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+        align_steps_for=lambda _job: HangingSteps(),  # type: ignore[arg-type,return-value]
         stems_steps_for=lambda _job: HangingSteps(),  # type: ignore[arg-type,return-value]
-        bind_job=wm._bind_token,
     )
-    job = JobRef(job_id="j-fork", media_id="m1", media_dir="/tmp", source_uri="")
+    job = JobRef(job_id=f"j-fork-{flow}", media_id="m1", media_dir="/tmp", source_uri="")
     token = cli.CancelToken()
-    monkeypatch.setitem(wm._tokens, job.job_id, token)
+    monkeypatch.setitem(cli.tokens, job.job_id, token)
     asyncio.get_running_loop().call_later(0.5, token.cancel)
     started = time.monotonic()
     with pytest.raises(cli.ToolFailed, match="cancelled"):
-        await asyncio.wait_for(durable.stems(job), 10.0)
+        await asyncio.wait_for(durable.stems(job) if flow == "stems" else durable.align(job), 10.0)
     assert time.monotonic() - started < 3.0, "the child was killed by the token, not left to run"
