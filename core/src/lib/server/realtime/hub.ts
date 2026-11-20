@@ -15,6 +15,7 @@ import { singHistoryFrom } from '../../contract';
 import type { AuthoritativeState } from '../state/store';
 import { can, type Capability } from '../capabilities';
 import { queueEntries } from '../db/schema';
+import { entryPrefsRefusal, onDeckOpRefusal, type OnDeckOp } from './on-deck-ops';
 
 // queue_entries.status is the single source of truth for the entry-status VALUE LIST; its enumValues are read below ONLY to CLASSIFY
 // a rejected status for the operator log, never to gate the add arm — that allowed set is the single literal 'queued'. The column is
@@ -66,9 +67,9 @@ export interface HubDeps {
 /**
  * Ops that name an EXISTING entry and may be issued by a client — derived from `QueueOp` rather than listed,
  * so a new `{ id }`-bearing op joins this type automatically. `status` is excluded because it is server-owned
- * and refused outright.
+ * and refused outright; the on-deck ops because they are owner-only, with no `-any` capability (on-deck-ops.ts).
  */
-type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status'>;
+type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status' | OnDeckOp['op']>;
 
 /**
  * The capability each entry op asks for, and what it says when refused.
@@ -141,12 +142,15 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 				const known = VALID_ENTRY_STATUSES.includes(op.entry.status);
 				return `invalid status: ${String(op.entry.status)} (${known ? 'server-owned' : 'off-enum'}; a client may only add a queued entry)`;
 			}
-			return null;
+			return entryPrefsRefusal(op.entry);
 		}
 		case 'remove':
 		case 'move':
 		case 'move-to-index':
 			return entryOpRefusal(op, deps);
+		case 'set-entry-prefs':
+		case 'not-yet':
+			return onDeckOpRefusal(op, deps);
 		case 'status':
 			// SERVER-OWNED: only player.ts calls applyQueueOp directly for a status change. From a client it
 			// could forge a second 'playing' entry, or retire a song whose process keeps running.

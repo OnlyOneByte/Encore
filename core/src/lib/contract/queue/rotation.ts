@@ -47,7 +47,13 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
 			? reorderWithinSinger(entries, op.id, op.toSeq)
 			: op.op === 'move-to-index'
 				? moveToIndex(entries, op.id, op.toIdx)
-				: applyOp(entries, op);
+				: op.op === 'not-yet'
+					? moveToIndex(
+							entries.map((e) => (e.id === op.id ? { ...e, deferred: true } : e)),
+							op.id,
+							op.toIdx
+						)
+					: applyOp(entries, op);
 	return assignSeqs(
 		applied.filter((e) => !isTerminal(e)),
 		ordering
