@@ -50,7 +50,7 @@ test('ended telemetry marks current done and advances to next by seq', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	expect(state.playback.currentEntryId).toBe('q1');
 
-	handleTelemetry({ positionSec: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 	// q1 is marked done -> pruned from the queue; terminal entries do not linger
 	expect(state.entries.find((e) => e.id === 'q1')).toBeUndefined();
@@ -61,7 +61,7 @@ test('ended on the last entry goes to no-current (attract)', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ positionSec: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBeNull();
 	expect(state.playback.isPlaying).toBe(false);
 });
@@ -96,7 +96,7 @@ test('held-slot: ended skips a not-ready file entry, plays the ready one', () =>
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	state.applyQueueOp({ op: 'add', entry: entry('q3', 'm3') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1
-	handleTelemetry({ positionSec: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	// q2 not ready -> held -> advance picks q3
 	expect(state.playback.currentEntryId).toBe('q3');
 });
@@ -175,13 +175,16 @@ test('a genuine ended whose id matches the current entry advances as before', ()
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
-test('an ended with no entry id keeps legacy behaviour (backward compatible with an older TV)', () => {
+test('an ended with no entry id is ignored: it cannot skip the singer without naming them', () => {
+	// An id-less `ended` was a free skip for any frame that reached handleTelemetry (BE-07). The TV stamps every
+	// frame (src/lib/tv/telemetry.ts), so only a frame that names nobody loses its effect.
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 100, ended: true }, deps);
-	expect(state.playback.currentEntryId).toBe('q2');
+	expect(state.playback.currentEntryId).toBe('q1');
+	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
 });
 
 test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead', () => {

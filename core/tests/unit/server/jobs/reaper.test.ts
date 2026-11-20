@@ -414,3 +414,26 @@ test('no phantom assignment lands on the still-busy worker after a reaper FAIL',
 	// the worker's own capacity gate rejects it, requeue re-dispatches, and the storm begins.
 	expect(plan).toEqual([]);
 });
+
+test('a tick that throws (SQLITE_FULL) is logged and the next tick still runs: the interval cannot kill the server', async () => {
+	let calls = 0;
+	const jobs = {
+		listByStatus: () => {
+			if (calls++ === 0) throw new Error('SQLITE_FULL: database or disk is full');
+			return [];
+		}
+	} as unknown as JobRepository;
+	let ticked = 0;
+	const reaper = new JobReaper(jobs, { tickMs: 5, onTick: () => ticked++ });
+	const logged: unknown[] = [];
+	const err = spyOn(console, 'error').mockImplementation((...args: unknown[]) => void logged.push(args));
+	try {
+		reaper.start();
+		await new Promise((r) => setTimeout(r, 60));
+	} finally {
+		reaper.stop();
+		err.mockRestore();
+	}
+	expect(logged).toHaveLength(1);
+	expect(ticked).toBeGreaterThan(0);
+});

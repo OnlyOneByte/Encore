@@ -1,6 +1,7 @@
 // The server drops a frame whose `entryId` is no longer the current entry, which is what stops a stale `ended`
 // double-advancing and an outgoing song's late position frame overwriting the incoming singer's playhead. That guard is
-// CONDITIONAL on the id being present, so it bites only while the TV stamps every frame.
+// CONDITIONAL on the id being present, so it bites only while the TV stamps every frame. An id-less `ended` is
+// ignored outright: it would skip whoever is current.
 
 /** The minimal slice of the currently-playing entry this frame needs: just its id. */
 export interface StampableEntry {
@@ -12,7 +13,7 @@ export interface TelemetryFrame {
 	type: 'tv:telemetry';
 	positionSec: number;
 	status: string;
-	/** `undefined` when nothing is playing; an id-less frame keeps the legacy behaviour for an older cached TV. */
+	/** `undefined` when nothing is playing. The server ignores an id-less `ended`; an id-less position still applies. */
 	entryId?: string;
 }
 

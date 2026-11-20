@@ -125,6 +125,32 @@ test('debounced flush coalesces a burst into persisted state', async () => {
 	expect(entries).toHaveLength(5);
 });
 
+test('a throwing flush is logged and retried, not thrown out of the timer (BE-05)', async () => {
+	// SQLITE_FULL / SQLITE_BUSY out of the bare setTimeout was an uncaught exception: it killed the party server.
+	const persisted: boolean[] = [];
+	let failuresLeft = 1;
+	const s = new AuthoritativeState(
+		{
+			persist: (snap) => {
+				if (failuresLeft-- > 0) throw new Error('SQLITE_FULL: database or disk is full');
+				persisted.push(snap.playback.isPlaying);
+			}
+		},
+		5
+	);
+	const logged: unknown[] = [];
+	const realError = console.error;
+	console.error = (...args: unknown[]) => logged.push(args);
+	try {
+		s.setPlayback({ isPlaying: true });
+		await new Promise((r) => setTimeout(r, 100)); // first attempt throws, the backed-off retry lands
+	} finally {
+		console.error = realError;
+	}
+	expect(logged).toHaveLength(1);
+	expect(persisted).toEqual([true]);
+});
+
 test('setPosition does NOT bump rev (Finding #1 — no resync storm from ontimeupdate)', () => {
 	const s = new AuthoritativeState();
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) }); // rev -> 1

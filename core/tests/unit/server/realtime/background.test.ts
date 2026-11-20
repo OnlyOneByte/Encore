@@ -120,7 +120,7 @@ test('reset path 2 — a song ending on the TV clears the override', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handlePlayerCommand({ cmd: 'background', style: 'solid' }, deps);
 
-	handleTelemetry({ positionSec: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 	expect(state.playback.background).toBeNull();
 });

@@ -18,6 +18,7 @@ import {
 	nowPlayingEvent
 } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
+import { releaseWorkerSocket } from './src/lib/server/jobs/worker-sockets';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
@@ -237,6 +238,10 @@ const server = Bun.serve<SocketData>({
 					handlePlayerCommand(evt.command, deps);
 					break;
 				case 'tv:telemetry':
+					// Not from phone-app sockets, where `ended` was a free skip and position a free seek. shortcut: `role` is
+					// self-declared at upgrade, so a client opening /ws?role=tv still passes; binding the TV role to
+					// something a client can't claim (join code, pairing token) is a separate design change.
+					if (ws.data.role !== 'tv') break;
 					handleTelemetry({ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId }, deps);
 					break;
 			}
@@ -244,9 +249,10 @@ const server = Bun.serve<SocketData>({
 		close(ws) {
 			// In-flight jobs keep their lease and are reclaimed by the reaper at expiry, as for any worker
 			// that silently died.
+			// Only the CURRENT socket deregisters: a reconnect's hello can land before the old socket's close, and
+			// that stale close must not forget the live worker (its heartbeats cannot bring it back).
 			if (ws.data.role === 'worker' && ws.data.workerId) {
-				app.workers.remove(ws.data.workerId);
-				workerSockets.delete(ws.data.workerId);
+				releaseWorkerSocket(workerSockets, app.workers, ws.data.workerId, ws);
 				return;
 			}
 			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
