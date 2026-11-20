@@ -14,7 +14,8 @@ bun run ui:review -- -g phone-leave-dialog # one row
 ```
 
 Each row of `tests/playwright/specs/shot/motion.spec.ts` writes `tests/playwright/.artifacts/motion/<row>/`
-(or `$MOTION_OUT/<row>/`):
+(or `$MOTION_OUT/<row>/`). Playwright empties `.artifacts/` at the start of every run, so copy what you need
+before running anything else, or set `MOTION_OUT`:
 
 | File                          | For          | What it is                                                                                                           |
 | ----------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
@@ -51,8 +52,9 @@ Answer each from `filmstrip.png` and `metrics.json`. A PR says which passed, as 
 ## Putting the GIF in the PR
 
 `gh` cannot attach images to a PR. The media goes on the `ui-review-media` branch instead, which shares no
-history with `main`, and a PR comment links it. Images under `github.com/<repo>/blob/<branch>/<path>?raw=true`
-render for anyone who can read the repo, on the phone app too, so nothing extra is needed for a private repo.
+history with `main`, and a PR comment links it. GitHub renders a `github.com/<repo>/blob/<branch>/<path>?raw=true`
+link as an inline image. For a private repo, the link works only for someone signed in who can read the repo,
+and anyone else gets a 404. No service or secret is involved.
 
 ```sh
 PR=964
@@ -66,7 +68,7 @@ git worktree remove "$M"
 ```
 
 Then in the comment: `![<row>](https://github.com/OnlyOneByte/Encore/blob/ui-review-media/pr-964/<row>/clip.gif?raw=true)`.
-Each PR adds about 1 MB to that branch. A plain `git clone` fetches it; `--single-branch` does not.
+Each PR adds a few MB to that branch (#973's four rows plus a before run came to 5 MB). A plain `git clone` fetches it; `--single-branch` does not.
 
 ## Limits
 
