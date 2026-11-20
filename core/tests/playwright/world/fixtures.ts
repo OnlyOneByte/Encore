@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCore, type Core } from './core';
-import { seedDemoLibrary } from './seed';
+import { DEMO_LIBRARY, seedDemoLibrary, type DemoTrack as SeedTrack } from './seed';
 import { SEL } from './selectors';
 
 export interface JoinOptions {
@@ -53,7 +53,7 @@ export interface World {
 	awaitDemoTrack(match?: string): Promise<DemoTrack>;
 }
 
-export const test = base.extend<{ world: World; coreEnv: Record<string, string> }>({
+export const test = base.extend<{ world: World; coreEnv: Record<string, string>; demoLibrary: SeedTrack[] }>({
 	/**
 	 * Extra environment for this file's core, e.g.
 	 * `test.use({ coreEnv: { ENCORE_PUBLIC_ORIGIN: 'http://192.168.1.20:3000' } })`.
@@ -62,6 +62,10 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string> 
 	 * a spec whose CONFIGURATION is the experiment has to declare it at file or describe scope.
 	 */
 	coreEnv: [{}, { option: true }],
+	/** The library this file's core boots with. A spec that needs a song longer than the 8 s fixture adds one, in
+	 *  the tuple form, because Playwright reads a bare array of objects as `[value, options]`:
+	 *  `test.use({ demoLibrary: [[...DEMO_LIBRARY, { file: 'long.wav', seconds: 40, hz: [220] }], { scope: 'test' }] })`. */
+	demoLibrary: [DEMO_LIBRARY, { option: true }],
 
 	// Playwright's own `page`/`request` fixtures resolve relative URLs against this, so overriding it here is
 	// what lets a spec write `page.goto('/tv')` with no base in sight.
@@ -69,10 +73,10 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string> 
 		await use(world.baseURL);
 	},
 
-	world: async ({ browser, coreEnv }, use, testInfo) => {
+	world: async ({ browser, coreEnv, demoLibrary }, use, testInfo) => {
 		const mediaDir = mkdtempSync(join(tmpdir(), 'enc-media-'));
 		// BEFORE core boots: indexing the library is a boot pass, so a file written afterwards is not in it.
-		seedDemoLibrary(mediaDir);
+		seedDemoLibrary(mediaDir, demoLibrary);
 		const core = await startCore({ mediaDir, env: coreEnv });
 
 		const opened: Page[] = [];

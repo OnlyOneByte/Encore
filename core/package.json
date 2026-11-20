@@ -25,7 +25,9 @@
 		"pw:flow": "playwright test --project=flow",
 		"pw:probe": "playwright test --project=probe",
 		"pw:shot": "playwright test --project=shot",
-		"ui:review": "playwright test --project=shot motion.spec.ts"
+		"ui:review": "playwright test --project=shot motion.spec.ts",
+		"ui:review:publish-media": "bun tests/playwright/ui-review-media.ts publish",
+		"ui:review:prune-media": "bun tests/playwright/ui-review-media.ts prune"
 	},
 	"dependencies": {
 		"@lucide/svelte": "^1.43.0",

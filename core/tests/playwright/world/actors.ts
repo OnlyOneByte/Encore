@@ -144,9 +144,26 @@ export async function readySong(world: Pick<World, 'awaitDemoTrack'>, phone: Pag
 	return track.title;
 }
 
-/** From the joined home screen, put a READY song on this phone's turn. */
+/**
+ * From the joined home screen, take a turn on a READY song through the real row action, then wait for the phone's
+ * own acknowledgement rather than returning on the click.
+ *
+ * EITHER signal counts, because which one arrives depends on whether the room was idle: `inQueue` is
+ * `queued.some(...)` and a turn that starts PLAYING immediately leaves `queued`, so the row's button
+ * re-enables and the strip names the song instead.
+ */
 export async function queueReady(phone: Page, query: string): Promise<void> {
 	await openBrowseFromHome(phone);
 	await phone.locator(SEL.search).fill(query);
 	await phone.locator(SEL.addTurn).first().click();
+	await expect
+		.poll(
+			async () => {
+				if (await phone.locator(SEL.addTurn).first().isDisabled()) return true;
+				const strip = (await phone.locator(SEL.npStripTitle).first().textContent()) ?? '';
+				return strip.toLowerCase().includes(query);
+			},
+			{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the strip never named it` }
+		)
+		.toBe(true);
 }

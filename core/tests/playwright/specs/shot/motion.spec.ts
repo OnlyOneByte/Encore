@@ -12,6 +12,7 @@ import { openQueue, queueReady, readySong } from '../../world/actors';
 import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
+import { DEMO_LIBRARY } from '../../world/seed';
 import { join } from 'node:path';
 
 /** `cleanup` runs after the capture, pass or fail: a row that starts a fake worker stops it there. */
@@ -20,6 +21,11 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
 const CUTS = new Set(['tv-song-intro']);
+
+/** A track longer than the 30 s heads-up window, so the on-deck row can cross it. The fixture's own are 8 s. */
+const LONG_TRACK = { file: 'long-take.wav', seconds: 36, hz: [196, 246.94, 293.66] };
+/** Rows that boot their core with more than the demo library. */
+const LIBRARY: Record<string, typeof DEMO_LIBRARY> = { 'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK] };
 
 let joins = 0;
 
@@ -38,7 +44,7 @@ const SCENARIOS: Record<string, Make> = {
 	/** The attract phrase swap: `{#key attractPhrase}` remounts the line and `phrase-fade` plays, every 8 s. */
 	'tv-attract-phrase': (browser, world) => ({
 		name: 'tv-attract-phrase',
-		what: 'TV attract screen: the headline phrase rotating (phrase-fade, 0.6s ease-out, every 8s)',
+		what: 'TV attract screen: the headline phrase rotating every 8 s: a cut, then phrase-fade (600 ms ease-out, a declared exception to the tokens)',
 		stepMs: 33,
 		scale: 0.5,
 		columns: 5,
@@ -116,49 +122,54 @@ const SCENARIOS: Record<string, Make> = {
 		observe: (page) => page.evaluate(() => ({ dialogOpen: !!document.querySelector('[role="alertdialog"]') }))
 	}),
 
-	/** On deck turning into the heads-up: the card fades to the singer's colour (--motion-slow). The fixture tracks
-	 *  are 8 s, so the live card is ALWAYS inside the 30 s window and never crosses into it on its own. The row
-	 *  therefore takes the shipped `heads-up` class off the real card, lets it settle, and puts it back: the shipped
-	 *  CSS doing the shipped transition, on the real page. No TV is in the room, so the song never advances. */
+	/** On deck crossing into the heads-up, for real: Theo sings a 36 s track on a real TV, so Maya's card starts as
+	 *  "On deck" with its time-left and, 30 s from the end, becomes "You’re next": the class, the eyebrow text and
+	 *  the time-left all change in one update, and the card fades to her colour (--motion-slow). Each run restarts
+	 *  Theo's song so it opens before the crossing. Needs the long track in this file's library (`LIBRARY`). */
 	'phone-on-deck-heads-up': (browser, world, cleanup) => {
+		let theo: Page | undefined;
 		let maya: Page | undefined;
 		return {
 			name: 'phone-on-deck-heads-up',
-			what: 'Phone 390x844: the on-deck card turning into "You’re next" (background + border to the singer colour, --motion-slow)',
+			what: 'Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — "On deck" + time-left → "You’re next", fading to the singer colour (--motion-slow)',
 			stepMs: 33,
 			scale: 1,
 			columns: 5,
 			open: async (opts) => {
-				if (!maya) {
-					const worker = await startFakeWorker(world);
+				if (!theo || !maya) {
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
 					cleanup(() => worker.stop());
-					const theo = await world.openPhone('Theo');
+					theo = await world.openPhone('Theo');
 					maya = await world.openPhone('Maya', { stop: 'End' });
-					await readySong(world, theo, 'believin');
+					await readySong(world, theo, 'long-take');
 					await readySong(world, theo, 'caroline');
-					await queueReady(theo, 'believin');
-					await expect(theo.locator(SEL.npStripTitle)).toBeAttached();
+					await queueReady(theo, 'long-take');
 					await queueReady(maya, 'caroline');
+					await world.openTv();
 				}
+				// Back before the crossing: from the top, 36 s remain.
+				await theo.getByRole(SEL.restart.role, { name: SEL.restart.name }).first().click();
 				const page = await asSinger(browser, world, opts, maya);
 				await page.goto('/');
 				await openQueue(page);
-				const deck = page.locator('section.deck.heads-up');
-				await deck.waitFor();
+				await page.locator('section.deck:not(.heads-up) .left').waitFor();
 				await page.evaluate(() => document.fonts.ready.then(() => true));
-				await deck.evaluate((el) => el.classList.remove('heads-up'));
-				// Past the way back (400 ms), so the caught transition is the one INTO the heads-up.
-				await page.waitForTimeout(600);
 				return page;
 			},
-			trigger: (page) => page.locator('section.deck').evaluate((el) => el.classList.add('heads-up')),
+			// The song's own clock is the trigger, as on a night.
+			trigger: (page) => page.locator('section.deck.heads-up').waitFor({ timeout: 20_000 }),
 			only: 'section.deck',
 			// The card and a little of what is around it: the whole 390x844 page in 15 frames is past 2000 px tall.
 			stripClip: async (page) => {
 				const box = await page.locator('section.deck').boundingBox();
 				return box ? { x: 0, y: Math.max(0, box.y - 12), width: 390, height: box.height + 24 } : undefined;
 			},
-			observe: (page) => page.evaluate(() => ({ headsUp: !!document.querySelector('section.deck.heads-up') }))
+			observe: (page) =>
+				page.evaluate(() => ({
+					headsUp: !!document.querySelector('section.deck.heads-up'),
+					eyebrow: document.querySelector('section.deck .eyebrow')?.textContent?.trim() ?? null,
+					timeLeftShown: !!document.querySelector('section.deck .left')
+				}))
 		};
 	},
 
@@ -169,7 +180,7 @@ const SCENARIOS: Record<string, Make> = {
 		let phone: Page | undefined;
 		return {
 			name: 'tv-song-intro',
-			what: 'TV 1920x1080: the "Now singing" card arriving for the first song (proposal 04 changes this moment)',
+			what: 'TV 1920x1080: the "Now singing" card arriving for the first song: a CUT for the card itself (proposal 04 changes this). Behind it, the stage background and the player slot fade in over 250 ms; they are listed under live.others',
 			stepMs: 33,
 			scale: 0.5,
 			columns: 5,
@@ -208,25 +219,31 @@ const SCENARIOS: Record<string, Make> = {
 };
 
 for (const [name, make] of Object.entries(SCENARIOS)) {
-	test(`motion ${name}`, async ({ browser, world }, testInfo) => {
-		test.setTimeout(180_000);
-		const cleanups: (() => Promise<unknown>)[] = [];
-		const t = Date.now();
-		try {
-			const result = await captureMotion(
-				browser,
-				make(browser, world, (fn) => cleanups.push(fn)),
-				// A stable path to point a reviewer at, not the per-test dir Playwright wipes on the next run.
-				process.env.MOTION_OUT ?? join(testInfo.project.outputDir, 'motion')
-			);
-			const declared = (result.metrics.declared as unknown[]).length;
-			testInfo.annotations.push({ type: 'motion', description: `${result.dir} in ${Date.now() - t} ms` });
-			for (const [file, { path }] of Object.entries(result.files)) await testInfo.attach(file, { path });
-			// The one thing this spec asserts: the capture saw what this row says is there.
-			if (CUTS.has(name)) expect(declared, `${name}: motion appeared; take it out of CUTS`).toBe(0);
-			else expect(declared, `${name}: no animation was caught after the trigger`).toBeGreaterThan(0);
-		} finally {
-			for (const fn of cleanups) await fn();
-		}
+	// An anonymous describe per row, so a row's `test.use` reaches its own test and no other.
+	test.describe(() => {
+		// The tuple form: Playwright reads any array whose second item is an object as `[value, options]`.
+		if (LIBRARY[name]) test.use({ demoLibrary: [LIBRARY[name], { scope: 'test' }] });
+		test(`motion ${name}`, async ({ browser, world }, testInfo) => {
+			test.setTimeout(180_000);
+			const cleanups: (() => Promise<unknown>)[] = [];
+			const t = Date.now();
+			try {
+				const result = await captureMotion(
+					browser,
+					make(browser, world, (fn) => cleanups.push(fn)),
+					// One fixed folder per row rather than Playwright's per-test dirs. Still under outputDir, so the next
+					// Playwright run empties it: copy it out or set MOTION_OUT.
+					process.env.MOTION_OUT ?? join(testInfo.project.outputDir, 'motion')
+				);
+				const declared = (result.metrics.declared as unknown[]).length;
+				testInfo.annotations.push({ type: 'motion', description: `${result.dir} in ${Date.now() - t} ms` });
+				for (const [file, { path }] of Object.entries(result.files)) await testInfo.attach(file, { path });
+				// The one thing this spec asserts: the capture saw what this row says is there.
+				if (CUTS.has(name)) expect(declared, `${name}: motion appeared; take it out of CUTS`).toBe(0);
+				else expect(declared, `${name}: no animation was caught after the trigger`).toBeGreaterThan(0);
+			} finally {
+				for (const fn of cleanups) await fn();
+			}
+		});
 	});
 }

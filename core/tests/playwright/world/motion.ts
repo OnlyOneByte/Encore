@@ -469,8 +469,8 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 	const withPage = async <T>(opts: BrowserContextOptions, fn: (p: Page) => Promise<T>) => {
 		const page = await s.open({ deviceScaleFactor: scale, ...opts });
 		await page.addInitScript(instrument);
-		// The init script only runs on the NEXT document; reload so the open state carries the instrument.
-		// Scenarios whose state survives a reload (most routes) need nothing more; others call instrument() in open.
+		// `addInitScript` reaches only documents loaded AFTER it, and `open` has already loaded this one, so the
+		// instrument is also installed into the current document in place. No reload: the open state stays as is.
 		await page.evaluate(instrument);
 		try {
 			return await fn(page);
