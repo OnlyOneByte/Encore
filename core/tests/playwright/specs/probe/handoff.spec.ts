@@ -208,6 +208,49 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 	}
 });
 
+test('a guide draft the room never agreed with is not shown on the next singer’s card', async ({ world }) => {
+	// The song-change reset is the only thing that clears a guide draft the server dropped: Ana drags on the song
+	// her phone still shows after Maya's skip, the server drops it as stale, so no echo ever agrees with her draft.
+	const worker = await startFakeWorker(world, { guideMix: true });
+	try {
+		const { maya, theo, ana } = await keyGuideRoom(world, true);
+		await theo.getByRole('link', { name: 'Queue' }).click();
+		const slider = ana.locator('.now [role="slider"]').first();
+		await expect(slider).toBeVisible();
+		const box = (await slider.boundingBox())!;
+		const track = (await ana.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const y = box.y + box.height / 2;
+		await hold!(true);
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await ana.mouse.move(box.x + box.width / 2, y);
+		await ana.mouse.down();
+		await ana.mouse.move(track.x + track.width * 0.7, y, { steps: 4 });
+		await ana.mouse.up();
+		await ana.waitForTimeout(300);
+		await hold!(false);
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const readouts = async () => [
+			await slider.getAttribute('aria-valuenow'),
+			await theoSlider.getAttribute('aria-valuenow')
+		];
+		await expect
+			.poll(
+				async () => {
+					const [a, t] = await readouts();
+					return a !== null && a === t;
+				},
+				{ message: 'Ana’s dropped draft from Maya’s song stayed on Theo’s card' }
+			)
+			.toBe(true);
+		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('a key draft from the last song is not shown, or stepped from, on the next singer’s card', async ({ world }) => {
 	// Review r2, 974-M1 (its R2). Ana's +1 on Maya's song is dropped as stale, so the room never agrees with her draft
 	// and nothing cleared it: Theo's card read "+1" on Ana's phone, and her next "+" sent +2 over Theo's preset.
