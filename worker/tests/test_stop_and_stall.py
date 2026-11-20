@@ -24,6 +24,7 @@ from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import JobRef
 from encore_worker.steps.separate_steps import SeparateStepsImpl
 from encore_worker.transport.client import Client
+from encore_worker.workflows import durable
 from tests.test_client import CFG, LiveSocket, Session, assign, client
 
 
@@ -208,3 +209,24 @@ async def test_the_keepalive_lets_the_lease_lapse_at_the_configured_ceiling(
 def test_the_ceiling_is_a_six_hour_backstop_the_operator_can_move() -> None:
     assert Config().job_ceiling_sec == 6 * 3600.0
     assert Config.from_env({"ENCORE_JOB_CEILING_SEC": "900"}).job_ceiling_sec == 900.0
+
+
+async def test_a_stop_kills_the_children_even_when_the_workflow_cannot_be_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DBOS that refuses the cancel (gone, or unreachable) must not leave the job's children running: found
+    when a test that left real DBOS registered made `_stop` raise before it reached the token."""
+
+    async def refuse(job_id: str) -> None:
+        raise RuntimeError("DBOS is not launched")
+
+    monkeypatch.setattr(durable, "cancel", refuse)
+    token = cli.CancelToken()
+    monkeypatch.setitem(cli.tokens, "j1", token)
+    child = asyncio.create_task(asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"], cancel=token))
+    await asyncio.sleep(0.3)
+    started = time.monotonic()
+    await asyncio.wait_for(wm._stop("j1"), 5.0)
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        await asyncio.wait_for(child, 5.0)
+    assert time.monotonic() - started < 3.0

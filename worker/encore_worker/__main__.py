@@ -601,7 +601,12 @@ async def _stop(job_id: str) -> None:
     `cli.in_job`), which is what keeps the slot counted until then (WK-02).
     """
     token = cli.tokens.pop(job_id, None)
-    await durable.cancel(job_id)
+    try:
+        await durable.cancel(job_id)
+    except Exception as exc:  # noqa: BLE001 - the children must still be killed
+        print(
+            f"[worker] job {job_id}: could not cancel its workflow ({type(exc).__name__}: {exc})", flush=True
+        )
     if token is None:
         return
     token.cancel()
