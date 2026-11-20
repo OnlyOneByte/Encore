@@ -14,8 +14,9 @@ import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol, assert_never
+from urllib.parse import urlencode
 
-from encore_worker.host.config import Config
+from encore_worker.host.config import Config, redact_token
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Action, Stage, serves
 from encore_worker.transport.ownership import Ownership, Reason
@@ -104,7 +105,10 @@ class Client:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - any transport fault is a reconnect, not a crash
-                self._note(f"connection lost ({type(exc).__name__}: {exc})")
+                if getattr(getattr(exc, "response", None), "status_code", None) == 401:
+                    self._note("core refused the worker token (HTTP 401): set ENCORE_WORKER_TOKEN to core's")
+                else:
+                    self._note(f"connection lost ({type(exc).__name__}: {exc})")
             self.ownership.disconnected()
             self._confirmed.clear()
             if max_attempts is not None and attempt >= max_attempts:
@@ -119,7 +123,7 @@ class Client:
 
     async def _session(self) -> None:
         """One connection: handshake, then read frames until the socket ends."""
-        socket = await self.connect(self.config.core_url)
+        socket = await self.connect(dial_url(self.config))
         self._socket = socket
         # Bound BEFORE the try, because `finally` cancels it: an exception from the hello send would
         # otherwise leave the name unset and turn a connection error into a NameError that hides it.
@@ -384,7 +388,17 @@ class Client:
         return self.ownership.may_publish(job_id)
 
     def _note(self, line: str) -> None:
-        print(f"[transport] {line}", flush=True)
+        # Redacted HERE so every note is covered: a transport error (websockets' InvalidURI, for one) can
+        # echo the dialled URL, and that URL carries the worker token.
+        print(f"[transport] {redact_token(line)}", flush=True)
+
+
+def dial_url(config: Config) -> str:
+    """`core_url` with the worker token appended as the `token` query param core's upgrade gate reads."""
+    if not config.worker_token:
+        return config.core_url
+    sep = "&" if "?" in config.core_url else "?"
+    return f"{config.core_url}{sep}{urlencode({'token': config.worker_token})}"
 
 
 def jittered_backoff(attempt: int) -> float:

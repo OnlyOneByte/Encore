@@ -73,9 +73,13 @@ turned ten green tests red once.
 ## Chromium discovery
 
 `world/chromium.ts` honours `PW_CHROMIUM` (validated: a wrong path throws with the path in it), then
-falls back to the NEWEST cached `chromium-*` build. That fallback is not decoration: Playwright resolves
-by exact revision, and a cache holding build 1223 against an `@playwright/test` wanting 1194 fails with
-"Executable doesn't exist" while a perfectly good browser sits there.
+falls back to the cache: the build the installed `@playwright/test` pins first, then the NEWEST
+`chromium-*` / `chromium_headless_shell-*` build, in both the old `chrome-linux/` and the per-arch
+`chrome-linux-arm64/`-style layouts. That fallback is not decoration: Playwright resolves by exact
+revision, and a cache holding build 1223 against an `@playwright/test` wanting 1194 fails with
+"Executable doesn't exist" while a perfectly good browser sits there. When no cached build launches on the
+host (a newer build can need system libraries an old distro lacks), set
+`PW_CHROMIUM=/path/to/chrome`, or run the suite in `mcr.microsoft.com/playwright:v<pinned>-noble`.
 
 A per-file `test.use({ launchOptions })` **REPLACES** the config's rather than merging, so it silently
 drops `executablePath`. Repeat `executablePath: resolveChromium()` and spread `BASE_LAUNCH_ARGS`, both from

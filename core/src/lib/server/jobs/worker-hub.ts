@@ -14,7 +14,7 @@ import type {
 	GlobalSettings,
 	EffectiveSettings
 } from '../../contract';
-import { publishStemFormat } from '$lib/server/media/paths';
+import { publishStemFormat } from '../media/paths';
 import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';

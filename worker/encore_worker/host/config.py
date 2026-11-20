@@ -11,10 +11,20 @@ See docs/arch/05-worker.md §9.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 from encore_worker.host import ffmpeg
+
+_TOKEN_PARAM = re.compile(r"(token=)[^&#\s'\"]*")
+
+
+def redact_token(text: str) -> str:
+    """`text` with every `token=` query value blanked, for anything that may echo a dialled URL into a log."""
+    return _TOKEN_PARAM.sub(r"\1<redacted>", text)
+
 
 #: Progress emitted this often while a long step runs. Must stay well under the core's 30 s progress lease,
 #: or the reaper requeues a healthy job.
@@ -76,6 +86,10 @@ class Config:
     #: Where the core is. Both the `/ws` path and `role=worker` are required — core routes every socket
     #: through one endpoint and reads `role` to decide what the connection may do.
     core_url: str = "ws://localhost:3000/ws?role=worker"
+    #: The shared secret core checks on a `role=worker` upgrade (`ENCORE_WORKER_TOKEN`, the SAME value both
+    #: sides). Sent as the `token` query param at dial time; kept out of `core_url` and `repr` so it is never
+    #: printed. None means core runs unauthenticated.
+    worker_token: str | None = field(default=None, repr=False)
     worker_id: str = "worker-1"
     version: str = "0.1.0"
     #: How many jobs at once. One by default: separation and alignment are both GPU-bound. It also sizes the
@@ -145,6 +159,14 @@ class Config:
                 f"Expected one of {', '.join(BACKENDS)}, or leave it unset to auto-select."
             )
 
+        core_url = text("ENCORE_CORE_URL", "ws://localhost:3000/ws?role=worker")
+        parts = urlsplit(core_url)
+        if parts.scheme not in ("ws", "wss") or not parts.netloc:
+            raise ConfigError(
+                f"ENCORE_CORE_URL={redact_token(core_url)!r} is not a ws:// or wss:// URL. "
+                "Expected e.g. ws://localhost:3000/ws?role=worker."
+            )
+
         asr = text("ENCORE_ASR_MODEL", "base")
         if asr not in ASR_MODELS:
             raise ConfigError(
@@ -153,7 +175,8 @@ class Config:
             )
 
         return Config(
-            core_url=text("ENCORE_CORE_URL", "ws://localhost:3000/ws?role=worker"),
+            core_url=core_url,
+            worker_token=optional("ENCORE_WORKER_TOKEN"),
             worker_id=text("ENCORE_WORKER_ID", "worker-1"),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=_positive_int(src, "ENCORE_WORKER_CONCURRENCY", 1),

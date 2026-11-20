@@ -120,7 +120,7 @@ fi
 # core cannot find. These three also OUTRANK .env — which is why the loader runs above, not below — since
 # the container-correct values it ships (relative paths, `core` as compose DNS) are all wrong natively.
 # The override is announced rather than silently dropped.
-for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
+for v in MEDIA_DIR DATA_DIR ENCORE_CORE_URL; do
 	case " ${env_set[*]:-} " in
 		*" $v "*) echo "note: $v from ${ENV_FILE##*/} overridden — a native run needs absolute paths and localhost" ;;
 	esac
@@ -665,6 +665,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 	(
 		cd "$WORKER_DIR"
 		# `ENCORE_CORE_URL`, not `ENCORE_CORE_WS`: the new worker reads the full ws URL from one variable.
+		# No `token=` here: ENCORE_WORKER_TOKEN is exported by the .env loader above and the worker appends it.
 		# `ENCORE_DBOS_DB` is per-box durable state and must NOT sit under MEDIA_DIR, where a retention
 		# sweep would be free to evict the checkpoints a resumed job replays from.
 		exec env \

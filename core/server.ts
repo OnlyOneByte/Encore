@@ -19,6 +19,7 @@ import {
 } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
 import { releaseWorkerSocket } from './src/lib/server/jobs/worker-sockets';
+import { workerTokenMatches } from './src/lib/server/jobs/worker-token';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
@@ -118,7 +119,7 @@ const server = Bun.serve<SocketData>({
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
 			// role=worker carries dispatch authority: refuse with 401 rather than upgrading it.
-			if (role === 'worker' && WORKER_TOKEN && url.searchParams.get('token') !== WORKER_TOKEN) {
+			if (role === 'worker' && WORKER_TOKEN && !workerTokenMatches(url.searchParams.get('token'), WORKER_TOKEN)) {
 				return new Response('unauthorized worker', { status: 401 });
 			}
 			// Resolved from the session cookie at upgrade, NEVER a client claim; no singerId is an anonymous
