@@ -17,7 +17,7 @@ from typing import Any
 from encore_worker.steps.api import AlignSteps, SeparateSteps
 from encore_worker.steps.records import AlignOutcome, JobRef
 from encore_worker.workflows.align import run_align
-from encore_worker.workflows.stems import StemsOutcome, run_stems
+from encore_worker.workflows.stems import ABANDONED, StemsOutcome, run_stems
 
 #: Builds the steps for one job. A closure over process-level state (adapters, config, the transport), so
 #: nothing job-specific has to survive serialisation.
@@ -147,7 +147,7 @@ async def _run_id(job_id: str) -> str:
     current = job_id
     for requeue in itertools.count(1):
         status = await DBOS.get_workflow_status_async(current)
-        if status is None or status.status != "ERROR":
+        if status is None or not _ended_without_result(status):
             return current
         forked = f"{job_id}{_REQUEUE}{requeue}"
         if await DBOS.get_workflow_status_async(forked) is None:
@@ -159,3 +159,36 @@ async def _run_id(job_id: str) -> str:
             return forked
         current = forked
     raise AssertionError("unreachable: itertools.count never ends")  # pragma: no cover
+
+
+def _ended_without_result(status: Any) -> bool:
+    """Did this run end with nothing a requeue should be handed back?
+
+    ERROR, as before. CANCELLED too: `cancel` below marks a run the core took back, and DBOS answers a start
+    under a cancelled id with the cancellation, so a requeue onto this box would fail in an instant until its
+    attempts ran out. And a stems run that ABANDONED its publication (`workflows.stems.ABANDONED`): it
+    finished SUCCESS, but what it recorded is a lost race for ownership, not an outcome, and replaying it
+    was the same burn (the #968 review's open High).
+    """
+    if status.status in ("ERROR", "CANCELLED"):
+        return True
+    output = getattr(status, "output", None)
+    return isinstance(output, StemsOutcome) and output.published is None and output.why.startswith(ABANDONED)
+
+
+async def cancel(job_id: str) -> None:
+    """Cancel job `job_id`'s live run, so DBOS starts none of its remaining steps. A no-op without DBOS, or
+    when no run is live: a requeue then forks the cancelled one (`_run_id`)."""
+    if _align_flow is None and _stems_flow is None:
+        return
+    from dbos import DBOS  # noqa: PLC0415
+
+    current = job_id
+    for requeue in itertools.count(1):
+        forked = f"{job_id}{_REQUEUE}{requeue}"
+        if await DBOS.get_workflow_status_async(forked) is None:
+            break
+        current = forked
+    status = await DBOS.get_workflow_status_async(current)
+    if status is not None and status.status in ("PENDING", "ENQUEUED"):
+        await DBOS.cancel_workflow_async(current)

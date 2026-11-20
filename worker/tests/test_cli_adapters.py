@@ -7,6 +7,10 @@ YouTube url carrying a list parameter turns one song into a two-hundred-track do
 
 from __future__ import annotations
 
+import asyncio
+import os
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -452,3 +456,70 @@ def test_a_word_timed_cues_word_stream_is_exactly_its_published_text() -> None:
         starts = [float(str(w["start"])) for w in words]
         assert starts == sorted(starts)
         assert all(float(str(cue["start"])) <= at <= float(str(cue["end"])) for at in starts)
+
+
+# ── the watchdog and the cancel token (WK-02, WK-03) ─────────────────────────────────────────────
+
+
+def _alive(pid: int) -> bool:
+    """Running, as opposed to gone or a zombie: an orphan killed under a PID 1 that never reaps stays one."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    status = Path(f"/proc/{pid}/status")
+    return not (status.exists() and "\nState:\tZ" in status.read_text())
+
+
+def test_a_child_that_hangs_with_its_output_open_is_killed_at_its_deadline() -> None:
+    """The sweep's probe: this returned normally after 6.0 s, the deadline only being checked after EOF."""
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="timed out after 1s"):
+        cli.run(["sh", "-c", "sleep 6"], timeout_sec=1.0)
+    assert time.monotonic() - started < 2.5, "killed at its deadline, not when it chose to exit"
+
+
+def test_a_cancelled_run_leaves_no_live_child(tmp_path: Path) -> None:
+    """The sweep's other probe: a cancelled job's child was still alive. The whole GROUP goes, grandchild
+    included, which is the ffmpeg-under-demucs shape."""
+    pidfile = tmp_path / "pid"
+    token = cli.CancelToken()
+    threading.Timer(0.3, token.cancel).start()
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["sh", "-c", f"sleep 30 & echo $! > {pidfile}; wait"], cancel=token)
+    assert time.monotonic() - started < 2.0
+    assert token.wait_idle(0.0), "no child of this job is counted alive"
+    grandchild = int(pidfile.read_text())
+    deadline = time.monotonic() + 2.0
+    while _alive(grandchild) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not _alive(grandchild), "the child's own children are killed with it"
+
+
+def test_a_run_under_a_cancelled_token_starts_nothing(tmp_path: Path) -> None:
+    """A DBOS step retry after a stop, or the job's next step: refused before anything is spawned."""
+    token = cli.CancelToken()
+    token.cancel()
+    marker = tmp_path / "ran"
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["sh", "-c", f"touch {marker}"], cancel=token)
+    assert not marker.exists()
+
+
+def test_the_running_job_token_reaches_a_run_in_a_worker_thread() -> None:
+    """`asyncio.to_thread` carries the job's context, so a `run` deep inside an adapter can be stopped
+    without the token being threaded through every signature."""
+    token = cli.CancelToken()
+
+    async def job() -> None:
+        cli.current_token.set(token)
+        asyncio.get_running_loop().call_later(0.3, token.cancel)
+        await asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"])
+
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        asyncio.run(asyncio.wait_for(job(), 5.0))
+
+
+def test_a_child_that_finishes_in_time_is_untouched() -> None:
+    assert cli.run(["sh", "-c", "echo ok"], timeout_sec=5.0) == "ok\n"

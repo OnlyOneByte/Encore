@@ -79,6 +79,10 @@ class Client:
     on_settled: Callable[[str, bool], None] | None = None
     #: The heartbeat timer's sleep. Injected for the same reason as `keepalive`'s: a test drives the beat.
     sleep: Sleep | None = None
+    #: Stops a cancelled or revoked job's WORK and returns once it has stopped (`__main__._stop`). Injected
+    #: because only the composition root knows the job's workflow and children. The slot stays counted
+    #: until it returns, so a cancelled separation and the next job never run on top of each other.
+    stop_job: Callable[[str], Awaitable[None]] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait rather than guess. Replaced on
@@ -220,6 +224,9 @@ class Client:
                     unknown=frozenset(frame.unknown),
                 )
                 self._confirmed.set()
+                # Revoked while we were away: someone else has it now, so its work here is waste.
+                for job_id in frame.revoked:
+                    self._cancel_running(job_id)
                 for job_id in frame.unknown:
                     self._note(f"DESYNC: the core has no row for job {job_id}, which we are running")
             case f.Welcome() as welcome:
@@ -283,6 +290,11 @@ class Client:
             resumable = isinstance(terminal, f.Failed) and terminal.retryable
         except asyncio.CancelledError:
             self._note(f"job {assign.job_id} cancelled")
+            # Only a job the core took back is stopped here. A shutdown cancels every task too, and its
+            # workflows must stay resumable rather than be marked cancelled.
+            if self.stop_job is not None and self.ownership.lost_reason(assign.job_id) is not None:
+                with contextlib.suppress(Exception):
+                    await self.stop_job(assign.job_id)
             raise
         except Exception as exc:  # noqa: BLE001 - a job fault is reported, not crashed on
             retryable = bool(getattr(exc, "retryable", True))
@@ -418,16 +430,20 @@ async def keepalive(
     *,
     pct: int = 0,
     every_sec: float = 10.0,
+    ceiling_sec: float | None = None,
     sleep: Sleep | None = None,
 ) -> None:
-    """Emit progress on a timer until cancelled. Wrap a long step in this.
+    """Emit progress on a timer until cancelled, or until `ceiling_sec` has passed. Wrap a long step in this.
 
-    A TIME-based keepalive, not an output-parsing one, and that distinction is load-bearing. The old
-    worker parsed a child's stdout for a percentage and went silent whenever the child did — roformer's
-    parser returns None unconditionally, so a 45-minute separation emitted nothing between its opening 0
-    and closing 100, long past the core's 30s lease. A timer cannot go quiet.
+    TIME-based, not output-parsing: roformer's parser returns None unconditionally, so the old worker went
+    silent through a 45-minute separation, long past the core's 30s lease. And CEILINGED, because a timer
+    cannot tell slow from hung: a job stuck where nothing can kill it refreshed the lease forever (WK-03).
+    Past the ceiling it goes quiet, and core's reaper takes the job at the next lease expiry.
     """
     wait = sleep if sleep is not None else asyncio.sleep
-    while True:
+    waited = 0.0
+    while ceiling_sec is None or waited < ceiling_sec:
         await wait(every_sec)
+        waited += every_sec
         await client.progress(job_id, stage, pct)
+    print(f"[transport] job {job_id} passed its {ceiling_sec}s ceiling; the lease may now lapse", flush=True)

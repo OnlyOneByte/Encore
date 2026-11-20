@@ -7,11 +7,16 @@ fetch-only workers are possible. The caption parser's rules are docs/arch/05-wor
 
 from __future__ import annotations
 
+import contextlib
 import glob
 import os
 import re
+import signal
 import subprocess
+import threading
+import time
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from encore_worker.adapters.ports import InfraFault, ProgressSink
@@ -75,13 +80,67 @@ def looks_like_oom(output: str) -> bool:
     return any(marker in low for marker in OOM_MARKERS)
 
 
-def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout_sec: float = 3600.0) -> str:
+class CancelToken:
+    """One job's stop signal, and a count of the children it still has alive.
+
+    The count is what lets the transport keep a cancelled job's slot until its work has REALLY stopped: an
+    `asyncio` cancel ends the awaiting coroutine at once, while the child it was waiting on keeps running in
+    its thread (WK-02).
+    """
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._live = 0
+        self._idle = threading.Condition()
+
+    def cancel(self) -> None:
+        self._stop.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._stop.is_set()
+
+    def wait_idle(self, timeout_sec: float) -> bool:
+        """Block until no child of this job is alive. False if one still is at the timeout."""
+        with self._idle:
+            return self._idle.wait_for(lambda: self._live == 0, timeout_sec)
+
+    def _started(self) -> None:
+        with self._idle:
+            self._live += 1
+
+    def _ended(self) -> None:
+        with self._idle:
+            self._live -= 1
+            self._idle.notify_all()
+
+
+#: The running job's token. A context variable rather than a parameter on every adapter, because
+#: `asyncio.to_thread` carries the caller's context into its thread: the job sets it once and every `run`
+#: under it, however deep, can be stopped.
+current_token: ContextVar[CancelToken | None] = ContextVar("encore_cancel_token", default=None)
+
+#: How often the watchdog looks at the deadline and the token. Bounds how late a kill can land.
+_WATCH_SEC = 0.5
+
+
+def run(
+    argv: Sequence[str],
+    *,
+    on_progress: ProgressSink | None = None,
+    timeout_sec: float = 3600.0,
+    cancel: CancelToken | None = None,
+) -> str:
     """Run a command to completion, returning its combined output.
 
-    SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. `start_new_session` puts
-    the child in its own process group, so a timeout kills the whole tree rather than orphaning ffmpeg
-    children still writing into a scratch directory.
+    SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. The child gets its own
+    process group, so a kill takes the whole tree. The deadline and the token are a WATCHDOG thread's to
+    enforce, because reading output blocks until the child closes it (WK-03); a kill raises `ToolFailed`.
     """
+    token = cancel if cancel is not None else current_token.get()
+    if token is not None and token.cancelled:
+        # A DBOS step retry, or the next step of a job already stopped: nothing to start.
+        raise ToolFailed(argv, -1, "cancelled")
     lines: list[str] = []
     proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
         list(argv),
@@ -91,6 +150,25 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
         bufsize=1,
         start_new_session=True,
     )
+    if token is not None:
+        token._started()
+    done = threading.Event()
+    why: list[str] = []  # set by the watchdog before it kills, read after the child is reaped
+
+    def watch() -> None:
+        deadline = time.monotonic() + timeout_sec
+        while not done.wait(_WATCH_SEC):
+            if token is not None and token.cancelled:
+                why.append("cancelled")
+            elif time.monotonic() >= deadline:
+                why.append(f"timed out after {timeout_sec:.0f}s")
+            else:
+                continue
+            _kill_group(proc)
+            return
+
+    watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
+    watchdog.start()
     try:
         # `stdout=PIPE` above guarantees this; narrowed without an `assert`, which `-O` would strip.
         stream = proc.stdout
@@ -102,15 +180,18 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
                 pct = parse_pct(line)
                 if pct is not None:
                     on_progress(pct)
-        code = proc.wait(timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-        raise ToolFailed(argv, -1, f"timed out after {timeout_sec:.0f}s") from None
+        code = proc.wait()
     except BaseException:
-        proc.kill()
+        _kill_group(proc)
         proc.wait()
         raise
+    finally:
+        done.set()
+        watchdog.join()
+        if token is not None:
+            token._ended()
+    if why:
+        raise ToolFailed(argv, -1, why[0])
     output = "".join(lines)
     if code != 0:
         if looks_like_oom(output):
@@ -121,6 +202,12 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
             )
         raise ToolFailed(argv, code, output)
     return output
+
+
+def _kill_group(proc: subprocess.Popen[str]) -> None:
+    """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 def parse_pct(line: str) -> int | None:

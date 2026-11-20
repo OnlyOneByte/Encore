@@ -48,6 +48,12 @@ export interface FakeWorkerFaults {
 	noProfile?: boolean;
 	/** `FAKE_FAIL=<jobType>`: fail that job type instead of completing it. */
 	fail?: JobType;
+	/**
+	 * Accept that job type, send one progress frame, then go quiet with the socket still open: what a worker
+	 * does once its keepalive ceiling has passed on a step nothing could kill. Core's lease reaper is then the
+	 * only thing that can end the job.
+	 */
+	hang?: JobType;
 	/** `FAKE_SLOW_MS`: dwell between progress frames, to watch the processing UI. Default 120. */
 	slowMs?: number;
 	/**
@@ -155,6 +161,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		storageDirs = {},
 		slowMs = DEFAULT_SLOW_MS,
 		fail,
+		hang,
 		silentInstrumental = false,
 		silentVocals = false,
 		skipWrite = false,
@@ -232,6 +239,13 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			await sleep(slowMs);
 			log(`failing ${jobType} on purpose`);
 			send({ type: 'job:failed', workerId, jobId, error: `injected failure for ${jobType}`, retryable: false });
+			return;
+		}
+
+		if (hang && hang === jobType) {
+			const stage: MediaStatus = jobType === 'fetch' ? 'downloading' : 'separating';
+			send({ type: 'job:progress', workerId, jobId, stage, pct: 20 });
+			log(`hanging ${jobType} job=${jobId} on purpose`);
 			return;
 		}
 
