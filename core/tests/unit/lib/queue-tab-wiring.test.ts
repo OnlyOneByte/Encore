@@ -50,15 +50,10 @@ test('the drawn clock is capped at the song length, and BOTH halves of the reado
 	expect(queuePage).toContain('{formatRemaining(drawnPos, nowDurationSec)}');
 });
 
-test('the route registers the link error channel AND disposes it', () => {
-	/* /queue owns the transport, and it was the one phone surface with no `onError` sink — so a server-side
-	   refusal of a queue op was composed by the store (`Couldn't do that: …`) and then dropped. Same line as
-	   `/library`'s, verbatim, because a second spelling of one wiring is how the two drift. */
-	expect(queuePage).toContain(
-		'const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));'
-	);
-	// Disposed with the mirror. A leaked handler is invisible on one visit and toasts N times on the Nth.
-	expect(queuePage).toMatch(/return \(\) => \{\s*stopMirror\(\);\s*stopErrors\(\);\s*\};/);
+test('the route leaves the link error channel to the layout', () => {
+	/* A queue op's refusal (`Couldn't do that: …`) must still reach this tab; the root layout's one sink carries it
+	   (ui-sweep-wiring.test.ts), and a second registration here would toast it twice. */
+	expect(queuePage).not.toContain('room.onError(');
 });
 
 test('the announcement effect returns on an unsynced store BEFORE it reads or writes the baseline', () => {

@@ -6,8 +6,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
-import { assertNameFree, NameTakenError } from '$lib/server/singers/join';
-import { normalizeSingerColor } from '$lib/contract';
+import { assertNameFree, NameTakenError, resolveSingerColor } from '$lib/server/singers/join';
 import { optionalString, readJsonBody } from '$lib/server/http/json-body';
 
 export const GET: RequestHandler = async ({ cookies }) => {
@@ -31,7 +30,8 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	const displayName = requestedName === undefined ? me.displayName : requestedName.trim();
 	if (!displayName) return json({ error: 'display name required' }, { status: 400 });
 	const requestedColor = optionalString(body, 'color');
-	const color = requestedColor === undefined ? me.color : normalizeSingerColor(requestedColor);
+	// The join's own resolver: an unusable colour gets the farthest free one in the room, not the first preset.
+	const color = requestedColor === undefined ? me.color : resolveSingerColor(app, me.roomId, requestedColor, me.id);
 
 	try {
 		// Scope to `me.roomId` (uniqueness is per-party) and except `me.id`, or changing your own capitalisation would collide with yourself.

@@ -129,6 +129,7 @@ const EXPECTED = [
 	'effectiveGuideLevel',
 	'effectiveSongIntroMs',
 	'fetcherFor',
+	'freeSingerColor',
 	'getAsrModel',
 	'getEngine',
 	'getFetcher',

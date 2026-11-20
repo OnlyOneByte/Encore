@@ -18,7 +18,7 @@
 	import type { Media, PublicSinger, QueueEntry } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
-	import { originalKeyLabel } from '$lib/contract';
+	import { originalKeyLabel, songDisplay } from '$lib/contract';
 	import {
 		artistFacetsOf,
 		browseLibrary,
@@ -71,7 +71,6 @@
 		};
 		sync();
 		const stopMirror = room.subscribe(sync);
-		const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));
 		void room.connect();
 		/* AN ARRIVAL IS A RETRY, and it is the cheap half of the fix. The one fetch fires at JOIN, inside
 		   `connect()`, which is guarded idempotent — so a blip at join poisoned this tab for the rest of the
@@ -79,10 +78,7 @@
 		   per arrival bounds it by construction, and on a first mount the flag is false, so this is inert in the
 		   common case. It does not replace the failure arm below: a guest who is still offline needs to be told. */
 		if (room.libraryFailed) void room.refreshLibrary();
-		return () => {
-			stopMirror();
-			stopErrors();
-		};
+		return stopMirror;
 	});
 
 	let query = $state('');
@@ -251,7 +247,7 @@
 		   and the URL came out as `/` — a full document replacement, so the socket closed, /api/library re-fetched and
 		   the shell re-parsed to cross one tab. The dock carries a Queue tab on every surface now, so the destination
 		   lives there permanently and this toast's one job is to say where the song went. */
-		toast(`Added “${m.title}” to the queue`, { duration: 5000 });
+		toast(`Added “${songDisplay(m).title}” to the queue`, { duration: 5000 });
 	}
 </script>
 

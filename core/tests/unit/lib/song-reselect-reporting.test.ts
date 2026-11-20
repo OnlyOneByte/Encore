@@ -18,19 +18,16 @@ import { at } from '$test';
 const songPage = readFileSync(at('src/routes/song/[mediaId]/+page.svelte'), 'utf8');
 const reselect = readFileSync(at('src/lib/components/LyricsReselect.svelte'), 'utf8');
 
-test('the page registers the link error channel AND disposes it', () => {
-	/* This route is the only caller of `reselectLyrics` in the tree, and the link's own doc says an unhandled
-	   message is dropped — so without this line the server's 401/409/400 refusals had no listener anywhere. */
-	expect(songPage).toContain('const stopErrors = room.onError((message) => toast.error(message, { duration: 4000 }));');
-	// Disposed with the subscription. A leaked handler is invisible on one visit and toasts N times on the Nth.
-	expect(songPage).toMatch(/return \(\) => \{\s*stop\(\);\s*stopErrors\(\);\s*\};/);
+test('the page leaves the link error channel to the layout', () => {
+	/* This route is the only caller of `reselectLyrics`, so its 401/409/400 refusals need a listener: the root
+	   layout's one sink (ui-sweep-wiring.test.ts). A second registration here would toast each refusal twice. */
+	expect(songPage).not.toContain('room.onError(');
 });
 
 test('the load error is announced once — the inline alert, never also a toast', () => {
 	// `loadError` is rendered in a `role="alert"`; `toast.error(failed, …)` beside it said the same sentence a
-	// second time. The only `toast.error` left on this page is the store channel's, keyed on `message`.
-	expect(songPage).not.toMatch(/toast\.error\(failed/);
-	expect(songPage.match(/toast\.error\(/g)).toHaveLength(1);
+	// second time. The store channel's toast lives in the layout, so this page raises none.
+	expect(songPage).not.toMatch(/toast\.error\(/);
 	// And the arm carries a control, which is the other half: it used to be a bare `<p>` with nothing to act on.
 	expect(songPage).toContain('<Button variant="link" onclick={() => void load(mediaId)}>Try again</Button>');
 });
