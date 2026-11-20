@@ -8,35 +8,9 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue } from '../../world/actors';
-import type { Page } from '@playwright/test';
-import type { World } from '../../world/fixtures';
+import { openQueue, queueReady, readySong } from '../../world/actors';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-
-async function readySong(world: World, phone: Page, query: string): Promise<string> {
-	const track = await world.awaitDemoTrack(query);
-	const res = await phone.request.post('/api/process', { data: { mediaId: track.id } });
-	if (!res.ok()) throw new Error(`/api/process refused "${track.title}": ${res.status()}`);
-	await expect
-		.poll(
-			async () => {
-				const body = (await phone.request.get('/api/library').then((r) => r.json())) as {
-					library: { id: string; instrumentalRef?: string | null }[];
-				};
-				return body.library.some((m) => m.id === track.id && !!m.instrumentalRef);
-			},
-			{ timeout: 60_000, message: `"${track.title}" never reached ready` }
-		)
-		.toBe(true);
-	return track.title;
-}
-
-async function queueReady(phone: Page, query: string): Promise<void> {
-	await openBrowseFromHome(phone);
-	await phone.locator(SEL.search).fill(query);
-	await phone.locator(SEL.addTurn).first().click();
-}
 
 test('on deck: the card, the preset, and the TV key chip', async ({ world }, testInfo) => {
 	const out = process.env.ON_DECK_OUT ?? testInfo.outputDir;

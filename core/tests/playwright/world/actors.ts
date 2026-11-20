@@ -6,8 +6,9 @@
 // locator waits for itself and returns immediately when the thing is already present, so the probes are gone
 // and every step names the selector it is waiting on in its own failure. What is NOT gone is the ordering and
 // the geometry: those encode how the phone actually behaves.
-import { type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { SEL } from './selectors';
+import type { World } from './fixtures';
 
 /** The suite's own `expect.timeout` (playwright.config.ts), so a helper's ceiling and an assertion's agree. */
 const DEFAULT_TIMEOUT = 15_000;
@@ -122,4 +123,47 @@ export async function isJoined(page: Page): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** Process a demo track through the (fake) worker and wait until the library calls it ready. Returns its title. */
+export async function readySong(world: Pick<World, 'awaitDemoTrack'>, phone: Page, query: string): Promise<string> {
+	const track = await world.awaitDemoTrack(query);
+	const res = await phone.request.post('/api/process', { data: { mediaId: track.id } });
+	if (!res.ok()) throw new Error(`/api/process refused "${track.title}": ${res.status()}`);
+	await expect
+		.poll(
+			async () => {
+				const body = (await phone.request.get('/api/library').then((r) => r.json())) as {
+					library: { id: string; instrumentalRef?: string | null }[];
+				};
+				return body.library.some((m) => m.id === track.id && !!m.instrumentalRef);
+			},
+			{ timeout: 60_000, message: `"${track.title}" never reached ready` }
+		)
+		.toBe(true);
+	return track.title;
+}
+
+/**
+ * From the joined home screen, take a turn on a READY song through the real row action, then wait for the phone's
+ * own acknowledgement rather than returning on the click.
+ *
+ * EITHER signal counts, because which one arrives depends on whether the room was idle: `inQueue` is
+ * `queued.some(...)` and a turn that starts PLAYING immediately leaves `queued`, so the row's button
+ * re-enables and the strip names the song instead.
+ */
+export async function queueReady(phone: Page, query: string): Promise<void> {
+	await openBrowseFromHome(phone);
+	await phone.locator(SEL.search).fill(query);
+	await phone.locator(SEL.addTurn).first().click();
+	await expect
+		.poll(
+			async () => {
+				if (await phone.locator(SEL.addTurn).first().isDisabled()) return true;
+				const strip = (await phone.locator(SEL.npStripTitle).first().textContent()) ?? '';
+				return strip.toLowerCase().includes(query);
+			},
+			{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the strip never named it` }
+		)
+		.toBe(true);
 }

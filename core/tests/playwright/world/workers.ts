@@ -86,6 +86,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	 * an observer reads what a settings change did to work that was already queued.
 	 */
 	claim?: 'all' | 'none';
+	/** Length of every audio file this worker writes (fetch, stems, guide mix). Default 8, the fixture's. A spec
+	 *  playing a longer library track sets it to match, or the TV ends the song when the 8 s stem does. */
+	seconds?: number;
 	/** Overrides `MEDIA_DIR`. Defaults to the world's, which is what core was booted with. */
 	mediaDir?: string;
 	/**
@@ -157,7 +160,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		skipWrite = false,
 		noProfile = false,
 		noVocals = false,
-		guideMix = false
+		guideMix = false,
+		seconds = 8
 	} = options;
 
 	let output = '';
@@ -241,7 +245,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			if (jobType === 'fetch') {
 				await progress('downloading', 40);
 				const ref = `audio/${mediaId}.wav`;
-				if (!skipWrite) writeRef(ref, tone({ seconds: 8, hz: [196, 246.94, 293.66] }));
+				if (!skipWrite) writeRef(ref, tone({ seconds, hz: [196, 246.94, 293.66] }));
 				await progress('downloading', 100);
 				send({
 					type: 'job:complete',
@@ -262,15 +266,15 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				const vocRef = `derived/stems/${mediaId}-vocals.wav`;
 				const mixRef = `derived/stems/${mediaId}-guide.wav`;
 				if (!skipWrite) {
-					writeRef(insRef, silentInstrumental ? silence() : tone({ seconds: 8, hz: [220, 277.18, 329.63] }));
+					writeRef(insRef, silentInstrumental ? silence() : tone({ seconds, hz: [220, 277.18, 329.63] }));
 					// noVocals writes no vocals file, because it reports no vocals ref either.
 					if (!noVocals) {
-						writeRef(vocRef, silentVocals ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
+						writeRef(vocRef, silentVocals ? silence() : tone({ seconds, hz: [440], amp: 0.2 }));
 					}
 					// A real file so the media route can serve it, but the CHANNEL COUNT is a lie — this writes the
 					// same 1-channel tone as the stems. Sufficient because every gate that reads it tests only the
 					// ref's PRESENCE; a spec needing real 4-channel audio needs the real worker.
-					if (guideMix) writeRef(mixRef, tone({ seconds: 8, hz: [220, 440], amp: 0.3 }));
+					if (guideMix) writeRef(mixRef, tone({ seconds, hz: [220, 440], amp: 0.3 }));
 				}
 				await progress('separating', 90);
 				const stems: NonNullable<JobArtifacts['stems']> = { instrumental: insRef };

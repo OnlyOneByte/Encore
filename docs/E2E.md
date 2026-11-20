@@ -18,6 +18,9 @@ worth knowing what was NOT recovered in the move, at the bottom of this file.
 | `probe` | no — run when you want the answer             | 26 specs, one subject each                                |
 | `shot`  | **cannot** — a screenshot cannot fail a build | 20 frames, each driven INTO its state                     |
 
+Motion is `shot` too: `bun run ui:review` records each row of `specs/shot/motion.spec.ts` as a GIF, a
+ms-labelled filmstrip and `metrics.json`. What a reviewer checks it against is [UI-CHECKLIST.md](UI-CHECKLIST.md).
+
 **Which project a check belongs in is decided by whether it can silently regress, not by how
 interesting it is.** `join-gate-placement.spec.ts` lived in `probe` while guarding the most
 regression-prone fix in the tree — the join gate's placement, a cascade / `:has()` / specificity stack

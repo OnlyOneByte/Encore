@@ -1002,8 +1002,10 @@
 		font-weight: 900;
 		line-height: 1.03;
 	}
-	/* THE CROSSFADE, replayed by the `{#key attractPhrase}` remount. A CSS animation, NEVER a Svelte transition
-	   directive, which never consults the media query. Under `reduce` this does not apply AND the clock is off. */
+	/* A CUT, THEN A FADE-IN, replayed by the `{#key attractPhrase}` remount: the old line unmounts at once and the
+	   new one fades in over 600 ms. Not a crossfade. 600 ms is a deliberate exception to the motion tokens: a slower
+	   swap for a screen nobody is acting on. A CSS animation, NEVER a Svelte transition directive, which never
+	   consults the media query. Under `reduce` this does not apply AND the clock is off. */
 	@media (prefers-reduced-motion: no-preference) {
 		.phrase-box .phrase-line {
 			animation: phrase-fade 0.6s ease-out;

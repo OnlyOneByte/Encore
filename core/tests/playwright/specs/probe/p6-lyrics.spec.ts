@@ -15,7 +15,7 @@
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { queueReady } from '../../world/actors';
 import { parseLyricsDoc } from '$lib/tv/lyrics';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -75,23 +75,6 @@ async function processWithLyrics(world: World, page: Page, query: string): Promi
 		)
 		.toBe(true);
 	return ready as SongRow;
-}
-
-/** Take a turn on a READY song through the real row action. */
-async function queueReady(page: Page, query: string): Promise<void> {
-	await openBrowseFromHome(page);
-	await page.locator(SEL.search).fill(query);
-	await page.locator(SEL.addTurn).first().click();
-	await expect
-		.poll(
-			async () => {
-				if (await page.locator(SEL.addTurn).first().isDisabled()) return true;
-				const strip = (await page.locator(SEL.npStripTitle).first().textContent()) ?? '';
-				return strip.toLowerCase().includes(query);
-			},
-			{ message: `the phone never acknowledged the turn on "${query}"` }
-		)
-		.toBe(true);
 }
 
 interface Stage {
