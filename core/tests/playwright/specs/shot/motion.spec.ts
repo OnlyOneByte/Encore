@@ -42,7 +42,69 @@ async function asSinger(browser: Browser, world: World, opts: BrowserContextOpti
 	return ctx.newPage();
 }
 
+/** Drain the room, then Maya singing caroline past her intro card, with Theo next. */
+async function mayaThenTheo(phones: { maya: Page; theo: Page; ana: Page }): Promise<void> {
+	const { maya, theo, ana } = phones;
+	const skip = ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
+	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
+		await skip.click();
+		// Past the strip's settle window, so the next skip names the song now on it.
+		await ana.waitForTimeout(1_200);
+	}
+	await expect(ana.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+	await queueReady(maya, 'caroline');
+	await queueReady(theo, 'believin');
+	await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+	// Past the playhead's first second, so the sheet is for Theo's song starting, and past the settle window.
+	await ana.waitForTimeout(3_000);
+}
+
 const SCENARIOS: Record<string, Make> = {
+	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
+	 *  drains the room and starts again from Maya's song. */
+	'phone-youre-up': (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		return {
+			name: 'phone-youre-up',
+			what: 'Phone 390x844: "You’re up" rising over the dock on the Library tab as Theo’s song starts (rise-in, --motion-base)',
+			stepMs: 16,
+			scale: 1,
+			columns: 6,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world);
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					await readySong(world, ph.maya, 'caroline');
+					await readySong(world, ph.maya, 'believin');
+					await world.openTv();
+				}
+				await mayaThenTheo(ph);
+				const page = await asSinger(browser, world, opts, ph.theo);
+				await page.goto('/');
+				await page.getByRole('link', { name: 'Library' }).click();
+				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await page.locator('.youre-up').waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: '.youre-up',
+			// The dock and the sheet over it: the whole page in ~16 frames is past 2000 px tall.
+			stripClip: async () => ({ x: 0, y: 444, width: 390, height: 400 }),
+			observe: (page) =>
+				page.evaluate(() => ({
+					sheet: !!document.querySelector('.youre-up'),
+					live: document.querySelector('[data-youre-up-live]')?.textContent ?? null
+				}))
+		};
+	},
 	/** The attract phrase swap: `{#key attractPhrase}` remounts the line and `phrase-fade` plays, every 8 s. */
 	'tv-attract-phrase': (browser, world) => ({
 		name: 'tv-attract-phrase',

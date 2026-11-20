@@ -1,7 +1,8 @@
 // ONE HANDOFF MOMENT (UI-02, BE-04), in a real room. Maya is singing on the TV, Theo is next, Ana after him. Ana and
 // Theo both tap skip, a human double-tap apart. The TV must put up the same "Now singing Theo" card a natural end
-// gets, within half a second, and only ONE song may go: Theo's turn must survive the second tap. The held-socket test
-// below covers the other half: a tap that was still in flight when the song changed.
+// gets, within half a second, Theo's phone must say "You're up" on whatever tab it is on, and only ONE song may go:
+// Theo's turn must survive the second tap. The held-socket test below covers the other half: a tap that was still in
+// flight when the song changed.
 //
 // Before this change the TV dropped Theo straight into his lyrics with no card (the sweep's `flow-03` frame), and the
 // second skip — aimed at Maya's song — advanced past Theo to Ana.
@@ -36,7 +37,9 @@ async function queueReady(phone: Page, query: string): Promise<void> {
 	await phone.locator(SEL.addTurn).first().click();
 }
 
-test('a double skip shows the handoff card for the next singer, and takes only one song', async ({ world }) => {
+test('a double skip shows the handoff card for the next singer, tells their phone, and takes only one song', async ({
+	world
+}) => {
 	const worker = await startFakeWorker(world);
 	try {
 		const maya = await world.openPhone('Maya');
@@ -60,6 +63,14 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		// TWO REAL TAPS, the second 40-100 ms after the first and AFTER Theo's strip has already redrawn to his own
 		// song: the case the server's stale guard alone could not catch (review r2, 974-M2), because by then the
 		// tap named Theo's song. The settle window (`$lib/transport-target`) keeps it naming Maya's.
+		// Theo is on another tab: "You're up" must reach him wherever he is.
+		await theo.getByRole('link', { name: 'Library' }).click();
+		// The live region is MOUNTED EMPTY before the change, and the same node carries the words after it: a region
+		// inserted with its text already in it is one a screen reader often never announces.
+		const live = theo.locator('[data-youre-up-live]');
+		await expect(live).toHaveCount(1);
+		await expect(live).toHaveText('');
+		await live.evaluate((el) => ((el as HTMLElement).dataset.probeSame = 'yes'));
 		const t0 = Date.now();
 		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 2_000 });
@@ -74,6 +85,20 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		await expect(intro).toContainText('Now singing');
 		await expect(intro).toContainText('Theo');
 		const theoId = await theoEntry();
+		const youreUp = theo.locator('.youre-up');
+		await expect(youreUp).toBeVisible({ timeout: 500 });
+		await expect(youreUp).toContainText(/believin/i);
+		// Announced as the words alone ("You're up, <song>"), from the SAME node; the OK button is not in it.
+		await expect(live).toHaveText(/^You’re up, .*believin/i);
+		await expect(live).toHaveAttribute('data-probe-same', 'yes');
+		await expect(live).toHaveAttribute('role', 'status');
+		await expect(live.getByRole('button')).toHaveCount(0);
+		// What assistive tech is given: the words ONCE (the sheet's own copy is hidden from it), and the OK button.
+		// The sheet itself gives assistive tech ONLY its button: its words are the live region's, and read once there.
+		// The button's name carries the context the hidden words would have given it.
+		expect(await youreUp.ariaSnapshot()).toBe('- button "OK, dismiss You’re up": OK');
+		// Nobody else is told it is their turn.
+		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
 		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. The phone whose
 		// tap was dropped is told why; the other is not.
@@ -84,6 +109,8 @@ test('a double skip shows the handoff card for the next singer, and takes only o
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(intro).toContainText('Theo');
+		// It goes by itself, with the TV's card.
+		await expect(youreUp).toHaveCount(0, { timeout: 5_000 });
 	} finally {
 		await worker.stop();
 	}
@@ -251,6 +278,100 @@ test('a natural end hands over with no "won’t play" flash over the Now singing
 		await expect(intro).toContainText('Theo', { timeout: 30_000 });
 		await expect(intro).toBeHidden({ timeout: 10_000 });
 		expect(await tv.evaluate(() => (window as unknown as { flashes: string[] }).flashes)).toEqual([]);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('when your own stale skip makes it your turn, the toast stacks above "You’re up" instead of over it', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		for (const q of ['caroline', 'believin']) await readySong(world, maya, q);
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+
+		// Theo's socket is held, so his strip still shows Maya's song when he taps skip on it.
+		let hold = false;
+		const held: (string | Buffer)[] = [];
+		let toTheo: ((m: string | Buffer) => void) | null = null;
+		await theo.routeWebSocket(/\/ws/, (ws) => {
+			const server = ws.connectToServer();
+			toTheo = (m) => ws.send(m);
+			server.onMessage((m) => (hold ? held.push(m) : ws.send(m)));
+			ws.onMessage((m) => server.send(m));
+		});
+		await theo.reload();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
+
+		hold = true;
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await theo.waitForTimeout(300);
+		hold = false;
+		for (const m of held.splice(0)) toTheo!(m);
+
+		const sheet = theo.locator('.youre-up');
+		const toast = theo.locator('[data-sonner-toast]').filter({ hasText: 'That song already ended.' });
+		await expect(sheet).toBeVisible({ timeout: 2_000 });
+		await expect(toast).toBeVisible({ timeout: 2_000 });
+		// Let the toast's own entrance settle before measuring.
+		await theo.waitForTimeout(600);
+		const s = (await sheet.boundingBox())!;
+		const t = (await toast.boundingBox())!;
+		expect(t.y + t.height, `toast ${JSON.stringify(t)} vs sheet ${JSON.stringify(s)}`).toBeLessThanOrEqual(s.y);
+		// The two stacked notices share one gutter token, so their edges line up (review r3, 976-3).
+		expect(Math.abs(t.x - s.x), `left edges: toast ${t.x}, sheet ${s.x}`).toBeLessThanOrEqual(1);
+		expect(Math.abs(t.x + t.width - (s.x + s.width)), 'right edges').toBeLessThanOrEqual(1);
+		// ...because both read the SAME token, not because sonner's default happens to equal it today: the toaster's
+		// phone sides are `--sheet-gutter`, as the sheet's are.
+		const toasterSides = await theo
+			.locator('[data-sonner-toaster]')
+			.first()
+			.evaluate((el) => [
+				(el as HTMLElement).style.getPropertyValue('--mobile-offset-left').trim(),
+				(el as HTMLElement).style.getPropertyValue('--mobile-offset-right').trim()
+			]);
+		expect(toasterSides).toEqual(['var(--sheet-gutter)', 'var(--sheet-gutter)']);
+
+		// The sheet goes at the TV's 2.5 s and the toast lives 4 s. Sampled EVERY frame until the toast's node has
+		// left the page, its closing frames included: it may not move while it is up, and it may never jump. The
+		// round-2 fix held the offset only until sonner said "closing", and the toast dropped 143 px at full opacity
+		// on the first frame of its exit (review r3, 976-M1); sonner's own exit slide moves a few px a frame.
+		const frames = await theo.evaluate(
+			() =>
+				new Promise<{ y: number; removed: boolean }[]>((resolve) => {
+					const out: { y: number; removed: boolean }[] = [];
+					const t0 = performance.now();
+					const tick = () => {
+						const el = document.querySelector('[data-sonner-toast].transport-notice') as HTMLElement | null;
+						if (el) out.push({ y: el.getBoundingClientRect().y, removed: el.dataset.removed === 'true' });
+						if ((!el && out.length > 0) || performance.now() - t0 > 8_000) return resolve(out);
+						requestAnimationFrame(tick);
+					};
+					tick();
+				})
+		);
+		await expect(sheet).toHaveCount(0);
+		await expect(toast).toHaveCount(0);
+		const open = frames.filter((f) => !f.removed).map((f) => f.y);
+		expect(
+			frames.some((f) => f.removed),
+			'sampled through the toast’s exit'
+		).toBe(true);
+		expect(
+			Math.max(...open) - Math.min(...open),
+			`toast y while open: ${open.slice(0, 2)}…${open.slice(-2)}`
+		).toBeLessThan(2);
+		const steps = frames.slice(1).map((f, i) => Math.abs(f.y - frames[i]!.y));
+		expect(
+			Math.max(...steps),
+			`largest one-frame move of the toast: ${JSON.stringify(frames.filter((f) => f.removed).slice(0, 4))}`
+		).toBeLessThan(24);
 	} finally {
 		await worker.stop();
 	}
