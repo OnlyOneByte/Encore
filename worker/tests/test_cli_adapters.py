@@ -8,7 +8,10 @@ YouTube url carrying a list parameter turns one song into a two-hundred-track do
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import shutil
+import signal
 import threading
 import time
 from pathlib import Path
@@ -618,3 +621,79 @@ def test_a_group_of_only_zombies_is_gone_but_a_running_one_is_not() -> None:
         live.wait()
         dead.wait()
     assert cli._group_alive(live.pid) is False
+
+
+def test_a_progress_sink_that_raises_stops_the_tool_and_reaches_the_caller() -> None:
+    """The output is read on its own thread; a fault there must still end the run, as it did inline."""
+
+    def sink(pct: int) -> None:
+        raise RuntimeError("the sink broke")
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="the sink broke"):
+        cli.run(["sh", "-c", "echo '[download]  10.0% of 5MiB'; sleep 30"], on_progress=sink)
+    assert time.monotonic() - started < 3.0, "the child was left running"
+
+
+def _cancelled_run(token: cli.CancelToken, script: str) -> tuple[threading.Thread, list[float]]:
+    """Start `run` on `script` under `token` in a thread; the list gets the moment `run` came back."""
+    returned: list[float] = []
+
+    def go() -> None:
+        with pytest.raises(cli.ToolFailed, match="cancelled"):
+            cli.run(["sh", "-c", script], cancel=token)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    return thread, returned
+
+
+def test_a_killed_runs_slot_is_held_until_its_whole_group_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child is reaped before its own children have died (CI saw it): the token must stay busy, and `run`
+    must not return, while the group has a live member. The group check is faked, so no timing decides it."""
+    gone_at = [float("inf")]
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: time.monotonic() < gone_at[0])
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, "sleep 30")
+    time.sleep(0.2)
+    token.cancel()
+    time.sleep(1.0)  # the watchdog has killed the child (within 0.5 s); the faked group lives on
+    assert not returned and token.wait_idle(0.0) is False, "the slot was freed while the group still lived"
+    gone_at[0] = time.monotonic()
+    thread.join(3.0)
+    assert returned and token.wait_idle(0.0) is True
+
+
+def test_the_wait_for_a_group_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A group that never empties to the check (an un-inspectable box) still lets the slot go at the bound."""
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: True)
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.8)
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, "sleep 30")
+    time.sleep(0.2)
+    cancelled = time.monotonic()
+    token.cancel()
+    thread.join(5.0)
+    assert returned, "the wait never ended"
+    assert 0.8 <= returned[0] - cancelled < 2.5, returned[0] - cancelled
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_descendant_that_left_the_group_cannot_hold_a_cancelled_run(tmp_path: Path) -> None:
+    """`killpg` misses a process that called `setsid`, and one that kept stdout open held the read, and the
+    slot, until it chose to exit. A killed run stops waiting on the pipe once its group is gone."""
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, f"setsid sh -c 'echo $$ > {pidfile}; exec sleep 30' & sleep 30")
+    try:
+        time.sleep(0.4)
+        cancelled = time.monotonic()
+        token.cancel()
+        thread.join(6.0)
+        assert returned, "the escaped descendant held the cancelled run"
+        assert returned[0] - cancelled < 4.0
+    finally:
+        if pidfile.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pidfile.read_text()), signal.SIGKILL)

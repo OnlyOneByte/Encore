@@ -1,7 +1,9 @@
-"""The one step every workflow body takes first: making its job's cancel token current.
+"""The one thing every workflow body does first: making its job's cancel token current.
 
-A step rather than a registration hook, so there is no wiring to forget: DBOS runs a fork or a recovered run
-on its own loop, whose context never saw the transport set the token (docs/arch/05-worker.md §8.1).
+In the body rather than a registration hook, so there is no wiring to forget: DBOS runs a fork or a recovered
+run on its own loop, whose context never saw the transport set the token (docs/arch/05-worker.md §8.1).
+A PLAIN CALL, never a `@DBOS.step`: a recorded step returns its saved result on replay without running, so a
+recovered run would skip the binding and its children could not be stopped.
 """
 
 from __future__ import annotations

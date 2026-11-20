@@ -211,21 +211,34 @@ def run(
             _kill_group(proc)
             return
 
+    # `stdout=PIPE` above guarantees this; narrowed without an `assert`, which `-O` would strip.
+    stream = proc.stdout
+    if stream is None:  # pragma: no cover - unreachable with stdout=PIPE
+        raise ToolFailed(argv, -1, "no stdout pipe")
+    failed: list[BaseException] = []  # what the reader raised (a progress sink's fault), re-raised here
+
+    def read() -> None:
+        try:
+            for line in stream:
+                heard[0] = time.monotonic()
+                lines.append(line)
+                if on_progress is not None:
+                    pct = parse_pct(line)
+                    if pct is not None:
+                        on_progress(pct)
+        except BaseException as exc:  # noqa: BLE001 - handed to the calling thread below
+            failed.append(exc)
+            _kill_group(proc)
+
     watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
+    reader = threading.Thread(target=read, name=f"read-{os.path.basename(argv[0])}", daemon=True)
     watchdog.start()
+    reader.start()
     try:
-        # `stdout=PIPE` above guarantees this; narrowed without an `assert`, which `-O` would strip.
-        stream = proc.stdout
-        if stream is None:  # pragma: no cover - unreachable with stdout=PIPE
-            raise ToolFailed(argv, -1, "no stdout pipe")
-        for line in stream:
-            heard[0] = time.monotonic()
-            lines.append(line)
-            if on_progress is not None:
-                pct = parse_pct(line)
-                if pct is not None:
-                    on_progress(pct)
         code = proc.wait()
+        # A killed run stops waiting on the pipe once its group is gone: a descendant that left the group with
+        # stdout open (`setsid`) would otherwise hold the read, and the slot, until it chose to exit.
+        reader.join(_GROUP_GONE_SEC if why else None)
     except BaseException:
         _kill_group(proc)
         proc.wait()
@@ -240,6 +253,8 @@ def run(
             _await_group_gone(proc.pid)
         if token is not None:
             token._ended()
+    if failed:
+        raise failed[0]
     if why:
         raise (Stalled if why[0].startswith("stalled") else ToolFailed)(argv, -1, why[0])
     output = "".join(lines)
