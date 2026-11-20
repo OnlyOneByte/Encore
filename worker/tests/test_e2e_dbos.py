@@ -12,6 +12,8 @@ suite is milliseconds.
 
 from __future__ import annotations
 
+import sqlite3
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -29,7 +31,16 @@ from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import AudioRef, JobRef, TextRef
 from encore_worker.workflows.align import run_align
 
-pytestmark = pytest.mark.dbos
+pytestmark = [
+    pytest.mark.dbos,
+    # On Python >= 3.12 DBOS's SQLite schema stamps every row with `unixepoch('subsec')`, which SQLite
+    # added in 3.42. An older SQLite answers NULL and every DBOS write fails `NOT NULL constraint failed`
+    # (TL-15: Debian bookworm's python:3.12-slim links 3.40.1). That is the box, not this code.
+    pytest.mark.skipif(
+        sys.version_info >= (3, 12) and sqlite3.sqlite_version_info < (3, 42),
+        reason=f"DBOS needs SQLite >= 3.42 for unixepoch('subsec'); this one is {sqlite3.sqlite_version}",
+    ),
+]
 
 
 class Reporter:

@@ -1,4 +1,5 @@
-"""Suite-wide guards: the socket is blocked unless a test says `@pytest.mark.allow_network`.
+"""Suite-wide guards: the socket is blocked unless a test says `@pytest.mark.allow_network`, and audio
+decodes without whisperx where the `ml` extra is absent.
 
 The block caught four tests that had quietly started making live DNS and HTTP calls when the lyrics
 clients grew their own `urllib` opener and a monkeypatch stopped intercepting — still green, thirty
@@ -7,10 +8,13 @@ seconds slower, against whatever the public API returned that day. Nothing in th
 
 from __future__ import annotations
 
+import importlib.util
 import socket
+import sys
 from collections.abc import Iterator
 from typing import Any
 
+import numpy as np
 import pytest
 
 _REAL_CONNECT = socket.socket.connect
@@ -49,6 +53,43 @@ def _no_network(request: pytest.FixtureRequest) -> Iterator[None]:
         yield
     finally:
         socket.socket.connect = _REAL_CONNECT  # type: ignore[method-assign]
+
+
+#: Whether the real `whisperx` is installed (the `ml` extra). Probed once: it is the box, not the test.
+_HAS_WHISPERX = importlib.util.find_spec("whisperx") is not None
+
+
+@pytest.fixture(autouse=True)
+def _decode_without_whisperx(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Stand in for `whisperx.load_audio` where the `ml` extra is absent, so `-m 'not ml'` runs anywhere.
+
+    `ml.load_audio_mono_16k` is the one seam the alignment steps reach whisperx through (TL-01). The fixtures
+    are 16 kHz WAVs, so this reads them with `read_wav_mono`, quantised to int16 like ffmpeg's `s16le` pipe,
+    and refuses anything else with the real one's typed `InfraFault`. A test that fakes `whisperx` in
+    `sys.modules` gets the real function. Its own `MonkeyPatch`, so a test's `monkeypatch.undo()` keeps it.
+    """
+    if _HAS_WHISPERX or request.node.get_closest_marker("ml"):
+        yield
+        return
+    from encore_worker.adapters import ml
+    from encore_worker.domain.audio.wav import read_wav_mono
+
+    real = ml.load_audio_mono_16k
+
+    def load_audio_mono_16k(path: str) -> Any:
+        if "whisperx" in sys.modules:
+            return real(path)
+        try:
+            signal, rate = read_wav_mono(path)
+            if rate != 16000:
+                raise ValueError(f"the whisperx stand-in decodes 16 kHz only, not {rate} Hz: mark it `ml`")
+        except Exception as failed:
+            raise ml._machinery_fault(f"decoding {path!r} through ffmpeg", failed) from failed
+        return np.clip(np.round(signal * 32768.0), -32768, 32767).astype(np.float32) / 32768.0
+
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(ml, "load_audio_mono_16k", load_audio_mono_16k)
+        yield
 
 
 def pytest_configure(config: pytest.Config) -> None:
