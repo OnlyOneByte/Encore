@@ -108,6 +108,11 @@ export const queueEntries = sqliteTable(
 			.default('queued'),
 		rotationSeq: integer('rotation_seq').notNull(),
 		addedAt: integer('added_at').notNull(),
+		// The on-deck preset (QueueEntry.keyShift/guideLevel/deferred). NOT NULL with the reset's own values as
+		// defaults, so a hydrated row reads exactly like an entry nobody touched.
+		keyShift: integer('key_shift').notNull().default(0),
+		guideLevel: real('guide_level'),
+		deferred: integer('deferred', { mode: 'boolean' }).notNull().default(false),
 		// Scopes the queue and its rotation to a room, so the write-behind sink and boot-hydrate both touch only THIS room's rows and two rooms hold independent queues.
 		roomId: text('room_id').notNull()
 	},

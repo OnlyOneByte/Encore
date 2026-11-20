@@ -17,7 +17,7 @@ import { mediaFor, orderingOf, type HubDeps } from './hub';
 /**
  * Fields a NEW song clears. PlaybackState is a long-lived singleton and setPlayback takes a Partial, so
  * a reset site that forgets ONE of these leaks the previous singer's transpose/background/guide into the
- * next turn — hence named ONCE here and spread at all three reset sites. The two nullable fields reset
+ * next turn — hence named ONCE here and spread at every reset site (a start spreads it through `songStart`). The two nullable fields reset
  * to null (INHERIT the room default), not a concrete value, or a room loses its guide every song.
  */
 const EPHEMERAL_RESET = {
@@ -26,6 +26,12 @@ const EPHEMERAL_RESET = {
 	background: null,
 	guideLevel: null
 } as const satisfies Partial<PlaybackState>;
+
+/** What a song START writes: the reset, with the singer's on-deck preset IN PLACE of its key and guide. Every
+ *  start site spreads THIS, never the bare reset, or a preset applies on one path and silently not on another. */
+function songStart(entry: QueueEntry): Partial<PlaybackState> {
+	return { ...EPHEMERAL_RESET, keyShift: entry.keyShift ?? 0, guideLevel: entry.guideLevel ?? null };
+}
 
 /** For a mutation no client command produced (skip/advance/play): without it, clients keep a skipped
  *  song `queued` until an unrelated resync corrects it. One publisher, one broadcast SHAPE. */
@@ -80,7 +86,7 @@ export function reconcileOnReady(deps: HubDeps): void {
 		if (next) {
 			beginSinging(deps, next);
 			// A partial reset leaks the previous singer's settings into a song that started while idle.
-			state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next.id, isPlaying: true });
+			state.setPlayback({ ...songStart(next), currentEntryId: next.id, isPlaying: true });
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		} else if (state.playback.currentEntryId !== null) {
@@ -100,7 +106,11 @@ function advance(deps: HubDeps): QueueEntry | null {
 	if (cur) state.applyQueueOp({ op: 'status', id: cur, status: 'done' });
 	const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 	if (next) beginSinging(deps, next);
-	state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next?.id ?? null, isPlaying: !!next });
+	state.setPlayback({
+		...(next ? songStart(next) : EPHEMERAL_RESET),
+		currentEntryId: next?.id ?? null,
+		isPlaying: !!next
+	});
 	// Only when something ACTUALLY changed — an unchanged snapshot just makes clients redo work.
 	if (cur || next) publishQueue(deps);
 	return next ?? null;
@@ -116,7 +126,7 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 				if (next) {
 					beginSinging(deps, next);
-					state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next.id, isPlaying: true });
+					state.setPlayback({ ...songStart(next), currentEntryId: next.id, isPlaying: true });
 					publishQueue(deps); // it just left `queued`
 					break;
 				}

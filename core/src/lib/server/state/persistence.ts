@@ -23,6 +23,9 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 								status: e.status,
 								rotationSeq: e.rotationSeq,
 								addedAt: e.addedAt,
+								keyShift: e.keyShift ?? 0,
+								guideLevel: e.guideLevel ?? null,
+								deferred: e.deferred ?? false,
 								roomId // stamped from the sink's bound room — in-memory entries carry no room field
 							}))
 						)

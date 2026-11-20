@@ -37,6 +37,7 @@
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import { toast } from 'svelte-sonner';
+	import { rememberedKey } from '$lib/stores/remembered-key';
 
 	let me = $state<PublicSinger | null>(null);
 	/* `$state.raw`, NOT `$state`, for the three mirrored collections: `sync()` REASSIGNS each one wholesale from the
@@ -239,7 +240,7 @@
 	}
 
 	function addSong(m: Media) {
-		store?.addSong(m.id);
+		store?.addSong(m.id, rememberedKey(m.id));
 		if (navigator.vibrate) navigator.vibrate(8);
 		/* NO ACTION ON THE TOAST, and that is a fix rather than a trim. It read `View queue` and assigned `'/'` to
 		   `window.location` — so it named the queue and landed on the SING tab, and it was the app's one direct

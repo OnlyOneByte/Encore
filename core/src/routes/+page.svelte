@@ -24,6 +24,7 @@
 	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as Empty from '$lib/components/ui/empty';
+	import { rememberedKey } from '$lib/stores/remembered-key';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -315,7 +316,7 @@
 	const rawView = $derived(libraryWindow(rawRows, revealedRaw));
 
 	function addSong(mediaId: string) {
-		store?.addSong(mediaId);
+		store?.addSong(mediaId, rememberedKey(mediaId));
 		/* SAID HERE, because the row that confirms an add is on ANOTHER TAB now. The queue's announcer
 		   ($lib/phrasing/queue-announcement, which /queue drives) is deliberately silent about my own adds — "the row
 		   appearing is its own confirmation" — and no row appears on this screen at all, so a screen-reader guest

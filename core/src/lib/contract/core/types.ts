@@ -98,6 +98,12 @@ export interface QueueEntry {
 	status: EntryStatus;
 	rotationSeq: number; // server-owned position in the stored ordered list
 	addedAt: number;
+	/** The singer's key and guide, chosen BEFORE the turn (the on-deck card). The song start applies them in place
+	 *  of the per-song reset; absent is the reset itself (0, and `null` = inherit the room). */
+	keyShift?: number;
+	guideLevel?: number | null;
+	/** "Not yet" has been spent on this entry — it is allowed once. */
+	deferred?: boolean;
 }
 
 export interface PlaybackState {
