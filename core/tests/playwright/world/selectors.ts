@@ -99,6 +99,9 @@ export const SEL = {
 	 *  the only place on the phone the current title is spelled outside /queue. Rendered only on the `hasSong`
 	 *  branch: with a queue but nothing playing the strip shows `npStripWho` alone. */
 	npStripTitle: '.dock .strip .song',
+	/** The audience's reaction row, above the strip. Absent on the current singer's own phone. */
+	npCheers: '.dock .cheers',
+	npCheer: '.dock .cheers .cheer',
 	/** The singer's name, or "Ready when you are" on the queued-but-not-playing branch. */
 	npStripWho: '.dock .strip .who',
 	/** The strip's ONLY filled control, which is why `.btn.primary` identifies it: play/pause is the one
@@ -238,6 +241,9 @@ export const SEL = {
 	pageHeading: 'h1',
 	pageBody: 'body',
 	lowerThird: '.lower-third',
+	/** The right-gutter lane reactions rise in, and one rising disc. */
+	tvReactionLane: '.reaction-lane',
+	tvReaction: '.reaction-lane .reaction',
 	nowSong: '.ls-song',
 	nowName: '.ls-name',
 	stateNext: '.state-next',

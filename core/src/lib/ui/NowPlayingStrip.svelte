@@ -19,7 +19,9 @@
 	   design review's "the brightest element on screen does nothing". With nothing playing and nothing queued
 	   there is no strip and the tab bar alone holds the bottom. */
 	import Icon from '$lib/ui/Icon.svelte';
+	import ReactionRow from '$lib/ui/ReactionRow.svelte';
 	import { progressFraction } from '$lib/clock';
+	import type { ReactionKind } from '$lib/contract';
 
 	let {
 		title,
@@ -33,7 +35,8 @@
 		queueCount,
 		onrestart,
 		ontoggleplay,
-		onskip
+		onskip,
+		onreact
 	}: {
 		title: string | null;
 		singerName: string | null;
@@ -47,6 +50,8 @@
 		onrestart: () => void;
 		ontoggleplay: () => void;
 		onskip: () => void;
+		/** Absent means no reaction row: nothing is on, it is your song, or the room switched reactions off. */
+		onreact?: (kind: ReactionKind) => void;
 	} = $props();
 
 	const fraction = $derived(progressFraction(elapsedSec, durationSec));
@@ -68,6 +73,9 @@
 </script>
 
 {#if live}
+	{#if hasSong && onreact}
+		<ReactionRow singerName={singerName} onreact={onreact} />
+	{/if}
 	<!-- A `section`, not a `nav`: the tab bar below is the navigation landmark, and two sibling navs make the
 		landmark list ambiguous to a screen reader. The label names the thing rather than the control group. -->
 	<section class="strip" aria-label="Now playing">

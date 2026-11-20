@@ -11,6 +11,28 @@ export function roomTopic(roomId: string): string {
 	return `room:${roomId}`;
 }
 
+/** The served room's TELEVISIONS only. A separate pub/sub topic rather than a filter at send time: the phone client
+ *  never subscribes to it, so it never hears a TV-only frame. `role=tv` is a client-supplied query param, so this
+ *  keeps reactions off phones, not secret from the LAN; the payload (`singerId`, `kind`, `color`) is harmless. */
+export function roomTvTopic(roomId: string): string {
+	return `${roomTopic(roomId)}:tv`;
+}
+
+/** The whole allowed list for `room:react`, in the order the phone lays the buttons out. The pictures are bundled
+ *  artwork (`ui/ReactionGlyph.svelte`), not emoji text, so a TV with no emoji font still draws them. */
+export const REACTIONS = [
+	{ id: 'clap', label: 'Clap' },
+	{ id: 'fire', label: 'Fire' },
+	{ id: 'laugh', label: 'Laugh' },
+	{ id: 'heart', label: 'Love it' }
+] as const;
+
+export type ReactionKind = (typeof REACTIONS)[number]['id'];
+
+export function isReactionKind(v: unknown): v is ReactionKind {
+	return REACTIONS.some((r) => r.id === v);
+}
+
 export type MediaStatus =
 	| 'queued'
 	| 'downloading'
@@ -73,7 +95,9 @@ export type ServerEvent =
 	// FULL SNAPSHOTS, never deltas: an idempotent snapshot cannot drift after a dropped frame.
 	| { type: 'singer:presence'; online: string[]; away: string[] }
 	| { type: 'settings:changed'; settings: EffectiveSettings }
-	| { type: 'op:reject'; clientOpId: string; reason: string };
+	| { type: 'op:reject'; clientOpId: string; reason: string }
+	// TV-ONLY, published on `roomTvTopic`. `color` rides along so the TV draws the disc without a directory lookup.
+	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string };
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.
@@ -93,7 +117,9 @@ export type ClientEvent =
 	| { type: 'queue:command'; command: ClientCommand }
 	| { type: 'player:command'; command: PlayerCommand }
 	| { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
-	| { type: 'hello'; lastRev: number };
+	| { type: 'hello'; lastRev: number }
+	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
+	| { type: 'room:react'; kind: ReactionKind };
 
 /**
  * One separation model a worker offers, for rendering a picker.

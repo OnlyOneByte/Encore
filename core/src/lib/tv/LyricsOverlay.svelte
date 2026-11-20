@@ -304,8 +304,9 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.7em;
-		/* Safe-area token, not a percentage: every edge-anchored element on the TV shares one inset. */
-		padding: 0 var(--tv-safe-x);
+		/* Safe-area token, not a percentage: every edge-anchored element on the TV shares one inset. Plus the reaction
+		   lane's reserve, on BOTH sides so a row stays centred; /tv publishes it only while reactions are on. */
+		padding: 0 calc(var(--tv-safe-x) + var(--tv-reaction-reserve));
 		text-align: center;
 		pointer-events: none;
 		/* Darkens BEHIND the glyphs, so it is not a contrast risk for the pure-white ink. */

@@ -70,7 +70,8 @@ export class SettingsRepository {
 			lyricsLinesAfter: row.lyricsLinesAfter,
 			guideLevelDefault: row.guideLevelDefault,
 			loudnessNormalization: row.loudnessNormalization,
-			presenceGraceMinutes: row.presenceGraceMinutes
+			presenceGraceMinutes: row.presenceGraceMinutes,
+			tvReactions: row.tvReactions
 		});
 	}
 

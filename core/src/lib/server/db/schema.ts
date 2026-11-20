@@ -201,7 +201,9 @@ export const roomSettings = sqliteTable('room_settings', {
 	// NOT NULL default false, so an existing room upgrades to every song at unity rather than silently changing levels.
 	loudnessNormalization: integer('loudness_normalization', { mode: 'boolean' }).notNull().default(false),
 	// Applies after the socket drops AND the last pending song leaves the queue. 0 = no grace.
-	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90)
+	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90),
+	// NOT NULL default true: reactions ship ON, so an existing room upgrades to having them.
+	tvReactions: integer('tv_reactions', { mode: 'boolean' }).notNull().default(true)
 });
 
 export const jobs = sqliteTable(

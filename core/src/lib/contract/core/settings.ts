@@ -261,6 +261,8 @@ export interface RoomSettings {
 	/** Applies once the last socket drops AND the last pending song leaves the queue.
 	 *  See docs/SERVER.md#membership-and-presence. */
 	presenceGraceMinutes: number;
+	/** Whether guests' reactions float up the side of the TV. ON by default; off also hides the phones' row. */
+	tvReactions: boolean;
 }
 
 export const MIN_SONG_INTRO_MS = 500;
@@ -287,7 +289,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
 	guideLevelDefault: 0,
 	loudnessNormalization: false,
-	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES
+	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES,
+	tvReactions: true
 };
 
 /** The hold the TV applies: 0 when the intro is off, which the controller's hard-cut branch handles. */
@@ -327,7 +330,8 @@ const ROOM_FIELD_RULES: FieldRules<RoomSettings> = {
 	guideLevelDefault: (input, base) => (typeof input === 'number' ? (clampGuideLevel(input) ?? base) : base),
 	loudnessNormalization: keptBoolean,
 	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
-	presenceGraceMinutes: clampedInt(MIN_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES)
+	presenceGraceMinutes: clampedInt(MIN_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES),
+	tvReactions: keptBoolean
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
