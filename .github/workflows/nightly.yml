@@ -1,0 +1,93 @@
+# What is too slow for every push (proposal 06, sweeps/tooling.md §5): the whole Playwright suite with a RANDOM
+# fuzz seed. Runs on main once a night when main has moved since the last successful run, or by hand. The
+# worker's ML suite is ml.yml.
+#
+# Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # 09:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+
+jobs:
+  # A quiet day costs one billed minute: nothing runs when main is still at the commit the last successful
+  # run of this workflow tested. Running it by hand always runs.
+  moved:
+    name: main moved?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          last=$(gh run list --repo "$REPO" --workflow nightly.yml --branch main --status success --limit 1 \
+            --json headSha --jq '.[0].headSha // ""' || true)
+          if [ "$EVENT" != workflow_dispatch ] && [ "$last" = "$HEAD_SHA" ]; then
+            echo "main is still at $HEAD_SHA, which the last successful nightly tested: skipping."
+            echo run=false >> "$GITHUB_OUTPUT"
+          else
+            echo run=true >> "$GITHUB_OUTPUT"
+          fi
+
+  playwright:
+    name: playwright · gate + flow + probe
+    needs: moved
+    if: needs.moved.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      # FUZZ_RANDOM draws a fresh seed instead of replaying flow/fuzz-seeds.ts. The seed is printed before
+      # anything can fail; a failing one prints its replay line, ready to add to fuzz-seeds.ts.
+      # --retries=0: a retry loads the spec again and draws a NEW seed, so a failing seed could come back green
+      # as `flaky` (the spec also pins this for its random test). No retries for the probes either: this run
+      # exists to show what fails, not to forgive it.
+      - name: gate + flow + probe, random fuzz seed
+        env:
+          FUZZ_RANDOM: '1'
+        run: |
+          set -o pipefail
+          bun x playwright test --project=gate --project=flow --project=probe --retries=0 2>&1 | tee playwright.log
+      - name: fuzz seed
+        if: always()
+        run: grep -m1 -E '^ *fuzz replay:' playwright.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-artifacts
+          path: |
+            core/playwright.log
+            core/playwright-report/
+            core/tests/playwright/.artifacts/
+          retention-days: 3
