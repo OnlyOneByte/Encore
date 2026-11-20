@@ -356,8 +356,8 @@ for the 20 DBOS tests. The alignment tests reach whisperx through one seam, `ml.
 `tests/conftest.py` stands in for it when whisperx is absent. The skips each name what the box lacks: the
 real model stack (whisperx, torch, pyannote), a runnable ffmpeg (the `ffmpeg` extra or one on PATH), or a
 SQLite new enough for DBOS (3.42). `uv run --extra ml pytest -q` still runs everything, where the torch
-wheels install (x86_64 Linux, macOS). `ruff check`, `ruff format --check` and `mypy` all exit 0 on a clean tree; any
-non-zero exit is a real finding.
+wheels install (x86_64 Linux, macOS). `ruff check`, `ruff format --check` and `mypy` all exit 0 on a clean
+tree; any non-zero exit is a real finding.
 
 - `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
   browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in
