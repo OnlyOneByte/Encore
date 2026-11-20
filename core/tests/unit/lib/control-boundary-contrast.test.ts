@@ -146,8 +146,9 @@ test('--line is unchanged and still fails 3:1, so the fix cannot have been a glo
 	   worth recording, because the previous number here was 17 and the delta is not a typo — the drawer stack's
 	   deletion took `NowPlayingDrawer` and `NowPlayingBand` OFF the token (-2), and `NowPlayingStrip`, `TabBar` and
 	   `/queue` each took a hairline (+3). 17 - 2 + 3 = 18. If you change the chrome, run the census and update this
-	   line; do not widen it into a bound. */
-	expect(filesSpelling('var(--line)').length).toBe(18);
+	   line; do not widen it into a bound. 19 since the on-deck card: one more decorative card edge, the same dress as
+	   /queue's "Singing now" card beside it (18 + 1). */
+	expect(filesSpelling('var(--line)').length).toBe(19);
 
 	/* THE --line FAMILY AS A BORDER UTILITY IS CONFINED TO VENDORED REGISTRY CODE, which is the invariant the count
 	   was standing in for and the one it could not express. A new decorative hairline in this app is authored CSS

@@ -99,8 +99,9 @@ export class QueueStore {
 		this.#subs.forEach((fn) => fn(snap));
 	}
 
-	/** Add a song to MY turn. Mints the id locally so the server echo reconciles with zero flicker. */
-	addSong(mediaId: string): string {
+	/** Add a song to MY turn. Mints the id locally so the server echo reconciles with zero flicker. `keyShift` is the
+	 * key this phone last sang the song in, so a repeat song arrives already set. */
+	addSong(mediaId: string, keyShift?: number): string {
 		const id = (this.#deps.mintId ?? ulid)();
 		const entry: QueueEntry = {
 			id,
@@ -108,7 +109,8 @@ export class QueueStore {
 			singerId: this.#deps.singerId,
 			status: 'queued',
 			rotationSeq: Number.MAX_SAFE_INTEGER, // placeholder; applyAndReseq assigns the real seq
-			addedAt: this.#nextAddedAt() // monotonic — never collides under fast taps (Finding #4)
+			addedAt: this.#nextAddedAt(), // monotonic — never collides under fast taps (Finding #4)
+			...(keyShift ? { keyShift } : {})
 		};
 		this.#optimistic({ op: 'add', entry });
 		return id;
@@ -123,6 +125,15 @@ export class QueueStore {
 	 * indexes the caller's OWN picks. The same optimistic reducer, so the server commits the identical order. */
 	moveToIndex(id: string, toIdx: number): void {
 		this.#optimistic({ op: 'move-to-index', id, toIdx });
+	}
+
+	/** The on-deck card's key and guide for one of MY entries. Absolute, like the `key` command. */
+	setEntryPrefs(id: string, keyShift: number, guideLevel: number | null): void {
+		this.#optimistic({ op: 'set-entry-prefs', id, keyShift, guideLevel });
+	}
+	/** "Not yet": move MY entry back to `toIdx` (a whole-queued-list index), spending its one deferral. */
+	notYet(id: string, toIdx: number): void {
+		this.#optimistic({ op: 'not-yet', id, toIdx });
 	}
 
 	/** `addedAt` is the round-robin tiebreaker, so two adds in the same millisecond MUST get distinct, increasing

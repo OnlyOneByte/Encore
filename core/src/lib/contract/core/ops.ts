@@ -11,6 +11,10 @@ export type QueueOp =
 	// permutes one singer's picks among the slots that singer already holds. Both sides rewrite the stored
 	// list through `moveToIndex`, so the two cannot diverge.
 	| { op: 'move-to-index'; id: string; toIdx: number } // toIdx = target index into the whole QUEUED list (a playing/terminal entry keeps its slot and never occupies one)
+	// OWNER ONLY, both. ABSOLUTE values, like the `key` player command, so a resend is a no-op rather than a drift.
+	| { op: 'set-entry-prefs'; id: string; keyShift: number; guideLevel: number | null }
+	// "Not yet": a `move-to-index` that also spends the entry's one deferral, in ONE op so the two cannot split.
+	| { op: 'not-yet'; id: string; toIdx: number }
 	| { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
@@ -53,6 +57,13 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			break;
 		case 'status':
 			next = entries.map((e) => (e.id === op.id ? { ...e, status: op.status } : e));
+			break;
+		case 'set-entry-prefs':
+			next = entries.map((e) => (e.id === op.id ? { ...e, keyShift: op.keyShift, guideLevel: op.guideLevel } : e));
+			break;
+		case 'not-yet':
+			// Same raw-seq fallback as `move-to-index`; the real path is `applyAndReseq`.
+			next = entries.map((e) => (e.id === op.id ? { ...e, rotationSeq: op.toIdx, deferred: true } : e));
 			break;
 	}
 	return next.sort((a, b) => a.rotationSeq - b.rotationSeq);

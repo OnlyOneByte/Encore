@@ -4,6 +4,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
+	import OnDeckCard from '$lib/components/OnDeckCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
@@ -625,6 +626,41 @@
 			<p class="caption">On /settings — a non-tab surface, so no tab lights at all</p>
 			<TabBar pathname="/settings" />
 		</div>
+	</div>
+
+	<h2 class="section">OnDeckCard · resting and heads-up</h2>
+	<!-- Inert, like the GuidingTrack rows below: the callbacks go nowhere, so each card stays in the state it shows. -->
+	<div style="display:grid;gap:14px;">
+		<OnDeckCard
+			title="Sweet Caroline"
+			artist="Neil Diamond"
+			profile={profileFull}
+			keyShift={-2}
+			guidePct={20}
+			guideAvailable={true}
+			timeLeft="~2 min"
+			headsUp={false}
+			singerColor={PINK}
+			notYetName="Theo"
+			onkey={() => {}}
+			onguideinput={() => {}}
+			onguidecommit={() => {}}
+			onnotyet={() => {}}
+		/>
+		<OnDeckCard
+			title="Sweet Caroline"
+			artist="Neil Diamond"
+			profile={profileFull}
+			keyShift={-2}
+			guidePct={20}
+			guideAvailable={true}
+			headsUp={true}
+			singerColor={PINK}
+			onkey={() => {}}
+			onguideinput={() => {}}
+			onguidecommit={() => {}}
+			onnotyet={() => {}}
+		/>
 	</div>
 
 	<h2 class="section">GuidingTrack · every state</h2>

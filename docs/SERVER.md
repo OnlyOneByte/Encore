@@ -406,7 +406,9 @@ broadcasts never wait on a DB read. The reconciliation model is in `docs/ARCHITE
   `reconcileOnReady`'s song-start branch. Nothing rebuilds that object per song, so a field reset by hand at
   some sites and missed at one leaks the previous singer's choice into the next turn and the type checker
   cannot see it. Adding a field means one edit to that object; the two nullable fields reset to `null`
-  (INHERIT), never to a concrete value.
+  (INHERIT), never to a concrete value. A song START spreads `songStart(entry)`, which is that reset with the
+  entry's on-deck preset (`QueueEntry.keyShift` / `guideLevel`, set by the owner-only `set-entry-prefs` op) in
+  place of the key and guide; an entry with no preset starts exactly reset.
 - **`state.reorder()` returns null when the order is unchanged** and then touches nothing, which is what
   makes it safe to call from the playback path as well as from a settings write.
 - **The store SELF-HEALS a persisted dangling `currentEntryId`**; there is deliberately no boot resync and

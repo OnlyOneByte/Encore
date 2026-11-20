@@ -25,7 +25,7 @@
 		type SongProfile
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
-	import { queueCardKind, nextPlayableEntryId } from '$lib/readiness';
+	import { queueCardKind, nextPlayableEntryId, entryPlayable } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { tick } from 'svelte';
@@ -48,6 +48,9 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
+	import OnDeckCard from '$lib/components/OnDeckCard.svelte';
+	import { notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
+	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -174,6 +177,8 @@
 		   really does mean lost — there is nothing to be optimistic about. */
 		if (!room.command({ cmd: 'key', semitones: next })) return;
 		keyDraft = next;
+		// Your own song: this phone remembers the key for the next time you queue it.
+		if (nowEntry && nowEntry.singerId === me?.id) rememberKey(nowEntry.mediaId, next);
 	}
 	// Two different stem requirements, so a song can offer ±key without offering a guiding track.
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
@@ -391,6 +396,55 @@
 		void room.requestProcess(mediaId);
 	}
 
+	/* ON DECK: MY entry is what plays next, while someone else's song is on. Not shown in an idle room, where the
+	   server starts a ready song at once and the card would only flash. The key and guide go onto the ENTRY
+	   (`set-entry-prefs`), which the server applies when the song starts — through the queue store, so the change is
+	   optimistic and survives a dropped socket like any other queue op. */
+	const deckEntry = $derived(
+		nowEntry ? queued.find((e) => e.id === nextPlayableId && e.singerId === me?.id) : undefined
+	);
+	const deckMedia = $derived(deckEntry ? mediaCatalog.get(deckEntry.mediaId) : undefined);
+	const deckDisplay = $derived(songDisplay(deckMedia));
+	const deckKey = $derived(deckEntry?.keyShift ?? 0);
+	const deckRemain = $derived(nowDurationSec > 0 ? Math.max(0, nowDurationSec - drawnPos) : null);
+	const deckHeadsUp = $derived(!!deckEntry && deckRemain !== null && deckRemain <= HEADS_UP_SEC);
+	$effect(() => {
+		if (deckHeadsUp && deckEntry) buzzOnce(deckEntry.id, navigator.vibrate?.bind(navigator));
+	});
+	const deckNotYet = $derived(
+		deckEntry
+			? notYetTarget(queued, deckEntry.id, (e) =>
+					entryPlayable(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))
+				)
+			: null
+	);
+	/* The slider's drag-time value; nothing is sent until release, because nothing is playing it yet. Dropped once
+	   the entry agrees, or when the card is for a different entry. */
+	let deckGuideDraft = $state<number | null>(null);
+	let deckGuideFor: string | undefined;
+	const deckGuideServerPct = $derived(
+		Math.round(effectiveGuideLevel({ guideLevel: deckEntry?.guideLevel ?? null }, roomGuideDefault) * 100)
+	);
+	$effect(() => {
+		if (deckGuideFor !== deckEntry?.id || deckGuideServerPct === deckGuideDraft) deckGuideDraft = null;
+		deckGuideFor = deckEntry?.id;
+	});
+	function setDeckKey(next: number) {
+		if (!deckEntry) return;
+		store?.setEntryPrefs(deckEntry.id, next, deckEntry.guideLevel ?? null);
+		rememberKey(deckEntry.mediaId, next);
+	}
+	function setDeckGuide(pct: number) {
+		if (!deckEntry) return;
+		deckGuideDraft = pct;
+		store?.setEntryPrefs(deckEntry.id, deckKey, pct / 100);
+	}
+	function notYet() {
+		if (!deckEntry || !deckNotYet) return;
+		store?.notYet(deckEntry.id, deckNotYet.toIdx);
+		if (navigator.vibrate) navigator.vibrate(8);
+	}
+
 	const mediaTitleOf = (id: string) => songDisplay(mediaCatalog.get(id)).title || 'Untitled';
 	// The moved block calls this name; home spelled it `mediaTitle`.
 	const mediaTitle = mediaTitleOf;
@@ -501,6 +555,25 @@
 					</a>
 				{/if}
 			</div>
+		{/if}
+
+		{#if deckEntry}
+			<OnDeckCard
+				title={deckDisplay.title || deckMedia?.title || 'Untitled'}
+				artist={deckDisplay.artist}
+				profile={deckMedia?.songProfile ?? null}
+				keyShift={deckKey}
+				guidePct={deckGuideDraft ?? deckGuideServerPct}
+				guideAvailable={!!deckMedia && hasGuidingTrack(deckMedia)}
+				timeLeft={minutesLeft(deckRemain)}
+				headsUp={deckHeadsUp}
+				singerColor={me.color}
+				notYetName={deckNotYet ? (singers.get(deckNotYet.singerId)?.displayName ?? 'the next singer') : null}
+				onkey={setDeckKey}
+				onguideinput={(pct) => (deckGuideDraft = pct)}
+				onguidecommit={setDeckGuide}
+				onnotyet={notYet}
+			/>
 		{/if}
 
 		{#if queued.length}

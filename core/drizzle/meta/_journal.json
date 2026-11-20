@@ -15,6 +15,13 @@
       "when": 1790841959004,
       "tag": "0001_lyrics_lead_default",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795190295904,
+      "tag": "0002_entry_on_deck",
+      "breakpoints": true
     }
   ]
 }
