@@ -665,6 +665,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 	(
 		cd "$WORKER_DIR"
 		# `ENCORE_CORE_URL`, not `ENCORE_CORE_WS`: the new worker reads the full ws URL from one variable.
+		# No `token=` here: ENCORE_WORKER_TOKEN is exported by the .env loader above and the worker appends it.
 		# `ENCORE_DBOS_DB` is per-box durable state and must NOT sit under MEDIA_DIR, where a retention
 		# sweep would be free to evict the checkpoints a resumed job replays from.
 		exec env \

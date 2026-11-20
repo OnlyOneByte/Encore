@@ -6,7 +6,9 @@ WORKDIR /app
 # install deps first (layer cache). The TypeScript project lives in core/ — its own package.json,
 # lockfile and node_modules, mirroring worker/ — while the BUILD CONTEXT stays the repo root so one
 # .dockerignore covers both images. Hence every source path here is core/-prefixed.
+# patches/ too: package.json `patchedDependencies` makes bun install fail without the patch file.
 COPY core/package.json core/bun.lock core/.npmrc ./
+COPY core/patches ./patches
 RUN bun install --frozen-lockfile
 
 # copy sources + build the SvelteKit app (svelte-adapter-bun -> build/). core/ ALONE: docs, dev.sh and
@@ -30,6 +32,7 @@ RUN apt-get update \
 # run from source at runtime and the adapter's build/ output does not bundle their npm dependencies, so
 # they must be present. Copying node_modules from the build stage would carry the dev deps too.
 COPY --from=build /app/package.json /app/bun.lock /app/.npmrc /app/
+COPY --from=build /app/patches ./patches
 RUN bun install --frozen-lockfile --production
 
 # the built app + server entry + migrations + server-side sources

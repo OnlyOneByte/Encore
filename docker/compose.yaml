@@ -53,6 +53,9 @@ services:
       - ENCORE_AUDIO_DIR=/app/media/audio # raw originals — NOT regenerable; this is what to back up
       - ENCORE_DERIVED_DIR=/app/media/derived # stems/pitch/lyrics/thumbs — safe to delete, recomputable
       - ENCORE_META_DIR=/app/media/meta # sidecar records — the authoritative library
+      # Shared secret on role=worker upgrades. Passed to BOTH services from docker/.env: compose's .env only
+      # feeds `${}` substitution, so a key not listed here never reaches the container.
+      - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
     volumes:
       # Host paths are overridable from docker/.env so the volumes can move without editing this file.
       # `../` because relative paths resolve against the PROJECT DIRECTORY, which is docker/ — see note 3
@@ -81,6 +84,8 @@ services:
       # through one `/ws` endpoint and reads `role` to decide what the connection may do. A worker
       # dialling `/worker` is simply never upgraded, which looks exactly like the core being down.
       - ENCORE_CORE_URL=ws://core:3000/ws?role=worker
+      # Appended by the worker as `&token=`; must match core's (see the core service).
+      - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
       - ENCORE_WORKER_ID=${ENCORE_WORKER_ID:-worker-1}
       # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator, cores
       # and installed engines at startup, so a wrong guess here is worse than no value. Note that

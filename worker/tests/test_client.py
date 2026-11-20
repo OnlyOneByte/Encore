@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -166,6 +167,29 @@ async def test_announces_itself_on_connect() -> None:
     assert sorted(caps) == ["align", "stems"]
     assert hello["backend"] == "mlx", "a Mac announcing mlx must not be believed to run torch"
     assert hello["concurrency"] == 1
+
+
+async def test_dials_with_the_worker_token_core_requires() -> None:
+    """WK-01: core 401s a `role=worker` upgrade without a matching `token` once ENCORE_WORKER_TOKEN is set,
+    so a worker that never sends it reconnect-loops forever and every job sits unserved."""
+    dialled: list[str] = []
+
+    for env in ({"ENCORE_WORKER_TOKEN": "s3 cr&t=/"}, {}):
+        sock = FakeSocket()
+
+        async def connect(url: str, sock: FakeSocket = sock) -> FakeSocket:
+            dialled.append(url)
+            return sock
+
+        cfg = Config.from_env({"ENCORE_CORE_URL": "ws://core.test/ws?role=worker", **env})
+        c = Client(config=cfg, connect=connect, run_job=_never, capabilities=CAPS, backoff=no_backoff)
+        async with Session(c, sock):
+            pass
+        assert "s3 cr&t" not in repr(cfg), "the secret must never reach a log line"
+
+    with_token, without = (parse_qs(urlsplit(u).query) for u in dialled)
+    assert with_token == {"role": ["worker"], "token": ["s3 cr&t=/"]}, "URL-encoded, role kept"
+    assert without == {"role": ["worker"]}, "unset leaves the URL exactly as configured"
 
 
 async def test_closes_the_socket_when_the_session_ends() -> None:
@@ -396,6 +420,23 @@ async def test_reconnects_after_a_connect_failure() -> None:
     c = Client(config=CFG, connect=flaky, run_job=_never, capabilities=CAPS, backoff=no_backoff)
     await asyncio.wait_for(c.serve_forever(max_attempts=3), 5.0)
     assert len(attempts) == 3, "a dropped core must be retried, not fatal"
+
+
+async def test_a_refused_token_is_named_not_reported_as_a_lost_connection(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A 401 loops forever with nothing in the queue to explain it, so it gets its own line."""
+
+    class Refused(Exception):
+        response = type("Response", (), {"status_code": 401})()
+
+    async def refuses(_url: str) -> FakeSocket:
+        raise Refused("server rejected WebSocket connection: HTTP 401")
+
+    c = Client(config=CFG, connect=refuses, run_job=_never, capabilities=CAPS, backoff=no_backoff)
+    await asyncio.wait_for(c.serve_forever(max_attempts=1), 5.0)
+    out = capsys.readouterr().out
+    assert "ENCORE_WORKER_TOKEN" in out and "connection lost" not in out
 
 
 def test_the_default_backoff_is_jittered() -> None:

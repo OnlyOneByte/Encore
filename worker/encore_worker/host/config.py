@@ -76,6 +76,10 @@ class Config:
     #: Where the core is. Both the `/ws` path and `role=worker` are required — core routes every socket
     #: through one endpoint and reads `role` to decide what the connection may do.
     core_url: str = "ws://localhost:3000/ws?role=worker"
+    #: The shared secret core checks on a `role=worker` upgrade (`ENCORE_WORKER_TOKEN`, the SAME value both
+    #: sides). Sent as the `token` query param at dial time; kept out of `core_url` and `repr` so it is never
+    #: printed. None means core runs unauthenticated.
+    worker_token: str | None = field(default=None, repr=False)
     worker_id: str = "worker-1"
     version: str = "0.1.0"
     #: How many jobs at once. One by default: separation and alignment are both GPU-bound. It also sizes the
@@ -154,6 +158,7 @@ class Config:
 
         return Config(
             core_url=text("ENCORE_CORE_URL", "ws://localhost:3000/ws?role=worker"),
+            worker_token=optional("ENCORE_WORKER_TOKEN"),
             worker_id=text("ENCORE_WORKER_ID", "worker-1"),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=_positive_int(src, "ENCORE_WORKER_CONCURRENCY", 1),
