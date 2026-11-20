@@ -88,6 +88,7 @@ export type ServerEvent =
 			mediaId: string;
 			status: MediaStatus;
 			pct: number;
+			/** Seconds until ready; absent when unknown, and -1 when the job is well past it (`jobs/eta.ts`). */
 			etaSec?: number;
 			unservable?: boolean;
 			requestedBy?: string;

@@ -242,7 +242,8 @@ export class JobRepository {
 	/** Stamps a fresh PROGRESS lease: the ack lease no longer applies, so a worker accepting near the ack
 	 *  deadline is not instantly reaped as dead. */
 	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
-		const job = this.transition(id, 'ACCEPT', { leaseExpiresAt }, now);
+		// `stage` cleared: a new attempt's figures start over, and `#onProgress` never lets one fall within a stage.
+		const job = this.transition(id, 'ACCEPT', { leaseExpiresAt, stage: null }, now);
 		this.#ledger?.started(id, now);
 		return job;
 	}

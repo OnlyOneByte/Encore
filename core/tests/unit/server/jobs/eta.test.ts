@@ -1,6 +1,15 @@
 // The ETA is a CLAIM, so the cases that matter are the ones where it must say nothing, and the overrun.
 import { test, expect } from 'bun:test';
-import { etaSec, laterSteps, workPerAudioSec, type FinishedRun } from '$lib/server/jobs/eta';
+import {
+	ETA_OVERDUE,
+	engineFamily,
+	etaSec,
+	laterSteps,
+	overdueAfterSec,
+	sameEngine,
+	workPerAudioSec,
+	type FinishedRun
+} from '$lib/server/jobs/eta';
 
 /** A run that took `sec` seconds of work on `audioSec` seconds of audio. */
 const run = (sec: number, audioSec: number | null = 100): FinishedRun => ({
@@ -25,9 +34,29 @@ test('with history: what is left of this step plus every later step in full', ()
 	expect(etaSec({ audioSec: 200, elapsedSec: 40, current: 0.5, later: [0.1] })).toBe(80);
 });
 
-test('an overrun reads 0, never negative, and does not stretch the later steps', () => {
-	expect(etaSec({ audioSec: 200, elapsedSec: 500, current: 0.5, later: [] })).toBe(0);
-	expect(etaSec({ audioSec: 200, elapsedSec: 500, current: 0.5, later: [0.1] })).toBe(20);
+test('a small overrun reads 0 and does not stretch the later steps', () => {
+	// 100 s expected; 150 s is inside the grace of max(60, 50) s.
+	expect(etaSec({ audioSec: 200, elapsedSec: 150, current: 0.5, later: [] })).toBe(0);
+	expect(etaSec({ audioSec: 200, elapsedSec: 150, current: 0.5, later: [0.1] })).toBe(20);
+});
+
+test('well past the estimate it is OVERDUE, so the card stops promising "under a minute"', () => {
+	expect(etaSec({ audioSec: 200, elapsedSec: 161, current: 0.5, later: [0.1] })).toBe(ETA_OVERDUE);
+	// A long step's grace is half of it: 1000 s expected, overdue only past 1500 s.
+	expect(overdueAfterSec(1000)).toBe(1500);
+	expect(etaSec({ audioSec: 2000, elapsedSec: 1400, current: 0.5, later: [] })).toBe(0);
+});
+
+test('history is matched on the engine FAMILY and the model', () => {
+	const runs: FinishedRun[] = [
+		{ ...run(50), engine: 'demucs-mlx', model: 'htdemucs' },
+		{ ...run(50), engine: 'audiosep:bs-roformer', model: 'bs-roformer' },
+		{ ...run(50), engine: 'demucs', model: 'htdemucs_ft' }
+	];
+	expect(sameEngine(runs, 'demucs', 'htdemucs')).toEqual([runs[0]!]);
+	expect(sameEngine(runs, 'audiosep', 'bs-roformer')).toEqual([runs[1]!]);
+	expect(sameEngine(runs, 'roformer', 'bs-1')).toEqual([]);
+	expect(engineFamily('demucs-mlx')).toBe('demucs');
 });
 
 test('an unknown length, or a later step with no history, is no ETA rather than a short one', () => {

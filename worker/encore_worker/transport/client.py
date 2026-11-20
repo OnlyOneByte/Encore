@@ -85,6 +85,8 @@ class Client:
     stop_job: Callable[[str], Awaitable[None]] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
+    #: The last `(stage, pct)` sent per job, so a keepalive repeats the real figure rather than a 0.
+    _last_pct: dict[str, tuple[Stage, int]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait rather than guess. Replaced on
     #: every disconnect, the previous round's answer being stale.
     _confirmed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
@@ -303,6 +305,7 @@ class Client:
         finally:
             self.ownership.finished(assign.job_id)
             self._running.pop(assign.job_id, None)
+            self._last_pct.pop(assign.job_id, None)
             if self.on_settled is not None:
                 # Diagnostics must never turn a finished job into a failed one.
                 with contextlib.suppress(Exception):
@@ -344,7 +347,16 @@ class Client:
             await socket.send(json.dumps(frame.to_wire()))
 
     async def progress(self, job_id: str, stage: Stage, pct: int) -> None:
+        last = self._last_pct.get(job_id)
+        if last is not None and last[0] == stage:
+            pct = max(pct, last[1])  # never backwards within a stage: the bar would jump back
+        self._last_pct[job_id] = (stage, pct)
         await self._send(f.Progress(self.config.worker_id, job_id, stage, pct))
+
+    def last_pct(self, job_id: str, stage: Stage) -> int:
+        """The highest figure sent for this job's `stage`, or 0: what a keepalive repeats."""
+        last = self._last_pct.get(job_id)
+        return last[1] if last is not None and last[0] == stage else 0
 
     async def state(
         self, job_id: str, state: str, attempt: int, verdict: str, why: str, knob: str | None
@@ -428,7 +440,6 @@ async def keepalive(
     job_id: str,
     stage: Stage,
     *,
-    pct: int = 0,
     every_sec: float = 10.0,
     ceiling_sec: float | None = None,
     sleep: Sleep | None = None,
@@ -438,12 +449,12 @@ async def keepalive(
     TIME-based, not output-parsing: roformer's parser returns None unconditionally, so the old worker went
     silent through a 45-minute separation, long past the core's 30s lease. And CEILINGED, because a timer
     cannot tell slow from hung: a job stuck where nothing can kill it refreshed the lease forever (WK-03).
-    Past the ceiling it goes quiet, and core's reaper takes the job at the next lease expiry.
+    Past the ceiling it goes quiet. Each beat repeats the step's last real figure (`Client.last_pct`).
     """
     wait = sleep if sleep is not None else asyncio.sleep
     waited = 0.0
     while ceiling_sec is None or waited + every_sec <= ceiling_sec:
         await wait(every_sec)
         waited += every_sec
-        await client.progress(job_id, stage, pct)
+        await client.progress(job_id, stage, client.last_pct(job_id, stage))
     print(f"[transport] job {job_id} passed its {ceiling_sec}s ceiling; the lease may now lapse", flush=True)

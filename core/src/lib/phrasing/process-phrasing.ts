@@ -16,11 +16,15 @@ export function processStageLabel(status: MediaStatus, opts: { pct?: number } = 
 	return `Making karaoke…${pct}`;
 }
 
+/** The readout when the song is well past its estimate: one honest sentence instead of a time, and no figure. */
+export const OVERDUE_LABEL = 'Taking longer than usual';
+
 /** The figures beside that line: "64% · ~2 min", either half alone, or nothing. The percentage only once the
- * worker has reported a real one for this step (`stepPct > 0`): an engine with no figure (roformer) keeps the
- * stage floor on the bar but says only the time. The time in the on-deck card's words, so the phone has one
- * way of saying it, and no time at all when the box has no history to base one on. */
+ * worker has reported a real one for this step (`stepPct > 0`): an engine with no figure (the in-process zoo)
+ * keeps the stage floor on the bar but says only the time. The time in the on-deck card's words, no time when
+ * there is no history to base one on, and `OVERDUE_LABEL` alone when the estimate has been overrun (etaSec < 0). */
 export function processReadout(overallPct: number, stepPct: number, etaSec?: number | null): string {
+	if (etaSec != null && etaSec < 0) return OVERDUE_LABEL;
 	const time = etaSec == null ? null : minutesLeft(etaSec);
 	return [stepPct > 0 ? `${Math.round(overallPct)}%` : null, time].filter(Boolean).join(' · ');
 }

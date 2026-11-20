@@ -1085,25 +1085,77 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 
 // ── the ETA on media:status (proposal 05) ────────────────────────────────────────────────────────
 
-/** One finished run in the ledger: `sec` seconds of work on 100 s of audio, on `workerId`. */
-function seedRun(h: ReturnType<typeof harness>, id: string, jobType: 'stems' | 'align', sec: number, workerId = 'w1') {
+/** One finished run in the ledger: `sec` seconds of work on 100 s of audio, by `engine`/`model`. */
+function seedRun(
+	h: ReturnType<typeof harness>,
+	id: string,
+	jobType: 'stems' | 'align',
+	sec: number,
+	{ engine = null as string | null, model = null as string | null, outcome = 'ready' as 'ready' | 'failed' } = {}
+) {
 	h.attempts.open({ id, mediaId: 'm2', processingId: 'p-old', jobType }, T0 - 500_000);
-	h.attempts.assigned(id, workerId, { audioSec: 100 }, T0 - 500_000);
+	h.attempts.assigned(id, 'w1', { audioSec: 100, engine, model }, T0 - 500_000);
 	h.attempts.started(id, T0 - 400_000);
-	h.attempts.closed(id, 'ready', T0 - 400_000 + sec * 1000);
+	h.attempts.closed(id, outcome, T0 - 400_000 + sec * 1000);
 }
 
-test("progress carries an ETA from this box's own history when the worker sends none", () => {
+/** A running stems job on m1 (200 s of audio, started at T0) that asked for `engine`/`model`. */
+function runningOn(h: ReturnType<typeof harness>, engine: string, model: string) {
+	const jobId = running(h);
+	h.attempts.reportFacts(jobId, { engine, model });
+	return jobId;
+}
+
+const etaOf = (h: ReturnType<typeof harness>) => (h.broadcasts.at(-1) as { etaSec?: number }).etaSec;
+
+test('progress carries an ETA from the history of the same engine family and model', () => {
 	const h = harness();
-	const jobId = running(h); // stems on m1, 200 s of audio, started at T0, on w1
-	seedRun(h, 'old-s', 'stems', 50); // 0.5 s of work per second of audio
-	seedRun(h, 'other-box', 'stems', 900, 'w2'); // another box's separations say nothing about this one's
-	seedRun(h, 'old-a', 'align', 10, 'w2'); // 0.1, and align may run anywhere
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'mlx', 'stems', 50, { engine: 'demucs-mlx', model: 'htdemucs' }); // the same family: 0.5 s/s
+	seedRun(h, 'roformer', 'stems', 900, { engine: 'roformer', model: 'bs-1' }); // another engine: ignored
+	seedRun(h, 'quick-fail', 'stems', 1, { engine: 'demucs', model: 'htdemucs', outcome: 'failed' }); // ignored
+	seedRun(h, 'old-a', 'align', 10); // 0.1
 
 	h.setClock(T0 + 40_000);
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
 	// 200 × 0.5 = 100 s of separation, 40 spent, then 200 × 0.1 = 20 s of align.
 	expect(h.broadcasts.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', etaSec: 80 });
+});
+
+test("after an engine change there is no ETA, never the old engine's speed", () => {
+	const h = harness();
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	for (let i = 0; i < 10; i++) seedRun(h, `d${i}`, 'stems', 50, { engine: 'demucs', model: 'htdemucs' });
+	seedRun(h, 'old-a', 'align', 10);
+	h.setClock(T0 + 40_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(etaOf(h)).toBeUndefined();
+});
+
+test('well past its estimate the job is OVERDUE, not "under a minute" for as long as it runs', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'd', 'stems', 50, { engine: 'demucs', model: 'htdemucs' }); // 100 s expected for 200 s of audio
+	seedRun(h, 'old-a', 'align', 10);
+	h.setClock(T0 + 150_000); // 50 s over: still inside the minute's grace
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(etaOf(h)).toBe(20);
+	h.setClock(T0 + 170_000); // past 100 + 60 s
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(etaOf(h)).toBe(-1);
+});
+
+test('a figure that falls within a stage is ignored; the bar never runs back', () => {
+	const h = harness();
+	const jobId = running(h);
+	const pcts: number[] = [];
+	for (const pct of [10, 0, 20, 0, 30]) {
+		h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct });
+		pcts.push((h.broadcasts.at(-1) as { pct: number }).pct);
+	}
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'aligning', pct: 5 });
+	pcts.push((h.broadcasts.at(-1) as { pct: number }).pct);
+	expect(pcts).toEqual([10, 10, 20, 20, 30, 5]);
 });
 
 test('with no finished run of a step left to do, progress carries no ETA at all', () => {

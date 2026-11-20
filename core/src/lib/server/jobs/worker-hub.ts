@@ -45,7 +45,7 @@ import {
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { completedStatusFor, mediaStatusFor, shouldBroadcastProcess } from './media-status';
-import { ETA_SAMPLE, etaSec, laterSteps, workPerAudioSec } from './eta';
+import { ETA_SAMPLE, ETA_WINDOW, etaSec, laterSteps, sameEngine, workPerAudioSec } from './eta';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -411,7 +411,9 @@ export class WorkerHub {
 			msg.jobId,
 			{
 				stage: msg.stage,
-				progressPct: msg.pct,
+				// Never backwards within a stage: an older worker's keepalive sends 0 between the real figures, and
+				// the bar would run back to the stage floor every 10 s (`process-progress.ts`'s own invariant).
+				progressPct: job.stage === msg.stage ? Math.max(job.progressPct, msg.pct) : msg.pct,
 				// A worker's own figure wins; today's workers send none, so core works it out from this box's history.
 				etaSec: msg.etaSec ?? this.#etaFor(job),
 				leaseExpiresAt: progressDeadline(this.#d.now(), this.#config)
@@ -421,22 +423,19 @@ export class WorkerHub {
 		this.#emitStatus(updated, msg.stage);
 	}
 
-	/** Seconds until the SONG is ready (`eta.ts`): the running step from the history of the worker running it,
-	 *  the later steps from any worker's. Null without a ledger, a length, or history for every step left.
-	 *  shortcut: matched on the BOX, not the engine — the request and the report name an engine differently
-	 *  (`demucs` asked, `demucs-mlx` reported), so an engine match never found history. After an engine change
-	 *  the median follows within about five songs; key on the reported engine if that proves too slow. */
+	/** Seconds until the SONG is ready (`eta.ts`): the running step from runs on its own engine family and
+	 *  model, the later steps from any. Null without a ledger, a length, or history for every step left. */
 	#etaFor(job: Job): number | null {
 		const ledger = this.#d.attempts;
 		const open = ledger?.openFor(job.id);
 		if (!ledger || open?.startedAt == null) return null;
-		const rate = (type: Job['jobType'], workerId?: string | null) =>
-			workPerAudioSec(ledger.recentReady(type, workerId, ETA_SAMPLE));
+		// Read wide, then matched, so another engine's runs cannot crowd this one's out of the sample.
+		const current = sameEngine(ledger.recentReady(job.jobType, ETA_WINDOW), open.engine, open.model);
 		return etaSec({
 			audioSec: open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec,
 			elapsedSec: (this.#d.now() - open.startedAt) / 1000,
-			current: rate(job.jobType, job.workerId),
-			later: laterSteps(job.jobType).map((type) => rate(type))
+			current: workPerAudioSec(current.slice(0, ETA_SAMPLE)),
+			later: laterSteps(job.jobType).map((type) => workPerAudioSec(ledger.recentReady(type, ETA_SAMPLE)))
 		});
 	}
 
@@ -667,11 +666,14 @@ export class WorkerHub {
 	#emitStatus(job: Job, stage?: MediaStatus): void {
 		const media = this.#d.mediaById.get(job.mediaId);
 		if (!shouldBroadcastProcess(job, media)) return;
+		const status = job.status === 'ready' ? completedStatusFor(job, media) : mediaStatusFor(job, stage);
 		this.#d.broadcast({
 			type: 'media:status',
 			mediaId: job.mediaId,
-			status: job.status === 'ready' ? completedStatusFor(job, media) : mediaStatusFor(job, stage),
-			pct: job.progressPct,
+			status,
+			// A finished step's 100 is not the NEXT step's: sent with it, the bar sat at that step's top and fell
+			// back when the next job's first figure arrived.
+			pct: job.status === 'ready' && status !== 'ready' ? 0 : job.progressPct,
 			etaSec: job.etaSec ?? undefined,
 			// Carried on every stage, not only on `failed`: this is the ONE emitter for a worker-reported
 			// outcome, and a field set on some stages and not others is a field the next reader has to go

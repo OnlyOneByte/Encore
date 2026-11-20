@@ -611,21 +611,51 @@ async def test_keepalive_emits_once_per_tick_with_time_injected() -> None:
     assert sock.types().count("job:progress") == 2, "one frame per completed tick, no more"
 
 
-async def test_keepalive_reports_the_stage_and_percentage_it_was_given() -> None:
+async def test_keepalive_repeats_the_steps_last_real_figure() -> None:
+    """The review's #978 must-fix 1: it sent pct=0 every 10 s between the real rises, so core saw
+    [10, 0, 20, 0, …] and the phone bar ran back to the stage floor each time."""
     sock = FakeSocket()
     c = client(sock)
 
     async def once(_seconds: float) -> None:
-        if sock.types().count("job:progress") >= 1:
+        if sock.types().count("job:progress") >= 2:
             raise asyncio.CancelledError
 
     async with Session(c, sock):
+        await c.progress("j1", Stage.SEPARATING, 40)
         with pytest.raises(asyncio.CancelledError):
-            await keepalive(c, "j1", Stage.SEPARATING, pct=40, sleep=once)
+            await keepalive(c, "j1", Stage.SEPARATING, sleep=once)
 
-    frame = sock.first("job:progress")
-    assert frame["stage"] == "separating"
-    assert frame["pct"] == 40
+    frames = [s for s in sock.sent if s.get("type") == "job:progress"]
+    assert [(s["stage"], s["pct"]) for s in frames] == [("separating", 40), ("separating", 40)]
+
+
+async def test_progress_interleaved_with_keepalives_never_goes_backwards() -> None:
+    """The real sink and the real keepalive, racing, as the reviewer's live probe ran them."""
+    from encore_worker.__main__ import _ReporterFor  # noqa: PLC0415 - the composition root, as wired
+    from encore_worker.steps.align_steps import progress_sink  # noqa: PLC0415 - steps above transport
+
+    sock = LiveSocket()
+    c = client(sock)
+    async with Session(c, sock):
+        sink = progress_sink(_ReporterFor(c), "j1", Stage.SEPARATING)
+        keeper = asyncio.create_task(keepalive(c, "j1", Stage.SEPARATING, every_sec=0.05))
+        for pct in range(10, 70, 10):
+            await asyncio.to_thread(sink, pct)
+            await asyncio.sleep(0.12)
+        keeper.cancel()
+        await sock.later.put(None)
+    seq = [int(str(s["pct"])) for s in sock.sent if s.get("type") == "job:progress"]
+    assert len(seq) > 6 and seq == sorted(seq), seq
+
+
+async def test_a_new_stage_starts_from_its_own_figure() -> None:
+    sock = FakeSocket()
+    c = client(sock)
+    async with Session(c, sock):
+        await c.progress("j1", Stage.DOWNLOADING, 100)
+        await c.progress("j1", Stage.SEPARATING, 5)
+    assert [s["pct"] for s in sock.sent if s.get("type") == "job:progress"] == [100, 5]
 
 
 # ── draining ─────────────────────────────────────────────────────────────────────────────────────

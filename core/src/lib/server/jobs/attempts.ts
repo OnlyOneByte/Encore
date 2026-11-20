@@ -124,20 +124,13 @@ export class AttemptLedger {
 			.all();
 	}
 
-	/** The latest successful runs of one step, newest first, for the ETA (`eta.ts`); on one worker when
-	 *  `workerId` is given, on any otherwise. */
-	recentReady(jobType: JobAttempt['jobType'], workerId: string | null | undefined, limit: number): JobAttempt[] {
+	/** The latest SUCCESSFUL runs of one step, newest first, for the ETA (`eta.ts`): a fast failure is not
+	 *  a measure of how long the work takes. */
+	recentReady(jobType: JobAttempt['jobType'], limit: number): JobAttempt[] {
 		return this.#db
 			.select()
 			.from(jobAttempts)
-			.where(
-				and(
-					eq(jobAttempts.jobType, jobType),
-					eq(jobAttempts.outcome, 'ready'),
-					isNotNull(jobAttempts.startedAt),
-					workerId ? eq(jobAttempts.workerId, workerId) : undefined
-				)
-			)
+			.where(and(eq(jobAttempts.jobType, jobType), eq(jobAttempts.outcome, 'ready'), isNotNull(jobAttempts.startedAt)))
 			.orderBy(desc(jobAttempts.finishedAt))
 			.limit(limit)
 			.all();

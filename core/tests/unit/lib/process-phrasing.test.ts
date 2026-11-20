@@ -16,6 +16,11 @@ describe('processReadout', () => {
 		expect(processReadout(64, 55)).toBe('64%');
 		expect(processReadout(20, 0, null)).toBe('');
 	});
+
+	it('says it is taking longer once the estimate is overrun, instead of "under a minute" forever', () => {
+		expect(processReadout(64, 55, -1)).toBe('Taking longer than usual');
+		expect(processReadout(20, 0, -1)).toBe('Taking longer than usual');
+	});
 });
 
 describe('processStageLabel', () => {
