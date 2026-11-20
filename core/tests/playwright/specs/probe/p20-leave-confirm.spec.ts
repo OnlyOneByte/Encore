@@ -133,7 +133,7 @@ test('the confirm names no cost until the cost has answered', async ({ world }) 
 // THE OPENING IS CENTRED ON EVERY FRAME, not only at rest. `encore-alert-in` once carried the centring
 // `translate(-50%, -50%)` in its keyframes while the class list ALSO centred with Tailwind v4's `translate`
 // property, so the two stacked and the dialog drew half its size up-left for the whole 120 ms, then snapped.
-// The resting frame is always right, which is why this pauses the animation and seeks it: t=0 and t=50%.
+// The resting frame is always right, which is why this pauses the animation and seeks it: t=0, 50% and 90%.
 test('the confirm opens centred on every frame of its animation', async ({ world }) => {
 	const phone = await world.openPhone('P20Centre');
 	await phone.goto('/settings/you');
@@ -151,7 +151,7 @@ test('the confirm opens centred on every frame of its animation', async ({ world
 	const dialog = phone.locator('[role="alertdialog"]');
 	await dialog.waitFor({ state: 'attached' });
 
-	for (const at of [0, 0.5]) {
+	for (const at of [0, 0.5, 0.9]) {
 		const off = await dialog.evaluate((el, at) => {
 			const anims = el.getAnimations();
 			for (const a of anims) {
