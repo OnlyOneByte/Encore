@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '$lib/contract';
@@ -415,15 +416,12 @@
 		}).length
 	);
 	// Songs whose process is past its estimate (`media:status` with `etaSec < 0`), so the lobby says what the
-	// singer's phone says rather than "this takes a minute".
-	let overdueMedia = $state(new Set<string>());
+	// singer's phone says rather than "this takes a minute". A `SvelteSet`: one id flips at a time, in place.
+	const overdueMedia = new SvelteSet<string>();
 	const overdue = $derived(entries.some((e) => overdueMedia.has(e.mediaId)));
 	function noteOverdue(mediaId: string, isOverdue: boolean): void {
-		if (isOverdue === overdueMedia.has(mediaId)) return;
-		const next = new Set(overdueMedia);
-		if (isOverdue) next.add(mediaId);
-		else next.delete(mediaId);
-		overdueMedia = next;
+		if (isOverdue) overdueMedia.add(mediaId);
+		else overdueMedia.delete(mediaId);
 	}
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
