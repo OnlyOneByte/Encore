@@ -8,7 +8,7 @@
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { queueReady } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 /** The old probe's own cadence, and it is load-bearing: the wall is repainted off a socket frame, so a
@@ -56,30 +56,6 @@ async function processToReady(world: World, page: Page, query: string): Promise<
 		)
 		.toBe(true);
 	return track;
-}
-
-/**
- * Search for a READY song and take a turn on it through the real row action, then wait for the phone's own
- * acknowledgement — where the old driver slept 600ms and hoped.
- *
- * EITHER signal counts, because which one arrives depends on whether the room was idle: `inQueue` is
- * `queued.some(...)` and a turn that starts PLAYING immediately leaves `queued`, so the row's button
- * re-enables and the band names the song instead.
- */
-async function queueReady(page: Page, query: string): Promise<void> {
-	await openBrowseFromHome(page);
-	await page.locator(SEL.search).fill(query);
-	await page.locator(SEL.addTurn).first().click();
-	await expect
-		.poll(
-			async () => {
-				if (await page.locator(SEL.addTurn).first().isDisabled()) return true;
-				const strip = (await page.locator(SEL.npStripTitle).first().textContent()) ?? '';
-				return strip.toLowerCase().includes(query);
-			},
-			{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the strip never named it` }
-		)
-		.toBe(true);
 }
 
 interface AudibleSample {

@@ -25,15 +25,18 @@ export const DEMO_LIBRARY: DemoTrack[] = [
 ];
 
 /** Write the fixture into `mediaDir/library`. Must run BEFORE core boots — the scan is a boot pass. */
-export function seedDemoLibrary(mediaDir: string): { dir: string; written: number; total: number } {
+export function seedDemoLibrary(
+	mediaDir: string,
+	tracks: DemoTrack[] = DEMO_LIBRARY
+): { dir: string; written: number; total: number } {
 	const dir = join(mediaDir, 'library');
 	mkdirSync(dir, { recursive: true });
 	let written = 0;
-	for (const track of DEMO_LIBRARY) {
+	for (const track of tracks) {
 		const path = join(dir, track.file);
 		if (existsSync(path)) continue;
 		writeFileSync(path, tone({ seconds: track.seconds, hz: track.hz }));
 		written++;
 	}
-	return { dir, written, total: DEMO_LIBRARY.length };
+	return { dir, written, total: tracks.length };
 }
