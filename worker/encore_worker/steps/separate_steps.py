@@ -163,7 +163,13 @@ class SeparateStepsImpl:
             guide_ref = keys.guide_mix_key(job.media_id, ext)
             await self._store.put(guide_ref, staged_guide)
 
-        return PublishedStems(instrumental=instrumental_ref, vocals=vocals_ref, guide_mix=guide_ref)
+        return PublishedStems(
+            instrumental=instrumental_ref,
+            vocals=vocals_ref,
+            guide_mix=guide_ref,
+            engine=getattr(self._sep, "name", None),
+            model=getattr(self._sep, "model", None),
+        )
 
     def _work(self, job: JobRef) -> str:
         path = os.path.join(job.media_dir, "work", job.job_id)

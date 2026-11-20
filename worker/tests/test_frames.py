@@ -209,6 +209,20 @@ def test_an_older_core_that_announces_nothing_leaves_the_format_unset() -> None:
     assert welcome.publish_stem_format is None
 
 
+def test_welcome_carries_the_heartbeat_interval() -> None:
+    welcome = f.parse({"type": "worker:welcome", "workerId": "w1", "heartbeatIntervalSec": 15})
+    assert isinstance(welcome, f.Welcome)
+    assert welcome.heartbeat_interval_sec == 15.0
+
+
+@pytest.mark.parametrize("raw", [0, -1, True, "15", None])
+def test_an_unusable_heartbeat_interval_is_ignored(raw: object) -> None:
+    """Zero or negative would spin the heartbeat loop; a bool is an int to Python."""
+    welcome = f.parse({"type": "worker:welcome", "heartbeatIntervalSec": raw})
+    assert isinstance(welcome, f.Welcome)
+    assert welcome.heartbeat_interval_sec is None
+
+
 @pytest.mark.parametrize("raw", [".FLAC", "FLAC", " flac ", ".flac"])
 def test_the_format_is_normalised_the_same_way_core_normalises_it(raw: str) -> None:
     """Both sides strip a leading dot and lowercase. Without that, `.FLAC` and `flac` become two formats and

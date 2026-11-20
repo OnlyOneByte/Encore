@@ -18,6 +18,8 @@ export interface WorkerSession {
 	 * list as "not reported", never as "this worker can separate nothing".
 	 */
 	separators?: SeparatorOffer[];
+	/** Set by this session's first heartbeat. A worker that never heartbeats could never lift a `hold`. */
+	reportsSlots?: boolean;
 }
 
 export class WorkerRegistry {
@@ -72,6 +74,7 @@ export class WorkerRegistry {
 		const w = this.#workers.get(workerId);
 		if (!w) return;
 		w.slotsFree = Math.max(0, Math.min(slotsFree, w.concurrency));
+		w.reportsSlots = true;
 		w.lastSeen = now;
 	}
 
@@ -92,6 +95,14 @@ export class WorkerRegistry {
 	releaseSlot(workerId: string): void {
 		const w = this.#workers.get(workerId);
 		if (w) w.slotsFree = Math.min(w.concurrency, w.slotsFree + 1);
+	}
+
+	/** Offer this worker nothing until its next heartbeat. For a reject, where the worker's own count has
+	 *  just disagreed with ours: releasing the slot instead re-offers the job to a full worker at once. A
+	 *  no-op for a worker that has not heartbeated this session, since nothing would ever lift its hold. */
+	hold(workerId: string): void {
+		const w = this.#workers.get(workerId);
+		if (w?.reportsSlots) w.slotsFree = 0;
 	}
 
 	/** All live worker sessions (defensive copies — callers must not mutate registry state). */

@@ -428,17 +428,48 @@ test('guard arm — #onFailed !job: a failure frame naming an unknown jobId is s
 	expect(broadcasts).toEqual([]); // no failed broadcast for a nonexistent job
 });
 
-test('job:reject → back to queued (no attempt burned), slot freed, redispatched', () => {
+test('job:reject → back to queued (no attempt burned), worker held until its heartbeat, then redispatched', () => {
 	const { hub, jobs, registry, sent } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 	expect(registry.get('w1')!.slotsFree).toBe(0); // claimed on dispatch
+	// The heartbeat a worker sends after hello, landing after the dispatch it raced.
+	hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 0, runningJobIds: [] });
 
 	hub.handle({ type: 'job:reject', workerId: 'w1', jobId: job.id, reason: 'busy' });
 	const after = jobs.byId(job.id)!;
 	expect(after.attempts).toBe(0); // never ran
-	expect(after.status).toBe('assigned');
+	expect(after.status).toBe('queued'); // NOT straight back to the worker that just refused it
+	expect(registry.get('w1')!.slotsFree).toBe(0); // held
+	expect(cmdsOfType(sent, 'job:assign')).toHaveLength(1);
+
+	// The worker's own count lifts the hold; the next dispatch (the reaper ticks every 3 s) uses it.
+	hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 1, runningJobIds: [] });
+	hub.dispatch();
+	expect(jobs.byId(job.id)!.status).toBe('assigned');
 	expect(cmdsOfType(sent, 'job:assign')).toHaveLength(2); // initial + redispatch
+});
+
+test('a FULL worker that rejects after a reconnect is not re-offered the job at network speed', () => {
+	// hello resets slotsFree to concurrency, so a worker reconnecting mid-job is offered a second job it must refuse.
+	// Releasing the slot on that reject handed the same job straight back, 50 times in a row, for the rest of the run.
+	const { hub, jobs, sent } = harness();
+	const running = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: running.id });
+	const waiting = jobs.enqueue('m2', 'stems', 1, T0);
+
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 0, runningJobIds: [running.id] });
+	const offers = () => cmdsOfType(sent, 'job:assign').filter((c) => c.type === 'job:assign' && c.jobId === waiting.id);
+	expect(offers()).toHaveLength(1);
+	for (let i = 0; i < 5; i++) {
+		hub.handle({ type: 'job:reject', workerId: 'w1', jobId: waiting.id, reason: 'no free slots' });
+		hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 0, runningJobIds: [running.id] });
+		hub.dispatch();
+	}
+	expect(offers()).toHaveLength(1);
+	expect(jobs.byId(waiting.id)!.status).toBe('queued');
 });
 
 test('job:failed retryable with attempts left → requeue + redispatch; exhausted → failed', () => {
@@ -896,6 +927,95 @@ test('job:reject frees EXACTLY one slot on a two-slot worker (no double-free via
 	// Net 0, not 1: a double-free on reject would leave slotsFree at 1 with a phantom slot.
 	expect(registry.get('w1')!.slotsFree).toBe(0);
 	expect(jobs.byId(a.id)!.status).toBe('assigned'); // redispatched, still owned by w1
+});
+
+test('a HELD two-slot worker gets back exactly the slot its heartbeat reports (no phantom slot)', () => {
+	// The heartbeated variant of the test above: the hold zeroes the count, and the worker's own report restores it.
+	const { hub, jobs, registry } = harness();
+	const a = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.enqueue('m2', 'stems', 1, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1' });
+	expect(registry.get('w1')!.slotsFree).toBe(0); // both slots claimed
+	hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 0, runningJobIds: [] });
+
+	hub.handle({ type: 'job:reject', workerId: 'w1', jobId: a.id, reason: 'busy' });
+	expect(registry.get('w1')!.slotsFree).toBe(0); // held until the worker reports
+	expect(jobs.byId(a.id)!.status).toBe('queued');
+
+	// The worker reports its one real free slot; the redispatch takes exactly it. A phantom slot would read 1.
+	hub.handle({ type: 'worker:heartbeat', workerId: 'w1', slotsFree: 1, runningJobIds: [] });
+	hub.dispatch();
+	expect(registry.get('w1')!.slotsFree).toBe(0);
+	expect(jobs.byId(a.id)!.status).toBe('assigned'); // redispatched, still owned by w1
+});
+
+test('a worker that has never heartbeated is not held on reject, since nothing would lift the hold', () => {
+	// An older worker sends no heartbeat at all: it keeps the slot-release behaviour rather than starving.
+	const { hub, jobs, registry } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:reject', workerId: 'w1', jobId: job.id, reason: 'busy' });
+	expect(jobs.byId(job.id)!.status).toBe('assigned'); // released and redispatched, as before
+	expect(registry.get('w1')!.slotsFree).toBe(0);
+});
+
+test('an align that reports a refused publish as a retryable job:failed is requeued, not settled as no lyrics', () => {
+	// The frame the worker now sends when its lyrics publish is refused. A job:complete there settled the lyrics gate
+	// as "align ran and found nothing" for a job nobody finished.
+	const { hub, jobs, mediaById } = harness();
+	const job = jobs.enqueue('m1', 'align', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({
+		type: 'job:failed',
+		workerId: 'w1',
+		jobId: job.id,
+		error: 'abandoned before publishing: revoked',
+		retryable: true
+	});
+	const after = jobs.byId(job.id)!;
+	expect(after.status).not.toBe('ready');
+	expect(after.attempts).toBe(1);
+	expect(mediaById.get('m1')!.lyricsStatus).not.toBe('ready');
+});
+
+test('a fetch that reports a refused publish as a retryable job:failed is requeued and chains no stems job', () => {
+	// The frame the worker now sends when its fetch publish is refused. A job:complete there marked the fetch done and
+	// queued stems, the follow-up core chains on every fetch completion, for audio nobody published.
+	const { hub, jobs } = harness();
+	const job = jobs.enqueue('m1', 'fetch', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['fetch:ytdlp'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	expect(jobs.byId(job.id)!.status).toBe('running');
+	hub.handle({
+		type: 'job:failed',
+		workerId: 'w1',
+		jobId: job.id,
+		error: 'abandoned before publishing: revoked',
+		retryable: true
+	});
+	const after = jobs.byId(job.id)!;
+	expect(after.status).not.toBe('ready');
+	expect(after.attempts).toBe(1);
+	expect(jobs.listByStatus('queued').some((j) => j.jobType === 'stems')).toBe(false);
+});
+
+test('a stems completion that names no instrumental is a retryable failure, not a ready song', () => {
+	// The frame a worker sent when its publish was refused: `mediaUri: ""` and no artifacts. Readying it derived a key
+	// for a file nobody wrote and queued align, so the TV 404'd on a "ready" song.
+	const { hub, jobs, mediaById } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: '' });
+
+	const after = jobs.byId(job.id)!;
+	expect(after.status).not.toBe('ready');
+	expect(after.attempts).toBe(1); // requeued as a failed attempt
+	const m = mediaById.get('m1')!;
+	expect(m.stemStatus).not.toBe('ready');
+	expect(m.instrumentalRef).toBeUndefined();
+	expect(jobs.listByStatus('queued').some((j) => j.jobType === 'align')).toBe(false); // no follow-up
 });
 
 test('a terminal job:failed frees EXACTLY one slot on a two-slot worker (no double-free)', () => {

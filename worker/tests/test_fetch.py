@@ -235,3 +235,20 @@ def test_an_unidentified_song_reports_no_annotation() -> None:
     assert _annotation_artifacts(Identified()) is None
     assert _annotation_artifacts(Identified(artist="A")) is None
     assert _annotation_artifacts(Identified(track="B")) is None
+
+
+def test_a_refused_fetch_publish_is_a_retryable_failure_not_a_completion() -> None:
+    """Sent as `job:complete`, core marked the fetch done and queued stems for audio nobody published."""
+    from encore_worker.__main__ import _fetch_completion  # noqa: PLC0415
+    from encore_worker.host.config import Config  # noqa: PLC0415
+    from encore_worker.protocol import frames as f  # noqa: PLC0415
+    from encore_worker.workflows.fetch import FetchOutcome  # noqa: PLC0415
+
+    cfg = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
+    refused = FetchOutcome(published="", identified=Identified(), why="abandoned before publishing: revoked")
+    frame = _fetch_completion(JOB, cfg, refused)
+    assert isinstance(frame, f.Failed)
+    assert frame.retryable is True
+
+    done = FetchOutcome(published="media/m1.webm", identified=Identified(artist="a", track="b"), why="ok")
+    assert isinstance(_fetch_completion(JOB, cfg, done), f.Complete)
