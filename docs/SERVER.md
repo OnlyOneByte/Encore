@@ -506,7 +506,7 @@ that leaves open.
   `PRAGMA foreign_keys=OFF`. That is drizzle's standard ALTER for this dialect and it PRESERVES every row — it
   is not the baseline re-cut below, which rewrites history and discards databases. The rule it does not break:
   the contract is the source of truth, so change `DEFAULT_*` first, then the column, then
-  `bun --bun drizzle-kit generate --config config/drizzle.config.ts --name <what_changed>`, never the reverse
+  `bun run db:generate --name <what_changed>`, never the reverse
   (`tests/unit/server/db/room-settings-defaults.test.ts` fails on any drift, and nothing reads the column
   default at runtime).
   **AND BECAUSE NOTHING READS IT AT RUNTIME, A CHANGED DEFAULT REACHES NO EXISTING ROW** — `setRoom` writes

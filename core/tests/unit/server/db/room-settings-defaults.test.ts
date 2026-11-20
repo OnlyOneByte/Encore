@@ -42,7 +42,7 @@ test('every room_settings column default equals its contract default', () => {
 	expect(
 		mismatches,
 		'a `room_settings` default disagrees with DEFAULT_ROOM_SETTINGS. The contract is the source of truth — ' +
-			'change the column to match it and run `bun --bun drizzle-kit generate`, never the reverse, because ' +
+			'change the column to match it and run `bun run db:generate`, never the reverse, because ' +
 			'nothing reads the column default at runtime and the contract is what a fresh room actually resolves to'
 	).toEqual([]);
 });

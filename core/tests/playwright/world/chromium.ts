@@ -8,7 +8,7 @@
 // It replaces tests/e2e/lib/chromium.mjs, which only ever looked for Linux paths (`chrome-linux/chrome`) and
 // two pinned build numbers, so on a Mac it found nothing unless PW_CHROMIUM was already set.
 import { existsSync, readdirSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 /** Where a build's executable lives, per platform, relative to the build directory. */
@@ -64,23 +64,5 @@ export function resolveChromium(): string | undefined {
 	return undefined;
 }
 
-/** The config's own launch args. Kept here so the merge helper below cannot drift from them. */
+/** The config's own launch args. */
 export const BASE_LAUNCH_ARGS = ['--no-sandbox', '--disable-gpu'];
-
-/**
- * Use this in a per-file `test.use({ launchOptions: launchWith([...]) })`.
- *
- * Playwright REPLACES `launchOptions` wholesale rather than merging it, so a spec that sets its own to pass a
- * flag silently drops `executablePath` and fails with "Executable doesn't exist … chromium_headless_shell-1194"
- * — a message that points at a browser install rather than at the override that caused it.
- */
-export function launchWith(extraArgs: string[]): { executablePath: string | undefined; args: string[] } {
-	return { executablePath: resolveChromium(), args: [...BASE_LAUNCH_ARGS, ...extraArgs] };
-}
-
-/** Named for the report, so "which browser did this run against" is answerable after the fact. */
-export function chromiumLabel(): string {
-	const p = resolveChromium();
-	if (!p) return 'playwright default (none cached)';
-	return process.env.PW_CHROMIUM ? `PW_CHROMIUM ${p}` : p.replace(homedir(), '~') + ` (${platform()})`;
-}

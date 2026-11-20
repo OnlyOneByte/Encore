@@ -1,7 +1,7 @@
 import { defineConfig } from 'drizzle-kit';
 
 // Generates SQL migrations from the schema below into ./drizzle.
-//   bun --bun drizzle-kit generate   # author a migration from schema changes
+//   bun run db:generate   # author a migration from schema changes
 //   (migrations are applied programmatically at boot — see db/migrate.ts)
 export default defineConfig({
 	dialect: 'sqlite',

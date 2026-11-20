@@ -4,8 +4,8 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-Every surface has a capture recipe in [`tests/playwright/specs/shot/frames.spec.ts`](tests/playwright/specs/shot/frames.spec.ts), which drives the
-real app into each state and writes the frame set to `docs/mocks/`. The frames themselves are generated
+Every surface has a capture recipe in [`core/tests/playwright/specs/shot/frames.spec.ts`](core/tests/playwright/specs/shot/frames.spec.ts), which drives the
+real app into each state and writes the frame set under `core/tests/playwright/.artifacts/` (`bun run pw:shot`). The frames themselves are generated
 rather than committed, so regenerate them locally when you want to look. Design and rationale live in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -324,7 +324,7 @@ bash dev.sh       # run core + a NATIVE worker locally — `--help` lists nine f
 bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # app, server entry and the test tree
-bun run gates     # the full seven-leg release gate (test, worker pytest, types, lint, format,
+bun run gates     # the full eight-leg release gate (test, worker pytest, worker ruff+mypy, types, lint, format,
                   # build, gate:measured). The last leg needs a Chromium.
 bun run deadcode  # knip; a clean run is ZERO findings
 bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flow|probe|shot` for one project)
@@ -355,8 +355,9 @@ finding.
 - `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
   browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in
   silence — three selector families moved at once while the suite stayed green, which is why the
-  registry exists. Note the guard that used to verify each selector against its source anchor is gone
-  with `tests/guards/`, so nothing now catches a rotted selector until a spec opens the page.
+  registry exists. `tests/unit/playwright/selectors-exist.test.ts` fails when a class or data/aria hook a
+  selector names is in no file under `src/`. It checks existence only, not that the hook is on the surface
+  the spec opens, so a hook that moved to another route still only shows up when a spec opens the page.
 - `tests/playwright/specs/flow/party.spec.ts` — the full two-phone + TV flow.
 - `tests/playwright/specs/shot/frames.spec.ts` — 20 frames, each DRIVEN into its state rather than
   photographed as it loads. `bun run pw:shot`.
