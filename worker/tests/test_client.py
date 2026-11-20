@@ -175,6 +175,62 @@ async def test_closes_the_socket_when_the_session_ends() -> None:
     assert sock.closed
 
 
+async def test_hello_carries_the_host_report() -> None:
+    """Core logs "hardware unreported" on every join when `host` is missing, though the probe ran."""
+    sock = FakeSocket()
+    c = client(sock)
+    c.host = {"platform": "Linux", "accelerator": "cpu"}
+    async with Session(c, sock):
+        pass
+    assert sock.first("worker:hello")["host"] == {"platform": "Linux", "accelerator": "cpu"}
+
+
+async def test_a_heartbeat_follows_the_hello() -> None:
+    """Core resets free slots to `concurrency` on every hello, so a reconnect mid-job must say at once what it
+    is really running, or core offers a second job it has to refuse."""
+    sock = FakeSocket()
+    async with Session(client(sock), sock):
+        pass
+    types = sock.types()
+    assert "worker:heartbeat" in types
+    assert types.index("worker:hello") < types.index("worker:heartbeat")
+    assert sock.first("worker:heartbeat")["slotsFree"] == 1
+
+
+async def test_heartbeats_on_the_interval_the_welcome_names() -> None:
+    """A heartbeat with the live job in it, every `heartbeatIntervalSec`. An injected sleep drives it."""
+    asked: list[float] = []
+    beat_sent = asyncio.Event()
+
+    async def sleep(sec: float) -> None:
+        asked.append(sec)
+        if len(asked) > 1:
+            # The first beat after the first sleep is on the wire; park here until the session ends.
+            beat_sent.set()
+            await asyncio.Event().wait()
+
+    gate = Gate()
+    sock = FakeSocket([assign(), {"type": "worker:welcome", "workerId": "w1", "heartbeatIntervalSec": 15}])
+    c = client(sock, run_job=gate)
+    c.sleep = sleep
+    async with Session(c, sock):
+        await asyncio.wait_for(beat_sent.wait(), 5.0)
+        last = [s for s in sock.sent if s.get("type") == "worker:heartbeat"][-1]
+        assert last["runningJobIds"] == ["j1"]
+        assert last["slotsFree"] == 0
+        gate.release.set()
+    assert asked[0] == 15.0
+
+
+async def test_a_reject_is_followed_by_a_heartbeat() -> None:
+    """Core holds a rejecting worker at zero free slots until it hears the real count."""
+    sock = FakeSocket([assign(action="stems")])
+    async with Session(client(sock, caps=frozenset({"align"})), sock):
+        pass
+    types = sock.types()
+    assert types.index("job:reject") < len(types) - 1 - types[::-1].index("worker:heartbeat")
+
+
 # ── accepting work ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -452,7 +508,7 @@ async def test_heartbeat_reports_free_slots_and_running_jobs() -> None:
     async with Session(c, sock):
         await asyncio.wait_for(gate.entered.wait(), 5.0)
         await c.heartbeat()
-        beat = sock.first("worker:heartbeat")
+        beat = [s for s in sock.sent if s.get("type") == "worker:heartbeat"][-1]  # the first follows hello
         assert beat["runningJobIds"] == ["j1"]
         assert beat["slotsFree"] == 0, "the only slot is taken by the live job"
         assert c.running_jobs() == frozenset({"j1"})

@@ -32,6 +32,19 @@ class Report:
         """Derived so it cannot disagree with `accelerator`. False for ROCm, which reports as cuda."""
         return self.accelerator == "cuda"
 
+    def to_wire(self) -> dict[str, object]:
+        """`Hello.host`, in core's `WorkerHost` shape. Unknown fields are omitted, never guessed."""
+        fields: dict[str, object | None] = {
+            "platform": self.platform,
+            "machine": self.machine,
+            "python": self.python,
+            "torch": self.torch_version,
+            "cuda": self.cuda,
+            "accelerator": self.accelerator,
+            "deviceName": self.device_name,
+        }
+        return {k: v for k, v in fields.items() if v is not None}
+
 
 def module_available(name: str) -> bool:
     """Is this importable, without importing it? A missing PARENT package is a miss, not an error."""

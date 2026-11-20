@@ -329,16 +329,23 @@ class Welcome:
     #: The container the core wants PUBLISHED stems in, `None` from an older core that does not announce
     #: one. CORE'S DECISION, not this box's (docs/arch/05-worker.md §2.5).
     publish_stem_format: str | None = None
+    #: How often core wants `worker:heartbeat`, `None` when it names no usable interval. The heartbeat is
+    #: how core learns this box's real free slots after a reconnect resets its count.
+    heartbeat_interval_sec: float | None = None
 
     @staticmethod
     def parse(raw: dict[str, Any]) -> Welcome:
         got = raw.get("workerId")
         fmt = raw.get("publishStemFormat")
+        beat = raw.get("heartbeatIntervalSec")
         # Normalised the same way core normalises it, so `.FLAC` and `flac` cannot become two formats.
         cleaned = fmt.strip().lstrip(".").lower() if isinstance(fmt, str) and fmt.strip() else None
+        # `bool` is an `int`, and a zero or negative interval would spin the heartbeat loop.
+        interval = beat if isinstance(beat, int | float) and not isinstance(beat, bool) and beat > 0 else None
         return Welcome(
             worker_id=got if isinstance(got, str) else None,
             publish_stem_format=cleaned,
+            heartbeat_interval_sec=float(interval) if interval is not None else None,
         )
 
 

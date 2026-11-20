@@ -459,6 +459,7 @@ async def test_a_lost_lease_at_publish_is_a_normal_outcome() -> None:
     outcome = await run_align(JOB, fake)
 
     assert outcome.published is None
+    assert outcome.abandoned, "so the transport reports a refusal, not 'found no lyrics'"
     assert "abandoned before publishing" in outcome.why
     assert "reassigned to w2" in outcome.why
 

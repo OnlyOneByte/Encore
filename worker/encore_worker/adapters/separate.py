@@ -116,6 +116,10 @@ class TorchDemucs:
         self._device = device
         self._jobs = jobs
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def separate(self, input_wav: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> Stems:
         run(
             demucs_argv(input_wav, out_dir, self._model, device=self._device, jobs=self._jobs),
@@ -181,6 +185,10 @@ class MlxDemucs:
         self._model = resolve_model(model)
         self._bin = mlx_bin
         self._ffmpeg = ffmpeg_bin
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def separate(self, input_wav: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> Stems:
         run(mlx_argv(input_wav, out_dir, self._model, self._bin), on_progress=on_progress)
@@ -353,8 +361,14 @@ class Roformer:
         self, *, model: str | None = None, device: str | None = None, bin: str = "bs-roformer-infer"
     ) -> None:
         self._slug = resolve_roformer_slug(model)
+        #: The allowlist TOKEN, which is what core names and records; the slug is a resolution detail.
+        self._token = model or DEFAULT_ROFORMER_MODEL
         self._device = device
         self._bin = bin
+
+    @property
+    def model(self) -> str:
+        return self._token
 
     def separate(self, input_wav: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> Stems:
         # `--input_folder` separates EVERY wav in the directory, so the input is staged alone. Without this a

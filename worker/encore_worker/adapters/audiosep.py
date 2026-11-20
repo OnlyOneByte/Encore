@@ -122,6 +122,10 @@ class ZooSeparator:
         """What RAN, never what was asked — so a completion fact identifies the actual checkpoint."""
         return f"audiosep:{self._model.token}"
 
+    @property
+    def model(self) -> str:
+        return self._model.token
+
     def separate(self, input_wav: str, out_dir: str, *, on_progress: object = None) -> Stems:
         return self.separate_verbosely(input_wav, out_dir, on_progress=on_progress).stems
 

@@ -33,7 +33,8 @@ from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
 from encore_worker.transport import client as transport_client
 from encore_worker.transport.client import Client
 from encore_worker.workflows import durable
-from encore_worker.workflows.fetch import run_fetch
+from encore_worker.workflows.fetch import FetchOutcome, run_fetch
+from encore_worker.workflows.stems import StemsOutcome
 
 _T = TypeVar("_T")
 
@@ -213,6 +214,7 @@ async def main() -> None:
         run_job=lambda assign: _run(assign, config, adapters, separator, client, dbos),
         capabilities=caps,
         backend=backend.name,
+        host=report.to_wire(),
         on_settled=settled,
         # Enumerated OFF the event loop after registration — 4.8 s cold, and a picker's contents must not
         # delay the handshake. None on a box without the `audiosep` extra, which skips the frame entirely.
@@ -429,6 +431,68 @@ def _align_facts(job: JobRef, config: Config, outcome: AlignOutcome) -> dict[str
     }
 
 
+def _fetch_completion(job: JobRef, config: Config, fetched: FetchOutcome) -> f.Complete | f.Failed:
+    """The terminal frame a fetch job sends."""
+    if not fetched.published:
+        # Empty ONLY when the publish was refused for ownership: as for stems and align, that is not a
+        # completion, and sent as one core marked the fetch done and queued its follow-ups.
+        return f.Failed(config.worker_id, job.job_id, fetched.why, retryable=True)
+    return f.Complete(
+        worker_id=config.worker_id,
+        job_id=job.job_id,
+        media_uri=fetched.published,
+        artifacts=_annotation_artifacts(fetched.identified),
+        facts={
+            "artist": fetched.identified.artist,
+            "track": fetched.identified.track,
+            "identifiedFrom": fetched.identified.source,
+            "unidentified": fetched.unidentified,
+        },
+    )
+
+
+def _stems_completion(
+    job: JobRef, config: Config, separated: StemsOutcome, separator: Any
+) -> f.Complete | f.Failed:
+    """The terminal frame a stems job sends. `separator` is the startup one, the engine fact's fallback."""
+    stems = separated.published
+    if stems is None:
+        # NOTHING was published, so this is not a completion: a `job:complete` here once made core mark
+        # the song ready over a file never written. Retryable, because the refusal is about ownership,
+        # not the audio; core ignores it when the job is already someone else's.
+        return f.Failed(config.worker_id, job.job_id, separated.why, retryable=True)
+    return f.Complete(
+        worker_id=config.worker_id,
+        job_id=job.job_id,
+        media_uri=stems.instrumental,
+        # EVERY ref, not just the instrumental: core serves, evicts and deletes per stem, so an
+        # unreported ref is a file nothing will ever clean up and nothing can play.
+        artifacts={
+            # ALWAYS present when separation succeeded. Core's process gate reads a present profile as
+            # "the analysis step ran"; an absent one leaves the song unsingable AND never reprocessed.
+            "songProfile": dict(separated.profile or {}),
+            "stems": {
+                k: v
+                for k, v in (
+                    ("instrumental", stems.instrumental),
+                    ("vocals", stems.vocals),
+                    ("guideMix", stems.guide_mix),
+                )
+                if v
+            },
+        },
+        # What RAN: a `stems-upgrade` builds its own separator per job, so the startup one is only the
+        # fallback. An unknown model is OMITTED, so it cannot overwrite the requested one with null.
+        facts={
+            "backend": config.backend,
+            # `getattr`: a record checkpointed before these fields existed unpickles without them.
+            "engine": getattr(stems, "engine", None) or getattr(separator, "name", None),
+            **({"model": model} if (model := getattr(stems, "model", None)) else {}),
+            "refused": False,
+        },
+    )
+
+
 def _align_completion(
     job: JobRef, config: Config, outcome: AlignOutcome, *, now_ms: int | None = None
 ) -> f.Complete:
@@ -534,43 +598,15 @@ async def _dispatch(
     teach this worker a new verb.
     """
     if assign.action == "align":
-        return _align_completion(job, config, await durable.align(job))
+        aligned = await durable.align(job)
+        if aligned.abandoned:
+            # As for stems: a refusal is not a completion. Sent as one, core settled the lyrics gate as
+            # "align ran and found no lyrics" for a job nobody finished.
+            return f.Failed(config.worker_id, job.job_id, aligned.why, retryable=True)
+        return _align_completion(job, config, aligned)
 
     if assign.action in ("stems", "stems-upgrade"):
-        separated = await durable.stems(job)
-        stems = separated.published
-        return f.Complete(
-            worker_id=config.worker_id,
-            job_id=job.job_id,
-            # `mediaUri` is REQUIRED by core's validation, so a refusal sends "" rather than omitting it:
-            # the frame must still parse to report the refusal.
-            media_uri=stems.instrumental if stems else "",
-            # EVERY ref, not just the instrumental: core serves, evicts and deletes per stem, so an
-            # unreported ref is a file nothing will ever clean up and nothing can play.
-            artifacts=(
-                {
-                    # ALWAYS present when separation succeeded. Core's process gate reads a present profile as
-                    # "the analysis step ran"; an absent one leaves the song unsingable AND never reprocessed.
-                    "songProfile": dict(separated.profile or {}),
-                    "stems": {
-                        k: v
-                        for k, v in (
-                            ("instrumental", stems.instrumental),
-                            ("vocals", stems.vocals),
-                            ("guideMix", stems.guide_mix),
-                        )
-                        if v
-                    },
-                }
-                if stems
-                else None
-            ),
-            facts={
-                "backend": config.backend,
-                "engine": getattr(separator, "name", None),
-                "refused": separated.refused,
-            },
-        )
+        return _stems_completion(job, config, await durable.stems(job), separator)
 
     if assign.action == "fetch":
         # Fetch is deliberately NOT durable: one download, whose retry is cheaper than its bookkeeping.
@@ -585,18 +621,7 @@ async def _dispatch(
                 annotator=musicbrainz.build_client(),
             ),
         )
-        return f.Complete(
-            worker_id=config.worker_id,
-            job_id=job.job_id,
-            media_uri=fetched.published,
-            artifacts=_annotation_artifacts(fetched.identified),
-            facts={
-                "artist": fetched.identified.artist,
-                "track": fetched.identified.track,
-                "identifiedFrom": fetched.identified.source,
-                "unidentified": fetched.unidentified,
-            },
-        )
+        return _fetch_completion(job, config, fetched)
 
     return f.Failed(
         worker_id=config.worker_id,

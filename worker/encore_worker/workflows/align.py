@@ -201,7 +201,11 @@ async def _publish(
         # Nothing was placed: `publish` places only after the ownership check. The attempts are in job
         # scratch, which is reclaimed with the job, so there is nothing in the store to report.
         return AlignOutcome(
-            published=None, why=f"abandoned before publishing: {lost}", trail=search.trail, candidates=()
+            published=None,
+            why=f"abandoned before publishing: {lost}",
+            trail=search.trail,
+            candidates=(),
+            abandoned=True,
         )
     placed = [doc] if pin is not None and doc is not None else list(written)
     return AlignOutcome(

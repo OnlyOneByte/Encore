@@ -27,11 +27,14 @@ from encore_worker.adapters.separate import (
     mlx_stem_path,
     resolve_model,
 )
+from encore_worker.host.config import Config
+from encore_worker.protocol import frames as f
 from encore_worker.steps.api import NotOurJob
 from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 from encore_worker.workflows.stems import (
     SILENCE_FLOOR_DBFS,
     SilentInstrumental,
+    StemsOutcome,
     UnverifiedInstrumental,
     run_stems,
 )
@@ -491,3 +494,87 @@ def test_the_previous_multistem_mapping_still_resolves() -> None:
     """Kept so a historical `job_attempts.model` row does not raise `UnknownModel` when an operator opens an
     old audit page. History has to stay readable after a repoint."""
     assert sep.ROFORMER_SLUG_CATEGORY[sep.ROFORMER_MODELS["bs-roformer-multistem"]] == "multi-stem"
+
+
+# ── the stems completion frame ───────────────────────────────────────────────────────────────────
+
+
+def _completion(outcome: StemsOutcome) -> object:
+    from encore_worker.__main__ import _stems_completion  # noqa: PLC0415
+
+    cfg = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
+    return _stems_completion(JOB, cfg, outcome, TorchDemucs())
+
+
+def test_a_refused_publish_is_a_retryable_failure_not_a_completion() -> None:
+    """A `job:complete` with nothing published made core mark the song ready over a file never written."""
+    frame = _completion(StemsOutcome(published=None, why="abandoned before publishing: revoked"))
+    assert isinstance(frame, f.Failed)
+    assert frame.retryable is True
+    assert "abandoned" in frame.error
+
+
+def test_the_completion_reports_the_engine_and_model_that_made_the_stems() -> None:
+    """A `stems-upgrade` builds its own separator per job; the startup one (demucs here) is not what ran."""
+    published = PublishedStems(
+        instrumental="derived/stems/m1-instrumental.flac", engine="roformer", model="bs-roformer-1297"
+    )
+    frame = _completion(StemsOutcome(published=published, why="ok", profile={}))
+    assert isinstance(frame, f.Complete)
+    assert frame.facts is not None
+    assert (frame.facts["engine"], frame.facts["model"]) == ("roformer", "bs-roformer-1297")
+
+
+def test_each_separator_names_the_model_it_runs() -> None:
+    assert TorchDemucs(model="htdemucs_ft").model == "htdemucs_ft"
+    assert MlxDemucs().model == "htdemucs"
+    assert sep.Roformer().model == sep.DEFAULT_ROFORMER_MODEL
+
+
+def test_a_record_checkpointed_before_engine_and_model_existed_still_completes() -> None:
+    """DBOS unpickles an old `PublishedStems` without the new slots; reading them must not raise."""
+    stale = object.__new__(PublishedStems)
+    object.__setattr__(stale, "instrumental", "derived/stems/m1-instrumental.flac")
+    object.__setattr__(stale, "vocals", None)
+    object.__setattr__(stale, "guide_mix", None)
+    frame = _completion(StemsOutcome(published=stale, why="ok", profile={}))
+    assert isinstance(frame, f.Complete)
+    assert frame.facts is not None
+    assert frame.facts["engine"] == "demucs"  # the startup fallback
+    assert "model" not in frame.facts
+
+
+async def test_an_abandoned_align_is_a_retryable_failure_not_a_no_lyrics_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sent as `job:complete`, core recorded "found no lyrics" for a job whose publish was refused."""
+    from encore_worker import __main__ as main  # noqa: PLC0415
+    from encore_worker.steps.records import AlignOutcome  # noqa: PLC0415
+    from encore_worker.workflows import durable  # noqa: PLC0415
+
+    async def abandoned(job: JobRef) -> AlignOutcome:
+        return AlignOutcome(published=None, why="abandoned before publishing: revoked", abandoned=True)
+
+    monkeypatch.setattr(durable, "align", abandoned)
+    cfg = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
+    assign = f.Assign(job_id="j1", media_id="m1", action="align")
+    frame = await main._dispatch(assign, JOB, cfg, None, None, None, None)  # type: ignore[arg-type]
+    assert isinstance(frame, f.Failed)
+    assert frame.retryable is True
+
+
+async def test_a_genuine_no_lyrics_align_still_completes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only an ownership refusal is a failure: "found no lyrics" is a real outcome core must hear."""
+    from encore_worker import __main__ as main  # noqa: PLC0415
+    from encore_worker.steps.records import AlignOutcome  # noqa: PLC0415
+    from encore_worker.workflows import durable  # noqa: PLC0415
+
+    async def nothing_found(job: JobRef) -> AlignOutcome:
+        return AlignOutcome(published=None, why="no text cleared the gates")
+
+    monkeypatch.setattr(durable, "align", nothing_found)
+    cfg = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
+    assign = f.Assign(job_id="j1", media_id="m1", action="align")
+    frame = await main._dispatch(assign, JOB, cfg, None, None, None, None)  # type: ignore[arg-type]
+    assert isinstance(frame, f.Complete)
+    assert frame.media_uri == ""
