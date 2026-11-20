@@ -152,3 +152,34 @@ test('UI-06: a failure on the last song never sits over the lobby’s join QR', 
 		await worker.stop();
 	}
 });
+
+test('UI-03: a guest who moves the ring away and back keeps the start colour, even once it is taken', async ({
+	world,
+	browser
+}) => {
+	const colours = async () =>
+		(await fetch(`${world.baseURL}/api/room-preview?code=${world.code}`).then((r) => r.json())) as {
+			names: string[];
+			colors: string[];
+		};
+	await world.openPhone('Maya');
+	const jo = await (
+		await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: world.baseURL })
+	).newPage();
+	await jo.goto(`/?room=${world.code}`);
+	await jo.locator(SEL.nameInput).fill('Jo');
+	// The ring's suggestion, read from its own accessible value before anyone else joins.
+	// `.colour-ring` IS the slider (the disc carries the role).
+	const ring = jo.locator(SEL.colourRing);
+	const suggested = await ring.getAttribute('aria-valuenow');
+	// Theo joins untouched in the meantime, and the room hands him the same free colour Jo is being shown.
+	await world.openPhone('Theo');
+	await ring.press('ArrowRight');
+	await ring.press('ArrowLeft');
+	await expect(ring).toHaveAttribute('aria-valuenow', suggested!);
+	await jo.getByRole('button', { name: SEL.submit }).click();
+	await jo.locator(SEL.dock).waitFor({ state: 'attached' });
+	const { names, colors } = await colours();
+	// A deliberate choice is kept: Jo's colour is the one she was shown, which Theo now holds too.
+	expect(colors[names.indexOf('Jo')]).toBe(colors[names.indexOf('Theo')]);
+});

@@ -1,6 +1,6 @@
 // A pure-ish handler so it unit-tests without HTTP; the route is a thin wrapper around it.
 
-import { freeSingerColor, normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
+import { canonicalHex, freeSingerColor, isLegibleSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
 import type { Room } from '../rooms/repository';
 
@@ -109,12 +109,13 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	if (!name) throw new Error('display name required');
 	// In-room uniqueness: a name is free if no one still in THIS room holds it.
 	assertNameFree(app, room.id, name);
-	// Picked HERE, inside one synchronous handler, so phones that read the same room preview still get distinct
-	// colours: each join sees every join before it.
+	// A colour the guest picked is kept when it is legible. Otherwise (none sent, or one the room can't show) the
+	// room picks a free one HERE, inside one synchronous handler, so phones that read the same room preview still get
+	// distinct colours: each join sees every join before it.
+	const picked = typeof input.color === 'string' ? canonicalHex(input.color) : null;
 	const { here, away } = roomMembership(app, room.id);
-	const color = input.color
-		? normalizeSingerColor(input.color)
-		: freeSingerColor([...here, ...away].map((s) => s.color));
+	const color =
+		picked && isLegibleSingerColor(picked) ? picked : freeSingerColor([...here, ...away].map((s) => s.color));
 
 	const singer = app.singers.create(name, color, app.now(), room.id);
 

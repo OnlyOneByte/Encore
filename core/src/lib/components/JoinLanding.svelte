@@ -17,10 +17,12 @@
 	let name = $state('');
 	/* SNAPPED to a ring stop, because the ring can only return one of its own fills: seeded with a raw preset the
 	   knob would sit on the nearest stop while the value said something the control never offered. */
-	/* What the page last seeded: a SUGGESTION from the preview, never sent. While the ring still shows it the join
-	   carries no colour and the server picks a free one, because phones that scanned together read the same preview. */
-	let seededColor = nearestPaletteStop(SINGER_COLORS[0]).fill;
-	let color = $state<string>(seededColor);
+	let color = $state<string>(nearestPaletteStop(SINGER_COLORS[0]).fill);
+	/* Whether the GUEST moved the ring, set only by the ring's own write-back. Until then `color` is a suggestion from
+	   the preview and is never sent: the server picks a free one, because phones that scanned together read the same
+	   preview. Tracked as a touch, not by comparing against the suggestion, so choosing the start colour on purpose
+	   (away and back) is kept. */
+	let colorPicked = $state(false);
 	/** The TYPED path's code, distinct from `scannedCode` below. */
 	let typedCode = $state('');
 	let submitting = $state(false);
@@ -97,7 +99,7 @@
 			} else {
 				preview = body as RoomPreview;
 				previewCode = code;
-				if (color === seededColor) color = seededColor = freeSingerColor(preview.colors ?? []);
+				if (!colorPicked) color = freeSingerColor(preview.colors ?? []);
 			}
 		} catch {
 			previewError = 'Network error — try again.';
@@ -135,7 +137,7 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					displayName: name.trim(),
-					color: color === seededColor ? undefined : color,
+					color: colorPicked ? color : undefined,
 					code: joinCode || undefined
 				})
 			});
@@ -212,10 +214,16 @@
 		<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence above is built from. An empty
 				room is an empty list, which needs no special case. -->
 		<ColourRing
-			bind:value={color}
 			label="Your color"
 			hint="How you'll spot yourself in the queue and on the TV."
 			taken={preview?.colors ?? []}
+			bind:value={
+				() => color,
+				(v) => {
+					color = v;
+					colorPicked = true;
+				}
+			}
 		/>
 
 		{#if error}

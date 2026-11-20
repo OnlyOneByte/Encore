@@ -116,15 +116,23 @@ test('the singer:joined broadcast carries NO session token', () => {
 	expect((ev.singer as Record<string, unknown>).sessionToken).toBeUndefined();
 });
 
-test('invalid color falls back to the first palette color', () => {
-	const { app } = appHarness();
-	const { singer } = doJoin(app, { displayName: 'Sam', color: '#nonsense' });
-	expect(singer.color).toBe(SINGER_COLORS[0]);
-});
-
 /* A guest who never touched the ring sends NO colour, and the room picks one at join time. Guests scan the TV
    together, so every phone read the same room preview: a client-side default gave all four the same violet. */
 const stopOf = (hex: string) => nearestPaletteStop(hex);
+
+test('an unusable colour gets the same free pick as no colour, not the first preset', () => {
+	// Maya holds the first preset's stop, so falling back to the first preset would hand Sam and Kai her colour.
+	for (const bad of ['#nonsense', '#000000']) {
+		const { app } = appHarness();
+		doJoin(app, { displayName: 'Maya' });
+		const untouched = appHarness().app;
+		doJoin(untouched, { displayName: 'Maya' });
+		const expected = doJoin(untouched, { displayName: 'Sam' }).singer.color;
+		const got = doJoin(app, { displayName: 'Sam', color: bad }).singer.color;
+		expect(got, bad).toBe(expected);
+		expect(stopOf(got).i, bad).not.toBe(stopOf(SINGER_COLORS[0]).i);
+	}
+});
 
 test('four guests who opened the join screen together and never touched the ring get four colours', () => {
 	const { app } = appHarness();
@@ -164,7 +172,8 @@ test('a wheel hue is KEPT, not rewritten to a preset', () => {
 test('a colour whose dot would vanish on the dark surfaces is refused', () => {
 	const { app } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Kai', color: '#000000' });
-	expect(singer.color).toBe(SINGER_COLORS[0]);
+	// An empty room's free pick: the first preset, snapped to the ring.
+	expect(singer.color).toBe(stopOf(SINGER_COLORS[0]).fill);
 });
 
 test('shorthand hex is canonicalised on the way in', () => {
