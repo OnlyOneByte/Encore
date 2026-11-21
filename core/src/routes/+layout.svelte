@@ -151,7 +151,7 @@
 		};
 		/* MY ON DECK WENT TO SOMEONE ELSE, and I did not cause it (proposal 14): one line, on any tab, beside "You're up".
 		   A song ahead finishing being made, or an away singer's turn coming back, moves On deck as silently as a drag
-		   used to — nobody's fault, so it names who goes first and never who moved it. Edge-triggered on `lastDeckId`,
+		   used to — nobody's fault, so it names who goes first and never who moved it. Edge-triggered on `deckMemo`,
 		   so it says it once per loss, and the lost entry's heads-up buzz is re-armed for when its turn comes back. */
 		function noticeDeckBump(): void {
 			const queued = room.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
