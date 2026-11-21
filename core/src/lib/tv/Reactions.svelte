@@ -4,9 +4,10 @@
 
 	   THE LANE IS INSIDE THE SAFE AREA, against its right edge (--tv-safe-x), because the gutter outside it is the
 	   part of the picture a TV may overscan away. The lyrics reel gives up --tv-reaction-reserve on both sides while
-	   reactions are on, so a centred row never reaches the lane; the lane ends --tv-chrome-h above the bottom, so it
-	   never reaches the lower-third or the corner QR. tests/playwright/specs/probe/reactions-lane.spec.ts measures
-	   both while phones burst.
+	   reactions are on, so a centred row never reaches the lane. The lane stands on the TALLER of two measured bands,
+	   the lower-third's (--tv-chrome-h) and the corner join card's (--tv-corner-h), because it sits directly above the
+	   card and the two heights change independently: #992 shrank the lower-third below the card and the lane landed on
+	   "Scan to join". tests/playwright/specs/probe/reactions-lane.spec.ts measures both while phones burst.
 
 	   CHEAP TO COMPOSITE: each disc animates transform and opacity only, over an OPAQUE fill with a plain border —
 	   no translucency to blend against the stage, no shadow to repaint, no glyph to rasterise (the picture is a
@@ -25,7 +26,8 @@
 	 *  distance apart (speed x spacing). At this spacing the closest pair still clears by 13 px at 720p, 24 px at
 	 *  1080p and 47 px at 4K. It is counted from each disc's animation START (see `started`), so a late first frame
 	 *  delays the next disc instead of closing the gap. 550 ms left ~55 ms and touched under load at 4K; an eased
-	 *  climb, which slows the disc ahead near the top, overlaps at any spacing here. The probe asserts it. At most ceil(RISE_MS / SPACING_MS) = 4 on screen. */
+	 *  climb, which slows the disc ahead near the top, overlaps at any spacing here. The probe asserts it. At most
+	 *  ceil(RISE_MS / SPACING_MS) = 4 on screen. */
 	const SPACING_MS = 650;
 	/** The waiting line. Past this the oldest waiting cheer drops, so a full line is at most 6 x 650 ms = 3.9 s
 	 *  behind the tap that joined it last — late, but still during the song it was for. */
@@ -57,6 +59,7 @@
 	   land hundreds of ms late, and a clock started at mount would release the next disc into the one ahead.
 	   Nightly 44844250303 caught exactly that. Positions are a function of each rise's start, so this keeps them. */
 	function started(id: number): void {
+		// A restarted animation (reduced motion toggled mid-disc) must not early-arm or re-arm the timer.
 		if (id !== pending || releaseTimer !== undefined) return;
 		releaseTimer = setTimeout(() => {
 			releaseTimer = undefined;
@@ -86,11 +89,11 @@
 
 <style>
 	.reaction-lane {
-		/* Geometry: one disc wide, a rise of 40% of the stage, standing on the measured chrome band. */
+		/* Geometry: one disc wide, a rise of 40% of the stage, standing on the taller measured band (see the top). */
 		--rise-h: 40vh;
 		position: absolute;
 		right: var(--tv-safe-x);
-		bottom: var(--tv-chrome-h);
+		bottom: max(var(--tv-chrome-h), calc(var(--tv-safe-y) + var(--tv-corner-h)));
 		width: var(--tv-reaction-w);
 		height: var(--rise-h);
 		/* The reel's tier, legal because the two are disjoint in SPACE: the reel is pulled in by the reserve. */
