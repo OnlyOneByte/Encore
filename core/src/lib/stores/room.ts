@@ -128,13 +128,18 @@ export class RoomLink {
 	/** The entry the On deck hold protects, by the shared `heldEntryId` rule over the shared `nextPlayableEntryId`:
 	 *  what the queue tab pins, and what an optimistic add lands behind, as the server does (proposal 14). */
 	get heldId(): string | null {
-		const queued = this.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+		return this.#heldIdOf(this.entries);
+	}
+	/** The held entry in `list`, which for a pending add being rebased is the NEW server list, not `this.entries`. */
+	#heldIdOf(list: readonly QueueEntry[]): string | null {
+		const queued = list.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
 		const nextId = nextPlayableEntryId(
 			queued,
 			(id) => this.mediaCatalog.get(id),
 			(id) => this.mediaStatus.get(id)
 		);
-		const nowSingerId = this.entries.find((e) => e.id === this.playback.currentEntryId)?.singerId;
+		// The PLAYING row of `list`, as the server's `heldOnDeck` reads it: a patch can land before its playback:state.
+		const nowSingerId = list.find((e) => e.status === 'playing')?.singerId;
 		return heldEntryId(
 			queued.find((e) => e.id === nextId),
 			nowSingerId,
@@ -195,10 +200,10 @@ export class RoomLink {
 			},
 			// Read at apply time, not captured: both the algorithm and the sing history change while the party runs, and
 			// predicting with a stale ordering is what makes a row jump.
-			ordering: () => ({
+			ordering: (list) => ({
 				order: this.settings.room.queueOrder,
 				lastSungAt: singHistoryFrom(this.singers.values()),
-				heldId: this.heldId
+				heldId: this.#heldIdOf(list)
 			})
 		});
 		this.queue.subscribe((entries) => {
