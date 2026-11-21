@@ -22,12 +22,19 @@ Each row of `tests/playwright/specs/shot/motion.spec.ts` writes `tests/playwrigh
 (or `$MOTION_OUT/<row>/`). Playwright empties `.artifacts/` at the start of every run, so copy what you need
 before running anything else, or set `MOTION_OUT`:
 
-| File                          | For          | What it is                                                                                                           |
-| ----------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `clip.gif`, `clip-slow4x.gif` | the owner    | Real speed and 4× slow. The before and settled frames are each held 700 ms.                                          |
-| `filmstrip.png`               | the reviewer | Every frame, labelled with its exact animation time in ms.                                                           |
-| `filmstrip-reduced.png`       | the reviewer | The same trigger under `prefers-reduced-motion: reduce`.                                                             |
-| `metrics.json`                | both         | Declared duration, easing and properties; rAF cadence, dropped frames, long frames, CLS; the reduced-motion verdict. |
+| File                                                   | For          | What it is                                                                                                                                                                                    |
+| ------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clip.gif`, `clip-slow4x.gif`                          | the owner    | Real speed and 4× slow. The before and settled frames are each held 700 ms.                                                                                                                   |
+| `filmstrip.png`                                        | the reviewer | Every frame, labelled with its exact animation time in ms.                                                                                                                                    |
+| `filmstrip-reduced.png`                                | the reviewer | The same trigger under `prefers-reduced-motion: reduce`.                                                                                                                                      |
+| `metrics.json`                                         | both         | Declared duration, easing and properties; rAF cadence, dropped frames, long frames, CLS; the reduced-motion verdict.                                                                          |
+| `realtime.gif`, `filmstrip-realtime.png` (and `-late`) | both         | A row with `realtime` only: what Chromium painted at 6× CPU throttle (and with its first frame 400 ms late), labelled in wall-clock ms, plus `metrics.realtime` and one printed line per run. |
+
+A row about timing (a stream, a sequence, anything released on a clock) adds `realtime: { each, avoid,
+lateFirstFrameMs, windowMs }`. The seek run cannot show a motion that starts late, because its clock starts when the
+motion does (#1000). `overlap` counts frames where two visible `each` boxes, or an `each` and an `avoid` box,
+intersect; `min gap` is the closest two `each` boxes came (negative is an overlap); `blank` counts holes in the stream;
+`first frame` is the worst mount-to-first-frame time.
 
 A new row is `{ name, what, open, trigger, only, stepMs }`: `open` gets a fresh page to just before the motion,
 `trigger` fires it, `only` selects the subject so an unrelated fade is listed under `others` instead. Use
@@ -45,7 +52,7 @@ skipped. `metrics.json` records what the built CSS says for each one
 
 ## The checks
 
-Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which passed, as "checklist 10/10".
+Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which passed, as "checklist 11/11".
 
 1. **Every frame is a plausible blend of its two ends.** Nothing is offset, clipped, flashing, blank or doubled.
 2. **No jump at either end.** Compare `before` with `0 ms`, and the last frame with the settled state. Anything
@@ -79,6 +86,8 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
    numbers (see Limits), so compare them, never quote them as a phone's.
 10. **It is readable.** `clip.gif` is at most 1.5 MB and 4 s; `filmstrip.png` is at most 2000 px a side (crop with
     `stripClip`, shrink with `scale`).
+11. **A row about timing (a stream, a sequence, anything released on a clock) has `realtime`.** Its overlap is 0 and
+    its blank count is 0 in both runs.
 
 ## Putting the GIF in the PR
 
@@ -90,9 +99,11 @@ and anyone else gets a 404. No service or secret is involved.
 ```sh
 bun run ui:review:publish-media -- 973                        # every row in .artifacts/motion, as pr-973/after/
 bun run ui:review:publish-media -- 973 --dir before --slow phone-leave-dialog
+bun run ui:review:publish-media -- 973 --realtime tv-reaction-lane   # a timing row: its real-time run instead
 ```
 
-Per row it publishes `clip.gif` (or `clip-slow4x.gif` with `--slow`), `filmstrip.png` and `metrics.json`, and
+Per row it publishes `clip.gif` (or `clip-slow4x.gif` with `--slow`), `filmstrip.png` and `metrics.json`
+(`--realtime` swaps in `realtime.gif` and `filmstrip-realtime.png`; `--realtime=late`, the late run's), and
 prints the Markdown to paste into the comment. It refuses any GIF or strip over **1.5 MB**: two media files per row
 keep a four-row PR to about 12 MB at most, and in practice 2 to 3 MB. It pushes without force, so two people
 publishing at once cannot overwrite each other: the second push is refused, and running it again succeeds.
