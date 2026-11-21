@@ -20,9 +20,12 @@ const song = (id: string, title: string, over: Partial<Media> = {}): Media =>
 const real = { fetch: globalThis.fetch, WebSocket: globalThis.WebSocket };
 const g = globalThis as Record<string, unknown>;
 let link: RoomLink | undefined;
+/** When set, /api/process answers only once this resolves, so a test can order the two refusals of one tap. */
+let holdProcess: Promise<void> | undefined;
 
 afterEach(() => {
 	link?.close();
+	holdProcess = undefined;
 	globalThis.fetch = real.fetch;
 	globalThis.WebSocket = real.WebSocket;
 	delete g.window;
@@ -48,12 +51,14 @@ async function connected() {
 		}
 	} as unknown as typeof WebSocket;
 	const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
-	globalThis.fetch = (async (url: string) =>
-		url === '/api/me'
+	globalThis.fetch = (async (url: string) => {
+		if (url === '/api/process') await holdProcess;
+		return url === '/api/me'
 			? json({ singer: { id: 's1', displayName: 'Ana', color: '#f80', joinedAt: 1 } })
 			: url === '/api/process'
 				? new Response(JSON.stringify({ error: 'unknown media' }), { status: 409 }) // as process/+server.ts refuses
-				: json({ library: [song('lib', 'Library Song')] })) as unknown as typeof fetch;
+				: json({ library: [song('lib', 'Library Song')] });
+	}) as unknown as typeof fetch;
 
 	link = new RoomLink();
 	const notices: string[] = [];
@@ -122,6 +127,48 @@ test('a tap is refused twice, by the process and by the add, and the guest is to
 
 	expect(notices).toEqual(["That song isn't in the library any more."]);
 	expect(link.mediaCatalog.has('gone')).toBe(false);
+});
+
+/** The server's refusal of the newest add this phone sent. */
+function rejectLastAdd(socket: { sent: string[] }, mediaId: string): ServerEvent {
+	const adds = socket.sent.filter((s) => s.includes('queue:command'));
+	const cmd = JSON.parse(adds.at(-1)!).command;
+	return { type: 'op:reject', clientOpId: cmd.clientOpId, reason: `unknown media: ${mediaId}` };
+}
+
+test('every tap on a deleted library song is told, and the song leaves the shelf', async () => {
+	const { link, notices, socket, deliver } = await connected();
+	expect(link.library.map((m) => m.id)).toEqual(['lib']);
+	for (const tap of [1, 2]) {
+		link.queue!.addSong('lib');
+		deliver(rejectLastAdd(socket, 'lib'));
+		expect(notices.length, `tap ${tap}`).toBe(tap);
+	}
+	expect(new Set(notices)).toEqual(new Set(["That song isn't in the library any more."]));
+	expect(link.library).toEqual([]);
+});
+
+test('told once per tap whichever refusal lands first, and again on the next tap', async () => {
+	const { link, notices, socket, deliver } = await connected();
+	link.mergeMedia([song('gone', 'Deleted Song', { stemStatus: 'none' })]);
+	// Tap 1: the add's refusal lands while the process request is still in flight.
+	let release!: () => void;
+	holdProcess = new Promise((r) => (release = r));
+	link.queue!.addSong('gone');
+	const processing = link.requestProcess('gone');
+	deliver(rejectLastAdd(socket, 'gone'));
+	release();
+	await processing;
+	expect(notices.length).toBe(1);
+	// Tap 2: the process refusal lands first, while the add is pending.
+	holdProcess = undefined;
+	link.queue!.addSong('gone');
+	await link.requestProcess('gone');
+	deliver(rejectLastAdd(socket, 'gone'));
+	expect(notices.length).toBe(2);
+	// Tap 3: a process on its own (the stalled card's retry), refused with nothing else in flight.
+	await link.requestProcess('gone');
+	expect(notices).toEqual(Array(3).fill("That song isn't in the library any more."));
 });
 
 test("a failed process this phone never fetched names the song, from the failure's own row", async () => {

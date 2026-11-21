@@ -41,6 +41,9 @@ test('a sync without levels keeps the median the TV already holds', () => {
 
 test("the TV page adopts the sync's levels in its queue:sync branch", () => {
 	// The one line a unit cannot execute: deleting it leaves the TV at unity with every other test green.
+	// DELIBERATELY LITERAL: it pins the spelling, so a behaviour-equal rewrite of the line also trips it. When that
+	// happens, update the expected text to the new line; don't loosen the check into something a deletion passes.
+	// The second match only says the gain reads these levels at all.
 	const page = stripComments(read('src/routes/tv/+page.svelte'));
 	const branch = page.slice(page.indexOf("e.type === 'queue:sync'"), page.indexOf("e.type === 'singer:presence'"));
 	expect(branch).toContain('libraryLoudnessLevels = syncLoudnessLevels(libraryLoudnessLevels, e);');

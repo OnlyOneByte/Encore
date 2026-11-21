@@ -121,6 +121,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (!op.entry.singerId) return 'missing singerId';
 			// Rejected rather than silently rewritten, which would desync the sender's optimistic copy.
 			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
+			// The phone parses this wording to say the song was deleted: keep in step with room.ts `onReject`/`#songGone`.
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			// applyOp overwrites in place on id match, so an id colliding with a DIFFERENT live entry would
 			// let one phone hijack another's turn and orphan the displaced media's process. Re-adding the

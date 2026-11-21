@@ -306,14 +306,14 @@ export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, dep
 	const media = deps.mediaById.get(job.mediaId);
 	// Gated: a dead `stems-upgrade` must not flip an already-singable row back to "Making karaoke".
 	if (shouldBroadcastProcess(job, media)) {
-		const status = mediaStatusFor(job);
 		deps.broadcast({
 			type: 'media:status',
 			mediaId: job.mediaId,
-			status,
+			status: mediaStatusFor(job),
 			// The row rides the failure, because a sync carries only queued songs: a phone that never fetched this
-			// one would otherwise name it by its id in "Couldn't make karaoke for …".
-			media: status === 'failed' ? media : undefined,
+			// one would otherwise name it by its id in "Couldn't make karaoke for …". Unconditional, because this
+			// path only ever sees a terminal job, which `mediaStatusFor` reports as `failed`.
+			media,
 			pct: job.progressPct,
 			etaSec: job.etaSec ?? undefined,
 			// WHO TO TELL "try again". The job has carried this since it was enqueued — /api/process and

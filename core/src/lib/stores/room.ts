@@ -145,8 +145,11 @@ export class RoomLink {
 			onReject: (reason) => {
 				// The hub's own wording for an add of a song it no longer holds (hub.ts `validateCommand`).
 				const gone = /^unknown media: (.+)$/.exec(reason);
-				if (gone) this.#songGone(gone[1]!);
-				else this.#fail(`Couldn't do that: ${reason}`);
+				if (gone) {
+					this.#songGone(gone[1]!);
+					// Said for this tap: its process refusal, if still in flight, stays silent.
+					if (this.#processInFlight.has(gone[1]!)) this.#toldWhileProcessing.add(gone[1]!);
+				} else this.#fail(`Couldn't do that: ${reason}`);
 			},
 			// Read at apply time, not captured: both the algorithm and the sing history change while the party runs, and
 			// predicting with a stale ordering is what makes a row jump.
@@ -346,14 +349,15 @@ export class RoomLink {
 	}
 
 	/** A song deleted since this phone fetched it: a sync carries only queued songs, so nothing else drops its row, and
-	 * an open search keeps offering it. Says so ONCE: a tap sends both the add and the process, and both are refused. */
-	#songGone(mediaId: string): void {
-		if (!this.mediaCatalog.has(mediaId)) return;
+	 * the shelf and an open search keep offering it. Drops it from both, and says so on EVERY refused tap: a tap that
+	 * is refused in silence is a dead end. `tell` is false only for the second refusal of one tap (see requestProcess). */
+	#songGone(mediaId: string, tell = true): void {
 		const next = new Map(this.mediaCatalog);
 		next.delete(mediaId);
 		this.mediaCatalog = next;
+		this.library = this.library.filter((m) => m.id !== mediaId);
 		this.#emit();
-		this.#fail("That song isn't in the library any more.");
+		if (tell) this.#fail("That song isn't in the library any more.");
 	}
 
 	/** The catalog is otherwise fed ONLY by queue:sync/patch, so a song that came from search or the library has no
@@ -408,6 +412,7 @@ export class RoomLink {
 	 * the root layout routes `onError` to `toast.error` on every surface. */
 	async requestProcess(mediaId: string): Promise<void> {
 		this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
+		this.#processInFlight.add(mediaId);
 		try {
 			const res = await fetch('/api/process', {
 				method: 'POST',
@@ -421,8 +426,14 @@ export class RoomLink {
 				   turn back on a transient refusal would delete a turn the guest genuinely asked for. What the guest
 				   is left holding is exactly the state the stalled card exists to name. */
 				this.clearMediaStatus(mediaId);
-				if (res.status === 409 && body.error === 'unknown media') this.#songGone(mediaId);
-				else this.#fail(body.error ?? 'Could not start process');
+				if (res.status === 409 && body.error === 'unknown media') {
+					// ONE notice per tap: the same tap's add is refused too. Silent when that refusal already said it,
+					// or will (the add is still pending); otherwise this is the tap's only refusal, so say it.
+					const tappedAdd = this.entries.some(
+						(e) => e.mediaId === mediaId && this.queue?.pendingKindById.get(e.id) === 'add'
+					);
+					this.#songGone(mediaId, !this.#toldWhileProcessing.has(mediaId) && !tappedAdd);
+				} else this.#fail(body.error ?? 'Could not start process');
 				return;
 			}
 			// The stems were already on disk (processed on an earlier night) — nothing to wait for.
@@ -430,8 +441,13 @@ export class RoomLink {
 		} catch {
 			this.clearMediaStatus(mediaId);
 			this.#fail("Couldn't start that.");
+		} finally {
+			this.#processInFlight.delete(mediaId);
+			this.#toldWhileProcessing.delete(mediaId);
 		}
 	}
+	#processInFlight = new Set<string>();
+	#toldWhileProcessing = new Set<string>();
 	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
 	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
 	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so
