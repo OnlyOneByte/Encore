@@ -42,6 +42,11 @@ export interface MotionScenario {
 	name: string;
 	/** What the reviewer should look for. Written into metrics.json and onto the strip. */
 	what: string;
+	/** CSS selector for the element the row is ABOUT. Every frame after the trigger, in the seek and the reduced
+	 *  runs, must show it: laid out, not `visibility: hidden`, and inside the frame's crop (the strip's, when it
+	 *  has one). Opacity is not checked, so a fade-in's first frame counts. A frame without it shows something
+	 *  else, so `metrics.subject.missingMs` lists it and the row fails. */
+	subject: string;
 	/** Bring a page to the state just BEFORE the motion. Gets a fresh page per run. */
 	open(contextOptions: BrowserContextOptions): Promise<Page>;
 	/** Fire the motion. Must resolve once the trigger has been delivered (not once motion ends). */
@@ -126,6 +131,8 @@ function instrument() {
 	type M = {
 		armed: boolean;
 		freeze: boolean;
+		/** Seek runs only: set once the trigger resolves; see the `setTimeout` wrapper below. */
+		hold: boolean;
 		t0: number;
 		caught: Animation[];
 		others: Animation[];
@@ -140,6 +147,7 @@ function instrument() {
 	const m: M = {
 		armed: false,
 		freeze: false,
+		hold: false,
 		t0: 0,
 		caught: [],
 		others: [],
@@ -151,6 +159,7 @@ function instrument() {
 		arm(freeze, only) {
 			m.armed = true;
 			m.freeze = freeze;
+			m.hold = false;
 			m.only = only;
 			m.others = [];
 			m.t0 = performance.now();
@@ -194,6 +203,18 @@ function instrument() {
 	};
 	document.addEventListener('animationstart', fromEvent, true);
 	document.addEventListener('transitionrun', fromEvent, true);
+
+	// Pause-and-seek stops the page's animation clock, so it stops its timers too: a wall-clock timer firing while
+	// frames are seeked (the "You're up" sheet's or the TV card's dismiss) would change the page under a frozen
+	// animation, or take a CUT's after frame away. Once a seek run's trigger has resolved (`hold`), no timeout
+	// fires, pending or new; the page is closed after that run.
+	const setTimeoutReal = window.setTimeout;
+	window.setTimeout = ((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
+		typeof handler !== 'function'
+			? setTimeoutReal(handler, ms, ...args)
+			: setTimeoutReal(() => {
+					if (!m.hold) handler(...args);
+				}, ms)) as typeof window.setTimeout;
 
 	const animate = Element.prototype.animate;
 	Element.prototype.animate = function (...args: Parameters<Element['animate']>) {
@@ -368,24 +389,51 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Pause-and-seek capture. Returns frames at -1 (pre-trigger), 0, step, … endTime, and the settled end. */
-async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, step: number) {
+/** Is `s.subject` on screen inside `area` (page px; the viewport when absent)? Read at the moment a frame is shot. */
+function subjectShown(page: Page, selector: string, area: Clip | undefined): Promise<boolean> {
+	return page.evaluate(
+		([sel, a]) => {
+			const box = a ?? { x: scrollX, y: scrollY, width: innerWidth, height: innerHeight };
+			return [...document.querySelectorAll(sel)].some((el) => {
+				const r = el.getBoundingClientRect();
+				if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') return false;
+				const x = r.left + scrollX;
+				const y = r.top + scrollY;
+				return x + r.width > box.x && x < box.x + box.width && y + r.height > box.y && y < box.y + box.height;
+			});
+		},
+		[selector, area ?? null] as const
+	);
+}
+
+/** Pause-and-seek capture. Returns frames at -1 (pre-trigger), 0, step, … endTime, and the settled end, plus the
+ *  times of any frame after the trigger that did not show the subject inside `area`. */
+async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, area: Clip | undefined, step: number) {
 	const shot = (c = clip) => page.screenshot({ clip: c, caret: 'hide', animations: 'allow' });
+	const missingMs: number[] = [];
+	const check = async (ms: number) => {
+		if (!(await subjectShown(page, s.subject, area))) missingMs.push(ms);
+	};
 	const pre = await shot();
 	await page.evaluate(
 		(only) => (window as unknown as { __motion: { arm(f: boolean, o: string | null): void } }).__motion.arm(true, only),
 		s.only ?? null
 	);
 	await s.trigger(page);
+	await page.evaluate(() => ((window as unknown as { __motion: { hold: boolean } }).__motion.hold = true));
 	// Nothing animated: a CUT. Keep the after frame too, so the strip shows the jump instead of only the before.
-	if (!(await waitForCatch(page, s.startTimeoutMs ?? 3000)))
+	if (!(await waitForCatch(page, s.startTimeoutMs ?? 3000))) {
+		const after = await shot();
+		await check(0);
 		return {
 			frames: [
 				{ ms: -1, png: pre },
-				{ ms: 0, png: await shot() }
+				{ ms: 0, png: after }
 			],
-			animations: []
+			animations: [],
+			missingMs
 		};
+	}
 	const animations = await page.evaluate(describeCaught, 'caught');
 	const end = Math.max(...animations.map((a) => (Number.isFinite(a.endTimeMs) ? a.endTimeMs : a.durationMs)));
 	const frames: Frame[] = [{ ms: -1, png: pre }];
@@ -397,8 +445,9 @@ async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, st
 			for (const a of (window as unknown as { __motion: { caught: Animation[] } }).__motion.caught) a.currentTime = ms;
 		}, t);
 		frames.push({ ms: Math.round(t), png: await shot() });
+		await check(Math.round(t));
 	}
-	return { frames, animations };
+	return { frames, animations, missingMs };
 }
 
 async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
@@ -472,11 +521,15 @@ async function reducedRun(page: Page, s: MotionScenario, clip: Clip | undefined,
 	// Timed from the trigger RESOLVING: a clock-driven trigger (the TV's) can spend seconds waiting first.
 	const t0 = Date.now();
 	const frames: Frame[] = [{ ms: -1, png: pre }];
-	while (Date.now() - t0 < windowMs)
-		frames.push({ ms: Date.now() - t0, png: await page.screenshot({ clip, caret: 'hide' }) });
+	const missingMs: number[] = [];
+	while (Date.now() - t0 < windowMs) {
+		const ms = Date.now() - t0;
+		frames.push({ ms, png: await page.screenshot({ clip, caret: 'hide' }) });
+		if (!(await subjectShown(page, s.subject, clip))) missingMs.push(ms);
+	}
 	const animations = await page.evaluate(describeCaught, 'caught');
 	const others = await page.evaluate(describeCaught, 'others');
-	return { frames, animations, others };
+	return { frames, animations, others, missingMs };
 }
 
 // ── encoders ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -626,7 +679,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			const stripClip = s.stripClip ? await s.stripClip(page) : gifClip;
 			// The GIF and the strip may want different crops, so frames are shot once at the union (the GIF clip)
 			// and the strip is re-shot only when its crop differs.
-			const gifRun = await seekRun(page, s, gifClip, step);
+			const gifRun = await seekRun(page, s, gifClip, stripClip, step);
 			return { gifRun, stripClip, gifClip, observed: await s.observe?.(page) };
 		})
 	);
@@ -646,7 +699,11 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			await filmstrip(
 				browser,
 				`${s.name} — seek-rendered, ${step} ms steps`,
-				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples · ${tokens.summary}`,
+				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples · ${tokens.summary} · ${
+					seek.gifRun.missingMs.length
+						? `SUBJECT ${s.subject} MISSING at ${seek.gifRun.missingMs.join(', ')} ms`
+						: `subject ${s.subject} in every frame`
+				}`,
 				stripFrames,
 				cols
 			)
@@ -714,6 +771,11 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		motionEndMs: motionEnd,
 		seekFrames: seek.gifRun.frames.length,
 		seekObserved: seek.observed,
+		// Frames after the trigger that do not show the row's subject. Empty, or the row captured something else.
+		subject: {
+			selector: s.subject,
+			missingMs: { seek: seek.gifRun.missingMs, reduced: reduced.missingMs }
+		},
 		live,
 		reducedMotion: {
 			animationsStarted: reduced.animations.length,
