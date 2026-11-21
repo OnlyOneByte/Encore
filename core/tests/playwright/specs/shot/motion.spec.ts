@@ -2,7 +2,7 @@
 // state at rest; this proves the trip between two states, as a GIF for a human and a ms-labelled filmstrip for
 // an agent reviewer. Evidence, not assertions: like every `shot` spec it cannot fail a build on taste, only on
 // the capture itself breaking (no motion caught where motion is expected, motion caught where a cut is, or a frame
-// after the trigger that does not show the row's `subject`), and
+// after the trigger that does not show the row's `subject`, a `realtime` run that never saw its `each`), and
 // on a moving element whose duration, delay or colour is a literal instead of a token (`literalsAllowed` waives
 // exactly one named literal, with a reason).
 //
@@ -15,9 +15,12 @@ import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../worl
 import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
+import type { RealtimeReport } from '../../world/motion-realtime';
+import { burst, putRoom, stage } from '../../world/reactions';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { join } from 'node:path';
 import { SETTLE_MS } from '$lib/transport-target';
+import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 
 /** `cleanup` runs after the capture, pass or fail: a row that starts a fake worker stops it there. */
 type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown>) => void) => MotionScenario;
@@ -38,6 +41,10 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK],
 	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS]
 };
+
+/** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
+ *  sends as many as the first one did. */
+const BUCKET_REFILL_MS = 3_200;
 
 let joins = 0;
 
@@ -477,6 +484,69 @@ const SCENARIOS: Record<string, Make> = {
 			observe: (page) =>
 				page.evaluate(() => ({ introText: document.querySelector('.state-next')?.textContent?.trim() ?? null }))
 		};
+	},
+
+	/** The TV's reaction lane while two fans burst at the largest lyric scale: a stream of discs released 650 ms
+	 *  apart up the right edge. A row about TIMING, so it also records in real time: once at 6× CPU, and once with
+	 *  the first disc's first frame held 400 ms, which is #1000's bug and which the seek run cannot show (its timers
+	 *  are held, so it seeks one disc). Each run opens its own TV on the same paused song. */
+	'tv-reaction-lane': (browser, world, cleanup) => {
+		let fans: Page[] | undefined;
+		let lastBurst = 0;
+		return {
+			name: 'tv-reaction-lane',
+			what: 'TV 1920x1080 @300% lyrics: two fans’ cheers rising up the lane as a stream, 650 ms apart from each disc’s first frame, clear of each other, the lyrics and the corner (rise, --rise-ms)',
+			stepMs: 80,
+			scale: 0.5,
+			columns: 12,
+			open: async (opts) => {
+				if (!fans) {
+					const room = await stage(world, 2);
+					cleanup(() => room.worker.stop());
+					await putRoom(room.star, { lyricsScalePct: MAX_LYRICS_SCALE_PCT });
+					// Each run opens its own TV; this one would draw every disc a second time in the same browser.
+					await room.tv.context().close();
+					fans = room.fans;
+				}
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 1920, height: 1080 },
+					baseURL: world.baseURL
+				});
+				await ctx.addCookies([world.tvCookie]);
+				const page = await ctx.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await page.locator(SEL.tvConnected).waitFor({ state: 'attached' });
+				await expect(page.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
+				await page.mouse.move(1, 1);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				await page.waitForTimeout(Math.max(0, lastBurst + BUCKET_REFILL_MS - Date.now()));
+				return page;
+			},
+			trigger: async (page) => {
+				lastBurst = Date.now();
+				await burst(fans!);
+				await page.locator(SEL.tvReaction).first().waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: SEL.tvReaction,
+			// The lane, not a disc: each disc fades out and is removed by design, the lane stays.
+			subject: SEL.tvReactionLane,
+			// The release timer would put more discs into a paused seek; held, it seeks one disc's rise.
+			holdTimers: true,
+			// The lane's right quarter of the screen.
+			gifClip: async () => ({ x: 1440, y: 0, width: 480, height: 1080 }),
+			// A suffix: the keyframe name before it carries Svelte's per-file hash.
+			literalsAllowed: {
+				match: 'var(--rise-ms) ease-out forwards is not a var(--motion-*) token',
+				reason: 'the rise is RISE_MS in script, the number the release spacing is built on (tv/Reactions.svelte)'
+			},
+			realtime: {
+				each: SEL.tvReaction,
+				avoid: `.corner, ${SEL.lyricsRow}`,
+				lateFirstFrameMs: 400,
+				windowMs: 7_000
+			}
+		};
 	}
 };
 
@@ -510,6 +580,22 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 				expect(result.metrics.subject, `${name}: frames without the subject, in ms after the trigger`).toMatchObject({
 					missingMs: { seek: [], reduced: [] }
 				});
+				// A real-time run that never saw what it measures, or a late run whose stall never ran, proves nothing.
+				const realtime = (result.metrics.realtime ?? {}) as Record<string, RealtimeReport>;
+				for (const [run, r] of Object.entries(realtime)) {
+					expect(r.travelPx.each.length, `${name} ${run}: no \`each\` element was on screen`).toBeGreaterThan(0);
+					// A throttled run whose busy loop did not slow down ran at full speed: it proves nothing about load.
+					if (r.throttle > 1)
+						expect(
+							r.throttleRatio,
+							`${name} ${run}: the ${r.throttle}× CPU throttle did not take`
+						).toBeGreaterThanOrEqual(r.throttle / 3);
+					if (run !== 'realtime-late') continue;
+					expect(r.stall, `${name} ${run}: the stall never ran`).not.toBeNull();
+					// A stall at the mount that did not make a first frame late did not hold the thread.
+					if (r.stall!.at === 'mount')
+						expect(r.firstFrameMs.worst, `${name} ${run}: no first frame was late`).toBeGreaterThanOrEqual(r.stall!.ms);
+				}
 			} finally {
 				for (const fn of cleanups) await fn();
 			}

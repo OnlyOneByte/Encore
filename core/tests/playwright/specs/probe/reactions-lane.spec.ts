@@ -11,10 +11,9 @@
  * next, the corner QR, the fullscreen button and the status dot — at 720p, 1080p and 4K, and at the largest
  * lyric scale. No two discs may touch, and the on-screen bound is the release spacing's, ceil(2400 / 650) = 4.
  */
-import { test, expect, type World } from '../../world/fixtures';
+import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { burst, mounted, putRoom, stage } from '../../world/reactions';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 import type { Page } from '@playwright/test';
 
@@ -24,8 +23,6 @@ const SAMPLE_WINDOW_MS = 4_500;
 const ON_SCREEN_BOUND = 4;
 /** MAX_WAITING in tv/Reactions.svelte. */
 const MAX_WAITING = 6;
-/** Taps each phone fires in a burst, three times the bucket. */
-const TAPS_PER_PHONE = 9;
 /** Long enough for any frame the server sends to have arrived. */
 const SETTLE_MS = 1_500;
 
@@ -42,102 +39,6 @@ interface Sample {
 	vw: number;
 }
 
-async function processSong(world: World, page: Page, query: string): Promise<void> {
-	const track = await world.awaitDemoTrack(query);
-	const res = await page.request.post('/api/process', { data: { mediaId: track.id } });
-	if (!res.ok()) throw new Error(`/api/process refused "${query}": ${res.status()} ${await res.text()}`);
-	await expect
-		.poll(
-			async () => {
-				const body = (await page.request.get(`/api/search?q=${query}`).then((r) => r.json())) as {
-					ready: { id: string; instrumentalRef?: string | null; lyricsRef?: string | null }[];
-				};
-				return body.ready.some((r) => r.id === track.id && !!r.instrumentalRef && !!r.lyricsRef);
-			},
-			{ timeout: 60_000, message: `"${track.title}" never reached ready with lyrics` }
-		)
-		.toBe(true);
-}
-
-async function queue(page: Page, query: string): Promise<void> {
-	await openBrowseFromHome(page);
-	await page.locator(SEL.search).fill(query);
-	await page.locator(SEL.addTurn).first().click();
-}
-
-/** Every `room:reacted` this page's sockets receive, from the next socket it opens. */
-function recordReacted(page: Page): string[] {
-	const got: string[] = [];
-	page.on('websocket', (ws) =>
-		ws.on('framereceived', ({ payload }) => {
-			if (typeof payload === 'string' && payload.includes('"room:reacted"')) got.push(payload);
-		})
-	);
-	return got;
-}
-
-async function putRoom(page: Page, body: Record<string, unknown>): Promise<void> {
-	const res = await page.request.put('/api/settings/room', { data: body });
-	if (!res.ok()) throw new Error(`PUT /api/settings/room ${JSON.stringify(body)} -> ${res.status()}`);
-}
-
-/**
- * A song on stage with another queued behind it (so Up next shows), PAUSED so it holds still. Every phone and the
- * TV are reloaded after their recorders attach, so each socket the test relies on is a recorded one.
- */
-async function stage(world: World, fanCount: number) {
-	const worker = await startFakeWorker(world);
-	const star = await world.openPhone('Star');
-	const stops = ['End', 'Home', 'PageUp', 'PageDown', 'ArrowLeft'];
-	const fans: Page[] = [];
-	for (let i = 0; i < fanCount; i++)
-		fans.push(await world.openPhone(`Fan ${i + 1}`, { stop: stops[i % stops.length] }));
-	// Intro off: the 8 s demo song is all the stage time there is.
-	await putRoom(star, { songIntroEnabled: false });
-	await processSong(world, star, 'caroline');
-	await processSong(world, fans[0], 'believin');
-	await queue(star, 'caroline');
-	await queue(fans[0], 'believin');
-
-	const tv = await world.openTv();
-	await tv.locator(SEL.tvConnected).waitFor({ state: 'attached' });
-	// One real tap authorises playback, as a room does. docs/E2E.md#gestures
-	await tv.mouse.click(960, 540);
-	await expect(tv.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
-	await fans[0].getByRole('button', { name: 'Pause' }).click();
-
-	const frames = { tv: recordReacted(tv), star: recordReacted(star), fans: fans.map(recordReacted) };
-	for (const p of [star, ...fans]) {
-		await p.reload();
-		await p.locator(SEL.dock).waitFor({ state: 'attached' });
-	}
-	await tv.reload();
-	await tv.locator(SEL.tvConnected).waitFor({ state: 'attached' });
-	await expect(tv.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
-	await tv.mouse.move(1, 1);
-	// LIVE, not just visible: a resting row (#986) is still a visible 71 px box, so visibility alone proves nothing.
-	// `burst` taps through `HTMLElement.click()`, which fires on an inert button too, so it cannot tell either.
-	for (const fan of fans) {
-		await expect(fan.locator(SEL.npCheers)).not.toHaveAttribute('inert');
-		await expect(fan.locator(SEL.npCheer).first()).toBeVisible();
-		await expect(fan.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'visible');
-	}
-	await countMounts(tv);
-	return { worker, star, fans, tv, frames };
-}
-
-/** Counts every disc the TV ever mounts, so one that lives between samples is still seen. */
-async function countMounts(tv: Page): Promise<void> {
-	await tv.evaluate((q) => {
-		const w = window as unknown as { __mounted: number };
-		w.__mounted = 0;
-		new MutationObserver((ms) => {
-			for (const m of ms) for (const n of m.addedNodes) if (n instanceof Element && n.matches(q)) w.__mounted++;
-		}).observe(document.body, { childList: true, subtree: true });
-	}, SEL.tvReaction);
-}
-const mounted = (tv: Page) => tv.evaluate(() => (window as unknown as { __mounted: number }).__mounted);
-
 /** A raw `room:react` on a NEW socket from this page, so it carries the page's own session cookie. */
 async function rawReact(page: Page, kind = 'clap'): Promise<void> {
 	await page.evaluate(
@@ -151,18 +52,6 @@ async function rawReact(page: Page, kind = 'clap'): Promise<void> {
 				ws.onerror = () => reject(new Error('raw socket failed'));
 			}),
 		kind
-	);
-}
-
-/** Every phone at once, every kind in turn, in one synchronous loop each: a tap per Playwright round trip would
- *  spread the burst across refills and blur what the bucket bound is measuring. */
-async function burst(fans: Page[]): Promise<void> {
-	await Promise.all(
-		fans.map((fan) =>
-			fan.locator(SEL.npCheer).evaluateAll((els, n) => {
-				for (let i = 0; i < n; i++) (els[i % els.length] as HTMLButtonElement).click();
-			}, TAPS_PER_PHONE)
-		)
 	);
 }
 
