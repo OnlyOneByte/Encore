@@ -559,3 +559,107 @@ for (const resumeMs of [0, 3_000, 8_000]) {
 		}
 	});
 }
+
+// A CLAIM AT THE SWAP (r8 review). The copy's song ends and the gapless swap makes the warmed slot (Bo's guide-mix song,
+// decided plain while silent) the PLAYING one, and the claim lands then: inside the playing element's `ended` (capture,
+// before the page's own handler), or 300 ms after it. Bo's song must still get its guide, and the room must move on to
+// it at once: the copy sent no `ended` (it was a copy), and the old TV may have heard `mine:false` before its own.
+for (const offsetMs of [0, 300]) {
+	test(`a claim at the song swap (+${offsetMs} ms) keeps the next song's guide, and the room moves on to it at once`, async ({
+		browser,
+		world
+	}) => {
+		test.setTimeout(180_000);
+		const worker = await startFakeWorker(world, { guideMix: true, seconds: 30 });
+		try {
+			const phone = await world.openPhone('Guide');
+			await openBrowseFromHome(phone);
+			const bo = await world.openPhone('Bo');
+			await openBrowseFromHome(bo);
+			// No "Now singing" card, so the lower-third names the song on screen from the swap on.
+			const res = await phone.request.put('/api/settings/room', { data: { songIntroEnabled: false } });
+			expect(res.ok()).toBe(true);
+			const tv = await openScreen(browser, world, 1920, 1080, { real: true });
+			const copy = await openScreen(browser, world, 1920, 1080);
+			for (const s of [tv, copy]) await tap(s);
+			await singTrack(phone, world.baseURL, TRACKS.caroline);
+			await singTrack(bo, world.baseURL, TRACKS.believin);
+			await expect.poll(() => audioOf(copy.page), { timeout: 30_000 }).toMatchObject({ muted: true, paused: false });
+			const first = (await serverPlayback(world.baseURL)).state.currentEntryId;
+			await expect
+				.poll(async () => (await serverPlayback(world.baseURL)).state.positionSec, { timeout: 60_000 })
+				.toBeGreaterThan(20);
+			const errorsBefore = (await mediaErrorsOf(copy.page)).length;
+			// Armed in the page, on the WINDOW in capture (so before the page's own handler), timed in the page's own clock.
+			// THE SWAP is the first of three edges: the playing song's `ended`; the OTHER slot starting to play; or, with no
+			// warmed slot, the same element loading the next song. A copy whose clock runs behind the TV's follows the
+			// server's advance before its own element ends, so it may never see `ended`.
+			const armed = await copy.page.evaluate((off: number) => {
+				const w = window as unknown as { __claimAt?: number };
+				const btn = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+					/Make this the TV/.test(b.textContent ?? '')
+				)!;
+				const el = [...document.querySelectorAll<HTMLMediaElement>('audio')].find((e) => !e.paused);
+				const claim = () => {
+					w.__claimAt = Date.now();
+					btn.click();
+				};
+				const onSwap = (e: Event) => {
+					if (!(e.target instanceof HTMLMediaElement)) return;
+					if (e.type === 'playing' && e.target === el) return;
+					if (e.type === 'loadstart' && e.target !== el) return;
+					for (const t of ['ended', 'playing', 'loadstart']) removeEventListener(t, onSwap, true);
+					if (off === 0) claim();
+					else setTimeout(claim, off);
+				};
+				for (const t of ['ended', 'playing', 'loadstart']) addEventListener(t, onSwap, true);
+				return { at: el?.currentTime ?? null, dur: el?.duration ?? null };
+			}, offsetMs);
+			try {
+				await expect
+					.poll(() => copy.page.evaluate(() => !!(window as { __claimAt?: number }).__claimAt), { timeout: 30_000 })
+					.toBe(true);
+			} catch {
+				const audio = await copy.page.evaluate(() =>
+					[...document.querySelectorAll<HTMLMediaElement>('audio')].map((e) => ({
+						src: e.getAttribute('src'),
+						t: e.currentTime,
+						paused: e.paused,
+						ended: e.ended
+					}))
+				);
+				const room = (await serverPlayback(world.baseURL)).state;
+				throw new Error(`no swap on the copy (armed at ${JSON.stringify(armed)}): ${JSON.stringify({ audio, room })}`);
+			}
+			const claimAt = await copy.page.evaluate(() => (window as unknown as { __claimAt: number }).__claimAt);
+			await expect(copy.page.locator(CHIP)).toHaveCount(0);
+
+			// THE ROOM MOVES ON within about a second of the claim: the server, every phone, and the new TV's lower-third.
+			await expect
+				.poll(async () => (await serverPlayback(world.baseURL)).state.currentEntryId, {
+					timeout: 1_500,
+					intervals: [50]
+				})
+				.not.toBe(first);
+			const boEntry = (await serverPlayback(world.baseURL)).state.currentEntryId;
+			expect(boEntry, "the server dropped Bo's song").toBeTruthy();
+			const left = Math.max(1, 2_000 - (Date.now() - claimAt));
+			for (const p of [phone, bo])
+				await expect(p.locator(SEL.npStripTitle).first()).toContainText(/believin/i, { timeout: left });
+			await expect(copy.page.locator(SEL.lowerThird)).toContainText(/Bo/, {
+				timeout: Math.max(1, 2_000 - (Date.now() - claimAt))
+			});
+
+			// THE GUIDE: Bo's song plays the guide mix on the screen that took the seat, with no notice and no media error.
+			const srcOf = (p: Page) =>
+				p.evaluate(() => [...document.querySelectorAll('audio')].find((e) => !e.paused)?.getAttribute('src') ?? '');
+			await expect.poll(() => srcOf(copy.page), { timeout: 15_000 }).toContain('guide');
+			await expect(copy.page.getByText(/won.t play|would not play/i)).toHaveCount(0);
+			expect((await mediaErrorsOf(copy.page)).slice(errorsBefore), 'media errors across the swap').toEqual([]);
+			expect(copy.sent.ended, "an ended frame named Bo's song").not.toContain(boEntry);
+			expect((await serverPlayback(world.baseURL)).state.currentEntryId).toBe(boEntry);
+		} finally {
+			await worker.stop();
+		}
+	});
+}

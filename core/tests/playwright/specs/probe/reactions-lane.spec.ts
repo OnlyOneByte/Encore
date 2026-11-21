@@ -324,6 +324,34 @@ test('on a copy TV the lane stands above "Make this the TV", which holds the joi
 						if (overlap(d, ch.box) > 0) hits.push({ label, sample: i, cls: ch.cls, disc: d, box: ch.box });
 		}
 		expect(hits, 'a reaction disc on the copy intersected the chip, the lyrics or the TV chrome').toEqual([]);
+
+		// A PHONE reading along as a copy: the chip sits top-left, not in the lane's corner, so measuring it can lift the
+		// lane at bottom-right by at most the chip's own height above the band it stands on anyway.
+		await copy.evaluate(() =>
+			document.querySelectorAll('style').forEach((s) => s.textContent?.includes('25vh') && s.remove())
+		);
+		for (const [w, h] of [
+			[390, 844],
+			[320, 568]
+		]) {
+			await copy.setViewportSize({ width: w, height: h });
+			await copy.waitForTimeout(1_000);
+			const m = await copy.evaluate((sel) => {
+				const probe = document.createElement('div');
+				probe.style.cssText = 'position:absolute;visibility:hidden;height:var(--tv-chrome-h)';
+				document.querySelector(sel)!.appendChild(probe);
+				const band = probe.getBoundingClientRect().height;
+				probe.remove();
+				const lane = document.querySelector('.reaction-lane')!.getBoundingClientRect();
+				const chip = document.querySelector('.copy-slot')!.getBoundingClientRect();
+				return { band, laneLift: innerHeight - lane.bottom, chipH: chip.height, chipTop: chip.top, laneTop: lane.top };
+			}, SEL.tvRoot);
+			expect(m.chipTop, `${w}x${h}: the chip is not top-left`).toBeLessThan(m.laneTop);
+			expect(m.laneLift, `${w}x${h}: the lane fell below the chrome band`).toBeGreaterThanOrEqual(m.band - 0.5);
+			expect(m.laneLift, `${w}x${h}: the lane lifted by more than the chip`).toBeLessThanOrEqual(
+				m.band + m.chipH + 0.5
+			);
+		}
 	} finally {
 		await ctx.close();
 		await worker.stop();

@@ -126,6 +126,9 @@
 	// of the song, even if this screen takes the seat: building the guide graph would switch the src to the guide mix,
 	// and that reload restarts the song at 0:00 for the whole room. The guide joins at the next song. Plain: bookkeeping.
 	let plainThisSong = false;
+	// How far into a song a promoted screen still swaps its plain src for the guide mix: past the gapless swap and the
+	// claim's round trip (the r8 probe landed at +300 ms), short of where a reload is a restart anyone would hear.
+	const REDECIDE_WITHIN_SEC = 2;
 
 	// GUARDED ON THE ID *VALUE*, not the `media` signal, whose identity churns on any queue mutation: keying on the
 	// signal reset a MID-SONG slot, and `canplaythrough` will NOT fire again on a loaded element, so `onready` was spent
@@ -392,8 +395,8 @@
 		// SILENT (a copy, or a TV just demoted to one): no graph is built, routed or re-routed here, and none shifts.
 		// With no graph a guide-mix song settles at once on the plain instrumental (the gate reads `denied`). A demoted TV
 		// keeps the graph it has, at the levels the page gives a copy (0).
-		// shortcut: a copy that takes the seat mid-song keeps that plain src, so the guide joins at the next song; reload
-		// the src at the room's position on promotion if anyone misses it.
+		// shortcut: a copy that takes the seat past a song's first REDECIDE_WITHIN_SEC keeps that plain src, so the guide
+		// joins at the next song; reload the src at the room's position on promotion if anyone misses it.
 		// LOAD-BEARING ORDER: the real TV is never caught by this. The server sends `tv:seat` in the socket's `open()`,
 		// BEFORE the `hello` reply that brings the song, on the SAME socket, so a TV knows it holds the seat before its
 		// <audio> exists. Send the song first (or on another channel) and every TV would start each night plain.
@@ -408,8 +411,11 @@
 		// the splitter runs. `mixSettled` gates the src and an attempt that never settles leaves the room silent, so the
 		// three settling paths below must stay exhaustive.
 		// Promoted with this slot only PRE-WARMING the next song (hidden and paused at 0): nobody is listening, so it
-		// re-decides its mix now and the next song gets its guide. Only the slot that is PLAYING keeps its plain src.
-		if (plainThisSong && !active) {
+		// re-decides its mix now and the next song gets its guide. So does a slot that is PLAYING but has barely begun (a
+		// claim at the gapless swap lands just after it): the reload costs the room well under a second, and its playhead
+		// is held as the resume target so `canplay` puts the guide mix back there. Past that, the plain src stays.
+		if (plainThisSong && (!active || v.currentTime < REDECIDE_WITHIN_SEC)) {
+			if (active) resumeTarget = v.currentTime;
 			plainThisSong = false;
 			mixSettled = false;
 		}

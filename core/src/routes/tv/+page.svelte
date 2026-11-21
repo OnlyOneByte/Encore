@@ -322,6 +322,10 @@
 				seatAnnounceTimer = setTimeout(() => (seatAnnounce = ''), SEAT_ANNOUNCE_MS);
 			}
 			seatMine = e.mine;
+			// A claim at a song boundary: this screen's song ended while it was a copy (so it sent nothing), and the old TV
+			// heard `mine:false` before its own `ended`. Nobody has told the server, which would sit on the finished song.
+			// Say it now; if the old TV's `ended` got there first, the server drops this one by its entry stamp.
+			if (e.mine && current && ctl.isBehind(current.id)) sendTelemetry('ended', current.id);
 		}
 		if (e.type === 'queue:sync') {
 			entries = e.entries;
