@@ -37,6 +37,10 @@ export interface WsClientOptions {
 
 const defaultConnect = (url: string): MinimalSocket => new WebSocket(url) as unknown as MinimalSocket;
 
+/** The reconnect delays (ms), the last one repeating. Exported because the room link retries `/api/me` on the same
+ * cadence: one rhythm of asking again, whichever half of the link went quiet. */
+export const RECONNECT_BACKOFF_MS = [250, 500, 1000, 2000, 5000];
+
 type ResolvedOptions = Required<Omit<WsClientOptions, 'onResyncNeeded' | 'onConnectionChange'>> &
 	Pick<WsClientOptions, 'onResyncNeeded' | 'onConnectionChange'>;
 
@@ -59,7 +63,7 @@ export class WsClient {
 			heartbeatMs: 15_000,
 			livenessTimeoutMs: 10_000,
 			bindLifecycle: true,
-			backoff: [250, 500, 1000, 2000, 5000],
+			backoff: RECONNECT_BACKOFF_MS,
 			// WRAPPED, never a bare `setTimeout`: stored on an object and called as a method, a bare reference gets the wrong
 			// `this` and the browser throws "Illegal invocation". That throw lands inside onopen, so the heartbeat never arms
 			// and auto-reconnect never schedules — and tests pass either way, because they inject their own timer functions.

@@ -24,6 +24,7 @@
 		type SongProfile
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
+	import type { RoomStatus } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId, entryPlayable } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import type { QueueStore } from '$lib/stores/queue';
@@ -43,6 +44,8 @@
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
+	import RoomPending from '$lib/components/RoomPending.svelte';
+	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
@@ -60,6 +63,7 @@
 	   mirrors more than it renders re-runs on changes that cannot affect it. The root layout mirrors a strictly
 	   narrower set (the strip's nine), so neither borrows the other's shape. */
 	let me = $state<PublicSinger | null>(null);
+	let status = $state<RoomStatus>('checking');
 	let entries = $state<QueueEntry[]>([]);
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
@@ -96,6 +100,7 @@
 	onMount(() => {
 		const sync = () => {
 			me = room.me ?? null;
+			status = room.status;
 			entries = room.entries;
 			singers = room.singers;
 			mediaCatalog = room.mediaCatalog;
@@ -483,11 +488,9 @@
 	the Sing tab" over a room with hundreds of songs in it, pointing at a tab bar that is not rendered, because the
 	dock belongs to a joined singer. `JoinLanding` reads `?room=` itself, so a guest who arrived holding the code
 	lands on the identity pane instead of being asked to retype it.
-	KNOWN COST, inherited rather than introduced: `me` is mirrored from the link and is null for at most one frame on
-	a cold load even for a joined guest, so the landing can flash — which is exactly what `/` and `/library` have
-	always done, and a joined guest's cold load of this route was measured reaching the full list with the landing
-	gone. Beating it wants a settled-state read on the shared link, applied to all three tabs at once; leaving
-	/queue the odd one out in the other direction is worse. -->
+	THE LANDING IS FOR `not-joined` ONLY, the settled read on the shared link that all three tabs gate on. Keyed on
+	`me`, it flashed on every cold load and stayed for good when /api/me failed for any reason; until the link has an
+	answer the tab shows its own grey rows (`RoomPending`). -->
 {#if me}
 	<PageHeader title="Queue" icon="clock" />
 
@@ -693,6 +696,10 @@
 					/>
 				{/if}
 			{/each}
+		{:else if !queueSynced}
+			<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
+			said "Nothing queued yet" over a full queue for that whole window on every cold load. -->
+			<SkeletonRows count={4} label="Loading the queue…" />
 		{:else}
 			<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
@@ -720,8 +727,11 @@
 	sequence of moves replaces rather than queues. Visually hidden; `reorder-note` above is the sighted half. Inside
 	the gate with the list it describes: an unjoined visitor has no queue to announce. -->
 	<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
-{:else}
+{:else if status === 'not-joined'}
 	<JoinLanding />
+{:else}
+	<PageHeader title="Queue" icon="clock" />
+	<main><RoomPending unreachable={status === 'unreachable'} /></main>
 {/if}
 
 <style>

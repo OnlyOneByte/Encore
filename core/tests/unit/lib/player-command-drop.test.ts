@@ -63,7 +63,9 @@ test('the dock keeps its own offline bar, which answers the OTHER question', () 
 	/* The per-tap notice does not replace the bar and must not be read as making it redundant: the bar is up for
 	   the whole outage and says the link is down, the notice says one specific command was lost. Deleting either
 	   leaves a real gap, so both are pinned. */
-	expect(layout).toContain('{#if !connected}');
+	// The link decides when the link is down (`RoomLink.offline`, room-connect.test.ts); the layout only shows it.
+	expect(layout).toContain('offline = room.offline;');
+	expect(layout).toContain('{#if offline}');
 	expect(layout).toContain('class="offline-bar"');
 	expect(layout).toContain('Reconnecting…');
 });
