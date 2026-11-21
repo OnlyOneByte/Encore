@@ -1,7 +1,8 @@
 // THE STALE-SKIP NOTICE, as a guest sees it. Ana skips Maya's song, and Theo taps skip again a moment later. His
-// strip already shows his own song, but the settle window (`$lib/transport-target`) makes his tap name Maya's, so the
-// server drops it and his phone says why. Frames go to STALE_TOAST_OUT (or the test's output dir), phone at 390x844 and 320x568
-// (the two widths the no-widow rule is checked at).
+// strip already shows the next song, Ana's (the queue runs Maya, Ana, Theo; on his OWN turn there is no notice, IN-02),
+// but the settle window (`$lib/transport-target`) makes his tap name Maya's, so the server drops it and his phone says
+// why. Frames go to STALE_TOAST_OUT (or the test's output dir), phone at 390x844 and 320x568 (the two widths the
+// no-widow rule is checked at).
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
