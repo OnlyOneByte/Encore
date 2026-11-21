@@ -30,16 +30,25 @@ const ROUND_TRIPS_MS = [0, 20, 50, 150];
 const matcherFor = (m: ReadyMedia) => (src: string) =>
 	src.includes(m.id) || (!!m.instrumentalRef && src.includes(m.instrumentalRef));
 
-/** Delay every outgoing `ended` telemetry frame by `ms`, so the server learns of the end late. Logs each, and media errors and seeks. */
+/**
+ * Delay every outgoing `ended` telemetry frame by `ms`, so the server learns of the end late. Logs each (and one that
+ * finds its socket closed, so it is lost), the server's frames, and media errors and seeks. Keeps the socket for a test
+ * that drops it.
+ */
 async function holdEnded(tv: Page, ms: number) {
 	await tv.evaluate((hold) => {
 		type Log = { ev: string; src: string; t: number }[];
 		const log = () => (window as unknown as { probeMediaLog?: Log }).probeMediaLog;
 		const send = WebSocket.prototype.send;
 		WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+			(window as unknown as { probeWs?: WebSocket }).probeWs = this;
 			if (typeof data === 'string' && data.includes('"status":"ended"')) {
-				log()?.push({ ev: 'ws-ended', src: `entryId=${JSON.parse(data).entryId}`, t: performance.now() });
-				setTimeout(() => send.call(this, data), hold);
+				const src = `entryId=${JSON.parse(data).entryId}`;
+				log()?.push({ ev: 'ws-ended', src, t: performance.now() });
+				setTimeout(() => {
+					if (this.readyState !== WebSocket.OPEN) log()?.push({ ev: 'ws-ended-lost', src, t: performance.now() });
+					send.call(this, data);
+				}, hold);
 				return;
 			}
 			const ws = this as WebSocket & { probeLogged?: boolean };
@@ -47,7 +56,13 @@ async function holdEnded(tv: Page, ms: number) {
 				ws.probeLogged = true;
 				// The server's frames, so a failure's timeline shows which one moved the stage.
 				ws.addEventListener('message', (m) => {
-					let f: { type?: string; rev?: number; current?: { id: string }; state?: { currentEntryId?: string } };
+					let f: {
+						type?: string;
+						rev?: number;
+						current?: { id: string };
+						upNext?: { id: string } | null;
+						state?: { currentEntryId?: string };
+					};
 					try {
 						f = JSON.parse(String(m.data));
 					} catch {
@@ -56,7 +71,7 @@ async function holdEnded(tv: Page, ms: number) {
 					if (f.type === 'nowplaying:changed' || f.type === 'playback:state')
 						log()?.push({
 							ev: `ws-${f.type}`,
-							src: `entryId=${f.current?.id ?? f.state?.currentEntryId}${f.rev === undefined ? '' : ` rev=${f.rev}`}`,
+							src: `entryId=${f.current?.id ?? f.state?.currentEntryId}${f.rev === undefined ? '' : ` rev=${f.rev}`}${f.upNext ? ` next=${f.upNext.id}` : ''}`,
 							t: performance.now()
 						});
 				});
@@ -82,14 +97,15 @@ async function holdEnded(tv: Page, ms: number) {
 }
 
 /**
- * Alice's song 1 then Bob's song 2, with every TV request for song 2 answered by `song2Route` (none: the warmed swap).
- * Returns once song 1 ended.
+ * Alice's song 1 then Bob's song 2 (and, with `song3`, Alice's song 3), with every TV request for song 2 answered by
+ * `song2Route` (none: the warmed swap). Returns once song 1 ended.
  */
 async function playUntilSong1Ends(
 	world: World,
 	holdMs: number,
 	song2Route?: (r: Route) => Promise<void>,
-	whileSong1Plays?: (alice: Page) => Promise<void>
+	whileSong1Plays?: (alice: Page) => Promise<void>,
+	song3 = false
 ) {
 	const alice = await world.openPhone('Alice');
 	const bob = await world.openPhone('Bob');
@@ -97,6 +113,7 @@ async function playUntilSong1Ends(
 	await openBrowseFromHome(bob);
 	const song1 = await processTrack(alice, world.baseURL, TRACKS.caroline);
 	const song2 = await processTrack(bob, world.baseURL, TRACKS.believin);
+	if (song3) await processTrack(alice, world.baseURL, TRACKS.prayer);
 	const is1 = matcherFor(song1);
 	const is2 = matcherFor(song2);
 	const tv = await world.openTv();
@@ -109,6 +126,11 @@ async function playUntilSong1Ends(
 	await returnHomeFromBrowse(alice);
 	await queueReadyTrack(bob, TRACKS.believin);
 	await returnHomeFromBrowse(bob);
+	if (song3) {
+		await openBrowseFromHome(alice);
+		await queueReadyTrack(alice, TRACKS.prayer);
+		await returnHomeFromBrowse(alice);
+	}
 	await whileSong1Plays?.(alice);
 	await expect
 		.poll(async () => (await readMediaLog(tv)).some((e) => e.ev === 'ended' && is1(e.src)), {
@@ -121,7 +143,7 @@ async function playUntilSong1Ends(
 			const at = e.src.match(/ @[\d.]+$/)?.[0] ?? ''; // the element's playhead, on an error or a seek
 			return `${Math.round(e.t)} ${e.ev} ${is1(e.src) ? 'S1' : is2(e.src) ? 'S2' : e.src}${at}`;
 		});
-	return { tv, alice, is1, is2, timeline };
+	return { tv, alice, bob, is1, is2, timeline };
 }
 
 for (const holdMs of ROUND_TRIPS_MS) {
@@ -263,4 +285,79 @@ for (const window of ['missed', 'warmed'] as const) {
 			}
 		});
 	}
+}
+
+/** A queue op from the phone's own page, over a socket that rides its session cookie. */
+async function queueOp(phone: Page, op: Record<string, unknown>) {
+	await phone.evaluate(async (op) => {
+		const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`);
+		await new Promise<void>((resolve, reject) => {
+			ws.onopen = () => resolve();
+			ws.onerror = () => reject(new Error('the queue socket would not open from the phone page'));
+		});
+		ws.send(JSON.stringify({ type: 'queue:command', command: { clientOpId: `p21-${Date.now()}`, op } }));
+	}, op);
+}
+
+// The other #1001 shapes, each at a 150ms round trip. Each must leave song 1 finished: never played or loaded again.
+//   dead        song 2 will not play, so its error ends it inside the window too, and a phone command lands
+//   remove      Bob removes song 2: the server re-sends (song 1, song 3), and the room goes on to song 3
+//   reconnect   the TV's socket drops with its `ended` still held, so the server never hears it; the resync's stale
+//               pair is what re-sends it
+for (const shape of ['dead', 'remove', 'reconnect'] as const) {
+	test(`P21 · after song 1 ends, a ${shape} inside the window never brings song 1 back (150ms round trip)`, async ({
+		world
+	}) => {
+		const holdMs = 150;
+		const worker = await startFakeWorker(world);
+		try {
+			const dead = async (r: Route) =>
+				r.fulfill({ status: 200, contentType: 'audio/wav', body: 'not a wav file at all' });
+			const { tv, alice, bob, is1, timeline } = await playUntilSong1Ends(
+				world,
+				holdMs,
+				shape === 'dead' ? dead : undefined,
+				(a) => sendPlayerCommand(a, { cmd: 'background', style: null }),
+				shape === 'remove'
+			);
+			const before = await readMediaLog(tv);
+			const endA = before.find((e) => e.ev === 'ended' && is1(e.src))!;
+			const ev = (e: { ev: string }) => e.ev as string;
+			const pairBefore = before.filter((e) => ev(e) === 'ws-nowplaying:changed' && e.t < endA.t).at(-1)?.src ?? '';
+			const s1Entry = pairBefore.match(/^entryId=(\S+)/)?.[1];
+			const s2Entry = pairBefore.match(/ next=(\S+)/)?.[1];
+			expect(s1Entry && s2Entry, `no pair before song 1 ended: ${pairBefore}`).toBeTruthy();
+			if (shape === 'dead') await sendPlayerCommand(alice, { cmd: 'background', style: null });
+			if (shape === 'remove') await queueOp(bob, { op: 'remove', id: s2Entry });
+			if (shape === 'reconnect') await tv.evaluate(() => (window as unknown as { probeWs: WebSocket }).probeWs.close());
+			await tv.waitForTimeout(holdMs + (shape === 'reconnect' ? 6000 : 3000));
+			const log = await readMediaLog(tv);
+			const t = (await timeline()).join('\n  ');
+			const after = (e: { t: number }) => e.t > endA.t;
+			expect(
+				log.filter((e) => e.ev === 'playing' && is1(e.src) && after(e)),
+				`song 1 played again:\n  ${t}`
+			).toEqual([]);
+			expect(
+				log.filter((e) => e.ev === 'emptied' && is1(e.src) && after(e)),
+				`a slot reloaded song 1:\n  ${t}`
+			).toEqual([]);
+			// Non-vacuity: the window was actually hit.
+			const stale = log.some(
+				(e) => ev(e).startsWith('ws-') && ev(e) !== 'ws-ended' && after(e) && e.src.startsWith(`entryId=${s1Entry} `)
+			);
+			if (shape === 'reconnect')
+				expect(
+					log.some((e) => ev(e) === 'ws-ended-lost'),
+					`the held \`ended\` was not lost:\n  ${t}`
+				).toBe(true);
+			else expect(stale, `no stale frame landed inside the window, so this run proved nothing:\n  ${t}`).toBe(true);
+			// And the room went on: to song 2 once its `ended` lands or a lost one is re-sent, past it when dead or gone.
+			const final = (await serverPlayback(world.baseURL)).state.currentEntryId;
+			if (shape === 'reconnect') expect(final, `the server stayed on song 1:\n  ${t}`).toBe(s2Entry);
+			else expect(final === s1Entry || final === s2Entry, `the server is on ${final}:\n  ${t}`).toBe(false);
+		} finally {
+			await worker.stop();
+		}
+	});
 }

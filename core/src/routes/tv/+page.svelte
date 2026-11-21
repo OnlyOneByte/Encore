@@ -336,6 +336,8 @@
 			// resume off the next song (docs/FRONTEND.md#wake-lock-and-reload-resume). NaN does both: `seekPlan` and
 			// `resumeSeekTarget` refuse a non-finite target, so the held resume is cleared and nothing seeks. Keyed on the
 			// frame's `rev`: the server can publish the same state twice, after the pair has already ended the catch-up.
+			// Any other rev forgets it, so a server restart (its rev starts again at 0) cannot reuse the number.
+			if (e.rev !== caughtUpRev) caughtUpRev = -1;
 			if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;
 			seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;
 			seekRev = e.rev;

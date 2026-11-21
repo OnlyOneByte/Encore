@@ -286,6 +286,7 @@ test('the TV drops a stale pair and stale playback state before either reaches t
 	expect(apply).toContain("sendTelemetry('ended', cur.id);");
 	expect(src).toContain("if (e.type === 'playback:state' && !ctl.isBehind(e.state.currentEntryId)) {");
 	// The server's advance to the song the TV already started must clear a held resume without restarting the song.
+	expect(src).toContain('if (e.rev !== caughtUpRev) caughtUpRev = -1;'); // a server restart reuses rev numbers
 	expect(src).toContain('if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;');
 	expect(src).toContain('seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;');
 });

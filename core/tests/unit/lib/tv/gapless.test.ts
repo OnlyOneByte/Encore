@@ -192,3 +192,14 @@ test('STALE PAIR: an empty queue after the last song clears the guard too', () =
 	c.onNowPlaying(null, null);
 	expect(c.isBehind('q1')).toBe(false);
 });
+
+test('STALE PAIR: song 2 erroring inside the window keeps the guard on song 1', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onEnded(e('q2')); // missed window: song 2 loads one frame early
+	c.onEnded(e('q2')); // it will not play: its error ends it before the server's frame lands
+	expect(c.isBehind('q1')).toBe(true);
+	c.onNowPlaying(e('q1'), e('q2')); // a phone command's stale pair
+	expect(c.currentId).toBe('q2');
+});

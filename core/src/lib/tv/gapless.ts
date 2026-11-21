@@ -120,7 +120,9 @@ export class GaplessController {
 	 * state for the caller to render; the interstitial hold is the page's timer.
 	 */
 	onEnded(upNext: QueueEntry | null): TvState {
-		this.#endedFrom = this.#current;
+		// The FIRST entry ended in this window, kept until a server frame clears it: when song 2 errors before the server's
+		// frame lands, this runs again, and the server's stale frames still name song 1.
+		this.#endedFrom ??= this.#current;
 		if (!upNext) {
 			this.#current = null;
 			this.#state = 'attract';
