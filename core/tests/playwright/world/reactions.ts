@@ -83,12 +83,11 @@ export async function stage(world: World, fanCount: number) {
 	await tv.locator(SEL.tvConnected).waitFor({ state: 'attached' });
 	await expect(tv.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
 	await tv.mouse.move(1, 1);
-	// LIVE, not just visible: a resting row (#986) is still a visible 71 px box, so visibility alone proves nothing.
-	// `burst` taps through `HTMLElement.click()`, which fires on an inert button too, so it cannot tell either.
+	// LIVE, not just present: a resting Cheer key keeps its slot, so presence alone proves nothing. `burst` taps
+	// through `HTMLElement.click()`, which fires on an inert button too, so it cannot tell either.
 	for (const fan of fans) {
-		await expect(fan.locator(SEL.npCheers)).not.toHaveAttribute('inert');
-		await expect(fan.locator(SEL.npCheer).first()).toBeVisible();
-		await expect(fan.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'visible');
+		await expect(fan.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
+		await expect(fan.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'visible');
 	}
 	await countMounts(tv);
 	return { worker, star, fans, tv, frames };
@@ -109,6 +108,9 @@ export const mounted = (tv: Page) => tv.evaluate(() => (window as unknown as { _
 /** Every phone at once, every kind in turn, in one synchronous loop each: a tap per Playwright round trip would
  *  spread the burst across refills and blur what the bucket bound is measuring. */
 export async function burst(fans: Page[]): Promise<void> {
+	// The Cheer key opens the tray first, a real pointer tap, outside the timed loop.
+	for (const fan of fans)
+		if ((await fan.locator(SEL.npCheers).count()) === 0) await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
 	await Promise.all(
 		fans.map((fan) =>
 			fan.locator(SEL.npCheer).evaluateAll((els, n) => {

@@ -15,6 +15,7 @@ import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { burst, mounted, putRoom, stage } from '../../world/reactions';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
+import { TAP } from '../gate/measured-design-register';
 import type { Page } from '@playwright/test';
 
 const SAMPLE_MS = 80;
@@ -129,24 +130,82 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 }) => {
 	const { worker, star, fans, tv, frames } = await stage(world, 1);
 	try {
-		// Positive control: a fan's REAL tap on the cheer reaches the TV. A pointer click, so Playwright's actionability
-		// check refuses a button that hit-testing cannot reach (an inert, resting row).
-		await fans[0].locator(SEL.npCheer).first().click({ timeout: 5_000 });
+		// Positive control: a fan's REAL taps — the Cheer key, then one reaction — send exactly one room:react, and it
+		// reaches the TV. Pointer clicks, so Playwright's actionability check refuses a button hit-testing cannot reach.
+		const fan = fans[0];
+		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+		await expect(fan.locator(SEL.npCheer)).toHaveCount(4);
+		// Focus follows the tap into the tray: the key that had it is gone.
+		await expect(fan.locator(SEL.npCheer).first()).toBeFocused();
+		await expect(fan.locator(SEL.npTransport), 'the tray takes the transport’s place').toHaveCount(0);
+		// Every key in the tray clears the 44 px tap floor, at 320 too. measured-hit-extents sweeps an idle room only.
+		// The layout box (offset*), not the rect: the tray's rise-in scale is still settling at this point.
+		for (const width of [390, 320]) {
+			await fan.setViewportSize({ width, height: 844 });
+			for (const key of await fan.locator(`${SEL.npCheer}, ${SEL.npCheersClose}`).all()) {
+				const side = await key.evaluate((e) =>
+					Math.min((e as HTMLElement).offsetWidth, (e as HTMLElement).offsetHeight)
+				);
+				expect(side, `${width}px: a cheer key under the tap floor`).toBeGreaterThanOrEqual(TAP);
+			}
+		}
+		await fan.locator(SEL.npCheer).first().click({ timeout: 5_000 });
+		const tapped = Date.now();
 		await expect.poll(() => frames.tv.length, { message: 'a fan reaction never reached the TV' }).toBe(1);
 		await expect.poll(() => mounted(tv)).toBe(1);
 
-		// The singer cheering their own song: refused by the server, not just hidden on the phone. The row rests there,
-		// keeping its slot so the dock does not jump (dock-cls.spec.ts), with no button left to find or tap.
-		await expect(star.locator(SEL.npCheers)).toHaveAttribute('inert');
-		await expect(star.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'hidden');
+		// The tray gives the strip back 6 s after the LAST tap: still up a second short of that, gone soon after.
+		await fan.waitForTimeout(Math.max(0, 5_000 - (Date.now() - tapped)));
+		await expect(fan.locator(SEL.npCheers), 'the tray closed before 6 s with no tap').toHaveCount(1);
+		await expect(fan.locator(SEL.npCheers)).toHaveCount(0, { timeout: 3_000 });
+		await expect(fan.locator(SEL.npTransport)).toHaveCount(3);
+		// A tray that closes by itself hands focus back to the key, not to <body>.
+		await expect(fan.locator(SEL.npCheerKey), 'focus fell out of the strip when the tray timed out').toBeFocused();
+		// ✕ gives it back at once, with focus on the key that opened it.
+		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+		await fan.locator(SEL.npCheersClose).click({ timeout: 5_000 });
+		await expect(fan.locator(SEL.npCheers)).toHaveCount(0);
+		await expect(fan.locator(SEL.npCheerKey)).toBeFocused();
+
+		// The link drops with the tray open: "Reconnecting…" wins the title slot at once, not when the tray's 6 s
+		// timer runs out (review pr-1019-1020: 7.46 s), and the key rests, so no tap can be dropped silently.
+		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+		await expect(fan.locator(SEL.npCheers)).toHaveCount(1);
+		const dropped = Date.now();
+		await fan.context().setOffline(true);
+		await expect(fan.locator(SEL.npStripOffline)).toBeVisible({ timeout: 4_000 });
+		expect(Date.now() - dropped, 'the cue waited for the tray to time out').toBeLessThan(5_000);
+		expect(await fan.locator(SEL.npCheers).count(), 'the tray stayed open offline').toBe(0);
+		await expect(fan.locator(SEL.npCheerKey)).toHaveAttribute('inert');
+		await expect(fan.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'hidden');
+		await fan.context().setOffline(false);
+		await expect(fan.locator(SEL.npCheerKey)).not.toHaveAttribute('inert', { timeout: 20_000 });
+
+		// The tray CLOSES with the setting, not merely hides: off and straight back on inside the tray's 6 s, and the
+		// strip shows the transport again. A one-shot count, not a retrying assertion, which the timer would satisfy.
+		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+		await putRoom(star, { tvReactions: false });
+		await expect(fan.locator(SEL.npCheerKey)).toHaveAttribute('inert');
+		await putRoom(star, { tvReactions: true });
+		await expect(fan.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
+		expect(await fan.locator(SEL.npCheers).count(), 'the tray reopened by itself').toBe(0);
+
+		// The singer cheering their own song: refused by the server, not just hidden on the phone. The key rests in
+		// its slot so the strip does not shift (dock-cls.spec.ts), with no button left to find or tap.
+		await expect(star.locator(SEL.npCheerKey)).toHaveAttribute('inert');
+		await expect(star.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'hidden');
 		await rawReact(star, 'heart');
 		await tv.waitForTimeout(SETTLE_MS);
 		expect(frames.tv.length, "the singer's own room:react reached the TV").toBe(1);
 		expect(await mounted(tv)).toBe(1);
 
 		// "Reactions on TV" off: the server drops a fan's frame, so the TV's socket hears nothing.
+		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+		await expect(fan.locator(SEL.npCheers)).toHaveCount(1);
 		await putRoom(star, { tvReactions: false });
-		await expect(fans[0].locator(SEL.npCheers)).toHaveCount(0);
+		// An open tray closes with the setting, and the key rests in its slot.
+		await expect(fan.locator(SEL.npCheers)).toHaveCount(0);
+		await expect(fan.locator(SEL.npCheerKey)).toHaveAttribute('inert');
 		await tv.waitForTimeout(1_000); // a full bucket again, so only the setting can refuse it
 		await rawReact(fans[0], 'clap');
 		await tv.waitForTimeout(SETTLE_MS);
