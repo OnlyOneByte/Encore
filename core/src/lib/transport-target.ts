@@ -5,7 +5,8 @@
 // the first skip, and a second tap after that named the next song and took the next singer's turn too (review r2,
 // 974-M2: two real taps 40-80 ms apart took two songs). So for a short settle window after the song on the strip
 // changes, the transport keeps naming the song that was there before: the server drops the tap and the phone says
-// "That song already ended." A deliberate skip of the new song inside that window needs one more tap.
+// so ("Already skipped. Tap again to skip this one too.", `$lib/phrasing/stale-phrasing`). A deliberate skip of the
+// new song inside that window needs one more tap.
 
 /** Long enough for two people reaching for skip at the end of a bad song; short of the TV's 2.5 s intro card. */
 export const SETTLE_MS = 1000;

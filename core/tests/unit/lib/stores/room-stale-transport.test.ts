@@ -31,7 +31,7 @@ test('a player:stale frame reaches the onStaleTransport handler', async () => {
 		fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response('no', { status: 404 })),
 		websocket: {
 			message(ws, raw) {
-				if (JSON.parse(String(raw)).type === 'hello') ws.send(JSON.stringify({ type: 'player:stale', cmd: 'skip' }));
+				if (JSON.parse(String(raw)).type === 'hello') ws.send(JSON.stringify({ type: 'player:stale', cmd: 'guide' }));
 			}
 		}
 	});
@@ -50,10 +50,12 @@ test('a player:stale frame reaches the onStaleTransport handler', async () => {
 
 	const link = new RoomLink();
 	restore.push(() => link.close());
-	const heard = new Promise<string>((resolve) => link.onStaleTransport(() => resolve('stale')));
+	// The handler is told WHICH command went stale: the phone words the notice per command.
+	const heard = new Promise<string>((resolve) => link.onStaleTransport((cmd) => resolve(`stale:${cmd}`)));
 	await link.connect();
 	const timeout = new Promise<string>((resolve) => setTimeout(() => resolve('nothing'), 3000));
-	expect(await Promise.race([heard, timeout])).toBe('stale');
+	// Not `skip`, the one a hard-coded value would most likely name.
+	expect(await Promise.race([heard, timeout])).toBe('stale:guide');
 });
 
 test('server.ts hands the player-command path its origin, so only the sender hears a stale tap', () => {

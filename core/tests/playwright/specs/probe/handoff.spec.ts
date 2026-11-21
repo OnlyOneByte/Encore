@@ -102,8 +102,8 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 
 		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. The phone whose
 		// tap was dropped is told why; the other is not.
-		await expect(theo.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
-		await expect(ana.getByText('That song already ended.')).toHaveCount(0);
+		await expect(theo.getByText('Already skipped. Tap again to skip this one too.')).toBeVisible({ timeout: 2_000 });
+		await expect(ana.getByText('Already skipped. Tap again to skip this one too.')).toHaveCount(0);
 		await tv.waitForTimeout(1_000);
 		expect(await theoEntry()).toBe(theoId);
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
@@ -116,7 +116,7 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 	}
 });
 
-test('a stale tap through the strip changes nothing and tells THAT phone "That song already ended."', async ({
+test('a stale skip through the strip changes nothing and tells THAT phone it was already skipped', async ({
 	world
 }) => {
 	const worker = await startFakeWorker(world);
@@ -149,10 +149,10 @@ test('a stale tap through the strip changes nothing and tells THAT phone "That s
 		hold = false;
 		for (const m of held.splice(0)) toAna!(m);
 
-		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 3_000 });
+		await expect(ana.getByText('Already skipped. Tap again to skip this one too.')).toBeVisible({ timeout: 3_000 });
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		// Only the sender is told, and Theo keeps his song.
-		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
+		await expect(theo.getByText('Already skipped. Tap again to skip this one too.')).toHaveCount(0);
 		await theo.waitForTimeout(1_000);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 	} finally {
@@ -374,7 +374,9 @@ test('when your own stale skip makes it your turn, the toast stacks above "Youâ€
 		for (const m of held.splice(0)) toTheo!(m);
 
 		const sheet = theo.locator('.youre-up');
-		const toast = theo.locator('[data-sonner-toast]').filter({ hasText: 'That song already ended.' });
+		const toast = theo
+			.locator('[data-sonner-toast]')
+			.filter({ hasText: 'Already skipped. Tap again to skip this one too.' });
 		await expect(sheet).toBeVisible({ timeout: 2_000 });
 		await expect(toast).toBeVisible({ timeout: 2_000 });
 		// Let the toast's own entrance settle before measuring.

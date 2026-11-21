@@ -12,6 +12,7 @@
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
 	import { YOURE_UP } from '$lib/phrasing/turn-phrasing';
+	import { staleNotice } from '$lib/phrasing/stale-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -136,8 +137,8 @@
 		};
 		sync();
 		const unsubscribe = room.subscribe(sync);
-		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
-		const unstale = room.onStaleTransport(() => transportNotice('That song already ended.'));
+		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing. Worded per command.
+		const unstale = room.onStaleTransport((cmd) => transportNotice(staleNotice(cmd)));
 		return () => {
 			unsubscribe();
 			unstale();
