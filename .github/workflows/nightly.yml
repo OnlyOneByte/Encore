@@ -57,8 +57,11 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
       options: --ipc=host
+    # bash, not the container default `sh -e`: dash has no `set -o pipefail`, and without it `| tee` hides a
+    # failing Playwright exit code.
     defaults:
       run:
+        shell: bash
         working-directory: core
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
