@@ -41,27 +41,33 @@ export function deckEntryOf(
 }
 
 /**
- * MY entry WAS On deck and is not now, though it is still queued, someone else still sings, and I did not cause it (no
- * Not yet or move of mine in flight) — the moment a guest who set their key is owed one line (proposal 14). Returns who
- * is On deck instead, and whether mine is the next playable song after theirs; null means say nothing.
+ * MY entry WAS On deck and is not now, though it is still queued, someone else still sings, and I did not cause it — the
+ * moment a guest who set their key is owed one line (proposal 14). "I" is any of my tabs: a reorder of this tab's still
+ * in flight (`selfCaused`), or my entry's "Not yet" flag newly set (`wasDeferred` false, `deferred` now true), which only
+ * its owner can do, from any tab. Returns who is On deck instead and whether mine is the next song after theirs; null
+ * means say nothing. `nextPlayableOf` MUST be the app's one next-playable rule (`nextPlayableEntryId`), used for both
+ * answers, so a song the room will skip (one still cooking, one that failed on the TV) can never be "next".
  */
 export function deckBump(o: {
 	wasDeckId: string | null;
+	wasDeferred: boolean;
 	queued: QueueEntry[];
-	nextPlayableId: string | null;
+	nextPlayableOf: (list: QueueEntry[]) => string | null;
 	nowSingerId: string | undefined;
 	meId: string | undefined;
 	selfCaused: boolean;
-	playable: (e: QueueEntry) => boolean;
 }): { singerId: string; youreNext: boolean } | null {
-	const { wasDeckId, queued, nextPlayableId, nowSingerId, meId, selfCaused, playable } = o;
+	const { wasDeckId, wasDeferred, queued, nextPlayableOf, nowSingerId, meId, selfCaused } = o;
 	if (!wasDeckId || selfCaused || !nowSingerId || nowSingerId === meId) return null;
-	if (!queued.some((e) => e.id === wasDeckId)) return null; // it started playing, or it was removed
+	const mine = queued.find((e) => e.id === wasDeckId);
+	if (!mine) return null; // it started playing, or it was removed
+	if (mine.deferred && !wasDeferred) return null; // my own Not yet, maybe from another tab
+	const nextPlayableId = nextPlayableOf(queued);
 	if (deckEntryOf(queued, nextPlayableId, nowSingerId, meId)?.id === wasDeckId) return null;
 	const at = queued.findIndex((e) => e.id === nextPlayableId);
 	const now = queued[at];
 	if (!now || now.singerId === meId) return null;
-	return { singerId: now.singerId, youreNext: queued.slice(at + 1).find(playable)?.id === wasDeckId };
+	return { singerId: now.singerId, youreNext: nextPlayableOf(queued.slice(at + 1)) === wasDeckId };
 }
 
 /** "~2 min" until the current song ends; null when its length is unknown. */

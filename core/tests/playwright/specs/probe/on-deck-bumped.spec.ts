@@ -26,7 +26,7 @@ async function queueCooking(phone: Page, q: string): Promise<void> {
 test('a song ahead finishing being made takes On deck, and Theo is told once, on any tab, with his key kept', async ({
 	world
 }, testInfo) => {
-	test.setTimeout(5 * 60_000);
+	test.setTimeout(7 * 60_000);
 	const shoot = (step: string, pages: Record<string, Page>) =>
 		Promise.all(Object.entries(pages).map(([n, p]) => p.screenshot({ path: testInfo.outputPath(`${step}-${n}.png`) })));
 	let worker = await startFakeWorker(world, { seconds: SECS });
@@ -45,11 +45,24 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		for (const p of [maya, ana]) await openQueue(p);
 		await openQueue(theo);
 
+		// Theo's phone records every heads-up buzz (the 60/40/60 pattern), so the re-arm can be seen.
+		await theo.evaluate(() => {
+			const w = window as unknown as { __buzz: number };
+			w.__buzz = 0;
+			Object.defineProperty(navigator, 'vibrate', {
+				configurable: true,
+				value: (p: number | number[]) => (Array.isArray(p) && p.join() === '60,40,60' && w.__buzz++, true)
+			});
+		});
+		const buzzes = () => theo.evaluate(() => (window as unknown as { __buzz: number }).__buzz);
 		const deck = theo.locator(ON_DECK);
 		await expect(deck).toBeVisible({ timeout: 10_000 });
 		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
 		await expect(deck).toContainText('−1');
 		await expect(tv.locator('.upnext')).toContainText('Theo');
+		// Maya's song reaches its last 30 s: Theo's heads-up buzzes, once.
+		await expect(theo.locator(`${ON_DECK}.heads-up`)).toBeVisible({ timeout: 60_000 });
+		await expect.poll(buzzes).toBe(1);
 		// Theo goes to another tab on the smallest phone: the line must reach him there, clear of the dock (IN-04).
 		await theo.setViewportSize({ width: 320, height: 568 });
 		await theo.locator(SEL.tab).filter({ hasText: 'Library' }).first().click();
@@ -106,6 +119,9 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		await expect(theo.locator(ON_DECK)).toContainText('−1');
 		await expect(theo.locator(TOAST, { hasText: 'going first' })).toHaveCount(0, { timeout: 10_000 });
 		await shoot('after', { tv, maya, theo, ana });
+		// The heads-up buzz was RE-ARMED when he lost On deck: Ana's last 30 s buzz his phone again.
+		await expect(theo.locator(`${ON_DECK}.heads-up`)).toBeVisible({ timeout: SECS * 1000 });
+		await expect.poll(buzzes).toBe(2);
 	} finally {
 		await worker.stop().catch(() => {});
 	}

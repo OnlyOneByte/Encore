@@ -83,15 +83,20 @@ test('an entry that lost On deck is re-armed: its heads-up buzzes again when its
 // ---- proposal 14: the bumped notice --------------------------------------------------------------------------
 // Maya sings. Ana's `cook` is ahead of Theo's `theo1` and still cooking, so Theo is On deck; then it finishes.
 const bumpQ = [e('cook', 'ana'), e('theo1', 'theo'), e('ana2', 'ana')];
+/** A stand-in for `nextPlayableEntryId`: the first entry in `list` the room would actually play. */
+const nextOf =
+	(playable: (x: QueueEntry) => boolean = all) =>
+	(list: QueueEntry[]) =>
+		list.find(playable)?.id ?? null;
 const bump = (over: Partial<Parameters<typeof deckBump>[0]> = {}) =>
 	deckBump({
 		wasDeckId: 'theo1',
+		wasDeferred: false,
 		queued: bumpQ,
-		nextPlayableId: 'cook',
+		nextPlayableOf: nextOf(),
 		nowSingerId: 'maya',
 		meId: 'theo',
 		selfCaused: false,
-		playable: all,
 		...over
 	});
 
@@ -106,15 +111,34 @@ test('not right behind: the second line is about the key instead', () => {
 
 test('a song still cooking between us does not count: I am still the next to SING after Ana', () => {
 	const q = [e('cook', 'ana'), e('bob1', 'bob'), e('theo1', 'theo')];
-	expect(bump({ queued: q, playable: (x) => x.id !== 'bob1' })).toEqual({ singerId: 'ana', youreNext: true });
+	expect(bump({ queued: q, nextPlayableOf: nextOf((x) => x.id !== 'bob1') })).toEqual({
+		singerId: 'ana',
+		youreNext: true
+	});
+});
+
+test('a song the room will SKIP (failed on the TV) is never "next": both answers use the one rule passed in', () => {
+	// #994's skip, stubbed: the failed song heads the queue but the rule skips it, so Bob is On deck, then me.
+	const q = [e('failed', 'ana'), e('bob1', 'bob'), e('theo1', 'theo')];
+	expect(bump({ queued: q, nextPlayableOf: nextOf((x) => x.id !== 'failed') })).toEqual({
+		singerId: 'bob',
+		youreNext: true
+	});
 });
 
 test('silent when I caused it: my own Not yet or move is in flight', () => {
 	expect(bump({ selfCaused: true })).toBeNull();
 });
 
+test('silent when my Not yet came from another tab: the flag flipped since last time', () => {
+	const q = [e('cook', 'ana'), e('theo1', 'theo', { deferred: true }), e('ana2', 'ana')];
+	expect(bump({ queued: q })).toBeNull();
+	// ...but a Not yet spent long ago does not silence a real bump later.
+	expect(bump({ queued: q, wasDeferred: true })).toEqual({ singerId: 'ana', youreNext: true });
+});
+
 test('silent when nothing changed, when my song started or left, and when nobody else is singing', () => {
-	expect(bump({ nextPlayableId: 'theo1' })).toBeNull(); // still On deck
+	expect(bump({ nextPlayableOf: nextOf((x) => x.id !== 'cook') })).toBeNull(); // still On deck
 	expect(bump({ queued: bumpQ.filter((x) => x.id !== 'theo1') })).toBeNull(); // it is playing now, or removed
 	expect(bump({ nowSingerId: undefined })).toBeNull(); // idle room
 	expect(bump({ nowSingerId: 'theo' })).toBeNull(); // my own song is on
@@ -123,7 +147,7 @@ test('silent when nothing changed, when my song started or left, and when nobody
 
 test('silent when my OTHER song is On deck now: I still go next', () => {
 	const q = [e('theo0', 'theo'), e('theo1', 'theo')];
-	expect(bump({ queued: q, nextPlayableId: 'theo0' })).toBeNull();
+	expect(bump({ queued: q })).toBeNull();
 });
 
 test('the bumped notice names who goes first, never who moved it', () => {

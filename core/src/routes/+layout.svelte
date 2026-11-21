@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
-	import { entryPlayable, nextPlayableEntryId } from '$lib/readiness';
+	import { nextPlayableEntryId } from '$lib/readiness';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
@@ -85,6 +85,8 @@
 	let lastCurrentId: string | null = null;
 	// Plain, for the same reason: my entry that was On deck as of the last `sync`.
 	let lastDeckId: string | null = null;
+	// And whether its "Not yet" was already spent then: a flag that flips afterwards is my own Not yet, from any tab.
+	let lastDeckDeferred = false;
 	function dismissYoureUp() {
 		clearTimeout(youreUpTimer);
 		youreUp = null;
@@ -151,22 +153,27 @@
 		   so it says it once per loss, and the lost entry's heads-up buzz is re-armed for when its turn comes back. */
 		function noticeDeckBump(): void {
 			const queued = room.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
-			const playable = (e: QueueEntry) =>
-				entryPlayable(room.mediaCatalog.get(e.mediaId), room.mediaStatus.get(e.mediaId));
-			const nextPlayableId = queued.find(playable)?.id ?? null;
+			// The SAME next-playable rule as the strip above and the queue tab, so the two can never disagree on "next".
+			const nextPlayableOf = (list: QueueEntry[]) =>
+				nextPlayableEntryId(
+					list,
+					(id) => room.mediaCatalog.get(id),
+					(id) => room.mediaStatus.get(id)
+				);
 			const nowSingerId = room.entries.find((e) => e.id === room.playback.currentEntryId)?.singerId;
-			const deckNow = deckEntryOf(queued, nextPlayableId, nowSingerId, me ?? undefined)?.id ?? null;
-			if (lastDeckId && lastDeckId !== deckNow && queued.some((e) => e.id === lastDeckId)) rearmBuzz(lastDeckId);
+			const deckNow = deckEntryOf(queued, nextPlayableOf(queued), nowSingerId, me ?? undefined) ?? null;
+			if (lastDeckId && lastDeckId !== deckNow?.id && queued.some((e) => e.id === lastDeckId)) rearmBuzz(lastDeckId);
 			const bump = deckBump({
 				wasDeckId: lastDeckId,
+				wasDeferred: lastDeckDeferred,
 				queued,
-				nextPlayableId,
+				nextPlayableOf,
 				nowSingerId,
 				meId: me ?? undefined,
-				selfCaused: room.queue?.reorderPending ?? false,
-				playable
+				selfCaused: room.queue?.reorderPending ?? false
 			});
-			lastDeckId = deckNow;
+			lastDeckId = deckNow?.id ?? null;
+			lastDeckDeferred = !!deckNow?.deferred;
 			if (bump)
 				transportNotice(
 					deckBumpNotice(room.singers.get(bump.singerId)?.displayName ?? 'Someone', bump.youreNext),
