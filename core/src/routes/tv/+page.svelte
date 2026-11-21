@@ -24,6 +24,7 @@
 	import { WsClient } from '$lib/ws/client';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+	import TvCopyChip from '$lib/tv/TvCopyChip.svelte';
 	import {
 		tvScreen,
 		lobbyRoster,
@@ -53,9 +54,15 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	// ONE TV PER ROOM: whether this screen holds the room's seat (`tv:seat`). A copy sends no telemetry, so it can
-	// neither end the song nor move the playhead. False until the server says, which it does on connect.
-	let seatMine = $state(false);
+	// ONE TV PER ROOM: whether this screen holds the room's seat (`tv:seat`); null until the server says, which it does
+	// on connect. A COPY (`false`) shows the same stage, muted and sending no telemetry, so it can neither end the song
+	// nor move the playhead, and it offers "Make this the TV". Silent while null too, so a copy never blips on load.
+	let seatMine = $state<boolean | null>(null);
+	const isCopy = $derived(seatMine === false);
+	// The page's ONE live region for the seat, mounted empty with the page, so only its text changes and it is heard.
+	let seatAnnounce = $state('');
+	const SEAT_ANNOUNCE_MS = 4000;
+	let seatAnnounceTimer: ReturnType<typeof setTimeout> | undefined;
 	// Singer ids with a live socket right now — NOT `singers`, which is every singer who ever joined.
 	let online = $state<string[]>([]);
 	// In the room but unreachable (a locked phone). Greyed, never erased: a dropped socket is not a departure.
@@ -224,7 +231,7 @@
 	 * stale — a song 2 that will not play then never advances the room.
 	 */
 	function sendTelemetry(status: string, entryId: string | null, positionSec = 0) {
-		if (!seatMine) return;
+		if (seatMine !== true) return;
 		ws?.send(telemetryFrame(status, entryId ? { id: entryId } : null, positionSec), { quiet: true });
 	}
 
@@ -305,7 +312,21 @@
 
 	function handleEvent(e: ServerEvent) {
 		if (e.type === 'room:reacted') reactions?.add(e);
-		if (e.type === 'tv:seat') seatMine = e.mine;
+		if (e.type === 'tv:seat') {
+			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
+			// "another screen" when this screen becomes a copy (on load too, since the region was mounted empty).
+			// Cleared once read, so the next change is a change the region announces again, however soon it comes.
+			if (e.mine !== seatMine && (e.mine ? seatMine === false : true)) {
+				seatAnnounce = e.mine ? 'This screen is now the TV' : 'Another screen is the TV';
+				clearTimeout(seatAnnounceTimer);
+				seatAnnounceTimer = setTimeout(() => (seatAnnounce = ''), SEAT_ANNOUNCE_MS);
+			}
+			seatMine = e.mine;
+			// A claim at a song boundary: this screen's song ended while it was a copy (so it sent nothing), and the old TV
+			// heard `mine:false` before its own `ended`. Nobody has told the server, which would sit on the finished song.
+			// Say it now; if the old TV's `ended` got there first, the server drops this one by its entry stamp.
+			if (e.mine && current && ctl.isBehind(current.id)) sendTelemetry('ended', current.id);
+		}
 		if (e.type === 'queue:sync') {
 			entries = e.entries;
 			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
@@ -425,10 +446,13 @@
 	let measuredUpnextPx = $state<number | null>(null);
 	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
 	// And the corner join card, which the reaction lane stands directly above: it is NOT part of the chrome band (the
-	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller.
+	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller. A copy
+	// has no card: its corner holds "Make this the TV", so that is the corner measured. Two refs, not one shared
+	// bind, so the order one unmounts and the other mounts in can never leave the corner unmeasured.
 	let cornerEl = $state<HTMLElement | undefined>();
+	let copySlotEl = $state<HTMLElement | undefined>();
 	let measuredCornerPx = $state<number | null>(null);
-	$effect(() => observeBlockSize(cornerEl, (px) => (measuredCornerPx = px)));
+	$effect(() => observeBlockSize(isCopy ? copySlotEl : cornerEl, (px) => (measuredCornerPx = px)));
 	const tvStyle = $derived(
 		[
 			chromeBandStyle,
@@ -638,8 +662,9 @@
 		seekSec={seekSec}
 		seekRev={seekRev}
 		keyShift={keyShift}
-		guideLevel={guideLevel}
-		masterLevel={masterLevelA}
+		guideLevel={seatMine ? guideLevel : 0}
+		masterLevel={seatMine ? masterLevelA : 0}
+		silent={!seatMine}
 		onready={() => {
 			ctl.onVisibleReady();
 			tvState = ctl.state;
@@ -678,8 +703,9 @@
 		seekSec={seekSec}
 		seekRev={seekRev}
 		keyShift={keyShift}
-		guideLevel={guideLevel}
-		masterLevel={masterLevelB}
+		guideLevel={seatMine ? guideLevel : 0}
+		masterLevel={seatMine ? masterLevelB : 0}
+		silent={!seatMine}
 		onready={() => {
 			ctl.onVisibleReady();
 			tvState = ctl.state;
@@ -769,6 +795,7 @@
 			overdue={overdue}
 			unreachable={joinUnreachable}
 			roomCode={data.roomCode}
+			join={isCopy ? copyChip : undefined}
 		/>
 	{:else}
 		<!--
@@ -815,14 +842,17 @@
 		{#if settings.room.tvReactions}
 			<Reactions bind:this={reactions} />
 		{/if}
-		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
-		<JoinBadge
-			qrDataUrl={data.qrDataUrl}
-			joinUrl={data.joinUrl}
-			placement="corner"
-			roomCode={data.roomCode}
-			bind:cornerEl={cornerEl}
-		/>
+		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner). A copy gives that corner to
+		     "Make this the TV": the guests join from the real TV's QR. -->
+		{#if !isCopy}
+			<JoinBadge
+				qrDataUrl={data.qrDataUrl}
+				joinUrl={data.joinUrl}
+				placement="corner"
+				roomCode={data.roomCode}
+				bind:cornerEl={cornerEl}
+			/>
+		{/if}
 	{/if}
 
 	<!-- Transient states, ONE at a time. See docs/FRONTEND.md#the-full-screen-takeovers. -->
@@ -970,6 +1000,16 @@
 			<path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
 		</svg>
 	</button>
+
+	<p class="vh" role="status">{seatAnnounce}</p>
+	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
+	     it floats in the corner the join QR has on the real TV; in attract (nobody here yet), in attract's free band. -->
+	{#snippet copyChip()}
+		<TvCopyChip onclaim={() => ws?.send({ type: 'tv:claim' })} />
+	{/snippet}
+	{#if isCopy && screen !== 'lobby'}
+		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]} bind:this={copySlotEl}>{@render copyChip()}</div>
+	{/if}
 
 	<div class={['status', { on: connected }]}></div>
 </div>
@@ -1135,6 +1175,31 @@
 		font-size: var(--tv-small);
 		color: var(--ink-dim);
 		margin-top: 1.8vh;
+	}
+	/* ONE TV PER ROOM: a copy's chip, bottom-right, in the corner the join QR has on the real TV. */
+	.copy-slot {
+		position: absolute;
+		right: var(--tv-safe-x);
+		bottom: var(--tv-safe-y);
+		z-index: var(--z-tv-affordance);
+		max-width: calc(100vw - 2 * var(--tv-safe-x));
+	}
+	/* A phone reading along: the bottom band is the lower third (mid-song) or the roster and the room code (lobby), and
+	   the right edge is the reactions lane, so the chip goes TOP-LEFT, kept clear of the lane's column at every width.
+	   p10-tv-copy.spec.ts measures it against all three at 390 and 320. */
+	@media (max-aspect-ratio: 1/1) {
+		.copy-slot {
+			top: var(--tv-safe-y);
+			left: var(--tv-safe-x);
+			right: auto;
+			bottom: auto;
+			max-width: calc(100vw - 2 * var(--tv-safe-x) - var(--tv-reaction-w) - var(--tv-space-lg));
+		}
+		/* Attract on a phone: the wordmark and the QR fill the top, and the bottom band is empty. */
+		.copy-slot.on-attract {
+			top: auto;
+			bottom: var(--tv-safe-y);
+		}
 	}
 	.lower-third {
 		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */

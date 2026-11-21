@@ -32,7 +32,8 @@ const CUTS = new Set([
 	'phone-reorder-held-390',
 	'phone-reorder-held-320',
 	'phone-cheers-return',
-	'phone-dock-idle'
+	'phone-dock-idle',
+	'tv-copy-claim'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -56,7 +57,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK],
 	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS],
 	'phone-reorder-held-390': HELD_LIBRARY,
-	'phone-reorder-held-320': HELD_LIBRARY
+	'phone-reorder-held-320': HELD_LIBRARY,
+	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK]
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -621,6 +623,68 @@ const SCENARIOS: Record<string, Make> = {
 		};
 	},
 
+	/** "Make this the TV", seen from the OLD TV mid-song: a second /tv claims the seat and the old TV's chip appears, as
+	 *  a CUT. Each run seats a fresh old TV (claiming from it when the last run left the seat elsewhere) and opens a
+	 *  fresh copy to tap from, with the long track playing (re-queued when it has ended). */
+	'tv-copy-claim': (browser, world, cleanup) => {
+		let phone: Page | undefined;
+		let copy: Page | undefined;
+		const tvAt = async (opts: BrowserContextOptions) => {
+			const ctx = await browser.newContext({
+				...opts,
+				viewport: { width: 1920, height: 1080 },
+				baseURL: world.baseURL
+			});
+			cleanup(() => ctx.close());
+			const page = await ctx.newPage();
+			// The server's first `tv:seat` answer, so "is this a copy?" is read after it is known, not raced.
+			const seat = page
+				.waitForEvent('websocket', { timeout: 30_000 })
+				.then((ws) =>
+					ws.waitForEvent('framereceived', {
+						predicate: (f) => String(f.payload).includes('"tv:seat"'),
+						timeout: 30_000
+					})
+				)
+				.then((f) => (JSON.parse(String(f.payload)) as { mine: boolean }).mine);
+			await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+			return { page, mine: await seat };
+		};
+		return {
+			name: 'tv-copy-claim',
+			what: 'TV 1920x1080 mid-song, the screen that IS the TV: a second /tv taps "Make this the TV", and this screen turns into the copy. Its chip appears as a CUT',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 1_500,
+			open: async (opts) => {
+				if (!phone) {
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await readySong(world, phone, 'long');
+				}
+				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'long');
+				await expect(phone.locator(SEL.npStripTitle)).toContainText(/long/i, { timeout: 30_000 });
+				const old = await tvAt(opts);
+				if (!old.mine) await old.page.getByRole('button', { name: 'Make this the TV' }).click();
+				await expect(old.page.locator('.copy-chip')).toHaveCount(0);
+				await expect(old.page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+				// Past the song-intro card, so the strip shows the chip and nothing else changing.
+				await expect(old.page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
+				copy = (await tvAt(opts)).page;
+				await expect(copy.locator('.copy-chip')).toBeVisible();
+				return old.page;
+			},
+			trigger: async (page) => {
+				await copy!.getByRole('button', { name: 'Make this the TV' }).click();
+				await expect(page.locator('.copy-chip')).toBeVisible();
+			},
+			// The chip the old TV gains: on screen in every frame after the tap.
+			subject: '.copy-chip',
+			only: '.copy-chip, .copy-chip *'
+		};
+	},
 	/** The TV's "Now singing" card at a change of singer, which since #974 is every change, not only the first
 	 *  song. Ana sings caroline on this TV with Maya next; Ana's skip hands the room to Maya and the card takes over
 	 *  the screen for the intro hold. Each run drains the room and starts Ana's song again, past her own card. */

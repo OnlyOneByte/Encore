@@ -94,7 +94,7 @@ export async function stage(world: World, fanCount: number) {
 }
 
 /** Counts every disc the TV ever mounts, so one that lives between samples is still seen. */
-async function countMounts(tv: Page): Promise<void> {
+export async function countMounts(tv: Page): Promise<void> {
 	await tv.evaluate((q) => {
 		const w = window as unknown as { __mounted: number };
 		w.__mounted = 0;

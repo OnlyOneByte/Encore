@@ -13,7 +13,7 @@
  */
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { burst, mounted, putRoom, stage } from '../../world/reactions';
+import { burst, countMounts, mounted, putRoom, stage } from '../../world/reactions';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 import { TAP } from '../gate/measured-design-register';
 import type { Page } from '@playwright/test';
@@ -104,6 +104,7 @@ async function sample(tv: Page): Promise<Sample> {
 				lowerThird: SEL.lowerThird,
 				upnext: '.upnext',
 				corner: '.corner',
+				copyChip: '.copy-slot',
 				fullscreen: '.fs-btn',
 				status: '.status'
 			}
@@ -274,6 +275,85 @@ test('bursts stay inside the safe area and clear of the lyrics and TV chrome, at
 		expect(touching, 'two reaction discs overlapped each other').toEqual([]);
 		expect([...frames.fans.flat(), ...frames.star], 'a phone received room:reacted').toEqual([]);
 	} finally {
+		await worker.stop();
+	}
+});
+
+test('on a copy TV the lane stands above "Make this the TV", which holds the join card\'s corner', async ({
+	world,
+	browser
+}) => {
+	const { worker, fans } = await stage(world, 2);
+	// A second screen with no seat cookie: a copy. It hears every room:reacted the real TV does.
+	const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+	try {
+		const copy = await ctx.newPage();
+		await copy.goto('/tv');
+		await copy.locator(SEL.tvConnected).waitFor({ state: 'attached' });
+		await expect(copy.locator('.copy-slot .copy-chip')).toBeVisible({ timeout: 30_000 });
+		await expect(copy.locator('.corner'), 'a copy still shows the join card').toHaveCount(0);
+		await expect(copy.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
+		await countMounts(copy);
+		const hits: unknown[] = [];
+		const cases = [
+			{ w: 1920, h: 1080, grow: false },
+			{ w: 1280, h: 720, grow: false },
+			// At its natural size the chip is only a few px shorter than the lower-third, so the band alone happens to
+			// clear it. A chip that grows (a wrap, a bigger type step) must lift the lane too: only the measure does that.
+			{ w: 1920, h: 1080, grow: true }
+		];
+		for (const c of cases) {
+			const label = `${c.w}x${c.h}${c.grow ? ', a taller chip' : ''}`;
+			await copy.setViewportSize({ width: c.w, height: c.h });
+			if (c.grow) await copy.addStyleTag({ content: '.copy-chip { min-height: 25vh; }' });
+			await copy.waitForTimeout(3_200);
+			const [lane, chip] = await copy.evaluate(() =>
+				['.reaction-lane', '.copy-slot'].map((q) => document.querySelector(q)!.getBoundingClientRect().toJSON())
+			);
+			expect(lane.bottom, `${label}: the lane stands on the chip`).toBeLessThanOrEqual(chip.top + 0.5);
+			await burst(fans);
+			const samples = await sampleWindow(copy, SAMPLE_WINDOW_MS);
+			expect(peakOf(samples), `${label}: no reaction reached the copy`).toBeGreaterThan(0);
+			expect(
+				samples.every((s) => s.chrome.some((ch) => ch.cls === 'copyChip')),
+				`${label}: the chip was not on screen to measure`
+			).toBe(true);
+			for (const [i, s] of samples.entries())
+				for (const d of s.discs)
+					for (const ch of s.chrome)
+						if (overlap(d, ch.box) > 0) hits.push({ label, sample: i, cls: ch.cls, disc: d, box: ch.box });
+		}
+		expect(hits, 'a reaction disc on the copy intersected the chip, the lyrics or the TV chrome').toEqual([]);
+
+		// A PHONE reading along as a copy: the chip sits top-left, not in the lane's corner, so measuring it can lift the
+		// lane at bottom-right by at most the chip's own height above the band it stands on anyway.
+		await copy.evaluate(() =>
+			document.querySelectorAll('style').forEach((s) => s.textContent?.includes('25vh') && s.remove())
+		);
+		for (const [w, h] of [
+			[390, 844],
+			[320, 568]
+		]) {
+			await copy.setViewportSize({ width: w, height: h });
+			await copy.waitForTimeout(1_000);
+			const m = await copy.evaluate((sel) => {
+				const probe = document.createElement('div');
+				probe.style.cssText = 'position:absolute;visibility:hidden;height:var(--tv-chrome-h)';
+				document.querySelector(sel)!.appendChild(probe);
+				const band = probe.getBoundingClientRect().height;
+				probe.remove();
+				const lane = document.querySelector('.reaction-lane')!.getBoundingClientRect();
+				const chip = document.querySelector('.copy-slot')!.getBoundingClientRect();
+				return { band, laneLift: innerHeight - lane.bottom, chipH: chip.height, chipTop: chip.top, laneTop: lane.top };
+			}, SEL.tvRoot);
+			expect(m.chipTop, `${w}x${h}: the chip is not top-left`).toBeLessThan(m.laneTop);
+			expect(m.laneLift, `${w}x${h}: the lane fell below the chrome band`).toBeGreaterThanOrEqual(m.band - 0.5);
+			expect(m.laneLift, `${w}x${h}: the lane lifted by more than the chip`).toBeLessThanOrEqual(
+				m.band + m.chipH + 0.5
+			);
+		}
+	} finally {
+		await ctx.close();
 		await worker.stop();
 	}
 });
