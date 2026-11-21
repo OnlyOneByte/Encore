@@ -60,7 +60,8 @@
 	   state, as the static ring is for `spinner`. */
 	@media (prefers-reduced-motion: no-preference) {
 		.encore-bar-fill {
-			transition: transform 200ms ease-out;
+			/* The base token, not a literal: one worker step is a small move, at the app's ordinary pace. */
+			transition: transform var(--motion-base) ease-out;
 		}
 	}
 </style>

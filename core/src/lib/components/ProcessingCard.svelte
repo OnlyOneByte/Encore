@@ -6,7 +6,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { MediaStatus } from '$lib/contract';
 	import type { QueueCardKind } from '$lib/readiness';
-	import { processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
+	import { processReadout, processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
 	interface Props {
@@ -37,6 +37,9 @@
 		 * neither this nor `pct`, which is why the route may stop inventing one. */
 		status?: MediaStatus;
 		pct?: number;
+		/** Seconds until the song is ready, from core's history of this box (`server/jobs/eta.ts`). Absent when
+		 * there is none to base it on, and then the card says no time at all. */
+		etaSec?: number;
 		// A processing song is still a QUEUE ENTRY, so it gets the same controls a ready row does — a minutes-long
 		// process is a long time to be stuck on a mis-tap. All absent outside the rotation, where there is no slot.
 		onremove?: () => void;
@@ -71,6 +74,7 @@
 		pending = null,
 		status,
 		pct = 0,
+		etaSec,
 		onremove,
 		onretry,
 		reorderable = false,
@@ -250,7 +254,7 @@
 					<div class="stage"><span>{stageLabel}</span></div>
 				{:else}
 					<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
-					<div class="stage"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+					<div class="stage"><span>{stageLabel}</span><span>{processReadout(overall, pct, etaSec)}</span></div>
 				{/if}
 			</div>
 		</div>

@@ -174,6 +174,25 @@ class Reporter(Protocol):
     def explain_ownership(self, job_id: str) -> str: ...
 
 
+def progress_sink(reporter: Reporter, job_id: str, stage: Stage) -> ports.ProgressSink:
+    """A port's synchronous 0..100, forwarded to the core from the loop that built it (WK-07).
+
+    Called from the port's thread, so each report is handed back to that loop. Only a RISE is sent: a tool
+    that prints the same figure many times a second would otherwise flood the room's `media:status`.
+    """
+    loop = asyncio.get_running_loop()
+    sent = -1
+
+    def sink(pct: int) -> None:
+        nonlocal sent
+        if pct <= sent:
+            return
+        sent = pct
+        asyncio.run_coroutine_threadsafe(reporter.progress(job_id, stage, pct), loop)
+
+    return sink
+
+
 class AlignStepsImpl:
     """`AlignSteps`, for real."""
 
@@ -236,10 +255,12 @@ class AlignStepsImpl:
 
     # ── acquisition ──────────────────────────────────────────────────────────────────────────────
 
-    async def acquire_audio(self, job: JobRef) -> AudioRef:
+    async def acquire_audio(self, job: JobRef, *, report_download: bool = False) -> AudioRef:
         """The bytes and their duration. Raises when the source is unreachable — nothing substitutes.
 
         A LOCAL source is already on disk, decided from the DECLARED fetcher rather than by sniffing the URI.
+        `report_download` is the FETCH job's alone: inside a stems or align job a download percentage would
+        drag that job's bar back to the download's.
         """
         local = job.param_str("fetcher") == "local"
         path = job.source_uri or ""
@@ -259,7 +280,8 @@ class AlignStepsImpl:
         else:
             if self._a.fetcher is None:
                 raise _Permanent("this worker has no audio fetcher, so it cannot acquire a remote source")
-            path = await asyncio.to_thread(self._a.fetcher.fetch, path, self._work(job), on_progress=None)
+            sink = progress_sink(self._out, job.job_id, Stage.DOWNLOADING) if report_download else None
+            path = await asyncio.to_thread(self._a.fetcher.fetch, path, self._work(job), on_progress=sink)
 
         duration = 0.0
         if self._a.probe is not None:

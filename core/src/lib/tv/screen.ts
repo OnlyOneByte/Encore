@@ -1,4 +1,5 @@
 import type { MediaStatus, QueueEntry } from '$lib/contract';
+import { OVERDUE_LABEL } from '$lib/phrasing/process-phrasing';
 import type { TvState } from './gapless';
 
 /**
@@ -52,6 +53,37 @@ export interface RosterMember {
 	color: string;
 	/** `here` holds a live socket; `away` is in the room but unreachable (locked phone, pocket). */
 	state: 'here' | 'away';
+}
+
+const MAKING: ReadonlySet<MediaStatus> = new Set(['queued', 'downloading', 'separating', 'aligning']);
+
+/** Does this `media:status` say the song is still being made AND past its estimate (`etaSec < 0`)? Anything else,
+ *  a ready or failed song included, takes it off the overdue list. */
+export function statusOverdue(e: { status: MediaStatus; etaSec?: number }): boolean {
+	return MAKING.has(e.status) && (e.etaSec ?? 0) < 0;
+}
+
+/** Is any song still being made (`making`, the entries the lobby counts as pending) one core has called past its
+ *  estimate? `overdueIds` holds the media ids whose last `media:status` was `statusOverdue`. */
+export function lobbyOverdue(making: readonly QueueEntry[], overdueIds: ReadonlySet<string>): boolean {
+	return making.some((e) => overdueIds.has(e.mediaId));
+}
+
+/**
+ * The lobby's line under its headline. With a rehydrated queue but nobody reconnected the roster is empty, so it says
+ * something true rather than "0 in the room". It says "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY,
+ * so naming a control sends a whole room looking for a label no phone displays. While something is processing it says
+ * the wait is the karaoke being made, and once that song is `overdue` (`etaSec < 0`) it says what the singer's phone
+ * says ("Taking longer than usual") instead of still promising a minute.
+ */
+export function lobbyLine(count: number, processing: boolean, overdue: boolean): string {
+	if (processing) {
+		const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
+		return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
+	}
+	return count > 0
+		? `${count} in the room · search on your phone and pick a song`
+		: 'Scan to join, then search on your phone and pick a song';
 }
 
 /**

@@ -124,6 +124,18 @@ export class AttemptLedger {
 			.all();
 	}
 
+	/** The latest SUCCESSFUL runs of one step, newest first, for the ETA (`eta.ts`): a fast failure is not
+	 *  a measure of how long the work takes. */
+	recentReady(jobType: JobAttempt['jobType'], limit: number): JobAttempt[] {
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(and(eq(jobAttempts.jobType, jobType), eq(jobAttempts.outcome, 'ready'), isNotNull(jobAttempts.startedAt)))
+			.orderBy(desc(jobAttempts.finishedAt))
+			.limit(limit)
+			.all();
+	}
+
 	/** The honest denominator behind a windowed sample. */
 	countFinished(): number {
 		const row = this.#db
