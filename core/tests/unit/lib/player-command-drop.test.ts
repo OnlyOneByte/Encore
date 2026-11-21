@@ -84,6 +84,10 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 	expect(layout).toContain("bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',");
 	expect(layout).toContain("left: 'var(--sheet-gutter)',");
 	expect(layout).toContain("right: 'var(--sheet-gutter)'");
+	// ...and the sheet reads the same token, so the two edges move together (a literal 16px would only match today).
+	const sheet = readFileSync(at('src/lib/components/YoureUp.svelte'), 'utf8');
+	expect(sheet).toContain('inset-inline: var(--sheet-gutter);');
+	expect(sheet).not.toMatch(/inset-inline:\s*\d/);
 });
 
 test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a number', () => {
