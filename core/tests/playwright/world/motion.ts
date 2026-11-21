@@ -768,8 +768,15 @@ export interface RealtimeReport {
 	droppedFrames: number;
 	rafIntervals: number;
 	/** Frames where two visible `each` boxes, or a visible `each` and a visible `avoid`, intersect. Visible: effective
-	 *  opacity over 0.05. `worstPx` is the deepest intersection; `first` the first 10. */
-	overlap: { frames: number; worstPx: number; first: { ms: number; a: string; b: string }[] };
+	 *  opacity over 0.05. `eachFrames` and `avoidFrames` split them by which kind of pair hit (a frame can have both);
+	 *  `worstPx` is the deepest intersection; `first` the first 10. */
+	overlap: {
+		frames: number;
+		eachFrames: number;
+		avoidFrames: number;
+		worstPx: number;
+		first: { ms: number; a: string; b: string }[];
+	};
 	/** The same, where at least one of the pair is not visible: invisible, but a sign the spacing is gone. */
 	hiddenOverlap: number;
 	/** Smallest separation between two visible `each` boxes; negative is an overlap that deep. null: never two. */
@@ -801,13 +808,16 @@ export function analyseRealtime(
 	const ms = (t: number) => Math.round(t - tr.t0);
 	const name = (id: number) => tr.labels[id] ?? `#${id}`;
 	let overlapFrames = 0;
+	let eachFrames = 0;
+	let avoidFrames = 0;
 	let hiddenOverlap = 0;
 	let worst = 0;
 	let minGap = Infinity;
 	const first: RealtimeReport['overlap']['first'] = [];
 	const shown: boolean[] = [];
 	for (const f of tr.frames) {
-		let hit = false;
+		let hitEach = false;
+		let hitAvoid = false;
 		let hidden = false;
 		const pairs: [number[], number[]][] = [];
 		for (let i = 0; i < f.e.length; i++) {
@@ -824,11 +834,14 @@ export function analyseRealtime(
 				hidden = true;
 				continue;
 			}
-			hit = true;
+			if (isEach) hitEach = true;
+			else hitAvoid = true;
 			worst = Math.max(worst, -sep);
 			if (first.length < 10) first.push({ ms: ms(f.t), a: name(a[0]), b: name(b[0]) });
 		}
-		if (hit) overlapFrames++;
+		if (hitEach) eachFrames++;
+		if (hitAvoid) avoidFrames++;
+		if (hitEach || hitAvoid) overlapFrames++;
 		else if (hidden) hiddenOverlap++;
 		shown.push(f.e.some((e) => e[5] > VISIBLE));
 	}
@@ -865,7 +878,7 @@ export function analyseRealtime(
 		screencastFrames: run.screencastFrames,
 		droppedFrames,
 		rafIntervals: iv.length,
-		overlap: { frames: overlapFrames, worstPx: r1(worst), first },
+		overlap: { frames: overlapFrames, eachFrames, avoidFrames, worstPx: r1(worst), first },
 		hiddenOverlap,
 		minGapPx: Number.isFinite(minGap) ? r1(minGap) : null,
 		blankFrames,

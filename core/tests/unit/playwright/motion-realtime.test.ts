@@ -33,7 +33,13 @@ describe('analyseRealtime', () => {
 
 	test('two visible discs 5 px into each other: one overlapping frame, a -5 px gap, named', () => {
 		const r = analyse(trace([{ t: 116, e: [disc(1, 100), disc(2, 135)], a: [] }], { t0: 100 }));
-		expect(r.overlap).toEqual({ frames: 1, worstPx: 5, first: [{ ms: 16, a: '#1', b: '#2' }] });
+		expect(r.overlap).toEqual({
+			frames: 1,
+			eachFrames: 1,
+			avoidFrames: 0,
+			worstPx: 5,
+			first: [{ ms: 16, a: '#1', b: '#2' }]
+		});
 		expect(r.minGapPx).toBe(-5);
 	});
 
@@ -46,7 +52,7 @@ describe('analyseRealtime', () => {
 
 	test('a disc into an avoid box is an overlap; the avoid box is not a neighbour for the gap', () => {
 		const r = analyse(trace([{ t: 16, e: [disc(1, 100)], a: [[9, 0, 130, 200, 300, 1]] }]));
-		expect(r.overlap.frames).toBe(1);
+		expect([r.overlap.frames, r.overlap.eachFrames, r.overlap.avoidFrames]).toEqual([1, 0, 1]);
 		expect(r.overlap.first[0]).toEqual({ ms: 16, a: '#1', b: 'div.corner' });
 		expect(r.minGapPx).toBeNull();
 	});
