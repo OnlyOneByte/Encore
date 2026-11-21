@@ -10,6 +10,8 @@ import {
 	TRACKS,
 	armGraphHook,
 	readGraphState,
+	processTrack,
+	queueReadyTrack,
 	sendPlayerCommand,
 	serverPlayback,
 	singTrack,
@@ -33,14 +35,30 @@ async function openScreen(
 	world: World,
 	width: number,
 	height: number,
-	{ real = false, holdVerdict = false } = {}
+	{ real = false, holdVerdict = false, resumeMs = 0 } = {}
 ): Promise<Screen> {
 	const ctx = await browser.newContext({ viewport: { width, height }, baseURL: world.baseURL });
 	if (real) await ctx.addCookies([world.tvCookie]);
 	const page = await ctx.newPage();
-	await page.addInitScript(() => {
-		const w = window as unknown as { __ctx: { made: number; resumed: number } };
+	await page.addInitScript((resumeMs: number) => {
+		const w = window as unknown as { __ctx: { made: number; resumed: number }; __mediaErrors: string[] };
 		w.__ctx = { made: 0, resumed: 0 };
+		// Every media `error` event, with the src it fired on: a skip or a dropped song starts as one of these.
+		w.__mediaErrors = [];
+		addEventListener(
+			'error',
+			(e) => {
+				if (e.target instanceof HTMLMediaElement) w.__mediaErrors.push(e.target.getAttribute('src') ?? '');
+			},
+			true
+		);
+		// `resumeMs` slows AudioContext.resume(), as a real TV's audio start can be (pitch-shift.ts allows 10 s).
+		if (resumeMs > 0) {
+			const R = AudioContext.prototype.resume;
+			AudioContext.prototype.resume = function () {
+				return new Promise<void>((ok) => setTimeout(() => R.call(this).then(ok, ok), resumeMs));
+			};
+		}
 		const Real = window.AudioContext;
 		window.AudioContext = class extends Real {
 			constructor(...a: ConstructorParameters<typeof AudioContext>) {
@@ -52,7 +70,7 @@ async function openScreen(
 				return super.resume();
 			}
 		};
-	});
+	}, resumeMs);
 	const sent = { telemetry: 0, ended: [] as string[] };
 	const count = (payload: string | Buffer) => {
 		if (!String(payload).includes('"tv:telemetry"')) return;
@@ -89,6 +107,7 @@ const audioOf = (tv: Page) =>
 /** Every media element on the page is `muted`: both player slots, so the gapless swap cannot hand a copy sound. */
 const allMuted = (tv: Page) =>
 	tv.evaluate(() => [...document.querySelectorAll<HTMLMediaElement>('audio, video')].every((e) => e.muted));
+const mediaErrorsOf = (tv: Page) => tv.evaluate(() => (window as unknown as { __mediaErrors: string[] }).__mediaErrors);
 const contextsOf = (tv: Page) =>
 	tv.evaluate(() => (window as unknown as { __ctx: { made: number; resumed: number } }).__ctx);
 
@@ -269,7 +288,11 @@ test('on a phone the chip stays inside the screen, clear of the reactions lane, 
 	const worker = await startFakeWorker(world, { seconds: 30 });
 	try {
 		const tv = await openScreen(browser, world, 1920, 1080, { real: true });
-		const phones = [await openScreen(browser, world, 390, 844), await openScreen(browser, world, 320, 568)];
+		const phones = [
+			await openScreen(browser, world, 390, 844),
+			await openScreen(browser, world, 320, 568),
+			await openScreen(browser, world, 1920, 1080)
+		];
 		const check = async (state: string, avoid: string[], only?: number) => {
 			for (const s of phones) {
 				const vw = s.page.viewportSize()!.width;
@@ -296,6 +319,12 @@ test('on a phone the chip stays inside the screen, clear of the reactions lane, 
 		// 320 screen on main, so there is no free band left there for the code line (a known edge, in the PR body).
 		await check('attract', ['.attract .brand', '.attract .qr', '.jt-url', '.jt-code', '.jt-or'], 390);
 		await check('attract', ['.attract .brand', '.attract .qr'], 320);
+		// A wide copy in attract: the chip bottom-right, and the attract screen itself still painted under it.
+		await check('attract', ['.attract .brand', '.attract .qr', '.jt-url', '.jt-code', '.jt-or'], 1920);
+		const wide = phones[2]!.page;
+		const [slot] = await boxes(wide, '.copy-slot');
+		expect(slot!.x, 'attract 1920: the chip slot spans the screen').toBeGreaterThan(960);
+		expect(slot!.y, 'attract 1920: the chip slot spans the screen').toBeGreaterThan(540);
 		const ana = await world.openPhone('Ana');
 		await world.openPhone('Bo');
 		await readySong(world, ana, 'caroline');
@@ -402,6 +431,8 @@ test('a mid-song claim on a guide-mix song keeps the song going, and the NEXT si
 		const before = { room: (await serverPlayback(world.baseURL)).state.positionSec, copy: await at(copy.page) };
 		await copy.page.getByRole('button', CLAIM).click();
 		await expect.poll(() => audioOf(copy.page)).toMatchObject({ muted: false, paused: false });
+		// Counted from the claim, so an error at the song change (within ms of it) is inside the window.
+		const errorsBefore = (await mediaErrorsOf(copy.page)).length;
 		// What re-decides a src on the new TV: a guide move (it re-syncs playback state on every screen).
 		await sendPlayerCommand(phone, { cmd: 'guide', level: 0.3 });
 		// Four seconds of samples: the room's playhead, the new TV's own clock and a phone reading along never go back.
@@ -428,13 +459,16 @@ test('a mid-song claim on a guide-mix song keeps the song going, and the NEXT si
 			.not.toBe(guideEntry);
 		const boEntry = (await serverPlayback(world.baseURL)).state.currentEntryId;
 		expect(boEntry, "the server dropped Bo's song").toBeTruthy();
-		const skipNotice = copy.page.getByText(/would not play/);
+		// The takeover's own text since #992 ("That song won't play"), and the older wording too.
+		const skipNotice = copy.page.getByText(/won.t play|would not play/i);
 		for (let i = 0; i < 24; i++) {
-			expect(await skipNotice.count(), `a "would not play" notice at sample ${i}`).toBe(0);
+			expect(await skipNotice.count(), `a "won't play" notice at sample ${i}`).toBe(0);
 			await copy.page.waitForTimeout(250);
 		}
 		await expect.poll(() => srcOf(copy.page), { timeout: 15_000 }).toContain('guide');
 		expect(copy.sent.ended, "an ended frame named Bo's song before it played out").not.toContain(boEntry);
+		// The song change raised no media error at all (an empty src is one, even when nothing else goes wrong).
+		expect((await mediaErrorsOf(copy.page)).slice(errorsBefore), 'media errors across the song change').toEqual([]);
 		expect((await serverPlayback(world.baseURL)).state.currentEntryId).toBe(boEntry);
 		for (const p of [phone, bo]) await expect(p.locator(SEL.npStripTitle).first()).toContainText(/believin/i);
 	} finally {
@@ -465,3 +499,61 @@ test('a key-shifted song makes no AudioContext on a copy, while the TV builds it
 		await worker.stop();
 	}
 });
+
+// THE SKIP ONTO A GUIDE-MIX SONG, on the TV alone (r6 review). A plain song plays; a skip makes a guide-mix song
+// current in the SAME slot, which has no routed split graph yet, so its mix decision is pending for as long as the
+// audio start takes. Until then the element must be SILENT: it still holds the skipped song.
+for (const resumeMs of [0, 3_000]) {
+	test(`a skip onto a guide-mix song never plays the skipped song under the next card (audio start +${resumeMs} ms)`, async ({
+		browser,
+		world
+	}) => {
+		test.setTimeout(240_000);
+		const ana = await world.openPhone('Ana');
+		const bo = await world.openPhone('Bo');
+		const plain = await startFakeWorker(world, { guideMix: false, seconds: 60 });
+		const anaMedia = (await processTrack(ana, world.baseURL, TRACKS.caroline)).id;
+		await plain.stop();
+		const mix = await startFakeWorker(world, { guideMix: true, seconds: 60 });
+		try {
+			const boMedia = (await processTrack(bo, world.baseURL, TRACKS.believin)).id;
+			const tv = await openScreen(browser, world, 1920, 1080, { real: true, resumeMs });
+			await tap(tv);
+			await openBrowseFromHome(ana);
+			await queueReadyTrack(ana, TRACKS.caroline);
+			await openBrowseFromHome(bo);
+			await queueReadyTrack(bo, TRACKS.believin);
+			const playingSrc = () =>
+				tv.page.evaluate(() =>
+					[...document.querySelectorAll<HTMLMediaElement>('audio')]
+						.filter((m) => !m.paused && !m.muted)
+						.map((m) => m.getAttribute('src') ?? '')
+				);
+			await expect.poll(async () => (await playingSrc()).join(), { timeout: 60_000 }).toContain(anaMedia);
+			await tv.page.waitForTimeout(4_000);
+			const anaEntry = (await serverPlayback(world.baseURL)).state.currentEntryId;
+			await sendPlayerCommand(ana, { cmd: 'skip' });
+			// From the moment the room is on Bo's song until Bo's song is heard: never Ana's.
+			await expect
+				.poll(async () => (await serverPlayback(world.baseURL)).state.currentEntryId, { timeout: 10_000 })
+				.not.toBe(anaEntry);
+			expect((await serverPlayback(world.baseURL)).state.currentEntryId, "the server dropped Bo's song").toBeTruthy();
+			const heard: string[][] = [];
+			for (let i = 0; i < 60; i++) {
+				const now = await playingSrc();
+				heard.push(now);
+				if (now.some((src) => src.includes(boMedia))) break;
+				await tv.page.waitForTimeout(100);
+			}
+			expect(
+				heard.flat().filter((src) => src.includes(anaMedia)),
+				"the skipped song played on under Bo's card"
+			).toEqual([]);
+			await expect.poll(async () => (await playingSrc()).join(), { timeout: 20_000 }).toContain(boMedia);
+			expect(await mediaErrorsOf(tv.page)).toEqual([]);
+			expect(tv.sent.ended, 'an ended frame named a song that never played out').toEqual([]);
+		} finally {
+			await mix.stop();
+		}
+	});
+}

@@ -1001,7 +1001,7 @@
 		<TvCopyChip onclaim={() => ws?.send({ type: 'tv:claim' })} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
-		<div class={['copy-slot', { attract: screen === 'attract' }]}>{@render copyChip()}</div>
+		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]}>{@render copyChip()}</div>
 	{/if}
 
 	<div class={['status', { on: connected }]}></div>
@@ -1189,7 +1189,7 @@
 			max-width: calc(100vw - 2 * var(--tv-safe-x) - var(--tv-reaction-w) - var(--tv-space-lg));
 		}
 		/* Attract on a phone: the wordmark and the QR fill the top, and the bottom band is empty. */
-		.copy-slot.attract {
+		.copy-slot.on-attract {
 			top: auto;
 			bottom: var(--tv-safe-y);
 		}

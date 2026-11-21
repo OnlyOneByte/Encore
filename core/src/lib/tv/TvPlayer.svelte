@@ -487,7 +487,13 @@
 		// MEDIA_ELEMENT_ERROR "Empty src attribute", which reads as a dead file and skips the singer's song. The element
 		// keeps what it has until the gate settles; the transport, keyed on `currentSrc`, holds it meanwhile. This is a
 		// screen that took the seat mid-song, building the guide graph for its next song for the first time.
-		if (decision.changed && decision.src) master.src = decision.src;
+		// And while it is pending the element is PAUSED: what it holds is the PREVIOUS song (a skip onto a guide-mix song
+		// whose slot has no routed graph yet), which would otherwise play on, rewound by the new song's seek, under the
+		// new singer's card until the gate settles. Main dropped the new song outright in that case.
+		if (decision.changed) {
+			if (decision.src) master.src = decision.src;
+			else master.pause();
+		}
 		// A NOT-PLAYABLE pass must leave BOTH shadows AND the element's src untouched: clearing `currentSrc` tells the
 		// transport the still-playing song has no src. The two are written in LOCKSTEP, or a half-stale entry token
 		// reintroduces the silent second turn.
@@ -505,6 +511,8 @@
 			THE MASTER, and the ONLY media element. It owns the clock: play/pause, currentTime, `ended`, and the
 			position telemetry the lyrics overlay and the room's progress bar both run on.
 		-->
+		<!-- `onerror` skips the song only for an element that HOLDS a src. That is a BACKSTOP: nothing assigns an empty src
+		     (the src effect below), so an error with none is never a dead file and must not end the singer's turn. -->
 		<audio
 			bind:this={master}
 			muted={silent}

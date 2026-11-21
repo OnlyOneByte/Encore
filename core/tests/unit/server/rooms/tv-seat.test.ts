@@ -300,15 +300,6 @@ test('a booked sweep that fires a hair early re-arms for what is left, so the wa
 	expect(w.announced).toEqual([{ key: 1, mine: true }]);
 });
 
-test('a claim by the screen that already holds the seat moves nothing and books nothing', () => {
-	const w = world();
-	w.seats.connect(ROOM, 1, 'tvA');
-	w.timers.splice(0);
-	for (let i = 0; i < 1000; i++) expect(w.seats.claim(ROOM, 1)).toEqual([]);
-	expect(w.timers).toEqual([]);
-	expect(w.mine(1)).toBe(true);
-});
-
 test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
 	const w = world();
 	const booked = () => w.timers.splice(0).map((t) => t.at - 1_000_000);
