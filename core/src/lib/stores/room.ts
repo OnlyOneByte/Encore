@@ -85,8 +85,9 @@ export class RoomLink {
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
-	/** Captured once on connect and HELD: a sync REPLACES the catalog and a failed song is not in the room's media,
-	 * so without re-merging these on every sync the first sync wipes the scarred row. */
+	/** Captured once on connect and HELD. A sync ADDS to the catalog rather than replacing it, so it no longer wipes a
+	 * scarred row; the re-merge on each sync stays for a scar whose id the catalog never held (a failed song is not in
+	 * the room's media), and `mergeMissingMedia` never overwrites a fresher copy. */
 	#scarred: Media[] = [];
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 
