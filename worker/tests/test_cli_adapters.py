@@ -15,6 +15,7 @@ import signal
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -797,3 +798,74 @@ def test_a_killed_run_reports_no_more_progress(tmp_path: Path, monkeypatch: pyte
         assert calls == [], "a killed run's descendant moved its progress"
     finally:
         _kill_escaped(pidfile)
+
+
+def test_a_cancel_while_the_child_is_starting_keeps_the_slot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_stop` cancels, then waits for the token to go idle. A cancel that lands inside `Popen` must find the
+    run already counted, or the slot is freed as the child appears. `Popen` is held until the test cancels."""
+    import subprocess  # noqa: PLC0415
+
+    real = subprocess.Popen
+    at_popen, go_on = threading.Event(), threading.Event()
+
+    def held_popen(*args: Any, **kwargs: Any) -> Any:
+        at_popen.set()
+        go_on.wait(5)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", held_popen)
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, "sleep 30")
+    assert at_popen.wait(5)
+    token.cancel()
+    assert token.wait_idle(0.0) is False, "the slot was freed while the child was being started"
+    go_on.set()
+    thread.join(5.0)
+    assert returned and token.wait_idle(0.0) is True
+
+
+def test_a_run_that_cannot_start_leaves_its_slot_idle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The run is counted before `Popen`, so a `Popen` that raises (a missing binary) must uncount it."""
+    token = cli.CancelToken()
+    with pytest.raises(FileNotFoundError):
+        cli.run(["/nonexistent/encore-tool"], cancel=token)
+    assert token.wait_idle(0.0) is True
+    token.cancel()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["true"], cancel=token)
+    assert token.wait_idle(0.0) is True, "the early cancelled raise left the run counted"
+
+
+def test_a_reaped_childs_empty_group_is_not_signalled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Once the leader is reaped and its group is empty, the group's number is nobody's and may be reused: no
+    kill goes to it. A group that still has a live member is killed as before."""
+    import subprocess  # noqa: PLC0415
+
+    sent: list[int] = []
+    real = os.killpg
+
+    def spy(pgid: int, sig: int) -> None:
+        sent.append(pgid)
+        real(pgid, sig)
+
+    monkeypatch.setattr(os, "killpg", spy)
+    gone = subprocess.Popen(["true"], start_new_session=True, text=True)  # noqa: S607
+    gone.wait()
+    cli._kill_group(gone)
+    assert sent == [], "a kill went to an empty, reaped group"
+    held = subprocess.Popen(["sh", "-c", "sleep 30 & exit 0"], start_new_session=True, text=True)  # noqa: S607
+    held.wait()
+    try:
+        deadline = time.monotonic() + 5
+        while not cli._group_alive(held.pid):
+            assert time.monotonic() < deadline, "the background sleep never showed up"
+            time.sleep(0.01)
+        cli._kill_group(held)
+        assert sent == [held.pid]
+        deadline = time.monotonic() + 5
+        while cli._group_alive(held.pid):
+            assert time.monotonic() < deadline, "the group's live member survived the kill"
+            time.sleep(0.02)
+    finally:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            real(held.pid, signal.SIGKILL)

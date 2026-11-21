@@ -182,20 +182,27 @@ def run(
     that long: `Stalled`) are a WATCHDOG thread's to enforce, because reading output blocks (WK-03).
     """
     token = cancel if cancel is not None else current_token.get()
-    if token is not None and token.cancelled:
-        # A DBOS step retry, or the next step of a job already stopped: nothing to start.
-        raise ToolFailed(argv, -1, "cancelled")
-    lines: list[str] = []
-    proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
-        list(argv),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        start_new_session=True,
-    )
+    # Counted BEFORE the check: a cancel that lands while the child is being started then finds this run live
+    # and waits for it, instead of freeing the slot as the child appears.
     if token is not None:
         token._started()
+    try:
+        if token is not None and token.cancelled:
+            # A DBOS step retry, or the next step of a job already stopped: nothing to start.
+            raise ToolFailed(argv, -1, "cancelled")
+        proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
+            list(argv),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+    except BaseException:
+        if token is not None:
+            token._ended()
+        raise
+    lines: list[str] = []
     done = threading.Event()
     why: list[str] = []  # set by the watchdog before it kills, read after the child is reaped
     heard = [time.monotonic()]  # when the child last printed a line; written by the reader below
@@ -280,6 +287,10 @@ def run(
 
 def _kill_group(proc: subprocess.Popen[str]) -> None:
     """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
+    if proc.returncode is not None and not _group_alive(proc.pid):
+        # The leader is reaped and the group is empty, so its number is nobody's: the kernel may hand it to a
+        # new group. A live member pins it, so a kill that can matter still goes out.
+        return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
 
