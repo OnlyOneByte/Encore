@@ -358,6 +358,10 @@ export class RoomLink {
 		next.delete(mediaId);
 		this.mediaCatalog = next;
 		this.library = this.library.filter((m) => m.id !== mediaId);
+		// A failed song carries a scar, which every sync re-merges into the catalog and a reload seeds back: drop it
+		// too, or the next sync puts the deleted song back.
+		clearScar(mediaId);
+		this.#scarred = this.#scarred.filter((s) => s.id !== mediaId);
 		this.#emit();
 		if (tell) this.#fail("That song isn't in the library any more.");
 	}

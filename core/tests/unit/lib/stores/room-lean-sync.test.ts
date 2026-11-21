@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { RoomLink } from '$lib/stores/room';
 import { handleQueueCommand } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
+import { activeScars } from '$lib/stores/process-scars';
+import { processingGroupIds } from '$lib/readiness';
 import type { Media, ServerEvent } from '$lib/contract';
 
 /*
@@ -30,7 +32,23 @@ afterEach(() => {
 	globalThis.WebSocket = real.WebSocket;
 	delete g.window;
 	delete g.location;
+	delete g.localStorage;
 });
+
+/** A real-enough `localStorage`, so a scar is written, read back and cleared the way a browser keeps it. */
+function memoryStorage(): Storage {
+	const data = new Map<string, string>();
+	return {
+		get length() {
+			return data.size;
+		},
+		clear: () => data.clear(),
+		getItem: (k) => data.get(k) ?? null,
+		key: (i) => [...data.keys()][i] ?? null,
+		removeItem: (k) => void data.delete(k),
+		setItem: (k, v) => void data.set(k, String(v))
+	};
+}
 
 /** A connected link, the server's frames delivered through `deliver`, and every notice it raised in `notices`. */
 async function connected() {
@@ -196,4 +214,25 @@ test("a failed process this phone never fetched names the song, from the failure
 	});
 
 	expect(notices).toEqual(["Couldn't make karaoke for “Admin Song” — try again."]);
+});
+
+test('a failed song refused as deleted stays gone after the next sync: no scar puts it back', async () => {
+	// The search ran while the song was still processing, so it sits in the open search's processing group.
+	g.localStorage = memoryStorage();
+	const { link, notices, deliver } = await connected();
+	const row = song('sc', 'Scarred Song', { stemStatus: 'queued' });
+	const processingResults = [row];
+	link.mergeMedia(processingResults);
+	deliver({ type: 'media:status', mediaId: 'sc', status: 'failed', pct: 0 }); // the scar is recorded
+	expect(activeScars().map((m) => m.id)).toEqual(['sc']);
+
+	await link.requestProcess('sc'); // the retry is refused: 409 unknown media, so #songGone
+	deliver(syncOf([song('q', 'Queued Song')], 2));
+
+	expect(notices.at(-1)).toBe("That song isn't in the library any more.");
+	expect(link.mediaCatalog.has('sc')).toBe(false);
+	// The processing group, read the way `routes/+page.svelte` draws it: ids whose catalog row exists.
+	expect([...processingGroupIds(processingResults)].filter((id) => link.mediaCatalog.get(id))).toEqual([]);
+	// And a reload would not seed it back either.
+	expect(activeScars()).toEqual([]);
 });
