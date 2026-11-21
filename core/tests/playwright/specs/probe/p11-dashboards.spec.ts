@@ -37,6 +37,7 @@ import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome, openQueue } from '../../world/actors';
 import type { World } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
+import { SETTLE_MS } from '$lib/transport-target';
 // `ws`, not Node's global, for the reason world/presence.ts gives: one WebSocket implementation per suite.
 import { WebSocket } from 'ws';
 
@@ -348,6 +349,11 @@ async function driveFourPlays(world: World, phoneA: Page): Promise<number> {
 	// counted. The old probe slept 400ms per step and hoped.
 	const skip = phoneA.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
 	for (const nth of [2, 3, 4]) {
+		/* PAST THE STRIP'S SETTLE WINDOW (`$lib/transport-target`, #974): for SETTLE_MS after the song on the strip
+		   changes, its skip still names the song before, so the server drops a back-to-back skip as stale — by
+		   design, a double tap takes one song. A deliberate skip of each new turn waits it out; the margin covers the
+		   phone hearing the change a little after this probe's socket did. */
+		if (nth > 2) await phoneA.waitForTimeout(SETTLE_MS + 250);
 		await skip.click();
 		await expect
 			.poll(() => nowPlaying.entryIds.length, {
