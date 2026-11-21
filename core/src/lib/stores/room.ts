@@ -54,6 +54,11 @@ export class RoomLink {
 	/** The dock's "Reconnecting…" cue: joined, no socket, and EITHER the socket was up once (a real drop) OR it has not
 	 * come up within UNREACHABLE_AFTER_MS (a network that blocks it). Not the handshake every cold load waits on. */
 	offline = false;
+	/** The name this phone was in the room under when the room stopped knowing it, so the join screen can fill it in.
+	 * Null on a phone that was never joined in this page's life. */
+	lostName: string | null = null;
+	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
+	lostColor: string | null = null;
 	playback: PlaybackState = {
 		currentEntryId: null,
 		positionSec: 0,
@@ -97,6 +102,8 @@ export class RoomLink {
 	#errorHandlers = new Set<(message: string) => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
+	/** The socket has been up once, so the next `connected` edge is a RE-connect. */
+	#wasConnected = false;
 
 	/** Notified after every change to the fields above. Returns a disposer. */
 	subscribe(fn: () => void): () => void {
@@ -180,6 +187,10 @@ export class RoomLink {
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 			getLastRev: () => this.queue?.rev ?? 0,
 			onConnectionChange: (c) => {
+				// A socket that comes BACK is when a lost session shows: the server upgrades a phone with no valid session
+				// to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
+				if (c && this.#wasConnected) void this.#recheckMe();
+				if (c) this.#wasConnected = true;
 				this.connected = c;
 				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
 				this.offline = !c;
@@ -293,6 +304,20 @@ export class RoomLink {
 		} catch {
 			return null;
 		}
+	}
+
+	/** After a reconnect: is this phone still in the room? Only a 401 says no — anything else proves nothing, and the
+	 * socket being up says the party is there. A no settles the phone as `not-joined` and drops the socket, so the tabs
+	 * show the join screen with the name filled in. Never a silent rejoin: a session only goes when someone left on
+	 * purpose or the room was reset, and rejoining would undo a Leave. */
+	async #recheckMe(): Promise<void> {
+		if ((await this.#me()) !== 'not-joined' || this.#state !== 'live') return;
+		this.lostName = this.me?.displayName ?? null;
+		this.lostColor = this.me?.color ?? null;
+		this.me = null;
+		this.status = 'not-joined';
+		this.close();
+		this.#emit();
 	}
 
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
