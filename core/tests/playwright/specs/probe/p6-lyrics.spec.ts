@@ -360,10 +360,12 @@ test('the current line is legible at TV distance: size and contrast', async ({ w
 
 		// Against the BLACK stage floor, which is why the divisor is a literal 0 luminance rather than a measured
 		// backdrop: the reel paints over the stage, and a mid-grey ink is the regression this catches.
-		const rgb = /rgba?\((\d+)[^\d]+(\d+)[^\d]+(\d+)/.exec(geom?.currentColor ?? '');
+		const rgb = /rgba?\((\d+)[^\d]+(\d+)[^\d]+(\d+)(?:\s*[,/]\s*([\d.]+))?/.exec(geom?.currentColor ?? '');
 		expect(rgb, `the ink colour ${geom?.currentColor} is not an rgb() this can measure`).not.toBeNull();
+		// A translucent ink composites over the black floor as its channels times alpha.
+		const alpha = rgb?.[4] === undefined ? 1 : Number(rgb[4]);
 		const linear = [1, 2, 3]
-			.map((i) => Number(rgb?.[i]) / 255)
+			.map((i) => (Number(rgb?.[i]) / 255) * alpha)
 			.map((s) => (s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)));
 		const lum = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
 		const ratio = (lum + 0.05) / 0.05;
