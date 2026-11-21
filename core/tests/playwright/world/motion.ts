@@ -48,7 +48,10 @@ export interface MotionScenario {
 	 *  has one) cut it. Opacity is not checked per frame, so a fade-in's first frame counts, but the LAST frame of each
 	 *  run (the seek's settled end, the reduced burst's last shot) must also show it at an effective opacity (the
 	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
-	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails. */
+	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails.
+	 *  What it can't see: z-order (a subject painted under another element still counts as shown); a `clip-path`
+	 *  shape other than `inset()` (it counts as the whole box); and transformed clipping ancestors, whose padding
+	 *  box is approximate (`scale` > 1 can falsely fail, `scale` < 1 can hide a sliver clip). */
 	subject: string;
 	/** Seek run only: once the trigger resolves, drop every page `setTimeout` callback, pending or new, until the
 	 *  page closes. For rows whose subject has a wall-clock dismiss (the "You're up" sheet, the TV card) that would
@@ -436,11 +439,14 @@ function subjectState(
 			// Does `el` hold fixed (and so also absolute) descendants? The usual triggers; enough for this app.
 			const holdsFixed = (cs: CSSStyleDeclaration) =>
 				cs.transform !== 'none' ||
+				cs.translate !== 'none' ||
+				cs.scale !== 'none' ||
+				cs.rotate !== 'none' ||
 				cs.perspective !== 'none' ||
 				cs.filter !== 'none' ||
 				cs.backdropFilter !== 'none' ||
 				/paint|layout|strict|content/.test(cs.contain) ||
-				/transform|perspective|filter/.test(cs.willChange);
+				/transform|translate|scale|rotate|perspective|filter/.test(cs.willChange);
 			// The nearest ancestor whose overflow clip applies to `el`: its containing block, not just its parent.
 			const containingBlock = (el: Element): Element | null => {
 				const pos = getComputedStyle(el).position;
@@ -473,6 +479,7 @@ function subjectState(
 				// Overflow and paint containment clip to the padding box, per axis, along the containing-block chain.
 				for (let p = containingBlock(el); p; p = containingBlock(p)) {
 					const cs = getComputedStyle(p);
+					if (cs.display === 'inline' || cs.display === 'contents') continue; // overflow and contain don't apply
 					const paint = /paint|strict|content/.test(cs.contain);
 					const r = rect(p);
 					const pad: R = {
