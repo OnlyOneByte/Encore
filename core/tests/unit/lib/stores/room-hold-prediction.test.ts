@@ -170,3 +170,22 @@ test('a pending add is re-placed against the NEW list`s hold when a patch moves 
 	expect(queuedIds(link.entries)).toEqual(commit(after, cmd));
 	expect(queuedIds(link.entries)).toEqual(['ana-cook', 'prayer', zoe, 'believin']);
 });
+
+test('the current singer is read off the LIST, as the server does: a song-change patch can beat its playback:state', async () => {
+	const { link, deliver, lastCommand } = await zoesPhone(ROOM);
+	link.queue!.addSong('ready');
+	const cmd = lastCommand();
+	// Maya's song ended and Theo's started, and the patch says so before `playback:state` does: playback still names
+	// `caroline`, which this list no longer holds. Ana's `prayer` is On deck now, behind her cooking song.
+	const after = [
+		entry('believin', 'theo', 0, { status: 'playing' }),
+		entry('ana-cook', 'ana', 1, { mediaId: 'cooking' }),
+		entry('prayer', 'ana', 2)
+	];
+	deliver({ type: 'queue:patch', patch: { rev: 3, ops: [], entries: after } });
+	expect(link.playback.currentEntryId).toBe('caroline');
+	expect(link.heldId).toBe('prayer');
+	const zoe = cmd.op.op === 'add' ? cmd.op.entry.id : '';
+	expect(queuedIds(link.entries)).toEqual(commit(after, cmd));
+	expect(queuedIds(link.entries)).toEqual(['ana-cook', 'prayer', zoe]);
+});
