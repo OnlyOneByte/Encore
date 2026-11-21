@@ -23,9 +23,9 @@
 	/** The lane is one disc wide, so taps that arrive together would stack exactly; spacing them makes a burst a
 	 *  stream. 650 ms is what keeps two discs from TOUCHING: the climb is linear, so neighbours stay one constant
 	 *  distance apart (speed x spacing). At this spacing the closest pair still clears by 13 px at 720p, 24 px at
-	 *  1080p and 47 px at 4K, which is 130-170 ms of slack for a disc whose animation starts a few frames late on a
-	 *  busy TV. 550 ms left ~55 ms and touched under load at 4K; an eased climb, which slows the disc ahead near the
-	 *  top, overlaps at any spacing here. The probe asserts it. At most ceil(RISE_MS / SPACING_MS) = 4 on screen. */
+	 *  1080p and 47 px at 4K. It is counted from each disc's animation START (see `started`), so a late first frame
+	 *  delays the next disc instead of closing the gap. 550 ms left ~55 ms and touched under load at 4K; an eased
+	 *  climb, which slows the disc ahead near the top, overlaps at any spacing here. The probe asserts it. At most ceil(RISE_MS / SPACING_MS) = 4 on screen. */
 	const SPACING_MS = 650;
 	/** The waiting line. Past this the oldest waiting cheer drops, so a full line is at most 6 x 650 ms = 3.9 s
 	 *  behind the tap that joined it last — late, but still during the song it was for. */
@@ -37,22 +37,31 @@
 	let items = $state<Item[]>([]);
 	let waiting: Item[] = [];
 	let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The disc whose spacing has not run yet; the next one waits for it. */
+	let pending: number | undefined;
 	let seq = 0;
 
 	/** @knipignore Called through `bind:this` from routes/tv/+page.svelte, which knip cannot follow. */
 	export function add(e: Reacted): void {
 		waiting = [...waiting, { id: ++seq, kind: e.kind, color: e.color }].slice(-MAX_WAITING);
-		if (releaseTimer === undefined) release();
+		if (pending === undefined) release();
 	}
 
 	function release(): void {
 		const next = waiting.shift();
-		if (!next) {
+		pending = next?.id;
+		if (next) items = [...items, next];
+	}
+
+	/* The spacing runs from the disc's own ANIMATION START, not from its mount: on a busy TV the first frame can
+	   land hundreds of ms late, and a clock started at mount would release the next disc into the one ahead.
+	   Nightly 44844250303 caught exactly that. Positions are a function of each rise's start, so this keeps them. */
+	function started(id: number): void {
+		if (id !== pending || releaseTimer !== undefined) return;
+		releaseTimer = setTimeout(() => {
 			releaseTimer = undefined;
-			return;
-		}
-		items = [...items, next];
-		releaseTimer = setTimeout(release, SPACING_MS);
+			release();
+		}, SPACING_MS);
 	}
 
 	// Removed when its own animation ends, rise and reduced-motion fade alike.
@@ -63,7 +72,13 @@
 
 <div class="reaction-lane" aria-hidden="true" style:--rise-ms="{RISE_MS}ms" style:--fade-ms="{SLOTS * SPACING_MS}ms">
 	{#each items as it (it.id)}
-		<span class="reaction" style:--singer={it.color} style:--slot={it.id % SLOTS} onanimationend={() => done(it.id)}>
+		<span
+			class="reaction"
+			style:--singer={it.color}
+			style:--slot={it.id % SLOTS}
+			onanimationstart={() => started(it.id)}
+			onanimationend={() => done(it.id)}
+		>
 			<span class="pic"><ReactionGlyph kind={it.kind} /></span>
 		</span>
 	{/each}
