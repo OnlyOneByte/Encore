@@ -15,6 +15,9 @@ export const TV_SEAT_GRACE_MS = 15_000;
  *  a TV that flaps on and off while it boots keeps its seat. A copy can still `tv:claim` at any time. */
 export const TV_SEAT_SLOW_BOOT_MS = 60_000;
 
+/** How early a booked sweep may fire and still be caught by a re-armed one (see `#timedSweep`). */
+const EARLY_FIRE_MS = 1_000;
+
 /** The minted cookie is `mintSessionToken()`: 24 random bytes, base64url, so exactly 32 URL-safe characters. */
 const TV_COOKIE_SHAPE = /^[A-Za-z0-9_-]{32}$/;
 
@@ -133,10 +136,23 @@ export class TvSeats {
 	/** Every connect, close and claim can start (or move) a holder's wait, and that wait ends at most 15 s (the grace)
 	 *  or 60 s (the slow-boot window) after it, so each one books a sweep at both. */
 	#book(): void {
-		for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS])
-			this.#store.schedule(ms, () => {
-				for (const r of this.sweep()) this.#store.announce(r.notices);
-			});
+		for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS]) this.#store.schedule(ms, () => this.#timedSweep());
+	}
+
+	/** A booked sweep. A timer can fire a hair BEFORE its deadline (clock granularity, a loaded host), and then the
+	 *  wait it was booked to end is still running with nothing left booked to end it: so a wait that is that close
+	 *  books one more sweep for exactly what is left. A wait further off is another booked timer's to end. */
+	#timedSweep(): void {
+		for (const r of this.sweep()) this.#store.announce(r.notices);
+		const now = this.#store.now();
+		for (const s of this.#rooms.values()) {
+			if (s.holderSocket !== null || s.goneSince === null) continue;
+			const until = Math.max(s.goneSince + s.graceMs, (s.holderSeenAt ?? -Infinity) + TV_SEAT_SLOW_BOOT_MS);
+			const left = until - now;
+			// `>= 0`, not `> 0`: the clock can tick to the deadline between the sweep above and this read, and a wait
+			// that is exactly due now with nothing booked would be stranded for good.
+			if (left >= 0 && left <= EARLY_FIRE_MS) this.#store.schedule(Math.max(1, left), () => this.#timedSweep());
+		}
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): SeatNotice[] {
@@ -169,6 +185,9 @@ export class TvSeats {
 		const s = this.#rooms.get(roomId);
 		const me = s?.sockets.find((x) => x.key === key);
 		if (!s || !me?.tvId) return [];
+		// A claim by the socket that already holds the seat moves nothing, so it books nothing: a client looping on
+		// "Make this the TV" must not pile up timers.
+		if (s.holderSocket === key) return [];
 		this.#book();
 		return this.#diff(s, () => {
 			this.#setHolder(roomId, s, me.tvId!);

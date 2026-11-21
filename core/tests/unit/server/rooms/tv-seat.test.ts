@@ -286,6 +286,29 @@ test('the TV closes with a copy open and nothing else happens: the sweep THE CLO
 	expect(w.announced).toEqual([{ key: 2, mine: true }]);
 });
 
+test('a booked sweep that fires a hair early re-arms for what is left, so the wait still ends', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'laptop');
+	const due = w.timers.find((t) => t.at === 1_000_000 + 60_000)!;
+	// The 60 s timer fires 1 ms early: the slow-boot window is not over, so nothing moves...
+	w.timers.splice(w.timers.indexOf(due), 1);
+	w.advance(59_999);
+	due.run();
+	expect(w.announced).toEqual([]);
+	// ...but it booked one more sweep for the 1 ms left, and that one promotes the copy.
+	w.tick(1);
+	expect(w.announced).toEqual([{ key: 1, mine: true }]);
+});
+
+test('a claim by the screen that already holds the seat moves nothing and books nothing', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.timers.splice(0);
+	for (let i = 0; i < 1000; i++) expect(w.seats.claim(ROOM, 1)).toEqual([]);
+	expect(w.timers).toEqual([]);
+	expect(w.mine(1)).toBe(true);
+});
+
 test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
 	const w = world();
 	const booked = () => w.timers.splice(0).map((t) => t.at - 1_000_000);
@@ -296,4 +319,35 @@ test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
 	expect(booked()).toEqual([15_000, 60_000, 15_000, 60_000]);
 	w.seats.disconnect(ROOM, 2);
 	expect(booked()).toEqual([15_000, 60_000]);
+});
+
+test('a sweep that fires 1 ms early while the clock ticks to the deadline mid-sweep still re-arms', () => {
+	// The clock the server reads can move between the sweep's own check (59 999 ms: not yet) and the re-arm's
+	// (60 000 ms: due now), as it did on a loaded host. That moment must still book one more sweep.
+	let now = 1_000_000;
+	let tickAfter = Infinity;
+	const timers: { at: number; run: () => void }[] = [];
+	const announced: SeatNotice[] = [];
+	const seats = new TvSeats({
+		load: () => 'tvA',
+		save: () => {},
+		now: () => {
+			if (--tickAfter === 0) now += 1;
+			return now;
+		},
+		schedule: (ms, run) => timers.push({ at: now + ms, run }),
+		announce: (n) => announced.push(...n)
+	});
+	seats.connect(ROOM, 1, 'laptop');
+	const due = timers.find((t) => t.at === 1_060_000)!;
+	timers.length = 0;
+	now = 1_059_999;
+	// The sweep reads the clock once (59 999 ms), then it ticks: the re-arm reads 60 000 ms.
+	tickAfter = 2;
+	due.run();
+	expect(announced).toEqual([]);
+	expect(timers.length, 'nothing was re-armed, so the copy is stranded').toBe(1);
+	tickAfter = Infinity;
+	timers[0]!.run();
+	expect(announced).toEqual([{ key: 1, mine: true }]);
 });

@@ -273,6 +273,9 @@
 	 * change when the wall is finally tapped. The `needsShift` guard keeps the keyShift-0 invariant.
 	 */
 	async function retryPitchAfterGesture(): Promise<void> {
+		// A COPY never shifts (or resumes a context) on a tap. Untested on its own: a copy has no graph to retry, so
+		// `!masterGraph` below already returns, and no probe can make this guard alone the one that bites.
+		if (silent) return;
 		if (!needsShift(keyShift)) return;
 		if (!masterGraph) return;
 		await masterGraph.setShift(keyShift).catch(() => {});
