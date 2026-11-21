@@ -23,20 +23,21 @@ import type { World } from '../../world/fixtures';
 const CHIP = '.copy-chip';
 const CLAIM = { name: 'Make this the TV' };
 
-type Screen = { page: Page; sent: { telemetry: number; ended: string[] } };
+type Screen = { page: Page; sent: { telemetry: number; ended: string[]; playing: [at: number, sec: number][] } };
 
 /**
  * A /tv on its own context, counting the telemetry frames it sends and the AudioContexts it makes or resumes. `real`
  * is the room's TV (the world's screen); any other gets its own `encore_tv` from GET /tv, so it is a second screen.
  * `holdVerdict` drops the server's `tv:seat` frames on their way in, so the page never learns what it is. `dropEnded`
  * drops this screen's own `ended` telemetry on its way out (counted, never delivered), so it can never end a song.
+ * `noWebAudio` deletes `AudioContext` from the page, so every guide-mix route settles plain at once (degraded).
  */
 async function openScreen(
 	browser: Browser,
 	world: World,
 	width: number,
 	height: number,
-	{ real = false, holdVerdict = false, resumeMs = 0, dropEnded = false } = {}
+	{ real = false, holdVerdict = false, resumeMs = 0, dropEnded = false, noWebAudio = false } = {}
 ): Promise<Screen> {
 	const ctx = await browser.newContext({ viewport: { width, height }, baseURL: world.baseURL });
 	if (real) await ctx.addCookies([world.tvCookie]);
@@ -72,12 +73,21 @@ async function openScreen(
 			}
 		};
 	}, resumeMs);
-	const sent = { telemetry: 0, ended: [] as string[] };
+	if (noWebAudio)
+		await page.addInitScript(() => {
+			const w = window as unknown as Record<string, unknown>;
+			delete w.AudioContext;
+			delete w.webkitAudioContext;
+		});
+	// `playing` keeps every position this screen tells the room, stamped when it left (the same clock as `Date.now()`
+	// in a page), so a hold on the positions is read at the source, not off a server poll that can miss one frame.
+	const sent = { telemetry: 0, ended: [] as string[], playing: [] as [number, number][] };
 	const count = (payload: string | Buffer) => {
 		if (!String(payload).includes('"tv:telemetry"')) return;
 		sent.telemetry++;
-		const f = JSON.parse(String(payload)) as { status: string; entryId?: string };
+		const f = JSON.parse(String(payload)) as { status: string; entryId?: string; positionSec?: number };
 		if (f.status === 'ended') sent.ended.push(f.entryId ?? '');
+		if (f.status === 'playing') sent.playing.push([Date.now(), f.positionSec ?? 0]);
 	};
 	if (holdVerdict || dropEnded) {
 		await page.routeWebSocket(/\/ws\?role=tv/, (ws) => {
@@ -568,14 +578,30 @@ for (const resumeMs of [0, 3_000, 8_000]) {
 //    then tell the server the song ended, so the room moves on within a second only if the new seat says so.
 //  - `+300 ms` after the edge, the old TV left alone (its own `ended` usually gets there first).
 //  - `into`: 1.5 s into Bo's song, already playing plain on the copy. The guide reload must RESUME there, not restart
-//    Bo at 0:00, and no position the room hears may fall back towards 0 meanwhile.
+//    Bo at 0:00, and no position the new TV sends may fall back towards 0 meanwhile.
+//  - `into`, on a copy with NO Web Audio: the re-decide settles on the plain src it already plays, so nothing reloads.
+//    The held resume must go, or the new TV says nothing until a later re-buffer jumps the song back to the claim.
 const SWAP_CASES = [
-	{ name: 'at the song swap, the old TV never ending it', offsetMs: 0, dropOldEnded: true, intoSec: 0 },
-	{ name: 'at the song swap (+300 ms)', offsetMs: 300, dropOldEnded: false, intoSec: 0 },
-	{ name: '1.5 s into the next song', offsetMs: 0, dropOldEnded: false, intoSec: 1.5 }
+	{
+		name: 'at the song swap, the old TV never ending it',
+		offsetMs: 0,
+		dropOldEnded: true,
+		intoSec: 0,
+		noWebAudio: false
+	},
+	{ name: 'at the song swap (+300 ms)', offsetMs: 300, dropOldEnded: false, intoSec: 0, noWebAudio: false },
+	{ name: '1.5 s into the next song', offsetMs: 0, dropOldEnded: false, intoSec: 1.5, noWebAudio: false },
+	{
+		name: '1.5 s into the next song, with no Web Audio',
+		offsetMs: 0,
+		dropOldEnded: false,
+		intoSec: 1.5,
+		noWebAudio: true
+	}
 ];
 for (const c of SWAP_CASES) {
-	test(`a claim ${c.name} keeps the next song's guide, in place, and the room on it`, async ({ browser, world }) => {
+	const outcome = c.noWebAudio ? 'keeps the plain song going' : "keeps the next song's guide, in place";
+	test(`a claim ${c.name} ${outcome}, and the room on it`, async ({ browser, world }) => {
 		test.setTimeout(180_000);
 		const worker = await startFakeWorker(world, { guideMix: true, seconds: 30 });
 		try {
@@ -587,7 +613,7 @@ for (const c of SWAP_CASES) {
 			const res = await phone.request.put('/api/settings/room', { data: { songIntroEnabled: false } });
 			expect(res.ok()).toBe(true);
 			const tv = await openScreen(browser, world, 1920, 1080, { real: true, dropEnded: c.dropOldEnded });
-			const copy = await openScreen(browser, world, 1920, 1080);
+			const copy = await openScreen(browser, world, 1920, 1080, { noWebAudio: c.noWebAudio });
 			for (const s of [tv, copy]) await tap(s);
 			await singTrack(phone, world.baseURL, TRACKS.caroline);
 			await singTrack(bo, world.baseURL, TRACKS.believin);
@@ -679,19 +705,23 @@ for (const c of SWAP_CASES) {
 			const claimAt = await copy.page.evaluate(() => (window as unknown as { __claimAt: number }).__claimAt);
 			await expect(copy.page.locator(CHIP)).toHaveCount(0);
 			if (c.intoSec > 0) {
-				// What the room hears while the guide reloads: no position falls back towards 0 (a reload reads 0 until
-				// `canplay` seeks it home, and the phones and the lyrics would follow that 0).
+				// What the new TV TELLS the room after the claim, read off its own sent `playing` frames: never a position
+				// back towards 0 (a reload reads 0 until `canplay` seeks it home, and the phones and the lyrics would
+				// follow it), and, with no reload at all, no silence either: a frame within 1.5 s and no gap over 1 s.
 				const playhead = await copy.page.evaluate(
 					() => (window as unknown as { __claimPlayhead: number }).__claimPlayhead
 				);
-				const heard: number[] = [];
-				while (Date.now() - claimAt < 2_000) {
-					heard.push((await serverPlayback(world.baseURL)).state.positionSec);
-					await copy.page.waitForTimeout(50);
-				}
-				expect(Math.min(...heard), `the room heard a position back near 0: ${heard.join(', ')}`).toBeGreaterThan(
-					playhead - 0.5
-				);
+				await copy.page.waitForTimeout(Math.max(0, 4_000 - (Date.now() - claimAt)));
+				const told = copy.sent.playing.filter(([at]) => at >= claimAt);
+				const said = told.map(([at, sec]) => `+${at - claimAt}ms:${sec.toFixed(2)}`).join(', ');
+				expect(told.length, 'the new TV sent no position after the claim').toBeGreaterThan(0);
+				expect(told[0][0] - claimAt, `the new TV's first position came late: ${said}`).toBeLessThan(1_500);
+				const gaps = told.slice(1).map(([at], i) => at - told[i][0]);
+				expect(Math.max(0, ...gaps), `a gap in the new TV's positions: ${said}`).toBeLessThan(1_000);
+				expect(
+					Math.min(...told.map(([, sec]) => sec)),
+					`the new TV sent a position back near 0: ${said}`
+				).toBeGreaterThan(playhead - 0.5);
 			}
 
 			// THE ROOM MOVES ON within about a second of the claim: the server, every phone, and the new TV's lower-third.
@@ -713,8 +743,11 @@ for (const c of SWAP_CASES) {
 			// THE GUIDE: Bo's song plays the guide mix on the screen that took the seat, with no notice and no media error.
 			const srcOf = (p: Page) =>
 				p.evaluate(() => [...document.querySelectorAll('audio')].find((e) => !e.paused)?.getAttribute('src') ?? '');
-			await expect.poll(() => srcOf(copy.page), { timeout: 15_000 }).toContain('guide');
-			if (c.intoSec > 0) {
+			if (c.noWebAudio) {
+				// Degraded: the plain instrumental plays on, never the 4-channel mix with no graph to split it.
+				expect(await srcOf(copy.page), 'a copy with no Web Audio switched src').toContain('instrumental');
+			} else await expect.poll(() => srcOf(copy.page), { timeout: 15_000 }).toContain('guide');
+			if (c.intoSec > 0 && !c.noWebAudio) {
 				// IN PLACE: the guide mix starts where the plain song was at the claim, not at 0:00.
 				const playhead = await copy.page.evaluate(
 					() => (window as unknown as { __claimPlayhead: number }).__claimPlayhead

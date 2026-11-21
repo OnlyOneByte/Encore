@@ -13,7 +13,7 @@
  */
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { burst, mounted, putRoom, stage } from '../../world/reactions';
+import { burst, countMounts, mounted, putRoom, stage } from '../../world/reactions';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 import { TAP } from '../gate/measured-design-register';
 import type { Page } from '@playwright/test';

@@ -423,6 +423,9 @@
 		// GUIDE-MIX song is worth that pause (nothing else would reload), and only on a page that has had a tap: with no
 		// activation the context cannot run, and the gate would hold the song paused for the 10 s resume bound only to
 		// settle plain (a 15 s grace hand-off to a copy nobody touched). `userActivation` absent: assume it can.
+		// Untested on its own: every Playwright `evaluate`, locator query and trace snapshot gives the page a sticky
+		// activation, so the suite cannot hold a page untapped; the r10 review probed it with tracing off and a
+		// no-gesture autoplay policy, which `playwright.config.ts` does not run.
 		const canRoute = wantsEagerGraph(guidePlan) && navigator.userActivation?.hasBeenActive !== false;
 		if (plainThisSong && (!active || (canRoute && v.currentTime < REDECIDE_WITHIN_SEC))) {
 			if (active) {
