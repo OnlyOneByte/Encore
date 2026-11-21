@@ -16,6 +16,11 @@ import type { AuthoritativeState } from '../state/store';
 import { can, type Capability } from '../capabilities';
 import { queueEntries } from '../db/schema';
 import { entryPrefsRefusal, onDeckOpRefusal, type OnDeckOp } from './on-deck-ops';
+import { heldOnDeck, stealsHeld } from '../rotation';
+
+/** The refusal a reorder that would steal On deck gets. The phone parses it to name the singer (room.ts `onReject`), so
+ *  it carries the held entry's id: keep the two in step. */
+export const ON_DECK_HELD = 'on deck is held';
 
 // queue_entries.status is the single source of truth for the entry-status VALUE LIST; its enumValues are read below ONLY to CLASSIFY
 // a rejected status for the operator log, never to gate the add arm — that allowed set is the single literal 'queued'. The column is
@@ -93,14 +98,24 @@ const ENTRY_OP_GATE = {
  *     asking for one on your own song would refuse a singer their own turn the moment `can()` narrows to a
  *     host role. `can()` ignores its capability today, which is exactly why this cannot be caught by a test
  *     of behaviour: every capability resolves the same, so the ORDER is the only thing carrying the rule.
+ *  4. ON DECK IS HELD, last, and keyed on the HELD entry's owner, not the moved one's: a reorder by anyone but Theo may
+ *     not move Theo's On deck entry or land a row in front of it — Ana's own song included (proposal 14,
+ *     `heldOnDeck`). Theo keeps every move he has. Removal is not a reorder and is not held.
  */
 function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: HubDeps): string | null {
 	const target = deps.state.entries.find((e) => e.id === op.id);
 	if (!target) return `unknown entry: ${op.id}`;
 	if (op.op === 'move-to-index' && !Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
-	if (target.singerId === deps.actorSingerId) return null;
-	const gate = ENTRY_OP_GATE[op.op];
-	if (!can({ singerId: deps.actorSingerId }, gate.capability)) return gate.refusal;
+	if (target.singerId !== deps.actorSingerId) {
+		const gate = ENTRY_OP_GATE[op.op];
+		if (!can({ singerId: deps.actorSingerId }, gate.capability)) return gate.refusal;
+	}
+	if (op.op === 'remove') return null;
+	const ordering = orderingOf(deps);
+	const entries = deps.state.entries as QueueEntry[];
+	const held = heldOnDeck(entries, deps.mediaById, ordering, deps.listAway?.() ?? []);
+	if (held && held.singerId !== deps.actorSingerId && stealsHeld(entries, op, held, ordering))
+		return `${ON_DECK_HELD}: ${held.id}`;
 	return null;
 }
 
@@ -212,7 +227,12 @@ export function handleQueueCommand(
 		op = { op: 'add', entry: { ...entry, deferred, addedAt: deps.state.nextAddedAt() } };
 	}
 
-	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
+	// An add lands behind a held On deck entry under every queue order (proposal 14, `insertEntry`).
+	const held =
+		op.op === 'add'
+			? heldOnDeck(deps.state.entries as QueueEntry[], deps.mediaById, orderingOf(deps), deps.listAway?.() ?? [])
+			: null;
+	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op, { heldId: held?.id ?? null });
 
 	// AFTER applying, so the hook sees the post-remove queue and can decide whether to cancel.
 	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);

@@ -1,6 +1,15 @@
 // Server-side rotation policy. Wraps the shared ordering registry (`assignSeqs` → queue-order.ts) and adds the server-only concern: which entry plays NEXT, with the held-slot rule (skip an entry that isn't ready yet without burning its fair position). See docs/ARCHITECTURE.md. WHICH ordering applies is the room's `queueOrder` setting, passed in as `Ordering` — optional, defaulting to fair rotation, but a caller on the live path must pass the room's or it will pick a different "next" than the queue the clients are looking at.
 
-import { assignSeqs, readyToSing, type Ordering, type QueueEntry, type Media } from '../contract';
+import {
+	applyAndReseq,
+	assignSeqs,
+	heldEntryId,
+	readyToSing,
+	type Ordering,
+	type QueueEntry,
+	type QueueOp,
+	type Media
+} from '../contract';
 
 /** Re-derive the room's ordering + contiguous rotationSeq. Server owns this value. */
 export function reseq(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
@@ -27,6 +36,33 @@ export function nextPlayable(
 		held.push(e); // processing — hold its slot, try the next singer
 	}
 	return { next: null, held };
+}
+
+/** THE HELD ENTRY (proposal 14): the room's next playable entry while its singer's On deck card shows. Which entries
+ *  qualify is the shared `heldEntryId` rule, so the phone pins the same row and both sides clamp adds behind it. */
+export function heldOnDeck(
+	entries: QueueEntry[],
+	mediaById: Map<string, Media>,
+	ordering: Ordering,
+	away: readonly string[]
+): QueueEntry | null {
+	const { next } = nextPlayable(entries, mediaById, ordering);
+	const nowSingerId = entries.find((e) => e.status === 'playing')?.singerId;
+	return heldEntryId(next, nowSingerId, (id) => away.includes(id)) ? next : null;
+}
+
+/** Would `op` move the held entry, or put an entry in front of it that was not there before? Judged on the list the op
+ *  would COMMIT, so `move` and `move-to-index` answer through the one shared arithmetic. Moving a row from in front of
+ *  it to behind it, or among the rows behind it, steals nothing. */
+export function stealsHeld(entries: QueueEntry[], op: QueueOp, held: QueueEntry, ordering: Ordering): boolean {
+	if ('id' in op && op.id === held.id) return true;
+	const ahead = (list: QueueEntry[]) => {
+		const queued = reseq(list, ordering).filter((e) => e.status === 'queued');
+		const at = queued.findIndex((e) => e.id === held.id);
+		return new Set(queued.slice(0, Math.max(0, at)).map((e) => e.id));
+	};
+	const before = ahead(entries);
+	return [...ahead(applyAndReseq(entries, op, ordering))].some((id) => !before.has(id));
 }
 
 /** The entry shown as "up next" on the TV (for gapless preload) — the soonest ready entry. */

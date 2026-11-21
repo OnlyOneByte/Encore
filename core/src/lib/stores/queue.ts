@@ -33,11 +33,12 @@ export interface QueueStoreDeps {
 	singerId: string;
 	mintId?: () => string; // injectable for deterministic tests
 	/** Optional: surface a rejected op to the UI (e.g. a toast). */
-	onReject?: (reason: string) => void;
+	onReject?: (reason: string, op: QueueOp) => void;
 	/** The room's ordering — which algorithm, plus the sing history it may read. A GETTER because both halves move at
 	 * runtime, and the optimistic prediction MUST be made with the same ordering the server will commit, or every add
-	 * lands in the wrong place for a frame and then snaps. Absent means fair rotation. */
-	ordering?: () => Ordering;
+	 * lands in the wrong place for a frame and then snaps. Absent means fair rotation. Handed the list the op is about to
+	 * be applied onto, so what is read off the queue itself (the held On deck entry) comes from that list. */
+	ordering?: (list: readonly QueueEntry[]) => Ordering;
 }
 
 export class QueueStore {
@@ -143,9 +144,11 @@ export class QueueStore {
 		return this.#lastAddedAt;
 	}
 
-	/** The room's ordering, or fair rotation when the app has not supplied one. */
-	#ordering(): Ordering {
-		return this.#deps.ordering?.() ?? {};
+	/** The room's ordering for an op about to be applied onto `list`, or fair rotation when the app has not supplied one.
+	 *  The LIST is passed because part of the ordering is read off it (the On deck hold an add lands behind): a pending
+	 *  add rebased onto a new server list must be placed against THAT list's hold, not the last one emitted. */
+	#ordering(list: readonly QueueEntry[]): Ordering {
+		return this.#deps.ordering?.(list) ?? {};
 	}
 
 	#optimistic(op: QueueOp): void {
@@ -155,7 +158,7 @@ export class QueueStore {
 		this.#pending.set(clientOpId, { op, snapshot, seq: this.#pendingSeq++ });
 		// The SAME reducer the server runs (applyAndReseq), so the optimistic row lands at its real round-robin position
 		// THIS FRAME — no jump-to-bottom-then-resort flicker.
-		this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
+		this.#entries = applyAndReseq(this.#entries, op, this.#ordering(this.#entries));
 		this.#emit();
 		this.#deps.sendCommand({ clientOpId, op });
 	}
@@ -205,7 +208,7 @@ export class QueueStore {
 		let acc = base;
 		for (const p of pendingOps) {
 			p.snapshot = acc.map((x) => ({ ...x }));
-			acc = applyAndReseq(acc, p.op, this.#ordering());
+			acc = applyAndReseq(acc, p.op, this.#ordering(acc));
 		}
 		return acc;
 	}
@@ -223,7 +226,7 @@ export class QueueStore {
 			this.#entries = this.#rebasePending(base, this.#pending.values());
 		} else {
 			// A pure re-ack carries no entries, so there is nothing authoritative to rebase onto.
-			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
+			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op, this.#ordering(this.#entries));
 		}
 		this.#emit();
 	}
@@ -253,6 +256,6 @@ export class QueueStore {
 		const base = pending.snapshot.map((x) => ({ ...x }));
 		this.#entries = this.#rebasePending(base, survivors);
 		this.#emit();
-		this.#deps.onReject?.(e.reason); // surface to the UI (toast)
+		this.#deps.onReject?.(e.reason, pending.op); // surface to the UI (toast)
 	}
 }

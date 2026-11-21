@@ -149,6 +149,7 @@ const EXPECTED = [
 	'hasNewerCandidateThanOverride',
 	'hasUsableTiming',
 	'hasVocalRange',
+	'heldEntryId',
 	'hueDistance',
 	'hueOfColor',
 	'hueToHex',

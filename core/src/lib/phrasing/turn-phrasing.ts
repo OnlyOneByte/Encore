@@ -4,6 +4,11 @@
 
 /** The singer whose song is playing (or starting) now. */
 export const NOW_SINGING = 'Now singing';
+/** A reorder stopped short of someone else's On deck (proposal 14). `after` is the moved song's singer, null for mine.
+ *  Names, never a pronoun: the app does not know anyone's. */
+export function onDeckHeldNote(onDeck: string, after: string | null): string {
+	return `${onDeck}’s on deck. ${after === null ? 'You go' : `${after} goes`} right after.`;
+}
 /** The singer after that. */
 export const UP_NEXT = 'Up next';
 /** The phone's own word for the moment the room's current song becomes yours. */

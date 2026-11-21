@@ -205,7 +205,12 @@
 	   every route without one (all of /settings) silent. The layout outlives every navigation, as the link does.
 	   It registers on /tv, /admin and /metrics too, deliberately: the link never connects there (`NOT_PHONE`), so
 	   nothing reaches it. */
-	onMount(() => room.onError((message) => toast.error(message, { duration: 4000 })));
+	// `info` is a refusal that is nobody's mistake: someone else's On deck kept its turn (proposal 14).
+	onMount(() =>
+		room.onError((message, kind) =>
+			kind === 'info' ? toast.info(message, { duration: 4000 }) : toast.error(message, { duration: 4000 })
+		)
+	);
 
 	/* THE TRANSPORT'S DROPPED-COMMAND NOTICE, and the argument for it, because a toast per tap needs one.
 	   `room.command` reports whether the frame reached the wire; false means the socket was absent or not OPEN, so
