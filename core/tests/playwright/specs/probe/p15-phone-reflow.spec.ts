@@ -9,7 +9,8 @@
 // surface's claim are read off one pass.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { startFakeWorker } from '../../world/workers';
 import type { Page } from '@playwright/test';
 
 const VIEWPORT_W = 320;
@@ -58,15 +59,24 @@ async function read(page: Page): Promise<Reading> {
 			offenders: [],
 			spills: []
 		};
-		const describe = (el: Element, r: DOMRect) => {
+		// Two classes at most: a Button carries ~40 utilities, and its whole list buries the one line that matters.
+		const describe = (el: Element, r: DOMRect, text: Node | null = null) => {
 			const cls =
-				typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+				typeof el.className === 'string' && el.className.trim()
+					? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.')
+					: '';
+			const tag = el.tagName.toLowerCase() + cls;
 			return {
-				sel: el.tagName.toLowerCase() + cls,
+				sel: text ? `#text in ${tag}` : tag,
 				right: Math.round(r.right * 100) / 100,
 				width: Math.round(r.width * 100) / 100,
-				text: (el.textContent ?? '').trim().slice(0, 40)
+				text: ((text ?? el).textContent ?? '').trim().slice(0, 40)
 			};
+		};
+		// The spill line carries the LEFT edge as well: a centred row overhangs both sides.
+		const spill = (el: Element, r: DOMRect, text: Node | null) => {
+			const d = describe(el, r, text);
+			return { ...d, sel: `${d.sel}  left=${Math.round(r.left * 100) / 100}` };
 		};
 		// Text nodes too, for the spill arm only: a Button's bare label is a text node, and it is what spills when the
 		// label cannot wrap. A Range measures it; the node is reported by its parent element.
@@ -87,7 +97,8 @@ async function read(page: Page): Promise<Reading> {
 			if (r.width === 0 && r.height === 0) continue;
 			if (!isText && r.right > de.clientWidth + 0.5) out.offenders.push(describe(el, r));
 			const box = (isText ? el : el.parentElement)?.closest('[data-slot="button"]')?.getBoundingClientRect();
-			if (box && (r.left < box.left - 0.5 || r.right > box.right + 0.5)) out.spills.push(describe(el, r));
+			if (box && (r.left < box.left - 0.5 || r.right > box.right + 0.5))
+				out.spills.push(spill(el, r, isText ? n : null));
 		}
 		return out;
 	});
@@ -188,7 +199,8 @@ test('/settings/you reflows at 320px with the text doubled', async ({ world, pag
 /**
  * THE MACHINE SCOPE, so all three settings routes are measured. Its `Advanced` trigger and `Processing metrics ·
  * internal` out-link are `size="block"` rows with a trailing note or Badge — the same shape as the room scope's
- * `Party stats · safe to share` door, which overflowed by 28px while the Button base's nowrap applied to `block`.
+ * `Party stats · safe to share` door, whose Badge overhung its own box while the Button base's nowrap applied to
+ * `block`.
  */
 test('/settings/server reflows at 320px with the text doubled', async ({ world, page }) => {
 	await world.joinAs(page, 'ReflowServer');
@@ -199,6 +211,38 @@ test('/settings/server reflows at 320px with the text doubled', async ({ world, 
 			page.locator(SEL.setting('engine')).waitFor({ state: 'attached' })
 		)
 	);
+});
+
+/**
+ * THE ON DECK CARD, because its `Not yet — let Ana go first` row is the one `size="block"` label with no Badge to
+ * move: only `whitespace-normal` can fold it, and without that it ran ~106px past the page. The card renders only
+ * for the singer up next, so the room is driven the way `shot/on-deck.spec.ts` drives it: three phones, a fake
+ * worker so the songs are ready, Theo singing, Maya next, Ana behind her.
+ */
+test('the On deck card reflows at 320px with the text doubled', async ({ world }) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const theo = await world.openPhone('Theo');
+		const maya = await world.openPhone('Maya', { stop: 'End' });
+		const ana = await world.openPhone('Ana');
+		await readySong(world, theo, 'believin');
+		await readySong(world, theo, 'caroline');
+		await readySong(world, theo, 'prayer');
+		await queueReady(theo, 'believin');
+		await expect(theo.locator(SEL.npStripTitle)).toBeAttached();
+		await queueReady(maya, 'caroline');
+		await queueReady(ana, 'prayer');
+
+		await maya.setViewportSize({ width: VIEWPORT_W, height: VIEWPORT_H });
+		await openQueue(maya);
+		const notYet = maya.locator('section[aria-label="On deck"]').getByRole('button', { name: /^Not yet/ });
+		assertReflows(
+			'/queue (On deck)',
+			await measure(maya, '/queue (On deck)', '/queue', () => notYet.waitFor({ state: 'visible' }))
+		);
+	} finally {
+		await worker.stop();
+	}
 });
 
 test('/stats reflows at 320px with the text doubled', async ({ world, page }) => {
