@@ -93,3 +93,26 @@ test('tv:telemetry is honoured only from the TV seat: not a phone, not a cookiel
 	seat.ws.close();
 	copy.ws.close();
 }, 20_000);
+
+// The TV is switched off while a laptop /tv stays open, and nothing else connects: only the sweep the CLOSE booked
+// can promote the copy (review of #990, must-fix 1). The TV closes 46 s after the copy connected, so the sweeps that
+// connect booked (15 s and 60 s after it) both come and go before the TV's 15 s grace ends.
+test('the TV goes away with a copy open and no other connect: the copy is promoted and honoured', async () => {
+	const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+	const mine = (s: { frames: Frame[] }) => s.frames.filter((f) => f.type === 'tv:seat').at(-1)?.mine;
+	const tv = await open('tv', screen('P'));
+	tv.ws.send(JSON.stringify({ type: 'tv:claim' }));
+	await settle();
+	const copy = await open('tv', screen('Q'));
+	await settle();
+	expect([mine(tv), mine(copy)]).toEqual([true, false]);
+	// Past the slow-boot window since the TV took the seat, so only the 15 s grace is left when it goes.
+	await sleep(61_000);
+	tv.ws.close();
+	await sleep(16_000);
+	expect(mine(copy)).toBe(true);
+	copy.ws.send(JSON.stringify({ type: 'tv:telemetry', status: 'playing', positionSec: 33 }));
+	await settle();
+	expect(await syncedPosition()).toBe(33);
+	copy.ws.close();
+}, 100_000);

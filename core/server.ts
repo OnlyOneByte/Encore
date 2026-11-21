@@ -27,7 +27,13 @@ import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from './src/lib/server/realtime/room-scope';
 import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
-import { TvSeats, TV_SEAT_GRACE_MS, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
+import {
+	TvSeats,
+	TV_SEAT_GRACE_MS,
+	TV_SEAT_SLOW_BOOT_MS,
+	tvIdOf,
+	type SeatNotice
+} from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
@@ -84,11 +90,13 @@ function announceSeat(notices: SeatNotice[]): void {
 	for (const n of notices)
 		tvSockets.get(n.key)?.send(JSON.stringify({ type: 'tv:seat', mine: n.mine } satisfies ServerEvent));
 }
-// Every connect and close can start a holder's grace, so each one books the sweep that ends it.
+// Every connect and close can start a holder's wait, and that wait ends at most 15 s (the grace) or 60 s (the
+// slow-boot window) after it, so each one books a sweep at both.
 function sweepSeatsAfterGrace(): void {
-	setTimeout(() => {
-		for (const r of tvSeats.sweep()) announceSeat(r.notices);
-	}, TV_SEAT_GRACE_MS).unref?.();
+	for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS])
+		setTimeout(() => {
+			for (const r of tvSeats.sweep()) announceSeat(r.notices);
+		}, ms).unref?.();
 }
 
 // Guarded so WS still boots pre-build.

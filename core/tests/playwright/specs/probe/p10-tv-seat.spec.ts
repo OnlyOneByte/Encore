@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { startCore, type Core } from '../../world/core';
 import { seedDemoLibrary } from '../../world/seed';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
-import { TV_SEAT_GRACE_MS } from '../../../../src/lib/server/rooms/tv-seat';
+import { TV_SEAT_SLOW_BOOT_MS } from '../../../../src/lib/server/rooms/tv-seat';
 
 let core: Core;
 let worker: FakeWorker;
@@ -153,7 +153,7 @@ test('with the real TV holding the seat, no other /tv can end the song or move t
 });
 
 test('the real TV gets its seat back with zero steps: on a reload, and after its cookie is cleared', async () => {
-	test.setTimeout(60_000);
+	test.setTimeout(120_000);
 	const mineOf = (s: Sock) => s.frames.filter((f) => f.type === 'tv:seat').at(-1)?.mine;
 	const real = await loadTv();
 	const tv = await open('role=tv', real.cookie);
@@ -169,11 +169,11 @@ test('the real TV gets its seat back with zero steps: on a reload, and after its
 	expect(mineOf(reloaded)).toBe(true);
 
 	// Cookie cleared: GET /tv mints a new one, so the TV comes back as a copy, and is the newest screen when the
-	// holder's grace runs out. The forgotten laptop tab, older, stays a copy.
+	// holder's wait runs out: 60 s here, since the old cookie connected just now. The older laptop tab stays a copy.
 	reloaded.ws.close();
 	const fresh = await open('role=tv', (await loadTv()).cookie);
 	expect(mineOf(fresh)).toBe(false);
-	await sleep(TV_SEAT_GRACE_MS + 1_000);
+	await sleep(TV_SEAT_SLOW_BOOT_MS + 1_000);
 	expect(mineOf(fresh)).toBe(true);
 	expect(mineOf(laptop)).toBe(false);
 	for (const s of [fresh, laptop]) s.ws.close();

@@ -10,10 +10,20 @@ export const TV_COOKIE = 'encore_tv';
 /** How long a seat waits for its screen after that screen's last socket closes (a reload, a wifi blip, a reboot). */
 export const TV_SEAT_GRACE_MS = 15_000;
 
+/** The slow-boot guard. After a core restart a saved holder gets this long, not the grace, since a TV boots slower
+ *  than a phone tab reconnects. And no copy is promoted while the holder's cookie connected within this window, so
+ *  a TV that flaps on and off while it boots keeps its seat. A copy can still `tv:claim` at any time. */
+export const TV_SEAT_SLOW_BOOT_MS = 60_000;
+
 /** The minted cookie is `mintSessionToken()`: 24 random bytes, base64url, so exactly 32 URL-safe characters. */
 const TV_COOKIE_SHAPE = /^[A-Za-z0-9_-]{32}$/;
 
-/** Read the screen's cookie value out of a Cookie header, or undefined when absent or not one we could have minted. */
+/**
+ * Read the screen's cookie value out of a Cookie header, or undefined when absent or not one we could have minted.
+ * FIXATION IS HARMLESS HERE, BY DESIGN: only the shape is checked, so a planted or known value (cookies are not
+ * port-scoped) is "the same screen" as its holder. That buys nothing a `tv:claim` does not already give any LAN
+ * device under the owner's no-lockout rule. The seat is an identity, never an auth gate.
+ */
 export function readTvCookie(cookieHeader: string | null): string | undefined {
 	if (!cookieHeader) return undefined;
 	for (const part of cookieHeader.split(';')) {
@@ -39,6 +49,10 @@ type Seat = {
 	holderSocket: number | null;
 	/** When the holder's last socket closed (or, after a restart, when the room was first seen), else null. */
 	goneSince: number | null;
+	/** How long the holder may be gone before a copy is promoted: the grace, or the slow-boot window after a restart. */
+	graceMs: number;
+	/** When the holder's cookie last connected (or took the seat), else null. See {@link TV_SEAT_SLOW_BOOT_MS}. */
+	holderSeenAt: number | null;
 	/** Every live TV socket of the room, oldest first. A cookieless one has no tvId and can never hold the seat. */
 	sockets: { key: number; tvId?: string }[];
 };
@@ -61,8 +75,15 @@ export class TvSeats {
 		let s = this.#rooms.get(roomId);
 		if (!s) {
 			const holder = this.#store.load(roomId);
-			// After a restart the holder has no socket yet: it gets the same grace as a reload, counted from now.
-			s = { holder, holderSocket: null, goneSince: holder ? this.#store.now() : null, sockets: [] };
+			// After a restart the holder has no socket yet: it gets the slow-boot window, counted from now.
+			s = {
+				holder,
+				holderSocket: null,
+				goneSince: holder ? this.#store.now() : null,
+				graceMs: holder ? TV_SEAT_SLOW_BOOT_MS : TV_SEAT_GRACE_MS,
+				holderSeenAt: null,
+				sockets: []
+			};
 			this.#rooms.set(roomId, s);
 		}
 		return s;
@@ -73,41 +94,45 @@ export class TvSeats {
 		s.holder = holder;
 	}
 
-	/** Runs `change` and returns a notice for each socket whose answer moved, plus `always` (a newly connected one). */
-	#diff(s: Seat, change: () => void, always?: number): SeatNotice[] {
+	/** The holder's screen is here now, on `key` (it connected, was promoted, or claimed). */
+	#seated(s: Seat, key: number): void {
+		s.holderSocket = key;
+		s.goneSince = null;
+		s.graceMs = TV_SEAT_GRACE_MS;
+		s.holderSeenAt = this.#store.now();
+	}
+
+	/** Runs `change` and returns a notice for each socket whose answer moved. A new socket is not in `before`, so it
+	 *  is always told. */
+	#diff(s: Seat, change: () => void): SeatNotice[] {
 		const before = new Map(s.sockets.map((x) => [x.key, x.key === s.holderSocket]));
 		change();
 		return s.sockets
 			.map((x) => ({ key: x.key, mine: x.key === s.holderSocket }))
-			.filter((n) => n.key === always || before.get(n.key) !== n.mine);
+			.filter((n) => before.get(n.key) !== n.mine);
 	}
 
 	/** The holder has been gone past the grace: the newest screen with a cookie takes the seat, or it goes free. */
 	#expire(roomId: string, s: Seat): void {
 		if (s.holderSocket !== null || s.goneSince === null) return;
-		if (this.#store.now() - s.goneSince < TV_SEAT_GRACE_MS) return;
+		const now = this.#store.now();
+		if (now - s.goneSince < s.graceMs) return;
+		if (s.holderSeenAt !== null && now - s.holderSeenAt < TV_SEAT_SLOW_BOOT_MS) return;
 		const next = s.sockets.findLast((x) => x.tvId);
 		this.#setHolder(roomId, s, next?.tvId ?? null);
-		s.holderSocket = next?.key ?? null;
-		s.goneSince = null;
+		if (next) this.#seated(s, next.key);
+		else Object.assign(s, { holderSocket: null, goneSince: null, graceMs: TV_SEAT_GRACE_MS, holderSeenAt: null });
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): SeatNotice[] {
 		const s = this.#seat(roomId);
-		return this.#diff(
-			s,
-			() => {
-				this.#expire(roomId, s);
-				s.sockets.push({ key, tvId });
-				if (!tvId) return;
-				if (s.holder === null) this.#setHolder(roomId, s, tvId);
-				if (tvId === s.holder) {
-					s.holderSocket = key;
-					s.goneSince = null;
-				}
-			},
-			key
-		);
+		return this.#diff(s, () => {
+			this.#expire(roomId, s);
+			s.sockets.push({ key, tvId });
+			if (!tvId) return;
+			if (s.holder === null) this.#setHolder(roomId, s, tvId);
+			if (tvId === s.holder) this.#seated(s, key);
+		});
 	}
 
 	disconnect(roomId: string, key: number): SeatNotice[] {
@@ -129,8 +154,7 @@ export class TvSeats {
 		if (!s || !me?.tvId) return [];
 		return this.#diff(s, () => {
 			this.#setHolder(roomId, s, me.tvId!);
-			s.holderSocket = key;
-			s.goneSince = null;
+			this.#seated(s, key);
 		});
 	}
 

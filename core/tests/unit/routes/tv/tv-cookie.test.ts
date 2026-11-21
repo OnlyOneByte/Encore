@@ -13,7 +13,7 @@ afterEach(() => {
 
 type Set = { name: string; value: string; opts: Record<string, unknown> };
 
-async function loadTv(cookie?: string): Promise<Set[]> {
+async function loadTv(cookie?: string, extra: Record<string, string> = {}): Promise<Set[]> {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
 	const active = rooms.ensureActive(1);
@@ -23,7 +23,7 @@ async function loadTv(cookie?: string): Promise<Set[]> {
 		settings: new SettingsRepository(db)
 	};
 	const url = new URL('http://tv.lan:3000/tv');
-	const request = new Request(url, { headers: { host: 'tv.lan:3000', ...(cookie ? { cookie } : {}) } });
+	const request = new Request(url, { headers: { host: 'tv.lan:3000', ...extra, ...(cookie ? { cookie } : {}) } });
 	const sets: Set[] = [];
 	const cookies = {
 		set: (name: string, value: string, opts: Record<string, unknown>) => sets.push({ name, value, opts })
@@ -50,4 +50,9 @@ test('a returning screen keeps its value; a value we could not have minted is re
 	const mine = 'Z'.repeat(32);
 	expect((await loadTv(`encore_tv=${mine}`))[0]!.value).toBe(mine);
 	expect((await loadTv('encore_tv=forged'))[0]!.value).not.toBe('forged');
+});
+
+test('behind an https tunnel the cookie is Secure, decided like the singer cookie (publicOriginIsHttps)', async () => {
+	const [c] = await loadTv(undefined, { 'x-forwarded-proto': 'https' });
+	expect(c!.opts.secure).toBe(true);
 });

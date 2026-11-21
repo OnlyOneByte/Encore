@@ -488,13 +488,18 @@ copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds i
 | --- | --- |
 | A screen with an `encore_tv` cookie connects to a free seat | It takes it |
 | The holder reloads, or its wifi blips | Same cookie, so it is the holder again; the newest socket of that screen is the live one |
-| The core restarts | `rooms.tv_seat` kept the holder, so it gets the seat back when it reconnects |
-| The holder is gone for 15 s (`TV_SEAT_GRACE_MS`), e.g. its cookie was cleared | The newest copy with a cookie takes the seat; with none, it goes free |
+| The core restarts | `rooms.tv_seat` kept the holder, so it gets the seat back when it reconnects, and a copy that reconnects first is not promoted for 60 s (`TV_SEAT_SLOW_BOOT_MS`): a TV boots slower than a phone tab |
+| The holder is gone for 15 s (`TV_SEAT_GRACE_MS`), e.g. its cookie was cleared | The newest copy with a cookie takes the seat; with none, it goes free. Never while the holder's cookie connected within the last 60 s, so a TV that flaps while it boots keeps its seat |
 | A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and the old holder becomes a copy |
 | A socket with no cookie | Never holds the seat and cannot claim it |
 
 Each TV socket hears `tv:seat { mine }` on connect and whenever its answer changes. `rooms.tv_seat` stores
 a SHA-256 of the cookie, never the cookie itself.
+
+**The seat is an identity, not an auth gate.** Only the cookie's shape is checked, so a planted or known
+`encore_tv` value (cookies are not port-scoped) counts as the same screen as its holder. That buys nothing a
+`tv:claim` does not already give any LAN device under the no-lockout rule, so it is not a defect; never build
+authorization on the seat.
 
 ### Schema and migrations
 
