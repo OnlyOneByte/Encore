@@ -255,8 +255,8 @@
 
 	/* THE TOAST STACKS ABOVE "YOU'RE UP", never over it. The double-tap race this sheet exists for is exactly when
 	   both can appear at once: a restart or key change that named a song that had gone gets its notice in the same
-	   moment it becomes that phone's turn (a skip there says nothing, IN-02). The toaster rides --dock-h plus this, so it clears the sheet
-	   by the same gap the sheet keeps above the dock. */
+	   moment it becomes that phone's turn (a skip there says nothing, IN-02). The toaster rides --dock-h plus this, so
+	   it clears the sheet by the same gap the sheet keeps above the dock. */
 	let youreUpH = $state(0);
 	/* THE STACK HOLDS UNTIL BOTH ARE GONE. The sheet leaves at the TV's 2.5 s and the toast lives 4 s, so dropping the
 	   offset with the sheet dropped the toast ~143 px in one frame. Once the two have been up together, the offset

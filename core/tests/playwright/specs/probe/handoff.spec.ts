@@ -521,8 +521,9 @@ test('a stale skip in a room gone idle says the song already ended, as informati
 
 		const toast = ana.locator('[data-sonner-toast].transport-notice');
 		await expect(toast).toHaveText('That song already ended.', { timeout: 3_000 });
-		// Nothing went wrong, the tap just named a song that had gone: the info glyph, not the error one.
-		await expect(toast).toHaveAttribute('data-type', 'info');
+		// Nothing went wrong, the tap just named a song that had gone: the info glyph, not the error one. A short timeout,
+		// well inside the toast's 4 s life, so a regression fails on the TYPE ("unexpected value") and not "not found".
+		await expect(toast).toHaveAttribute('data-type', 'info', { timeout: 2_000 });
 	} finally {
 		await worker.stop();
 	}
