@@ -70,6 +70,33 @@ export function deckBump(o: {
 	return { singerId: now.singerId, youreNext: nextPlayableOf(queued.slice(at + 1)) === wasDeckId };
 }
 
+/** What the phone remembers between room updates about MY On deck entry: which one, and whether its Not yet was spent. */
+export interface DeckMemo {
+	id: string | null;
+	deferred: boolean;
+}
+export const NO_DECK: DeckMemo = { id: null, deferred: false };
+
+/**
+ * One room update of the bumped notice, whole: what to remember next, whose heads-up buzz to re-arm, and the notice to
+ * say (or null). Pure, so the layout only applies the result. An entry whose OWN op is still unconfirmed (`pendingIds`,
+ * e.g. my add the phone predicted On deck) is not remembered: the server may place it elsewhere, and losing a turn the
+ * room never gave me is not a bump.
+ */
+export function deckStep(
+	memo: DeckMemo,
+	o: Omit<Parameters<typeof deckBump>[0], 'wasDeckId' | 'wasDeferred'> & { pendingIds: ReadonlySet<string> }
+): { memo: DeckMemo; rearm: string | null; bump: ReturnType<typeof deckBump> } {
+	const { pendingIds, ...rest } = o;
+	const deck = deckEntryOf(o.queued, o.nextPlayableOf(o.queued), o.nowSingerId, o.meId);
+	const lost = memo.id !== null && memo.id !== deck?.id && o.queued.some((e) => e.id === memo.id);
+	return {
+		memo: deck && !pendingIds.has(deck.id) ? { id: deck.id, deferred: !!deck.deferred } : NO_DECK,
+		rearm: lost ? memo.id : null,
+		bump: deckBump({ ...rest, wasDeckId: memo.id, wasDeferred: memo.deferred })
+	};
+}
+
 /** "~2 min" until the current song ends; null when its length is unknown. */
 export function minutesLeft(remainSec: number | null): string | null {
 	if (remainSec === null) return null;

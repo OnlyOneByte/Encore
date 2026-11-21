@@ -9,7 +9,7 @@
 	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
-	import { buzzOnce, deckBump, deckEntryOf, rearmBuzz } from '$lib/on-deck';
+	import { buzzOnce, deckStep, NO_DECK, rearmBuzz, type DeckMemo } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
 	import { YOURE_UP, deckBumpNotice } from '$lib/phrasing/turn-phrasing';
@@ -83,10 +83,8 @@
 	let youreUpTimer: ReturnType<typeof setTimeout> | undefined;
 	// Plain, not $state: only `sync` reads it, to see the current entry CHANGE.
 	let lastCurrentId: string | null = null;
-	// Plain, for the same reason: my entry that was On deck as of the last `sync`.
-	let lastDeckId: string | null = null;
-	// And whether its "Not yet" was already spent then: a flag that flips afterwards is my own Not yet, from any tab.
-	let lastDeckDeferred = false;
+	// Plain, for the same reason: my On deck entry as of the last `sync`, and whether its Not yet was spent (`deckStep`).
+	let deckMemo: DeckMemo = NO_DECK;
 	function dismissYoureUp() {
 		clearTimeout(youreUpTimer);
 		youreUp = null;
@@ -160,20 +158,16 @@
 					(id) => room.mediaCatalog.get(id),
 					(id) => room.mediaStatus.get(id)
 				);
-			const nowSingerId = room.entries.find((e) => e.id === room.playback.currentEntryId)?.singerId;
-			const deckNow = deckEntryOf(queued, nextPlayableOf(queued), nowSingerId, me ?? undefined) ?? null;
-			if (lastDeckId && lastDeckId !== deckNow?.id && queued.some((e) => e.id === lastDeckId)) rearmBuzz(lastDeckId);
-			const bump = deckBump({
-				wasDeckId: lastDeckId,
-				wasDeferred: lastDeckDeferred,
+			const { memo, rearm, bump } = deckStep(deckMemo, {
 				queued,
 				nextPlayableOf,
-				nowSingerId,
+				nowSingerId: room.entries.find((e) => e.id === room.playback.currentEntryId)?.singerId,
 				meId: me ?? undefined,
-				selfCaused: room.queue?.reorderPending ?? false
+				selfCaused: room.queue?.reorderPending ?? false,
+				pendingIds: new Set(room.pendingKind.keys())
 			});
-			lastDeckId = deckNow?.id ?? null;
-			lastDeckDeferred = !!deckNow?.deferred;
+			deckMemo = memo;
+			if (rearm) rearmBuzz(rearm);
 			if (bump)
 				transportNotice(
 					deckBumpNotice(room.singers.get(bump.singerId)?.displayName ?? 'Someone', bump.youreNext),
