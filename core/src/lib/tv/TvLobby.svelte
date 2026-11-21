@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { lobbyLine, type RosterMember } from './screen';
@@ -21,6 +22,8 @@
 		roomCode?: string | null;
 		/** A song being made is past its estimate (`etaSec < 0`): the phone's card says so, and so must this. */
 		overdue?: boolean;
+		/** ONE TV PER ROOM: on a copy, what stands where the QR does ("Make this the TV"); guests join from the TV's. */
+		join?: Snippet;
 	}
 
 	let {
@@ -31,7 +34,8 @@
 		pendingCount = 0,
 		unreachable = false,
 		roomCode = null,
-		overdue = false
+		overdue = false,
+		join
 	}: Props = $props();
 
 	const count = $derived(roster.length + overflow);
@@ -79,13 +83,17 @@
 				<h1>{headline}</h1>
 				<p class="sub">{sub}</p>
 			</div>
-			<JoinBadge
-				qrDataUrl={qrDataUrl}
-				joinUrl={joinUrl}
-				placement="hero"
-				size="var(--tv-attract-qr)"
-				unreachable={unreachable}
-			/>
+			{#if join}
+				{@render join()}
+			{:else}
+				<JoinBadge
+					qrDataUrl={qrDataUrl}
+					joinUrl={joinUrl}
+					placement="hero"
+					size="var(--tv-attract-qr)"
+					unreachable={unreachable}
+				/>
+			{/if}
 			<!-- The address in TEXT as well as in the QR, so the lobby can still be joined when a camera will not scan. -->
 			<p class="url">{joinShort}</p>
 			<!-- Same ladder as attract, but the VALUE one tier down: this screen also carries a headline and a roster. -->
