@@ -35,7 +35,7 @@
 	/* SNAPPED to a ring stop, because the ring can only return one of its own fills: seeded with a raw preset the
 	   knob would sit on the nearest stop while the value said something the control never offered. A singer the room
 	   lost comes back in their own colour, so their songs on the TV keep it: it is sent as chosen, and the server keeps
-	   it even if someone else now has it (`resolveSingerColor`), as it does for any colour picked on the ring. */
+	   a legible colour as asked even if someone else now holds it (`resolveSingerColor`), as for any ring pick. */
 	let color = $state<string>(nearestPaletteStop(lostColor ?? SINGER_COLORS[0]).fill);
 	/* Whether the GUEST moved the ring, set only by the ring's own write-back. Until then `color` is a suggestion from
 	   the preview and is never sent: the server picks a free one, because phones that scanned together read the same
