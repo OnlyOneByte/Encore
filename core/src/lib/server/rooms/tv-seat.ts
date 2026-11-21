@@ -103,13 +103,15 @@ export class TvSeats {
 	}
 
 	/** Runs `change` and returns a notice for each socket whose answer moved. A new socket is not in `before`, so it
-	 *  is always told. */
+	 *  is always told. Every `mine: false` comes FIRST: the caller sends in this order, so on a seat move the old TV
+	 *  is told to go silent before the new one is told to play, never the other way round (the audio is sacred). */
 	#diff(s: Seat, change: () => void): SeatNotice[] {
 		const before = new Map(s.sockets.map((x) => [x.key, x.key === s.holderSocket]));
 		change();
-		return s.sockets
+		const moved = s.sockets
 			.map((x) => ({ key: x.key, mine: x.key === s.holderSocket }))
 			.filter((n) => before.get(n.key) !== n.mine);
+		return [...moved.filter((n) => !n.mine), ...moved.filter((n) => n.mine)];
 	}
 
 	/** The holder has been gone past the grace: the newest screen with a cookie takes the seat, or it goes free. */

@@ -225,3 +225,16 @@ test('core restart: once the saved TV is back, its next absence gets the plain 1
 	w.advance(15_000);
 	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 2, mine: true }] }]);
 });
+
+test('a seat move tells the old TV to go silent before it tells the new one to play, whatever their ages', () => {
+	// The copy is the OLDER socket here, so socket order alone would send its `mine: true` first.
+	const w = world();
+	w.seats.connect(ROOM, 1, 'laptop');
+	w.seats.claim(ROOM, 1);
+	w.seats.connect(ROOM, 2, 'tvA');
+	w.seats.claim(ROOM, 2);
+	expect(w.seats.claim(ROOM, 1)).toEqual([
+		{ key: 2, mine: false },
+		{ key: 1, mine: true }
+	]);
+});
