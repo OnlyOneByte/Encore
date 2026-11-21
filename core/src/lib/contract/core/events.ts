@@ -99,7 +99,10 @@ export type ServerEvent =
 	// TV-ONLY, published on `roomTvTopic`. `color` rides along so the TV draws the disc without a directory lookup.
 	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string }
 	// To the ORIGIN only: a transport command named a song that is no longer current, so nothing happened.
-	| { type: 'player:stale'; cmd: TargetedCommand['cmd'] };
+	| { type: 'player:stale'; cmd: TargetedCommand['cmd'] }
+	// To ONE TV socket, on connect and whenever the room's seat moves: `mine: false` is a copy, whose telemetry the
+	// server ignores. See server/rooms/tv-seat.ts.
+	| { type: 'tv:seat'; mine: boolean };
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.
@@ -125,6 +128,8 @@ export type ClientEvent =
 	| { type: 'queue:command'; command: ClientCommand }
 	| { type: 'player:command'; command: PlayerCommand }
 	| { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
+	// "Make this the TV": the sending screen takes the room's seat.
+	| { type: 'tv:claim' }
 	| { type: 'hello'; lastRev: number }
 	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
 	| { type: 'room:react'; kind: ReactionKind };

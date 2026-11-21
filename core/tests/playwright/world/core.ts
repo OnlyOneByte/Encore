@@ -37,6 +37,8 @@ export interface CoreOptions {
 	mediaDir: string;
 	/** Extra env, for a test whose CONFIGURATION is the experiment. */
 	env?: Record<string, string>;
+	/** A DATA_DIR the CALLER owns and removes, kept across `stop()`, for a test whose subject is a restart. */
+	dataDir?: string;
 }
 
 /**
@@ -46,9 +48,9 @@ export interface CoreOptions {
  * permanently-skipped test is indistinguishable from the rot it was meant to catch, so an environment that
  * cannot answer the question must be loud. A thrown fixture is an ERROR in the report, not a pass.
  */
-export async function startCore({ mediaDir, env = {} }: CoreOptions): Promise<Core> {
+export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOptions): Promise<Core> {
 	const port = await freePort();
-	const dataDir = mkdtempSync(join(tmpdir(), 'enc-data-'));
+	const dataDir = ownDir ?? mkdtempSync(join(tmpdir(), 'enc-data-'));
 	const baseURL = `http://127.0.0.1:${port}`;
 	let output = '';
 
@@ -95,7 +97,7 @@ export async function startCore({ mediaDir, env = {} }: CoreOptions): Promise<Co
 		// disk mid-session — 1101 orphaned directories, 4.3GB — until every command failed with ENOSPC. Note the
 		// guard above is now an `if` rather than an early `return`: the old shape skipped cleanup entirely
 		// whenever the process had already exited, which is exactly the crashed-core case that leaks most.
-		rmSync(dataDir, { recursive: true, force: true });
+		if (!ownDir) rmSync(dataDir, { recursive: true, force: true });
 	};
 
 	const deadline = Date.now() + 45_000;

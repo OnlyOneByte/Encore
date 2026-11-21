@@ -29,6 +29,13 @@
       "when": 1795194061544,
       "tag": "0003_tv_reactions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795223858890,
+      "tag": "0004_tv_seat",
+      "breakpoints": true
     }
   ]
 }

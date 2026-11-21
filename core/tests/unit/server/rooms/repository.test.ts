@@ -122,3 +122,16 @@ test('ensureActive resolves deterministically to the OLDEST room if several exis
 	db.insert(rooms).values({ id: 'new', code: 'NEWER1', createdAt: 20 }).run();
 	expect(repo.ensureActive(30).id).toBe('old');
 });
+
+// The TV seat's holder survives a restart in `rooms.tv_seat`, and stays off every Room the app hands around.
+test('tvSeat round-trips and is not part of a Room', () => {
+	const { repo } = freshRepo();
+	const room = repo.create(1_700_000_000_000);
+	expect(repo.tvSeat(room.id)).toBeNull();
+	repo.setTvSeat(room.id, 'screen-hash');
+	expect(repo.tvSeat(room.id)).toBe('screen-hash');
+	expect(Object.keys(repo.byId(room.id)!).sort()).toEqual(['code', 'createdAt', 'id']);
+	expect(Object.keys(repo.byCode(room.code)!).sort()).toEqual(['code', 'createdAt', 'id']);
+	repo.setTvSeat(room.id, null);
+	expect(repo.tvSeat(room.id)).toBeNull();
+});
