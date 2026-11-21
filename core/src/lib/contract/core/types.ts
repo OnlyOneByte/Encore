@@ -104,6 +104,9 @@ export interface QueueEntry {
 	guideLevel?: number | null;
 	/** "Not yet" has been spent on this entry — it is allowed once. */
 	deferred?: boolean;
+	/** The TV could not play this turn's song. The entry is back to `queued` and HOLDS its slot: the rotation skips it
+	 *  until the singer acts, so a machine failure costs nobody their place. Server-owned. */
+	playFailed?: boolean;
 }
 
 export interface PlaybackState {

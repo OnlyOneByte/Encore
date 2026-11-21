@@ -71,7 +71,8 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
 	for (const { f, text } of tv)
 		for (const cls of ['ah-sub', 'ph-sub', 'ls-source']) expect(text, `${f}: ${cls}`).not.toContain(cls);
 	const page = tv.find((t) => t.f === 'src/routes/tv/+page.svelte')!.text;
-	expect(page).toContain(`flashSkipNotice("That song won't play")`);
+	// Proposal 11: the notice names WHOSE song it was (TvPlayer's one `onfailed`), never the browser's reason.
+	expect(page).toContain("flashSkipNotice(`${singerName(failed?.singerId)}'s song wouldn't play`, failedId)");
 	expect(page.match(/flashSkipNotice\(/g)?.length, 'one definition + the two skip notices').toBe(3);
 });
 

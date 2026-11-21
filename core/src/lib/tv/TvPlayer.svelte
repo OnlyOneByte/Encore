@@ -14,6 +14,7 @@
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
+	import { StallWatchdog, STALL_TICK_MS, unansweredPlayIsAutoplay } from './stall-watchdog';
 	interface Props {
 		/** A `PlaybackSnapshot`, not a live `Media`: the brand makes this a compiler boundary. */
 		media: PlaybackSnapshot | null;
@@ -42,7 +43,9 @@
 		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
 		onprewarmed?: () => void;
 		onended?: () => void;
-		onerror?: () => void; // dead/unplayable media — caller should skip
+		/** The song won't play: a media error, or no progress while the room means to play (see stall-watchdog.ts).
+		 *  ONCE per entry, active+visible only. The caller moves the room on. */
+		onfailed?: () => void;
 		onposition?: (sec: number, dur: number) => void;
 		/** Autoplay was REFUSED; the room is silent until a gesture. Active+visible only. */
 		onautoplayblocked?: () => void;
@@ -51,8 +54,6 @@
 		// Whether the MASTER is actually running — the honest counterpart to the room's `playing` INTENT. Active+visible
 		// only, so the paused hidden slot cannot report the room as stopped.
 		onplayingchange?: (playing: boolean) => void;
-		/** An error a gesture CANNOT lift, so the page can render it. Active+visible only. */
-		onplaybackfailed?: (reason: string) => void;
 		// A transpose could not route: with no user activation the graph degrades to audible-but-UNSHIFTED, so without a
 		// reader a TV that autoplays correctly answers every ± press with nothing.
 		onpitchblocked?: () => void;
@@ -74,12 +75,11 @@
 		onready,
 		onprewarmed,
 		onended,
-		onerror,
+		onfailed,
 		onposition,
 		onautoplayblocked,
 		onautoplayrecovered,
 		onplayingchange,
-		onplaybackfailed,
 		onpitchblocked,
 		onpitchrouted
 	}: Props = $props();
@@ -240,8 +240,16 @@
 		// The song this play() is FOR. A rejection that arrives after the slot moved on to another song is that song's
 		// load superseding it (the browser rejects the old promise with AbortError), not a failure of either song.
 		const requestedSrc = master.getAttribute('src');
+		const token = ++playToken;
+		// One clock PER SONG: an earlier song's pending play() (its AbortError not settled yet) must not start this one's
+		// 4 s early.
+		if (playPendingSince === null || playPendingFor !== entryId) {
+			playPendingSince = performance.now();
+			playPendingFor = entryId;
+		}
 		try {
 			await master.play();
+			blockedUnanswered = false;
 			// Guarded on the latch, so a normal successful play does not spam the callback.
 			if (autoplayBlocked) {
 				autoplayBlocked = false;
@@ -261,19 +269,94 @@
 					console.warn('[tv] autoplay was blocked (NotAllowedError) - waiting for a tap to start the music');
 					if (active && visible) onautoplayblocked?.();
 				}
-			} else if (master && master.paused) {
-				// A rejection that LEAVES THE ELEMENT PAUSED is not terminal — the room believes it is playing — so arm the SAME
-				// gesture recovery; by then the element is holding its src.
-				console.warn(`[tv] the instrumental was interrupted (${name}) - arming a tap to restart the music`);
-				if (!autoplayBlocked) {
-					autoplayBlocked = true;
-					if (active && visible) onautoplayblocked?.();
-				}
 			} else {
-				// Still advancing, so a genuine interruption a later pass plays through. The room is not stuck.
-				console.warn(`[tv] the instrumental refused to start (${name}) - the room will be silent`);
-				if (active && visible) onplaybackfailed?.(name);
+				// ANY OTHER REJECTION IS THIS SONG'S, and a tap cannot lift it: arming "Tap anywhere" here asked a TV on the
+				// wall for a gesture nobody makes. Nothing is decided from the rejection itself — if the element still
+				// advances the song is playing, and if it does not, the stall watchdog reloads it once and then fails it.
+				console.warn(`[tv] the instrumental refused to start (${name}) - watching whether it moves`);
+				// A tap that has been SPENT and still cannot start this song makes it the song's problem, not the TV's: left
+				// latched, the watchdog waited for a second tap forever over a dead file (UI review of #994, D2).
+				if (autoplayBlocked) {
+					autoplayBlocked = false;
+					if (active && visible) onautoplayrecovered?.();
+				}
 			}
+		} finally {
+			if (token === playToken) playPendingSince = null;
+		}
+	}
+
+	// ONE watchdog per slot, reset per ENTRY: a song queued twice is two turns, each with its own retry. Load-bearing:
+	// the slot outlives its songs, so without the reset a slot that failed once stays failed for every later song on it.
+	const watchdog = new StallWatchdog();
+	let lastBuffered = 0;
+	// Keyed on the id VALUE in a plain variable: the effect re-runs whenever a room update re-reads the prop, and a reset
+	// on each of those restarted the count and granted a second retry, stretching the 8 s cap to ~15 s (UI review r2).
+	let watchedEntryId: string | null | undefined;
+	$effect(() => {
+		if (entryId === watchedEntryId) return;
+		watchedEntryId = entryId;
+		watchdog.reset();
+		lastBuffered = 0;
+	});
+
+	// A play() still unanswered, and whether anyone has touched this TV: see `unansweredPlayIsAutoplay`.
+	let playToken = 0;
+	let playPendingSince: number | null = null;
+	let playPendingFor: string | null | undefined;
+	let gestured = false;
+	// The latch above was raised by an unanswered play(), which may never settle to clear it: the tap itself must.
+	let blockedUnanswered = false;
+
+	// A plain interval that READS state, so it tracks nothing and never re-arms; the slot's lifetime is its lifetime.
+	$effect(() => {
+		const timer = setInterval(checkStall, STALL_TICK_MS);
+		return () => clearInterval(timer);
+	});
+
+	function checkStall(): void {
+		const el = master;
+		const now = performance.now();
+		const unanswered =
+			!!el &&
+			unansweredPlayIsAutoplay({
+				pendingForMs: playPendingSince === null ? null : now - playPendingSince,
+				gestured,
+				readyState: el.readyState,
+				errored: !!el.error
+			});
+		if (unanswered && !autoplayBlocked) {
+			autoplayBlocked = true;
+			blockedUnanswered = true;
+			console.warn('[tv] play() never answered on an untouched TV - treating it as autoplay refused');
+			if (active && visible) onautoplayblocked?.();
+		}
+		const buffered = el && el.buffered.length ? el.buffered.end(el.buffered.length - 1) : 0;
+		// Bytes arriving, OR the fetch still open with nothing yet: a slow first byte is not a hiccup either, and the
+		// reload would restart it from zero (code review r2 of #994, F2).
+		const downloading =
+			buffered > lastBuffered ||
+			(!!el && el.networkState === HTMLMediaElement.NETWORK_LOADING && el.readyState === HTMLMediaElement.HAVE_NOTHING);
+		lastBuffered = buffered;
+		const action = watchdog.tick({
+			now,
+			position: el?.currentTime ?? 0,
+			// `play` already means active, visible, holding this entry's src, and not paused from a phone.
+			watching: !!el && transport === 'play' && !el.ended,
+			// The unanswered play() raised the latch above at the same 4 s mark, before this tick could retry or fail.
+			waitingForTap: autoplayBlocked,
+			errored: !!el?.error,
+			downloading
+		});
+		if (action === 'retry' && el) {
+			console.warn('[tv] the song has not moved - reloading it once');
+			// The reload drops the playhead to 0; the cold-mount resume on `canplay` puts it back where it stuck.
+			resumeTarget = el.currentTime;
+			el.load();
+			void tryPlayMaster();
+		} else if (action === 'fail') {
+			console.warn('[tv] the song would not play - moving the room on');
+			onfailed?.();
 		}
 	}
 
@@ -297,6 +380,7 @@
 	// autoplay had been REFUSED, so a correctly-autoplaying TV could never resume its context and ± was permanently dead.
 	$effect(() => {
 		const onGesture = () => {
+			gestured = true;
 			// Read the latch HERE, not in the effect body: that is what keeps the listener armed on a TV that never
 			// raised it while keeping the play() nudge exclusive to one that was blocked.
 			if (autoplayBlocked) {
@@ -312,6 +396,11 @@
 							mixSettled = true;
 						});
 				}
+			}
+			if (blockedUnanswered) {
+				blockedUnanswered = false;
+				autoplayBlocked = false;
+				if (active && visible) onautoplayrecovered?.();
 			}
 			// On ANY gesture, blocked or not: a TV that autoplayed fine still needs one tap before WebAudio will run.
 			void retryPitchAfterGesture();
@@ -368,6 +457,8 @@
 		if (!el || !snap || !isPlayable(snap) || !isActive) return;
 		if (!seekPlan(el.currentTime, seekTarget)) return;
 		el.currentTime = seekTarget;
+		// The ROOM moved the playhead, so the jump is neither the song moving nor sticking.
+		watchdog.rebase();
 	}
 
 	/**
@@ -561,7 +652,7 @@
 				if (active && visible) onplayingchange?.(false);
 				onended?.();
 			}}
-			onerror={() => active && visible && !!master?.getAttribute('src') && onerror?.()}
+			onerror={() => checkStall()}
 			ontimeupdate={() => {
 				// A resume is pending on the playing slot (a reload's first `timeupdate` reads 0 before `canplay` seeks it
 				// back): saying 0 would flip the lyrics and send the room a position it never had.

@@ -231,12 +231,13 @@ export function entryPlayable(media: Media | undefined, live?: { status: MediaSt
 
 /** The first PLAYABLE queued entry, never the first in the list: the server skips an entry whose stems are still
  * processing, so "first" promises a song the TV is about to skip past. `entries` must be in rotation order. */
-export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
+export function nextPlayableEntryId<E extends { id: string; mediaId: string; playFailed?: boolean }>(
 	entries: E[],
 	mediaOf: (mediaId: string) => Media | undefined,
 	liveOf: (mediaId: string) => { status: MediaStatus } | undefined
 ): string | null {
-	return entries.find((e) => entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
+	// A turn whose song failed on the TV is held, exactly as the server's `nextPlayable` holds it.
+	return entries.find((e) => !e.playFailed && entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
 }
 
 /** The media ids that belong in the "Processing" group, as an ORDER-INDEPENDENT set — de-duplicated because a set is

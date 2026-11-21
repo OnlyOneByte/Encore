@@ -92,6 +92,16 @@ export function liveSeq(index: number, fromIndex: number, targetIndex: number): 
 	return index + rowShift(index, fromIndex, targetIndex) + 1;
 }
 
+/**
+ * The number EVERY queued row shows, from one place, so a ready row and a cooking card cannot disagree. A turn whose
+ * song failed on the TV is held and not coming up, so it takes no number (its entry is unused) and the rows after it
+ * are numbered as the TV will play them. Counted at the LIVE position, so a drag across a held row stays right.
+ */
+export function rowNumbers(held: readonly boolean[], fromIndex: number, targetIndex: number): number[] {
+	const live = held.map((_, i) => liveSeq(i, fromIndex, targetIndex));
+	return live.map((pos, i) => pos - held.filter((h, j) => h && j !== i && live[j]! < pos).length);
+}
+
 function clampIndex(i: number, count: number): number {
 	return Math.max(0, Math.min(count - 1, i));
 }

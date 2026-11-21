@@ -1802,10 +1802,50 @@ always-armed document-wide listener: autoplay recovery, the WebAudio resume a pe
 fullscreen (which requires transient activation in the TV's own document, so a realtime message from a
 phone cannot grant it). Gating that listener on a latch is what left a correctly-autoplaying TV with ±key
 permanently dead and nothing on screen explaining why. Every degradation that a tap can lift gets an
-on-screen say; a failure no tap can lift gets a non-interactive one instead.
+on-screen say; a failure no tap can lift moves the room on instead (see "A song that won't play").
 
 Motion on this surface lives inside `@media (prefers-reduced-motion: no-preference)` or is gated in JS.
 Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide because the transition runtime never consults the media query.
+
+### A song that won't play
+
+ONE rule, in `src/lib/tv/stall-watchdog.ts`: **the song isn't moving.** A media error fails it at once. Otherwise,
+while the slot's transport is `play` (active, on screen, holding this entry's src, not paused from a phone), a
+playhead that has not moved for `STALL_RETRY_MS` (4 s) is reloaded once, quietly, and resumed where it stuck; still
+not moving at `STALL_FAIL_MS` (8 s), the song has failed. That one timer covers a `play()` that rejects and leaves
+the element paused, a stall mid-file and a file that never arrives. It never runs while the TV waits for a tap
+(`NotAllowedError`): that is the whole TV's problem, and skipping there would burn every turn in the queue.
+
+Three readings the watchdog does NOT count. The time inside a gap of more than 1 s between its own ticks (a frozen
+tab, a TV out of standby) is forgiven, less one normal tick, so a single sleep does not fail a song on wake while
+throttled 1 Hz ticks still add up to a failure. A first load still downloading at 4 s, or with its fetch open and
+nothing arrived yet, is not reloaded, because the reload restarts it from zero; the 8 s failure still stands. And a
+`play()` still unanswered after 4 s on a TV nobody has touched, for media that is READY to play, is treated as an
+autoplay refusal (some TV browsers leave a refused play() pending rather than rejecting it): the tap screen shows and
+nothing is skipped. Media that never loaded is the song's stall, not the tap screen's, and a media error is the song's
+whatever its play() is doing (`unansweredPlayIsAutoplay`). The slot's watchdog resets when its ENTRY changes, and only
+then: the slot outlives its songs, and a room update for the same entry must not restart the count.
+
+A `play()` rejection decides nothing by itself. Only `NotAllowedError` arms "Tap anywhere"; any other rejection is
+left to the watchdog, because a set-and-forget TV never gets the tap, and an element that still advances is playing.
+A rejection for a src the slot has since left is ignored outright (#974: the outgoing song's AbortError). The
+element's `error` event asks the watchdog at once rather than at the next tick, so a dead file's card paints at most
+one frame.
+
+TvPlayer has ONE way out, `onfailed`, once per entry. The page sends `tv:telemetry` `failed` (never `ended`, which
+would mark the turn sung), stamped with the entry the failing SLOT holds, and raises the Skipped takeover naming whose
+song it was — "Theo's song wouldn't play", never the browser's reason — and who replaces it, captured at the failure
+because the advance moves `upNext` on. In the missed preload window the failing slot holds `upNext`, so the notice
+names that entry's singer and leaves "Up next" off until its replacement is known. A stale pair that re-sends a lost
+end (#1001) re-sends it as the TV sent it: the controller keeps the status beside `#endedFrom`.
+The next singer's song WAITS for the notice: the server starts it paused, and the TV pauses it locally at the failure,
+because #988's swap would otherwise start the warmed song a round trip before the server's paused frame lands. When
+the notice clears the TV sends `tv:telemetry` `resume`, stamped with the held song, and the card and the song start
+together, so "Up next" stays true and no opening is lost
+under a takeover. It is a real pause, so phones show it and the watchdog does not count it; the phone's "You're up"
+fires on the turn's first PLAYING frame, which puts it beside the TV's card. A tap on "Tap anywhere" that still
+cannot start the song spends the latch: the song is then the problem, and the watchdog fails it. There is no "won't play"
+overlay: a failure the room can do nothing about is moved past, not displayed.
 
 ### The TV type floor
 

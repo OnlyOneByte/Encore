@@ -113,12 +113,14 @@
 				previousId: lastCurrentId,
 				currentId: room.playback.currentEntryId,
 				positionSec: room.playback.positionSec,
+				isPlaying: room.playback.isPlaying,
 				entries: room.entries,
 				meId: me
 			});
 			// The song moved on (a skip during the sheet): what it said is no longer true.
 			if (youreUp && youreUp.id !== room.playback.currentEntryId) dismissYoureUp();
-			lastCurrentId = room.playback.currentEntryId;
+			// Not while a new turn waits paused: its first PLAYING frame is the one that announces it.
+			if (room.playback.isPlaying || !room.playback.currentEntryId) lastCurrentId = room.playback.currentEntryId;
 			if (mine) {
 				youreUp = { id: mine.id, title: title ?? '', color: singerColor ?? SINGER_COLORS[0] };
 				// The SAME once-per-entry buzz as On deck's heads-up: a phone that buzzed with 30 s left stays still now.
@@ -134,7 +136,9 @@
 			   told the truth about the same entry ("Making karaoke…" with a progress bar) and the dock contradicted it.
 			   `nextPlayableEntryId` is the SAME predicate the server's `nextPlayable` uses, so the strip can no longer
 			   promise a turn the server will skip. */
-			const queued = room.entries.filter((e) => e.status === 'queued');
+			// A turn whose song failed on the TV is held, not coming up: counted, it drew "Making karaoke..." over a room
+			// with nothing to make and nothing to start.
+			const queued = room.entries.filter((e) => e.status === 'queued' && !e.playFailed);
 			queueCount = queued.length;
 			// The TV lobby's fold and words, so the two cannot disagree about a queue that is waiting.
 			const waiting = waitingTurns(

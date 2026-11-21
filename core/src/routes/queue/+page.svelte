@@ -41,8 +41,8 @@
 		ordinal,
 		modeInvalidation,
 		rowShift,
-		liveSeq,
-		orderKept
+		orderKept,
+		rowNumbers
 	} from '$lib/reorder-mode';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
@@ -61,7 +61,7 @@
 	import { cardScrollTarget, firstTimeFor, guestIsDriving } from '$lib/card-to-you';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { NOW_SINGING, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
+	import { DIDNT_PLAY, NOW_SINGING, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
@@ -371,6 +371,14 @@
 	const dragTo = $derived(
 		dragging && dragFrom >= 0 ? liveSortTarget({ ...dragGeometry, minIndex: floorFor(dragFrom) }) : -1
 	);
+	/** One numbering for every row kind: a held turn takes no number, and the rest are numbered as the TV will play them. */
+	const seqs = $derived(
+		rowNumbers(
+			queued.map((e) => !!e.playFailed),
+			dragFrom,
+			dragTo
+		)
+	);
 
 	/* Every position is legal under `move-to-index`, so no ordering policy can discard a move: the only condition
 	   on the grip is that a second position exists. Both row kinds take THIS value, never a literal. */
@@ -397,8 +405,15 @@
 			}
 			return;
 		}
+		// The number the row will SHOW, from the same source as the screen: a held turn above takes none, so the raw
+		// index said "2nd" over a row numbered 1. Read before the commit, while `queued` is still in the old order.
+		const shown = rowNumbers(
+			queued.map((e) => !!e.playFailed),
+			from,
+			to
+		)[from]!;
 		commitMove(id, to);
-		liveMsg = `Moved to ${ordinal(to + 1)} in the queue.`;
+		liveMsg = `Moved to ${ordinal(shown)} in the queue.`;
 		// After the patch lands, because the row's DOM is recreated at its new position.
 		void tick().then(() => focusGrip(id));
 	}
@@ -951,7 +966,7 @@
 					reads these two on its processing kind alone and documents what an absent status means there. -->
 						<ProcessingCard
 							kind={card}
-							seq={liveSeq(i, dragFrom, dragTo)}
+							seq={seqs[i]!}
 							title={mediaTitleOf(e.mediaId)}
 							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 							singerColor={s?.color ?? SINGER_COLORS[0]}
@@ -975,19 +990,22 @@
 							onnudge={(delta) => nudge(e.id, delta)}
 						/>
 					{:else}
-						<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
+						<!-- `seq` is the LIVE position, never the source index: `rowNumbers` reads the same shift arithmetic that
 					places the row, so a number never corrects itself when the patch lands. -->
 						<QueueRow
-							seq={liveSeq(i, dragFrom, dragTo)}
+							seq={seqs[i]!}
+							held={!!e.playFailed}
 							title={mediaTitleOf(e.mediaId)}
 							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 							singerColor={s?.color ?? SINGER_COLORS[0]}
 							mine={e.singerId === me?.id}
 							singerAway={awaySingers.has(e.singerId)}
 							up={e.id === nextPlayableId}
-							subtitle={e.id === deckEntry?.id
-								? ''
-								: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
+							subtitle={e.playFailed
+								? DIDNT_PLAY
+								: e.id === deckEntry?.id
+									? ''
+									: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
 							pending={pendingKind.get(e.id) ?? null}
 							removable={e.singerId === me?.id}
 							grip={gripsVisible && e.id !== pinnedId}

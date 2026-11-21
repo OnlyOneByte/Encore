@@ -236,14 +236,14 @@ test('the TV wires sendTelemetry through the pure telemetryFrame(status, entry, 
 	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the stale-frame bug
 });
 
-test("each TV slot stamps its ended, error and position frames with the entry IT holds, not the page's current", () => {
+test("each TV slot stamps its ended, failed and position frames with the entry IT holds, not the page's current", () => {
 	// After a natural end the TV plays `upNext` one server frame early, so `current` still names the song that ended. A
 	// song 2 that then fails stamped as song 1 is dropped as stale and parks the room (p21-dead-next-song); song 2's
 	// position stamped as song 1 lands on the wrong entry.
 	const src = read('src/routes/tv/+page.svelte');
 	for (const slot of ['A', 'B']) {
 		expect(src).toContain(`onended={() => onVisibleEnded(slotEntryId.${slot})}`);
-		expect(src).toContain(`onerror={() => onVisibleError(slotEntryId.${slot})}`);
+		expect(src).toContain(`onfailed={() => onVisibleFailed(slotEntryId.${slot})}`);
 		expect(src).toContain(`sendTelemetry('playing', slotEntryId.${slot}, s)`);
 	}
 });
@@ -283,7 +283,8 @@ test('the TV drops a stale pair and stale playback state before either reaches t
 	const src = read('src/routes/tv/+page.svelte');
 	const apply = src.split('function applyNowPlaying(')[1]?.split('const entryChanged')[0] ?? '';
 	expect(apply).toContain('if (cur && ctl.isBehind(cur.id)) {');
-	expect(apply).toContain("sendTelemetry('ended', cur.id);");
+	// Re-sent as the TV sent it: a lost `failed` re-sent as `ended` marks the dead turn sung.
+	expect(apply).toContain('sendTelemetry(ctl.endedStatus, cur.id);');
 	expect(src).toContain("if (e.type === 'playback:state' && !ctl.isBehind(e.state.currentEntryId)) {");
 	// The server's advance to the song the TV already started must clear a held resume without restarting the song.
 	expect(src).toContain('if (e.rev !== caughtUpRev) caughtUpRev = -1;'); // a server restart reuses rev numbers

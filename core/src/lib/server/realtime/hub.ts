@@ -67,14 +67,17 @@ export interface HubDeps {
 	/** Resolved from the session cookie at WS upgrade; `undefined` for a socket that never joined. `add`
 	 *  MUST carry THIS id, never one the client picks, or any socket could queue songs as anybody. */
 	actorSingerId?: string;
+	/** Is a TV connected to this room? The hold's fallback starts a song only where one can play it. Absent reads as
+	 *  yes, the only safe default for a caller that cannot know: it never leaves a room paused for good. */
+	tvConnected?: () => boolean;
 }
 
 /**
  * Ops that name an EXISTING entry and may be issued by a client — derived from `QueueOp` rather than listed,
- * so a new `{ id }`-bearing op joins this type automatically. `status` is excluded because it is server-owned
- * and refused outright; the on-deck ops because they are owner-only, with no `-any` capability (on-deck-ops.ts).
+ * so a new `{ id }`-bearing op joins this type automatically. `status` and `play-failed` are excluded because they
+ * are server-owned and refused outright; the on-deck ops because they are owner-only, with no `-any` capability (on-deck-ops.ts).
  */
-type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status' | OnDeckOp['op']>;
+type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status' | 'play-failed' | OnDeckOp['op']>;
 
 /**
  * The capability each entry op asks for, and what it says when refused.
@@ -185,6 +188,9 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// SERVER-OWNED: only player.ts calls applyQueueOp directly for a status change. From a client it
 			// could forge a second 'playing' entry, or retire a song whose process keeps running.
 			return 'status is server-owned';
+		case 'play-failed':
+			// Only the TV's telemetry may say a song failed; from a phone it would hold anyone's turn.
+			return 'play-failed is server-owned';
 		default:
 			// Reject rather than fall out of the switch as undefined, which the caller reads as "valid".
 			return `unknown op: ${String((op as { op?: unknown }).op)}`;
@@ -234,12 +240,21 @@ export function handleQueueCommand(
 	// Re-stamp addedAt from the room's monotonic clock: every queue-order policy ranks singers by it, so
 	// a client-supplied stamp could jump the queue. `deferred` ("Not yet" spent) is server-owned the same way: a
 	// client-minted one is dropped rather than trusted, and a re-add of a live id (the optimistic echo) keeps the
-	// server's own value, so re-sending an add cannot buy a spent "Not yet" back.
+	// server's own value, so re-sending an add cannot buy a spent "Not yet" back. `playFailed` is the TV's verdict, kept
+	// by the same rule: a re-sent add can neither lift a held turn nor mint one.
 	let op: QueueOp = cmd.op;
 	if (op.op === 'add') {
 		const { entry } = op;
-		const deferred = deps.state.entries.find((e) => e.id === entry.id)?.deferred;
-		op = { op: 'add', entry: { ...entry, deferred, addedAt: deps.state.nextAddedAt() } };
+		const existing = deps.state.entries.find((e) => e.id === entry.id);
+		op = {
+			op: 'add',
+			entry: {
+				...entry,
+				deferred: existing?.deferred,
+				playFailed: existing?.playFailed,
+				addedAt: deps.state.nextAddedAt()
+			}
+		};
 	}
 
 	// An add lands behind a held On deck entry under every queue order (proposal 14, `insertEntry`).

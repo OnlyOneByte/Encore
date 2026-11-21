@@ -3,9 +3,9 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '$lib/contract';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, SKIP_NOTICE_MS } from '$lib/contract';
 	import { keyShiftLabel } from '$lib/song-facts';
-	import { GaplessController, type Slot } from '$lib/tv/gapless';
+	import { GaplessController, type EndStatus, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -98,14 +98,6 @@
 	// A transpose is waiting for one tap. Distinct from `autoplayBlocked`: here the music plays perfectly and
 	// only the key is stuck, and it is the only way anyone learns of it — the graph degrades silently.
 	let pitchBlocked = $state(false);
-	// An error NO gesture can lift (decode failure, AbortError), so the page must SAY the room is silent.
-	let playbackFailedReason: string | null = $state(null);
-	/** The ENTRY that failed, so a `nowplaying` landing after the slot already swapped does not clear its own failure. */
-	let playbackFailedFor: string | null = null;
-	function onPlaybackFailed(reason: string, entryId: string | null): void {
-		playbackFailedReason = reason;
-		playbackFailedFor = entryId;
-	}
 	// The honest counterpart to `isPlaying`, which is the ROOM'S INTENT from the server: the room can intend
 	// to play while the element does not, and the reel must freeze in exactly those cases.
 	let masterAdvancing = $state(false);
@@ -192,10 +184,11 @@
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
 		// A pair naming the entry the TV already ended predates the server's processing of that `ended` (#1001):
-		// applying it reloads the finished song over the next. The `ended` is re-sent so one lost on a closed socket
-		// still advances the room; the server drops the duplicate by its entry stamp.
+		// applying it reloads the finished song over the next. The end is re-sent so one lost on a closed socket still
+		// advances the room; the server drops the duplicate by its entry stamp. Re-sent AS SENT: a lost `failed` re-sent
+		// as `ended` would mark the dead turn sung and skip the hold.
 		if (cur && ctl.isBehind(cur.id)) {
-			sendTelemetry('ended', cur.id);
+			sendTelemetry(ctl.endedStatus, cur.id);
 			return;
 		}
 		// Compared BEFORE `current` is overwritten, and on the ENTRY id: a song queued twice is two entries over one media.
@@ -248,23 +241,46 @@
 	}
 
 	/** A FLASH, not a state: the takeover clears itself, so nothing has to remember to retract it. */
-	const SKIP_NOTICE_MS = 4000;
-	function flashSkipNotice(message: string) {
+	/** Who REPLACES the skipped song, captured with the text: the advance lands mid-notice and moves `upNext` on. */
+	let skipNext = $state<QueueEntry | null>(null);
+	/** When the notice clears, so the next singer's intro card can follow it rather than run out unseen beneath it. */
+	let skipNoticeUntil = 0;
+	function flashSkipNotice(message: string, skippedId: string | null = current?.id ?? null) {
 		skipNotice = message;
+		// Never the skipped song itself: in the missed preload window that is `upNext`, and its replacement isn't known yet.
+		skipNext = upNext && upNext.id !== current?.id && upNext.id !== skippedId ? upNext : null;
+		skipNoticeUntil = Date.now() + SKIP_NOTICE_MS;
 		// ONE handle, cleared on every flash: the dwell belongs to the TEXT, not to the first notice. Otherwise a
 		// second skip inherits the first's deadline — with the 2500ms intro hold between two dead files the second
 		// notice got the ~1500ms left of SKIP_NOTICE_MS (and near-zero when a worker fails a batch, where the
 		// terminal statuses land together), blanking mid-read and taking the whole takeover with it.
 		clearTimeout(skipNoticeTimer);
-		skipNoticeTimer = setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
+		skipNoticeTimer = setTimeout(() => {
+			skipNotice = '';
+			// The song a failure held starts NOW, with its card: the server paused it so every screen waits together.
+			if (resumeAfterNotice) {
+				resumeAfterNotice = false;
+				// Stamped with the held song, the one the visible slot now carries; the server drops any other stamp.
+				sendTelemetry('resume', ctl.currentId);
+			}
+		}, SKIP_NOTICE_MS);
 	}
+	let resumeAfterNotice = false;
 
-	function onVisibleError(endedId: string | null) {
-		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
-		// several bad files in a row would otherwise just flash black across the room.
-		flashSkipNotice("That song won't play");
-		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
-		onVisibleEnded(endedId);
+	/** The song won't play (TvPlayer's one `onfailed`). The room moves on like an end, and the room is told WHOSE song
+	 *  it was — never the browser's reason, and never anyone's fault. `failedId` is the entry the failing SLOT holds:
+	 *  in the missed preload window that is `upNext`, while `current` still names the song that ended before it. */
+	function onVisibleFailed(failedId: string | null) {
+		const failed = [current, upNext].find((e) => e && e.id === failedId) ?? null;
+		flashSkipNotice(`${singerName(failed?.singerId)}'s song wouldn't play`, failedId);
+		// The server holds the next song paused for the notice. Pause it here too, before the swap starts it: the
+		// server's paused frame is a round trip away, and the next singer's song would play under the notice until then.
+		// THE TV only: a copy's `failed` and `resume` are dropped, so a copy that paused here would stay paused.
+		if (seatMine === true) isPlaying = false;
+		// `failed`, not `ended`: the server keeps the turn queued in its spot instead of marking it sung. ONE frame —
+		// a second would advance the server twice and eat a turn.
+		onVisibleEnded(failedId, 'failed');
+		resumeAfterNotice = true;
 	}
 
 	/**
@@ -276,12 +292,10 @@
 	let openedOnce = $state(false);
 
 	/** `endedId` is the entry the ending slot held; see `sendTelemetry`. */
-	function onVisibleEnded(endedId: string | null = current?.id ?? null) {
-		// The failure belonged to the song that just ended.
-		playbackFailedReason = null;
-		const next = ctl.onEnded(upNext);
+	function onVisibleEnded(endedId: string | null = current?.id ?? null, status: EndStatus = 'ended') {
+		const next = ctl.onEnded(upNext, status);
 		tvState = next;
-		sendTelemetry('ended', endedId);
+		sendTelemetry(status, endedId);
 		if (next === 'interstitial') {
 			introEntry = upNext;
 			holdSongIntro();
@@ -328,6 +342,9 @@
 			tvState = ctl.state;
 			return;
 		}
+		// A skip notice outranks the card, so the hold starts when the notice clears: the card follows it, seen. The lead
+		// below is measured from that start too.
+		const noticeLeft = skipNotice ? Math.max(0, skipNoticeUntil - Date.now()) : 0;
 		// The card's exit fade STARTS ahead of the hold's end, by its own `--motion-base` plus the reel's `--motion-fast`
 		// arrival: the card has gone, and the reel is up, by the time the song starts, so the first line is readable
 		// when it was when the card cut and nobody loses it. The extra `--motion-fast` is slack too: a lead timer or a
@@ -338,13 +355,13 @@
 		// for READABLE_BEAT_MS, or a 500 ms intro never shows at all. It exits at the hold's end instead, as the cut did.
 		const leadMs = prefersReducedMotion ? 0 : cssTimeMs('--motion-base') + cssTimeMs('--motion-fast');
 		const roomToLead = songIntroMs - leadMs >= cssTimeMs('--motion-slow') + READABLE_BEAT_MS;
-		exitLeadAt = leadMs > 0 && roomToLead ? Date.now() + songIntroMs - leadMs : null;
-		if (exitLeadAt !== null) exitLeadTimer = setTimeout(leadExitIfDue, songIntroMs - leadMs);
+		exitLeadAt = leadMs > 0 && roomToLead ? Date.now() + noticeLeft + songIntroMs - leadMs : null;
+		if (exitLeadAt !== null) exitLeadTimer = setTimeout(leadExitIfDue, noticeLeft + songIntroMs - leadMs);
 		interstitialTimer = setTimeout(() => {
 			exitLeadAt = null;
 			ctl.onInterstitialDone();
 			tvState = ctl.state;
-		}, songIntroMs);
+		}, noticeLeft + songIntroMs);
 	}
 	/** How long a handoff card stays fully readable, at least, before a led exit. shortcut: a fixed beat, not a token
 	 *  (it is a reading time, not a motion); make it a setting if hosts ask for a different one. */
@@ -425,7 +442,8 @@
 			// resume off the next song (docs/FRONTEND.md#wake-lock-and-reload-resume). NaN does both: `seekPlan` and
 			// `resumeSeekTarget` refuse a non-finite target, so the held resume is cleared and nothing seeks. Keyed on the
 			// frame's `rev`: the server can publish the same state twice, after the pair has already ended the catch-up.
-			// Any other rev forgets it, so a server restart (its rev starts again at 0) cannot reuse the number.
+			// Any other rev forgets it, so after a server restart (rev starts again at 0) only a collision on the very
+			// first frame can reuse it.
 			if (e.rev !== caughtUpRev) caughtUpRev = -1;
 			if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;
 			seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;
@@ -605,14 +623,6 @@
 	);
 	const stuck = $derived(stuckTurnsLines(waiting, singerName));
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
-	// is the TV's: kept, it sat over the next singer's song (or its waiting card, which never reports ready).
-	// Keyed on the ID, a primitive: `current` is a fresh object on every sync, which would clear a live failure.
-	// `playbackFailedFor` is plain (not `$state`), so setting a failure does not re-run this and clear it at once.
-	const currentId = $derived(current?.id ?? null);
-	$effect(() => {
-		if (isAttract || currentId !== playbackFailedFor) playbackFailedReason = null;
-	});
 	// The WHOLE roster, no "+N more": Infinity caps nothing, and TvLobby steps the chip size down instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
@@ -848,7 +858,6 @@
 			tvState = ctl.state;
 			onFirstSongReady();
 			leadExitIfDue();
-			playbackFailedReason = null;
 		}}
 		onprewarmed={() => {
 			// `slotEntryId`, NOT `slotMedia.id`. GaplessController compares this against `#warmingId`, which it
@@ -860,7 +869,7 @@
 			tvState = ctl.state;
 		}}
 		onended={() => onVisibleEnded(slotEntryId.A)}
-		onerror={() => onVisibleError(slotEntryId.A)}
+		onfailed={() => onVisibleFailed(slotEntryId.A)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
@@ -871,7 +880,6 @@
 		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
-		onplaybackfailed={(reason) => onPlaybackFailed(reason, slotEntryId[visible])}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -890,7 +898,6 @@
 			tvState = ctl.state;
 			onFirstSongReady();
 			leadExitIfDue();
-			playbackFailedReason = null;
 		}}
 		onprewarmed={() => {
 			// See slot A: an ENTRY id, because that is what `#warmingId` holds.
@@ -898,7 +905,7 @@
 			tvState = ctl.state;
 		}}
 		onended={() => onVisibleEnded(slotEntryId.B)}
-		onerror={() => onVisibleError(slotEntryId.B)}
+		onfailed={() => onVisibleFailed(slotEntryId.B)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
@@ -909,7 +916,6 @@
 		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
-		onplaybackfailed={(reason) => onPlaybackFailed(reason, slotEntryId[visible])}
 	/>
 
 	<LyricsOverlay
@@ -984,7 +990,9 @@
 			background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
 			name and the ResizeObserver binding stay.
 		-->
-		<div class="lower-third" bind:this={lowerThirdEl}>
+		<!-- Hidden, not unmounted, under a Skipped notice: the next singer is "Up next" there and is named here only once
+			their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
+		<div class={['lower-third', { 'under-notice': transient === 'error' }]} bind:this={lowerThirdEl}>
 			<span class="ls-name"
 				><span class="ls-dot" style="--singer: {currentSingerColor ?? 'var(--accent2)'}"></span>{singerName(
 					current?.singerId
@@ -1066,9 +1074,9 @@
 					<div class="state-mark"><Icon name="warning" /></div>
 					<div class="up-label">Skipped</div>
 					<div class="up-song">{skipNotice || heldNotice}</div>
-					{#if upNext && upNext.id !== current?.id}
+					{#if skipNext}
 						<div class="up-replaces">
-							{UP_NEXT} - {singerName(upNext.singerId)} - {songDisplay(mediaOf(upNext)).title}
+							{UP_NEXT} - {singerName(skipNext.singerId)} - {songDisplay(mediaOf(skipNext)).title}
 						</div>
 					{/if}
 				</div>
@@ -1147,16 +1155,6 @@
 		>
 			<span class="ph-head">Tap to <span class="grad-text">change the key</span></span>
 		</button>
-	{/if}
-
-	<!-- An error a tap CANNOT lift, so NOT a button: a plain on-screen say that the room is silent. GATED ON `!isAttract`
-		as well as cleared there, so the frame before that effect runs cannot paint it over the join QR. The browser's
-		reason is TvPlayer's console line, never the room's to read. -->
-	{#if playbackFailedReason && !isAttract}
-		<div class="silent-room" role="status" aria-live="polite">
-			<span class="sr-mark"><Icon name="warning" /></span>
-			<span class="sr-head">This song <span class="grad-text">won't play</span></span>
-		</div>
 	{/if}
 
 	<!--
@@ -1383,6 +1381,9 @@
 			top: auto;
 			bottom: var(--tv-safe-y);
 		}
+	}
+	.lower-third.under-notice {
+		visibility: hidden;
 	}
 	.lower-third {
 		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */
@@ -1798,40 +1799,6 @@
 		font-size: 2.881rem;
 	}
 	.ah-head {
-		font-size: var(--tv-hero);
-		font-weight: 800;
-		line-height: var(--lh-tight);
-		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
-	}
-	/* NOT interactive — informational, so no button and no cursor: no tap can lift this failure. */
-	.silent-room {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-tv-interstitial);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2.2vh;
-		padding: var(--tv-safe-y) var(--tv-safe-x);
-		color: var(--ink);
-		text-align: center;
-		background: color-mix(in srgb, var(--bg) 82%, transparent);
-		backdrop-filter: blur(6px);
-		-webkit-backdrop-filter: blur(6px);
-	}
-	.sr-mark {
-		display: grid;
-		place-items: center;
-		/* Same one ladder as .ah-mark, for the same reason: a vmin box capped at 160px is overflowed by its own
-		   2.881rem glyph at 4K. */
-		width: 4.4rem;
-		height: 4.4rem;
-		border-radius: 50%;
-		background: color-mix(in srgb, var(--warn) 26%, transparent);
-		font-size: 2.881rem;
-	}
-	.sr-head {
 		font-size: var(--tv-hero);
 		font-weight: 800;
 		line-height: var(--lh-tight);

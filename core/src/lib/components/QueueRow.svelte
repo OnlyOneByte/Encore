@@ -10,6 +10,9 @@
 		singerColor?: string;
 		mine?: boolean;
 		up?: boolean; // currently playing / next up (accent the seq bubble)
+		/** The TV could not play this turn's song and the rotation HOLDS it: it takes no number, because it is not coming
+		 *  up, and the bubble carries a warning mark instead. Say why in `subtitle`. */
+		held?: boolean;
 		/** The singer is in the room but unreachable. Surfaced here because the room decides BY HAND whether
 		 * to skip an absent singer's turn, and without it there is nothing to say a decision is due. */
 		singerAway?: boolean;
@@ -47,6 +50,7 @@
 		singerColor = SINGER_COLORS[0],
 		mine = false,
 		up = false,
+		held = false,
 		singerAway = false,
 		subtitle = '',
 		pending = null,
@@ -135,8 +139,8 @@
 				{/if}
 				<!-- THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node — which gives the
 						digit an entrance with no class-toggle timer and no geometry read, and a geometry read throws on the mount rung. -->
-				<div class="seq" style="--seq-dir:{seqDir}">
-					{#key seq}<span class="n">{seq}</span>{/key}
+				<div class={['seq', { held }]} style="--seq-dir:{seqDir}">
+					{#if held}<Icon name="warning" />{:else}{#key seq}<span class="n">{seq}</span>{/key}{/if}
 				</div>
 			</Item.Media>
 			<Item.Content>
@@ -215,6 +219,9 @@
 				opacity: 0;
 			}
 		}
+	}
+	.seq.held {
+		color: var(--warn);
 	}
 	.up .seq {
 		background: var(--accent);

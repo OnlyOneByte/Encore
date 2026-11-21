@@ -223,3 +223,24 @@ test('STALE PAIR: song 2 erroring inside the window keeps the guard on song 1', 
 	c.onNowPlaying(e('q1'), e('q2')); // a phone command's stale pair
 	expect(c.currentId).toBe('q2');
 });
+
+test('STALE PAIR: the re-send repeats how the guarded entry ended, so a lost `failed` is never re-sent as `ended`', () => {
+	// `ended` would mark the dead turn sung instead of keeping it queued, and the server would not hold the next song.
+	const failed = new GaplessController();
+	failed.onNowPlaying(e('q1'), e('q2'));
+	failed.onEnded(e('q2'), 'failed');
+	failed.onEnded(e('q3')); // song 2 ends too, before the server's frame: the guard and its status stay on song 1
+	expect(failed.isBehind('q1')).toBe(true);
+	expect(failed.endedStatus).toBe('failed');
+	// The other way round: a sung song 1 stays `ended` when song 2 then fails inside the window.
+	const sung = new GaplessController();
+	sung.onNowPlaying(e('q1'), e('q2'));
+	sung.onEnded(e('q2'));
+	sung.onEnded(e('q3'), 'failed');
+	expect(sung.endedStatus).toBe('ended');
+	// The server's frame clears the guard, and the next end records its own status.
+	sung.onNowPlaying(e('q3'), null);
+	sung.onEnded(null, 'failed');
+	expect(sung.isBehind('q3')).toBe(true);
+	expect(sung.endedStatus).toBe('failed');
+});

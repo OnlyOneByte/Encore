@@ -15,6 +15,7 @@ import { handleQueueCommand, syncEvent, type HubDeps } from './src/lib/server/re
 import {
 	handlePlayerCommand,
 	handleTelemetry,
+	onTvHello,
 	reconcileOnReady,
 	nowPlayingEvent
 } from './src/lib/server/realtime/player';
@@ -87,6 +88,10 @@ function announceSeat(notices: SeatNotice[]): void {
 		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline } satisfies ServerEvent;
 		tvSockets.get(n.key)?.send(JSON.stringify(e));
 	}
+}
+/** Is this socket THE room's TV (it holds the seat)? A copy is not, and nothing it sends moves the room. */
+function seated(ws: import('bun').ServerWebSocket<SocketData>): boolean {
+	return ws.data.tvKey !== undefined && tvSeats.holds(ws.data.roomId!, ws.data.tvKey);
 }
 
 // Guarded so WS still boots pre-build.
@@ -249,7 +254,9 @@ const server = Bun.serve<SocketData>({
 				},
 				// NON-recording, for the validation-failure re-ack path: a rejected op must not enter the
 				// ledger, or its own resend would falsely re-ack.
-				hasOp: (id) => seenOps.has(id)
+				hasOp: (id) => seenOps.has(id),
+				// THE TV, not any copy: a copy's frames are dropped, so it could neither fail a song nor release a hold.
+				tvConnected: () => tvSeats.hasLiveHolder(app.activeRoomId)
 			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
@@ -264,6 +271,9 @@ const server = Bun.serve<SocketData>({
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
 					// The same builder the broadcast path uses, so a resync and the live room cannot differ.
 					ws.send(JSON.stringify(nowPlayingEvent(deps)));
+					// A hold whose fallback came with no TV to play it starts with this TV, from 0 (see player.ts). The seat
+					// only: a copy's hello must not start a song it cannot report on.
+					if (seated(ws)) onTvHello(deps);
 					break;
 				}
 				case 'queue:command':
@@ -282,11 +292,23 @@ const server = Bun.serve<SocketData>({
 				case 'tv:telemetry':
 					// Only from the room's TV seat: a phone-app socket's `ended` was a free skip and its position a free seek, and
 					// a second /tv (a guest reading along, a forgotten tab) is a copy whose frames would fight the real TV's.
-					if (ws.data.tvKey === undefined || !tvSeats.holds(ws.data.roomId!, ws.data.tvKey)) break;
-					handleTelemetry({ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId }, deps);
+					// The same holds for `failed` and `resume`: only the seated TV can fail a song or release its hold.
+					if (!seated(ws)) break;
+					handleTelemetry(
+						{
+							positionSec: evt.positionSec,
+							ended: evt.status === 'ended',
+							failed: evt.status === 'failed',
+							resume: evt.status === 'resume',
+							entryId: evt.entryId
+						},
+						deps
+					);
 					break;
 				case 'tv:claim':
 					if (ws.data.tvKey !== undefined) announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey));
+					// The new seat is the TV now: a hold left waiting for one starts here, as on the seat's hello.
+					if (seated(ws)) onTvHello(deps);
 					break;
 				case 'room:react': {
 					const current = state.entries.find((e) => e.id === state.playback.currentEntryId);

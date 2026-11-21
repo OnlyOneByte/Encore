@@ -287,9 +287,10 @@ async function keyGuideRoom(world: World, holdable = false): Promise<{ maya: Pag
 	return { maya, theo, ana };
 }
 
-test('a natural end hands over with no "won’t play" flash over the Now singing card', async ({ world }) => {
+test('a natural end hands over with no failure flash over the Now singing card', async ({ world }) => {
 	// Review r2, 974-2. The slot's play() for the song being left rejected with AbortError once the next song's src
-	// landed, and "This song won't play" flashed over the card on EVERY natural end, filed against the new song.
+	// landed, and "This song won't play" flashed over the card on EVERY natural end, filed against the new song. That
+	// overlay is gone (proposal 11); its successor is the Skipped takeover, which a natural end must never raise.
 	const worker = await startFakeWorker(world);
 	try {
 		const maya = await world.openPhone('Maya');
@@ -300,7 +301,7 @@ test('a natural end hands over with no "won’t play" flash over the Now singing
 			const w = window as unknown as { flashes: string[] };
 			w.flashes = [];
 			new MutationObserver(() => {
-				if (document.querySelector('.silent-room'))
+				if (document.querySelector('.state-error'))
 					w.flashes.push(document.querySelector('.state-next')?.textContent ?? '(no card)');
 			}).observe(document.body, { subtree: true, childList: true });
 		});

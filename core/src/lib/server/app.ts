@@ -618,6 +618,8 @@ export interface HubDepsPerFrame {
 	seenOp: (clientOpId: string) => boolean;
 	/** NON-RECORDING peek at the same ledger (validation-failure re-ack path). */
 	hasOp: (clientOpId: string) => boolean;
+	/** Is a TV connected to this room? Only the socket path can know; see HubDeps.tvConnected. */
+	tvConnected?: () => boolean;
 }
 
 /**
@@ -633,6 +635,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		listSingers: () => app.singers.listPublic(app.activeRoomId),
 		listOnline: perFrame.listOnline,
 		listAway: perFrame.listAway,
+		tvConnected: perFrame.tvConnected,
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
 		onNowPlaying: (e) => app.plays.onNowPlaying(e),
 		onSang: (singerId) => app.singers.markSang(singerId, app.now()),

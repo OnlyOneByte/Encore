@@ -54,6 +54,21 @@ test('the first screen takes a free seat; a second is a copy, and each is told',
 	expect(w.saved.get(ROOM)).toBe('tvA');
 });
 
+test('hasLiveHolder: only THE TV counts as connected, never a copy left on its own (proposal 11 fallback)', () => {
+	// The held song's fallback starts it only while a TV can play it. A copy's frames are dropped, so it could never
+	// report that song failing, and "a TV is connected" must not mean a copy.
+	const w = world();
+	expect(w.seats.hasLiveHolder(ROOM)).toBe(false);
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvB');
+	expect(w.seats.hasLiveHolder(ROOM)).toBe(true);
+	w.seats.disconnect(ROOM, 1); // the seat's screen goes; only the copy is left, inside the grace
+	expect(w.mine(2)).toBe(false);
+	expect(w.seats.hasLiveHolder(ROOM)).toBe(false);
+	w.seats.claim(ROOM, 2); // the copy is made the TV
+	expect(w.seats.hasLiveHolder(ROOM)).toBe(true);
+});
+
 test('a socket with no cookie never holds the seat, even a free one, and cannot claim it', () => {
 	const w = world();
 	expect(w.seats.connect(ROOM, 1, undefined)).toEqual([{ key: 1, mine: false, tvOnline: false }]);
