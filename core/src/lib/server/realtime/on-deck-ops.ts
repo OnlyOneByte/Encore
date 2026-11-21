@@ -41,6 +41,6 @@ export function onDeckOpRefusal(op: OnDeckOp, deps: HubDeps): string | null {
 	if (!Number.isInteger(op.toIdx) || op.toIdx <= from || op.toIdx >= queued.length)
 		return `invalid toIdx: ${String(op.toIdx)}`;
 	// The entry let through must be someone else's: letting your own next pick through lets nobody go first.
-	if (queued[op.toIdx]!.singerId === target.singerId) return `invalid toIdx: ${String(op.toIdx)}`;
+	if (queued[op.toIdx]!.singerId === target.singerId) return 'that is your own song';
 	return null;
 }

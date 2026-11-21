@@ -126,7 +126,7 @@ test('Not yet is refused with nobody behind, for a forward move, and for someone
 test('Not yet past my own next pick moves both picks behind the singer it names', () => {
 	const { state, deps } = harness([entry('m1', 'maya'), entry('m2', 'maya'), entry('t1', 'theo')]);
 	// Letting my own pick through lets nobody go first, so the server refuses it.
-	expect(validateCommand(cmd({ op: 'not-yet', id: 'm1', toIdx: 1 }), deps)).toBe('invalid toIdx: 1');
+	expect(validateCommand(cmd({ op: 'not-yet', id: 'm1', toIdx: 1 }), deps)).toBe('that is your own song');
 	expect(handleQueueCommand(cmd({ op: 'not-yet', id: 'm1', toIdx: 2 }), deps)).not.toBeNull();
 	expect(state.entries.map((e) => e.id)).toEqual(['t1', 'm1', 'm2']);
 });
@@ -135,6 +135,17 @@ test('a client cannot mint a spent "Not yet": `deferred` is stripped from an add
 	const { state, deps } = harness([]);
 	expect(handleQueueCommand(cmd({ op: 'add', entry: entry('n', 'maya', { deferred: true }) }), deps)).not.toBeNull();
 	expect(state.entries.find((e) => e.id === 'n')?.deferred).toBeUndefined();
+});
+
+test('re-sending the same add keeps a spent "Not yet" spent', () => {
+	const { state, deps } = harness([entry('a', 'maya'), entry('b', 'theo')]);
+	handleQueueCommand(cmd({ op: 'not-yet', id: 'a', toIdx: 1 }), deps);
+	const a = state.entries.find((e) => e.id === 'a')!;
+	expect(a.deferred).toBe(true);
+	// The optimistic echo path: the same id, singer, media and status, from a client that never knew about deferral.
+	const echo = { ...a, deferred: undefined };
+	expect(handleQueueCommand(cmd({ op: 'add', entry: echo }), deps)).not.toBeNull();
+	expect(state.entries.find((e) => e.id === 'a')?.deferred).toBe(true);
 });
 
 // ---- persistence ----------------------------------------------------------------------------------------------
