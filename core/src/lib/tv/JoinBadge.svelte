@@ -17,6 +17,8 @@
 		// Printed on the CORNER card, which has no typed-path block of its own. The HERO treatment deliberately IGNORES
 		// it, because attract and the lobby print it themselves across the type ladder.
 		roomCode?: string | null;
+		/** The CORNER card's element, bound by /tv to measure the band the reaction lane must stand above. */
+		cornerEl?: HTMLElement;
 	}
 
 	let {
@@ -26,7 +28,8 @@
 		onlineCount = 0,
 		size = placement === 'corner' ? 88 : 238,
 		unreachable = false,
-		roomCode = null
+		roomCode = null,
+		cornerEl = $bindable()
 	}: Props = $props();
 
 	const qrLength = $derived(typeof size === 'number' ? `${size}px` : size);
@@ -49,7 +52,7 @@
 -->
 
 {#if placement === 'corner'}
-	<div class="corner" aria-label="Scan to join Encore">
+	<div class="corner" aria-label="Scan to join Encore" bind:this={cornerEl}>
 		<div class="qr" style="--qr: {qrLength}">
 			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
 		</div>

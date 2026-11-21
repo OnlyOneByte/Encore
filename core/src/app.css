@@ -408,6 +408,9 @@
 	);
 	/* Published by /tv. The 0px fallback stands before the first measure and whenever no next song is queued. */
 	--tv-upnext-h: 0px;
+	/* Published by /tv: the corner join card's MEASURED height, the floor the reaction lane stands above beside
+	   --tv-chrome-h. The 0px fallback stands before the first measure, where the lane keeps the chrome band alone. */
+	--tv-corner-h: 0px;
 	/* THE REACTION LANE's width: one disc, INSIDE the safe area, against its right edge. vw for the same reason as
 	   --tv-safe-x (geometry, not type); the floor keeps a disc readable at 720p. */
 	--tv-reaction-w: clamp(48px, 3.6vw, 140px);

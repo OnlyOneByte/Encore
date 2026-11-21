@@ -385,10 +385,16 @@
 	let upnextEl = $state<HTMLElement | undefined>();
 	let measuredUpnextPx = $state<number | null>(null);
 	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
+	// And the corner join card, which the reaction lane stands directly above: it is NOT part of the chrome band (the
+	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller.
+	let cornerEl = $state<HTMLElement | undefined>();
+	let measuredCornerPx = $state<number | null>(null);
+	$effect(() => observeBlockSize(cornerEl, (px) => (measuredCornerPx = px)));
 	const tvStyle = $derived(
 		[
 			chromeBandStyle,
 			measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`,
+			measuredCornerPx === null ? undefined : `--tv-corner-h: ${Math.ceil(measuredCornerPx)}px`,
 			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
 			settings.room.tvReactions ? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))' : undefined
 		]
@@ -760,7 +766,13 @@
 			<Reactions bind:this={reactions} />
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
-		<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" roomCode={data.roomCode} />
+		<JoinBadge
+			qrDataUrl={data.qrDataUrl}
+			joinUrl={data.joinUrl}
+			placement="corner"
+			roomCode={data.roomCode}
+			bind:cornerEl={cornerEl}
+		/>
 	{/if}
 
 	<!-- Transient states, ONE at a time. See docs/FRONTEND.md#the-full-screen-takeovers. -->
