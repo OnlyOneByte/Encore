@@ -3,7 +3,7 @@
 import { test, expect, afterEach } from 'bun:test';
 import { gunzipSync } from 'node:zlib';
 import { GET } from '$routes/api/library/+server';
-import { acceptsGzip } from '$lib/server/http/gzip-json';
+import { acceptsGzip, gzipJson } from '$lib/server/http/gzip-json';
 import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
@@ -70,4 +70,18 @@ test('Accept-Encoding: gzip, wildcard and q-values, with q=0 a refusal', () => {
 	expect(acceptsGzip('xgzip')).toBe(false);
 	expect(acceptsGzip(null)).toBe(false);
 	expect(acceptsGzip('')).toBe(false);
+});
+
+test('the compression yields the event loop: a macrotask queued before it runs before it resolves', async () => {
+	// A synchronous gzipSync finishes before gzipJson returns, so its promise settles in a MICROtask and the
+	// immediate below cannot have run. The async gzip completes on the pool, a later turn, so it has. ~4 MB of
+	// poorly compressible text keeps the compression well past one turn of the loop.
+	let seed = 1;
+	const word = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) >>> 0).toString(36);
+	const body = { rows: Array.from({ length: 200_000 }, () => word() + word() + word()) };
+	let yielded = false;
+	setImmediate(() => (yielded = true));
+	const res = await gzipJson(new Request('http://x', { headers: { 'accept-encoding': 'gzip' } }), body);
+	expect(yielded, 'gzipJson compressed synchronously and held the event loop').toBe(true);
+	expect(res.headers.get('content-encoding')).toBe('gzip');
 });
