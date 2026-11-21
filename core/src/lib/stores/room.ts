@@ -85,10 +85,6 @@ export class RoomLink {
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
-	/** Captured once on connect and HELD; connect() merges every one into the catalog before any sync arrives. A sync
-	 * ADDS to the catalog rather than replacing it, so it no longer wipes a scarred row: the re-merge on each sync now
-	 * only does something when it puts back a scarred song that `#songGone` removed as deleted. */
-	#scarred: Media[] = [];
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 
 	/** Notified after every change to the fields above. Returns a disposer. */
@@ -178,12 +174,13 @@ export class RoomLink {
 
 		// The live status map is in-memory only, so a reload erases a failed process. A persisted scar is seeded back as a
 		// synthetic `failed` status and flows through the same readiness path a live failure takes, with no extra UI.
-		this.#scarred = activeScars();
-		if (this.#scarred.length) {
+		// Merged ONCE: a sync adds to the catalog rather than replacing it, so nothing has to put these back later.
+		const scarred = activeScars();
+		if (scarred.length) {
 			// The library endpoint returns only ready and processing media, so a failed song is not in the catalog.
-			this.mergeMissingMedia(this.#scarred);
+			this.mergeMissingMedia(scarred);
 			const withScars = new Map(this.mediaStatus);
-			for (const m of this.#scarred) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
+			for (const m of scarred) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
 			this.mediaStatus = withScars;
 		}
 
@@ -252,8 +249,6 @@ export class RoomLink {
 			// the library merged in, and a title would fall back to its id. The catalog is only read by id, so a stale extra
 			// row is harmless.
 			if (e.media) this.mediaCatalog = new Map([...this.mediaCatalog, ...e.media.map((m) => [m.id, m] as const)]);
-			// Re-apply failed-process scars, for ids the catalog does not hold.
-			if (this.#scarred.length) this.mergeMissingMedia(this.#scarred);
 			// An omitted list means "no info", not "nobody is away" — do not blank what we have.
 			if (e.away) this.awaySingers = new Set(e.away);
 			queueMicrotask(() => this.queue?.resendPending());
@@ -309,7 +304,6 @@ export class RoomLink {
 		// A successful re-process clears any failed-process scar, so the row never lingers as failed while it is ready.
 		if (status === 'ready') {
 			clearScar(mediaId);
-			this.#scarred = this.#scarred.filter((s) => s.id !== mediaId);
 			void this.refreshLibrary();
 		}
 		// Surface a died process instead of leaving the row stuck, and persist a per-device scar so it survives a reload.
@@ -324,7 +318,6 @@ export class RoomLink {
 				   PROCESS_SCAR_TTL_MS, 30 minutes. Scoping it to the requester as well is a taste call for the owner,
 				   so it is reported rather than taken. */
 				recordScar(failedMedia);
-				if (!this.#scarred.some((s) => s.id === mediaId)) this.#scarred = [...this.#scarred, failedMedia];
 			}
 			/* THE NOTICE IS PERSONAL. `media:status` is a room-wide broadcast by design — worker-hub records why —
 			   but this arm used to toast on EVERY connected phone, so one guest's dead job told seven other people
@@ -358,10 +351,11 @@ export class RoomLink {
 		next.delete(mediaId);
 		this.mediaCatalog = next;
 		this.library = this.library.filter((m) => m.id !== mediaId);
-		// A failed song carries a scar, which every sync re-merges into the catalog and a reload seeds back: drop it
-		// too, or the next sync puts the deleted song back.
+		// A failed song carries a stored scar, which the next connect would seed back into the catalog: drop it too.
 		clearScar(mediaId);
-		this.#scarred = this.#scarred.filter((s) => s.id !== mediaId);
+		// And its live status, whichever refusal brought us here: a `failed` left behind would show a re-added copy
+		// of the song as failed until a new status arrived.
+		this.mediaStatus = new Map([...this.mediaStatus].filter(([id]) => id !== mediaId));
 		this.#emit();
 		if (tell) this.#fail("That song isn't in the library any more.");
 	}

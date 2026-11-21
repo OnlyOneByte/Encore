@@ -168,6 +168,17 @@ function rejectLastAdd(socket: { sent: string[] }, mediaId: string): ServerEvent
 	return { type: 'op:reject', clientOpId: cmd.clientOpId, reason: `unknown media: ${mediaId}` };
 }
 
+test('a refused add leaves no failed status behind: the song re-added later is not shown as failed', async () => {
+	const { link, socket, deliver } = await connected();
+	link.mergeMedia([song('x', 'Comeback Song', { stemStatus: 'none' })]);
+	deliver({ type: 'media:status', mediaId: 'x', status: 'failed', pct: 0 });
+	link.queue!.addSong('x');
+	deliver(rejectLastAdd(socket, 'x')); // the add itself is refused: unknown media
+
+	link.mergeMedia([song('x', 'Comeback Song', { stemStatus: 'none' })]); // the song is back, e.g. re-imported
+	expect(link.mediaStatus.get('x')).toBeUndefined();
+});
+
 test('every tap on a deleted library song is told, and the song leaves the shelf', async () => {
 	const { link, notices, socket, deliver } = await connected();
 	expect(link.library.map((m) => m.id)).toEqual(['lib']);
