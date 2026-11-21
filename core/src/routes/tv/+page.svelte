@@ -442,10 +442,13 @@
 	let measuredUpnextPx = $state<number | null>(null);
 	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
 	// And the corner join card, which the reaction lane stands directly above: it is NOT part of the chrome band (the
-	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller.
+	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller. A copy
+	// has no card: its corner holds "Make this the TV", so that is the corner measured. Two refs, not one shared
+	// bind, so the order one unmounts and the other mounts in can never leave the corner unmeasured.
 	let cornerEl = $state<HTMLElement | undefined>();
+	let copySlotEl = $state<HTMLElement | undefined>();
 	let measuredCornerPx = $state<number | null>(null);
-	$effect(() => observeBlockSize(cornerEl, (px) => (measuredCornerPx = px)));
+	$effect(() => observeBlockSize(isCopy ? copySlotEl : cornerEl, (px) => (measuredCornerPx = px)));
 	const tvStyle = $derived(
 		[
 			chromeBandStyle,
@@ -1001,7 +1004,7 @@
 		<TvCopyChip onclaim={() => ws?.send({ type: 'tv:claim' })} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
-		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]}>{@render copyChip()}</div>
+		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]} bind:this={copySlotEl}>{@render copyChip()}</div>
 	{/if}
 
 	<div class={['status', { on: connected }]}></div>
