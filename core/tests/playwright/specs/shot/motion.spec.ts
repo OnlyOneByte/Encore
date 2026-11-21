@@ -583,7 +583,11 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 				const realtime = (result.metrics.realtime ?? {}) as Record<string, RealtimeReport>;
 				for (const [run, r] of Object.entries(realtime)) {
 					expect(r.travelPx.each.length, `${name} ${run}: no \`each\` element was on screen`).toBeGreaterThan(0);
-					if (run === 'realtime-late') expect(r.stall, `${name} ${run}: the stall never ran`).not.toBeNull();
+					if (run !== 'realtime-late') continue;
+					expect(r.stall, `${name} ${run}: the stall never ran`).not.toBeNull();
+					// A stall at the mount that did not make a first frame late did not hold the thread.
+					if (r.stall!.at === 'mount')
+						expect(r.firstFrameMs.worst, `${name} ${run}: no first frame was late`).toBeGreaterThanOrEqual(r.stall!.ms);
 				}
 			} finally {
 				for (const fn of cleanups) await fn();
