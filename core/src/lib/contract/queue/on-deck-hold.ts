@@ -3,15 +3,16 @@
 // singing and this entry plays next. See docs/SERVER.md#queue-ordering-and-rotation.
 
 /**
- * OPEN OWNER QUESTION: should the hold stay while the On deck singer's phone is away (locked, pocketed)? Today it
- * lifts, so a guest who left cannot stall the room. Flip this one line to keep the hold while away.
+ * THE OWNER'S RULING: the hold STAYS while the On deck singer's phone is away (locked, pocketed) — setting a key and
+ * putting the phone down is exactly the guest it protects. It cannot stall the room: the held song still plays when its
+ * turn comes (and can be skipped then), leaving the room removes it (`doLeave`), and its owner's Not yet moves it.
  */
-const HOLD_LIFTS_WHILE_AWAY = true;
+const HOLD_LIFTS_WHILE_AWAY = false;
 
 /**
  * The id of the entry the hold protects, or null. `next` is the room's next PLAYABLE entry; `nowSingerId` is whoever's
- * song is playing. Null in an idle room, when `next` is the current singer's own back-to-back song (no card shows for
- * it), and while its singer is away.
+ * song is playing. Null in an idle room and when `next` is the current singer's own back-to-back song (no card shows
+ * for it). Away does not lift it (`HOLD_LIFTS_WHILE_AWAY`).
  */
 export function heldEntryId(
 	next: { id: string; singerId: string } | null | undefined,

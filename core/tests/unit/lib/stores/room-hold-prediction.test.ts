@@ -189,3 +189,18 @@ test('the current singer is read off the LIST, as the server does: a song-change
 	expect(queuedIds(link.entries)).toEqual(commit(after, cmd));
 	expect(queuedIds(link.entries)).toEqual(['ana-cook', 'prayer', zoe]);
 });
+
+test('a pending add is placed against the NEW list`s singer, not the old one: Maya`s next song, held while Theo sings', async () => {
+	const { link, deliver, lastCommand } = await zoesPhone(ROOM);
+	link.queue!.addSong('ready');
+	const cmd = lastCommand();
+	// Theo now sings and Maya's 2nd song is next. Read against the old list, Maya would still be singing, her own
+	// back-to-back song would hold nothing, and Zoe's add would land first (review of #1021).
+	const after = [
+		entry('believin', 'theo', 0, { status: 'playing' }),
+		entry('maya-2', 'maya', 1),
+		entry('prayer', 'ana', 2)
+	];
+	deliver({ type: 'queue:patch', patch: { rev: 3, ops: [], entries: after } });
+	expect(queuedIds(link.entries)).toEqual(commit(after, cmd));
+});
