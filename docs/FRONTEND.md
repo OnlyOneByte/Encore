@@ -1773,7 +1773,8 @@ party. An unknown code falls through to the served room, so a stale code never d
 The binding is load-bearing.
 
 The TV holds NO queue rev of its own: it never handles `queue:patch` and adopts server truth wholesale
-from each `queue:sync`, so the hello handshake always sends `lastRev 0`. It writes only `tv:telemetry`,
+from each `queue:sync`, so the hello handshake always sends `lastRev 0`. It writes only `tv:telemetry`, and
+only while the server says it holds the room's seat (`tv:seat`, see `docs/SERVER.md#the-tv-seat`), with every frame
 dropped SILENTLY when the socket is not open — a ~4Hz ephemeral stream whose next frame is 250ms away,
 where warning per drop floods the console on every reconnect. Every frame carries the ENTRY id, because
 the server's stale-frame guard is conditional on it being present: without the stamp a duplicate `ended`

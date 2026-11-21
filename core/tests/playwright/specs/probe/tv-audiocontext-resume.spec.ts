@@ -76,6 +76,7 @@ test('gestureless — a +2 shift builds a graph, and captures the element only i
 	const browser = await chromium.launch({ executablePath: resolveChromium(), args: BASE_ARGS });
 	try {
 		const context = await browser.newContext({ baseURL: world.baseURL, viewport: { width: 1920, height: 1080 } });
+		await context.addCookies([world.tvCookie]);
 		const tv: Page = await context.newPage();
 		// Instrumented BEFORE any app script: reading `.state` after the fact cannot tell you whether a context
 		// was ever created. The policy goes on in the same breath and for the same reason — a television grants no
@@ -155,6 +156,7 @@ test('autoplay granted — a +2 shift builds a RUNNING graph that captures the e
 	});
 	try {
 		const context = await browser.newContext({ baseURL: world.baseURL, viewport: { width: 1920, height: 1080 } });
+		await context.addCookies([world.tvCookie]);
 		const tv: Page = await context.newPage();
 		await armGraphHook(tv);
 		await tv.goto(`/tv?room=${encodeURIComponent(world.code)}`);

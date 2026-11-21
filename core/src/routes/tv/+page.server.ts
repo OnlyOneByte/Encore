@@ -4,10 +4,22 @@
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$lib/server/app';
-import { joinOrigin, fallbackJoinOrigin } from '$lib/server/public-origin';
+import { joinOrigin, fallbackJoinOrigin, publicOriginIsHttps } from '$lib/server/public-origin';
+import { mintSessionToken } from '$lib/server/singers/repository';
+import { TV_COOKIE, readTvCookie } from '$lib/server/rooms/tv-seat';
 import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '$lib/contract';
 
-export const load: PageServerLoad = async ({ url, request }) => {
+export const load: PageServerLoad = async ({ url, request, cookies }) => {
+	// ONE TV PER ROOM: the screen's identity for the room's TV seat (see $lib/server/rooms/tv-seat). Minted once and
+	// re-set on every load, so a reload, a core restart or a month of nightly use finds the same screen. The singer
+	// cookie's flags: `path: '/'` so the /ws upgrade carries it, httpOnly so page script never sees it.
+	cookies.set(TV_COOKIE, readTvCookie(request.headers.get('cookie')) ?? mintSessionToken(), {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		secure: publicOriginIsHttps(request, url),
+		maxAge: 60 * 60 * 24 * 30
+	});
 	const origin = joinOrigin(request, url);
 	// What an EMPTY setting resolves to, so the TV can recognise a change that CLEARED the address.
 	const fallback = fallbackJoinOrigin(request, url);

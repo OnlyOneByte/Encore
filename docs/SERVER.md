@@ -452,10 +452,13 @@ that leaves open.
 - **`singers.session_token` carries a unique index.** Identity is derived from the cookie's token, never
   from anything the client asserts about who it is.
 - **A phone learns its room id from the `/api/join` RESPONSE BODY**, never from a cookie.
-- **A TV carries neither a singer nor a cookie.** It binds its room from the join CODE on the WS URL — the
-  same code the QR encodes — resolved through the rooms table, and falls back to the active room for an
-  absent or unknown code. That fallback is a deliberate spectator-safe default, not "go dark"; mutations
-  stay gated by the per-command checks however a socket resolved its room.
+- **A TV carries no singer, and its one cookie names a screen, not a room.** It binds its room from the
+  join CODE on the WS URL — the same code the QR encodes — resolved through the rooms table, and falls back
+  to the active room for an absent or unknown code. That fallback is a deliberate spectator-safe default,
+  not "go dark"; mutations stay gated by the per-command checks however a socket resolved its room.
+- **`encore_tv` names a screen for the TV seat** (see [The TV seat](#the-tv-seat)). `GET /tv` writes it with
+  the same five attributes as `encore_singer`, re-set on every load, from `mintSessionToken()`. It is an
+  identity, not a password: the trusted-LAN line in the README is unchanged.
 - **A socket falls into exactly three room classes**, and each gate reads the class rather than re-deriving
   it: IN-ROOM (full access), FOREIGN (refused, and subscribed only to its own room's topic), SPECTATOR (no
   room at all — a legitimate viewer, still gated per command on mutation). An unscoped viewer of the served
@@ -474,6 +477,29 @@ that leaves open.
 - **`plays` carries no singer column, structurally.** That is what makes the public stats endpoints
   aggregate-only by construction rather than by a filter, so no per-singer figure can be served from them
   even by mistake.
+
+### The TV seat
+
+One `/tv` per room is THE TV: only its socket's `tv:telemetry` can end the song or move the playhead. Any
+other `/tv` (a guest reading along on a phone, a forgotten laptop tab, a cookieless `/ws?role=tv`) is a
+copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds it socket edges.
+
+| What happens | The seat |
+| --- | --- |
+| A screen with an `encore_tv` cookie connects to a free seat | It takes it |
+| The holder reloads, or its wifi blips | Same cookie, so it is the holder again; the newest socket of that screen is the live one |
+| The core restarts | `rooms.tv_seat` kept the holder, so it gets the seat back when it reconnects, and a copy that reconnects first is not promoted for 60 s (`TV_SEAT_SLOW_BOOT_MS`): a TV boots slower than a phone tab |
+| The holder is gone for 15 s (`TV_SEAT_GRACE_MS`), e.g. its cookie was cleared | The newest copy with a cookie takes the seat; with none, it goes free. Never while the holder's cookie connected within the last 60 s, so a TV that flaps while it boots keeps its seat |
+| A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and the old holder becomes a copy |
+| A socket with no cookie | Never holds the seat and cannot claim it |
+
+Each TV socket hears `tv:seat { mine }` on connect and whenever its answer changes. `rooms.tv_seat` stores
+a SHA-256 of the cookie, never the cookie itself.
+
+**The seat is an identity, not an auth gate.** Only the cookie's shape is checked, so a planted or known
+`encore_tv` value (cookies are not port-scoped) counts as the same screen as its holder. That buys nothing a
+`tv:claim` does not already give any LAN device under the no-lockout rule, so it is not a defect; never build
+authorization on the seat.
 
 ### Schema and migrations
 

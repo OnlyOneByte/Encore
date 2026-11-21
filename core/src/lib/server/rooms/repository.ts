@@ -25,6 +25,9 @@ export function mintRoomCode(): string {
 	return code;
 }
 
+/** The public room columns: the seat holder stays off every {@link Room}, since only the TV seat reads it. */
+const ROOM = { id: rooms.id, code: rooms.code, createdAt: rooms.createdAt };
+
 export class RoomRepository {
 	#db: DB;
 	constructor(db: DB) {
@@ -52,7 +55,7 @@ export class RoomRepository {
 
 	/** The single active party for this core: boot mints exactly one room (the identity phones join and the QR advertises), so this returns it, minting one on first boot. A caller wanting a SPECIFIC room resolves by code instead. Oldest-first so a box with multiple rows still resolves to the room it has been advertising, not a newer one after restart. */
 	ensureActive(now: number): Room {
-		const existing = this.#db.select().from(rooms).orderBy(asc(rooms.createdAt)).all()[0];
+		const existing = this.#db.select(ROOM).from(rooms).orderBy(asc(rooms.createdAt)).all()[0];
 		if (existing) return existing;
 		return this.create(now);
 	}
@@ -60,13 +63,22 @@ export class RoomRepository {
 	/** Look a room up by its join code, or null if no room carries it. */
 	byCode(code: string): Room | null {
 		if (!code) return null;
-		return this.#db.select().from(rooms).where(eq(rooms.code, code)).all()[0] ?? null;
+		return this.#db.select(ROOM).from(rooms).where(eq(rooms.code, code)).all()[0] ?? null;
 	}
 
 	/** Look a room up by its internal id, or null. */
 	byId(id: string): Room | null {
 		if (!id) return null;
-		return this.#db.select().from(rooms).where(eq(rooms.id, id)).all()[0] ?? null;
+		return this.#db.select(ROOM).from(rooms).where(eq(rooms.id, id)).all()[0] ?? null;
+	}
+
+	/** The screen holding this room's TV seat, or null when it is free. See $lib/server/rooms/tv-seat. */
+	tvSeat(id: string): string | null {
+		return this.#db.select({ tvSeat: rooms.tvSeat }).from(rooms).where(eq(rooms.id, id)).all()[0]?.tvSeat ?? null;
+	}
+
+	setTvSeat(id: string, tvSeat: string | null): void {
+		this.#db.update(rooms).set({ tvSeat }).where(eq(rooms.id, id)).run();
 	}
 }
 

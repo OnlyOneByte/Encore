@@ -9,7 +9,9 @@ export const rooms = sqliteTable(
 		id: text('id').primaryKey(),
 		// UNIQUE, so a lookup by code resolves to exactly one room; the writer retries on a collision rather than minting two indistinguishable rooms.
 		code: text('code').notNull(),
-		createdAt: integer('created_at').notNull()
+		createdAt: integer('created_at').notNull(),
+		// The screen holding the room's TV seat: a hash of its `encore_tv` cookie, so a restart hands the seat back.
+		tvSeat: text('tv_seat')
 	},
 	(t) => ({ codeIdx: uniqueIndex('rooms_code_idx').on(t.code) })
 );
