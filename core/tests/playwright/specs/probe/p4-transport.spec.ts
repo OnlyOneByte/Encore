@@ -440,10 +440,10 @@ test('T5 · there is NO transport at all when there is nothing to play', async (
 	/* A STRONGER CLAIM THAN THIS ARM USED TO MAKE, and the rewrite is the point rather than a concession. It
 	   asserted that restart, play/pause and skip were each `disabled` on a drained room. The band rendered
 	   permanently, so `disabled` was the best answer available — and it left the design review's finding standing:
-	   the brightest element on an idle screen was a filled play button that did nothing. The strip renders only
-	   when `hasSong || canStart`, so on a drained room there is no disabled transport; there is no transport. The
-	   dock and the tab bar must still be ATTACHED, because the bottom of the screen is still navigation — that
-	   pair is what distinguishes "the strip stood down" from "the chrome fell over". */
+	   the brightest element on an idle screen was a filled play button that did nothing. Since proposal 13 the
+	   strip stays, so the dock keeps one height, but on a drained room it reads "Nothing playing" and has no
+	   transport at all, not a disabled one. The dock and the tab bar must still be ATTACHED, because the bottom of
+	   the screen is still navigation. */
 	const { worker, phones, tv } = await stage(world, [TRACKS.caroline], 1);
 	const phone = phones[0]!;
 	try {
@@ -454,17 +454,15 @@ test('T5 · there is NO transport at all when there is nothing to play', async (
 			await tv.waitForTimeout(1200);
 		}
 		expect((await serverPlayback(world.baseURL)).state.currentEntryId, 'the room must be drained first').toBeNull();
-		// Waits for the emptiness to have REACHED the phone: the strip's render is derived from the room the client
+		// Waits for the emptiness to have REACHED the phone: the strip's copy is derived from the room the client
 		// holds, so reading it before the broadcast lands measures the previous room.
-		await expect
-			.poll(async () => phone.locator(SEL.npStrip).count(), {
-				timeout: 10_000,
-				message: `T5a: the strip must not render when there is nothing to play — ${SEL.npStrip} is still attached`
-			})
-			.toBe(0);
+		await expect(phone.locator(SEL.npStripIdle), 'T5a: a drained room reads "Nothing playing"').toHaveText(
+			'Nothing playing',
+			{ timeout: 10_000 }
+		);
 		expect(
-			await phone.locator(SEL.npPlayPause).count(),
-			'T5b: with no strip there is no play/pause to dispatch into the void'
+			await phone.locator(`${SEL.npPlayPause}, ${SEL.npTransport}, ${SEL.npCheerKey}`).count(),
+			'T5b: an idle strip has no transport to dispatch into the void'
 		).toBe(0);
 		expect(
 			await phone.locator(SEL.dock).count(),

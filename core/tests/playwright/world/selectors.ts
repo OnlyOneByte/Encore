@@ -76,9 +76,8 @@ export const SEL = {
 	 *  dock on a joined singer), which is what makes it a join signal, and SOUNDER than the `.band` it replaced
 	 *  because it does not depend on a song existing.
 	 *  IT CARRIES NO BORDER AND NO PADDING, so its `clientHeight` and its `getBoundingClientRect().height` agree
-	 *  and either may be compared to `--dock-h`. TWO HEIGHTS, both measured at 390x844: 91/91 with the strip up
-	 *  (the strip's 45 plus the tab bar's 46), and 46/46 in a virgin room, where the strip does not render at all
-	 *  and the tab bar alone is the chrome. A driver expecting 91 unconditionally is expecting a queued song.
+	 *  and either may be compared to `--dock-h`. ONE HEIGHT since proposal 13, strip + tab bar, measured 93 at
+	 *  390x844 and 320 in every room state (idle, queued, playing, cheering, offline).
 	 *  It mounts after the room's first sync, whole, so it is a sounder join signal than before, not a weaker one. */
 	dock: '.dock',
 	/** The tab's grey rows while the link has no answer from /api/me yet (`RoomPending.svelte`). */
@@ -96,17 +95,24 @@ export const SEL = {
 	/** The lit tab, by the accessible half of the pair: `aria-current="page"` and a `.current` class are both
 	 *  set, and exactly one tab carries them — none on `/song/[mediaId]`, which is a push from any tab. */
 	tabCurrent: '.tabs [aria-current="page"]',
-	/** THE STRIP RENDERS ONLY WHEN `hasSong || canStart`, so its ABSENCE on an idle room is the contract and
-	 *  not a missing hook — the old band was permanently present and showed "Nothing playing" beside a
-	 *  disabled transport. Wait on `dock` for readiness and on this only when the room has something to do. */
+	/** THE STRIP RENDERS ON EVERY JOINED PHONE SURFACE (proposal 13). An idle room reads `npStripIdle` and has NO
+	 *  transport: the old band put a disabled Play, the brightest thing on screen, beside that copy. */
 	npStrip: '.dock .strip',
+	/** "Nothing playing": nothing current and nothing queued. */
+	npStripIdle: '.dock .strip .idle',
+	/** "Reconnecting…", in the title slot while the link is down. */
+	npStripOffline: '.dock .strip .offline',
 	/** "What is playing", present with no gesture — and a PLAYING entry renders no `.qrow` at all, so this is
 	 *  the only place on the phone the current title is spelled outside /queue. Rendered only on the `hasSong`
 	 *  branch: with a queue but nothing playing the strip shows `npStripWho` alone. */
 	npStripTitle: '.dock .strip .song',
-	/** The audience's reaction row, above the strip. Absent on the current singer's own phone. */
+	/** The Cheer key, first in the transport. Always in its slot while a song is on; `.resting` (hidden and inert)
+	 *  on the singer's own phone and with reactions off. */
+	npCheerKey: '.dock .strip .cheer-key',
+	/** The cheer tray: the strip's own row, swapped in by the Cheer key. Four reactions and ✕. */
 	npCheers: '.dock .cheers',
 	npCheer: '.dock .cheers .cheer',
+	npCheersClose: '.dock .cheers .close',
 	/** The singer's name, or "Ready when you are" on the queued-but-not-playing branch. */
 	npStripWho: '.dock .strip .who',
 	/** The strip's ONLY filled control, which is why `.btn.primary` identifies it: play/pause is the one
@@ -115,8 +121,8 @@ export const SEL = {
 	npPlayPause: '.dock .strip .btn.primary',
 	/** THREE buttons, in source order: restart, play/pause, skip. Not the old band's flanking PAIR — the strip has
 	 *  no separate `.disc`, so all three of its controls are `.btn` inside `.tp` and a driver expecting two would
-	 *  reject a correct tree. */
-	npTransport: '.dock .strip .tp .btn',
+	 *  reject a correct tree. The Cheer key shares `.tp .btn` and is not transport, hence the `:not`. */
+	npTransport: '.dock .strip .tp .btn:not(.cheer-key)',
 	/** The whole metadata block is the link to /queue, so the target is the width the transport leaves. */
 	npStripLink: '.dock .strip a[href="/queue"]',
 	/* ── /queue ───────────────────────────────────────────────────────────────

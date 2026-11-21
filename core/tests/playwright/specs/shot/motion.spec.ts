@@ -27,7 +27,16 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
-const CUTS = new Set(['tv-song-intro', 'phone-reorder-held-390', 'phone-reorder-held-320']);
+const CUTS = new Set([
+	'tv-song-intro',
+	'phone-reorder-held-390',
+	'phone-reorder-held-320',
+	'phone-cheers-return',
+	'phone-dock-idle'
+]);
+/** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
+ *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
+const STRIP_CONTENT = '.dock .meta, .dock .meta *, .dock .tp, .dock .tp *';
 
 /** A track longer than the 30 s heads-up window, so the on-deck row can cross it. The fixture's own are 8 s. */
 const LONG_TRACK = { file: 'long-take.wav', seconds: 36, hz: [196, 246.94, 293.66] };
@@ -95,56 +104,106 @@ async function mayaThenTheo(phones: { maya: Page; theo: Page; ana: Page }): Prom
 	await ana.waitForTimeout(3_000);
 }
 
-/** The dock as the song becomes yours, at one phone width: the reaction row's buttons fade out IN PLACE (opacity,
- *  --motion-base) and the row keeps its slot, so the dock does not move. "You're up" rises over it in the same
- *  moment and is listed under live.others. CLS must read 0 in metrics.json. */
+/** The dock's box and what its strip is showing, for every dock row's `observe`. */
+const readDock = (page: Page) =>
+	page.evaluate(() => {
+		const r = document.querySelector('.dock')!.getBoundingClientRect();
+		const key = document.querySelector('.dock .cheer-key');
+		return {
+			dock: { y: r.y, h: r.height },
+			keyInert: key?.hasAttribute('inert') ?? null,
+			tray: !!document.querySelector('.dock .cheers'),
+			text: document.querySelector('.dock .strip .meta')?.textContent?.trim() ?? null
+		};
+	});
+
+/** Phones for the dock rows: Maya, Theo and Ana with a fake worker, two songs ready and a TV. */
+async function dockPhones(world: World, cleanup: (fn: () => Promise<unknown>) => void) {
+	const worker = await startFakeWorker(world);
+	cleanup(() => worker.stop());
+	const ph = {
+		maya: await world.openPhone('Maya'),
+		theo: await world.openPhone('Theo'),
+		ana: await world.openPhone('Ana')
+	};
+	await readySong(world, ph.maya, 'caroline');
+	await readySong(world, ph.maya, 'believin');
+	await world.openTv();
+	return ph;
+}
+
+/** The dock as the song becomes yours, at one phone width: the Cheer key fades out IN PLACE (opacity,
+ *  --motion-base) and keeps its slot, so neither the strip nor the dock moves. "You're up" rises over it in the
+ *  same moment and is listed under live.others. CLS must read 0 in metrics.json, and the dock is 91 px tall. */
 function dockYourSong(width: number): Make {
 	return (browser, world, cleanup) => {
 		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
 		return {
 			name: `phone-dock-your-song-${width}`,
-			what: `Phone ${width}x844: the dock as Theo’s song starts — the cheer buttons fade out in place (opacity, --motion-base), the row keeps its height, the dock does not move (CLS 0)`,
+			what: `Phone ${width}x844: the dock as Theo’s song starts — the Cheer key fades out in place (opacity, --motion-base), no band and no shift (CLS 0)`,
 			stepMs: 33,
 			scale: 1,
 			columns: 5,
 			open: async (opts) => {
-				if (!ph) {
-					const worker = await startFakeWorker(world);
-					cleanup(() => worker.stop());
-					ph = {
-						maya: await world.openPhone('Maya'),
-						theo: await world.openPhone('Theo'),
-						ana: await world.openPhone('Ana')
-					};
-					await readySong(world, ph.maya, 'caroline');
-					await readySong(world, ph.maya, 'believin');
-					await world.openTv();
-				}
+				ph ??= await dockPhones(world, cleanup);
 				await mayaThenTheo(ph);
 				const page = await asSinger(browser, world, opts, ph.theo, width);
 				await page.goto('/');
 				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
-				await expect(page.locator(SEL.npCheer).first()).toBeVisible();
+				await expect(page.locator(SEL.npCheerKey)).toBeVisible();
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
 			},
 			trigger: async (page) => {
 				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-				await page.locator(`${SEL.npCheers}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
+				await page.locator(`${SEL.npCheerKey}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
 			},
-			only: '.cheer',
-			// The cheer row, not its buttons: they fade to opacity 0 by design, while the row keeps its height and
-			// opacity. A collapsed or removed row fails here; the whole dock would not.
-			subject: SEL.npCheers,
+			only: '.cheer-key',
+			// The strip, not the key: the key fades to opacity 0 by design, while the strip keeps its place.
+			subject: SEL.npStrip,
 			stripClip: async () => ({ x: 0, y: 604, width, height: 240 }),
-			observe: (page) =>
-				page.evaluate(() => {
-					const r = document.querySelector('.dock')!.getBoundingClientRect();
-					return {
-						dock: { y: r.y, h: r.height },
-						rowInert: document.querySelector('.dock .cheers')?.hasAttribute('inert') ?? null
-					};
-				})
+			observe: readDock
+		};
+	};
+}
+
+/** A fan (Theo, while Maya sings) at 390x844, the strip in front of them. `open` lands on the transport, or with
+ *  `cheering` on the open tray. */
+function fanDock(
+	name: string,
+	what: string,
+	row: Pick<MotionScenario, 'trigger' | 'only' | 'subject'> & { cheering?: boolean }
+): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		return {
+			name,
+			what,
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				ph ??= await dockPhones(world, cleanup);
+				await drain(ph.ana);
+				await queueReady(ph.maya, 'caroline');
+				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+				const page = await asSinger(browser, world, opts, ph.theo);
+				await page.goto('/');
+				await expect(page.locator(SEL.npCheerKey)).toBeVisible();
+				if (row.cheering) {
+					await page.locator(SEL.npCheerKey).click();
+					await expect(page.locator(SEL.npCheers)).toBeVisible();
+				}
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: row.trigger,
+			only: row.only,
+			subject: row.subject,
+			// The tray's 6 s return is a wall-clock timeout: it would close the tray between seeked frames.
+			holdTimers: true,
+			stripClip: async () => ({ x: 0, y: 664, width: 390, height: 180 }),
+			observe: readDock
 		};
 	};
 }
@@ -239,6 +298,60 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),
 	'phone-reorder-held-320': reorderHeld(320),
+	/** The Cheer key swaps the strip for the tray, in place and at the same height (`.rise-in`). */
+	'phone-cheers-open': fanDock(
+		'phone-cheers-open',
+		'Phone 390x844: tapping the Cheer key — the four reactions and ✕ rise into the strip in place (rise-in, --motion-base); the dock does not move',
+		{
+			trigger: async (page) => {
+				await page.locator(SEL.npCheerKey).click();
+				await page.locator(SEL.npCheers).waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: '.cheers',
+			subject: SEL.npCheers
+		}
+	),
+	/** ✕ gives the strip back to the transport: a cut, the same height. */
+	'phone-cheers-return': fanDock(
+		'phone-cheers-return',
+		'Phone 390x844: ✕ on the tray — the title and transport come back, a cut at the same height',
+		{
+			cheering: true,
+			trigger: async (page) => {
+				await page.locator(SEL.npCheersClose).click();
+				await page.locator(SEL.npPlayPause).waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: STRIP_CONTENT,
+			subject: SEL.npStrip
+		}
+	),
+	/** The last song ends: the strip stays and reads "Nothing playing" with no transport. A cut. */
+	'phone-dock-idle': fanDock(
+		'phone-dock-idle',
+		'Phone 390x844: the last song ends — the strip stays at its height and reads “Nothing playing” with no transport, a cut',
+		{
+			trigger: async (page) => {
+				await page.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await page.locator(SEL.npStripIdle).waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: STRIP_CONTENT,
+			subject: SEL.npStrip
+		}
+	),
+	/** The link drops: "Reconnecting…" takes the title slot instead of growing the dock by a row (a cut), and the
+	 *  Cheer key rests in its slot (opacity, --motion-base), since a cheer offline would be dropped. */
+	'phone-dock-offline': fanDock(
+		'phone-dock-offline',
+		'Phone 390x844: the link drops — “Reconnecting…” takes the title slot in --warn (a cut) and the Cheer key fades out in place (--motion-base); the dock does not grow',
+		{
+			trigger: async (page) => {
+				await page.context().setOffline(true);
+				await page.locator(SEL.npStripOffline).waitFor({ state: 'attached', timeout: 15_000 });
+			},
+			only: '.dock .cheer-key',
+			subject: SEL.npStrip
+		}
+	),
 	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
 	 *  drains the room and starts again from Maya's song. */
 	'phone-youre-up': (browser, world, cleanup) => {

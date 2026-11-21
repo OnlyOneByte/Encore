@@ -1,12 +1,13 @@
 /*
  * CLAIM 3: THE DOCK — one fixed container holding two stacked rows, the now-playing strip and the tab bar —
  * publishes its REAL measured height as --dock-h, composes the home-indicator inset exactly once, is reserved
- * by every scrolling column, and has NO OPEN STATE. Measured across both strip states, both insets, and five
- * surfaces.
+ * by every scrolling column, and has NO OPEN STATE. Since proposal 13 THE DOCK IS STRIP + TABS ON EVERY JOINED
+ * SURFACE: one height whether the room is idle, queued or emptied again. Measured across both transport states
+ * (none in an idle room, three buttons with a queue), both insets, and five surfaces.
  *
  * ONE TEST, because four of its arms are CROSS-STATE and no single-state reading can see any of them:
- *   · the published height must TRACK the strip appearing and then disappearing again;
- *   · present minus absent must EQUAL the strip's own rendered height;
+ *   · the published height must NOT MOVE as the transport appears and then goes again;
+ *   · idle, queued and emptied must all publish the same height, strip + tabs;
  *   · the token must be the same on every surface, which is a comparison between surfaces;
  *   · at least one driven column must really have scrolled and at least one must not, which is the old spec's
  *     "short case" asserted on real screens instead of synthesised from a non-matching query.
@@ -14,7 +15,7 @@
  *
  * THE 1px TOLERANCES ARE ROUNDING, NOT SLACK. `clientHeight` is an integer and a rect height is sub-pixel, so
  * the two legitimately differ by a fraction. The defects these arms catch are wrong by tens of pixels (a
- * missing or doubled safe-area term) or by a whole state (a strip that renders when nothing is playing).
+ * missing or doubled safe-area term) or by a whole row (a strip that leaves when nothing is playing).
  *
  * WHAT THIS REPLACED, and why the replacement is stronger rather than looser. The version before this one had
  * already been retargeted off the deleted band onto `.dock`, so it ran and it passed — and that was the problem.
@@ -279,22 +280,20 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	// mounted, so this lets the measured write land before anything reads it back.
 	await page.waitForTimeout(900);
 
-	/* ── STATE A — AT REST, AND THE STRIP IS ABSENT ──────────────────────────────────────────────────────────
-	   A virgin room has nothing playing and nothing queued, so the strip does not render and the tab bar alone
-	   holds the bottom. That is the state the gate's own fixture lands a joined phone in, and no earlier version of
-	   this file ever read it: the band it replaced was permanently present, and the version after that queued a
-	   song before it measured anything. Measured at 390x844: --dock-h 46px, dock 46 clientHeight / 46.00 rect, no
-	   strip, tab bar 46px, main reserving 74px. */
-	const atRest = await take(page, 'A / at rest, strip absent');
+	/* ── STATE A — AT REST: THE STRIP IS UP, WITH NO TRANSPORT ───────────────────────────────────────────────
+	   A virgin room has nothing playing and nothing queued. The strip still renders, so the dock has its one height,
+	   but it reads "Nothing playing" with no transport: a disabled Play beside that copy was the design review's
+	   "the brightest element on screen does nothing". Measured at 390x844 (ui:review rows): a 93px dock, strip + tab bar. */
+	const atRest = await take(page, 'A / at rest, no transport');
 	if (atRest) {
 		expect
 			.soft(
-				atRest.stripPresent,
-				'CLAIM 3 an IDLE room shows NO transport — the strip renders only when there is something to act on: ' +
-					`a ${SEL.npStrip} is present on a freshly joined room with nothing playing and nothing queued, which is the ` +
-					"design review's dead play button back again"
+				atRest.stripPresent && atRest.transportButtons === 0,
+				'CLAIM 3 an IDLE room keeps the strip (one dock height) but shows NO transport: ' +
+					`strip present=${atRest.stripPresent}, ${atRest.transportButtons} ${SEL.npTransport} on a freshly joined ` +
+					"room with nothing playing and nothing queued — a transport here is the design review's dead play button"
 			)
-			.toBe(false);
+			.toBe(true);
 		// THE PAIR IS EXACT, and it is the half that says the value was WRITTEN by the layout's measurement rather
 		// than inherited from a stylesheet: an inline custom property on :root is what `bind:clientHeight` sets.
 		expect
@@ -317,9 +316,10 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.toBe(true);
 		expect
 			.soft(
-				Math.abs(atRest.dockRectHeight - atRest.tabsHeight) <= 1,
-				'CLAIM 3 with no strip the dock IS the tab bar — no reservation is kept for a row that does not render: ' +
-					`dock ${atRest.dockRectHeight.toFixed(2)}px against a tab bar of ${atRest.tabsHeight.toFixed(2)}px`
+				Math.abs((atRest.stripHeight ?? Number.NaN) + atRest.tabsHeight - atRest.dockRectHeight) <= 1,
+				'CLAIM 3 at rest the dock is strip + tabs, the same two rows as with a queue: ' +
+					`strip ${(atRest.stripHeight ?? Number.NaN).toFixed(2)}px + tab bar ${atRest.tabsHeight.toFixed(2)}px ` +
+					`against a dock of ${atRest.dockRectHeight.toFixed(2)}px`
 			)
 			.toBe(true);
 	}
@@ -332,9 +332,9 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   THIS ARM IS TWO-SIDED, which is the point of the one-fixed-container arrangement. The tab bar is the DOCK's
 	   bottom-most row and the dock's SOLE declarer — not the app's: `.app-shell` spends the same inset on the
 	   scrolling column (measured padding-bottom 0→34px there too) and the dock is NOT inside it, so the two terms
-	   cannot compound. A MISSING term reads as a dock delta of 0 and a DOUBLED one as 68. Measured at 390x844,
-	   strip absent: dock 46→80px, tab bar padding-bottom 0→34px, the dock's own padding-bottom 0px at both
-	   insets. */
+	   cannot compound. A MISSING term reads as a dock delta of 0 and a DOUBLED one as 68. Measured at 390x844 on
+	   main before proposal 13, idle: tab bar padding-bottom 0→34px and the dock's own padding-bottom 0px at both
+	   insets; the dock grows by the inset alone. */
 	await setSafeAreaInsets(page, { bottom: SIMULATED_BOTTOM_INSET });
 	// A DWELL: the override is a compositor-side change, so the cascade re-resolves and repaints before the
 	// padding can be read back.
@@ -384,18 +384,17 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	await page.locator(SEL.songRow).first().waitFor({ state: 'attached', timeout: 20_000 });
 	await page.waitForTimeout(600);
 
-	// A SEARCH ALONE MUST NOT CONJURE A TRANSPORT. Measured at 390x844: the scanner titles the seeded fixture
-	// `sweet-caroline`, so narrowed to `local` that query returns exactly ONE row — offering `song-sing`, because
-	// the WAV has no stems — and --dock-h is still 46px with no strip.
+	// A SEARCH ALONE MUST NOT CONJURE A TRANSPORT. The scanner titles the seeded fixture `sweet-caroline`, so
+	// narrowed to `local` that query returns exactly ONE row — offering `song-sing`, because the WAV has no stems.
 	const searched = await take(page, 'C / with results, nothing queued yet');
 	if (searched) {
 		expect
 			.soft(
-				searched.stripPresent,
-				'CLAIM 3 FINDING a song is not the same as having one to play — the strip stays away until the queue has ' +
-					`something in it: a ${SEL.npStrip} appeared after a search with nothing queued`
+				searched.transportButtons,
+				'CLAIM 3 FINDING a song is not the same as having one to play — no transport until the queue has ' +
+					`something in it: ${searched.transportButtons} ${SEL.npTransport} after a search with nothing queued`
 			)
-			.toBe(false);
+			.toBe(0);
 	}
 
 	/* The row wait above and this click are HARD, because a fixture that indexed no row or cannot be clicked is an
@@ -406,11 +405,11 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   swallowed the floor arms and the run reported four arms instead of the arms plus the count. */
 	await page.locator(SEL.songRow).first().locator(SEL.addOrSing).first().click({ timeout: 30_000 });
 	await page
-		.locator(SEL.npStrip)
+		.locator(SEL.npPlayPause)
 		.first()
 		.waitFor({ state: 'attached', timeout: 20_000 })
 		.catch(() => {});
-	// A DWELL: the strip has just mounted, so the layout re-measures the container it is now inside.
+	// A DWELL: the transport has just mounted, so the layout re-measures the container it is inside.
 	await page.waitForTimeout(800);
 
 	/* Measured at 390x844 with one queued entry: --dock-h 91px, dock 91/91.00, strip 45px, tab bar 46px —
@@ -481,17 +480,17 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			)
 			.toBe(true);
 	}
-	// THE CROSS-STATE ARM, and it is the reason this is one test: the difference the strip makes to the PUBLISHED
-	// token must equal the strip's own rendered height. A layout that published a constant, or one that re-measured
-	// the wrong box, satisfies every single-state arm above and fails here. Measured 91 − 46 = 45 = the strip.
+	// THE CROSS-STATE ARM, and it is the reason this is one test: the transport appearing must not move the dock.
+	// Before proposal 13 the strip itself appeared here and the dock grew 48 → 93 at 390x844 (evidence/p13), shifting the dock's top
+	// edge on every phone in the room; the one-height dock must publish the same number in both states.
 	if (atRest && live) {
 		expect
 			.soft(
-				Math.abs(parseFloat(live.dockVar) - parseFloat(atRest.dockVar) - (live.stripHeight ?? Number.NaN)) <= 1,
-				'CLAIM 3 the strip appearing changes the published height by exactly the strip: ' +
-					`--dock-h "${atRest.dockVar}" with no strip and "${live.dockVar}" with one, a delta of ` +
-					`${(parseFloat(live.dockVar) - parseFloat(atRest.dockVar)).toFixed(2)}px against a strip that renders ` +
-					`${(live.stripHeight ?? Number.NaN).toFixed(2)}px tall`
+				Math.abs(parseFloat(live.dockVar) - parseFloat(atRest.dockVar)) <= 1 &&
+					Math.abs(live.dockTop - atRest.dockTop) < 0.5,
+				'CLAIM 3 the dock is ONE height — the first queued song does not move it: ' +
+					`--dock-h "${atRest.dockVar}" idle and "${live.dockVar}" with a queue, dock top ` +
+					`${atRest.dockTop.toFixed(2)} → ${live.dockTop.toFixed(2)}`
 			)
 			.toBe(true);
 	}
@@ -806,13 +805,12 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 		)
 		.toBe(true);
 
-	/* ── STATE F — BACK TO ABSENT, AND THE ROUND TRIP CLOSES ─────────────────────────────────────────────────
-	   Appearing proves the bind fires. DISAPPEARING proves the chrome does not keep a reservation for a row it no
-	   longer renders, which is the half most likely to break and the half no single-state reading can reach.
-	   Measured: 46px → 91px → 46px. */
+	/* ── STATE F — BACK TO IDLE, AND THE ROUND TRIP CLOSES ───────────────────────────────────────────────────
+	   Emptying the queue takes the transport away again, and the dock must keep its one height through it: the
+	   half no single-state reading can reach. It is one number before, during and after. */
 	await page.goto('/queue');
 	await page
-		.locator(SEL.npStrip)
+		.locator(SEL.npPlayPause)
 		.first()
 		.waitFor({ state: 'attached', timeout: 15_000 })
 		.catch(() => {});
@@ -822,14 +820,14 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	expect
 		.soft(
 			removable,
-			'CLAIM 3 /queue offers a way to empty the queue, which is the only way to drive the strip back to ABSENT: ' +
+			'CLAIM 3 /queue offers a way to empty the queue, which is the only way to drive the strip back to IDLE: ' +
 				`${removable} ${SEL.queueRemove} on /queue with one entry`
 		)
 		.toBeGreaterThanOrEqual(1);
 	if (removable > 0) {
 		await page.locator(SEL.queueRemove).first().click();
 		await page
-			.locator(SEL.npStrip)
+			.locator(SEL.npPlayPause)
 			.first()
 			.waitFor({ state: 'detached', timeout: 15_000 })
 			.catch(() => {});
@@ -839,18 +837,17 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	if (atRest && emptied) {
 		expect
 			.soft(
-				emptied.stripPresent,
-				'CLAIM 3 emptying the queue takes the strip away again — there is nothing left to act on: ' +
-					`a ${SEL.npStrip} is still present after the last entry was removed`
+				emptied.stripPresent && emptied.transportButtons === 0,
+				'CLAIM 3 emptying the queue takes the TRANSPORT away again and keeps the strip: ' +
+					`strip present=${emptied.stripPresent}, ${emptied.transportButtons} ${SEL.npTransport} after the last ` +
+					'entry was removed'
 			)
-			.toBe(false);
+			.toBe(true);
 		expect
 			.soft(
-				Math.abs(emptied.dockRectHeight - emptied.tabsHeight) <= 1 &&
-					Math.abs(parseFloat(emptied.dockVar) - emptied.dockRectHeight) <= 1,
-				"CLAIM 3 the dock gives the strip's height BACK — no reservation is kept for a row that stopped " +
-					`rendering: --dock-h "${emptied.dockVar}" against a dock of ${emptied.dockRectHeight.toFixed(2)}px and a ` +
-					`tab bar of ${emptied.tabsHeight.toFixed(2)}px`
+				Math.abs(parseFloat(emptied.dockVar) - emptied.dockRectHeight) <= 1,
+				'CLAIM 3 --dock-h still tracks the dock after the queue empties: ' +
+					`--dock-h "${emptied.dockVar}" against a dock of ${emptied.dockRectHeight.toFixed(2)}px`
 			)
 			.toBe(true);
 		expect
@@ -885,7 +882,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 		.toBe(true);
 
 	/* THE NON-VACUITY FLOOR. This rewrite's dominant failure mode is a drive that silently never reaches the
-	   strip-PRESENT state — the strip needs a real indexed library row queued — after which every arm above
+	   TRANSPORT state — it needs a real indexed library row queued — after which every arm above
 	   reports satisfied over the one state the drive did reach, INCLUDING the four cross-state arms that are the
 	   reason this is one test. A counted floor is what the register exists for, and per its own rule a firing
 	   floor is a FINDING, never a number to adjust. */
@@ -896,14 +893,19 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 				readings.map((r) => r.state).join(' | ')
 		)
 		.toBeGreaterThanOrEqual(FLOORS.dockStatesMeasured);
-	// AND BOTH SIDES OF THE BRANCH, which a count alone cannot say: nineteen readings of a strip-absent room
-	// would clear the floor above and prove nothing about the state change.
+	// AND BOTH SIDES OF THE BRANCH, which a count alone cannot say: nineteen readings of an idle room would clear
+	// the floor above and prove nothing about the state change.
 	expect
 		.soft(
-			readings.some((r) => r.stripPresent) && readings.some((r) => !r.stripPresent),
-			'CLAIM 3 the drive reached BOTH strip states, which is what makes the cross-state arms mean anything: ' +
-				`${readings.filter((r) => r.stripPresent).length} reading(s) with a strip, ` +
-				`${readings.filter((r) => !r.stripPresent).length} without`
+			readings.some((r) => r.transportButtons > 0) && readings.some((r) => r.transportButtons === 0),
+			'CLAIM 3 the drive reached BOTH transport states, which is what makes the cross-state arms mean anything: ' +
+				`${readings.filter((r) => r.transportButtons > 0).length} reading(s) with a transport, ` +
+				`${readings.filter((r) => r.transportButtons === 0).length} without`
 		)
 		.toBe(true);
+	// ONE DOCK HEIGHT ACROSS EVERY READING AT INSET 0, every state and every surface (proposal 13).
+	const heights = [...new Set(readings.filter((r) => r.insetBottom === 0).map((r) => r.dockVar))];
+	expect
+		.soft(heights.length, `CLAIM 3 the dock is one height in every state: published ${JSON.stringify(heights)}`)
+		.toBe(1);
 });

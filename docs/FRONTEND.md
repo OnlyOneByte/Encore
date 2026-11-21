@@ -482,8 +482,8 @@ rung that throws. So:
 > measured subtree arrives as an ATTRIBUTE, because an attribute write re-renders nothing and cannot change the
 > measured height. The deleted sheet had two such boxes (`.band-slot` and `.np-fit`) and passed every piece of
 > sheet state as a callback or a getter to satisfy this; the dock has one, and the rule it has to satisfy is
-> harder rather than easier. **`.dock`'s own CONTENT is conditional** — `NowPlayingStrip` renders only on
-> `hasSong || canStart` — so the binding genuinely re-runs when the room changes, which is exactly the shape this
+> harder rather than easier. **`.dock`'s own CONTENT is conditional** — the strip swaps its title, transport, cheer
+> tray and offline cue as the room changes — so the binding genuinely re-runs, which is exactly the shape this
 > rung objects to. No unit test mounts the root layout today; one that does will need a layout engine, and that is
 > the constraint to honour rather than to work around. The layout's own comment says so at the binding.
 
@@ -643,14 +643,14 @@ home-indicator inset and the strip composes none — two fixed siblings would ea
 and would disagree the moment one of them changed height. The dock is NOT inside `.app-shell`: the shell is
 centred and width-capped, so on a tablet a dock inside it would float in the middle of the screen.
 
-**THE DOCK HAS TWO HEIGHTS, AND EVERY CHROME-RELATIVE READING IN THIS FILE HAS TO SAY WHICH.** The strip renders
-only when there is something to act on (`hasSong || canStart`), so an idle room — joined, nothing playing, nothing
-queued — gets the tab bar alone. Measured at both widths: with the strip up the dock is **91px** (strip 45 + tab
-bar 46) and columns reserve 119px; with it absent the dock is **46px** and columns reserve 74px. At 1440x900 that
-puts the dock's top edge at **809** or **854**; at 390x844, at **753** or **798**. `measured-dock.spec.ts` asserts
-both states and asserts the strip's absence in the idle one, which is the property the rebuild was for: no dead
-transport in a room that has nothing to transport. A gap quoted to "the dock" without its room state is ambiguous
-by 45px, and several readings in this file were written that way before this note existed.
+**THE DOCK HAS ONE HEIGHT (proposal 13).** It is always the strip on the tab bar, **93px** at 390x844 and 320 (the
+ui:review dock rows), whether the room is idle, queued, playing, cheering or offline. Every strip state is one
+`var(--tap)` row — the four reactions sit behind a Cheer key and swap in for the title and transport, "Reconnecting…"
+takes the title slot, and an idle room reads "Nothing playing" with NO transport (the dead Play button the rebuild
+removed stays removed). Before, the dock had three heights (48, 93 and 164 with a reaction row), and each step moved
+its top edge on every phone in the room. `measured-dock.spec.ts` asserts the one height across states and surfaces;
+`dock-cls.spec.ts` asserts no layout shift from the dock across seven room transitions at 390x844 and 320x568.
+Readings below that quote a 46px dock or a top edge of 854 (1440x900) / 798 (390x844) predate it.
 
 `src/routes/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
 published on `documentElement` so every scrolling column can reserve it in normal flow. Rules:
@@ -681,7 +681,7 @@ published on `documentElement` so every scrolling column can reserve it in norma
 `QueueStore`, which keeps accepting taps with the socket down and replays the pending one on the next
 `queue:sync` through `resendPending()`. A PLAYER command — play, pause, skip, restart, ±key, the guiding track —
 goes through `RoomLink.command`, which is one `WsClient.send` with no pending ledger behind it: **dropped means
-lost.** The dock's `.offline-bar` says only "Reconnecting…" because that is the one sentence true of both, and
+lost.** The strip's offline cue says only "Reconnecting…" because that is the one sentence true of both, and
 `--warn` rather than `--danger` because a dropped socket self-heals on the next backoff tick.
 
 `RoomLink.command` returns the boolean `WsClient.send` has always returned. `false` means the socket was absent

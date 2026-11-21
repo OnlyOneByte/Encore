@@ -59,15 +59,16 @@ test('the notice carries a stable id, so a mash is one notice rather than a towe
 	expect(layout).toContain('transportNotice("Not connected — the TV didn\'t hear that.");');
 });
 
-test('the dock keeps its own offline bar, which answers the OTHER question', () => {
-	/* The per-tap notice does not replace the bar and must not be read as making it redundant: the bar is up for
+test('the dock keeps its own offline cue, which answers the OTHER question', () => {
+	/* The per-tap notice does not replace the cue and must not be read as making it redundant: the cue is up for
 	   the whole outage and says the link is down, the notice says one specific command was lost. Deleting either
-	   leaves a real gap, so both are pinned. */
+	   leaves a real gap, so both are pinned. Since proposal 13 the cue is the strip's title slot, not a row. */
 	// The link decides when the link is down (`RoomLink.offline`, room-connect.test.ts); the layout only shows it.
 	expect(layout).toContain('offline = room.offline;');
-	expect(layout).toContain('{#if offline}');
-	expect(layout).toContain('class="offline-bar"');
-	expect(layout).toContain('Reconnecting…');
+	expect(layout).toContain('connected={!offline}');
+	const strip = readFileSync(at('src/lib/ui/NowPlayingStrip.svelte'), 'utf8');
+	expect(strip).toContain('{#if !connected}');
+	expect(strip).toContain('Reconnecting…');
 });
 
 test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on the bottom', () => {
