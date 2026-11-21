@@ -19,7 +19,7 @@ export function acceptsGzip(header: string | null): boolean {
 
 /** `json(body)`, gzipped for a client that accepts it. Vary on both answers, so a cache never hands the
  *  compressed bytes to a client that did not ask for them. The ASYNC gzip runs on libuv's pool: a song turning
- *  ready sends every phone here at once, and ~10 ms of sync compression each would stall the socket that carries
+ *  ready sends every phone here at once, and ~4 ms of sync compression each (1,000 songs) would stall the socket that carries
  *  the room's taps. */
 export async function gzipJson(request: Request, body: unknown): Promise<Response> {
 	const vary = { vary: 'Accept-Encoding' };
