@@ -411,6 +411,8 @@ const SCENARIOS: Record<string, Make> = {
 				await expect(readout).not.toHaveText((await readout.textContent()) ?? '', { timeout: 8_000 });
 			},
 			only: '[data-slot="progress-indicator"]',
+			// `open` leaves exactly one processing card, this pass's own, so the class names it.
+			subject: SEL.processing,
 			stripClip: async (page) => (await ownCard(page).boundingBox()) ?? undefined,
 			observe: (page) =>
 				page.evaluate(() => ({

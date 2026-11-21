@@ -408,7 +408,7 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Is `s.subject` on screen inside `area` (page px; the viewport when absent), with a non-zero area of it left
+/** Is `s.subject` on screen inside `area` (viewport px, as a screenshot `clip` is; the viewport when absent), with a non-zero area of it left
  *  after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
  *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
  *  opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the product up the
@@ -494,8 +494,9 @@ function subjectState(
 				}
 				return v;
 			};
+			// A screenshot `clip` (not full-page) is in viewport px, like `getBoundingClientRect`, so no scroll offset.
 			const box = a
-				? { l: a.x - scrollX, t: a.y - scrollY, r: a.x - scrollX + a.width, b: a.y - scrollY + a.height }
+				? { l: a.x, t: a.y, r: a.x + a.width, b: a.y + a.height }
 				: { l: 0, t: 0, r: innerWidth, b: innerHeight };
 			const inside = [...document.querySelectorAll(sel)].filter((el) => {
 				if (getComputedStyle(el).visibility === 'hidden') return false;
