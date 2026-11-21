@@ -13,6 +13,10 @@
 //   LIVE run  — the same trigger, unpaused, with rAF timestamps, Long Animation Frame entries and layout-shift
 //               entries collected over the animation's window. This is the jank/CLS evidence; the seek run
 //               has none, because it does not run in real time.
+// A row about TIMING (a stream, anything released on a clock) adds `realtime`, a third kind of run that is both
+// real-time and recorded: the page unpaused at 6× CPU throttle (and once with a late first frame), its painted
+// frames as realtime.gif + filmstrip-realtime.png, and per-frame overlap and gaps between the things it names. The
+// seek run cannot show a motion that STARTS late, because its clock starts with the motion (#1000).
 // Headless Chromium runs with --disable-gpu (playwright.config.ts), so LIVE numbers are a floor on what software
 // rasterisation can do on this box — not a TV's GPU and not a phone's. See docs/UI-CHECKLIST.md#limits.
 //
@@ -24,11 +28,18 @@ import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-// gifenc ships CJS + ESM without types, and its package.json has no `exports`, so Playwright's loader resolves the
-// CJS build: take the default and destructure.
-// @ts-expect-error untyped
-import gifenc from 'gifenc';
-const { GIFEncoder, quantize, applyPalette } = gifenc;
+// The real-time pass, and the gifenc functions (it holds the import that works under both loaders).
+import {
+	analyseRealtime,
+	applyPalette,
+	encodeRealtimeGif,
+	GIFEncoder,
+	pickStripFrames,
+	quantize,
+	realtimeRun,
+	type RawFrame,
+	type RealtimeReport
+} from './motion-realtime';
 
 export interface Clip {
 	x: number;
@@ -50,8 +61,9 @@ export interface MotionScenario {
 	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
 	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails.
 	 *  What it can't see: z-order (a subject painted under another element still counts as shown); a `clip-path`
-	 *  shape other than `inset()`, or an `inset()` it can't read (`calc()`, a box keyword), counts as the whole box; and transformed clipping ancestors, whose padding
-	 *  box is approximate (`scale` > 1 can falsely fail, `scale` < 1 can hide a sliver clip). */
+	 *  shape other than `inset()`, or an `inset()` it can't read (`calc()`, a box keyword), counts as the whole box;
+	 *  and transformed clipping ancestors, whose padding box is approximate (`scale` > 1 can falsely fail, `scale` < 1
+	 *  can hide a sliver clip). */
 	subject: string;
 	/** Seek run only: once the trigger resolves, drop every page `setTimeout` callback, pending or new, until the
 	 *  page closes. For rows whose subject has a wall-clock dismiss (the "You're up" sheet, the TV card) that would
@@ -83,6 +95,21 @@ export interface MotionScenario {
 	/** ONE literal that is a deliberate exception: `match` is the exact `tokens.problems` line it waives (e.g.
 	 *  `phrase-fade on div.phrase-line: literal timing 0.6s`), `reason` says why. Any other literal still fails. */
 	literalsAllowed?: { match: string; reason: string };
+	/** Opt in to the REAL-TIME pass (`realtimeRun`): the page unpaused, its CPU throttled, recorded as painted. For a
+	 *  row about timing (a stream, a sequence, anything released on a clock), which the seek run cannot see by
+	 *  construction: its clock starts when the animation does, so a late first frame never shows. */
+	realtime?: {
+		/** The things that must not run into each other. Default: every match of `subject`. */
+		each?: string;
+		/** What they must stay clear of (the TV chrome, the lyrics, the block under a card). */
+		avoid?: string;
+		/** CDP CPU throttle for the pass. Default 6, the rate that reproduced #1000. */
+		throttle?: number;
+		/** Also run once with the main thread blocked this long when `each` first mounts. */
+		lateFirstFrameMs?: number;
+		/** How long to record after the trigger. Default: motion end + 500 ms. */
+		windowMs?: number;
+	};
 }
 
 export interface AnimationRecord {
@@ -155,9 +182,44 @@ function instrument() {
 		loaf: number[];
 		loafSupported: boolean;
 		shifts: { value: number; hadRecentInput: boolean }[];
+		/** Real-time runs only (`track`): every rendered frame's boxes of `each` and `avoid`, and per `each` element
+		 *  when it mounted and when its first animation or transition started. */
+		rt: {
+			each: string;
+			avoid: string | null;
+			ids: WeakMap<Element, number>;
+			labels: Record<number, string>;
+			frames: { t: number; e: number[][]; a: number[][] }[];
+			mounts: Record<number, number>;
+			starts: Record<number, number>;
+		} | null;
 		arm(freeze: boolean, only: string | null): void;
+		track(each: string, avoid: string | null): void;
 		catch(a: Animation): void;
 	};
+	// One id per element for the whole run, so a box can be followed across frames.
+	const idOf = (el: Element) => {
+		const rt = m.rt!;
+		let id = rt.ids.get(el);
+		if (id === undefined) {
+			id = Object.keys(rt.labels).length + 1;
+			rt.ids.set(el, id);
+			const cls = [...el.classList].filter((c) => !c.startsWith('s-') && !c.startsWith('svelte-')).slice(0, 2);
+			rt.labels[id] = el.matches(rt.each) ? `#${id}` : el.tagName.toLowerCase() + cls.map((c) => '.' + c).join('');
+		}
+		return id;
+	};
+	// [id, left, top, right, bottom, effective opacity (the product up the ancestors)] per box with an area.
+	const boxes = (sel: string | null) =>
+		sel
+			? [...document.querySelectorAll(sel)].flatMap((el) => {
+					const r = el.getBoundingClientRect();
+					if (!r.width || !r.height) return [];
+					let o = 1;
+					for (let p: Element | null = el; p; p = p.parentElement) o *= Number(getComputedStyle(p).opacity);
+					return [[idOf(el), r.left, r.top, r.right, r.bottom, o]];
+				})
+			: [];
 	const m: M = {
 		armed: false,
 		freeze: false,
@@ -171,6 +233,7 @@ function instrument() {
 		loaf: [],
 		loafSupported: false,
 		shifts: [],
+		rt: null,
 		arm(freeze, only) {
 			m.armed = true;
 			m.freeze = freeze;
@@ -183,12 +246,35 @@ function instrument() {
 			m.raf = [];
 			m.loaf = [];
 			m.shifts = [];
+			m.rt = null;
 			const tick = (t: number) => {
 				if (!m.armed) return;
 				m.raf.push(t);
+				// Read in the frame's own rAF, once per painted frame, and kept in-page until the run ends: no round trip.
+				if (m.rt) m.rt.frames.push({ t, e: boxes(m.rt.each), a: boxes(m.rt.avoid) });
 				requestAnimationFrame(tick);
 			};
 			requestAnimationFrame(tick);
+		},
+		track(each, avoid) {
+			const rt: NonNullable<M['rt']> = {
+				each,
+				avoid,
+				ids: new WeakMap(),
+				labels: {},
+				frames: [],
+				mounts: {},
+				starts: {}
+			};
+			m.rt = rt;
+			// Created before any stall observer, so it runs first and a mount is timed before the stall, not after.
+			new MutationObserver((records) => {
+				const now = performance.now();
+				for (const r of records)
+					for (const n of r.addedNodes)
+						if (n instanceof Element)
+							for (const el of [n, ...n.querySelectorAll(each)]) if (el.matches(each)) rt.mounts[idOf(el)] ??= now;
+			}).observe(document.documentElement, { childList: true, subtree: true });
 		},
 		catch(a) {
 			if (!m.armed || m.caught.includes(a) || m.others.includes(a)) return;
@@ -219,6 +305,14 @@ function instrument() {
 	};
 	document.addEventListener('animationstart', fromEvent, true);
 	document.addEventListener('transitionrun', fromEvent, true);
+	// Real-time runs: the first painted frame of each `each` element, which is when its motion really began.
+	const started = (e: Event) => {
+		const el = e.target;
+		if (!m.rt || !(el instanceof Element) || !el.matches(m.rt.each)) return;
+		m.rt.starts[idOf(el)] ??= performance.now();
+	};
+	document.addEventListener('animationstart', started, true);
+	document.addEventListener('transitionstart', started, true);
 
 	// Pause-and-seek stops the page's animation clock, so it stops its timers too: a wall-clock timer firing while
 	// frames are seeked (the "You're up" sheet's or the TV card's dismiss) would change the page under a frozen
@@ -408,8 +502,8 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Is `s.subject` on screen inside `area` (viewport px, as a screenshot `clip` is; the viewport when absent), with a non-zero area of it left
- *  after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
+/** Is `s.subject` on screen inside `area` (viewport px, as a screenshot `clip` is; the viewport when absent), with
+ *  a non-zero area of it left after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
  *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
  *  opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the product up the
  *  ancestor chain) above 0, and is what a run's last frame must have. */
@@ -674,14 +768,17 @@ function encodeGif(frames: Frame[], step: number, { holdMs = 700, slow = 1 } = {
 
 /** Cut `clip` (page CSS px) out of a frame that was shot at `origin` (or the viewport) and `scale`. */
 function crop(png: Buffer, clip: Clip, origin: Clip | undefined, scale: number): Buffer {
-	const src = PNG.sync.read(png);
+	return PNG.sync.write(cropDecoded(PNG.sync.read(png), clip, origin, scale));
+}
+
+function cropDecoded(src: PNG, clip: Clip, origin: Clip | undefined, scale: number): PNG {
 	const x = Math.max(0, Math.round((clip.x - (origin?.x ?? 0)) * scale));
 	const y = Math.max(0, Math.round((clip.y - (origin?.y ?? 0)) * scale));
 	const w = Math.min(src.width - x, Math.round(clip.width * scale));
 	const h = Math.min(src.height - y, Math.round(clip.height * scale));
 	const dst = new PNG({ width: w, height: h });
 	PNG.bitblt(src, dst, x, y, w, h, 0, 0);
-	return PNG.sync.write(dst);
+	return dst;
 }
 
 /** The contact sheet, laid out as HTML and photographed — labels in a real font with no image library. */
@@ -878,6 +975,76 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		)
 	);
 
+	// 4. REAL TIME — only for a row that opts in; a row without `realtime` writes exactly what it did before.
+	const realtime: Record<string, RealtimeReport> = {};
+	if (s.realtime) {
+		const rt = s.realtime;
+		const throttle = rt.throttle ?? 6;
+		const runs = [{ key: 'realtime', label: `realtime ${throttle}×`, throttle, stallMs: 0 }];
+		if (rt.lateFirstFrameMs)
+			runs.push({
+				key: 'realtime-late',
+				label: `realtime-late ${rt.lateFirstFrameMs}`,
+				throttle: 1,
+				stallMs: rt.lateFirstFrameMs
+			});
+		const windowMs = rt.windowMs ?? motionEnd + 500;
+		for (const run of runs) {
+			const got = await clock(`${run.key}Ms`, () =>
+				withPage({}, async (page) => ({
+					...(await realtimeRun(page, s, {
+						each: rt.each ?? s.subject,
+						avoid: rt.avoid ?? null,
+						throttle: run.throttle,
+						stallMs: run.stallMs,
+						windowMs
+					})),
+					clip: s.gifClip ? await s.gifClip(page) : undefined,
+					viewportWidth: page.viewportSize()?.width ?? 1280
+				}))
+			);
+			const report = analyseRealtime(got.trace, {
+				label: run.label,
+				throttle: run.throttle,
+				throttleRatio: got.throttleRatio,
+				stall: got.stall,
+				windowMs,
+				screencastFrames: got.frames.length
+			});
+			await clock(`${run.key}EncodeMs`, async () => {
+				const raw: RawFrame[] = got.frames.map((f) => {
+					const png = PNG.sync.read(f.png);
+					const cut = got.clip ? cropDecoded(png, got.clip, undefined, png.width / got.viewportWidth) : png;
+					return { ms: f.ms, width: cut.width, height: cut.height, data: cut.data };
+				});
+				const packed = encodeRealtimeGif(raw, `${s.name}/${run.key}.gif`);
+				report.gif = { frames: packed.frames, merged: packed.merged, halved: packed.halved };
+				write(`${run.key}.gif`, packed.gif);
+				const picks = pickStripFrames(
+					raw.map((f) => f.ms),
+					report.overlap.first.map((o) => o.ms),
+					cols * 4
+				);
+				write(
+					`filmstrip-${run.key}.png`,
+					await filmstrip(
+						browser,
+						`${s.name} — ${run.label}, real time`,
+						`${s.what} · ${report.line.replace(/\s+/g, ' ')} · what Chromium painted, labelled in wall-clock ms after the trigger; positions read once per rendered frame`,
+						picks.map((i) => {
+							const out = new PNG({ width: raw[i].width, height: raw[i].height });
+							raw[i].data.copy(out.data);
+							return { ms: raw[i].ms, png: PNG.sync.write(out) };
+						}),
+						cols
+					)
+				);
+			});
+			realtime[run.key] = report;
+			console.log(`  ${s.name}  ${report.line}`);
+		}
+	}
+
 	const metrics = {
 		scenario: s.name,
 		what: s.what,
@@ -908,6 +1075,8 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			burstFrames: reduced.frames.length,
 			observed: reduced.observed
 		},
+		// Only on a row that opts in, so every other row's keys are unchanged.
+		...(s.realtime ? { realtime } : {}),
 		timingsMs: timing,
 		files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v.bytes]))
 	};

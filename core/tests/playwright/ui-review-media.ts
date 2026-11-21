@@ -3,9 +3,10 @@
 // `gh` cannot attach images to a PR, so the media lives on `ui-review-media`, an orphan branch that shares no
 // history with main, and a PR comment links it (docs/UI-CHECKLIST.md#putting-the-gif-in-the-pr). Two commands:
 //
-//   bun run ui:review:publish-media -- <pr> [--dir <name>] [--slow] [row ...]
+//   bun run ui:review:publish-media -- <pr> [--dir <name>] [--slow | --realtime | --realtime=late] [row ...]
 //       Copies each row's clip.gif and filmstrip.png (and metrics.json) to pr-<pr>/<dir>/<row>/, commits and
 //       pushes without force, then prints the Markdown for the comment. Refuses a row whose media is over the cap.
+//       `--realtime` publishes a timing row's realtime.gif and filmstrip-realtime.png instead (`=late`: the late run's).
 //   bun run ui:review:prune-media -- --keep <pr,pr> [--apply]      (or --keep=<pr,pr>, or --keep-none)
 //       Re-roots the branch as ONE new parentless commit holding only the kept PRs' folders, so every older
 //       object stops being reachable. Dry-run unless --apply; the push is pinned to the commit it read.
@@ -17,10 +18,10 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { MAX_FILE_BYTES, overCap } from './world/motion-realtime';
+
 const BRANCH = 'ui-review-media';
 const REPO_URL = 'https://github.com/OnlyOneByte/Encore';
-/** Per file. Two media files per row (the GIF and the strip) keeps a four-row PR under about 12 MB. */
-const MAX_FILE_BYTES = 1.5 * 1024 * 1024;
 /** Re-root when the branch's reachable objects pass this, or once a quarter, whichever comes first. */
 const PRUNE_AT_BYTES = 200 * 1024 * 1024;
 /** A folder or row name: one path segment, never `.` or `..`, so it cannot climb out of the clone. */
@@ -82,31 +83,44 @@ function push(args: string[], cwd: string) {
 
 function publish(args: string[], url: string) {
 	const pr = args.shift() ?? '';
-	if (!/^\d+$/.test(pr)) throw new Refused('usage: publish <pr> [--dir <name>] [--slow] [row ...]');
+	if (!/^\d+$/.test(pr))
+		throw new Refused('usage: publish <pr> [--dir <name>] [--slow | --realtime | --realtime=late] [row ...]');
 	let dir = 'after';
 	let gif = 'clip.gif';
+	let strip = 'filmstrip.png';
 	const rows: string[] = [];
+	const modes = new Set<string>();
 	while (args.length) {
 		const a = args.shift()!;
 		if (a === '--dir') dir = segment('--dir', args.shift() ?? '');
-		else if (a === '--slow') gif = 'clip-slow4x.gif';
-		else rows.push(segment('row', a));
+		else if (a === '--slow') {
+			gif = 'clip-slow4x.gif';
+			modes.add('--slow');
+		}
+		// A timing row's real-time run INSTEAD of its seek run: still two files per row.
+		else if (a === '--realtime' || a === '--realtime=late') {
+			const run = a === '--realtime' ? 'realtime' : 'realtime-late';
+			[gif, strip] = [`${run}.gif`, `filmstrip-${run}.png`];
+			modes.add('--realtime');
+		} else rows.push(segment('row', a));
 	}
+	// The slow GIF is the seek run's: with the real-time strip it would publish a pair from two different runs.
+	if (modes.size > 1) throw new Refused('--slow and --realtime pick different runs; use one of them');
 	const out = resolve(process.env.MOTION_OUT ?? 'tests/playwright/.artifacts/motion');
 	if (!existsSync(out)) throw new Refused(`${out} does not exist: run bun run ui:review first, or set MOTION_OUT`);
+	// With no rows named, every row that has this GIF: `--realtime` alone means the rows that opted in.
 	const picked = rows.length
 		? rows
-		: readdirSync(out).filter((r) => SEGMENT.test(r) && existsSync(join(out, r, 'metrics.json')));
-	if (!picked.length) throw new Refused(`no rows under ${out}`);
+		: readdirSync(out).filter(
+				(r) => SEGMENT.test(r) && existsSync(join(out, r, 'metrics.json')) && existsSync(join(out, r, gif))
+			);
+	if (!picked.length) throw new Refused(`no rows under ${out}${gif === 'clip.gif' ? '' : ` with ${gif}`}`);
 	for (const row of picked)
-		for (const file of [gif, 'filmstrip.png']) {
+		for (const file of [gif, strip]) {
 			const path = join(out, row, file);
 			if (!existsSync(path)) throw new Refused(`${path} is missing`);
 			const size = statSync(path).size;
-			if (size > MAX_FILE_BYTES)
-				throw new Refused(
-					`${row}/${file} is ${size} bytes, over the ${MAX_FILE_BYTES}-byte (1.5 MB) cap: lower the row's scale or crop it`
-				);
+			if (size > MAX_FILE_BYTES) throw new Refused(overCap(`${row}/${file}`, size));
 		}
 
 	const tipBytes = inScratchClone(url, { bare: false, depth: 1 }, (clone) => {
@@ -114,7 +128,7 @@ function publish(args: string[], url: string) {
 			const dest = join(clone, `pr-${pr}`, dir, row);
 			rmSync(dest, { recursive: true, force: true });
 			mkdirSync(dest, { recursive: true });
-			for (const file of [gif, 'filmstrip.png', 'metrics.json']) cpSync(join(out, row, file), join(dest, file));
+			for (const file of [gif, strip, 'metrics.json']) cpSync(join(out, row, file), join(dest, file));
 		}
 		git(['add', '--all'], clone);
 		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone);
@@ -129,7 +143,7 @@ function publish(args: string[], url: string) {
 	const base = `${REPO_URL}/blob/${BRANCH}/pr-${pr}/${dir}`;
 	for (const row of picked)
 		console.log(
-			`**${row}**\n![${row}](${base}/${row}/${gif}?raw=true)\n[filmstrip](${base}/${row}/filmstrip.png?raw=true)\n`
+			`**${row}**\n![${row}](${base}/${row}/${gif}?raw=true)\n[filmstrip](${base}/${row}/${strip}?raw=true)\n`
 		);
 }
 
