@@ -3,7 +3,7 @@
 	// reduced-motion rule are stated once. Every style is matched EXPLICITLY and there is no trailing else, so `off`
 	// renders nothing and a style added later cannot silently inherit a bar. `card` renders inline, placed INSIDE the
 	// now-singing card by the caller; the other two self-position.
-	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
+	import { formatClock, formatRemainingAscii, progressFraction } from '$lib/clock';
 	import type { TvProgressStyle } from '$lib/contract';
 
 	interface Props {
@@ -21,13 +21,13 @@
 		<span class="card-row">
 			<span class="t">{formatClock(elapsedSec)}</span>
 			<span class="track card"><i style="transform:scaleX({progress})"></i></span>
-			<span class="t">{formatRemaining(elapsedSec, durationSec)}</span>
+			<span class="t">{formatRemainingAscii(elapsedSec, durationSec)}</span>
 		</span>
 	{:else if style === 'corner'}
 		<div class="topbar"><i style="transform:scaleX({progress})"></i></div>
 		<!-- Top-LEFT, because top-right is the connection dot / Up-next / fullscreen column and the bottom is the
 		     lower-third's. -->
-		<div class="pill"><span class="lab">left</span> {formatRemaining(elapsedSec, durationSec).slice(1)}</div>
+		<div class="pill"><span class="lab">left</span> {formatRemainingAscii(elapsedSec, durationSec).slice(1)}</div>
 	{:else if style === 'edge'}
 		<div class="edgebar"><i style="transform:scaleX({progress})"></i></div>
 	{/if}

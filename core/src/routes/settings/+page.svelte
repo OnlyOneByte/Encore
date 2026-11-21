@@ -129,7 +129,7 @@
 			/>
 
 			<Field.Label for="presence-grace">
-				Skip a quiet phone after · <span class="value">{graceLabel}</span>
+				Skip a quiet phone after <span class="value">· {graceLabel}</span>
 			</Field.Label>
 			<FieldSlider
 				id="presence-grace"
@@ -525,8 +525,8 @@
 		min-height: var(--tap);
 		font-size: var(--ph-text-md);
 	}
-	/* A label's value breaks as ONE piece: at 320 `Skip a quiet phone after · 1 hr 30 min` split inside the value,
-	   leaving `hr 30 min` alone on the second line. */
+	/* A label's value breaks as ONE piece, with its separator: at 320 `Skip a quiet phone after · 1 hr 30 min` split
+	   inside the value, and then left the `·` alone at the end of the first line. */
 	.value {
 		white-space: nowrap;
 	}
