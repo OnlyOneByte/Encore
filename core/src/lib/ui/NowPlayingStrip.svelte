@@ -36,7 +36,8 @@
 		onrestart,
 		ontoggleplay,
 		onskip,
-		onreact
+		onreact,
+		reactResting = false
 	}: {
 		title: string | null;
 		singerName: string | null;
@@ -50,8 +51,10 @@
 		onrestart: () => void;
 		ontoggleplay: () => void;
 		onskip: () => void;
-		/** Absent means no reaction row: nothing is on, it is your song, or the room switched reactions off. */
+		/** Absent means no reaction row: nothing is on, or the room switched reactions off. */
 		onreact?: (kind: ReactionKind) => void;
+		/** It is your song: the row keeps its slot but its buttons fade out and stop taking taps. */
+		reactResting?: boolean;
 	} = $props();
 
 	const fraction = $derived(progressFraction(elapsedSec, durationSec));
@@ -74,7 +77,7 @@
 
 {#if live}
 	{#if hasSong && onreact}
-		<ReactionRow singerName={singerName} onreact={onreact} />
+		<ReactionRow singerName={singerName} onreact={onreact} resting={reactResting} />
 	{/if}
 	<!-- A `section`, not a `nav`: the tab bar below is the navigation landmark, and two sibling navs make the
 		landmark list ambiguous to a screen reader. The label names the thing rather than the control group. -->

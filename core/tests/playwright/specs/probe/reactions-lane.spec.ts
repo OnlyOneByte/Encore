@@ -239,8 +239,10 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 		await expect.poll(() => frames.tv.length, { message: 'a fan reaction never reached the TV' }).toBe(1);
 		await expect.poll(() => mounted(tv)).toBe(1);
 
-		// The singer cheering their own song: refused by the server, not just hidden on the phone.
-		await expect(star.locator(SEL.npCheers)).toHaveCount(0);
+		// The singer cheering their own song: refused by the server, not just hidden on the phone. The row rests there,
+		// keeping its slot so the dock does not jump (dock-cls.spec.ts), with no button left to find or tap.
+		await expect(star.locator(SEL.npCheers)).toHaveAttribute('inert');
+		await expect(star.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'hidden');
 		await rawReact(star, 'heart');
 		await tv.waitForTimeout(SETTLE_MS);
 		expect(frames.tv.length, "the singer's own room:react reached the TV").toBe(1);
