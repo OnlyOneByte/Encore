@@ -21,11 +21,14 @@ export interface KnownSeed {
 
 export const KNOWN_SEEDS: KnownSeed[] = [
 	{
+		// No longer reproduces on main (d7a39215 replays it cleanly). When it did, at input 17 the TV sat on the
+		// LOADING card (a skip, then a pause before the slot was ready) with the lyrics still live under it, advancing
+		// off the server's intent. The TV page now also keeps the lyrics off while that card is up.
 		seed: 3059073472,
 		inputs: 24,
 		invariant: 'I4',
 		note: 'the lyrics highlight sits on a line whose window does not hold the playhead, with the song paused',
-		open: true
+		open: false
 	},
 	{
 		// NOT A ROOM BUG. A song queued twice in a row ended between I6's two samples; the repeat kept the same
