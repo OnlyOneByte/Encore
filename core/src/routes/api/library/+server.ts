@@ -1,13 +1,13 @@
 // GET /api/library — the durable catalog's two interesting states for a just-loaded client that has received no broadcasts yet: `library` (stems already on disk — re-queueing skips the worker, the whole point of persisting the catalog) and `processing` (songs separating RIGHT NOW with live progress, so reloading mid-process doesn't lose the progress bar until the next broadcast). Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
+import { gzipJson } from '$lib/server/http/gzip-json';
 import { hydrateMediaCatalog } from '$lib/server/media/repository';
 import { readinessOf } from '$lib/server/media/readiness';
 import { mediaStatusFor } from '$lib/server/jobs/media-status';
 import type { MediaStatus } from '$lib/contract';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
 	const app = getApp();
 
 	// Browse: an optional facet filter, one at a time (artist or tag, never both — matching the mutual-exclusion the chip row already imposes; artist wins if both are somehow present). Only READY songs are browsable — the catalog holds every search result ever materialised, far more than what's singable. `?tag=` reuses the media_tags byKindValue index via byTag rather than filtering the whole payload client-side, which doesn't scale past a few hundred songs.
@@ -39,7 +39,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			};
 		});
 
-	return json({
+	// Gzipped: every phone refetches this on connect and on each song turning ready (~800 KB at 500 songs, ~100 KB gzipped).
+	return gzipJson(request, {
 		library,
 		processing,
 		tags, // mediaId → its 'tag'-kind values, for the library row's chips; additive, a client that ignores it is unaffected
