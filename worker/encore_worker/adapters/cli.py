@@ -182,20 +182,27 @@ def run(
     that long: `Stalled`) are a WATCHDOG thread's to enforce, because reading output blocks (WK-03).
     """
     token = cancel if cancel is not None else current_token.get()
-    if token is not None and token.cancelled:
-        # A DBOS step retry, or the next step of a job already stopped: nothing to start.
-        raise ToolFailed(argv, -1, "cancelled")
-    lines: list[str] = []
-    proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
-        list(argv),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        start_new_session=True,
-    )
+    # Counted BEFORE the check: a cancel that lands while the child is being started then finds this run live
+    # and waits for it, instead of freeing the slot as the child appears.
     if token is not None:
         token._started()
+    try:
+        if token is not None and token.cancelled:
+            # A DBOS step retry, or the next step of a job already stopped: nothing to start.
+            raise ToolFailed(argv, -1, "cancelled")
+        proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
+            list(argv),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+    except BaseException:
+        if token is not None:
+            token._ended()
+        raise
+    lines: list[str] = []
     done = threading.Event()
     why: list[str] = []  # set by the watchdog before it kills, read after the child is reaped
     heard = [time.monotonic()]  # when the child last printed a line; written by the reader below
@@ -238,9 +245,11 @@ def run(
 
     watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
     reader = threading.Thread(target=read, name=f"read-{os.path.basename(argv[0])}", daemon=True)
-    watchdog.start()
-    reader.start()
     try:
+        # Inside the `try`: a thread that can't start (no memory, no threads left) still kills the child and
+        # uncounts the run below, or `_stop` would wait on this slot for good.
+        watchdog.start()
+        reader.start()
         code = proc.wait()
         # Drain every line before returning: the last ones carry the final figure and ffmpeg's report. A kill,
         # before the child exited or after, ends that wait at the group grace: a descendant that left the
@@ -255,7 +264,8 @@ def run(
         raise
     finally:
         done.set()
-        watchdog.join()
+        if watchdog.ident is not None:  # joining a thread that never started raises
+            watchdog.join()
         if why:
             # Reaping the child is not the group being gone: its own children die a moment later, and the slot
             # this count holds must outlast them.
@@ -280,6 +290,12 @@ def run(
 
 def _kill_group(proc: subprocess.Popen[str]) -> None:
     """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
+    if proc.returncode is not None and not _group_alive(proc.pid):
+        # The leader is reaped and the group is empty, so its number is nobody's: the kernel may hand it to a
+        # new group. A live member pins it, so a kill that can matter still goes out. Linux only: without
+        # /proc (macOS) `_group_alive` is `killpg(pgid, 0)`, so a REUSED number reads alive and is killed.
+        # shortcut: no reuse guard off Linux; reuse inside one drain is unlikely. Upgrade if macOS sees it.
+        return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
 
