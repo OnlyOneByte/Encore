@@ -225,15 +225,27 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected)', (
 	expect(state.playback.positionSec).toBe(33.3); // no id -> still applied (sub-second kept)
 });
 
-test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable', () => {
+test('the TV wires sendTelemetry through the pure telemetryFrame(status, entry, …) so the stamp is reachable', () => {
 	// The server-side stale-frame drops can only fire on a frame that CARRIES an entryId, so the TV stamping one
 	// only on `ended` makes every position frame id-less and both drops inert. The stamp itself lives in the pure
 	// telemetryFrame() and is asserted behaviourally there; this only pins the WIRING — sendTelemetry must
-	// delegate to telemetryFrame passing the live `current`, never a hardcoded id or the ended-only form.
+	// delegate to telemetryFrame passing the reporting slot's entry, never a hardcoded id or the ended-only form.
 	const src = read('src/routes/tv/+page.svelte');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
-	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current
+	expect(body).toContain('telemetryFrame(status, entryId ? { id: entryId } : null'); // delegates, passing the slot's entry
 	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the stale-frame bug
+});
+
+test("each TV slot stamps its ended, error and position frames with the entry IT holds, not the page's current", () => {
+	// After a natural end the TV plays `upNext` one server frame early, so `current` still names the song that ended. A
+	// song 2 that then fails stamped as song 1 is dropped as stale and parks the room (p21-dead-next-song); song 2's
+	// position stamped as song 1 lands on the wrong entry.
+	const src = read('src/routes/tv/+page.svelte');
+	for (const slot of ['A', 'B']) {
+		expect(src).toContain(`onended={() => onVisibleEnded(slotEntryId.${slot})}`);
+		expect(src).toContain(`onerror={() => onVisibleError(slotEntryId.${slot})}`);
+		expect(src).toContain(`sendTelemetry('playing', slotEntryId.${slot}, s)`);
+	}
 });
 
 test('a dropped id-less ended warns once per process, not once per frame', async () => {

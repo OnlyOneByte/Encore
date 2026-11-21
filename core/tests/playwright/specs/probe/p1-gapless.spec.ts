@@ -229,10 +229,14 @@ test('F3 · the song-to-song boundary is neither a dead-air seam nor double audi
 		const log = await readMediaLog(tv);
 		const endA = log.find((e) => e.ev === 'ended' && isSong1(e.src));
 		expect(endA, 'song 1 never fired `ended`, so there is no boundary to measure').toBeDefined();
-		const startB = log.find((e) => e.ev === 'playing' && isSong2(e.src) && e.t >= endA!.t - 1000);
-		expect(startB, "song 2 never fired `playing` around song 1's end").toBeDefined();
+		// No lookback limit: a song 2 that started a second or more early is the gross double audio the bound below names.
+		const startB = log.find((e) => e.ev === 'playing' && isSong2(e.src));
+		expect(startB, 'song 2 never fired `playing`').toBeDefined();
 		const deltaMs = Math.round(startB!.t - endA!.t);
 		const detail = `song 1 \`ended\` → song 2 \`playing\` = ${deltaMs}ms (page clock).`;
+		// Reported on a pass too, so drift shows before it crosses the budget.
+		console.log(`F3 ${detail}`);
+		test.info().annotations.push({ type: 'F3 seam', description: `${deltaMs}ms` });
 		// The A/B swap is one composited frame with no network, so low tens of ms is the shape. The old probe scored
 		// >400ms and <-80ms HIGH (a failing run) and 150..400ms MEDIUM (tolerated) — both HIGH thresholds are here.
 		expect(deltaMs, `past ~250ms is an audible dead-air seam. ${detail}`).toBeLessThanOrEqual(400);
@@ -241,12 +245,18 @@ test('F3 · the song-to-song boundary is neither a dead-air seam nor double audi
 		// AND IT WAS THE WARM BUFFER THAT PLAYED. On the swap the TV used to map the server's stale pair onto the slots,
 		// handing the warmed slot song 1 and then song 2 again: two reloads, so song 2 waited for the server's frame and
 		// a cold fetch. Over loopback that still fits the budget above, so the timing alone cannot catch it; a TV on
-		// Wi-Fi pays the real round trip. Any `emptied` between the two events is a slot reloading at the handoff.
-		const reloads = log.filter((e) => e.ev === 'emptied' && e.t >= endA!.t && e.t <= startB!.t);
+		// Wi-Fi pays the real round trip. Any `emptied` from song 1's end until song 2's own end (when the stage lets go)
+		// is a slot reloading, whether at the handoff or after song 2 started (a rewind once the server's frame lands).
+		const endB = log.find((e) => e.ev === 'ended' && isSong2(e.src) && e.t > startB!.t);
+		const untilEndB = (e: { t: number }) => e.t >= endA!.t && (!endB || e.t < endB.t);
+		const reloads = log.filter((e) => e.ev === 'emptied' && untilEndB(e));
 		expect(
 			reloads.map((e) => e.src),
-			`slots reloaded at the handoff, so song 2 was not played from its pre-warmed buffer. See GaplessController.slotEntries.`
+			`slots reloaded after song 1 ended, so song 2 was not played from its pre-warmed buffer. See GaplessController.slotEntries.`
 		).toEqual([]);
+		// And song 1 never comes back: a `playing` for it after its `ended` is the ended song replaying over the room.
+		const replays = log.filter((e) => e.ev === 'playing' && isSong1(e.src) && e.t > endA!.t);
+		expect(replays.length, `song 1 played again after it ended. ${detail}`).toBe(0);
 	} finally {
 		await worker.stop();
 	}

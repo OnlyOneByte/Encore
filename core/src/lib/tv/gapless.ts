@@ -73,7 +73,8 @@ export class GaplessController {
 	/**
 	 * Which of the server's pair each slot carries. After `onEnded` the controller is one server frame AHEAD of it: it
 	 * already plays `upNext`, so mapping the stale pair would hand the warmed slot the song that just ended, throw its
-	 * buffer away and cold-load the next song once the frame lands.
+	 * buffer away and cold-load the next song once the frame lands. In the missed-window case the visible slot loads
+	 * `upNext` right away and the partly warmed hidden slot is dropped, rather than replaying the ended song until then.
 	 */
 	slotEntries<T extends { id: string }>(current: T | null, upNext: T | null): { visible: T | null; hidden: T | null } {
 		if (upNext && upNext.id === this.#current && current?.id !== upNext.id) return { visible: upNext, hidden: null };

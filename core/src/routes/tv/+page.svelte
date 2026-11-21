@@ -207,10 +207,13 @@
 	 * DROPPED SILENTLY when the socket is not open (`quiet`) — right for a ~4Hz stream whose next frame is 250ms
 	 * away. What is NOT acceptable is THROWING out of `ontimeupdate`, which left the server never learning the
 	 * playhead. Every frame carries the entry stamp the server's stale-frame guard needs.
+	 * The stamp is the entry the reporting SLOT holds, not `current`: after a natural end the TV plays `upNext` one
+	 * server frame early, so `current` still names the song that ended and the server would drop song 2's frames as
+	 * stale — a song 2 that will not play then never advances the room.
 	 */
-	function sendTelemetry(status: string, positionSec = 0) {
+	function sendTelemetry(status: string, entryId: string | null, positionSec = 0) {
 		if (!seatMine) return;
-		ws?.send(telemetryFrame(status, current, positionSec), { quiet: true });
+		ws?.send(telemetryFrame(status, entryId ? { id: entryId } : null, positionSec), { quiet: true });
 	}
 
 	/** A FLASH, not a state: the takeover clears itself, so nothing has to remember to retract it. */
@@ -225,12 +228,12 @@
 		skipNoticeTimer = setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
 	}
 
-	function onVisibleError() {
+	function onVisibleError(endedId: string | null) {
 		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
 		// several bad files in a row would otherwise just flash black across the room.
 		flashSkipNotice('That song won’t play');
 		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
-		onVisibleEnded();
+		onVisibleEnded(endedId);
 	}
 
 	/**
@@ -241,14 +244,21 @@
 	/** The session has shown at least one song, so the next intro is a transition rather than an opener. */
 	let openedOnce = $state(false);
 
-	function onVisibleEnded() {
+	/** `endedId` is the entry the ending slot held; see `sendTelemetry`. */
+	function onVisibleEnded(endedId: string | null = current?.id ?? null) {
 		// The failure belonged to the song that just ended.
 		playbackFailedReason = null;
 		const next = ctl.onEnded(upNext);
 		tvState = next;
-		sendTelemetry('ended');
+		sendTelemetry('ended', endedId);
 		if (next === 'interstitial') {
 			introEntry = upNext;
+			holdSongIntro();
+		} else if (next === 'loading' && upNext && upNext.id !== endedId && openedOnce && songIntroMs > 0) {
+			// Missed the preload window: the visible slot starts `upNext` now, so its card goes up with its audio rather
+			// than a round trip later in `applyNowPlaying`. Not when `upNext` IS what ended: the server's frame is behind.
+			introEntry = upNext;
+			ctl.enterInterstitial();
 			holdSongIntro();
 		}
 		syncSlots();
@@ -607,12 +617,12 @@
 			ctl.onHiddenReady(slotEntryId.A ?? '');
 			tvState = ctl.state;
 		}}
-		onended={onVisibleEnded}
-		onerror={onVisibleError}
+		onended={() => onVisibleEnded(slotEntryId.A)}
+		onerror={() => onVisibleError(slotEntryId.A)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
-			sendTelemetry('playing', s);
+			sendTelemetry('playing', slotEntryId.A, s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onpitchblocked={() => (pitchBlocked = true)}
@@ -643,12 +653,12 @@
 			ctl.onHiddenReady(slotEntryId.B ?? '');
 			tvState = ctl.state;
 		}}
-		onended={onVisibleEnded}
-		onerror={onVisibleError}
+		onended={() => onVisibleEnded(slotEntryId.B)}
+		onerror={() => onVisibleError(slotEntryId.B)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
-			sendTelemetry('playing', s);
+			sendTelemetry('playing', slotEntryId.B, s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onpitchblocked={() => (pitchBlocked = true)}
