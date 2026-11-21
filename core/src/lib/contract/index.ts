@@ -12,6 +12,7 @@ export * from './core/ops';
 export * from './queue/rotation';
 export * from './queue/membership';
 export * from './queue/queue-order';
+export * from './queue/on-deck-hold';
 export * from './lyrics/lyrics';
 export * from './process/song-profile';
 export * from './process/readiness';

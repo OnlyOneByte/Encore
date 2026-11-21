@@ -148,6 +148,26 @@ test('the keyboard step moves one place and DECLINES at the ends', () => {
 	expect(keyboardMoveTarget(1.5, 1, 4)).toBeNull();
 });
 
+// Proposal 14: someone else's On deck row at index 0 sets `minIndex` 1 for every row behind it.
+test('the live sort never returns a slot above minIndex, however far up the finger goes', () => {
+	const at = (offsetPx: number) =>
+		liveSortTarget({ fromIndex: 4, offsetPx, rowBoundsPx: UNIFORM, count: 5, minIndex: 1 });
+	expect(at(-600)).toBe(1);
+	expect(at(-240)).toBe(1);
+	expect(at(-150)).toBe(2); // below the floor it follows the finger as before
+	expect(at(0)).toBe(4);
+	for (let off = -600; off <= 600; off += 10) expect(at(off)).toBeGreaterThanOrEqual(1);
+	// No floor is the old behaviour: the same drag reaches the top. The page compares the two to say why it stopped.
+	expect(liveSortTarget({ fromIndex: 4, offsetPx: -600, rowBoundsPx: UNIFORM, count: 5 })).toBe(0);
+});
+
+test('the keyboard step declines a step above minIndex, and moves freely below it', () => {
+	expect(keyboardMoveTarget(1, -1, 4, 1)).toBeNull();
+	expect(keyboardMoveTarget(2, -1, 4, 1)).toBe(1);
+	expect(keyboardMoveTarget(1, 1, 4, 1)).toBe(2);
+	expect(keyboardMoveTarget(1, -1, 4, 0)).toBe(0);
+});
+
 test('the ordinals the keyboard path announces stay correct past the irregular teens', () => {
 	expect(ordinal(1)).toBe('1st');
 	expect(ordinal(2)).toBe('2nd');

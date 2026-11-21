@@ -27,7 +27,7 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
-const CUTS = new Set(['tv-song-intro']);
+const CUTS = new Set(['tv-song-intro', 'phone-reorder-held-390', 'phone-reorder-held-320']);
 
 /** A track longer than the 30 s heads-up window, so the on-deck row can cross it. The fixture's own are 8 s. */
 const LONG_TRACK = { file: 'long-take.wav', seconds: 36, hz: [196, 246.94, 293.66] };
@@ -36,10 +36,18 @@ const BAR_TRACKS = [
 	{ file: 'open-road.wav', seconds: 8, hz: [196, 246.94, 293.66] },
 	{ file: 'night-drive.wav', seconds: 8, hz: [220, 261.63, 329.63] }
 ];
+/** Long enough that Maya's song is still on for every run of a row that reorders under it. */
+const HELD_SECS = 150;
+const HELD_LIBRARY = [
+	...DEMO_LIBRARY.map((t) => ({ ...t, seconds: HELD_SECS })),
+	{ file: 'mr-brightside.wav', seconds: HELD_SECS, hz: [207.65, 261.63, 311.13] }
+];
 /** Rows that boot their core with more than the demo library. */
 const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK],
-	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS]
+	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS],
+	'phone-reorder-held-390': HELD_LIBRARY,
+	'phone-reorder-held-320': HELD_LIBRARY
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -156,9 +164,81 @@ async function awaitReady(phone: Page, id: string): Promise<void> {
 		.toBe(true);
 }
 
+/** Maya drags the LAST queued row toward the top while Theo is On deck (proposal 14). The drop stops at 2nd, under
+ *  Theo's row, which has no grip on her phone, and on release "Theo’s on deck. Ana goes right after." appears under
+ *  "Queued" — a CUT: the line has no animation. The rows' own slide and number roll are the existing reorder motion,
+ *  outside `only` (their literal 160/180/220 ms timings predate this row). The last row is whichever of Ana's two
+ *  songs a previous run left there, so every run makes the same move. */
+function reorderHeld(width: number): Make {
+	return (browser, world, cleanup) => {
+		let maya: Page | undefined;
+		return {
+			name: `phone-reorder-held-${width}`,
+			what: `Phone ${width}x844: Maya drags Ana’s song toward the top while Theo is On deck — it stops at 2nd under Theo’s grip-less row, and one line says why`,
+			stepMs: 20,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!maya) {
+					const worker = await startFakeWorker(world, { seconds: HELD_SECS });
+					cleanup(() => worker.stop());
+					maya = await world.openPhone('Maya');
+					const theo = await world.openPhone('Theo');
+					const ana = await world.openPhone('Ana');
+					for (const q of ['caroline', 'believin', 'prayer', 'brightside']) await readySong(world, maya, q);
+					const tv = await world.openTv();
+					await queueReady(maya, 'caroline');
+					await expect(tv.locator(SEL.stateNext)).toBeHidden({ timeout: 30_000 });
+					await queueReady(theo, 'believin');
+					await queueReady(ana, 'prayer');
+					await queueReady(ana, 'brightside');
+				}
+				const page = await asSinger(browser, world, opts, maya, width);
+				await page.goto('/');
+				await openQueue(page);
+				await expect(page.locator(SEL.queueRow)).toHaveCount(3);
+				// Centred, not merely "in view": the fixed dock covers the bottom of the page, and a press there hits the dock.
+				await page
+					.locator(SEL.queueRow)
+					.last()
+					.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				const grip = page.locator(SEL.queueRow).last().locator(SEL.queueGrip);
+				const a = (await grip.boundingBox())!;
+				const top = (await page.locator(SEL.queueRow).first().boundingBox())!;
+				await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+				await page.mouse.down();
+				for (let i = 1; i <= 8; i++)
+					await page.mouse.move(a.x + a.width / 2, a.y + ((top.y - 20 - a.y) * i) / 8, { steps: 2 });
+				await page.mouse.up();
+				await page.locator('.reorder-note').waitFor({ timeout: 5_000 });
+			},
+			only: '.reorder-note',
+			subject: '.reorder-note',
+			stripClip: async (page) => {
+				const box = await page.locator('.grouphead').boundingBox();
+				return box ? { x: 0, y: Math.max(0, box.y - 8), width, height: 340 } : undefined;
+			},
+			observe: (page) =>
+				page.evaluate(() => ({
+					note: document.querySelector('.reorder-note')?.textContent?.trim() ?? null,
+					rows: [...document.querySelectorAll('.qrow')].map((r) => ({
+						grip: !!r.querySelector('[data-grip]'),
+						text: (r as HTMLElement).innerText.replace(/\s+/g, ' ').slice(0, 40)
+					}))
+				}))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
 	'phone-dock-your-song-390': dockYourSong(390),
 	'phone-dock-your-song-320': dockYourSong(320),
+	'phone-reorder-held-390': reorderHeld(390),
+	'phone-reorder-held-320': reorderHeld(320),
 	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
 	 *  drains the room and starts again from Maya's song. */
 	'phone-youre-up': (browser, world, cleanup) => {
