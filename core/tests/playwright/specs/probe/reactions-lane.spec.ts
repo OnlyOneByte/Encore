@@ -115,7 +115,13 @@ async function stage(world: World, fanCount: number) {
 	await tv.locator(SEL.tvConnected).waitFor({ state: 'attached' });
 	await expect(tv.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
 	await tv.mouse.move(1, 1);
-	for (const fan of fans) await expect(fan.locator(SEL.npCheers)).toBeVisible();
+	// LIVE, not just visible: a resting row (#986) is still a visible 71 px box, so visibility alone proves nothing.
+	// `burst` taps through `HTMLElement.click()`, which fires on an inert button too, so it cannot tell either.
+	for (const fan of fans) {
+		await expect(fan.locator(SEL.npCheers)).not.toHaveAttribute('inert');
+		await expect(fan.locator(SEL.npCheer).first()).toBeVisible();
+		await expect(fan.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'visible');
+	}
 	await countMounts(tv);
 	return { worker, star, fans, tv, frames };
 }
@@ -234,8 +240,9 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 }) => {
 	const { worker, star, fans, tv, frames } = await stage(world, 1);
 	try {
-		// Positive control: a fan's raw frame through server.ts reaches the TV.
-		await rawReact(fans[0], 'fire');
+		// Positive control: a fan's REAL tap on the cheer reaches the TV. A pointer click, so Playwright's actionability
+		// check refuses a button that hit-testing cannot reach (an inert, resting row).
+		await fans[0].locator(SEL.npCheer).first().click({ timeout: 5_000 });
 		await expect.poll(() => frames.tv.length, { message: 'a fan reaction never reached the TV' }).toBe(1);
 		await expect.poll(() => mounted(tv)).toBe(1);
 
