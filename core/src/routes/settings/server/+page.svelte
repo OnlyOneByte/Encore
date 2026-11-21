@@ -1,6 +1,6 @@
 <!-- THE MACHINE SCOPE: model weights, binaries, credentials and hardware capability — everything whose cost is paid
-	once per server and felt in every room on it. Its one door is the link at the foot of the room scope, beside
-	Process quality, which is the cap these defaults are capped by. docs/FRONTEND.md#settings -->
+	once per server and felt in every room on it. Its one door is the link at the foot of the room scope; the room's
+	Quality cap, in the Sound card there, is capped by these defaults. docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -9,6 +9,8 @@
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
 	import SelectField from '$lib/ui/SelectField.svelte';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
+	import { isUnreachableJoinOrigin } from '$lib/tv/screen';
+	import { UNREACHABLE_JOIN } from '$lib/tv/join-address';
 	import { createSettingsWrites } from '$lib/settings-writes.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
@@ -144,6 +146,11 @@
 
 	// An https address on a plain-http party makes the QR unopenable from the LAN. The reverse still opens.
 	let joinSchemeMismatch = $derived(settings.global.joinOrigin.startsWith('https://') && !data.requestIsHttps);
+	// The address IN EFFECT, by the TV's own test, so this page says what the TV's empty-room screens say. The stage
+	// never shows it, so for a party that starts with a song queued this line is where the host learns it.
+	// shortcut: an empty setting resolves against THIS page's host, so a phone on the LAN reads reachable while a TV
+	// opened at localhost does not; upgrade if hosts report the TV warning with no line here.
+	const joinUnreachable = $derived(isUnreachableJoinOrigin(settings.global.joinOrigin || data.joinOriginFallback));
 
 	function commitJoinOrigin() {
 		const normalized = normalizeJoinOrigin(joinDraft);
@@ -167,10 +174,9 @@
 	back={{ href: SETTINGS_SCOPES.room.href, label: 'Back to the party settings' }}
 	failed={writes.failed}
 >
-	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and what `Card.Scope` is. -->
+	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and why no card repeats the scope. -->
 	<Card.Root id="karaoke">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.server.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Making karaoke</Card.Title>
 		</Card.Header>
 		<Card.Content>
@@ -226,7 +232,6 @@
 
 	<Card.Root id="lyrics-engine">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.server.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Lyrics engine</Card.Title>
 		</Card.Header>
 		<Card.Content>
@@ -258,7 +263,6 @@
 
 	<Card.Root id="joining">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.server.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Joining</Card.Title>
 		</Card.Header>
 		<Card.Content>
@@ -280,6 +284,9 @@
 				>Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description
 			>
 			{#if joinError}<p class="err" role="alert">{joinError}</p>{/if}
+			{#if joinUnreachable}
+				<p class="warn">{UNREACHABLE_JOIN}</p>
+			{/if}
 			{#if joinSchemeMismatch}
 				<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
 			{/if}
@@ -293,7 +300,6 @@
 		controls. See that rule for the cause. -->
 	<Card.Root id="reprocessing">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.server.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Re-processing</Card.Title>
 		</Card.Header>
 		<Card.Content>

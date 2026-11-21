@@ -23,6 +23,12 @@ export function formatRemaining(elapsedSec: number, durationSec: number): string
 	return `−${formatClock(Math.ceil(left))}`;
 }
 
+/** The TV's time left, as `-2:12`: an ASCII hyphen-minus, because a typographic minus is a codepoint a smart-TV
+ * browser may not carry (song-facts.ts's header). The phone keeps `formatRemaining`'s real minus sign. */
+export function formatRemainingAscii(elapsedSec: number, durationSec: number): string {
+	return formatRemaining(elapsedSec, durationSec).replace('−', '-');
+}
+
 /** Elapsed as a 0..1 fraction, or null when it cannot be known. Null rather than 0 for an unknown duration: a bar
  * pinned at zero looks like a stalled song, so the caller hides the row instead of showing a wrong one. Local files
  * and older catalog rows can both arrive with durationSec unset. */

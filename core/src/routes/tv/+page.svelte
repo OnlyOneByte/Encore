@@ -3,7 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '$lib/contract';
-	import { soundingKeyLine } from '$lib/song-facts';
+	import { keyShiftLabel } from '$lib/song-facts';
 	import { GaplessController, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -31,7 +31,6 @@
 		processStep,
 		PROCESS_STEPS
 	} from '$lib/tv/screen';
-	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
 	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
@@ -220,7 +219,7 @@
 	function onVisibleError() {
 		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
 		// several bad files in a row would otherwise just flash black across the room.
-		flashSkipNotice('Skipping — that track would not play');
+		flashSkipNotice('That song won’t play');
 		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
 		onVisibleEnded();
 	}
@@ -475,8 +474,8 @@
 	});
 
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
-	/** The ASCII form, and why it is ASCII, live in `soundingKeyLine` — see $lib/song-facts. */
-	const keyLine = $derived(soundingKeyLine(mediaOf(current)?.songProfile, keyShift));
+	/** `Key -2` while shifted, nothing at 0. Never the key's NAME: see `keyShiftLabel`. */
+	const keyLine = $derived(keyShiftLabel(keyShift));
 	// The override wins when set; `null` defers to the room.
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
 	const stageBg = $derived(
@@ -496,16 +495,12 @@
 		const m = mediaOf(current);
 		return m ? chosenCandidate(m) : null;
 	});
-	const lyricsUnverified = $derived(isAutoTranscribed(lyricsProvenance));
-	// GATED ON THERE BEING WORDS: `chosenCandidate` is independent of whether an artifact is on disk, so without
-	// the gate the card prints "Auto-transcribed" over a completely empty stage.
-	const lyricsSourceLabel = $derived(mediaOf(current)?.lyricsRef ? provenanceLabel(lyricsProvenance) : null);
 	// Declared below `lyricsProvenance` because it DEPENDS on it: `settings` alone answers the granularity of ONE
 	// song from a fleet-wide value, and `?.timing` IS the per-song granularity.
 	const lyricsStyle = $derived(resolveLyricsPresentation(settings, lyricsProvenance?.timing));
 	const attractJoinUrl = $derived(joinAddressLabel(data.joinUrl));
 	// `data.joinOrigin` comes from the request host, so opening /tv ON the serving machine puts a loopback
-	// address on the wall and every scan fails silently. An operator notice replaces the working-looking QR.
+	// address on the wall and every scan fails silently. Attract and the lobby say so to the host; the stage never does.
 	const joinUnreachable = $derived(isUnreachableJoinOrigin(data.joinOrigin));
 
 	// ONE derived value, because as independent `{#if}` blocks at one z-index with `inset: 0` and non-exclusive
@@ -731,12 +726,10 @@
 						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
 					>{/if}</span
 			>
+			<!-- No key NAME and no lyric SOURCE: the room cannot act on either. The singer reads both on the phone, and
+				the reel's amber tint alone says the words are a guess. -->
 			{#if keyLine}
 				<span class="ls-key">{keyLine}</span>
-			{/if}
-			<!-- The reel's amber tint carries the meaning; this line only names why the words look different. -->
-			{#if lyricsSourceLabel}
-				<span class={['ls-source', { 'ls-asr': lyricsUnverified }]}>{lyricsSourceLabel}</span>
 			{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
@@ -761,13 +754,7 @@
 			<Reactions bind:this={reactions} />
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
-		<JoinBadge
-			qrDataUrl={data.qrDataUrl}
-			joinUrl={data.joinUrl}
-			placement="corner"
-			unreachable={joinUnreachable}
-			roomCode={data.roomCode}
-		/>
+		<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" roomCode={data.roomCode} />
 	{/if}
 
 	<!-- Transient states, ONE at a time. See docs/FRONTEND.md#the-full-screen-takeovers. -->
@@ -835,13 +822,7 @@
 	-->
 	{#if transient}
 		<div class="takeover-join">
-			<JoinBadge
-				qrDataUrl={data.qrDataUrl}
-				joinUrl={data.joinUrl}
-				placement="corner"
-				unreachable={joinUnreachable}
-				roomCode={data.roomCode}
-			/>
+			<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" roomCode={data.roomCode} />
 		</div>
 	{/if}
 
@@ -865,7 +846,6 @@
 		>
 			<span class="ah-mark"><Icon name="play" /></span>
 			<span class="ah-head">Tap anywhere to <span class="grad-text">start the music</span></span>
-			<span class="ah-sub">This TV needs one tap before it can play sound</span>
 		</button>
 	{/if}
 
@@ -885,7 +865,6 @@
 			aria-label="Tap to let this TV change the key"
 		>
 			<span class="ph-head">Tap to <span class="grad-text">change the key</span></span>
-			<span class="ph-sub">This TV needs one tap before ± can shift the song</span>
 		</button>
 	{/if}
 
@@ -1152,17 +1131,6 @@
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		margin-top: var(--tv-space-3xs);
-	}
-	/* Neutral dim by default, because it is a SOURCE tag and not a warning; not uppercase and not letter-spaced,
-	   because the tracked-out version of this string read as debris. */
-	.ls-source {
-		font-size: var(--tv-label);
-		color: var(--ink-dim);
-		font-weight: 700;
-	}
-	/* A machine's guess joins the caution family, matching the reel's amber. Provenance, never a confidence score. */
-	.ls-source.ls-asr {
-		color: var(--warn);
 	}
 
 	/* Offset below the connection dot with a vh term, so the clearance scales instead of being right only at 1080p. */
@@ -1460,10 +1428,6 @@
 		font-weight: 650;
 		line-height: var(--lh-snug);
 	}
-	.ph-sub {
-		font-size: var(--tv-small);
-		color: var(--ink-dim);
-	}
 	.ah-mark {
 		display: grid;
 		place-items: center;
@@ -1482,11 +1446,6 @@
 		font-weight: 800;
 		line-height: var(--lh-tight);
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
-	}
-	.ah-sub {
-		font-size: var(--tv-body);
-		color: var(--ink-dim);
-		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 	}
 	/* NOT interactive — informational, so no button and no cursor: no tap can lift this failure. */
 	.silent-room {

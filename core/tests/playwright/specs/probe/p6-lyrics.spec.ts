@@ -379,17 +379,21 @@ test('the current line is legible at TV distance: size and contrast', async ({ w
 	}
 });
 
-test('transcribed lyrics carry the "Auto-transcribed" label and the amber unverified tint', async ({ world }) => {
+test('transcribed lyrics carry the amber unverified tint and no source label', async ({ world }) => {
 	// THE OLD PROBE COULD NOT ASK THIS. Its worker sent no `artifacts.lyrics.candidates`, so `chosenCandidate`
 	// returned null, `isAutoTranscribed(null)` was false and the finding was recorded as an ENV LIMIT rather than
 	// a defect. world/workers.ts publishes the candidate with `textSource: 'asr'`, so the claim is now real.
+	// The room cannot act on WHERE the words came from (proposal 09), so the lower third names no source: the
+	// tint alone says "a guess", and the source stays on the singer's phone.
 	const stage = await lyricsStage(world);
 	try {
 		await expect(stage.tv.locator(SEL.lyrics)).toBeAttached({ timeout: 25_000 });
-		await expect(
-			stage.tv.locator(SEL.lsAsr),
-			'no .ls-asr provenance line rendered for an ASR-sourced artifact'
-		).toHaveText('Auto-transcribed');
+		await expect(stage.tv.locator(SEL.lowerThird), 'the stage never showed its lower third').toBeVisible();
+		for (const label of ['Auto-transcribed', 'LRCLIB', 'From the video captions', 'Pasted by hand']) {
+			await expect(stage.tv.locator(SEL.lowerThird), `the stage names its lyric source: "${label}"`).not.toContainText(
+				label
+			);
+		}
 		await expect(
 			stage.tv.locator(SEL.lyricsUnverified),
 			'the reel carries no .unverified tint for an ASR-sourced artifact'

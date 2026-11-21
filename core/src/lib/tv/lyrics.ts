@@ -301,22 +301,3 @@ export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfide
 export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boolean {
 	return !!p && !isAuthoritativeText(p);
 }
-
-/**
- * WHERE the words came from, so "these lyrics are wrong" and "these lyrics are a guess" stop looking the same.
- * Provenance only, never a confidence score; the amber "not verified" tint is a SEPARATE axis. `null` for UNKNOWN
- * provenance, where the card must say NOTHING rather than "unknown".
- */
-export function provenanceLabel(p: LyricsProvenance | null | undefined): string | null {
-	if (!p) return null;
-	switch (p.textSource) {
-		case 'lrclib':
-			return 'LRCLIB';
-		case 'captions':
-			return 'From the video captions';
-		case 'asr':
-			return 'Auto-transcribed';
-		case 'manual':
-			return 'Pasted by hand';
-	}
-}

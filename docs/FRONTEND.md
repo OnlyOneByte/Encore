@@ -589,11 +589,11 @@ labels agree, which is why the key row carries the shared class rather than re-d
 three of its four properties locally. (`/components` still renders no second field label: the gallery imports no
 `Field.*`, no `ColourRing`, no `CodeEntry`.) Its label text is the primitive's now; the row
 kept the value's rank by moving `.gt-val` UP to `--ph-text-md` rather than holding the label down, and `/settings`
-already labels the same knob at room scope as `Guiding track · <n>%` in that dress.
+already labels the same knob at room scope as `Guide · <n>%` in that dress.
 
 ONE MORE LABEL DECISION, about the WORDS rather than the dress. A field label takes the second person exactly when
 the value is the singer's OWN — `Your name`, `Your color` — and stays a bare noun for anything the room or the box
-owns: `Guiding track`, `Font`, `Join address`, `Room code`. Every field label in the tree is a bare noun except
+owns: `Guide`, `Font`, `Join address`, `Room code`. Every field label in the tree is a bare noun except
 those two personal values, each of which appears on both surfaces that edit them (`/settings`' You card and the
 join screen's identity pane) — four labels, and `label-register.test.ts` holds that set exactly, in both
 directions, beside the census it sits in: 33 field labels, 4 possessive and 29 bare. The possessive set is the rule;
@@ -1270,8 +1270,8 @@ guards resolve by name.
 
 The scope list has ONE home, `src/lib/settings-scopes.ts` — `{ label, blastRadius, href }` per scope, KEYED rather
 than ordered, because nothing renders the three in a row any more. `blastRadius` carries no terminal stop: the same
-string is a sentence under the page heading ("Everyone in this room.") and an uppercase eyebrow on every card
-("EVERYONE IN THIS ROOM"), and a stop reads as a typo in the second register. `?tab=`, `settingsTabFromParam`,
+string is a sentence under the page heading ("Everyone in this room.") and an uppercase eyebrow on the You
+scope's cards ("ONLY YOU SEE THIS"), and a stop reads as a typo in the second register. `?tab=`, `settingsTabFromParam`,
 `DEFAULT_SETTINGS_TAB` and `replaceState` all retired with the tablist. Back walks scopes now, which is what Back
 is for once a scope is a page.
 
@@ -1351,8 +1351,11 @@ inside a group. Four measured sites: `#sound` slider → `.check`, `#tv` `.pair`
 fix — adding those wrappers to that arm — but it moves four rendered boundaries by 12px each and with them every card
 height, scrollHeight, reach and co-visibility figure recorded below, so it wants its own measured pass.
 
-**THE SCOPE MARK.** Every one of the eleven cards carries `Card.Scope` inside its header, above the title: one line
-naming who a change in that card reaches. It is the SECTION register — `--ph-text-xs`, 0.14em, uppercase, weight
+**THE SCOPE MARK.** The You scope's cards carry `Card.Scope` inside their header, above the title: one line
+naming who a change in that card reaches. The room and machine scopes DROPPED it (proposal 09): `SettingsScope`'s
+sticky header states the same line on every scroll position, so five cards each repeating "EVERYONE IN THIS ROOM"
+under it was the same words six times. The measurements below are the case that introduced the mark, under the
+tablist, before the scope header was sticky. It is the SECTION register — `--ph-text-xs`, 0.14em, uppercase, weight
 700, `--ink-dim` — which app.css reserves for a heading over a list or an eyebrow over a BLOCK, and a card is a
 block; it is a sibling of `Card.Title` and never sits on or inside a `<Field.Label>` or a `.control-label`, which
 was finding F7. It lives in `src/lib/components/ui/card/card-scope.svelte` because it is one dress read by three
@@ -1370,25 +1373,24 @@ mark and all of its controls at once. The one exception, measured and recorded r
 Lyrics card is 857.6px, over that budget, so on the narrowest phone that card's mark can leave the screen before
 its last slider arrives.
 
-Every card also carries an `id`, so all eleven are addressable. There is deliberately NO `scroll-margin-block-start`
+Every card also carries an `id`, so all ten are addressable. There is deliberately NO `scroll-margin-block-start`
 yet: nothing in the tree links to a card fragment, and the offset needed is the sticky header's rendered bottom at
 rest, which is content-driven rather than a rung — the first real fragment link should bring that number, measured,
 with it.
 
-CARD ORDER, and the two moves that are not alphabetical. The room scope runs Rotation, Sound, The TV, Lyrics on the
-TV, Process quality. Rotation is first because it holds the one room setting changed mid-song (four code sites say
+CARD ORDER, and the one move that is not alphabetical. The room scope runs Turns, Sound, The TV, Lyrics on the
+TV. Turns is first because it holds the one room setting changed mid-song (four code sites say
 so). **Sound is second, up from last**, because `GuidingTrack.svelte` records that this room DEFAULT and `/queue`'s
 per-turn override wear the same label in the same register, which makes it the control most likely to be
 mis-scoped — and it was the deepest control on the deepest panel. Measured: `#guide-default` moves from an absolute
-top of 1734.8 to 575.2, and from 1025.8px of scrolling to **zero**, at the same one tap from the Sing tab. **Process
-quality is last**, immediately above the one door into the machine scope, because `capAboveDefault` compares the
-room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel` — putting the cap beside the door to
-what it caps is the only place that relation can be read without changing page. That move costs `#quality-ceiling`
-its place on the first screen (0 → 1116.7px of scrolling), which is the price of the adjacency and is paid once per
-party rather than once per turn. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
+top of 1734.8 to 575.2, and from 1025.8px of scrolling to **zero**, at the same one tap from the Sing tab. **Quality
+is Sound's last row**, not a card of its own: it was a separate "Sound quality" card above the door into the machine
+scope, and two cards on one page cannot both be headed "Sound". That gives up the adjacency to what it caps
+(`capAboveDefault` compares the room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel`), so the
+`At or above the server default` line under the field is now the one place that relation is read. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
 You scope runs You then Leaving.
 
-**THE ELEVENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
+**THE TENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
 card, and a scope page cannot mark a card that has no heading to mark — it is `Re-processing` now, with
 `role="heading" aria-level={2}` like the other ten. The disclosure itself did not work: measured closed, it
 reported `aria-expanded="false"` and carried the `hidden` attribute while computing `display: flex` over 318.2px of
@@ -1852,9 +1854,12 @@ could still be joined by hand offering neither address nor code. The STATED TRAD
 code that will not resolve; that is accepted, because the address is only unroutable when nobody has set a
 party address, which in practice means a laptop showing this to itself. The `.badqr` family names are kept
 deliberately even though nothing about it is a card any more: they are how the e2e contract, the party flow
-and the scaling probe recognise the state. The corner treatment hides the fix clause rather than restating
-it, so the one string cannot drift, and `.corner` is scoped `:not(.badqr)` so the QR's flex row does not
-reach the notice, whose block children would otherwise become side-by-side columns.
+and the scaling probe recognise the state. The notice is HERO-ONLY — attract and the lobby, the empty room where
+the host is setting up — and reads "Phones can’t open this address" / "Fix it in Settings -> This machine" (ASCII `->`: the TV draws no typographic
+arrow or minus, see `song-facts.ts`). The
+corner card on the stage and over the takeovers never shows it: the room is watching, and nobody fixes an
+address from the sofa. `/settings/server`'s Joining card says the same first line, from the same constant in
+`src/lib/tv/join-address.ts`, when the address in effect fails `isUnreachableJoinOrigin`.
 
 ### The full-screen takeovers
 
