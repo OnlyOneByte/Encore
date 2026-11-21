@@ -73,9 +73,9 @@ async function connected() {
 	};
 }
 
-const syncOf = (media: Media[]): ServerEvent => ({
+const syncOf = (media: Media[], rev = 1): ServerEvent => ({
 	type: 'queue:sync',
-	rev: 1,
+	rev,
 	entries: [{ id: 'e1', mediaId: 'q', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1 }],
 	media
 });
@@ -99,7 +99,7 @@ test('the catalog only grows: a raw hit survives a sync, a status event, a libra
 	deliver(syncOf([song('q', 'Queued Song')]));
 	deliver({ type: 'media:status', mediaId: 'raw', status: 'queued', pct: 10 });
 	await link.refreshLibrary();
-	deliver({ ...syncOf([song('q', 'Queued Song')]), rev: 2 });
+	deliver(syncOf([song('q', 'Queued Song')], 2));
 
 	for (const id of ['raw', 'ready', 'lib', 'q']) expect(link.mediaCatalog.has(id), id).toBe(true);
 });
