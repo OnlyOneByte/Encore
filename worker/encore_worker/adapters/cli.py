@@ -27,6 +27,10 @@ from encore_worker.domain.lyrics.clean import clean_segments
 #: yt-dlp writes progress as a percentage; this is the only shape worth parsing out of its output.
 _PCT = re.compile(r"\[download\]\s+(\d{1,3})(?:\.\d+)?%")
 
+#: demucs's tqdm bar, ` 45%|████▌     | 52.6/117.0 [00:10<00:12, 5.10seconds/s]`. Carriage-return separated,
+#: which `run`'s text-mode read already splits into lines.
+_BAR = re.compile(r"^\s*(\d{1,3})%\|")
+
 #: `ffmpeg -i` reports duration on stderr in this shape. ffprobe is cleaner but is a second binary.
 _DURATION = re.compile(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)")
 
@@ -317,8 +321,8 @@ def _group_alive(pgid: int) -> bool:
 
 
 def parse_pct(line: str) -> int | None:
-    """A 0..100 percentage from a yt-dlp progress line, or None. Clamped, never trusted blindly."""
-    found = _PCT.search(line)
+    """A 0..100 percentage from a yt-dlp or demucs progress line, or None. Clamped, never trusted blindly."""
+    found = _PCT.search(line) or _BAR.search(line)
     if found is None:
         return None
     return max(0, min(100, int(found.group(1))))

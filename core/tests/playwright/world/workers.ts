@@ -54,6 +54,15 @@ export interface FakeWorkerFaults {
 	 * only thing that can end the job.
 	 */
 	hang?: JobType;
+	/**
+	 * Also send `pct: 0` for the current stage every this many ms, between the real figures: the frame order
+	 * a worker's timer keepalive produced before it repeated the last figure. Core must never let it pull the
+	 * bar back.
+	 */
+	keepaliveMs?: number;
+	/** Report the stems engine and model the job asked for, rather than `fake-separator`: what the ETA's
+	 *  history is matched on, so a spec watching the ETA needs it. */
+	ranAsAsked?: boolean;
 	/** `FAKE_SLOW_MS`: dwell between progress frames, to watch the processing UI. Default 120. */
 	slowMs?: number;
 	/**
@@ -168,6 +177,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		slowMs = DEFAULT_SLOW_MS,
 		fail,
 		hang,
+		keepaliveMs,
+		ranAsAsked = false,
 		silentInstrumental = false,
 		silentVocals = false,
 		skipWrite = false,
@@ -253,14 +264,29 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			const stage: MediaStatus = jobType === 'fetch' ? 'downloading' : 'separating';
 			send({ type: 'job:progress', workerId, jobId, stage, pct: 20 });
 			log(`hanging ${jobType} job=${jobId} on purpose`);
+			// With `keepaliveMs`, a step that is slow rather than dead: its keepalive goes on, nothing else does.
+			if (keepaliveMs) {
+				const beat = setInterval(() => {
+					if (stopped) clearInterval(beat);
+					else send({ type: 'job:progress', workerId, jobId, stage, pct: 20 });
+				}, keepaliveMs);
+			}
 			return;
 		}
 
 		// Progress frames drive the phone's processing bar and refresh the lease, so send real ones.
+		let stageNow: MediaStatus | null = null;
 		const progress = async (stage: MediaStatus, pct: number): Promise<void> => {
+			stageNow = stage;
 			send({ type: 'job:progress', workerId, jobId, stage, pct });
 			await sleep(slowMs);
 		};
+		// An older worker's timer keepalive: pct 0 for the current stage, between the real figures.
+		const keeper = keepaliveMs
+			? setInterval(() => {
+					if (stageNow) send({ type: 'job:progress', workerId, jobId, stage: stageNow, pct: 0 });
+				}, keepaliveMs)
+			: undefined;
 
 		try {
 			if (jobType === 'fetch') {
@@ -330,7 +356,13 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 					jobId,
 					mediaUri: insRef,
 					artifacts,
-					facts: { engine: 'fake-separator', model: 'e2e-tone', backend: 'none', device: 'cpu' },
+					facts: {
+						// `ranAsAsked`: report the engine and model the job named, as a real separator does.
+						engine: ranAsAsked ? params.engine : 'fake-separator',
+						model: ranAsAsked ? params.model : 'e2e-tone',
+						backend: 'none',
+						device: 'cpu'
+					},
 					stages: [{ stage: 'separate', ms: slowMs }]
 				});
 				return;
@@ -389,6 +421,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			send({ type: 'job:reject', workerId, jobId, reason: `fake worker has no ${jobType}` });
 		} catch (err) {
 			send({ type: 'job:failed', workerId, jobId, error: String(err), retryable: true });
+		} finally {
+			clearInterval(keeper);
 		}
 	};
 

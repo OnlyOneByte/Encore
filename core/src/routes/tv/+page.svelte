@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '$lib/contract';
@@ -26,6 +27,8 @@
 	import {
 		tvScreen,
 		lobbyRoster,
+		lobbyOverdue,
+		statusOverdue,
 		isUnreachableJoinOrigin,
 		lyricsAdvancing,
 		processStep,
@@ -357,6 +360,7 @@
 				onVisibleEnded();
 			}
 		}
+		if (e.type === 'media:status') noteOverdue(e.mediaId, statusOverdue(e));
 		// ONE upsert for both: a JOIN after the initial sync would otherwise leave the lower-third saying "Someone" for a
 		// late joiner, and a RENAME would leave the roster chip and lower-third on the old name until the next full sync.
 		if (e.type === 'singer:joined' || e.type === 'singer:updated') {
@@ -443,12 +447,22 @@
 
 	// `isPlayable`, not `readyToSing`: the same question the PLAYER asks, so the lobby cannot call something processing
 	// that the player would happily start.
-	const pendingCount = $derived(
+	const pending = $derived(
 		entries.filter((e) => {
 			const m = mediaOf(e);
 			return !m || !isPlayable(m);
-		}).length
+		})
 	);
+	const pendingCount = $derived(pending.length);
+	// Songs still being made and past their estimate (`statusOverdue`), so the lobby says what the singer's phone
+	// says rather than "this takes a minute". Only `pending` songs count: a ready one is overdue no longer. A
+	// `SvelteSet`: one id flips at a time, in place.
+	const overdueMedia = new SvelteSet<string>();
+	const overdue = $derived(lobbyOverdue(pending, overdueMedia));
+	function noteOverdue(mediaId: string, isOverdue: boolean): void {
+		if (isOverdue) overdueMedia.add(mediaId);
+		else overdueMedia.delete(mediaId);
+	}
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
 	// is the TV's: kept, it sat over the next singer's song (or its waiting card, which never reports ready).
@@ -752,6 +766,7 @@
 			roster={roster.shown}
 			overflow={roster.overflow}
 			pendingCount={pendingCount}
+			overdue={overdue}
 			unreachable={joinUnreachable}
 			roomCode={data.roomCode}
 		/>
