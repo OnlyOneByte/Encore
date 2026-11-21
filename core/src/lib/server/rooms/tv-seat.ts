@@ -62,6 +62,10 @@ export interface TvSeatStore {
 	load(roomId: string): string | null;
 	save(roomId: string, holder: string | null): void;
 	now(): number;
+	/** Run `run` once, `ms` from now (the server's timer, a test's fake clock). */
+	schedule(ms: number, run: () => void): void;
+	/** Deliver what a timed sweep decided, the same way the caller delivers a connect's or a close's notices. */
+	announce(notices: SeatNotice[]): void;
 }
 
 export class TvSeats {
@@ -123,11 +127,21 @@ export class TvSeats {
 		const next = s.sockets.findLast((x) => x.tvId);
 		this.#setHolder(roomId, s, next?.tvId ?? null);
 		if (next) this.#seated(s, next.key);
-		else Object.assign(s, { holderSocket: null, goneSince: null, graceMs: TV_SEAT_GRACE_MS, holderSeenAt: null });
+		else s.goneSince = null;
+	}
+
+	/** Every connect, close and claim can start (or move) a holder's wait, and that wait ends at most 15 s (the grace)
+	 *  or 60 s (the slow-boot window) after it, so each one books a sweep at both. */
+	#book(): void {
+		for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS])
+			this.#store.schedule(ms, () => {
+				for (const r of this.sweep()) this.#store.announce(r.notices);
+			});
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): SeatNotice[] {
 		const s = this.#seat(roomId);
+		this.#book();
 		return this.#diff(s, () => {
 			this.#expire(roomId, s);
 			s.sockets.push({ key, tvId });
@@ -140,6 +154,7 @@ export class TvSeats {
 	disconnect(roomId: string, key: number): SeatNotice[] {
 		const s = this.#rooms.get(roomId);
 		if (!s) return [];
+		this.#book();
 		return this.#diff(s, () => {
 			s.sockets = s.sockets.filter((x) => x.key !== key);
 			if (s.holderSocket !== key) return;
@@ -154,6 +169,7 @@ export class TvSeats {
 		const s = this.#rooms.get(roomId);
 		const me = s?.sockets.find((x) => x.key === key);
 		if (!s || !me?.tvId) return [];
+		this.#book();
 		return this.#diff(s, () => {
 			this.#setHolder(roomId, s, me.tvId!);
 			this.#seated(s, key);

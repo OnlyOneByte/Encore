@@ -224,3 +224,74 @@ test('the real TV gets its seat back with zero steps after a core restart, even 
 		rmSync(dataDir, { recursive: true, force: true });
 	}
 });
+
+/** A `role=tv` socket on `c` with this cookie, and its latest seat answer. */
+async function tvOn(c: Core, cookie: string) {
+	const ws = new WebSocket(`${c.baseURL.replace(/^http/, 'ws')}/ws?role=tv`, { headers: { cookie } });
+	const frames: F[] = [];
+	ws.on('message', (m) => frames.push(JSON.parse(String(m))));
+	await new Promise((res, rej) => (ws.once('open', res), ws.once('error', rej)));
+	await sleep(300);
+	return { ws, mine: () => frames.filter((f) => f.type === 'tv:seat').at(-1)?.mine };
+}
+const cookieOf = (c: string) => `encore_tv=${c.repeat(32)}`;
+
+// The review of #990 (r3): after a restart with a saved seat, a copy connects and NOTHING ELSE happens. Only the 60 s
+// sweep that connect booked can promote it. The fake-clock unit test pins the same booking; this is the live proof.
+test('restart, the saved TV never returns, one copy connects: the copy is promoted after 60 s', async () => {
+	test.setTimeout(150_000);
+	const dataDir = mkdtempSync(join(tmpdir(), 'enc-data-'));
+	const env = { ENCORE_EPHEMERAL: '0' };
+	try {
+		const first = await startCore({ mediaDir, dataDir, env });
+		const tv = await tvOn(first, cookieOf('T'));
+		expect(tv.mine()).toBe(true);
+		tv.ws.close();
+		await first.stop();
+		const second = await startCore({ mediaDir, dataDir, env });
+		try {
+			const copy = await tvOn(second, cookieOf('L'));
+			expect(copy.mine()).toBe(false);
+			await sleep(45_000);
+			expect(copy.mine(), 'the slow-boot window still holds').toBe(false);
+			await sleep(17_000);
+			expect(copy.mine()).toBe(true);
+			copy.ws.close();
+		} finally {
+			await second.stop();
+		}
+	} finally {
+		rmSync(dataDir, { recursive: true, force: true });
+	}
+});
+
+// The TV is switched off while a laptop /tv stays open, and nothing else connects: only the sweep the CLOSE booked can
+// promote the copy. The TV closes 61 s after it took the seat, past the slow-boot window, so only the 15 s grace is
+// left, and the sweeps the copy's connect booked (15 s and 60 s after it) have already run.
+test('the TV goes away with a copy open and no other connect: the copy is promoted and honoured', async () => {
+	test.setTimeout(150_000);
+	const own = await startCore({ mediaDir });
+	try {
+		const tv = await tvOn(own, cookieOf('P'));
+		const copy = await tvOn(own, cookieOf('Q'));
+		expect([tv.mine(), copy.mine()]).toEqual([true, false]);
+		await sleep(61_000);
+		tv.ws.close();
+		await sleep(16_000);
+		expect(copy.mine()).toBe(true);
+		copy.ws.send(JSON.stringify({ type: 'tv:telemetry', status: 'playing', positionSec: 33 }));
+		await sleep(300);
+		const phone = new WebSocket(`${own.baseURL.replace(/^http/, 'ws')}/ws?role=phone`);
+		const pb = await new Promise<F>((res) => {
+			phone.on('message', (m) => {
+				const f = JSON.parse(String(m)) as F;
+				if (f.type === 'playback:state') res(f);
+			});
+			phone.once('open', () => phone.send(JSON.stringify({ type: 'hello', lastRev: 0 })));
+		});
+		expect(pb.state?.positionSec).toBe(33);
+		for (const s of [copy.ws, phone]) s.close();
+	} finally {
+		await own.stop();
+	}
+});

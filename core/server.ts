@@ -27,13 +27,7 @@ import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from './src/lib/server/realtime/room-scope';
 import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
-import {
-	TvSeats,
-	TV_SEAT_GRACE_MS,
-	TV_SEAT_SLOW_BOOT_MS,
-	tvIdOf,
-	type SeatNotice
-} from './src/lib/server/rooms/tv-seat';
+import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
@@ -82,21 +76,15 @@ const reactionLimiter = createReactionLimiter(() => app.now());
 const tvSeats = new TvSeats({
 	load: (roomId) => app.rooms.tvSeat(roomId),
 	save: (roomId, holder) => app.rooms.setTvSeat(roomId, holder),
-	now: () => app.now()
+	now: () => app.now(),
+	schedule: (ms, run) => setTimeout(run, ms).unref?.(),
+	announce: (notices) => announceSeat(notices)
 });
 const tvSockets = new Map<number, import('bun').ServerWebSocket<SocketData>>();
 let nextTvKey = 0;
 function announceSeat(notices: SeatNotice[]): void {
 	for (const n of notices)
 		tvSockets.get(n.key)?.send(JSON.stringify({ type: 'tv:seat', mine: n.mine } satisfies ServerEvent));
-}
-// Every connect and close can start a holder's wait, and that wait ends at most 15 s (the grace) or 60 s (the
-// slow-boot window) after it, so each one books a sweep at both.
-function sweepSeatsAfterGrace(): void {
-	for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS])
-		setTimeout(() => {
-			for (const r of tvSeats.sweep()) announceSeat(r.notices);
-		}, ms).unref?.();
 }
 
 // Guarded so WS still boots pre-build.
@@ -213,7 +201,6 @@ const server = Bun.serve<SocketData>({
 				ws.data.tvKey = ++nextTvKey;
 				tvSockets.set(ws.data.tvKey, ws);
 				announceSeat(tvSeats.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId));
-				sweepSeatsAfterGrace();
 			}
 			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
@@ -326,7 +313,6 @@ const server = Bun.serve<SocketData>({
 			if (ws.data.tvKey !== undefined) {
 				tvSockets.delete(ws.data.tvKey);
 				announceSeat(tvSeats.disconnect(ws.data.roomId!, ws.data.tvKey));
-				sweepSeatsAfterGrace();
 			}
 			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
 			// `gone` is the sweep's job.

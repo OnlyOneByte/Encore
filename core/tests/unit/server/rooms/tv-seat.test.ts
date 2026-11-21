@@ -1,7 +1,14 @@
 // One TV per room: the seat rules, driven with a fake clock and store. The live-socket half (a copy's `ended` and
 // position are ignored) is tests/unit/server/ws-socket-guards.test.ts.
 import { test, expect } from 'bun:test';
-import { TvSeats, TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS, readTvCookie, tvIdOf } from '$lib/server/rooms/tv-seat';
+import {
+	TvSeats,
+	TV_SEAT_GRACE_MS,
+	TV_SEAT_SLOW_BOOT_MS,
+	readTvCookie,
+	tvIdOf,
+	type SeatNotice
+} from '$lib/server/rooms/tv-seat';
 
 const ROOM = 'room-1';
 /** Past the slow-boot window: the TV has been on long enough that only the 15 s grace applies when it goes. */
@@ -10,11 +17,29 @@ const ON_A_WHILE = 60_000;
 function world(persisted: string | null = null) {
 	let now = 1_000_000;
 	const saved = new Map<string, string | null>([[ROOM, persisted]]);
-	const seats = new TvSeats({ load: (r) => saved.get(r) ?? null, save: (r, h) => saved.set(r, h), now: () => now });
+	// The fake clock's timers: `advance` only moves time, `tick` also runs every booked sweep that has come due.
+	const timers: { at: number; run: () => void }[] = [];
+	const announced: SeatNotice[] = [];
+	const seats = new TvSeats({
+		load: (r) => saved.get(r) ?? null,
+		save: (r, h) => saved.set(r, h),
+		now: () => now,
+		schedule: (ms, run) => timers.push({ at: now + ms, run }),
+		announce: (n) => announced.push(...n)
+	});
 	return {
 		seats,
 		saved,
+		timers,
+		announced,
 		advance: (ms: number) => (now += ms),
+		tick: (ms: number) => {
+			now += ms;
+			for (const t of timers.filter((x) => x.at <= now).sort((x, y) => x.at - y.at)) {
+				timers.splice(timers.indexOf(t), 1);
+				t.run();
+			}
+		},
 		mine: (key: number) => seats.holds(ROOM, key)
 	};
 }
@@ -237,4 +262,38 @@ test('a seat move tells the old TV to go silent before it tells the new one to p
 		{ key: 2, mine: false },
 		{ key: 1, mine: true }
 	]);
+});
+
+// THE BOOKED SWEEPS, on the fake clock: each case below is one where nothing else happens, so only the sweep that
+// event booked can move the seat (review of #990, r3).
+test('restart, the saved TV never returns, one copy connects: the sweep THAT CONNECT booked promotes it at 60 s', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'laptop');
+	w.tick(59_999);
+	expect(w.announced).toEqual([]);
+	w.tick(1);
+	expect(w.announced).toEqual([{ key: 1, mine: true }]);
+});
+
+test('the TV closes with a copy open and nothing else happens: the sweep THE CLOSE booked promotes the copy', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.tick(ON_A_WHILE + 1);
+	expect(w.timers).toEqual([]);
+	w.seats.disconnect(ROOM, 1);
+	w.tick(15_000);
+	expect(w.announced).toEqual([{ key: 2, mine: true }]);
+});
+
+test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
+	const w = world();
+	const booked = () => w.timers.splice(0).map((t) => t.at - 1_000_000);
+	w.seats.connect(ROOM, 1, 'tvA');
+	expect(booked()).toEqual([15_000, 60_000]);
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.seats.claim(ROOM, 2);
+	expect(booked()).toEqual([15_000, 60_000, 15_000, 60_000]);
+	w.seats.disconnect(ROOM, 2);
+	expect(booked()).toEqual([15_000, 60_000]);
 });
