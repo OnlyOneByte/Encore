@@ -179,5 +179,9 @@
 				background-color var(--motion-slow) ease,
 				border-color var(--motion-slow) ease;
 		}
+		/* The eyebrow's ink moves with the card, or it snaps to --ink on the first frame while the surface fades. */
+		.eyebrow {
+			transition: color var(--motion-slow) ease;
+		}
 	}
 </style>

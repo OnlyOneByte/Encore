@@ -1,6 +1,6 @@
 // ON DECK, driven for real: three singers, a fake worker so the songs are ready, Theo singing, Maya next, Ana
 // behind her. Maya sets −2 on her on-deck card before her turn; Theo skips; the TV opens on Maya's song with
-// "Key −2" on the intro card. Frames go to ON_DECK_OUT (or the test's output dir), phone at 390x844 in both colour
+// "G minor · -2" in the lower third. Frames go to ON_DECK_OUT (or the test's output dir), phone at 390x844 in both colour
 // schemes, TV at 1920x1080.
 //
 // The fixture tracks are 8 seconds long, so the song before yours is ALWAYS inside the 30-second heads-up: the
@@ -12,7 +12,7 @@ import { openQueue, queueReady, readySong } from '../../world/actors';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('on deck: the card, the preset, and the TV key chip', async ({ world }, testInfo) => {
+test('on deck: the card, the preset, and the key on the TV', async ({ world }, testInfo) => {
 	const out = process.env.ON_DECK_OUT ?? testInfo.outputDir;
 	mkdirSync(out, { recursive: true });
 	const worker = await startFakeWorker(world);
@@ -37,6 +37,9 @@ test('on deck: the card, the preset, and the TV key chip', async ({ world }, tes
 		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
 		await expect(deck).toContainText('Key · −2');
 		await expect(deck).toContainText('You’re next');
+		// The key is said once on this screen: the card's "A minor → G minor", not again on Maya's queued row.
+		await expect(maya.locator('.qrow', { hasText: 'sweet-caroline' })).not.toContainText('minor');
+		await expect(maya.locator('.qrow', { hasText: 'livin-on-a-prayer' })).toContainText('minor');
 
 		// The viewport, not `fullPage`: the dock is fixed, and a full-page capture paints it over the card's middle.
 		await deck.evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -51,14 +54,34 @@ test('on deck: the card, the preset, and the TV key chip', async ({ world }, tes
 		await expect(deck).toHaveCount(0);
 		await maya.screenshot({ path: join(out, 'phone-singing-after-preset.png') });
 
+		// The TV says the key ONCE: the lower third's "G minor · -2", never a second chip on the intro card.
 		const tv = await world.openTv();
 		const intro = tv.locator(SEL.stateNext);
 		await expect(intro).toBeVisible({ timeout: 30_000 });
-		await expect(intro).toContainText('Key −2');
+		await expect(tv.locator(SEL.lowerThird)).toContainText('· -2');
+		await expect(intro).not.toContainText('Key');
 		for (const scheme of ['dark', 'light'] as const) {
 			await tv.emulateMedia({ colorScheme: scheme });
-			await tv.screenshot({ path: join(out, `tv-intro-key-chip-${scheme}.png`) });
+			await tv.screenshot({ path: join(out, `tv-intro-key-${scheme}.png`) });
 		}
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('on deck: no card, and no "grab the mic", while you are the one singing', async ({ world }) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya', { stop: 'End' });
+		await readySong(world, maya, 'caroline');
+		await readySong(world, maya, 'prayer');
+		await queueReady(maya, 'caroline');
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+		await queueReady(maya, 'prayer');
+		await openQueue(maya);
+		await expect(maya.locator(SEL.queueNowCard).first()).toBeVisible();
+		await expect(maya.locator(SEL.queueTitle)).toHaveText(['livin-on-a-prayer']);
+		await expect(maya.locator('section[aria-label="On deck"]')).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}
