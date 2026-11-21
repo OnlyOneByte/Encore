@@ -84,6 +84,10 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 	expect(layout).toContain("bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',");
 	expect(layout).toContain("left: 'var(--sheet-gutter)',");
 	expect(layout).toContain("right: 'var(--sheet-gutter)'");
+	// ...and the sheet reads the same token, so the two edges move together (a literal 16px would only match today).
+	const sheet = readFileSync(at('src/lib/components/YoureUp.svelte'), 'utf8');
+	expect(sheet).toContain('inset-inline: var(--sheet-gutter);');
+	expect(sheet).not.toMatch(/inset-inline:\s*\d/);
 });
 
 test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a number', () => {
@@ -91,10 +95,7 @@ test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a
 	   synchronously, so the readout fell through to a server echo that had not arrived yet even when the command
 	   had landed. A nullable draft cannot express that state. */
 	expect(queuePage).toContain('let guideDraft = $state<number | null>(null);');
-	// Shown only for the song its gesture began on, so the rest of a drag that outlived the song cannot move the next one.
-	expect(queuePage).toContain(
-		'const guidePct = $derived(guideDraft !== null && guideGestureFor === nowEntry?.id ? guideDraft : guideServerPct);'
-	);
+	expect(queuePage).toContain('const guidePct = $derived(guideDraft ?? guideServerPct);');
 	/* The two defective SHAPES, not the bare word — the comment above the draft names what it replaced, which is
 	   the account a reader needs and which a file-wide negative would forbid writing down. */
 	expect(queuePage).not.toContain('let guideDragging');
@@ -111,7 +112,8 @@ test('the guide draft is cleared by the ROOM agreeing, and by a song change', ()
 	expect(queuePage).toContain('guideSend.cancel();');
 	// The draft is written by the send module's verdict, never by the input handler directly — that is what makes
 	// a dropped command clear it. guide-send.test.ts drives the verdict itself.
-	expect(queuePage).toContain('onDraft: (pct) => (guideDraft = pct)');
+	// ...and only for the song its gesture began on: the rest of a drag that outlived the song earns no draft.
+	expect(queuePage).toContain('if (pct === null || guideGestureFor === nowEntry?.id) guideDraft = pct;');
 	expect(queuePage).toContain('oninput={guideInput}');
 	expect(queuePage).toContain('oncommit={guideCommit}');
 	// Every send of a gesture names the entry it BEGAN on, not the one on the card when the send fires.

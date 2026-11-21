@@ -146,15 +146,14 @@
 	   `null` means "no local opinion", which is what lets a key change from the TV or another phone take over
 	   immediately rather than being pinned behind this phone's last tap. */
 	let keyDraft = $state<number | null>(null);
-	/* The ENTRY the draft was made on. A skip goes straight from one entry to the next, so `nowEntry` is never null in
-	   between: a draft is only shown, and only stepped from, while it belongs to the song on the card. Otherwise the
-	   next singer's card read the previous song's "+1" and the next tap sent +2 over their On deck preset. */
-	let keyDraftFor = $state<string | null>(null);
-	/* The draft is dropped the moment the server agrees with it; the song changing is the reset effect below. */
+	/* The draft is dropped the moment the server agrees with it, and when the song on the card changes: the reset
+	   effect below, keyed on the entry ID. It can't key on `nowEntry` going null: a skip goes straight from one entry
+	   to the next, so it never is, and the next singer's card would show the previous song's "+1" and the next tap
+	   would send +2 over their On deck preset. */
 	$effect(() => {
 		if (keyDraft !== null && playback.keyShift === keyDraft) keyDraft = null;
 	});
-	const keyShift = $derived(keyDraft !== null && keyDraftFor === nowEntry?.id ? keyDraft : playback.keyShift);
+	const keyShift = $derived(keyDraft ?? playback.keyShift);
 
 	/* ±7 is the range both keycaps already bound themselves to; named once here so the step, the two `disabled`
 	   tests and the clamp cannot drift apart. */
@@ -173,7 +172,6 @@
 		if (!nowEntry) return;
 		if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;
 		keyDraft = next;
-		keyDraftFor = nowEntry.id;
 		// Your own song: this phone remembers the key for the next time you queue it.
 		if (nowEntry && nowEntry.singerId === me?.id) rememberKey(nowEntry.mediaId, next);
 	}
@@ -229,8 +227,7 @@
 	   changes keeps naming the song it started on, and the server drops it as stale instead of moving the next
 	   singer's guide over their On deck preset. Reading `nowEntry` at SEND time named the new song. */
 	let guideGestureFor = $state<string | null>(null);
-	// The draft is shown only for the song it belongs to: the rest of a stale drag must not move the new song's readout.
-	const guidePct = $derived(guideDraft !== null && guideGestureFor === nowEntry?.id ? guideDraft : guideServerPct);
+	const guidePct = $derived(guideDraft ?? guideServerPct);
 	// Dropped the moment the room agrees; the song changing is the reset effect below.
 	$effect(() => {
 		if (guideDraft !== null && guideServerPct === guideDraft) guideDraft = null;
@@ -240,7 +237,11 @@
 			if (!guideGestureFor) return false;
 			return room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor });
 		},
-		onDraft: (pct) => (guideDraft = pct)
+		// The rest of a drag begun on the last song may not move the new song's readout: it is sent, as stale, and
+		// dropped, so it never earns a draft. A drop (`null`) always clears.
+		onDraft: (pct) => {
+			if (pct === null || guideGestureFor === nowEntry?.id) guideDraft = pct;
+		}
 	});
 	function guideInput(pct: number): void {
 		guideGestureFor ??= nowEntry?.id ?? null;

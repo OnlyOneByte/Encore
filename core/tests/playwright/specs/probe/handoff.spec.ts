@@ -166,6 +166,7 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		const { maya, theo, ana } = await keyGuideRoom(world);
+		await theo.getByRole('link', { name: 'Queue' }).click();
 		const slider = ana.locator('.now [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
@@ -179,7 +180,21 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await ana.waitForTimeout(200);
 		const theoStart = (await serverPlayback(world.baseURL)).state;
+		// Ana's readout is the ROOM's level for Theo's song, the same as Theo's own phone shows: neither the draft from
+		// Maya's song nor the rest of the stale drag may show on Theo's card.
+		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const readouts = async () => [
+			await slider.getAttribute('aria-valuenow'),
+			await theoSlider.getAttribute('aria-valuenow')
+		];
+		const same = ([a, t]: (string | null)[]) => a !== null && a === t;
+		await expect
+			.poll(async () => same(await readouts()), { message: 'Ana kept the last song’s draft on Theo’s card' })
+			.toBe(true);
 		await ana.mouse.move(track.x + track.width * 0.9, y, { steps: 4 });
+		await ana.waitForTimeout(300);
+		expect(same(await readouts()), `the stale drag moved Theo’s card on Ana’s phone: ${await readouts()}`).toBe(true);
 		await ana.mouse.up();
 		await ana.waitForTimeout(800);
 		const after = (await serverPlayback(world.baseURL)).state;
@@ -188,6 +203,49 @@ test('a guide drag begun on the last song does not carry onto the next singer’
 		// The rest of the drag named Maya's song, so the server dropped it and said so to Ana.
 		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
 		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('a guide draft the room never agreed with is not shown on the next singer’s card', async ({ world }) => {
+	// The song-change reset is the only thing that clears a guide draft the server dropped: Ana drags on the song
+	// her phone still shows after Maya's skip, the server drops it as stale, so no echo ever agrees with her draft.
+	const worker = await startFakeWorker(world, { guideMix: true });
+	try {
+		const { maya, theo, ana } = await keyGuideRoom(world, true);
+		await theo.getByRole('link', { name: 'Queue' }).click();
+		const slider = ana.locator('.now [role="slider"]').first();
+		await expect(slider).toBeVisible();
+		const box = (await slider.boundingBox())!;
+		const track = (await ana.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const y = box.y + box.height / 2;
+		await hold!(true);
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await ana.mouse.move(box.x + box.width / 2, y);
+		await ana.mouse.down();
+		await ana.mouse.move(track.x + track.width * 0.7, y, { steps: 4 });
+		await ana.mouse.up();
+		await ana.waitForTimeout(300);
+		await hold!(false);
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		const readouts = async () => [
+			await slider.getAttribute('aria-valuenow'),
+			await theoSlider.getAttribute('aria-valuenow')
+		];
+		await expect
+			.poll(
+				async () => {
+					const [a, t] = await readouts();
+					return a !== null && a === t;
+				},
+				{ message: 'Ana’s dropped draft from Maya’s song stayed on Theo’s card' }
+			)
+			.toBe(true);
+		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
 	} finally {
 		await worker.stop();
 	}
