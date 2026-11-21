@@ -44,9 +44,17 @@ export interface MotionScenario {
 	what: string;
 	/** CSS selector for the element the row is ABOUT. Every frame after the trigger, in the seek and the reduced
 	 *  runs, must show it: laid out, not `visibility: hidden`, and inside the frame's crop (the strip's, when it
-	 *  has one). Opacity is not checked, so a fade-in's first frame counts. A frame without it shows something
-	 *  else, so `metrics.subject.missingMs` lists it and the row fails. */
+	 *  has one). Opacity is not checked per frame, so a fade-in's first frame counts, but the LAST frame of each
+	 *  run (the seek's settled end, the reduced burst's last shot) must also show it at an effective opacity (the
+	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
+	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails. */
 	subject: string;
+	/** Seek run only: once the trigger resolves, drop every page `setTimeout` callback, pending or new, until the
+	 *  page closes. For rows whose subject has a wall-clock dismiss (the "You're up" sheet, the TV card) that would
+	 *  otherwise fire between seeked frames and take the subject away under a frozen animation. Off by default,
+	 *  because it also hides timer-sequenced motion (a staggered reveal); each dropped callback is listed in
+	 *  `metrics.heldTimers` and counted on the strip. */
+	holdTimers?: boolean;
 	/** Bring a page to the state just BEFORE the motion. Gets a fresh page per run. */
 	open(contextOptions: BrowserContextOptions): Promise<Page>;
 	/** Fire the motion. Must resolve once the trigger has been delivered (not once motion ends). */
@@ -131,8 +139,10 @@ function instrument() {
 	type M = {
 		armed: boolean;
 		freeze: boolean;
-		/** Seek runs only: set once the trigger resolves; see the `setTimeout` wrapper below. */
+		/** Seek runs of a `holdTimers` row only: set once the trigger resolves; see the `setTimeout` wrapper below. */
 		hold: boolean;
+		/** The callbacks `hold` dropped: the timer's delay and when it came due, in ms after `arm()`. */
+		held: { delayMs: number; atMs: number }[];
 		t0: number;
 		caught: Animation[];
 		others: Animation[];
@@ -148,6 +158,7 @@ function instrument() {
 		armed: false,
 		freeze: false,
 		hold: false,
+		held: [],
 		t0: 0,
 		caught: [],
 		others: [],
@@ -160,6 +171,7 @@ function instrument() {
 			m.armed = true;
 			m.freeze = freeze;
 			m.hold = false;
+			m.held = [];
 			m.only = only;
 			m.others = [];
 			m.t0 = performance.now();
@@ -206,14 +218,17 @@ function instrument() {
 
 	// Pause-and-seek stops the page's animation clock, so it stops its timers too: a wall-clock timer firing while
 	// frames are seeked (the "You're up" sheet's or the TV card's dismiss) would change the page under a frozen
-	// animation, or take a CUT's after frame away. Once a seek run's trigger has resolved (`hold`), no timeout
-	// fires, pending or new; the page is closed after that run.
+	// animation, or take a CUT's after frame away. Once a `holdTimers` row's seek trigger has resolved (`hold`), no
+	// timeout fires, pending or new, and each one dropped is recorded in `held`; the page is closed after that run.
+	// Deliberately NOT held: `setInterval` and `requestAnimationFrame` loops (VisualizerStage, LyricsOverlay) run on
+	// wall-clock in every run. String handlers pass through untouched.
 	const setTimeoutReal = window.setTimeout;
 	window.setTimeout = ((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
 		typeof handler !== 'function'
 			? setTimeoutReal(handler, ms, ...args)
 			: setTimeoutReal(() => {
 					if (!m.hold) handler(...args);
+					else m.held.push({ delayMs: Number(ms) || 0, atMs: Math.round(performance.now() - m.t0) });
 				}, ms)) as typeof window.setTimeout;
 
 	const animate = Element.prototype.animate;
@@ -389,49 +404,69 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Is `s.subject` on screen inside `area` (page px; the viewport when absent)? Read at the moment a frame is shot. */
-function subjectShown(page: Page, selector: string, area: Clip | undefined): Promise<boolean> {
+/** Is `s.subject` on screen inside `area` (page px; the viewport when absent), with a non-zero area of it inside?
+ *  `shown` ignores opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the
+ *  product up the ancestor chain) above 0, and is what a run's last frame must have. */
+function subjectState(
+	page: Page,
+	selector: string,
+	area: Clip | undefined
+): Promise<{ shown: boolean; opaque: boolean }> {
 	return page.evaluate(
 		([sel, a]) => {
 			const box = a ?? { x: scrollX, y: scrollY, width: innerWidth, height: innerHeight };
-			return [...document.querySelectorAll(sel)].some((el) => {
+			const opacity = (el: Element | null) => {
+				let o = 1;
+				for (; el; el = el.parentElement) o *= Number(getComputedStyle(el).opacity);
+				return o;
+			};
+			const inside = [...document.querySelectorAll(sel)].filter((el) => {
 				const r = el.getBoundingClientRect();
 				if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') return false;
 				const x = r.left + scrollX;
 				const y = r.top + scrollY;
 				return x + r.width > box.x && x < box.x + box.width && y + r.height > box.y && y < box.y + box.height;
 			});
+			return { shown: inside.length > 0, opaque: inside.some((el) => opacity(el) > 0) };
 		},
 		[selector, area ?? null] as const
 	);
 }
 
 /** Pause-and-seek capture. Returns frames at -1 (pre-trigger), 0, step, … endTime, and the settled end, plus the
- *  times of any frame after the trigger that did not show the subject inside `area`. */
+ *  times of any frame after the trigger that did not show the subject inside `area` (the last frame also needs
+ *  it opaque), and the timeouts a `holdTimers` row dropped. The page is frozen, so a frame and its check agree. */
 async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, area: Clip | undefined, step: number) {
 	const shot = (c = clip) => page.screenshot({ clip: c, caret: 'hide', animations: 'allow' });
 	const missingMs: number[] = [];
-	const check = async (ms: number) => {
-		if (!(await subjectShown(page, s.subject, area))) missingMs.push(ms);
+	const check = async (ms: number, last: boolean) => {
+		const st = await subjectState(page, s.subject, area);
+		if (!st.shown || (last && !st.opaque)) missingMs.push(ms);
 	};
+	const heldTimers = () =>
+		page.evaluate(
+			() => (window as unknown as { __motion: { held: { delayMs: number; atMs: number }[] } }).__motion.held
+		);
 	const pre = await shot();
 	await page.evaluate(
 		(only) => (window as unknown as { __motion: { arm(f: boolean, o: string | null): void } }).__motion.arm(true, only),
 		s.only ?? null
 	);
 	await s.trigger(page);
-	await page.evaluate(() => ((window as unknown as { __motion: { hold: boolean } }).__motion.hold = true));
+	if (s.holdTimers)
+		await page.evaluate(() => ((window as unknown as { __motion: { hold: boolean } }).__motion.hold = true));
 	// Nothing animated: a CUT. Keep the after frame too, so the strip shows the jump instead of only the before.
 	if (!(await waitForCatch(page, s.startTimeoutMs ?? 3000))) {
 		const after = await shot();
-		await check(0);
+		await check(0, true);
 		return {
 			frames: [
 				{ ms: -1, png: pre },
 				{ ms: 0, png: after }
 			],
 			animations: [],
-			missingMs
+			missingMs,
+			heldTimers: await heldTimers()
 		};
 	}
 	const animations = await page.evaluate(describeCaught, 'caught');
@@ -440,14 +475,14 @@ async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, ar
 	const times: number[] = [];
 	for (let t = 0; t < end; t += step) times.push(t);
 	times.push(end);
-	for (const t of times) {
+	for (const [i, t] of times.entries()) {
 		await page.evaluate((ms) => {
 			for (const a of (window as unknown as { __motion: { caught: Animation[] } }).__motion.caught) a.currentTime = ms;
 		}, t);
 		frames.push({ ms: Math.round(t), png: await shot() });
-		await check(Math.round(t));
+		await check(Math.round(t), i === times.length - 1);
 	}
-	return { frames, animations, missingMs };
+	return { frames, animations, missingMs, heldTimers: await heldTimers() };
 }
 
 async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
@@ -509,7 +544,9 @@ async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
 	};
 }
 
-/** Under reduce there is usually nothing to seek, so this is a real-time burst: screenshots as fast as they come. */
+/** Under reduce there is usually nothing to seek, so this is a real-time burst: screenshots as fast as they come.
+ *  The page is live here, so the subject is read just before AND just after each shot, and a frame is missing only
+ *  when both reads miss it (the last frame: when neither has it opaque). */
 async function reducedRun(page: Page, s: MotionScenario, clip: Clip | undefined, windowMs: number) {
 	const pre = await page.screenshot({ clip, caret: 'hide' });
 	await page.evaluate(
@@ -522,11 +559,16 @@ async function reducedRun(page: Page, s: MotionScenario, clip: Clip | undefined,
 	const t0 = Date.now();
 	const frames: Frame[] = [{ ms: -1, png: pre }];
 	const missingMs: number[] = [];
+	let last = { ms: 0, opaque: false };
 	while (Date.now() - t0 < windowMs) {
 		const ms = Date.now() - t0;
+		const before = await subjectState(page, s.subject, clip);
 		frames.push({ ms, png: await page.screenshot({ clip, caret: 'hide' }) });
-		if (!(await subjectShown(page, s.subject, clip))) missingMs.push(ms);
+		const after = await subjectState(page, s.subject, clip);
+		if (!before.shown && !after.shown) missingMs.push(ms);
+		last = { ms, opaque: before.opaque || after.opaque };
 	}
+	if (!last.opaque && !missingMs.includes(last.ms)) missingMs.push(last.ms);
 	const animations = await page.evaluate(describeCaught, 'caught');
 	const others = await page.evaluate(describeCaught, 'others');
 	return { frames, animations, others, missingMs };
@@ -703,7 +745,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 					seek.gifRun.missingMs.length
 						? `SUBJECT ${s.subject} MISSING at ${seek.gifRun.missingMs.join(', ')} ms`
 						: `subject ${s.subject} in every frame`
-				}`,
+				}${s.holdTimers ? ` · ${seek.gifRun.heldTimers.length} timer(s) held` : ''}`,
 				stripFrames,
 				cols
 			)
@@ -776,6 +818,8 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			selector: s.subject,
 			missingMs: { seek: seek.gifRun.missingMs, reduced: reduced.missingMs }
 		},
+		// The seek run's dropped timeouts, so a hold is never invisible. null: this row does not hold timers.
+		heldTimers: s.holdTimers ? seek.gifRun.heldTimers : null,
 		live,
 		reducedMotion: {
 			animationsStarted: reduced.animations.length,

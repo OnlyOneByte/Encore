@@ -17,6 +17,7 @@ import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { join } from 'node:path';
+import { SETTLE_MS } from '$lib/transport-target';
 
 /** `cleanup` runs after the capture, pass or fail: a row that starts a fake worker stops it there. */
 type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown>) => void) => MotionScenario;
@@ -49,16 +50,21 @@ async function asSinger(
 	return ctx.newPage();
 }
 
+/** Skip whatever is on until the room is empty. Each skip waits past the strip's settle window (SETTLE_MS, #974),
+ *  so the next skip names the song now on it. */
+async function drain(phone: Page): Promise<void> {
+	const skip = phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
+	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
+		await skip.click();
+		await phone.waitForTimeout(SETTLE_MS + 250);
+	}
+	await expect(phone.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+}
+
 /** Drain the room, then Maya singing caroline past her intro card, with Theo next. */
 async function mayaThenTheo(phones: { maya: Page; theo: Page; ana: Page }): Promise<void> {
 	const { maya, theo, ana } = phones;
-	const skip = ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
-	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
-		await skip.click();
-		// Past the strip's settle window, so the next skip names the song now on it.
-		await ana.waitForTimeout(1_200);
-	}
-	await expect(ana.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+	await drain(ana);
 	await queueReady(maya, 'caroline');
 	await queueReady(theo, 'believin');
 	await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
@@ -104,6 +110,8 @@ function dockYourSong(width: number): Make {
 				await page.locator(`${SEL.npCheers}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.cheer',
+			// The dock, not the buttons: they fade to opacity 0 by design, the dock must stay put and on screen.
+			subject: '.dock',
 			stripClip: async () => ({ x: 0, y: 604, width, height: 240 }),
 			observe: (page) =>
 				page.evaluate(() => {
@@ -159,6 +167,8 @@ const SCENARIOS: Record<string, Make> = {
 			},
 			only: '.youre-up',
 			subject: '.youre-up',
+			// The sheet's wall-clock dismiss (`youreUpTimer`, +layout.svelte) would otherwise fire between seeked frames.
+			holdTimers: true,
 			// The dock and the sheet over it: the whole page in ~16 frames is past 2000 px tall.
 			stripClip: async () => ({ x: 0, y: 444, width: 390, height: 400 }),
 			observe: (page) =>
@@ -332,13 +342,10 @@ const SCENARIOS: Record<string, Make> = {
 					await readySong(world, ana, 'caroline');
 					await readySong(world, ana, 'believin');
 				}
-				const skip = ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
-				for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
-					await skip.click();
-					// Past the strip's settle window, so the next skip names the song now on it.
-					await ana.waitForTimeout(1_200);
-				}
-				await expect(ana.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+				// This row is the suite's critical path (~45 s, `liveMs` ~25 s): each of its 5 opens drains the room
+				// (SETTLE_MS waits) and then waits out Ana's own "Now singing" card. The 36 s stems are not the cost;
+				// shortening them lets Ana's song end before the trigger under load.
+				await drain(ana);
 				const ctx = await browser.newContext({
 					...opts,
 					viewport: { width: 1920, height: 1080 },
@@ -361,6 +368,9 @@ const SCENARIOS: Record<string, Make> = {
 			},
 			only: '.state-next, .state-next *',
 			subject: '.state-next',
+			// The card's intro hold is a wall-clock timeout (`interstitialTimer`, tv/+page.svelte): it would take the
+			// CUT's after frame away.
+			holdTimers: true,
 			observe: (page) =>
 				page.evaluate(() => ({ introText: document.querySelector('.state-next')?.textContent?.trim() ?? null }))
 		};
