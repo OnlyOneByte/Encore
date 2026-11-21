@@ -1,0 +1,115 @@
+// THE REACTION ROW COMES BACK. dock-cls.spec.ts proves the singer's row RESTS when their song starts (same slot,
+// faded, inert). This is the other leg (#986 review nit 1): Maya, Theo, Maya — Theo's row rests for his song and must
+// be live again for Maya's next one. Before #986 that was a fresh mount, so a row stuck resting (`inert` left on,
+// `visibility` never restored) was impossible; now it is one prop flip, and nothing else would notice.
+// While resting it must also be gone for every input: not hit-testable, not focusable, and absent from Chrome's own
+// accessibility tree. Both motion modes, because the rest is a fade that `reduce` skips.
+import type { Page } from '@playwright/test';
+import { test, expect } from '../../world/fixtures';
+import { SEL } from '../../world/selectors';
+import { startFakeWorker } from '../../world/workers';
+import { queueReady, readySong } from '../../world/actors';
+
+async function watchShifts(p: Page): Promise<void> {
+	await p.evaluate(() => {
+		const w = window as unknown as { __shifts: number[] };
+		w.__shifts = [];
+		new PerformanceObserver((l) => {
+			for (const e of l.getEntries() as unknown as { value: number }[]) w.__shifts.push(e.value);
+		}).observe({ type: 'layout-shift', buffered: false });
+	});
+}
+const shifts = (p: Page) => p.evaluate(() => (window as unknown as { __shifts: number[] }).__shifts);
+
+/** Chrome's own AX tree (not Playwright's snapshot): the unignored nodes named like a cheer or the cheer group. */
+async function axCheers(p: Page): Promise<string[]> {
+	const cdp = await p.context().newCDPSession(p);
+	const { nodes } = (await cdp.send('Accessibility.getFullAXTree')) as {
+		nodes: { ignored: boolean; role?: { value: string }; name?: { value: string } }[];
+	};
+	await cdp.detach();
+	const named = /Cheer for|^(Clap|Fire|Laugh|Love|Heart|Applause)/i;
+	return nodes
+		.filter((n) => !n.ignored && named.test(n.name?.value ?? ''))
+		.map((n) => `${n.role?.value}:${n.name?.value}`);
+}
+
+/** The classes keyboard focus lands on over 40 Tabs from the top of the page. */
+async function tabStops(p: Page): Promise<string[]> {
+	await p.locator('body').click({ position: { x: 5, y: 5 } });
+	const seen: string[] = [];
+	for (let i = 0; i < 40; i++) {
+		await p.keyboard.press('Tab');
+		seen.push(await p.evaluate(() => (document.activeElement as HTMLElement | null)?.className ?? ''));
+	}
+	return seen;
+}
+
+for (const reduce of [false, true]) {
+	test(`the singer's reaction row rests for their song and comes back after it (reduced motion: ${reduce})`, async ({
+		world
+	}) => {
+		const worker = await startFakeWorker(world);
+		try {
+			const maya = await world.openPhone('Maya');
+			const theo = await world.openPhone('Theo');
+			const ana = await world.openPhone('Ana');
+			await theo.setViewportSize({ width: 320, height: 844 });
+			if (reduce) await theo.emulateMedia({ reducedMotion: 'reduce' });
+			for (const q of ['caroline', 'believin', 'prayer']) await readySong(world, maya, q);
+			await world.openTv();
+			await queueReady(maya, 'caroline');
+			await queueReady(theo, 'believin');
+			await queueReady(maya, 'prayer');
+			await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+			// Past the playhead's first second and the strip's settle window, as dock-cls does.
+			await theo.waitForTimeout(3_000);
+			await watchShifts(theo);
+			const dock = theo.locator(SEL.dock);
+			const before = await dock.boundingBox();
+
+			// Theo's song: his row rests.
+			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 5_000 });
+			await expect(theo.locator(SEL.npCheers)).toHaveAttribute('inert');
+			const ok = theo.getByRole('button', { name: 'OK' });
+			if (await ok.isVisible()) await ok.click();
+			await expect(theo.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'hidden');
+			expect(await axCheers(theo), 'cheers Chrome exposes to assistive tech while resting').toEqual([]);
+			const box = (await theo.locator(SEL.npCheer).first().boundingBox())!;
+			const hit = await theo.evaluate(
+				([x, y]) => document.elementFromPoint(x, y)?.closest('.cheer') !== null,
+				[box.x + box.width / 2, box.y + box.height / 2]
+			);
+			expect(hit, 'a resting cheer is hit-testable').toBe(false);
+			expect(
+				(await tabStops(theo)).filter((c) => c.includes('cheer')),
+				'a resting cheer takes focus'
+			).toEqual([]);
+			// The audience at the same moment: live.
+			await expect(ana.locator(SEL.npCheers)).not.toHaveAttribute('inert');
+			await expect(ana.locator(SEL.npCheer)).toHaveCount(4);
+			for (const c of await ana.locator(SEL.npCheer).all()) await expect(c).toHaveCSS('opacity', '1');
+
+			// Maya's next song: Theo is back in the audience, and so is his row.
+			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await expect(theo.locator(SEL.npStripTitle)).toContainText(/prayer|livin/i, { timeout: 5_000 });
+			await expect(theo.locator(SEL.npCheers)).not.toHaveAttribute('inert');
+			for (const c of await theo.locator(SEL.npCheer).all()) {
+				await expect(c).toHaveCSS('opacity', '1');
+				await expect(c).toHaveCSS('visibility', 'visible');
+			}
+			expect((await axCheers(theo)).length, 'the live row is back in the accessibility tree').toBeGreaterThan(0);
+			expect(
+				(await tabStops(theo)).filter((c) => c.includes('cheer')).length,
+				'the live row takes focus'
+			).toBeGreaterThan(0);
+			// A real pointer tap: Playwright's actionability check refuses an element hit-testing does not reach.
+			await theo.locator(SEL.npCheer).first().click({ timeout: 5_000 });
+			expect(await shifts(theo), 'layout shift over the round trip').toEqual([]);
+			expect(await dock.boundingBox()).toEqual(before);
+		} finally {
+			await worker.stop();
+		}
+	});
+}
