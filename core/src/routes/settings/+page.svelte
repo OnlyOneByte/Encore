@@ -441,10 +441,9 @@
 	</Button>
 
 	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name.
-		NO BADGE, and this is a MEASURED refusal rather than restraint: a second chip on this row read `every room`,
-		which p15 caught overflowing the 320px column by 9px at 200% text (the chip measures 135.5px there and the
-		Button base is `whitespace-nowrap`, so it cannot reflow). The blast radius is stated on arrival, in the
-		destination's own sticky scope line — this row only has to name the place. -->
+		NO BADGE: a second chip on this row read `every room`, and p15 caught it overflowing the 320px column by 9px
+		at 200% text (the chip measures 135.5px there). The row does not need one either: the blast radius is stated
+		on arrival, in the destination's own sticky scope line, so this row only has to name the place. -->
 	<Button variant="outline" size="block" href={SETTINGS_SCOPES.server.href}>
 		<Icon name="gear" />
 		{SETTINGS_SCOPES.server.label}
@@ -456,9 +455,8 @@
 		from the Sing tab's identity chip, so the way to it was to leave settings entirely and come back in by another
 		entrance. A three-scope model whose scopes cannot reach each other is a worse map than the tab strip it
 		replaced.
-		SAME `outline` + `size="block"` SHAPE as the machine door, and NO BADGE for the measured reason recorded on
-		that one: a second chip on a door row overflowed the 320px column by 9px at 200% text, because the chip is
-		135.5px there and the Button base is `whitespace-nowrap` so it cannot reflow. -->
+		SAME `outline` + `size="block"` SHAPE as the machine door, and NO BADGE for the reasons recorded on that one:
+		a door row names a place, and its scope is stated on arrival. -->
 	<Button variant="outline" size="block" href={SETTINGS_SCOPES.you.href}>
 		<Icon name="mic" />
 		{SETTINGS_SCOPES.you.label}
