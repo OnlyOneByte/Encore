@@ -142,7 +142,12 @@ export class RoomLink {
 		this.queue = new QueueStore({
 			singerId: this.me.id,
 			sendCommand: (cmd: ClientCommand) => this.#ws?.send({ type: 'queue:command', command: cmd }),
-			onReject: (reason) => this.#fail(`Couldn't do that: ${reason}`),
+			onReject: (reason) => {
+				// The hub's own wording for an add of a song it no longer holds (hub.ts `validateCommand`).
+				const gone = /^unknown media: (.+)$/.exec(reason);
+				if (gone) this.#songGone(gone[1]!);
+				else this.#fail(`Couldn't do that: ${reason}`);
+			},
 			// Read at apply time, not captured: both the algorithm and the sing history change while the party runs, and
 			// predicting with a stale ordering is what makes a row jump.
 			ordering: () => ({
@@ -304,6 +309,8 @@ export class RoomLink {
 		}
 		// Surface a died process instead of leaving the row stuck, and persist a per-device scar so it survives a reload.
 		if (status === 'failed') {
+			// A failure carries its row, so a phone that never fetched the song (an admin-started process) names it.
+			if (e.media) this.mergeMissingMedia([e.media]);
 			const failedMedia = this.mediaCatalog.get(mediaId);
 			if (failedMedia) {
 				/* THE SCAR STAYS ROOM-WIDE, deliberately, and it is NOT what made the reported defect. It renders on no
@@ -336,6 +343,17 @@ export class RoomLink {
 				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
 			}
 		}
+	}
+
+	/** A song deleted since this phone fetched it: a sync carries only queued songs, so nothing else drops its row, and
+	 * an open search keeps offering it. Says so ONCE: a tap sends both the add and the process, and both are refused. */
+	#songGone(mediaId: string): void {
+		if (!this.mediaCatalog.has(mediaId)) return;
+		const next = new Map(this.mediaCatalog);
+		next.delete(mediaId);
+		this.mediaCatalog = next;
+		this.#emit();
+		this.#fail("That song isn't in the library any more.");
 	}
 
 	/** The catalog is otherwise fed ONLY by queue:sync/patch, so a song that came from search or the library has no
@@ -403,7 +421,8 @@ export class RoomLink {
 				   turn back on a transient refusal would delete a turn the guest genuinely asked for. What the guest
 				   is left holding is exactly the state the stalled card exists to name. */
 				this.clearMediaStatus(mediaId);
-				this.#fail(body.error ?? 'Could not start process');
+				if (res.status === 409 && body.error === 'unknown media') this.#songGone(mediaId);
+				else this.#fail(body.error ?? 'Could not start process');
 				return;
 			}
 			// The stems were already on disk (processed on an earlier night) — nothing to wait for.

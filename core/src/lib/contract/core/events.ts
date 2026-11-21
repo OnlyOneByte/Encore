@@ -91,6 +91,8 @@ export type ServerEvent =
 			etaSec?: number;
 			unservable?: boolean;
 			requestedBy?: string;
+			// On `failed` only: the song's row, so a phone that never fetched it can name it in the notice.
+			media?: Media;
 	  }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }

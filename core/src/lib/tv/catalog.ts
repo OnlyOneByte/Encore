@@ -8,6 +8,11 @@ import type { ServerEvent } from '$lib/contract';
 /**
  * The ONLY writer, and it takes a FULL server list, so it cannot express a partial local edit. PRESERVES object
  * identity for any song whose fields are unchanged; JSON comparison suffices because Media is flat wire-JSON.
+ *
+ * That list is a sync's `media`: the QUEUED songs only, not the library. The TV ignores `queue:patch`, so a song
+ * queued after its last sync reaches it through the NEXT sync, which today is the WsClient gap resync (the TV's
+ * `getLastRev` is 0, so any patch past rev 1 sends a hello; one add sends two patches) or the 15 s heartbeat.
+ * Change either and a newly queued song can be missing from this map until a heartbeat.
  */
 export function mergeCatalog(prev: Map<string, Media>, incoming: Media[]): Map<string, Media> {
 	const next = new Map<string, Media>();
@@ -21,6 +26,12 @@ export function mergeCatalog(prev: Map<string, Media>, incoming: Media[]): Map<s
 	// Nothing moved: hand back the SAME Map. A fresh Map with identical contents is still a fresh `$state` value, so a
 	// sync that changed nothing must not be a re-render reason either.
 	return changed ? next : prev;
+}
+
+/** The levels the TV's loudness median is taken over. They ride every sync because the sync's media is only the
+ *  queued songs; an omitted list means "no info", and must not reset the median to nothing. */
+export function syncLoudnessLevels(prev: number[], e: Extract<ServerEvent, { type: 'queue:sync' }>): number[] {
+	return e.loudness ?? prev;
 }
 
 declare const SNAPSHOT_BRAND: unique symbol;
