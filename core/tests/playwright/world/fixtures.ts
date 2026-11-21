@@ -8,6 +8,7 @@
 // one reads a lobby instead of a code. Correctness beats the boot cost; if it ever dominates, the fix is a
 // room-reset endpoint, not a shared world.
 import { test as base, expect, type Page, type Browser } from '@playwright/test';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +36,10 @@ export interface World {
 	readonly mediaDir: string;
 	/** The active room's join code, read off the attract panel before anybody joined. */
 	readonly code: string;
+	/** The room's TV, as the `encore_tv` cookie it would get from GET /tv. Every TV this world opens carries it, so
+	 *  they are ONE screen reloading, not a second screen that is a copy while the seat waits for the first. A spec
+	 *  that builds its own TV context adds it: `ctx.addCookies([world.tvCookie])`. See docs/SERVER.md#the-tv-seat. */
+	readonly tvCookie: { name: string; value: string; url: string };
 	/** Join through the real screen and land on the joined home. Names must be unique per room — a reused
 	 *  one gets a 409 and the join page simply stays put, which looks exactly like a broken flow. */
 	joinAs(page: Page, name: string, options?: JoinOptions): Promise<void>;
@@ -87,9 +92,16 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 			return page;
 		};
 
+		const tvCookie = { name: 'encore_tv', value: randomBytes(24).toString('base64url'), url: core.baseURL };
+		const newTvPage = async (viewport: { width: number; height: number }) => {
+			const page = await newPage(browser, viewport);
+			await page.context().addCookies([tvCookie]);
+			return page;
+		};
+
 		// Read while the room is guaranteed empty. A TV is not a room MEMBER — presence counts singers — so
 		// this does not spend the emptiness the attract panel depends on.
-		const probe = await newPage(browser, { width: 1280, height: 720 });
+		const probe = await newTvPage({ width: 1280, height: 720 });
 		await probe.goto('/tv');
 		const code = (await probe.locator(SEL.attractCode).first().innerText({ timeout: 20_000 })).trim();
 		await probe.context().close();
@@ -121,9 +133,10 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 			baseURL: core.baseURL,
 			mediaDir,
 			code,
+			tvCookie,
 			joinAs,
 			openTv: async () => {
-				const page = await newPage(browser, { width: 1920, height: 1080 });
+				const page = await newTvPage({ width: 1920, height: 1080 });
 				await page.goto(`/tv?room=${encodeURIComponent(code)}`);
 				return page;
 			},

@@ -27,6 +27,7 @@ import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from './src/lib/server/realtime/room-scope';
 import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
+import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
@@ -46,7 +47,15 @@ const state = app.state;
 
 // SocketData.roomId/singerId resolve at WS upgrade from the session cookie, NEVER a client claim; a
 // worker, an unbound TV and a not-yet-joined phone carry neither.
-type SocketData = { role: string; workerId?: string; singerId?: string; roomId?: string };
+// A TV also carries `tvId` (its screen, from the `encore_tv` cookie) and `tvKey` (this socket, for the seat).
+type SocketData = {
+	role: string;
+	workerId?: string;
+	singerId?: string;
+	roomId?: string;
+	tvId?: string;
+	tvKey?: number;
+};
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
 // server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd).
@@ -62,6 +71,21 @@ const seenOps = new Set<string>();
 
 // One bucket per singer for `room:react`, shared across that singer's sockets so a second tab buys no extra taps.
 const reactionLimiter = createReactionLimiter(() => app.now());
+
+// One TV per room: only the seat's socket may end the song or move the playhead. See src/lib/server/rooms/tv-seat.ts.
+const tvSeats = new TvSeats({
+	load: (roomId) => app.rooms.tvSeat(roomId),
+	save: (roomId, holder) => app.rooms.setTvSeat(roomId, holder),
+	now: () => app.now(),
+	schedule: (ms, run) => setTimeout(run, ms).unref?.(),
+	announce: (notices) => announceSeat(notices)
+});
+const tvSockets = new Map<number, import('bun').ServerWebSocket<SocketData>>();
+let nextTvKey = 0;
+function announceSeat(notices: SeatNotice[]): void {
+	for (const n of notices)
+		tvSockets.get(n.key)?.send(JSON.stringify({ type: 'tv:seat', mine: n.mine } satisfies ServerEvent));
+}
 
 // Guarded so WS still boots pre-build.
 type SvelteHandler = (req: Request, server: import('bun').Server<SocketData>) => Response | Promise<Response>;
@@ -135,7 +159,9 @@ const server = Bun.serve<SocketData>({
 				role === 'tv'
 					? tvRoomId(url.searchParams.get('room'), (code) => app.rooms.byCode(code), app.activeRoomId)
 					: me?.roomId;
-			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId } })) return undefined as unknown as Response;
+			const tvId = role === 'tv' ? tvIdOf(req.headers.get('cookie')) : undefined;
+			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId, tvId } }))
+				return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
 		if (url.pathname === '/health') {
@@ -171,6 +197,11 @@ const server = Bun.serve<SocketData>({
 			// TVs ALSO hear the TV-only topic; a phone never subscribes to it, so it cannot receive `room:reacted`.
 			const tvTopic = tvTopicFor(ws.data.role, ws.data.roomId, app.activeRoomId);
 			if (tvTopic) ws.subscribe(tvTopic);
+			if (ws.data.role === 'tv' && ws.data.roomId) {
+				ws.data.tvKey = ++nextTvKey;
+				tvSockets.set(ws.data.tvKey, ws);
+				announceSeat(tvSeats.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId));
+			}
 			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
@@ -247,11 +278,13 @@ const server = Bun.serve<SocketData>({
 					handlePlayerCommand(evt.command, deps, sendToOrigin);
 					break;
 				case 'tv:telemetry':
-					// Not from phone-app sockets, where `ended` was a free skip and position a free seek. shortcut: `role` is
-					// self-declared at upgrade, so a client opening /ws?role=tv still passes; binding the TV role to
-					// something a client can't claim (join code, pairing token) is a separate design change.
-					if (ws.data.role !== 'tv') break;
+					// Only from the room's TV seat: a phone-app socket's `ended` was a free skip and its position a free seek, and
+					// a second /tv (a guest reading along, a forgotten tab) is a copy whose frames would fight the real TV's.
+					if (ws.data.tvKey === undefined || !tvSeats.holds(ws.data.roomId!, ws.data.tvKey)) break;
 					handleTelemetry({ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId }, deps);
+					break;
+				case 'tv:claim':
+					if (ws.data.tvKey !== undefined) announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey));
 					break;
 				case 'room:react': {
 					const current = state.entries.find((e) => e.id === state.playback.currentEntryId);
@@ -276,6 +309,10 @@ const server = Bun.serve<SocketData>({
 			if (ws.data.role === 'worker' && ws.data.workerId) {
 				releaseWorkerSocket(workerSockets, app.workers, ws.data.workerId, ws);
 				return;
+			}
+			if (ws.data.tvKey !== undefined) {
+				tvSockets.delete(ws.data.tvKey);
+				announceSeat(tvSeats.disconnect(ws.data.roomId!, ws.data.tvKey));
 			}
 			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
 			// `gone` is the sweep's job.

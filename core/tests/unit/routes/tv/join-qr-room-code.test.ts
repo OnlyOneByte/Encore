@@ -28,7 +28,7 @@ test("the join URL (and thus the QR) carries the active room's code, at the land
 
 	const url = new URL('http://tv.lan:3000/tv');
 	const request = new Request(url, { headers: { host: 'tv.lan:3000' } });
-	const data = (await load({ url, request } as never)) as { joinUrl: string };
+	const data = (await load({ url, request, cookies: { set: () => {} } } as never)) as { joinUrl: string };
 	expect(data.joinUrl).toContain(`?room=${active.code}`);
 	// Q2-A: the QR points at `/`, not the retired `/join`. A revert of the path change reds here.
 	expect(data.joinUrl).toBe(`http://tv.lan:3000/?room=${active.code}`);

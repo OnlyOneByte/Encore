@@ -50,6 +50,9 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
+	// ONE TV PER ROOM: whether this screen holds the room's seat (`tv:seat`). A copy sends no telemetry, so it can
+	// neither end the song nor move the playhead. False until the server says, which it does on connect.
+	let seatMine = $state(false);
 	// Singer ids with a live socket right now — NOT `singers`, which is every singer who ever joined.
 	let online = $state<string[]>([]);
 	// In the room but unreachable (a locked phone). Greyed, never erased: a dropped socket is not a departure.
@@ -204,6 +207,7 @@
 	 * playhead. Every frame carries the entry stamp the server's stale-frame guard needs.
 	 */
 	function sendTelemetry(status: string, positionSec = 0) {
+		if (!seatMine) return;
 		ws?.send(telemetryFrame(status, current, positionSec), { quiet: true });
 	}
 
@@ -277,6 +281,7 @@
 
 	function handleEvent(e: ServerEvent) {
 		if (e.type === 'room:reacted') reactions?.add(e);
+		if (e.type === 'tv:seat') seatMine = e.mine;
 		if (e.type === 'queue:sync') {
 			entries = e.entries;
 			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));

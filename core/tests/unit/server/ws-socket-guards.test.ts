@@ -1,8 +1,8 @@
 // server.ts's tv:telemetry arm, driven over a real core: server.ts is the Bun.serve entry with no unit harness,
 // so the only honest test of who may send a frame is a live socket. No build needed: hello is answered by the
 // WS hub itself, not a SvelteKit route.
-//   BE-07 (partial): a phone-app socket, even an un-joined one, could drive the playhead and (with `ended`)
-//   skip the singer. The gate is on the self-declared `role`, so /ws?role=tv still passes; that stays open.
+//   BE-07: a phone-app socket, even an un-joined one, could drive the playhead and (with `ended`) skip the singer.
+//   Proposal 10: so could ANY /ws?role=tv. Only the room's TV seat (a screen with an `encore_tv` cookie) is honoured.
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,10 +22,15 @@ afterAll(async () => {
 	rmSync(mediaDir, { recursive: true, force: true });
 });
 
-type Frame = { type: string; state?: { positionSec: number } };
+type Frame = { type: string; state?: { positionSec: number }; mine?: boolean };
 
-async function open(role: string): Promise<{ ws: WebSocket; frames: Frame[] }> {
-	const ws = new WebSocket(`${core.baseURL.replace(/^http/, 'ws')}/ws?role=${role}`);
+/** A cookie in the shape GET /tv mints; the socket test needs no build, so it does not fetch the page. */
+const screen = (c: string) => `encore_tv=${c.repeat(32)}`;
+
+async function open(role: string, cookie?: string): Promise<{ ws: WebSocket; frames: Frame[] }> {
+	const url = `${core.baseURL.replace(/^http/, 'ws')}/ws?role=${role}`;
+	// Bun's WebSocket takes request headers; the DOM type does not know it.
+	const ws = new WebSocket(url, cookie ? ({ headers: { cookie } } as unknown as string[]) : undefined);
 	const frames: Frame[] = [];
 	ws.onmessage = (m) => frames.push(JSON.parse(String(m.data)));
 	await new Promise((resolve, reject) => {
@@ -37,8 +42,8 @@ async function open(role: string): Promise<{ ws: WebSocket; frames: Frame[] }> {
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
-async function sendFrom(role: string, frame: object): Promise<void> {
-	const { ws } = await open(role);
+async function sendFrom(role: string, frame: object, cookie?: string): Promise<void> {
+	const { ws } = await open(role, cookie);
 	ws.send(JSON.stringify(frame));
 	await settle();
 	ws.close();
@@ -55,12 +60,36 @@ async function syncedPosition(): Promise<number> {
 	return pb.state.positionSec;
 }
 
-test('tv:telemetry from a phone-app socket is dropped; a role=tv socket is honoured (BE-07)', async () => {
+test('tv:telemetry is honoured only from the TV seat: not a phone, not a cookieless TV, not a copy', async () => {
+	const seat = await open('tv', screen('A'));
+	await settle();
 	const frame = { type: 'tv:telemetry', status: 'playing', positionSec: 42 };
 	await sendFrom('phone', frame);
+	await sendFrom('tv', frame);
+	await sendFrom('tv', frame, screen('B'));
 	expect(await syncedPosition()).toBe(0);
 
-	// Non-vacuous: the same frame from a TV socket does move the playhead.
-	await sendFrom('tv', frame);
+	// Non-vacuous: the same frame from the seat does move the playhead.
+	seat.ws.send(JSON.stringify(frame));
+	await settle();
 	expect(await syncedPosition()).toBe(42);
+	expect(seat.frames.filter((f) => f.type === 'tv:seat')).toEqual([{ type: 'tv:seat', mine: true }]);
+
+	// "Make this the TV": the copy takes the seat, the old holder is told, and only the new seat is honoured.
+	const copy = await open('tv', screen('B'));
+	copy.ws.send(JSON.stringify({ type: 'tv:claim' }));
+	await settle();
+	expect(copy.frames.filter((f) => f.type === 'tv:seat')).toEqual([
+		{ type: 'tv:seat', mine: false },
+		{ type: 'tv:seat', mine: true }
+	]);
+	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false });
+	seat.ws.send(JSON.stringify({ ...frame, positionSec: 7 }));
+	await settle();
+	expect(await syncedPosition()).toBe(42);
+	copy.ws.send(JSON.stringify({ ...frame, positionSec: 9 }));
+	await settle();
+	expect(await syncedPosition()).toBe(9);
+	seat.ws.close();
+	copy.ws.close();
 }, 20_000);

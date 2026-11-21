@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `tv_seat` text;

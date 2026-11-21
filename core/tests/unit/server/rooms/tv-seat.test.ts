@@ -1,0 +1,299 @@
+// One TV per room: the seat rules, driven with a fake clock and store. The live-socket half (a copy's `ended` and
+// position are ignored) is tests/unit/server/ws-socket-guards.test.ts.
+import { test, expect } from 'bun:test';
+import {
+	TvSeats,
+	TV_SEAT_GRACE_MS,
+	TV_SEAT_SLOW_BOOT_MS,
+	readTvCookie,
+	tvIdOf,
+	type SeatNotice
+} from '$lib/server/rooms/tv-seat';
+
+const ROOM = 'room-1';
+/** Past the slow-boot window: the TV has been on long enough that only the 15 s grace applies when it goes. */
+const ON_A_WHILE = 60_000;
+
+function world(persisted: string | null = null) {
+	let now = 1_000_000;
+	const saved = new Map<string, string | null>([[ROOM, persisted]]);
+	// The fake clock's timers: `advance` only moves time, `tick` also runs every booked sweep that has come due.
+	const timers: { at: number; run: () => void }[] = [];
+	const announced: SeatNotice[] = [];
+	const seats = new TvSeats({
+		load: (r) => saved.get(r) ?? null,
+		save: (r, h) => saved.set(r, h),
+		now: () => now,
+		schedule: (ms, run) => timers.push({ at: now + ms, run }),
+		announce: (n) => announced.push(...n)
+	});
+	return {
+		seats,
+		saved,
+		timers,
+		announced,
+		advance: (ms: number) => (now += ms),
+		tick: (ms: number) => {
+			now += ms;
+			for (const t of timers.filter((x) => x.at <= now).sort((x, y) => x.at - y.at)) {
+				timers.splice(timers.indexOf(t), 1);
+				t.run();
+			}
+		},
+		mine: (key: number) => seats.holds(ROOM, key)
+	};
+}
+
+test('the first screen takes a free seat; a second is a copy, and each is told', () => {
+	const w = world();
+	expect(w.seats.connect(ROOM, 1, 'tvA')).toEqual([{ key: 1, mine: true }]);
+	expect(w.seats.connect(ROOM, 2, 'tvB')).toEqual([{ key: 2, mine: false }]);
+	expect(w.mine(1)).toBe(true);
+	expect(w.mine(2)).toBe(false);
+	expect(w.saved.get(ROOM)).toBe('tvA');
+});
+
+test('a socket with no cookie never holds the seat, even a free one, and cannot claim it', () => {
+	const w = world();
+	expect(w.seats.connect(ROOM, 1, undefined)).toEqual([{ key: 1, mine: false }]);
+	expect(w.seats.claim(ROOM, 1)).toEqual([]);
+	expect(w.mine(1)).toBe(false);
+	// The seat stayed free for the real TV.
+	w.seats.connect(ROOM, 2, 'tvA');
+	expect(w.mine(2)).toBe(true);
+});
+
+test('reload: the new socket of the same screen takes over before the old one closes', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvB');
+	// The new socket is the holder at once; the old one is told it is not.
+	expect(w.seats.connect(ROOM, 3, 'tvA')).toEqual([
+		{ key: 1, mine: false },
+		{ key: 3, mine: true }
+	]);
+	// The old socket's late close changes nothing.
+	expect(w.seats.disconnect(ROOM, 1)).toEqual([]);
+	expect(w.mine(3)).toBe(true);
+});
+
+test('reload: the old socket closes first, and the screen is back inside the grace with zero steps', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvB');
+	w.seats.disconnect(ROOM, 1);
+	w.advance(TV_SEAT_GRACE_MS - 1);
+	// Not yet: the copy is not promoted while the holder's grace runs.
+	expect(w.seats.sweep()).toEqual([]);
+	expect(w.seats.connect(ROOM, 3, 'tvA')).toEqual([{ key: 3, mine: true }]);
+	w.advance(TV_SEAT_GRACE_MS);
+	expect(w.seats.sweep()).toEqual([]);
+	expect(w.mine(2)).toBe(false);
+});
+
+test('two tabs of one screen: the newest is live, and closing it hands the seat to the other tab', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvA');
+	expect(w.mine(1)).toBe(false);
+	expect(w.seats.disconnect(ROOM, 2)).toEqual([{ key: 1, mine: true }]);
+});
+
+test('cookie cleared: the screen comes back as a copy and is promoted when the grace runs out', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.advance(ON_A_WHILE);
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.seats.connect(ROOM, 3, undefined);
+	w.seats.disconnect(ROOM, 1);
+	// The same TV, with a fresh cookie, is now the NEWEST screen with one.
+	w.seats.connect(ROOM, 4, 'tvA2');
+	w.advance(TV_SEAT_GRACE_MS);
+	// The newest copy with a cookie, not the older laptop tab and not the cookieless socket.
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 4, mine: true }] }]);
+	expect(w.saved.get(ROOM)).toBe('tvA2');
+});
+
+test('a cookieless socket is never promoted, even when it is the newest', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.advance(ON_A_WHILE);
+	w.seats.connect(ROOM, 2, 'tvB');
+	w.seats.disconnect(ROOM, 1);
+	w.seats.connect(ROOM, 3, undefined);
+	w.advance(TV_SEAT_GRACE_MS);
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 2, mine: true }] }]);
+});
+
+test('the holder gone past the grace with nobody else connected: the seat goes free for the next screen', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.advance(ON_A_WHILE);
+	w.seats.disconnect(ROOM, 1);
+	w.advance(TV_SEAT_GRACE_MS);
+	expect(w.seats.sweep()).toEqual([]);
+	expect(w.saved.get(ROOM)).toBeNull();
+	expect(w.seats.connect(ROOM, 2, 'tvB')).toEqual([{ key: 2, mine: true }]);
+});
+
+test('a connect after the grace has run out promotes without waiting for the sweep', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.advance(ON_A_WHILE);
+	w.seats.disconnect(ROOM, 1);
+	w.advance(TV_SEAT_GRACE_MS);
+	expect(w.seats.connect(ROOM, 2, 'tvB')).toEqual([{ key: 2, mine: true }]);
+});
+
+test('"Make this the TV": the claimer takes the seat and the old holder becomes a copy, both told', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvB');
+	expect(w.seats.claim(ROOM, 2)).toEqual([
+		{ key: 1, mine: false },
+		{ key: 2, mine: true }
+	]);
+	expect(w.saved.get(ROOM)).toBe('tvB');
+	// The old holder reloading does not take it back.
+	w.seats.connect(ROOM, 3, 'tvA');
+	expect(w.mine(3)).toBe(false);
+});
+
+test('core restart: the persisted holder gets its seat back even when a copy reconnects first', () => {
+	const w = world('tvA');
+	expect(w.seats.connect(ROOM, 1, 'tvB')).toEqual([{ key: 1, mine: false }]);
+	w.advance(TV_SEAT_GRACE_MS - 1);
+	expect(w.seats.sweep()).toEqual([]);
+	expect(w.seats.connect(ROOM, 2, 'tvA')).toEqual([{ key: 2, mine: true }]);
+});
+
+test('core restart: a holder that never comes back yields to the copy after the slow-boot window', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'tvB');
+	w.advance(TV_SEAT_SLOW_BOOT_MS);
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 1, mine: true }] }]);
+});
+
+test('seats are per room', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect('room-2', 2, 'tvB');
+	expect(w.seats.holds('room-2', 2)).toBe(true);
+	expect(w.seats.holds(ROOM, 2)).toBe(false);
+});
+
+test('the cookie is read only in the shape we mint, and the seat is kept under a hash of it', () => {
+	const v = 'A'.repeat(31) + '_';
+	expect(readTvCookie(`encore_singer=x; encore_tv=${v}`)).toBe(v);
+	expect(readTvCookie('encore_tv=short')).toBeUndefined();
+	expect(readTvCookie(`encore_tv=${v}!`)).toBeUndefined();
+	expect(readTvCookie(null)).toBeUndefined();
+	const id = tvIdOf(`encore_tv=${v}`);
+	expect(id).toBeString();
+	expect(id).not.toBe(v);
+	expect(tvIdOf(`encore_tv=${'B'.repeat(32)}`)).not.toBe(id);
+	expect(tvIdOf('encore_tv=short')).toBeUndefined();
+});
+
+test('the promised numbers: a 15 s grace, and a 60 s slow-boot window', () => {
+	expect(TV_SEAT_GRACE_MS).toBe(15_000);
+	expect(TV_SEAT_SLOW_BOOT_MS).toBe(60_000);
+});
+
+test('core restart: a slow-booting TV keeps its seat past 15 s, though a copy reconnected at once', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'phone-tab');
+	w.advance(59_999);
+	expect(w.seats.sweep()).toEqual([]);
+	expect(w.seats.connect(ROOM, 2, 'tvA')).toEqual([{ key: 2, mine: true }]);
+	expect(w.mine(1)).toBe(false);
+});
+
+test('no copy is promoted while the holder connected within the last 60 s, however short its last stay', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'laptop');
+	// The TV flaps while it boots: up, down, up for 5 s, down.
+	w.seats.disconnect(ROOM, 1);
+	w.advance(10_000);
+	w.seats.connect(ROOM, 3, 'tvA');
+	w.advance(5_000);
+	w.seats.disconnect(ROOM, 3);
+	w.advance(15_000);
+	// 15 s gone, but its cookie connected 20 s ago: no promotion.
+	expect(w.seats.sweep()).toEqual([]);
+	w.advance(39_999);
+	expect(w.seats.sweep()).toEqual([]);
+	w.advance(1);
+	// 60 s since that connect: the laptop takes the seat.
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 2, mine: true }] }]);
+});
+
+test('a TV that was on a while gets exactly the 15 s grace when it goes', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.advance(ON_A_WHILE);
+	w.seats.disconnect(ROOM, 1);
+	w.advance(14_999);
+	expect(w.seats.sweep()).toEqual([]);
+	w.advance(1);
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 2, mine: true }] }]);
+});
+
+test('core restart: once the saved TV is back, its next absence gets the plain 15 s grace again', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.advance(ON_A_WHILE);
+	w.seats.disconnect(ROOM, 1);
+	w.advance(15_000);
+	expect(w.seats.sweep()).toEqual([{ roomId: ROOM, notices: [{ key: 2, mine: true }] }]);
+});
+
+test('a seat move tells the old TV to go silent before it tells the new one to play, whatever their ages', () => {
+	// The copy is the OLDER socket here, so socket order alone would send its `mine: true` first.
+	const w = world();
+	w.seats.connect(ROOM, 1, 'laptop');
+	w.seats.claim(ROOM, 1);
+	w.seats.connect(ROOM, 2, 'tvA');
+	w.seats.claim(ROOM, 2);
+	expect(w.seats.claim(ROOM, 1)).toEqual([
+		{ key: 2, mine: false },
+		{ key: 1, mine: true }
+	]);
+});
+
+// THE BOOKED SWEEPS, on the fake clock: each case below is one where nothing else happens, so only the sweep that
+// event booked can move the seat (review of #990, r3).
+test('restart, the saved TV never returns, one copy connects: the sweep THAT CONNECT booked promotes it at 60 s', () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'laptop');
+	w.tick(59_999);
+	expect(w.announced).toEqual([]);
+	w.tick(1);
+	expect(w.announced).toEqual([{ key: 1, mine: true }]);
+});
+
+test('the TV closes with a copy open and nothing else happens: the sweep THE CLOSE booked promotes the copy', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.tick(ON_A_WHILE + 1);
+	expect(w.timers).toEqual([]);
+	w.seats.disconnect(ROOM, 1);
+	w.tick(15_000);
+	expect(w.announced).toEqual([{ key: 2, mine: true }]);
+});
+
+test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
+	const w = world();
+	const booked = () => w.timers.splice(0).map((t) => t.at - 1_000_000);
+	w.seats.connect(ROOM, 1, 'tvA');
+	expect(booked()).toEqual([15_000, 60_000]);
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.seats.claim(ROOM, 2);
+	expect(booked()).toEqual([15_000, 60_000, 15_000, 60_000]);
+	w.seats.disconnect(ROOM, 2);
+	expect(booked()).toEqual([15_000, 60_000]);
+});

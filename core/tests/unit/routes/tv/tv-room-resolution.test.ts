@@ -25,7 +25,7 @@ function installApp(db: ReturnType<typeof migratedDb>, activeRoomId: string, roo
 async function loadRoomCode(u: string): Promise<string> {
 	const url = new URL(u);
 	const request = new Request(url, { headers: { host: 'tv.lan:3000' } });
-	const data = (await load({ url, request } as never)) as { roomCode: string };
+	const data = (await load({ url, request, cookies: { set: () => {} } } as never)) as { roomCode: string };
 	return data.roomCode;
 }
 
