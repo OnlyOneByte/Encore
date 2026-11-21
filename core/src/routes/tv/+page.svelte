@@ -103,6 +103,8 @@
 	// Bumped by every playback command but NEVER by position telemetry, so the seek effect can track it to re-take its
 	// decision on a restart whose position equals the last one.
 	let seekRev = $state(0);
+	// The `rev` of the server's advance onto a song the TV had already started itself; see the `playback:state` handler.
+	let caughtUpRev = -1;
 	// Per-song background override from playback:state. null = use the room default (the resting state).
 	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
 	// Read raw, a null guide override is indistinguishable from "explicitly off" — the distinction that lets a room
@@ -159,13 +161,22 @@
 		const visibleSlot = ctl.assignment().visible;
 		visible = visibleSlot;
 		tvState = ctl.state;
+		// The controller's view, not the raw pair: right after a natural end `current` is still the song that just ended.
+		const { visible: onScreen, hidden: warming } = ctl.slotEntries(current, upNext);
 		// SNAPSHOT HERE, and only here: `syncSlots` runs on explicit lifecycle transitions alone.
-		slotMedia = bySlot(visibleSlot, snapshot(mediaOf(current)), snapshot(mediaOf(upNext)));
+		slotMedia = bySlot(visibleSlot, snapshot(mediaOf(onScreen)), snapshot(mediaOf(warming)));
 		// The entry id travels with its snapshot into the SAME slot, so the per-entry transport re-arm sees a distinct id.
-		slotEntryId = bySlot(visibleSlot, current?.id ?? null, upNext?.id ?? null);
+		slotEntryId = bySlot(visibleSlot, onScreen?.id ?? null, warming?.id ?? null);
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
+		// A pair naming the entry the TV already ended predates the server's processing of that `ended` (#1001):
+		// applying it reloads the finished song over the next. The `ended` is re-sent so one lost on a closed socket
+		// still advances the room; the server drops the duplicate by its entry stamp.
+		if (cur && ctl.isBehind(cur.id)) {
+			sendTelemetry('ended', cur.id);
+			return;
+		}
 		// Compared BEFORE `current` is overwritten, and on the ENTRY id: a song queued twice is two entries over one media.
 		const entryChanged = cur?.id !== current?.id;
 		current = cur;
@@ -205,10 +216,13 @@
 	 * DROPPED SILENTLY when the socket is not open (`quiet`) — right for a ~4Hz stream whose next frame is 250ms
 	 * away. What is NOT acceptable is THROWING out of `ontimeupdate`, which left the server never learning the
 	 * playhead. Every frame carries the entry stamp the server's stale-frame guard needs.
+	 * The stamp is the entry the reporting SLOT holds, not `current`: after a natural end the TV plays `upNext` one
+	 * server frame early, so `current` still names the song that ended and the server would drop song 2's frames as
+	 * stale — a song 2 that will not play then never advances the room.
 	 */
-	function sendTelemetry(status: string, positionSec = 0) {
+	function sendTelemetry(status: string, entryId: string | null, positionSec = 0) {
 		if (!seatMine) return;
-		ws?.send(telemetryFrame(status, current, positionSec), { quiet: true });
+		ws?.send(telemetryFrame(status, entryId ? { id: entryId } : null, positionSec), { quiet: true });
 	}
 
 	/** A FLASH, not a state: the takeover clears itself, so nothing has to remember to retract it. */
@@ -223,12 +237,12 @@
 		skipNoticeTimer = setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
 	}
 
-	function onVisibleError() {
+	function onVisibleError(endedId: string | null) {
 		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
 		// several bad files in a row would otherwise just flash black across the room.
 		flashSkipNotice('That song won’t play');
 		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
-		onVisibleEnded();
+		onVisibleEnded(endedId);
 	}
 
 	/**
@@ -239,14 +253,21 @@
 	/** The session has shown at least one song, so the next intro is a transition rather than an opener. */
 	let openedOnce = $state(false);
 
-	function onVisibleEnded() {
+	/** `endedId` is the entry the ending slot held; see `sendTelemetry`. */
+	function onVisibleEnded(endedId: string | null = current?.id ?? null) {
 		// The failure belonged to the song that just ended.
 		playbackFailedReason = null;
 		const next = ctl.onEnded(upNext);
 		tvState = next;
-		sendTelemetry('ended');
+		sendTelemetry('ended', endedId);
 		if (next === 'interstitial') {
 			introEntry = upNext;
+			holdSongIntro();
+		} else if (next === 'loading' && upNext && upNext.id !== endedId && openedOnce && songIntroMs > 0) {
+			// Missed the preload window: the visible slot starts `upNext` now, so its card goes up with its audio rather
+			// than a round trip later in `applyNowPlaying`. Not when `upNext` IS what ended: the server's frame is behind.
+			introEntry = upNext;
+			ctl.enterInterstitial();
 			holdSongIntro();
 		}
 		syncSlots();
@@ -307,9 +328,18 @@
 			if (nextOrigin !== data.joinOrigin) invalidateAll();
 		}
 		if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
-		if (e.type === 'playback:state') {
+		// The same stale window: the old song's position would seek the next song to where the finished one ended.
+		if (e.type === 'playback:state' && !ctl.isBehind(e.state.currentEntryId)) {
 			isPlaying = e.state.isPlaying;
-			seekSec = e.state.positionSec;
+			// The server advancing to the song the TV already started: its 0 is that start, and an exact 0 is a restart
+			// that replays one round trip of the song. The fresh target must still land, because it is what clears a held
+			// resume off the next song (docs/FRONTEND.md#wake-lock-and-reload-resume). NaN does both: `seekPlan` and
+			// `resumeSeekTarget` refuse a non-finite target, so the held resume is cleared and nothing seeks. Keyed on the
+			// frame's `rev`: the server can publish the same state twice, after the pair has already ended the catch-up.
+			// Any other rev forgets it, so a server restart (its rev starts again at 0) cannot reuse the number.
+			if (e.rev !== caughtUpRev) caughtUpRev = -1;
+			if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;
+			seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;
 			seekRev = e.rev;
 			backgroundOverride = e.state.background;
 			guideOverride = e.state.guideLevel;
@@ -605,12 +635,12 @@
 			ctl.onHiddenReady(slotEntryId.A ?? '');
 			tvState = ctl.state;
 		}}
-		onended={onVisibleEnded}
-		onerror={onVisibleError}
+		onended={() => onVisibleEnded(slotEntryId.A)}
+		onerror={() => onVisibleError(slotEntryId.A)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
-			sendTelemetry('playing', s);
+			sendTelemetry('playing', slotEntryId.A, s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onpitchblocked={() => (pitchBlocked = true)}
@@ -641,12 +671,12 @@
 			ctl.onHiddenReady(slotEntryId.B ?? '');
 			tvState = ctl.state;
 		}}
-		onended={onVisibleEnded}
-		onerror={onVisibleError}
+		onended={() => onVisibleEnded(slotEntryId.B)}
+		onerror={() => onVisibleError(slotEntryId.B)}
 		onposition={(s, d) => {
 			positionSec = s;
 			durationSec = d;
-			sendTelemetry('playing', s);
+			sendTelemetry('playing', slotEntryId.B, s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onpitchblocked={() => (pitchBlocked = true)}

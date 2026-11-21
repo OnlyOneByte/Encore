@@ -43,6 +43,20 @@ test('GAPLESS SWAP: hidden warmed for upNext -> ended swaps slots with no reload
 	expect(c.state).toBe('playing');
 });
 
+test('slot mapping: the warmed slot keeps upNext across the swap, before the server frame lands', () => {
+	const c = new GaplessController();
+	const [q1, q2] = [e('q1'), e('q2')];
+	c.onNowPlaying(q1, q2);
+	c.onVisibleReady();
+	c.onHiddenReady('q2');
+	expect(c.slotEntries(q1, q2)).toEqual({ visible: q1, hidden: q2 });
+	c.onEnded(q2);
+	// The page still holds the server's old pair here. Mapping it raw put q1 into the slot that had warmed q2.
+	expect(c.slotEntries(q1, q2)).toEqual({ visible: q2, hidden: null });
+	c.onNowPlaying(q2, null); // the server's frame: nothing moves
+	expect(c.slotEntries(q2, null)).toEqual({ visible: q2, hidden: null });
+});
+
 test('MISSED WINDOW: hidden NOT warmed -> ended falls back to loading', () => {
 	const c = new GaplessController();
 	c.onNowPlaying(e('q1'), e('q2'));
@@ -141,4 +155,51 @@ test('an intro raised over a loading slot ends in loading, unless the slot got r
 	expect(c.state).toBe('interstitial');
 	c.onInterstitialDone();
 	expect(c.state).toBe('playing');
+});
+
+test('STALE PAIR (#1001): a frame still naming the ended entry neither rewinds nor re-targets', () => {
+	for (const warmed of [true, false]) {
+		const c = new GaplessController();
+		c.onNowPlaying(e('q1'), e('q2'));
+		c.onVisibleReady();
+		if (warmed) c.onHiddenReady('q2');
+		c.onEnded(e('q2'));
+		const before = c.assignment();
+		// A phone command re-sends the server's old pair before it has processed `ended`; a reorder sends a new upNext.
+		for (const stale of [e('q2'), e('q3')]) {
+			expect(c.isBehind('q1')).toBe(true);
+			c.onNowPlaying(e('q1'), stale);
+			expect(c.assignment()).toEqual(before);
+			expect(c.slotEntries(e('q1'), e('q2')).visible?.id).toBe('q2');
+		}
+		// Its playback state for q2, which lands BEFORE the pair, is the server catching up to what the TV plays.
+		expect(c.isCatchingUp('q2')).toBe(true);
+		expect(c.isCatchingUp('q1')).toBe(false);
+		// The server's own frame moves past q1, and from there q1 is just an id again.
+		c.onNowPlaying(e('q2'), e('q3'));
+		expect(c.isBehind('q1')).toBe(false);
+		expect(c.isCatchingUp('q2')).toBe(false); // a restart of q2 from here is a real restart
+		expect(c.currentId).toBe('q2');
+	}
+});
+
+test('STALE PAIR: an empty queue after the last song clears the guard too', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), null);
+	c.onEnded(null);
+	c.onNowPlaying(e('q1'), null); // stale
+	expect(c.state).toBe('attract');
+	c.onNowPlaying(null, null);
+	expect(c.isBehind('q1')).toBe(false);
+});
+
+test('STALE PAIR: song 2 erroring inside the window keeps the guard on song 1', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onEnded(e('q2')); // missed window: song 2 loads one frame early
+	c.onEnded(e('q2')); // it will not play: its error ends it before the server's frame lands
+	expect(c.isBehind('q1')).toBe(true);
+	c.onNowPlaying(e('q1'), e('q2')); // a phone command's stale pair
+	expect(c.currentId).toBe('q2');
 });
