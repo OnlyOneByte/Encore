@@ -869,3 +869,54 @@ def test_a_reaped_childs_empty_group_is_not_signalled(monkeypatch: pytest.Monkey
     finally:
         with contextlib.suppress(ProcessLookupError, PermissionError):
             real(held.pid, signal.SIGKILL)
+
+
+def test_a_cancel_just_after_the_check_finds_the_run_counted() -> None:
+    """The check -> count order: a cancel landing right after `cancelled` read False must see a live run."""
+
+    class Racy(cli.CancelToken):
+        def __init__(self) -> None:
+            super().__init__()
+            self.idle_after_check: list[bool] = []
+
+        @property
+        def cancelled(self) -> bool:
+            was = self._stop.is_set()
+            if not was and not self.idle_after_check:
+                self.idle_after_check.append(self.wait_idle(0.0))  # what `_stop` reads if it cancels now
+                self.cancel()
+            return was
+
+    token = Racy()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["sleep", "30"], cancel=token)
+    assert token.idle_after_check == [False], "the slot read idle between the check and the count"
+
+
+@pytest.mark.parametrize("thread", ["watch-", "read-"])
+def test_a_thread_that_cannot_start_kills_the_child_and_frees_the_slot(
+    monkeypatch: pytest.MonkeyPatch, thread: str
+) -> None:
+    """`Thread.start` can raise (no memory, no threads left) after the child is running: the child must be
+    killed and the run uncounted, or `_stop` waits on its slot for good."""
+    import subprocess  # noqa: PLC0415
+
+    real_start, real_popen = threading.Thread.start, subprocess.Popen
+    children: list[subprocess.Popen[str]] = []
+
+    def start(self: threading.Thread) -> None:
+        if self.name.startswith(thread):
+            raise RuntimeError("can't start new thread")
+        real_start(self)
+
+    def popen(*args: Any, **kwargs: Any) -> Any:
+        children.append(real_popen(*args, **kwargs))
+        return children[-1]
+
+    monkeypatch.setattr(threading.Thread, "start", start)
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    token = cli.CancelToken()
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        cli.run(["sleep", "30"], cancel=token)
+    assert token.wait_idle(0.0) is True, "a run whose thread never started kept its slot"
+    assert children and children[0].poll() is not None, "the child outlived the failed run"

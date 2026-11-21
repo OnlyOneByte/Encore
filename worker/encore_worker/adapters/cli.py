@@ -245,9 +245,11 @@ def run(
 
     watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
     reader = threading.Thread(target=read, name=f"read-{os.path.basename(argv[0])}", daemon=True)
-    watchdog.start()
-    reader.start()
     try:
+        # Inside the `try`: a thread that can't start (no memory, no threads left) still kills the child and
+        # uncounts the run below, or `_stop` would wait on this slot for good.
+        watchdog.start()
+        reader.start()
         code = proc.wait()
         # Drain every line before returning: the last ones carry the final figure and ffmpeg's report. A kill,
         # before the child exited or after, ends that wait at the group grace: a descendant that left the
@@ -262,7 +264,8 @@ def run(
         raise
     finally:
         done.set()
-        watchdog.join()
+        if watchdog.ident is not None:  # joining a thread that never started raises
+            watchdog.join()
         if why:
             # Reaping the child is not the group being gone: its own children die a moment later, and the slot
             # this count holds must outlast them.
@@ -289,7 +292,9 @@ def _kill_group(proc: subprocess.Popen[str]) -> None:
     """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
     if proc.returncode is not None and not _group_alive(proc.pid):
         # The leader is reaped and the group is empty, so its number is nobody's: the kernel may hand it to a
-        # new group. A live member pins it, so a kill that can matter still goes out.
+        # new group. A live member pins it, so a kill that can matter still goes out. Linux only: without
+        # /proc (macOS) `_group_alive` is `killpg(pgid, 0)`, so a REUSED number reads alive and is killed.
+        # shortcut: no reuse guard off Linux; reuse inside one drain is unlikely. Upgrade if macOS sees it.
         return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
