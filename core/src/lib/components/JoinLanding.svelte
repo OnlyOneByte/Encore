@@ -1,6 +1,7 @@
 <!-- The UNJOINED state of `/` — two panes, and both the typed and the scanned path must stay offered.
 	See docs/FRONTEND.md#the-join-screen. -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { SINGER_COLORS, freeSingerColor, nearestPaletteStop } from '$lib/contract';
 	import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
@@ -13,16 +14,34 @@
 	import { roomPresenceSentence, type RoomPreview } from '$lib/phrasing/room-presence-sentence';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
+	import { room } from '$lib/stores/room';
 
-	let name = $state('');
+	/* A phone the room STOPPED knowing mid-party (Leave on another tab, cookies cleared, a reset room): it says why it
+	   is here and keeps the name, so the name step is already filled in. The room code is still asked for: the phone
+	   never holds it (`/api/me` does not send it), and after a reset room it would be the wrong one anyway. Read once:
+	   the link only ever sets it on the way to this screen. */
+	const lostName = room.lostName;
+	const lostColor = room.lostColor;
+	let name = $state(lostName ?? '');
+	/* THIS SCREEN'S LIVE REGIONS MOUNT EMPTY and their words arrive a frame later: a screen reader often stays silent for
+	   a region inserted with its text already in it, and the `$effect` that used to fill the lost line ran in the same
+	   flush as the mount (filled in the frame it appeared, 12 runs of 12). Two frames, so the empty region is painted
+	   — and in the accessibility tree — before anything is written into it. */
+	let settled = $state(false);
+	onMount(() => {
+		let id = requestAnimationFrame(() => (id = requestAnimationFrame(() => (settled = true))));
+		return () => cancelAnimationFrame(id);
+	});
 	/* SNAPPED to a ring stop, because the ring can only return one of its own fills: seeded with a raw preset the
-	   knob would sit on the nearest stop while the value said something the control never offered. */
-	let color = $state<string>(nearestPaletteStop(SINGER_COLORS[0]).fill);
+	   knob would sit on the nearest stop while the value said something the control never offered. A singer the room
+	   lost comes back in their own colour, so their songs on the TV keep it: it is sent as chosen, and the server keeps
+	   it even if someone else now has it (`resolveSingerColor`), as it does for any colour picked on the ring. */
+	let color = $state<string>(nearestPaletteStop(lostColor ?? SINGER_COLORS[0]).fill);
 	/* Whether the GUEST moved the ring, set only by the ring's own write-back. Until then `color` is a suggestion from
 	   the preview and is never sent: the server picks a free one, because phones that scanned together read the same
 	   preview. Tracked as a touch, not by comparing against the suggestion, so choosing the start colour on purpose
-	   (away and back) is kept. */
-	let colorPicked = $state(false);
+	   (away and back) is kept. A lost singer's own colour counts as chosen. */
+	let colorPicked = $state(lostColor !== null);
 	/** The TYPED path's code, distinct from `scannedCode` below. */
 	let typedCode = $state('');
 	let submitting = $state(false);
@@ -179,6 +198,9 @@
 	at all, which is why the CSS neutralises the host rather than trusting it). The `.join-main` class is what every
 	rule below — and the `:has()` selectors — key on. -->
 <div class="join-main">
+	{#if lostName !== null}
+		<p class="lost" role="status">{settled ? "You're not in the room any more. Join again to sing." : ''}</p>
+	{/if}
 	{#if sawCodeStep}
 		<!-- No transition: the active dot changes WIDTH, a layout property this codebase does not animate. -->
 		<p class="steps">
@@ -249,9 +271,8 @@
 	<div class="submit-slot">
 		<!-- The disabled reason exists in text for assistive tech (SC 3.3.2) but is ANNOUNCED, not printed. The element
 			and its live region stay; only the painting stops. -->
-		{#if ctaReason && !submitting}
-			<p class="cta-reason" role="status" aria-live="polite">{ctaReason}</p>
-		{/if}
+		<!-- Always mounted (it is never painted), and filled only once `settled`: see that flag. -->
+		<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
 		<Button size="blockLg" disabled={!ctaEnabled} onclick={onCodeStep ? () => continueToIdentity() : join}>
 			{#if onCodeStep}
 				{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
@@ -322,6 +343,13 @@
 		font-size: var(--ph-text-lg);
 		color: var(--ink);
 		font-weight: 600;
+	}
+	/* --warn, not --danger-ink: nothing failed, the room simply does not know this phone any more. */
+	.lost {
+		margin: 0;
+		min-height: 2lh;
+		color: var(--warn);
+		font-size: var(--ph-text-md);
 	}
 	.err {
 		color: var(--danger-ink);

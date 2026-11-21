@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, songDisplay, type PlayerCommand } from '$lib/contract';
@@ -69,6 +71,7 @@
 	let status = $state<RoomStatus>('checking');
 	let placeholder = $state(false);
 	let synced = $state(false);
+	let lost = $state(false);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
 	/* The row is for the AUDIENCE, and the room can turn it off. On the singer's own phone it RESTS rather than
@@ -133,6 +136,7 @@
 			status = room.status;
 			placeholder = room.placeholder;
 			synced = room.queue?.synced ?? false;
+			lost = room.lostName !== null;
 			reactRow = !!entry && room.settings.room.tvReactions;
 			canReact = reactRow && entry?.singerId !== me;
 			canStart =
@@ -251,6 +255,12 @@
 			status === 'not-joined' ||
 			placeholder
 	);
+
+	/* A SESSION LOST ON A PAGE WITH NO JOIN SCREEN of its own (`/song/…`, `/settings`) goes to `/`, which has one and
+	   says why. Left where it was, the dock vanished and the page sat there with nothing saying what had happened. */
+	$effect(() => {
+		if (isPhoneSurface && lost && !JOIN_SCREENS.includes(page.url.pathname)) void goto(resolve('/'));
+	});
 
 	/* THE SINGLE WRITER OF --dock-h, the bottom chrome's MEASURED height, which every scrolling column reserves in
 	   normal flow. Measured rather than derived from tokens, and app.css records the attempt that failed: a tab
