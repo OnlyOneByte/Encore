@@ -15,9 +15,6 @@ export const TV_SEAT_GRACE_MS = 15_000;
  *  a TV that flaps on and off while it boots keeps its seat. A copy can still `tv:claim` at any time. */
 export const TV_SEAT_SLOW_BOOT_MS = 60_000;
 
-/** How early a booked sweep may fire and still be caught by a re-armed one (see `#timedSweep`). */
-const EARLY_FIRE_MS = 1_000;
-
 /** The minted cookie is `mintSessionToken()`: 24 random bytes, base64url, so exactly 32 URL-safe characters. */
 const TV_COOKIE_SHAPE = /^[A-Za-z0-9_-]{32}$/;
 
@@ -121,12 +118,18 @@ export class TvSeats {
 		return [...moved.filter((n) => !n.mine), ...moved.filter((n) => n.mine)];
 	}
 
+	/** How long until the seat stops waiting for its holder (0 or less: it has stopped), or null when it is not waiting. */
+	#left(s: Seat): number | null {
+		if (s.holderSocket !== null || s.goneSince === null) return null;
+		const now = this.#store.now();
+		const boot = s.holderSeenAt === null ? 0 : s.holderSeenAt + TV_SEAT_SLOW_BOOT_MS - now;
+		return Math.max(s.goneSince + s.graceMs - now, boot);
+	}
+
 	/** The holder has been gone past the grace: the newest screen with a cookie takes the seat, or it goes free. */
 	#expire(roomId: string, s: Seat): void {
-		if (s.holderSocket !== null || s.goneSince === null) return;
-		const now = this.#store.now();
-		if (now - s.goneSince < s.graceMs) return;
-		if (s.holderSeenAt !== null && now - s.holderSeenAt < TV_SEAT_SLOW_BOOT_MS) return;
+		const left = this.#left(s);
+		if (left === null || left > 0) return;
 		const next = s.sockets.findLast((x) => x.tvId);
 		this.#setHolder(roomId, s, next?.tvId ?? null);
 		if (next) this.#seated(s, next.key);
@@ -136,23 +139,23 @@ export class TvSeats {
 	/** Every connect, close and claim can start (or move) a holder's wait, and that wait ends at most 15 s (the grace)
 	 *  or 60 s (the slow-boot window) after it, so each one books a sweep at both. */
 	#book(): void {
-		for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS]) this.#store.schedule(ms, () => this.#timedSweep());
+		for (const ms of [TV_SEAT_GRACE_MS, TV_SEAT_SLOW_BOOT_MS]) this.#sweepIn(ms);
 	}
 
-	/** A booked sweep. A timer can fire a hair BEFORE its deadline (clock granularity, a loaded host), and then the
-	 *  wait it was booked to end is still running with nothing left booked to end it: so a wait that is that close
-	 *  books one more sweep for exactly what is left. A wait further off is another booked timer's to end. */
-	#timedSweep(): void {
-		for (const r of this.sweep()) this.#store.announce(r.notices);
-		const now = this.#store.now();
-		for (const s of this.#rooms.values()) {
-			if (s.holderSocket !== null || s.goneSince === null) continue;
-			const until = Math.max(s.goneSince + s.graceMs, (s.holderSeenAt ?? -Infinity) + TV_SEAT_SLOW_BOOT_MS);
-			const left = until - now;
-			// `>= 0`, not `> 0`: the clock can tick to the deadline between the sweep above and this read, and a wait
-			// that is exactly due now with nothing booked would be stranded for good.
-			if (left >= 0 && left <= EARLY_FIRE_MS) this.#store.schedule(Math.max(1, left), () => this.#timedSweep());
-		}
+	/** A timed sweep. Bun's timer can fire a millisecond before `now()` has moved `ms` (measured: 11 of 40 at 15 s), and
+	 *  that sweep finds the wait not quite over. So any sweep that leaves a wait running books another for what is left
+	 *  (at least 1 ms, so a wait that came due between the sweep and this read still gets one), rather than dropping
+	 *  the promotion until some unrelated connect.
+	 *  shortcut: the re-book is global across rooms (the soonest wait of any room) and chains are not deduplicated, so
+	 *  each booked sweep that finds a wait running keeps its own chain until no room waits. Fine for a few rooms; key
+	 *  a single timer by deadline if a box ever serves many. */
+	#sweepIn(ms: number): void {
+		this.#store.schedule(ms, () => {
+			for (const r of this.sweep()) this.#store.announce(r.notices);
+			let next = Infinity;
+			for (const s of this.#rooms.values()) next = Math.min(next, this.#left(s) ?? Infinity);
+			if (next !== Infinity) this.#sweepIn(Math.max(next, 1));
+		});
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): SeatNotice[] {
