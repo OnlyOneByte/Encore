@@ -23,7 +23,7 @@ import {
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
-import { WsClient } from '$lib/ws/client';
+import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
 /** Live process progress for one song, as the room broadcasts it. */
 export interface LiveMediaStatus {
@@ -43,6 +43,17 @@ export class RoomLink {
 	/** The joined singer, or null for a guest who has not joined (no socket is opened for them). */
 	me: PublicSinger | null = null;
 	connected = false;
+	/** Whether this phone is in the room, as only `/api/me` can say. ONLY A 401 IS `not-joined`: a 5xx, a timeout or a
+	 * network error is the party being out of reach, not the guest being out, and reading it as out sent a joined phone
+	 * to the join screen, where a second join minted "Maya 2". `checking` until the first real answer, `unreachable`
+	 * once that has taken UNREACHABLE_AFTER_MS — still retrying, and straight to `joined` when it answers. */
+	status: RoomStatus = 'checking';
+	/** Whether the tabs should show their placeholder: still asking, and past PENDING_GRACE_MS. Before that the phone
+	 * paints nothing, so a guest's first screen is never a joined shell pulled out from under them (CLS). */
+	placeholder = false;
+	/** The dock's "Reconnecting…" cue: joined, no socket, and EITHER the socket was up once (a real drop) OR it has not
+	 * come up within UNREACHABLE_AFTER_MS (a network that blocks it). Not the handshake every cold load waits on. */
+	offline = false;
 	playback: PlaybackState = {
 		currentEntryId: null,
 		positionSec: 0,
@@ -127,15 +138,18 @@ export class RoomLink {
 		if (this.#state !== 'idle') return;
 		this.#state = 'connecting';
 
-		const res = await fetch('/api/me');
-		if (!res.ok) {
+		const me = await this.#askMe();
+		if (!me) return; // closed while asking
+		this.placeholder = false;
+		if (me === 'not-joined') {
 			// Unjoined: `/` is the landing page, so the route renders its JoinLanding state — no store and no socket.
 			this.#state = 'guest';
+			this.status = 'not-joined';
 			this.#emit();
 			return;
 		}
-		this.me = (await res.json()).singer;
-		if (this.#state !== 'connecting' || !this.me) return;
+		this.me = me;
+		this.status = 'joined';
 
 		this.queue = new QueueStore({
 			singerId: this.me.id,
@@ -167,6 +181,8 @@ export class RoomLink {
 			getLastRev: () => this.queue?.rev ?? 0,
 			onConnectionChange: (c) => {
 				this.connected = c;
+				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
+				this.offline = !c;
 				this.#emit();
 			},
 			onEvent: (e: ServerEvent) => this.#onServerEvent(e)
@@ -186,8 +202,97 @@ export class RoomLink {
 
 		this.#state = 'live';
 		this.#ws.open();
+		// A socket that never comes up (a proxy that blocks it) still gets the cue, just not on a normal handshake.
+		setTimeout(() => {
+			if (this.#state !== 'live' || this.connected || this.offline) return;
+			this.offline = true;
+			this.#emit();
+		}, UNREACHABLE_AFTER_MS);
 		void this.refreshLibrary();
 		this.#emit();
+	}
+
+	/** Ask `/api/me` until it gives an ANSWER: a singer or a 401. Anything else — a 5xx from a restarting server, a hung
+	 * request, a network error, a captive portal's login page — is asked again on the socket's own backoff, and after
+	 * UNREACHABLE_AFTER_MS the status says so. The loop lives inside the one `connect()`, so there is never a second
+	 * socket. Null when the link was closed while asking. */
+	async #askMe(): Promise<PublicSinger | 'not-joined' | null> {
+		// Both cleared the moment the asking ends, so they only ever fire on a phone that is still asking.
+		const grace = setTimeout(() => {
+			this.placeholder = true;
+			this.#emit();
+		}, PENDING_GRACE_MS);
+		const unreachable = () => {
+			if (this.status !== 'checking') return;
+			this.status = 'unreachable';
+			this.placeholder = true;
+			this.#emit();
+		};
+		// At the 3 s mark an ask still in flight gets to finish first, for up to IN_FLIGHT_GRACE_MS: a blip that ended
+		// just before it is then caught with no message at all, however slow the round trip.
+		let asking = false;
+		const late = setTimeout(() => {
+			if (!asking) unreachable();
+		}, UNREACHABLE_AFTER_MS);
+		const latest = setTimeout(unreachable, UNREACHABLE_AFTER_MS + IN_FLIGHT_GRACE_MS);
+		const started = Date.now();
+		try {
+			for (let attempt = 0; ; attempt++) {
+				asking = true;
+				const answer = await this.#me();
+				asking = false;
+				if (this.#state !== 'connecting') return null;
+				if (answer) return answer;
+				const before = Date.now() - started < UNREACHABLE_AFTER_MS;
+				if (!before) unreachable();
+				// Never more than a second apart before the message, so the last ask before it goes out at about 2.75 s;
+				// every 1.5 s after it, so a party that comes back is noticed within about 1.5 s rather than the backoff's
+				// 5 s step — one small request per phone on a LAN. The browser saying the network is back (`online`) is
+				// asked at once, not waited out, and so is the page coming back into view: a guest who signs in to a
+				// captive portal does it in the OS sheet or another app and returns, and a portal never fires `online`.
+				const delay = Math.min(
+					RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)]!,
+					before ? 1000 : 1500
+				);
+				await new Promise<void>((resolve) => {
+					// Held, not re-read: the sleep can outlive the page that started it (an unmount mid-retry).
+					const win = window;
+					const doc = typeof document === 'undefined' ? undefined : document;
+					const wake = () => {
+						clearTimeout(timer);
+						win.removeEventListener('online', wake);
+						doc?.removeEventListener('visibilitychange', onVisible);
+						resolve();
+					};
+					const onVisible = () => {
+						if (doc?.visibilityState === 'visible') wake();
+					};
+					const timer = setTimeout(wake, delay);
+					win.addEventListener('online', wake);
+					doc?.addEventListener('visibilitychange', onVisible);
+				});
+				if (this.#state !== 'connecting') return null;
+			}
+		} finally {
+			clearTimeout(grace);
+			clearTimeout(late);
+			clearTimeout(latest);
+		}
+	}
+
+	/** One ask of `/api/me`. The singer, `not-joined` for a 401 (the ONE answer that means it), or null for anything
+	 * that is not an answer — including a 2xx whose body is not a singer, which is what a captive portal or a hotel
+	 * login page sends for every URL. */
+	async #me(): Promise<PublicSinger | 'not-joined' | null> {
+		try {
+			const res = await fetch('/api/me', { signal: AbortSignal.timeout(ME_TIMEOUT_MS) });
+			if (res.status === 401) return 'not-joined';
+			if (!res.ok) return null;
+			const singer = (await res.json())?.singer;
+			return typeof singer?.id === 'string' ? singer : null;
+		} catch {
+			return null;
+		}
 	}
 
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
@@ -494,6 +599,19 @@ export class RoomLink {
 		this.#emit();
 	}
 }
+
+/** Where the phone stands with the room. Only `joined` gets the room; only `not-joined` gets the join screen. */
+export type RoomStatus = 'checking' | 'joined' | 'not-joined' | 'unreachable';
+/** How long `/api/me` may go unanswered before the phone says it can't reach the party. The owner's call: shorter
+ * and a normal slow load flashes the message, longer and a guest stares at grey rows. */
+export const UNREACHABLE_AFTER_MS = 3000;
+/** How long a cold load paints nothing before the placeholder: on a LAN `/api/me` answers well inside it, so a joined
+ * phone goes straight to its tab and a new guest straight to the join screen, with no shell in between to shift. */
+export const PENDING_GRACE_MS = 300;
+/** How long past UNREACHABLE_AFTER_MS an ask already in flight may take before the message shows anyway. */
+const IN_FLIGHT_GRACE_MS = 1000;
+/** A request that never returns is a failure like any other, so it is cut off and asked again, not waited on. */
+const ME_TIMEOUT_MS = 5000;
 
 /** THE app's link to its room. A singleton because there is one phone, one room and one socket; the class is exported
  * beside it so a test can build an isolated one. */

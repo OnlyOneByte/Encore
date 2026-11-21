@@ -78,8 +78,13 @@ export const SEL = {
 	 *  IT CARRIES NO BORDER AND NO PADDING, so its `clientHeight` and its `getBoundingClientRect().height` agree
 	 *  and either may be compared to `--dock-h`. TWO HEIGHTS, both measured at 390x844: 91/91 with the strip up
 	 *  (the strip's 45 plus the tab bar's 46), and 46/46 in a virgin room, where the strip does not render at all
-	 *  and the tab bar alone is the chrome. A driver expecting 91 unconditionally is expecting a queued song. */
+	 *  and the tab bar alone is the chrome. A driver expecting 91 unconditionally is expecting a queued song.
+	 *  It mounts after the room's first sync, whole, so it is a sounder join signal than before, not a weaker one. */
 	dock: '.dock',
+	/** The tab's grey rows while the link has no answer from /api/me yet (`RoomPending.svelte`). */
+	roomPending: '[data-room-pending]',
+	/** The one line a phone shows when /api/me has gone unanswered past UNREACHABLE_AFTER_MS. */
+	unreachable: "Can't reach the party",
 	/** THE SAFE-AREA ELEMENT, and it needs its own key: the tab bar is the app's bottom-most element and the
 	 *  sole declarer of `padding-block-end: env(safe-area-inset-bottom)`. Measured padding-bottom 0px on both
 	 *  `.dock` and `.dock .strip` at inset 0, so a probe pointed at either of those reports a composed term as

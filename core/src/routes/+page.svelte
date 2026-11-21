@@ -3,7 +3,9 @@
 	import type { QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
+	import type { RoomStatus } from '$lib/stores/room';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
+	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
@@ -27,6 +29,7 @@
 	import { rememberedKey } from '$lib/stores/remembered-key';
 
 	let me = $state<PublicSinger | null>(null);
+	let status = $state<RoomStatus>('checking');
 	let entries = $state<QueueEntry[]>([]);
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
@@ -48,6 +51,7 @@
 	onMount(() => {
 		const sync = () => {
 			me = room.me;
+			status = room.status;
 			mediaCatalog = room.mediaCatalog;
 			// Every search row was merged into the catalog, so one missing from it is a song the room refused as
 			// deleted (`#songGone`): the open answer stops offering it. Reassigned only when something left. Relies on the
@@ -351,8 +355,15 @@
 	let liveMsg = $state('');
 </script>
 
-<!-- Joined singers only: unjoined, JoinLanding paints its own brand, so both would say "Encore" twice. -->
-{#if me}
+<!-- TWO WHOLE BLOCKS, the join screen and the tab, never one `<main>` the join screen moves into: when a slow 401
+	replaces the placeholder (or a session is lost) the topbar goes, and a `<main>` that stayed would jump up under the
+	guest (CLS 0.074 at 390). A new block is an insertion, not a shift — the swap `/queue` and `/library` make. Unjoined,
+	there is no topbar: JoinLanding paints its own brand, so both would say "Encore" twice. -->
+{#if status === 'not-joined'}
+	<main>
+		<JoinLanding />
+	</main>
+{:else}
 	<header class="topbar">
 		<h1 class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></h1>
 		<!-- THE OFFLINE PILL MOVED TO THE DOCK. It lived here, in a deliberately non-sticky topbar, where it measured
@@ -376,225 +387,224 @@
 			</div>
 		{/if}
 	</header>
-{/if}
-
-<main>
-	{#if me}
-		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. A CLUSTER OF
-				TWO: the box and the scope it searches. The library door that used to sit on the field's leading edge is
-				gone with the shelf it labelled — the TabBar's Library tab sits in the fixed dock at the foot of every phone
-				surface, so a second route to the same page from the same screen was one count of the library too
-				many. -->
-		<div class="find-row">
-			<div class="field-slot">
-				<FindField
-					bind:value={query}
-					bind:element={queryEl}
-					ariaLabel="Search a song or artist"
-					placeholder="Search a song or artist…"
-					busy={searching}
-					clearable={searchActive}
-					clearLabel="Clear the search"
-					onclear={clearSearch}
-					oninput={onQueryInput}
-				/>
-			</div>
-			<div class="source-slot">
-				<NativeSelect.Root
-					aria-label="Where to search"
-					title="Where to search"
-					bind:value={searchSource}
-					onchange={onSourceChange}
-				>
-					<NativeSelect.Option value="music">Music</NativeSelect.Option>
-					<NativeSelect.Option value="everything">Everything</NativeSelect.Option>
-					<NativeSelect.Option value="youtube">YouTube</NativeSelect.Option>
-					<NativeSelect.Option value="local">Library</NativeSelect.Option>
-				</NativeSelect.Root>
-			</div>
-		</div>
-
-		<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. This used to be a four-term boolean naming
-				the queue, the library shelf and the processing group, three things that are no longer on this tab. -->
-		{#if searchActive}
-			{#if searching && rawResults.length === 0 && readyResults.length === 0}
-				<SkeletonRows label="Searching…" />
-			{/if}
-
-			<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
-					answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
-			{#if processingRows.length}
-				<h2 class="grouphead">Making karaoke…</h2>
-				{#each processingView.shown as c (c.id)}
-					{@const r = displayReadiness(c.media, liveOf(c.id))}
-					<SongRow
-						{...rowMeta(c.media)}
-						readiness={r}
-						pct={c.pct}
-						status={c.status}
-						inQueue={inMyQueue(c.id)}
-						processable={isProcessableSource(c.media.source)}
-						onadd={() => addSong(c.id)}
-						onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
+	<main>
+		{#if me}
+			<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. A CLUSTER OF
+					TWO: the box and the scope it searches. The library door that used to sit on the field's leading edge is
+					gone with the shelf it labelled — the TabBar's Library tab sits in the fixed dock at the foot of every phone
+					surface, so a second route to the same page from the same screen was one count of the library too
+					many. -->
+			<div class="find-row">
+				<div class="field-slot">
+					<FindField
+						bind:value={query}
+						bind:element={queryEl}
+						ariaLabel="Search a song or artist"
+						placeholder="Search a song or artist…"
+						busy={searching}
+						clearable={searchActive}
+						clearLabel="Clear the search"
+						onclear={clearSearch}
+						oninput={onQueryInput}
 					/>
-				{/each}
-				<!-- WINDOWED FOR UNIFORMITY, and in practice this control never paints: a query matches 0-3 songs that
-						are being made right now, so `hidden` is 0 and the control is gone. Three groups that window the
-						same way is one rule; one group that silently does not is a bug waiting for the night somebody
-						queues sixty songs at once. -->
-				{#if processingView.hidden > 0}
-					<div class="reveal">
-						<Button variant="secondary" size="tap" onclick={() => (revealedProcessing += LIBRARY_PAGE)}>
-							Show {Math.min(LIBRARY_PAGE, processingView.hidden)} more
-							<span class="chip-n">{processingView.hidden} left</span>
-						</Button>
-					</div>
-				{/if}
-			{/if}
-
-			<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
-			{#if readyResults.length}
-				<h2 class="grouphead">Ready to sing</h2>
-				{#each readyView.shown as m (m.id)}
-					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
-				{/each}
-				<!-- The same door /library ships, down to the copy: the remaining count rides ON the control so a
-						paused list is distinguishable from a finished one, and focus stays on it across the tap, so the
-						changed label is what announces the reveal. -->
-				{#if readyView.hidden > 0}
-					<div class="reveal">
-						<Button variant="secondary" size="tap" onclick={() => (revealedReady += LIBRARY_PAGE)}>
-							Show {Math.min(LIBRARY_PAGE, readyView.hidden)} more
-							<span class="chip-n">{readyView.hidden} left</span>
-						</Button>
-					</div>
-				{/if}
-			{/if}
-
-			{#if rawRows.length}
-				<h2 class="grouphead">Needs karaoke</h2>
-				{#each rawView.shown as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						processable={isProcessableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
-					/>
-				{/each}
-				<!-- THE LONGEST TAIL ON THE TAB, and the one the window was really written for: on `q=a` this control
-						reads "Show 60 more" against a four-figure remaining count — ~3,300 on the shared copy when
-						this was last measured, and climbing session to session for the reason the note on the
-						`revealed*` counters gives — and every one of those rows used to be in the DOM. -->
-
-				{#if rawView.hidden > 0}
-					<div class="reveal">
-						<Button variant="secondary" size="tap" onclick={() => (revealedRaw += LIBRARY_PAGE)}>
-							Show {Math.min(LIBRARY_PAGE, rawView.hidden)} more
-							<span class="chip-n">{rawView.hidden} left</span>
-						</Button>
-					</div>
-				{/if}
-			{/if}
-
-			<!-- ONE zero-state, and only when the search found NOTHING AT ALL. It used to be two blocks, and
-				 the second was gated on `!readyResults.length` alone — so a query that returned twelve
-				 singable-but-unprocessed songs printed "Nothing matches “…”" underneath them, contradicting
-				 the rows on screen (reported from a screenshot). Nothing-ready is not nothing-found: the
-				 "Needs karaoke" group is the normal, expected result for a song nobody has processed yet.
-				 The two blocks also both fired when the query truly matched nothing, stacking two empty
-				 states. Whatever renders here must therefore be gated on EVERY group being empty. -->
-			<!-- THE ESCAPE HATCH IS NOT GATED ON AN EMPTY RESULT, and that is a measured requirement rather
-					 than caution. YouTube Music's `songs` filter NEVER returns nothing: probed live, the nonsense
-					 query `zzzzzzznotasongzzzzzz` answers with "A Million Laughing Emoji's" and friends, and
-					 `asdkjhqwe zxcvbnm nonsense query 12345` answers with Mariah Carey. So a widen offered only
-					 inside the zero-state would be unreachable exactly when it is needed — the default returns
-					 twelve confident wrong rows and no hint that a wider net exists. It sits after the rows, low
-					 in the column, because most searches do not need it. -->
-			{#if !searching && searchSource === 'music' && (rawRows.length || readyResults.length)}
-				<div class="showall-row">
-					<Button variant="secondary" size="tap" onclick={widenSearch}>
-						<Icon name="search" /> Not it? Search everything
-					</Button>
 				</div>
-			{/if}
+				<div class="source-slot">
+					<NativeSelect.Root
+						aria-label="Where to search"
+						title="Where to search"
+						bind:value={searchSource}
+						onchange={onSourceChange}
+					>
+						<NativeSelect.Option value="music">Music</NativeSelect.Option>
+						<NativeSelect.Option value="everything">Everything</NativeSelect.Option>
+						<NativeSelect.Option value="youtube">YouTube</NativeSelect.Option>
+						<NativeSelect.Option value="local">Library</NativeSelect.Option>
+					</NativeSelect.Root>
+				</div>
+			</div>
 
-			<!-- THE FAILURE STATE, checked BEFORE the no-rows state so the "nothing matched" copy and its /library
-					link are unreachable on this path. A retry rather than a bare apology: the query is still in the box,
-					so re-running it is one tap and needs no retyping. -->
-			{#if searchFailed}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>Couldn't reach the server — your search didn't run.</Empty.Description>
-					</Empty.Header>
+			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. This used to be a four-term boolean naming
+					the queue, the library shelf and the processing group, three things that are no longer on this tab. -->
+			{#if searchActive}
+				{#if searching && rawResults.length === 0 && readyResults.length === 0}
+					<SkeletonRows label="Searching…" />
+				{/if}
+
+				<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
+						answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
+				{#if processingRows.length}
+					<h2 class="grouphead">Making karaoke…</h2>
+					{#each processingView.shown as c (c.id)}
+						{@const r = displayReadiness(c.media, liveOf(c.id))}
+						<SongRow
+							{...rowMeta(c.media)}
+							readiness={r}
+							pct={c.pct}
+							status={c.status}
+							inQueue={inMyQueue(c.id)}
+							processable={isProcessableSource(c.media.source)}
+							onadd={() => addSong(c.id)}
+							onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
+						/>
+					{/each}
+					<!-- WINDOWED FOR UNIFORMITY, and in practice this control never paints: a query matches 0-3 songs that
+							are being made right now, so `hidden` is 0 and the control is gone. Three groups that window the
+							same way is one rule; one group that silently does not is a bug waiting for the night somebody
+							queues sixty songs at once. -->
+					{#if processingView.hidden > 0}
+						<div class="reveal">
+							<Button variant="secondary" size="tap" onclick={() => (revealedProcessing += LIBRARY_PAGE)}>
+								Show {Math.min(LIBRARY_PAGE, processingView.hidden)} more
+								<span class="chip-n">{processingView.hidden} left</span>
+							</Button>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
+				{#if readyResults.length}
+					<h2 class="grouphead">Ready to sing</h2>
+					{#each readyView.shown as m (m.id)}
+						<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+					{/each}
+					<!-- The same door /library ships, down to the copy: the remaining count rides ON the control so a
+							paused list is distinguishable from a finished one, and focus stays on it across the tap, so the
+							changed label is what announces the reveal. -->
+					{#if readyView.hidden > 0}
+						<div class="reveal">
+							<Button variant="secondary" size="tap" onclick={() => (revealedReady += LIBRARY_PAGE)}>
+								Show {Math.min(LIBRARY_PAGE, readyView.hidden)} more
+								<span class="chip-n">{readyView.hidden} left</span>
+							</Button>
+						</div>
+					{/if}
+				{/if}
+
+				{#if rawRows.length}
+					<h2 class="grouphead">Needs karaoke</h2>
+					{#each rawView.shown as m (m.id)}
+						{@const r = readinessFor(m)}
+						<SongRow
+							{...rowMeta(m)}
+							readiness={r}
+							pct={liveOf(m.id)?.pct ?? 0}
+							status={liveOf(m.id)?.status}
+							inQueue={inMyQueue(m.id)}
+							processable={isProcessableSource(m.source)}
+							onadd={() => addSong(m.id)}
+							onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
+						/>
+					{/each}
+					<!-- THE LONGEST TAIL ON THE TAB, and the one the window was really written for: on `q=a` this control
+							reads "Show 60 more" against a four-figure remaining count — ~3,300 on the shared copy when
+							this was last measured, and climbing session to session for the reason the note on the
+							`revealed*` counters gives — and every one of those rows used to be in the DOM. -->
+
+					{#if rawView.hidden > 0}
+						<div class="reveal">
+							<Button variant="secondary" size="tap" onclick={() => (revealedRaw += LIBRARY_PAGE)}>
+								Show {Math.min(LIBRARY_PAGE, rawView.hidden)} more
+								<span class="chip-n">{rawView.hidden} left</span>
+							</Button>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- ONE zero-state, and only when the search found NOTHING AT ALL. It used to be two blocks, and
+					 the second was gated on `!readyResults.length` alone — so a query that returned twelve
+					 singable-but-unprocessed songs printed "Nothing matches “…”" underneath them, contradicting
+					 the rows on screen (reported from a screenshot). Nothing-ready is not nothing-found: the
+					 "Needs karaoke" group is the normal, expected result for a song nobody has processed yet.
+					 The two blocks also both fired when the query truly matched nothing, stacking two empty
+					 states. Whatever renders here must therefore be gated on EVERY group being empty. -->
+				<!-- THE ESCAPE HATCH IS NOT GATED ON AN EMPTY RESULT, and that is a measured requirement rather
+						 than caution. YouTube Music's `songs` filter NEVER returns nothing: probed live, the nonsense
+						 query `zzzzzzznotasongzzzzzz` answers with "A Million Laughing Emoji's" and friends, and
+						 `asdkjhqwe zxcvbnm nonsense query 12345` answers with Mariah Carey. So a widen offered only
+						 inside the zero-state would be unreachable exactly when it is needed — the default returns
+						 twelve confident wrong rows and no hint that a wider net exists. It sits after the rows, low
+						 in the column, because most searches do not need it. -->
+				{#if !searching && searchSource === 'music' && (rawRows.length || readyResults.length)}
 					<div class="showall-row">
-						<Button variant="secondary" size="tap" onclick={() => runSearch(query.trim())}>
-							<Icon name="restart" /> Try again
-						</Button>
-					</div>
-				</Empty.Root>
-			{:else if showsNoRows( { searching, failed: searchFailed, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
-				{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>{empty.message}</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-				<!-- A LINK TO /library, not a `clearSearch()`. It used to clear the query, which restored a visible
-						library in place; clearing now lands on the idle state, which shows no songs — so the label would
-						have promised what the tap does not deliver. `showAllCount` is non-null only when the library has
-						rows ("only promise the way back when there is something to go back TO"), and it is PRINTED here:
-						the count is the only thing that makes this an offer rather than a direction, and it is the one
-						moment on this tab where "you already own N songs" is both news and actionable.
-						THE NOUN AGREES, and one-ready is not an edge case: it is the ordinary state the first time a song
-						finishes processing, and it printed "Show my 1 songs" until this agreement was added — contradicting
-						/library's own count line, which already reads "1 song", two taps away from this control. -->
-				{#if empty.showAllCount !== null}
-					<div class="showall-row">
-						<Button variant="secondary" size="tap" href="/library">
-							<Icon name="library" /> Show my {empty.showAllCount}
-							{empty.showAllCount === 1 ? 'song' : 'songs'}
+						<Button variant="secondary" size="tap" onclick={widenSearch}>
+							<Icon name="search" /> Not it? Search everything
 						</Button>
 					</div>
 				{/if}
+
+				<!-- THE FAILURE STATE, checked BEFORE the no-rows state so the "nothing matched" copy and its /library
+						link are unreachable on this path. A retry rather than a bare apology: the query is still in the box,
+						so re-running it is one tap and needs no retyping. -->
+				{#if searchFailed}
+					<Empty.Root>
+						<Empty.Header>
+							<Empty.Description>Couldn't reach the server — your search didn't run.</Empty.Description>
+						</Empty.Header>
+						<div class="showall-row">
+							<Button variant="secondary" size="tap" onclick={() => runSearch(query.trim())}>
+								<Icon name="restart" /> Try again
+							</Button>
+						</div>
+					</Empty.Root>
+				{:else if showsNoRows( { searching, failed: searchFailed, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
+					{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
+					<Empty.Root>
+						<Empty.Header>
+							<Empty.Description>{empty.message}</Empty.Description>
+						</Empty.Header>
+					</Empty.Root>
+					<!-- A LINK TO /library, not a `clearSearch()`. It used to clear the query, which restored a visible
+							library in place; clearing now lands on the idle state, which shows no songs — so the label would
+							have promised what the tap does not deliver. `showAllCount` is non-null only when the library has
+							rows ("only promise the way back when there is something to go back TO"), and it is PRINTED here:
+							the count is the only thing that makes this an offer rather than a direction, and it is the one
+							moment on this tab where "you already own N songs" is both news and actionable.
+							THE NOUN AGREES, and one-ready is not an edge case: it is the ordinary state the first time a song
+							finishes processing, and it printed "Show my 1 songs" until this agreement was added — contradicting
+							/library's own count line, which already reads "1 song", two taps away from this control. -->
+					{#if empty.showAllCount !== null}
+						<div class="showall-row">
+							<Button variant="secondary" size="tap" href="/library">
+								<Icon name="library" /> Show my {empty.showAllCount}
+								{empty.showAllCount === 1 ? 'song' : 'songs'}
+							</Button>
+						</div>
+					{/if}
+				{/if}
+			{:else}
+				<!-- THE IDLE STATE, which is the whole screen with an empty box. It says what this TAB is for: the title
+						used to read "Nothing queued yet", which is false here (the queue is another tab) and is word for word
+						/queue's own idle headline. -->
+				<Empty.Root>
+					<div class="idle">
+						<!-- A MARK, and it is not decoration: this block is the whole screen, and a lone sentence in a void reads
+								as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
+								title beside it already says this in words. -->
+						<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
+						<Empty.Header>
+							<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and this
+								 state REPLACES every `<h2 class="grouphead">` on the tab, so with an empty box the only heading in
+								 the whole document was the wordmark. A guest cycling headings to orient learned nothing about what
+								 the app is. Added at the call site, not by re-vendoring, which is the precedent /settings set for
+								 `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in the comment above
+								 that page's `PageHeader` (named, not line-numbered). -->
+							<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
+							<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
+						</Empty.Header>
+						<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
+								they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
+								anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
+						<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
+							<Icon name="search" /> Search for a song
+						</Button>
+					</div>
+				</Empty.Root>
 			{/if}
 		{:else}
-			<!-- THE IDLE STATE, which is the whole screen with an empty box. It says what this TAB is for: the title
-					used to read "Nothing queued yet", which is false here (the queue is another tab) and is word for word
-					/queue's own idle headline. -->
-			<Empty.Root>
-				<div class="idle">
-					<!-- A MARK, and it is not decoration: this block is the whole screen, and a lone sentence in a void reads
-							as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
-							title beside it already says this in words. -->
-					<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
-					<Empty.Header>
-						<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and this
-							 state REPLACES every `<h2 class="grouphead">` on the tab, so with an empty box the only heading in
-							 the whole document was the wordmark. A guest cycling headings to orient learned nothing about what
-							 the app is. Added at the call site, not by re-vendoring, which is the precedent /settings set for
-							 `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in the comment above
-							 that page's `PageHeader` (named, not line-numbered). -->
-						<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
-						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
-					</Empty.Header>
-					<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
-							they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
-							anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
-					<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
-						<Icon name="search" /> Search for a song
-					</Button>
-				</div>
-			</Empty.Root>
+			<RoomPending unreachable={status === 'unreachable'} />
 		{/if}
-	{:else}
-		<JoinLanding />
-	{/if}
-</main>
+	</main>
+{/if}
 
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
 
@@ -645,6 +655,9 @@
 		font-size: var(--ph-text-xl);
 		margin: 0;
 		line-height: inherit;
+		/* The row's height is the identity cluster's 44px gear, which only a joined phone has: reserved here, so the
+		   placeholder's topbar is the joined one's height and the column under it does not drop 9px on arrival. */
+		min-height: var(--tap);
 	}
 
 	/* The colour must arrive as `--singer`, not interpolated into `background:`, so color-mix can derive the halo:
