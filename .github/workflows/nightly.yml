@@ -79,8 +79,8 @@ jobs:
       - name: gate + flow + probe, random fuzz seed
         env:
           FUZZ_RANDOM: '1'
+        # shell: bash runs with -eo pipefail, so tee can't hide a failure.
         run: |
-          set -o pipefail
           bun x playwright test --project=gate --project=flow --project=probe --retries=0 2>&1 | tee playwright.log
       - name: fuzz seed
         if: always()

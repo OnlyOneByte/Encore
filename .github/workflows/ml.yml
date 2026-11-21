@@ -70,4 +70,4 @@ jobs:
       # serves `host.ffmpeg`, but whisperx.load_audio shells `ffmpeg` BY NAME from PATH.
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - run: uv sync --frozen --extra cpu --extra ml --extra ffmpeg
-      - run: uv run --no-sync pytest -q
+      - run: uv run --no-sync pytest -q -rs
