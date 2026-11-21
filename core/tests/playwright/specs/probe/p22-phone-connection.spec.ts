@@ -1,5 +1,5 @@
-// P22 — THE PHONE NEVER LIES ABOUT BEING JOINED (proposal 08). Three claims, each about what a phone RENDERS across a
-// real reload, which is why they need a browser:
+// P22 — THE PHONE NEVER LIES ABOUT BEING JOINED (proposal 08). Four claims, each about what a phone RENDERS across a
+// real reload or reconnect, which is why they need a browser:
 //
 //   1. A blip at page load is not "not joined". `connect()` read ANY failure of /api/me as a guest, so a phone that
 //      reloaded while it was still finding the Wi-Fi landed on "Room code" with no dock and stayed there until a
@@ -9,6 +9,9 @@
 //   2. A cold load of /queue never says "Nothing queued yet" over a queue that has songs in it. `me` arrives before
 //      the socket's first `queue:sync`, and the empty state was not gated on the sync.
 //   3. None of it shifts the layout: CLS 0 for a guest who never joined, a joined phone, and a blip's recovery.
+//   4. A phone whose session is gone is told so. Its socket reconnected as an anonymous spectator: the dot went
+//      green, the dock stayed, and every tap was refused with nothing saying why. A reconnect asks /api/me again now,
+//      and a 401 is the join screen with "You're not in the room any more" and the old name filled in.
 //
 // WHY WATCHERS AND NOT POLLS: every defect here is a FLASH or a state the phone moves through, and a poll can step
 // over one. An init script's MutationObserver and layout-shift observer see every frame the page ever had.
@@ -189,3 +192,120 @@ test('a cold load of /queue never says "Nothing queued yet" over a queue with so
 	await expect(phone.locator(SEL.processing).first()).toBeAttached({ timeout: 10_000 });
 	expect(await sawEmpty(), '"Nothing queued yet" showed before the first row').toBe(false);
 });
+
+// `/` has a join screen of its own; `/settings` does not, so the phone is taken to `/` to be told.
+for (const start of ['/', '/settings']) {
+	test(`a phone whose session goes mid-party on ${start} is told so on reconnect, with its name kept`, async ({
+		world
+	}) => {
+		const phone = await world.openPhone('P22Gone');
+		await openBrowseFromHome(phone);
+		if (start !== '/') await phone.goto(start);
+		await expect(phone.locator(SEL.dock).first()).toBeAttached();
+		const before = ((await (await phone.request.get('/api/me')).json()) as { singer: { color: string } }).singer.color;
+		// Watched from here, in this same document: what each live region held when it first appeared, and every
+		// layout shift. A region that first appears with its words already in it is one a screen reader may skip.
+		await phone.evaluate(() => {
+			const w = window as unknown as {
+				__first: Record<string, string>;
+				__gap: Record<string, number>;
+				__cls: number;
+				__moved: string[];
+			};
+			w.__first = {};
+			w.__gap = {};
+			w.__moved = [];
+			w.__cls = 0;
+			// A frame counter, so "filled later" means a later PAINTED frame, not just a later microtask.
+			let frame = 0;
+			const tick = () => {
+				frame++;
+				requestAnimationFrame(tick);
+			};
+			requestAnimationFrame(tick);
+			const seenAt: Record<string, number> = {};
+			// The dock's top edge with its "Reconnecting…" bar up: anything starting there or lower is the dock, even
+			// once it has been removed and the entry names no node.
+			const dockTop = (document.querySelector('.dock')?.getBoundingClientRect().top ?? innerHeight) - 30;
+			const isDock = (s: { node?: Element; previousRect: DOMRectReadOnly }) =>
+				s.node?.closest?.('.dock') || (!s.node?.isConnected && s.previousRect.y >= dockTop);
+			const look = () => {
+				for (const sel of ['.lost', '.cta-reason']) {
+					const el = document.querySelector(sel);
+					if (!el) continue;
+					if (!(sel in w.__first)) {
+						w.__first[sel] = el.textContent ?? '';
+						seenAt[sel] = frame;
+					}
+					if (el.textContent && !(sel in w.__gap)) w.__gap[sel] = frame - seenAt[sel]!;
+				}
+			};
+			new MutationObserver(look).observe(document, { childList: true, subtree: true, characterData: true });
+			new PerformanceObserver((list) => {
+				for (const e of list.getEntries() as unknown as {
+					value: number;
+					hadRecentInput: boolean;
+					sources?: { node?: Element; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
+				}[]) {
+					// The dock's "Reconnecting…" bar comes and goes with the drop this test makes, as it does on main:
+					// that is the offline cue doing its job. What is measured is the join screen replacing the page.
+					if (e.hadRecentInput || (e.sources?.length && e.sources.every(isDock))) continue;
+					w.__cls += e.value;
+					for (const s of e.sources ?? [])
+						w.__moved.push(
+							`${s.node?.nodeName}.${s.node?.className?.toString()} y ${Math.round(s.previousRect.y)}→${Math.round(s.currentRect.y)}`
+						);
+				}
+			}).observe({ type: 'layout-shift' });
+		});
+
+		// Leave from another tab: the same cookie jar, so the server forgets the singer and clears the cookie. This
+		// page's socket stays bound to the old singer until it drops, which is the window the defect lived in.
+		expect((await phone.context().request.post('/api/leave')).status()).toBe(200);
+		await phone.context().setOffline(true);
+		await expect(phone.getByText('Reconnecting…')).toBeVisible({ timeout: 30_000 });
+		await phone.context().setOffline(false);
+
+		// Before the fix the socket came back as a spectator: green, dock up, every tap refused.
+		await expect(phone.getByText("You're not in the room any more. Join again to sing.")).toBeVisible({
+			timeout: 15_000
+		});
+		await expect(phone.locator(SEL.joinColumn).first()).toBeVisible();
+		expect(new URL(phone.url()).pathname).toBe('/');
+		expect(await phone.locator(SEL.dock).count(), 'the dock outlived the session').toBe(0);
+		const seen = await phone.evaluate(() => {
+			const w = window as unknown as {
+				__first: Record<string, string>;
+				__gap: Record<string, number>;
+				__cls: number;
+				__moved: string[];
+			};
+			return { __first: w.__first, __gap: w.__gap, __cls: w.__cls, __moved: w.__moved };
+		});
+		expect(seen.__first['.lost'], "the lost line's region appeared already filled").toBe('');
+		expect(seen.__first['.cta-reason'], "the code step's reason region appeared already filled").toBe('');
+		// Two frames: filled in the frame after the first, the empty region was never painted (one frame is not enough).
+		expect(seen.__gap['.lost'], 'the lost line was filled before its empty region was painted').toBeGreaterThanOrEqual(
+			2
+		);
+		expect(
+			seen.__gap['.cta-reason'],
+			'the reason was filled before its empty region was painted'
+		).toBeGreaterThanOrEqual(2);
+		if (start === '/')
+			expect(seen.__cls, `the join screen shifted the page it replaced: ${seen.__moved.join(', ')}`).toBe(0);
+
+		// The name is kept for the identity pane, one code away.
+		await phone.locator('.code-entry input').first().click();
+		await phone.keyboard.type(world.code);
+		await expect(phone.locator(SEL.nameInput)).toHaveValue('P22Gone', { timeout: 10_000 });
+
+		// And the colour: joining again sends the one they had, so their songs on the TV keep it.
+		const join = phone.waitForRequest('**/api/join');
+		await phone.getByRole('button', { name: SEL.submit }).click();
+		expect((JSON.parse((await join).postData() ?? '{}') as { color?: string }).color).toBe(before);
+		await expect(phone.locator(SEL.dock).first()).toBeAttached({ timeout: 15_000 });
+		const after = ((await (await phone.request.get('/api/me')).json()) as { singer: { color: string } }).singer.color;
+		expect(after, 'joined again in another colour').toBe(before);
+	});
+}
