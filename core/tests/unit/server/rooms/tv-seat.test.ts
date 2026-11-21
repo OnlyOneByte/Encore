@@ -292,7 +292,9 @@ test('a booked sweep that fires a hair early re-arms for what is left, so the wa
 	const due = w.timers.find((t) => t.at === 1_000_000 + 60_000)!;
 	// The 60 s timer fires 1 ms early: the slow-boot window is not over, so nothing moves...
 	w.timers.splice(w.timers.indexOf(due), 1);
-	w.advance(59_999);
+	// The 15 s sweep runs (and books nothing), so the only sweep left to end the wait is the one under test.
+	w.tick(15_000);
+	w.advance(44_999);
 	due.run();
 	expect(w.announced).toEqual([]);
 	// ...but it booked one more sweep for the 1 ms left, and that one promotes the copy.

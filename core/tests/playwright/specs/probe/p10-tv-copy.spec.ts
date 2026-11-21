@@ -503,7 +503,7 @@ test('a key-shifted song makes no AudioContext on a copy, while the TV builds it
 // THE SKIP ONTO A GUIDE-MIX SONG, on the TV alone (r6 review). A plain song plays; a skip makes a guide-mix song
 // current in the SAME slot, which has no routed split graph yet, so its mix decision is pending for as long as the
 // audio start takes. Until then the element must be SILENT: it still holds the skipped song.
-for (const resumeMs of [0, 3_000]) {
+for (const resumeMs of [0, 3_000, 8_000]) {
 	test(`a skip onto a guide-mix song never plays the skipped song under the next card (audio start +${resumeMs} ms)`, async ({
 		browser,
 		world
@@ -539,7 +539,9 @@ for (const resumeMs of [0, 3_000]) {
 				.not.toBe(anaEntry);
 			expect((await serverPlayback(world.baseURL)).state.currentEntryId, "the server dropped Bo's song").toBeTruthy();
 			const heard: string[][] = [];
-			for (let i = 0; i < 60; i++) {
+			// Watched until Bo is HEARD (up to 20 s), however long the audio start takes, not for a fixed window.
+			const until = Date.now() + 20_000;
+			while (Date.now() < until) {
 				const now = await playingSrc();
 				heard.push(now);
 				if (now.some((src) => src.includes(boMedia))) break;

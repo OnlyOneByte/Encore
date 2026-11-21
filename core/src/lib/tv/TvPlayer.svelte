@@ -512,7 +512,7 @@
 			position telemetry the lyrics overlay and the room's progress bar both run on.
 		-->
 		<!-- `onerror` skips the song only for an element that HOLDS a src. That is a BACKSTOP: nothing assigns an empty src
-		     (the src effect below), so an error with none is never a dead file and must not end the singer's turn. -->
+		     (the src effect above), so an error with none is never a dead file and must not end the singer's turn. -->
 		<audio
 			bind:this={master}
 			muted={silent}
