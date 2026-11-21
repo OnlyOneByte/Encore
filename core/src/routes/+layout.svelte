@@ -12,6 +12,7 @@
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
 	import { YOURE_UP } from '$lib/phrasing/turn-phrasing';
+	import { staleNotice } from '$lib/phrasing/stale-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
 	   — which is why the root layout went to such lengths to defer and then warm it. The strip and the tab bar carry
@@ -136,8 +137,17 @@
 		};
 		sync();
 		const unsubscribe = room.subscribe(sync);
-		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing.
-		const unstale = room.onStaleTransport(() => transportNotice('That song already ended.'));
+		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing. Which words, if
+		// any, is `staleNotice`'s call; it says why a skip onto your own turn says nothing (IN-02).
+		const unstale = room.onStaleTransport((cmd) => {
+			const cur = room.entries.find((e) => e.id === room.playback.currentEntryId);
+			const notice = staleNotice(cmd, {
+				ownTurn: !!cur && cur.singerId === room.me?.id,
+				idle: room.playback.currentEntryId === null
+			});
+			// Info, not the error glyph: nothing went wrong, the tap just named a song that had gone.
+			if (notice) transportNotice(notice, 'info');
+		});
 		return () => {
 			unsubscribe();
 			unstale();
@@ -244,8 +254,8 @@
 	});
 
 	/* THE TOAST STACKS ABOVE "YOU'RE UP", never over it. The double-tap race this sheet exists for is exactly when
-	   both appear at once: the second phone's skip named a song that had gone, so it gets "That song already ended."
-	   in the same moment it becomes that phone's turn. The toaster rides --dock-h plus this, so it clears the sheet
+	   both can appear at once: a restart or key change that named a song that had gone gets its notice in the same
+	   moment it becomes that phone's turn (a skip there says nothing, IN-02). The toaster rides --dock-h plus this, so it clears the sheet
 	   by the same gap the sheet keeps above the dock. */
 	let youreUpH = $state(0);
 	/* THE STACK HOLDS UNTIL BOTH ARE GONE. The sheet leaves at the TV's 2.5 s and the toast lives 4 s, so dropping the
@@ -269,7 +279,7 @@
 	/** The one transport notice (a mash updates it in place rather than stacking a tower), tracked so the stack above
 	 *  can hold while it is on screen. */
 	let stopWatchingToast: (() => void) | null = null;
-	function transportNotice(message: string): void {
+	function transportNotice(message: string, kind: 'error' | 'info' = 'error'): void {
 		stopWatchingToast?.();
 		transportToastOpen = true;
 		/* "OPEN" LASTS UNTIL THE NODE HAS LEFT THE PAGE, not until sonner says it is closing: `onAutoClose` and
@@ -279,7 +289,7 @@
 			stopWatchingToast?.();
 			stopWatchingToast = untilGone('[data-sonner-toast].transport-notice', () => (transportToastOpen = false));
 		};
-		toast.error(message, {
+		toast[kind](message, {
 			id: 'transport-dropped',
 			duration: 4000,
 			class: 'transport-notice',
