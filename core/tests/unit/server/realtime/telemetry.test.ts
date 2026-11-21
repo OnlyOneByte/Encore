@@ -268,3 +268,24 @@ test('a dropped id-less ended warns once per process, not once per frame', async
 	expect(warned).toHaveLength(1);
 	expect(state.playback.currentEntryId).toBe('q1');
 });
+
+test('the missed-window card is not raised for an upNext that is the song that just ended', () => {
+	// When song 2 fails one frame ahead of the server, `upNext` still names song 2. Raising its card again puts the dead
+	// song's card back up after the skip notice once the intro hold outlasts it (holds run to 10s) and there is no song 3.
+	const src = read('src/routes/tv/+page.svelte');
+	const body = src.split('function onVisibleEnded(')[1]?.split('\n\t}')[0] ?? '';
+	expect(body).toMatch(/else if \(next === 'loading' && upNext && upNext\.id !== endedId &&/);
+});
+
+test('the TV drops a stale pair and stale playback state before either reaches the slots (#1001)', () => {
+	// The controller ignores the pair, but the page would still store it: a reorder's stale `(song 1, song 3)` then maps
+	// song 1 back onto the visible slot through `slotEntries`, and the old song's position seeks the next song.
+	const src = read('src/routes/tv/+page.svelte');
+	const apply = src.split('function applyNowPlaying(')[1]?.split('const entryChanged')[0] ?? '';
+	expect(apply).toContain('if (cur && ctl.isBehind(cur.id)) {');
+	expect(apply).toContain("sendTelemetry('ended', cur.id);");
+	expect(src).toContain("if (e.type === 'playback:state' && !ctl.isBehind(e.state.currentEntryId)) {");
+	// The server's advance to the song the TV already started must clear a held resume without restarting the song.
+	expect(src).toContain('if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;');
+	expect(src).toContain('seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;');
+});

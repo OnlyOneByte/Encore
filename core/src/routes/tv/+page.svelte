@@ -103,6 +103,8 @@
 	// Bumped by every playback command but NEVER by position telemetry, so the seek effect can track it to re-take its
 	// decision on a restart whose position equals the last one.
 	let seekRev = $state(0);
+	// The `rev` of the server's advance onto a song the TV had already started itself; see the `playback:state` handler.
+	let caughtUpRev = -1;
 	// Per-song background override from playback:state. null = use the room default (the resting state).
 	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
 	// Read raw, a null guide override is indistinguishable from "explicitly off" — the distinction that lets a room
@@ -168,6 +170,13 @@
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
+		// A pair naming the entry the TV already ended predates the server's processing of that `ended` (#1001):
+		// applying it reloads the finished song over the next. The `ended` is re-sent so one lost on a closed socket
+		// still advances the room; the server drops the duplicate by its entry stamp.
+		if (cur && ctl.isBehind(cur.id)) {
+			sendTelemetry('ended', cur.id);
+			return;
+		}
 		// Compared BEFORE `current` is overwritten, and on the ENTRY id: a song queued twice is two entries over one media.
 		const entryChanged = cur?.id !== current?.id;
 		current = cur;
@@ -319,9 +328,16 @@
 			if (nextOrigin !== data.joinOrigin) invalidateAll();
 		}
 		if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
-		if (e.type === 'playback:state') {
+		// The same stale window: the old song's position would seek the next song to where the finished one ended.
+		if (e.type === 'playback:state' && !ctl.isBehind(e.state.currentEntryId)) {
 			isPlaying = e.state.isPlaying;
-			seekSec = e.state.positionSec;
+			// The server advancing to the song the TV already started: its 0 is that start, and an exact 0 is a restart
+			// that replays one round trip of the song. The fresh target must still land, because it is what clears a held
+			// resume off the next song (docs/FRONTEND.md#wake-lock-and-reload-resume). NaN does both: `seekPlan` and
+			// `resumeSeekTarget` refuse a non-finite target, so the held resume is cleared and nothing seeks. Keyed on the
+			// frame's `rev`: the server can publish the same state twice, after the pair has already ended the catch-up.
+			if (ctl.isCatchingUp(e.state.currentEntryId)) caughtUpRev = e.rev;
+			seekSec = e.rev === caughtUpRev ? Number.NaN : e.state.positionSec;
 			seekRev = e.rev;
 			backgroundOverride = e.state.background;
 			guideOverride = e.state.guideLevel;

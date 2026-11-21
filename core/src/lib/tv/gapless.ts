@@ -20,6 +20,9 @@ export class GaplessController {
 	#current: string | null = null; // entryId in the visible slot
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
+	// The entry `onEnded` moved past, until a server frame does too. Until then a frame naming it predates the TV's own
+	// `ended`: a phone command made the server re-send its old pair (#1001).
+	#endedFrom: string | null = null;
 	// The intro card went up over a visible slot that was still LOADING (a skip, a missed preload), so the hold must end
 	// back in `loading` unless the slot reported ready meanwhile, or the stage plays over an element with nothing in it.
 	#introOverLoad = false;
@@ -49,8 +52,23 @@ export class GaplessController {
 		};
 	}
 
-	/** Server says current/upNext changed. Load current into visible; pre-warm upNext into hidden. */
+	/** A server frame naming this entry is stale: the TV has already ended it and moved on. */
+	isBehind(entryId: string | null | undefined): boolean {
+		return !!entryId && entryId === this.#endedFrom;
+	}
+
+	/** The server's frame names the entry the TV already advanced to on its own `ended`: it is catching up. */
+	isCatchingUp(entryId: string | null | undefined): boolean {
+		return !!entryId && this.#endedFrom !== null && entryId === this.#current;
+	}
+
+	/**
+	 * Server says current/upNext changed. Load current into visible; pre-warm upNext into hidden. A stale pair is
+	 * ignored: applying it would reload the finished song over the one already playing.
+	 */
 	onNowPlaying(current: QueueEntry | null, upNext: QueueEntry | null): void {
+		if (this.isBehind(current?.id)) return;
+		this.#endedFrom = null;
 		if (!current) {
 			this.#current = null;
 			this.#state = 'attract';
@@ -102,6 +120,7 @@ export class GaplessController {
 	 * state for the caller to render; the interstitial hold is the page's timer.
 	 */
 	onEnded(upNext: QueueEntry | null): TvState {
+		this.#endedFrom = this.#current;
 		if (!upNext) {
 			this.#current = null;
 			this.#state = 'attract';
