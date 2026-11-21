@@ -236,8 +236,8 @@ describe('the TV route has exactly one catalog writer, and the process path is n
 
 	it('hands the slots snapshots, taken in syncSlots and nowhere else', () => {
 		expect(code).toContain('slotMedia = $state<{ A: PlaybackSnapshot | null; B: PlaybackSnapshot | null }>');
-		expect(code).toContain('snapshot(mediaOf(current))');
-		expect(code).toContain('snapshot(mediaOf(upNext))');
+		expect(code).toContain('snapshot(mediaOf(onScreen))');
+		expect(code).toContain('snapshot(mediaOf(warming))');
 		expect(code.split(/\bsnapshot\(/).length - 1).toBe(2);
 	});
 });

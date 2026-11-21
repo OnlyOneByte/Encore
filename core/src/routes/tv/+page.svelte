@@ -159,10 +159,12 @@
 		const visibleSlot = ctl.assignment().visible;
 		visible = visibleSlot;
 		tvState = ctl.state;
+		// The controller's view, not the raw pair: right after a natural end `current` is still the song that just ended.
+		const { visible: onScreen, hidden: warming } = ctl.slotEntries(current, upNext);
 		// SNAPSHOT HERE, and only here: `syncSlots` runs on explicit lifecycle transitions alone.
-		slotMedia = bySlot(visibleSlot, snapshot(mediaOf(current)), snapshot(mediaOf(upNext)));
+		slotMedia = bySlot(visibleSlot, snapshot(mediaOf(onScreen)), snapshot(mediaOf(warming)));
 		// The entry id travels with its snapshot into the SAME slot, so the per-entry transport re-arm sees a distinct id.
-		slotEntryId = bySlot(visibleSlot, current?.id ?? null, upNext?.id ?? null);
+		slotEntryId = bySlot(visibleSlot, onScreen?.id ?? null, warming?.id ?? null);
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {

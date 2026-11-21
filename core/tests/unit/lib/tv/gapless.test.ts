@@ -43,6 +43,20 @@ test('GAPLESS SWAP: hidden warmed for upNext -> ended swaps slots with no reload
 	expect(c.state).toBe('playing');
 });
 
+test('slot mapping: the warmed slot keeps upNext across the swap, before the server frame lands', () => {
+	const c = new GaplessController();
+	const [q1, q2] = [e('q1'), e('q2')];
+	c.onNowPlaying(q1, q2);
+	c.onVisibleReady();
+	c.onHiddenReady('q2');
+	expect(c.slotEntries(q1, q2)).toEqual({ visible: q1, hidden: q2 });
+	c.onEnded(q2);
+	// The page still holds the server's old pair here. Mapping it raw put q1 into the slot that had warmed q2.
+	expect(c.slotEntries(q1, q2)).toEqual({ visible: q2, hidden: null });
+	c.onNowPlaying(q2, null); // the server's frame: nothing moves
+	expect(c.slotEntries(q2, null)).toEqual({ visible: q2, hidden: null });
+});
+
 test('MISSED WINDOW: hidden NOT warmed -> ended falls back to loading', () => {
 	const c = new GaplessController();
 	c.onNowPlaying(e('q1'), e('q2'));

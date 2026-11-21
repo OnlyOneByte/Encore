@@ -26,8 +26,10 @@ import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
 import {
+	armMediaLog,
 	awaitMaster,
 	processTrack,
+	readMediaLog,
 	queueReadyTrack,
 	readStage,
 	tapStage,
@@ -140,6 +142,7 @@ async function observeParty(world: World): Promise<Timeline> {
 	const tv = await world.openTv();
 	await expect(tv.locator(SEL.tvRoot)).toBeAttached();
 	await tapStage(tv);
+	await armMediaLog(tv);
 
 	const samples: Sample[] = [];
 	const t0 = Date.now();
@@ -206,47 +209,44 @@ test('F1/F2 · both songs really play, the second with no human touch', async ({
 });
 
 test('F3 · the song-to-song boundary is neither a dead-air seam nor double audio', async ({ world }) => {
-	// ══ RE-AIMED AT THE PLAYBACK FLOOR, DELIBERATELY. ══
-	// The old probe defined the boundary as "song 1's last decoded CLIMB to song 2's FIRST DECODED BYTE", and that
-	// definition is broken now that pre-warming works: song 2's first byte is its PRE-WARM burst in the hidden slot
-	// — ~24,576 bytes at currentTime 0, seconds before the swap — which is the very thing F9 insists must happen.
-	// Subtracting from it reported multiple seconds of "OVERLAP" on a handoff that had merely been pre-warmed, so
-	// the claim could not pass while F9 did.
-	//
-	// The port left it pointed at the old moment and put the corrected number in the failure text, which was right
-	// at the time: the product was ALSO broken (the TV passed a media id where GaplessController wanted an entry
-	// id, so the swap never took the warm branch at all), and re-aiming an instrument while the subject is broken
-	// hides which of the two you fixed. That product bug is now fixed and F5 went green, so the ONLY thing left
-	// making this red was the measuring point. Re-aimed to the first sample past the real-playback floor — the
-	// moment song 2 is actually being HEARD, which is what "boundary" was always supposed to mean.
-	const { samples, song1, song2, worker } = await observeParty(world);
+	// ══ TIMED BY THE MEDIA EVENTS, NOT THE DECODE COUNTER. ══
+	// The decode counter cannot time a boundary. At a song's END the decoder runs ahead of the playhead and finishes
+	// the file ~300ms before `ended`; at a START it trails, and song 2 crosses the 60KB playback floor ~450ms after it
+	// began. That ~750ms of bias is what kept this red: over 10 runs on main the counter read 717-1163ms while the
+	// handoff's own events were 35-177ms apart. So the seam is now song 1's `ended` to song 2's `playing`, both stamped
+	// in the page as they fire. The counter still decides that song 2 was HEARD (the floor check below), which
+	// `playing` alone cannot (docs/E2E.md#proving-audio).
+	const { samples, song1, song2, worker, tv } = await observeParty(world);
 	try {
 		const isSong1 = matcherFor(song1);
 		const isSong2 = matcherFor(song2);
-		const w1 = decodingWindow(samples, isSong1);
-		const w2 = decodingWindow(samples, isSong2);
-		expect(w1.lastClimb, 'song 1 never decoded, so there is no boundary to measure').toBeGreaterThanOrEqual(0);
-		expect(w2.first, 'song 2 never decoded, so there is no boundary to measure').toBeGreaterThanOrEqual(0);
-
-		const tEndA = samples[w1.lastClimb]!.wallMs;
-		const playbackI = firstPlaybackSample(samples, isSong2);
 		// Non-vacuity: a run where song 2 never crossed the floor has no audible boundary, and must not read as 0.
 		expect(
-			playbackI,
+			firstPlaybackSample(samples, isSong2),
 			`song 2 never passed the ${REAL_PLAYBACK_BYTES}-byte playback floor, so it was never actually heard`
 		).toBeGreaterThanOrEqual(0);
-		const tStartB = samples[playbackI]!.wallMs;
-		const deltaMs = tStartB - tEndA;
-		const detail =
-			`wall-clock last decoded climb of song 1 at ${tEndA}ms; song 2 first passed the ` +
-			`${REAL_PLAYBACK_BYTES}-byte playback floor at ${tStartB}ms ` +
-			`(${deltaMs >= 0 ? `${deltaMs}ms of GAP` : `${-deltaMs}ms of OVERLAP`}). sample density ${SAMPLE_MS}ms, so ` +
-			`the boundary is resolved to ±one sample. For reference, song 2's very first decoded byte — its pre-warm ` +
-			`burst in the hidden slot, which F9 requires — was at ${samples[w2.first]!.wallMs}ms.`;
+
+		const log = await readMediaLog(tv);
+		const endA = log.find((e) => e.ev === 'ended' && isSong1(e.src));
+		expect(endA, 'song 1 never fired `ended`, so there is no boundary to measure').toBeDefined();
+		const startB = log.find((e) => e.ev === 'playing' && isSong2(e.src) && e.t >= endA!.t - 1000);
+		expect(startB, "song 2 never fired `playing` around song 1's end").toBeDefined();
+		const deltaMs = Math.round(startB!.t - endA!.t);
+		const detail = `song 1 \`ended\` → song 2 \`playing\` = ${deltaMs}ms (page clock).`;
 		// The A/B swap is one composited frame with no network, so low tens of ms is the shape. The old probe scored
 		// >400ms and <-80ms HIGH (a failing run) and 150..400ms MEDIUM (tolerated) — both HIGH thresholds are here.
 		expect(deltaMs, `past ~250ms is an audible dead-air seam. ${detail}`).toBeLessThanOrEqual(400);
 		expect(deltaMs, `negative is double audio. ${detail}`).toBeGreaterThanOrEqual(-80);
+
+		// AND IT WAS THE WARM BUFFER THAT PLAYED. On the swap the TV used to map the server's stale pair onto the slots,
+		// handing the warmed slot song 1 and then song 2 again: two reloads, so song 2 waited for the server's frame and
+		// a cold fetch. Over loopback that still fits the budget above, so the timing alone cannot catch it; a TV on
+		// Wi-Fi pays the real round trip. Any `emptied` between the two events is a slot reloading at the handoff.
+		const reloads = log.filter((e) => e.ev === 'emptied' && e.t >= endA!.t && e.t <= startB!.t);
+		expect(
+			reloads.map((e) => e.src),
+			`slots reloaded at the handoff, so song 2 was not played from its pre-warmed buffer. See GaplessController.slotEntries.`
+		).toEqual([]);
 	} finally {
 		await worker.stop();
 	}
