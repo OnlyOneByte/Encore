@@ -23,7 +23,6 @@
 	import { WsClient } from '$lib/ws/client';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import KeyChip from '$lib/tv/KeyChip.svelte';
 	import {
 		tvScreen,
 		lobbyRoster,
@@ -782,7 +781,6 @@
 			<div class="up-song">
 				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
 			</div>
-			<KeyChip semitones={introEntry.keyShift ?? 0} />
 		</div>
 	{:else if transient === 'error'}
 		<!-- Names what is GOING and what REPLACES it in one breath, so the room never wonders whose turn it is. -->

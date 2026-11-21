@@ -48,7 +48,7 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
 			: op.op === 'move-to-index'
 				? moveToIndex(entries, op.id, op.toIdx)
 				: op.op === 'not-yet'
-					? moveToIndex(
+					? letThroughTo(
 							entries.map((e) => (e.id === op.id ? { ...e, deferred: true } : e)),
 							op.id,
 							op.toIdx
@@ -96,6 +96,25 @@ export function moveToIndex(entries: QueueEntry[], id: string, toIdx: number): Q
 	if (clamped === from) return entries.slice(); // already there
 	const nextQueued = queued.slice();
 	nextQueued.splice(clamped, 0, nextQueued.splice(from, 1)[0]!);
+	return renumber(weave(stored, slots, nextQueued));
+}
+
+/** "Not yet": every one of the singer's picks from `id` up to the queued entry at `toIdx` steps behind that entry,
+ *  in their own order. Moving `id` alone would let the singer's NEXT pick slide into the turn, so the singer the
+ *  button names would still not go first. Nobody else's relative order changes. */
+function letThroughTo(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
+	const stored = storedOrder(entries);
+	const { slots, queued } = splitQueued(stored);
+	const from = queued.findIndex((e) => e.id === id);
+	if (from === -1 || toIdx <= from || toIdx >= queued.length) return entries.slice();
+	const singerId = queued[from]!.singerId;
+	const span = queued.slice(from, toIdx + 1);
+	const nextQueued = [
+		...queued.slice(0, from),
+		...span.filter((e) => e.singerId !== singerId),
+		...span.filter((e) => e.singerId === singerId),
+		...queued.slice(toIdx + 1)
+	];
 	return renumber(weave(stored, slots, nextQueued));
 }
 

@@ -226,7 +226,9 @@ const SCENARIOS: Record<string, Make> = {
 			},
 			// The song's own clock is the trigger, as on a night.
 			trigger: (page) => page.locator('section.deck.heads-up').waitFor({ timeout: 20_000 }),
-			only: 'section.deck',
+			// The card AND its children: the eyebrow's ink fades on its own transition, which `section.deck` alone files
+			// under `others` and never seeks.
+			only: 'section.deck, section.deck *',
 			// The card and a little of what is around it: the whole 390x844 page in 15 frames is past 2000 px tall.
 			stripClip: async (page) => {
 				const box = await page.locator('section.deck').boundingBox();

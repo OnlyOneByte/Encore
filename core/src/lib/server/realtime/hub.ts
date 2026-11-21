@@ -201,9 +201,15 @@ export function handleQueueCommand(
 			: null;
 
 	// Re-stamp addedAt from the room's monotonic clock: every queue-order policy ranks singers by it, so
-	// a client-supplied stamp could jump the queue.
-	const op: QueueOp =
-		cmd.op.op === 'add' ? { op: 'add', entry: { ...cmd.op.entry, addedAt: deps.state.nextAddedAt() } } : cmd.op;
+	// a client-supplied stamp could jump the queue. `deferred` ("Not yet" spent) is server-owned the same way: a
+	// client-minted one is dropped rather than trusted, and a re-add of a live id (the optimistic echo) keeps the
+	// server's own value, so re-sending an add cannot buy a spent "Not yet" back.
+	let op: QueueOp = cmd.op;
+	if (op.op === 'add') {
+		const { entry } = op;
+		const deferred = deps.state.entries.find((e) => e.id === entry.id)?.deferred;
+		op = { op: 'add', entry: { ...entry, deferred, addedAt: deps.state.nextAddedAt() } };
+	}
 
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
 
