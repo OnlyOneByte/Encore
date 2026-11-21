@@ -29,11 +29,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 // gifenc ships CJS + ESM without types, and its package.json has no `exports`, so Playwright's loader resolves the
-// CJS build while bun (the unit tests, `publish-media`) resolves the ESM one, whose default export is empty. The
-// namespace has the functions under both.
+// CJS build (the functions are on the default) while bun (the unit tests, `publish-media`) resolves the ESM one
+// (they are named exports, and the default is empty).
 // @ts-expect-error untyped
 import * as gifenc from 'gifenc';
-const { GIFEncoder, quantize, applyPalette } = gifenc;
+const { GIFEncoder, quantize, applyPalette } = gifenc.GIFEncoder ? gifenc : gifenc.default;
 
 export interface Clip {
 	x: number;
