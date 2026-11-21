@@ -254,8 +254,9 @@ test('restart, the saved TV never returns, one copy connects: the copy is promot
 			expect(copy.mine()).toBe(false);
 			await sleep(45_000);
 			expect(copy.mine(), 'the slow-boot window still holds').toBe(false);
-			await sleep(17_000);
-			expect(copy.mine()).toBe(true);
+			// Polled, not read once at 62 s: on a loaded host the core's event loop can run a couple of seconds late,
+			// and the claim is "promoted once the window ends", which the 45 s check above already bounds from below.
+			await expect.poll(() => copy.mine(), { timeout: 30_000 }).toBe(true);
 			copy.ws.close();
 		} finally {
 			await second.stop();

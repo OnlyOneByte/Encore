@@ -31,6 +31,12 @@
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
 		/** ATTENUATE-ONLY. Applied at BOTH the native and routed sites, because WebAudio capture bypasses `.volume`. */
 		masterLevel?: number;
+		/**
+		 * ONE TV PER ROOM: this screen is a COPY (or has not heard the seat's answer yet). The element is `muted`, since iOS
+		 * Safari ignores `.volume`, and NO AudioContext is made or resumed: no split graph, no shift. A muted element may
+		 * autoplay everywhere, so the copy still runs the clock the words follow. See docs/SERVER.md#the-tv-seat.
+		 */
+		silent?: boolean;
 		/** Gated on VISIBILITY: the hidden slot buffers a song ahead, so firing there flips the room over a black frame. */
 		onready?: () => void;
 		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
@@ -64,6 +70,7 @@
 		keyShift = 0,
 		guideLevel = 0,
 		masterLevel = 1,
+		silent = false,
 		onready,
 		onprewarmed,
 		onended,
@@ -115,6 +122,16 @@
 
 	// The song this slot has already reset for. A PLAIN variable: guard bookkeeping, nothing renders off it.
 	let resetForId: string | null | undefined;
+	// ONE TV PER ROOM: this song's src was settled while SILENT (a copy), so it is the plain instrumental for the rest
+	// of the song, even if this screen takes the seat: building the guide graph would switch the src to the guide mix,
+	// and that reload restarts the song at 0:00 for the whole room. The guide joins at the next song. Plain: bookkeeping.
+	let plainThisSong = false;
+	// How far into a song a promoted screen still swaps its plain src for the guide mix: past the gapless swap and the
+	// claim's round trip (the r8 probe landed at +300 ms), short of where a reload is a restart anyone would hear.
+	const REDECIDE_WITHIN_SEC = 2;
+	// `resumeTarget` was set by that re-decide, not by a cold mount: if the src it settles on is the one already
+	// playing, nothing reloads and the hold must go. Plain: bookkeeping.
+	let redecideResume = false;
 
 	// GUARDED ON THE ID *VALUE*, not the `media` signal, whose identity churns on any queue mutation: keying on the
 	// signal reset a MID-SONG slot, and `canplaythrough` will NOT fire again on a loaded element, so `onready` was spent
@@ -134,6 +151,10 @@
 		masterReady = false;
 		// A new song re-takes the mix decision from scratch: a non-mix song must not inherit the previous `routed`.
 		mixSettled = false;
+		plainThisSong = false;
+		// A re-decide's held position belongs to the song it was taken in, never the next one.
+		if (redecideResume) resumeTarget = undefined;
+		redecideResume = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
 		// `currentSrc` is deliberately NOT cleared: the element still holds the old src, and clearing makes the assign
@@ -261,6 +282,9 @@
 	 * change when the wall is finally tapped. The `needsShift` guard keeps the keyShift-0 invariant.
 	 */
 	async function retryPitchAfterGesture(): Promise<void> {
+		// A COPY never shifts (or resumes a context) on a tap. Untested on its own: a copy has no graph to retry, so
+		// `!masterGraph` below already returns, and no probe can make this guard alone the one that bites.
+		if (silent) return;
 		if (!needsShift(keyShift)) return;
 		if (!masterGraph) return;
 		await masterGraph.setShift(keyShift).catch(() => {});
@@ -279,7 +303,7 @@
 				void tryPlayMaster();
 				// A mix song's only chance at a split graph after a pre-gesture refusal; without it the first song of
 				// every TV session loses its guide permanently. Re-open the gate first so the src effect re-decides.
-				if (masterGraph && !masterGraph.isRouted && wantsEagerGraph(guidePlan)) {
+				if (masterGraph && !masterGraph.isRouted && wantsEagerGraph(guidePlan) && !silent && !plainThisSong) {
 					mixSettled = false;
 					void masterGraph
 						.ensureRouted()
@@ -311,7 +335,10 @@
 	// BOTH sites: `.volume` governs the native path, and once a transpose routes the master through WebAudio its
 	// `.volume` is bypassed, so `setGain` must carry the same level.
 	$effect(() => {
-		if (master) master.volume = effectiveMasterLevel;
+		if (master) {
+			master.volume = effectiveMasterLevel;
+			master.muted = silent;
+		}
 		masterGraph?.setGain(effectiveMasterLevel);
 	});
 
@@ -368,13 +395,47 @@
 	// See docs/FRONTEND.md#the-pitch-shift-graph.
 	$effect(() => {
 		// Read reactive deps up front so the effect re-runs when any of them change.
-		const shift = active ? keyShift : 0;
+		const shift = active && !silent ? keyShift : 0;
 		const v = master;
 		if (!v) return;
+		// SILENT (a copy, or a TV just demoted to one): no graph is built, routed or re-routed here, and none shifts.
+		// With no graph a guide-mix song settles at once on the plain instrumental (the gate reads `denied`). A demoted TV
+		// keeps the graph it has, at the levels the page gives a copy (0).
+		// shortcut: a copy that takes the seat past a song's first REDECIDE_WITHIN_SEC keeps that plain src, so the guide
+		// joins at the next song; reload the src at the room's position on promotion if anyone misses it.
+		// LOAD-BEARING ORDER: the real TV is never caught by this. The server sends `tv:seat` in the socket's `open()`,
+		// BEFORE the `hello` reply that brings the song, on the SAME socket, so a TV knows it holds the seat before its
+		// <audio> exists. Send the song first (or on another channel) and every TV would start each night plain.
+		if (silent) {
+			if (!masterGraph) plainThisSong = true;
+			if (!mixSettled) mixSettled = true;
+			masterGraph?.setGain(effectiveMasterLevel);
+			masterGraph?.setGuideGain(effectiveGuide);
+			return;
+		}
 		// GUIDE-MIX SONGS ARE THE ONE EXCEPTION and build EAGERLY, in SPLIT mode: their guiding track does not exist until
 		// the splitter runs. `mixSettled` gates the src and an attempt that never settles leaves the room silent, so the
 		// three settling paths below must stay exhaustive.
-		if (wantsEagerGraph(guidePlan)) {
+		// Promoted with this slot only PRE-WARMING the next song (hidden and paused at 0): nobody is listening, so it
+		// re-decides its mix now and the next song gets its guide. So does a slot that is PLAYING but has barely begun (a
+		// claim at the gapless swap lands just after it): the reload costs the room well under a second, and its playhead
+		// is held as the resume target so `canplay` puts the guide mix back there. Past that, the plain src stays. Only a
+		// GUIDE-MIX song is worth that pause (nothing else would reload), and only on a page that has had a tap: with no
+		// activation the context cannot run, and the gate would hold the song paused for the 10 s resume bound only to
+		// settle plain (a 15 s grace hand-off to a copy nobody touched). `userActivation` absent: assume it can.
+		// Untested on its own: every Playwright `evaluate`, locator query and trace snapshot gives the page a sticky
+		// activation, so the suite cannot hold a page untapped; the r10 review probed it with tracing off and a
+		// no-gesture autoplay policy, which `playwright.config.ts` does not run.
+		const canRoute = wantsEagerGraph(guidePlan) && navigator.userActivation?.hasBeenActive !== false;
+		if (plainThisSong && (!active || (canRoute && v.currentTime < REDECIDE_WITHIN_SEC))) {
+			if (active) {
+				resumeTarget = v.currentTime;
+				redecideResume = true;
+			}
+			plainThisSong = false;
+			mixSettled = false;
+		}
+		if (wantsEagerGraph(guidePlan) && !plainThisSong) {
 			if (!masterGraph) masterGraph = new PitchShiftGraph(v, { split: true });
 			masterGraph.setGuideGain(effectiveGuide);
 			if (masterGraph.isRouted) {
@@ -450,7 +511,25 @@
 		// Compare against what the ELEMENT ACTUALLY HOLDS: the attribute is authoritative and cannot go stale, and
 		// `getAttribute` round-trips because every src assigned here is root-relative, where `master.src` absolutises.
 		const decision = nextVideoSrc(master.getAttribute('src') ?? '', resolved, playable);
-		if (decision.changed) master.src = decision.src;
+		// An EMPTY src (a playable song whose mix decision is still pending) is NEVER assigned: `src = ''` raises
+		// MEDIA_ELEMENT_ERROR "Empty src attribute", which reads as a dead file and skips the singer's song. The element
+		// keeps what it has until the gate settles; the transport, keyed on `currentSrc`, holds it meanwhile. This is a
+		// screen that took the seat mid-song, building the guide graph for its next song for the first time.
+		// And while it is pending the element is PAUSED: what it holds is the PREVIOUS song (a skip onto a guide-mix song
+		// whose slot has no routed graph yet), which would otherwise play on, rewound by the new song's seek, under the
+		// new singer's card until the gate settles. Main dropped the new song outright in that case.
+		if (decision.changed) {
+			if (decision.src) {
+				master.src = decision.src;
+				// The reload now owns the held resume: its own `canplay` applies it.
+				redecideResume = false;
+			} else master.pause();
+		} else if (redecideResume && resolved && mixSettled) {
+			// The re-decide settled on the src the element already plays (routing degraded): nothing reloads, so the held
+			// resume would wait for a later re-buffer's `canplay` and jump the song back to the claim. Drop it.
+			redecideResume = false;
+			resumeTarget = undefined;
+		}
 		// A NOT-PLAYABLE pass must leave BOTH shadows AND the element's src untouched: clearing `currentSrc` tells the
 		// transport the still-playing song has no src. The two are written in LOCKSTEP, or a half-stale entry token
 		// reintroduces the silent second turn.
@@ -468,8 +547,11 @@
 			THE MASTER, and the ONLY media element. It owns the clock: play/pause, currentTime, `ended`, and the
 			position telemetry the lyrics overlay and the room's progress bar both run on.
 		-->
+		<!-- `onerror` skips the song only for an element that HOLDS a src. That is a BACKSTOP: nothing assigns an empty src
+		     (the src effect above), so an error with none is never a dead file and must not end the singer's turn. -->
 		<audio
 			bind:this={master}
+			muted={silent}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
 			oncanplay={() => applyResume()}
@@ -479,8 +561,11 @@
 				if (active && visible) onplayingchange?.(false);
 				onended?.();
 			}}
-			onerror={() => active && visible && onerror?.()}
+			onerror={() => active && visible && !!master?.getAttribute('src') && onerror?.()}
 			ontimeupdate={() => {
+				// A resume is pending on the playing slot (a reload's first `timeupdate` reads 0 before `canplay` seeks it
+				// back): saying 0 would flip the lyrics and send the room a position it never had.
+				if (active && resumeTarget !== undefined) return;
 				if (master) onposition?.(master.currentTime, master.duration);
 			}}
 		></audio>
