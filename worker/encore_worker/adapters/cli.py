@@ -222,12 +222,14 @@ def run(
             for line in stream:
                 heard[0] = time.monotonic()
                 lines.append(line)
-                if on_progress is not None:
+                # A killed run reports nothing more, even from a descendant that outlives it: its job is over.
+                if on_progress is not None and not why:
                     pct = parse_pct(line)
                     if pct is not None:
                         on_progress(pct)
         except BaseException as exc:  # noqa: BLE001 - handed to the calling thread below
             failed.append(exc)
+            why.append("raised")  # a kill like the watchdog's, so the slot waits for the group below
             _kill_group(proc)
 
     watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
@@ -236,9 +238,12 @@ def run(
     reader.start()
     try:
         code = proc.wait()
-        # A killed run stops waiting on the pipe once its group is gone: a descendant that left the group with
-        # stdout open (`setsid`) would otherwise hold the read, and the slot, until it chose to exit.
-        reader.join(_GROUP_GONE_SEC if why else None)
+        # Drain every line before returning: the last ones carry the final figure and ffmpeg's report. A kill,
+        # before the child exited or after, ends that wait at the group grace: a descendant that left the
+        # group with stdout open (`setsid`) would otherwise hold the read, and the slot, until it chose to go.
+        while reader.is_alive() and not why:
+            reader.join(_WATCH_SEC)
+        reader.join(_GROUP_GONE_SEC)
     except BaseException:
         _kill_group(proc)
         proc.wait()

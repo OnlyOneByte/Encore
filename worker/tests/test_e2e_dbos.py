@@ -804,3 +804,5 @@ async def test_cancelling_a_live_fork_makes_the_next_requeue_fork_again(
     assert await durable._run_id(job.job_id) == "cancel-2~requeue-2", (
         "a cancelled run is forked, not replayed"
     )
+    # `_run_id` made that fork, and DBOS's queue would start it while the fixture tears DBOS down.
+    await DBOS.cancel_workflow_async("cancel-2~requeue-2")

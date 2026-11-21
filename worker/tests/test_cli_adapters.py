@@ -694,6 +694,106 @@ def test_a_descendant_that_left_the_group_cannot_hold_a_cancelled_run(tmp_path: 
         assert returned, "the escaped descendant held the cancelled run"
         assert returned[0] - cancelled < 4.0
     finally:
-        if pidfile.exists():
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+        _kill_escaped(pidfile)
+
+
+def _kill_escaped(pidfile: Path) -> None:
+    if pidfile.exists() and pidfile.read_text().strip():
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+
+def test_a_sink_fault_holds_the_slot_until_the_group_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sink fault kills the group like a cancel does, so it must wait for the group the same way."""
+    gone_at = [float("inf")]
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: time.monotonic() < gone_at[0])
+    token = cli.CancelToken()
+    returned: list[float] = []
+
+    def sink(pct: int) -> None:
+        raise RuntimeError("the sink broke")
+
+    def go() -> None:
+        with pytest.raises(RuntimeError, match="the sink broke"):
+            cli.run(["sh", "-c", "echo '[download]  10.0% x'; sleep 30"], on_progress=sink, cancel=token)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    time.sleep(1.0)
+    assert not returned and token.wait_idle(0.0) is False, "the slot was freed while the group still lived"
+    gone_at[0] = time.monotonic()
+    thread.join(3.0)
+    assert returned and token.wait_idle(0.0) is True
+
+
+def test_a_finished_run_has_read_every_line_before_it_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child is reaped before the reader has the last lines: those carry the final figure and ffmpeg's
+    report, so `run` must not return until the reader has them. A sink slower than the kill grace holds the
+    reader back, so only a full drain passes."""
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.05)
+    seen: list[int] = []
+
+    def sink(pct: int) -> None:
+        if pct == 100:
+            time.sleep(0.6)
+        seen.append(pct)
+
+    script = 'i=1; while [ $i -le 100 ]; do echo "[download] $i.0% x"; i=$((i+1)); done; echo done'
+    output = cli.run(["sh", "-c", script], on_progress=sink)
+    assert seen[-1] == 100
+    assert output.count("\n") == 101 and output.endswith("done\n")
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_cancel_after_the_child_exits_is_not_held_by_a_descendant(tmp_path: Path) -> None:
+    """The child exits 0 while a `setsid` descendant keeps stdout open: `run` is still draining when the
+    cancel lands, and must stop waiting at the group grace, not when the descendant chooses to exit."""
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, f"setsid sh -c 'echo $$ > {pidfile}; exec sleep 30' & exit 0")
+    try:
+        time.sleep(0.6)
+        assert not returned, "the drain did not wait for the open pipe"
+        cancelled = time.monotonic()
+        token.cancel()
+        thread.join(6.0)
+        assert returned, "the escaped descendant held the cancelled run"
+        assert returned[0] - cancelled < 4.0
+    finally:
+        _kill_escaped(pidfile)
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_killed_run_reports_no_more_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A descendant that outlives the kill and prints a figure, before `run` returns or after, must not move a
+    job that is over."""
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.3)
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    calls: list[int] = []
+    returned: list[float] = []
+    script = (
+        f'setsid sh -c \'echo $$ > {pidfile}; sleep 1; echo "[download] 55.0% x"; sleep 1.5; '
+        f'echo "[download] 66.0% x"; sleep 1\' & sleep 30'
+    )
+
+    def sink(pct: int) -> None:
+        calls.append(pct)
+
+    def go() -> None:
+        with pytest.raises(cli.ToolFailed, match="cancelled"):
+            cli.run(["sh", "-c", script], cancel=token, on_progress=sink)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    try:
+        time.sleep(0.2)
+        token.cancel()
+        thread.join(5.0)
+        assert returned
+        time.sleep(3.5)
+        assert calls == [], "a killed run's descendant moved its progress"
+    finally:
+        _kill_escaped(pidfile)
