@@ -18,7 +18,8 @@ import {
 	type PlayerCommand,
 	type ReactionKind,
 	type PublicSinger,
-	type QueueEntry
+	type QueueEntry,
+	type TargetedCommand
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
@@ -83,7 +84,7 @@ export class RoomLink {
 	#ws: WsClient | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
-	#staleHandlers = new Set<() => void>();
+	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
 	/** Captured once on connect and HELD: a sync REPLACES the catalog and a failed song is not in the room's media,
 	 * so without re-merging these on every sync the first sync wipes the scarred row. */
 	#scarred: Media[] = [];
@@ -100,8 +101,8 @@ export class RoomLink {
 		return () => this.#errorHandlers.delete(fn);
 	}
 	/** THIS phone's skip, restart, seek, key or guide named a song that had already ended, so the server did nothing.
-	 *  Returns a disposer. */
-	onStaleTransport(fn: () => void): () => void {
+	 *  Hands over WHICH command, because what to say differs (`$lib/phrasing/stale-phrasing`). Returns a disposer. */
+	onStaleTransport(fn: (cmd: TargetedCommand['cmd']) => void): () => void {
 		this.#staleHandlers.add(fn);
 		return () => this.#staleHandlers.delete(fn);
 	}
@@ -267,7 +268,7 @@ export class RoomLink {
 			this.singers = nextSingers;
 		}
 		if (e.type === 'playback:state') this.playback = e.state;
-		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn();
+		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn(e.cmd);
 		// The WHOLE event, not four unpacked fields: the failure arm needs `requestedBy` as well, and a fifth
 		// positional argument on a five-line signature is how the next one gets dropped on the way in.
 		if (e.type === 'media:status') this.#onMediaStatus(e);

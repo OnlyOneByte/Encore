@@ -100,11 +100,11 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		// Nobody else is told it is their turn.
 		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
-		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. The phone whose
-		// tap was dropped is told why; the other is not.
-		await expect(theo.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
-		await expect(ana.getByText('That song already ended.')).toHaveCount(0);
+		// One song went, not two: Theo is singing on every screen, and stays so past both round trips. Theo's dropped
+		// tap landed on his OWN new turn, so "You're up" is all he is told (IN-02); nobody gets a stale notice.
 		await tv.waitForTimeout(1_000);
+		await expect(theo.locator('[data-sonner-toast]')).toHaveCount(0);
+		await expect(ana.locator('[data-sonner-toast]')).toHaveCount(0);
 		expect(await theoEntry()).toBe(theoId);
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
@@ -116,9 +116,7 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 	}
 });
 
-test('a stale tap through the strip changes nothing and tells THAT phone "That song already ended."', async ({
-	world
-}) => {
+test('a stale skip through the strip changes nothing and tells THAT phone the song just ended', async ({ world }) => {
 	const worker = await startFakeWorker(world);
 	try {
 		const maya = await world.openPhone('Maya');
@@ -149,10 +147,10 @@ test('a stale tap through the strip changes nothing and tells THAT phone "That s
 		hold = false;
 		for (const m of held.splice(0)) toAna!(m);
 
-		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 3_000 });
+		await expect(ana.getByText('That song just ended. Tap again to skip this one.')).toBeVisible({ timeout: 3_000 });
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		// Only the sender is told, and Theo keeps his song.
-		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
+		await expect(theo.getByText('That song just ended. Tap again to skip this one.')).toHaveCount(0);
 		await theo.waitForTimeout(1_000);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 	} finally {
@@ -341,7 +339,7 @@ test('a natural end hands over with no "won’t play" flash over the Now singing
 	}
 });
 
-test('when your own stale skip makes it your turn, the toast stacks above "You’re up" instead of over it', async ({
+test('a stale restart on your own new turn: its notice stacks above "You’re up" instead of over it', async ({
 	world
 }) => {
 	const worker = await startFakeWorker(world);
@@ -368,13 +366,17 @@ test('when your own stale skip makes it your turn, the toast stacks above "You�
 		hold = true;
 		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		// A RESTART, not a skip: a stale skip on your own new turn says nothing (the IN-02 probe below), but a stale
+		// restart still gets its notice, and that one must stack.
+		await theo.getByRole(SEL.restart.role, { name: SEL.restart.name }).first().click();
 		await theo.waitForTimeout(300);
 		hold = false;
 		for (const m of held.splice(0)) toTheo!(m);
 
 		const sheet = theo.locator('.youre-up');
-		const toast = theo.locator('[data-sonner-toast]').filter({ hasText: 'That song already ended.' });
+		const toast = theo
+			.locator('[data-sonner-toast]')
+			.filter({ hasText: 'A new song just started. Tap again to restart it.' });
 		await expect(sheet).toBeVisible({ timeout: 2_000 });
 		await expect(toast).toBeVisible({ timeout: 2_000 });
 		// Let the toast's own entrance settle before measuring.
@@ -430,6 +432,97 @@ test('when your own stale skip makes it your turn, the toast stacks above "You�
 			Math.max(...steps),
 			`largest one-frame move of the toast: ${JSON.stringify(frames.filter((f) => f.removed).slice(0, 4))}`
 		).toBeLessThan(24);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('a double skip onto your OWN turn shows only "You’re up", no stale notice', async ({ world }) => {
+	// integration-1, IN-02. Theo taps skip on Maya's song after Ana already has: his tap is dropped as stale, but it
+	// landed on his own new turn, so it got what it asked for. "You're up" says so; a notice beside it read as if his
+	// skip had failed. His socket is held, so his tap names Maya's song whatever the timing.
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		for (const q of ['caroline', 'believin', 'prayer']) await readySong(world, maya, q);
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+		await queueReady(ana, 'prayer');
+
+		let hold = false;
+		const held: (string | Buffer)[] = [];
+		let toTheo: ((m: string | Buffer) => void) | null = null;
+		await theo.routeWebSocket(/\/ws/, (ws) => {
+			const server = ws.connectToServer();
+			toTheo = (m) => ws.send(m);
+			server.onMessage((m) => (hold ? held.push(m) : ws.send(m)));
+			ws.onMessage((m) => server.send(m));
+		});
+		await theo.reload();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
+		// Every toast that ever appears on Theo's phone, so a notice that comes and goes is caught too.
+		await theo.evaluate(() => {
+			const w = window as unknown as { toasts: string[] };
+			w.toasts = [];
+			new MutationObserver(() => {
+				for (const n of document.querySelectorAll('[data-sonner-toast]')) w.toasts.push(n.textContent ?? '');
+			}).observe(document.body, { subtree: true, childList: true });
+		});
+
+		hold = true;
+		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await theo.waitForTimeout(300);
+		hold = false;
+		for (const m of held.splice(0)) toTheo!(m);
+
+		await expect(theo.locator('.youre-up')).toBeVisible({ timeout: 2_000 });
+		await theo.waitForTimeout(1_500);
+		expect(await theo.evaluate(() => (window as unknown as { toasts: string[] }).toasts)).toEqual([]);
+		// One song went: Theo's turn survived his own dropped tap.
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('a stale skip in a room gone idle says the song already ended, as information', async ({ world }) => {
+	// Review of #985, must-fix 1. Maya skips the only song while Ana's socket is held, so Ana's tap names a song in a
+	// room where nothing plays now. "Tap again to skip this one" would name a song that is not there.
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const ana = await world.openPhone('Ana');
+		await readySong(world, maya, 'caroline');
+		await queueReady(maya, 'caroline');
+
+		let hold = false;
+		const held: (string | Buffer)[] = [];
+		let toAna: ((m: string | Buffer) => void) | null = null;
+		await ana.routeWebSocket(/\/ws/, (ws) => {
+			const server = ws.connectToServer();
+			toAna = (m) => ws.send(m);
+			server.onMessage((m) => (hold ? held.push(m) : ws.send(m)));
+			ws.onMessage((m) => server.send(m));
+		});
+		await ana.reload();
+		await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
+
+		hold = true;
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect.poll(() => serverPlayback(world.baseURL).then(({ state }) => state.currentEntryId)).toBeNull();
+		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await ana.waitForTimeout(300);
+		hold = false;
+		for (const m of held.splice(0)) toAna!(m);
+
+		const toast = ana.locator('[data-sonner-toast].transport-notice');
+		await expect(toast).toHaveText('That song already ended.', { timeout: 3_000 });
+		// Nothing went wrong, the tap just named a song that had gone: the info glyph, not the error one.
+		await expect(toast).toHaveAttribute('data-type', 'info');
 	} finally {
 		await worker.stop();
 	}
