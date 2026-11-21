@@ -43,8 +43,9 @@ export interface MotionScenario {
 	/** What the reviewer should look for. Written into metrics.json and onto the strip. */
 	what: string;
 	/** CSS selector for the element the row is ABOUT. Every frame after the trigger, in the seek and the reduced
-	 *  runs, must show it: laid out, not `visibility: hidden`, and inside the frame's crop (the strip's, when it
-	 *  has one). Opacity is not checked per frame, so a fade-in's first frame counts, but the LAST frame of each
+	 *  runs, must show it: not `visibility: hidden`, with a non-zero area of its box left after the ancestors that
+	 *  clip it (`overflow`, `contain: paint`, an `inset()` `clip-path`) and the frame's crop (the strip's, when it
+	 *  has one) cut it. Opacity is not checked per frame, so a fade-in's first frame counts, but the LAST frame of each
 	 *  run (the seek's settled end, the reduced burst's last shot) must also show it at an effective opacity (the
 	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
 	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails. */
@@ -404,9 +405,11 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Is `s.subject` on screen inside `area` (page px; the viewport when absent), with a non-zero area of it inside?
- *  `shown` ignores opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the
- *  product up the ancestor chain) above 0, and is what a run's last frame must have. */
+/** Is `s.subject` on screen inside `area` (page px; the viewport when absent), with a non-zero area of it left
+ *  after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
+ *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
+ *  opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the product up the
+ *  ancestor chain) above 0, and is what a run's last frame must have. */
 function subjectState(
 	page: Page,
 	selector: string,
@@ -414,18 +417,82 @@ function subjectState(
 ): Promise<{ shown: boolean; opaque: boolean }> {
 	return page.evaluate(
 		([sel, a]) => {
-			const box = a ?? { x: scrollX, y: scrollY, width: innerWidth, height: innerHeight };
+			type R = { l: number; t: number; r: number; b: number };
+			const cut = (p: R, q: R): R => ({
+				l: Math.max(p.l, q.l),
+				t: Math.max(p.t, q.t),
+				r: Math.min(p.r, q.r),
+				b: Math.min(p.b, q.b)
+			});
+			const rect = (el: Element): R => {
+				const r = el.getBoundingClientRect();
+				return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+			};
 			const opacity = (el: Element | null) => {
 				let o = 1;
 				for (; el; el = el.parentElement) o *= Number(getComputedStyle(el).opacity);
 				return o;
 			};
+			// Does `el` hold fixed (and so also absolute) descendants? The usual triggers; enough for this app.
+			const holdsFixed = (cs: CSSStyleDeclaration) =>
+				cs.transform !== 'none' ||
+				cs.perspective !== 'none' ||
+				cs.filter !== 'none' ||
+				cs.backdropFilter !== 'none' ||
+				/paint|layout|strict|content/.test(cs.contain) ||
+				/transform|perspective|filter/.test(cs.willChange);
+			// The nearest ancestor whose overflow clip applies to `el`: its containing block, not just its parent.
+			const containingBlock = (el: Element): Element | null => {
+				const pos = getComputedStyle(el).position;
+				let p = el.parentElement;
+				for (; p && p !== document.body; p = p.parentElement) {
+					const cs = getComputedStyle(p);
+					if (pos === 'fixed' ? holdsFixed(cs) : pos !== 'absolute' || cs.position !== 'static' || holdsFixed(cs))
+						return p;
+				}
+				return null; // the viewport, which `box` already is; `body`'s overflow goes to the viewport
+			};
+			// shortcut: only `inset()` is measured; another shape counts as its whole border box. Upgrade if a
+			// subject or its ancestors ever use circle()/polygon()/path().
+			const clipPath = (el: Element, r: R): R => {
+				const m = /^inset\(([^)]*?)(?:\s+round\s[^)]*)?\)$/.exec(getComputedStyle(el).clipPath);
+				if (!m) return r;
+				const v = m[1].trim().split(/\s+/);
+				const [t, rt, b, l] = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+				const len = (s: string, full: number) => (s.endsWith('%') ? (parseFloat(s) / 100) * full : parseFloat(s));
+				const w = r.r - r.l;
+				const h = r.b - r.t;
+				return { l: r.l + len(l, w), t: r.t + len(t, h), r: r.r - len(rt, w), b: r.b - len(b, h) };
+			};
+			const visibleRect = (el: Element): R => {
+				let v = rect(el);
+				// clip-path clips every descendant, fixed ones included, so it is read up the whole DOM chain.
+				for (let p: Element | null = el; p && p !== document.documentElement; p = p.parentElement) {
+					if (getComputedStyle(p).clipPath !== 'none') v = cut(v, clipPath(p, rect(p)));
+				}
+				// Overflow and paint containment clip to the padding box, per axis, along the containing-block chain.
+				for (let p = containingBlock(el); p; p = containingBlock(p)) {
+					const cs = getComputedStyle(p);
+					const paint = /paint|strict|content/.test(cs.contain);
+					const r = rect(p);
+					const pad: R = {
+						l: r.l + p.clientLeft,
+						t: r.t + p.clientTop,
+						r: r.l + p.clientLeft + p.clientWidth,
+						b: r.t + p.clientTop + p.clientHeight
+					};
+					if (paint || cs.overflowX !== 'visible') v = { ...v, l: Math.max(v.l, pad.l), r: Math.min(v.r, pad.r) };
+					if (paint || cs.overflowY !== 'visible') v = { ...v, t: Math.max(v.t, pad.t), b: Math.min(v.b, pad.b) };
+				}
+				return v;
+			};
+			const box = a
+				? { l: a.x - scrollX, t: a.y - scrollY, r: a.x - scrollX + a.width, b: a.y - scrollY + a.height }
+				: { l: 0, t: 0, r: innerWidth, b: innerHeight };
 			const inside = [...document.querySelectorAll(sel)].filter((el) => {
-				const r = el.getBoundingClientRect();
-				if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') return false;
-				const x = r.left + scrollX;
-				const y = r.top + scrollY;
-				return x + r.width > box.x && x < box.x + box.width && y + r.height > box.y && y < box.y + box.height;
+				if (getComputedStyle(el).visibility === 'hidden') return false;
+				const v = cut(visibleRect(el), box);
+				return v.r > v.l && v.b > v.t;
 			});
 			return { shown: inside.length > 0, opaque: inside.some((el) => opacity(el) > 0) };
 		},
@@ -745,7 +812,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 					seek.gifRun.missingMs.length
 						? `SUBJECT ${s.subject} MISSING at ${seek.gifRun.missingMs.join(', ')} ms`
 						: `subject ${s.subject} in every frame`
-				}${s.holdTimers ? ` · ${seek.gifRun.heldTimers.length} timer(s) held` : ''}`,
+				}${s.holdTimers ? ` · ${seek.gifRun.heldTimers.length} ${seek.gifRun.heldTimers.length === 1 ? 'timer' : 'timers'} held` : ''}`,
 				stripFrames,
 				cols
 			)

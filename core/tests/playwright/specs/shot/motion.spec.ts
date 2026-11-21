@@ -110,8 +110,9 @@ function dockYourSong(width: number): Make {
 				await page.locator(`${SEL.npCheers}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.cheer',
-			// The dock, not the buttons: they fade to opacity 0 by design, the dock must stay put and on screen.
-			subject: '.dock',
+			// The cheer row, not its buttons: they fade to opacity 0 by design, while the row keeps its height and
+			// opacity. A collapsed or removed row fails here; the whole dock would not.
+			subject: SEL.npCheers,
 			stripClip: async () => ({ x: 0, y: 604, width, height: 240 }),
 			observe: (page) =>
 				page.evaluate(() => {
