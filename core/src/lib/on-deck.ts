@@ -40,6 +40,63 @@ export function deckEntryOf(
 	return queued.find((e) => e.id === nextPlayableId && e.singerId === meId);
 }
 
+/**
+ * MY entry WAS On deck and is not now, though it is still queued, someone else still sings, and I did not cause it — the
+ * moment a guest who set their key is owed one line (proposal 14). "I" is any of my tabs: a reorder of this tab's still
+ * in flight (`selfCaused`), or my entry's "Not yet" flag newly set (`wasDeferred` false, `deferred` now true), which only
+ * its owner can do, from any tab. Returns who is On deck instead and whether mine is the next song after theirs; null
+ * means say nothing. `nextPlayableOf` MUST be the app's one next-playable rule (`nextPlayableEntryId`), used for both
+ * answers, so a song the room will skip (one still cooking, one that failed on the TV) can never be "next".
+ */
+export function deckBump(o: {
+	wasDeckId: string | null;
+	wasDeferred: boolean;
+	queued: QueueEntry[];
+	nextPlayableOf: (list: QueueEntry[]) => string | null;
+	nowSingerId: string | undefined;
+	meId: string | undefined;
+	selfCaused: boolean;
+}): { singerId: string; youreNext: boolean } | null {
+	const { wasDeckId, wasDeferred, queued, nextPlayableOf, nowSingerId, meId, selfCaused } = o;
+	if (!wasDeckId || selfCaused || !nowSingerId || nowSingerId === meId) return null;
+	const mine = queued.find((e) => e.id === wasDeckId);
+	if (!mine) return null; // it started playing, or it was removed
+	if (mine.deferred && !wasDeferred) return null; // my own Not yet, maybe from another tab
+	const nextPlayableId = nextPlayableOf(queued);
+	if (deckEntryOf(queued, nextPlayableId, nowSingerId, meId)?.id === wasDeckId) return null;
+	const at = queued.findIndex((e) => e.id === nextPlayableId);
+	const now = queued[at];
+	if (!now || now.singerId === meId) return null;
+	return { singerId: now.singerId, youreNext: nextPlayableOf(queued.slice(at + 1)) === wasDeckId };
+}
+
+/** What the phone remembers between room updates about MY On deck entry: which one, and whether its Not yet was spent. */
+export interface DeckMemo {
+	id: string | null;
+	deferred: boolean;
+}
+export const NO_DECK: DeckMemo = { id: null, deferred: false };
+
+/**
+ * One room update of the bumped notice, whole: what to remember next, whose heads-up buzz to re-arm, and the notice to
+ * say (or null). Pure, so the layout only applies the result. An entry whose OWN op is still unconfirmed (`pendingIds`,
+ * e.g. my add the phone predicted On deck) is not remembered: the server may place it elsewhere, and losing a turn the
+ * room never gave me is not a bump.
+ */
+export function deckStep(
+	memo: DeckMemo,
+	o: Omit<Parameters<typeof deckBump>[0], 'wasDeckId' | 'wasDeferred'> & { pendingIds: ReadonlySet<string> }
+): { memo: DeckMemo; rearm: string | null; bump: ReturnType<typeof deckBump> } {
+	const { pendingIds, ...rest } = o;
+	const deck = deckEntryOf(o.queued, o.nextPlayableOf(o.queued), o.nowSingerId, o.meId);
+	const lost = memo.id !== null && memo.id !== deck?.id && o.queued.some((e) => e.id === memo.id);
+	return {
+		memo: deck && !pendingIds.has(deck.id) ? { id: deck.id, deferred: !!deck.deferred } : NO_DECK,
+		rearm: lost ? memo.id : null,
+		bump: deckBump({ ...rest, wasDeckId: memo.id, wasDeferred: memo.deferred })
+	};
+}
+
 /** "~2 min" until the current song ends; null when its length is unknown. */
 export function minutesLeft(remainSec: number | null): string | null {
 	if (remainSec === null) return null;
@@ -54,4 +111,8 @@ export function buzzOnce(entryId: string, vibrate: ((p: number[]) => boolean) | 
 	if (buzzed.has(entryId) || !vibrate) return false;
 	buzzed.add(entryId);
 	return vibrate(HEADS_UP_BUZZ);
+}
+/** The entry lost On deck while still queued: its heads-up has to buzz again when its turn comes back round. */
+export function rearmBuzz(entryId: string): void {
+	buzzed.delete(entryId);
 }
