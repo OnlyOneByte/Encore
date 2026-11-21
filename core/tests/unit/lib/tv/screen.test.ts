@@ -6,6 +6,7 @@ import {
 	lobbyRoster,
 	lobbyLine,
 	lobbyOverdue,
+	statusOverdue,
 	lyricsAdvancing,
 	processStep,
 	PROCESS_STEPS
@@ -251,19 +252,33 @@ describe('the lobby line, and an overdue song', () => {
 		}
 	});
 
-	it('calls the lobby overdue only while a queued song is one of the overdue ones', () => {
-		const queue = [entry('a'), entry('b')];
-		expect(lobbyOverdue(queue, new Set(['m-b']))).toBe(true);
-		expect(lobbyOverdue(queue, new Set(['m-gone']))).toBe(false);
-		expect(lobbyOverdue(queue, new Set())).toBe(false);
+	it('calls the lobby overdue only while a song still being made is one of the overdue ones', () => {
+		const making = [entry('a'), entry('b')];
+		expect(lobbyOverdue(making, new Set(['m-b']))).toBe(true);
+		expect(lobbyOverdue(making, new Set(['m-gone']))).toBe(false);
+		expect(lobbyOverdue(making, new Set())).toBe(false);
 	});
 
-	it('is wired: the TV page records every media:status by its etaSec and hands the lobby the answer', () => {
+	it('counts a status as overdue only while its song is still being made', () => {
+		for (const status of ['queued', 'downloading', 'separating', 'aligning'] as const) {
+			expect(statusOverdue({ status, etaSec: -1 })).toBe(true);
+			expect(statusOverdue({ status, etaSec: 30 })).toBe(false);
+			expect(statusOverdue({ status })).toBe(false);
+		}
+		// A ready, failed or canceled song is overdue no longer, whatever etaSec it still carries.
+		for (const status of ['ready', 'failed', 'canceled'] as const) {
+			expect(statusOverdue({ status, etaSec: -1 })).toBe(false);
+		}
+	});
+
+	it('is wired: the TV page notes each media:status and asks only about songs still being made', () => {
 		const route = stripComments(readFileSync(join(at('src/routes/tv'), '+page.svelte'), 'utf8'));
 		const lobby = stripComments(readFileSync(join(at('src/lib/tv'), 'TvLobby.svelte'), 'utf8'));
-		expect(route).toMatch(/if \(e\.type === 'media:status'\) noteOverdue\(e\.mediaId, \(e\.etaSec \?\? 0\) < 0\);/);
+		expect(route).toMatch(/if \(e\.type === 'media:status'\) noteOverdue\(e\.mediaId, statusOverdue\(e\)\);/);
 		expect(route).toMatch(/if \(isOverdue\) overdueMedia\.add\(mediaId\);\s*else overdueMedia\.delete\(mediaId\);/);
-		expect(route).toMatch(/const overdue = \$derived\(lobbyOverdue\(entries, overdueMedia\)\);/);
+		expect(route).toMatch(/const pending = \$derived\(\s*entries\.filter\(\(e\) => \{[^}]*!isPlayable\(m\);\s*\}\)/);
+		expect(route).toMatch(/const pendingCount = \$derived\(pending\.length\);/);
+		expect(route).toMatch(/const overdue = \$derived\(lobbyOverdue\(pending, overdueMedia\)\);/);
 		expect(route).toMatch(/<TvLobby[^>]*\boverdue=\{overdue\}/);
 		expect(lobby).toMatch(/lobbyLine\(count, processing, overdue\)/);
 	});

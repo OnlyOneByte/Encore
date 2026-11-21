@@ -1145,6 +1145,44 @@ test('well past its estimate the job is OVERDUE, not "under a minute" for as lon
 	expect(etaOf(h)).toBe(-1);
 });
 
+/** A stems job on m1 that core has called overdue (`etaSec: -1`), with the history that made it so. */
+function overdueStems(h: ReturnType<typeof harness>) {
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'd', 'stems', 50, { engine: 'demucs', model: 'htdemucs' });
+	seedRun(h, 'old-a', 'align', 10);
+	h.setClock(T0 + 170_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.etaSec).toBe(-1);
+	return jobId;
+}
+
+const lastStatus = (h: ReturnType<typeof harness>) =>
+	h.broadcasts.filter((e) => e.type === 'media:status').at(-1) as { status: string; etaSec?: number };
+
+test("an overdue step's completion hands the song on without its overrun", () => {
+	const h = harness();
+	const jobId = overdueStems(h);
+	h.hub.handle({ type: 'job:complete', workerId: 'w1', jobId, mediaUri: 'media/m1-instrumental.mp3' });
+	expect(lastStatus(h).status).not.toBe('ready');
+	expect(lastStatus(h).etaSec).toBeUndefined();
+	expect(h.jobs.byId(jobId)!.etaSec).toBeNull();
+});
+
+test('a requeued overdue job waits without its last attempt’s overrun', () => {
+	const h = harness();
+	const jobId = overdueStems(h);
+	h.jobs.requeue(jobId, h.jobs.byId(jobId)!.attempts + 1, T0 + 171_000);
+	expect(h.jobs.byId(jobId)!.etaSec).toBeNull();
+});
+
+test('an overdue job that fails is reported without its overrun', () => {
+	const h = harness();
+	const jobId = overdueStems(h);
+	h.hub.handle({ type: 'job:failed', workerId: 'w1', jobId, error: 'gave up', retryable: false });
+	expect(lastStatus(h).status).toBe('failed');
+	expect(lastStatus(h).etaSec).toBeUndefined();
+});
+
 test('a figure that falls within a stage is ignored; the bar never runs back', () => {
 	const h = harness();
 	const jobId = running(h);

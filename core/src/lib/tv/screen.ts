@@ -55,6 +55,20 @@ export interface RosterMember {
 	state: 'here' | 'away';
 }
 
+const MAKING: ReadonlySet<MediaStatus> = new Set(['queued', 'downloading', 'separating', 'aligning']);
+
+/** Does this `media:status` say the song is still being made AND past its estimate (`etaSec < 0`)? Anything else,
+ *  a ready or failed song included, takes it off the overdue list. */
+export function statusOverdue(e: { status: MediaStatus; etaSec?: number }): boolean {
+	return MAKING.has(e.status) && (e.etaSec ?? 0) < 0;
+}
+
+/** Is any song still being made (`making`, the entries the lobby counts as pending) one core has called past its
+ *  estimate? `overdueIds` holds the media ids whose last `media:status` was `statusOverdue`. */
+export function lobbyOverdue(making: readonly QueueEntry[], overdueIds: ReadonlySet<string>): boolean {
+	return making.some((e) => overdueIds.has(e.mediaId));
+}
+
 /**
  * The lobby's line under its headline. With a rehydrated queue but nobody reconnected the roster is empty, so it says
  * something true rather than "0 in the room". It says "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY,
@@ -62,12 +76,6 @@ export interface RosterMember {
  * the wait is the karaoke being made, and once that song is `overdue` (`etaSec < 0`) it says what the singer's phone
  * says ("Taking longer than usual") instead of still promising a minute.
  */
-/** Is any queued song one whose process core has called past its estimate? `overdueIds` holds the media ids whose
- *  last `media:status` carried `etaSec < 0`. */
-export function lobbyOverdue(entries: readonly QueueEntry[], overdueIds: ReadonlySet<string>): boolean {
-	return entries.some((e) => overdueIds.has(e.mediaId));
-}
-
 export function lobbyLine(count: number, processing: boolean, overdue: boolean): string {
 	if (processing) {
 		const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';

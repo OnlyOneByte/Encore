@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { processReadout, processStageLabel } from '$lib/phrasing/process-phrasing';
+import { at } from '$test';
+
+/** A source file with its comments blanked, so prose describing the wiring cannot satisfy a scan. */
+const code = (dir: string, file: string): string =>
+	readFileSync(join(at(dir), file), 'utf8')
+		.replace(/\/\*[\s\S]*?\*\//g, ' ')
+		.replace(/<!--[\s\S]*?-->/g, ' ')
+		.replace(/\/\/[^\n]*/g, ' ');
+
+describe("the phone's time left is wired from media:status to the card", () => {
+	it('keeps etaSec in the room store, hands it to the card, and the card reads it out', () => {
+		expect(code('src/lib/stores', 'room.ts')).toMatch(/next\.set\(mediaId, \{ status, pct, etaSec, unservable \}\)/);
+		const queue = code('src/routes/queue', '+page.svelte');
+		expect(queue).toMatch(/\{@const live = mediaStatus\.get\(e\.mediaId\)\}/);
+		expect(queue).toMatch(/<ProcessingCard[^>]*\betaSec=\{live\?\.etaSec\}/);
+		expect(code('src/lib/components', 'ProcessingCard.svelte')).toMatch(/processReadout\(overall, pct, etaSec\)/);
+	});
+});
 
 describe('processReadout', () => {
 	it('shows the real percentage and the time', () => {

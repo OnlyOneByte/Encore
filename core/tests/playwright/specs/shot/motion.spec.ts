@@ -11,7 +11,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openQueue, queueReady, readySong } from '../../world/actors';
+import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
@@ -317,6 +317,68 @@ const SCENARIOS: Record<string, Make> = {
 					headsUp: !!document.querySelector('section.deck.heads-up'),
 					eyebrow: document.querySelector('section.deck .eyebrow')?.textContent?.trim() ?? null,
 					timeLeftShown: !!document.querySelector('section.deck .left')
+				}))
+		};
+	},
+
+	/** The processing bar taking one real worker step, with a timer keepalive's `pct: 0` arriving between the real
+	 *  figures (proposal 05): the fill only ever grows. One song is made first so the card has a time to show; each
+	 *  run then sings a fresh song, so all three passes catch a bar still filling. */
+	'phone-processing-bar': (browser, world, cleanup) => {
+		const songs = ['caroline', 'bohemian', 'prayer'];
+		let run = 0;
+		let ready = false;
+		return {
+			name: 'phone-processing-bar',
+			what: 'Phone 390x844: the processing bar taking one real step ("NN% · under a minute"), keepalive zeros every 250 ms between the figures, the fill growing left to right (--motion-base)',
+			stepMs: 33,
+			scale: 1,
+			columns: 6,
+			startTimeoutMs: 8_000,
+			open: async (opts) => {
+				if (!ready) {
+					const quick = await startFakeWorker(world, { workerId: 'box', slowMs: 150, ranAsAsked: true });
+					const theo = await world.openPhone('Theo');
+					await readySong(world, theo, 'believin');
+					await quick.stop();
+					const slow = await startFakeWorker(world, {
+						workerId: 'box',
+						slowMs: 3_000,
+						keepaliveMs: 250,
+						ranAsAsked: true
+					});
+					cleanup(() => slow.stop());
+					ready = true;
+				}
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 390, height: 844 },
+					baseURL: world.baseURL
+				});
+				const page = await ctx.newPage();
+				const song = songs[run++ % songs.length]!;
+				await world.joinAs(page, `Bar${run}`);
+				await world.awaitDemoTrack(song);
+				await openBrowseFromHome(page);
+				await page.locator(SEL.search).fill(song);
+				await page
+					.locator(SEL.songRow)
+					.filter({ hasText: new RegExp(song, 'i') })
+					.locator(SEL.singAction)
+					.first()
+					.click();
+				await openQueue(page);
+				await expect(page.locator(SEL.processing).first()).toContainText(/\d+% · under a minute/, { timeout: 30_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			// The worker's next figure is the trigger; it lands within one `slowMs`.
+			trigger: async () => {},
+			only: '[data-slot="progress-indicator"]',
+			stripClip: async (page) => (await page.locator(SEL.processing).first().boundingBox()) ?? undefined,
+			observe: (page) =>
+				page.evaluate(() => ({
+					readout: document.querySelector('.proc .stage span:last-child')?.textContent?.trim() ?? null
 				}))
 		};
 	},

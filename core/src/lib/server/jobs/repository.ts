@@ -243,6 +243,7 @@ export class JobRepository {
 	 *  deadline is not instantly reaped as dead. */
 	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
 		// `stage` cleared: a new attempt's figures start over, and `#onProgress` never lets one fall within a stage.
+		// (Its `etaSec` was already cleared by the requeue every re-accept follows.)
 		const job = this.transition(id, 'ACCEPT', { leaseExpiresAt, stage: null }, now);
 		this.#ledger?.started(id, now);
 		return job;
@@ -256,13 +257,15 @@ export class JobRepository {
 	/** Worker finished (`job:complete`): terminal `ready`. */
 	complete(id: string, now: number): Job {
 		// `transition` seals the attempt `ready` off the COMPLETE event (see OUTCOME_FOR_EVENT).
-		return this.transition(id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
+		// `etaSec` cleared: a finished step is overdue no longer, and the song's next step has its own estimate.
+		const patch: JobPatch = { progressPct: 100, leaseExpiresAt: null, workerId: null, etaSec: null };
+		return this.transition(id, 'COMPLETE', patch, now);
 	}
 
 	/** `attempts` is optional: the reaper passes the final exhausting count, a direct non-retryable fail
 	 *  omits it and leaves the count as-is. */
 	fail(id: string, error: string, now: number, attempts?: number): Job {
-		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
+		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null, etaSec: null };
 		if (attempts !== undefined) patch.attempts = attempts;
 		// `transition` seals the attempt `failed` off the FAIL event, reading the error from `patch`.
 		return this.transition(id, 'FAIL', patch, now);
@@ -279,7 +282,8 @@ export class JobRepository {
 	 *  CALLER decides whether `attempts` increments: an ack-timeout does not, a progress expiry does. */
 	requeue(id: string, attempts: number, now: number, cause: JobEvent = 'LEASE_EXPIRED'): Job {
 		// Both ledger writes ride the machine off `cause` (see REQUEUE_EVENTS).
-		return this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts }, now);
+		// `etaSec` cleared: a queued job has no estimate until an attempt runs, and its last overrun is not it.
+		return this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts, etaSec: null }, now);
 	}
 
 	/** What the per-singer cap is derived from. Counts only a live ROOT-process job (`fetch`/`stems`),
