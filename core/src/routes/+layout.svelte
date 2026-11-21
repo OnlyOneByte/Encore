@@ -66,7 +66,10 @@
 	let connected = $state(true);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
-	// The row is for the AUDIENCE: hidden on the singer's own phone and when the room has reactions off.
+	/* The row is for the AUDIENCE, and the room can turn it off. On the singer's own phone it RESTS rather than
+	   leaving: its slot stays and only the buttons fade, because removing it shrank the fixed dock 71 px in the one
+	   frame the song became yours (CLS 0.0163, the dock's only layout shift). */
+	let reactRow = $state(false);
 	let canReact = $state(false);
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
@@ -122,7 +125,8 @@
 			   promise a turn the server will skip. */
 			queueCount = room.entries.filter((e) => e.status === 'queued').length;
 			connected = room.connected;
-			canReact = !!entry && entry.singerId !== me && room.settings.room.tvReactions;
+			reactRow = !!entry && room.settings.room.tvReactions;
+			canReact = reactRow && entry?.singerId !== me;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -385,7 +389,8 @@
 			onrestart={() => targeted('restart')}
 			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
 			onskip={() => targeted('skip')}
-			onreact={canReact ? (kind) => room.react(kind) : undefined}
+			onreact={reactRow ? (kind) => room.react(kind) : undefined}
+			reactResting={!canReact}
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
