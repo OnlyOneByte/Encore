@@ -1755,8 +1755,15 @@ contract, not tidiness, because `canplay` fires again on every warm re-buffer an
 re-applied by the next decode hiccup, resuming seconds earlier. It is also guarded to the ACTIVE slot
 without consuming the target: the hidden pre-warming slot reaches `canplay` too, and would otherwise park
 the next song's element at the outgoing song's position. What keeps a stale target off the next song is
-the server publishing `positionSec: 0` with a fresh `rev` on advance.
+the server's advance frame, `positionSec: 0` with a fresh `rev`, re-running the seek effect.
 `tests/unit/lib/tv/tv-reload-resume.test.ts` pins it.
+
+After a natural end the TV has usually started the next song itself, one server frame early, so that
+advance lands as the server catching up (`GaplessController.isCatchingUp`). An exact 0 there would be a
+restart and replay a round trip of the song, so the `playback:state` handler in `src/routes/tv/+page.svelte`
+passes `NaN` for that `rev` and any repeat of it. The seek effect still runs, which clears the held target,
+and `seekPlan` and `resumeSeekTarget` refuse a non-finite target, so nothing seeks. A later restart has a
+new `rev` and seeks to 0 as before.
 
 `seekPlan` admits a target of exactly 0 as a rewind when the master is past the alignment tolerance,
 because `restart` writes the integer literal 0 while the song plays on and would otherwise read as

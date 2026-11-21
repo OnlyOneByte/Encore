@@ -130,6 +130,41 @@ export async function readStage(page: Page): Promise<StageSample> {
 	return page.evaluate(sampleStage, STAGE_SELECTORS);
 }
 
+/** One media event, stamped in the page's own clock at the moment it fired. */
+export interface MediaEvent {
+	ev: 'ended' | 'playing' | 'emptied';
+	src: string;
+	/** `performance.now()` inside the handler. */
+	t: number;
+}
+
+/**
+ * Logs `ended`, `playing` and `emptied` from every media element on the page, as they FIRE. A 40ms poll of the decode
+ * counter cannot time a boundary: the decoder runs ahead of the playhead at a song's end and behind it at a start.
+ * Capture-phase on the document, so it needs no reload and sees elements mounted later.
+ */
+export async function armMediaLog(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		const w = window as unknown as { probeMediaLog?: MediaEvent[] };
+		if (w.probeMediaLog) return;
+		const log: MediaEvent[] = (w.probeMediaLog = []);
+		for (const ev of ['ended', 'playing', 'emptied'] as const) {
+			document.addEventListener(
+				ev,
+				(e) => {
+					const el = e.target as HTMLMediaElement;
+					if (el instanceof HTMLMediaElement) log.push({ ev, src: el.getAttribute('src') ?? '', t: performance.now() });
+				},
+				true
+			);
+		}
+	});
+}
+
+export async function readMediaLog(page: Page): Promise<MediaEvent[]> {
+	return page.evaluate(() => (window as unknown as { probeMediaLog?: MediaEvent[] }).probeMediaLog ?? []);
+}
+
 /**
  * THE MASTER, scoped the way p4 scoped it: `.slot.visible audio` first, because the hidden pre-warm slot
  * carries its own PAUSED <audio> at currentTime 0 and a looser query reads the stage as silent. Falls back to
