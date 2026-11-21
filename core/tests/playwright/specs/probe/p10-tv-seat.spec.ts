@@ -157,6 +157,9 @@ test('the real TV gets its seat back with zero steps: on a reload, and after its
 	const mineOf = (s: Sock) => s.frames.filter((f) => f.type === 'tv:seat').at(-1)?.mine;
 	const real = await loadTv();
 	const tv = await open('role=tv', real.cookie);
+	// Setup, not the subject: this file shares one core, so an earlier test's TV may still be inside its grace.
+	tv.ws.send(JSON.stringify({ type: 'tv:claim' }));
+	await sleep(300);
 	const laptop = await open('role=tv', (await loadTv()).cookie);
 	expect(mineOf(tv)).toBe(true);
 

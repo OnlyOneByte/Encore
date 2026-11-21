@@ -179,6 +179,7 @@ const SCENARIOS: Record<string, Make> = {
 				viewport: { width: 1920, height: 1080 },
 				baseURL: world.baseURL
 			});
+			await ctx.addCookies([world.tvCookie]);
 			const page = await ctx.newPage();
 			await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
 			await expect(page.locator(SEL.attract)).toBeVisible();
@@ -329,6 +330,7 @@ const SCENARIOS: Record<string, Make> = {
 					viewport: { width: 1920, height: 1080 },
 					baseURL: world.baseURL
 				});
+				await ctx.addCookies([world.tvCookie]);
 				const page = await ctx.newPage();
 				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
 				// Ana has joined, so the idle TV is the lobby, not the attract screen.
