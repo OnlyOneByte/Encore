@@ -110,7 +110,7 @@
 	   What that specificity buys is the LANDSCAPE arm at the foot of this block, which could not otherwise claw a
 	   label's margin down past the component's own declaration. A corollary: a card's FIRST label is NOT untouched —
 	   it is not matched by `* +`, but field-label's own margin still puts 12px above it, measured on #rotation,
-	   #sound, #quality, #karaoke, #lyrics-engine, #joining and #you.
+	   #sound, #karaoke, #lyrics-engine, #joining and #you.
 
 	   THE LADDER THIS SURFACE ACTUALLY DRAWS, every figure a rendered sibling-to-sibling distance measured at
 	   390x844, NOT a declared one:
@@ -194,7 +194,7 @@
 	.panel > :global(:not([data-slot='card'])) {
 		grid-column: 1 / -1;
 	}
-	/* EVERY CARD IS ADDRESSABLE — each of the eleven carries an `id`, so "the Sound card" is a place and not a
+	/* EVERY CARD IS ADDRESSABLE — each of the ten carries an `id`, so "the Sound card" is a place and not a
 	   scroll position. There is deliberately NO `scroll-margin-block-start` here yet: nothing in the tree links to a
 	   card fragment, and the offset that would be needed is the sticky header's rendered bottom at rest, which is
 	   content-driven (its own margin plus a box no token declares) rather than a rung. The first real fragment link

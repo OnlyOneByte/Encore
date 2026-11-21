@@ -59,7 +59,7 @@
 		THIS APP (`.grouphead` over a list of rows, the `eyebrow` button variant over a disclosure). app.css's
 		`.control-label` records what that swap costs — settings' You card held both dresses across one 8px card gap, a
 		field label reading as a heading — and /settings labels THIS KNOB at room scope (`for="guide-default"`) as
-		`Guiding track · <n>%` in the primitive's own dress, so the per-song override now reads as the same control.
+		`Guide · <n>%` in the primitive's own dress, so the per-song override now reads as the same control.
 		The retired comment's arithmetic was sound: the primitive's type IS larger than that eyebrow, so the label would
 		have outsized the value it labels. The answer is the VALUE's rung, not the label's — `.gt-val` moved
 		`--ph-text-sm` -> `--ph-text-md` (13.12px -> 14.4px) below, which costs no height because the label's own text
@@ -70,7 +70,7 @@
 		comes from FieldSlider's attachment instead. That file's header carries the full account.
 	-->
 	<Field.Label data-inline for="guiding-track">
-		Guiding track
+		Guide
 		<span class="gt-val">{valueLabel}</span>
 	</Field.Label>
 	<FieldSlider
@@ -82,7 +82,7 @@
 		step={1}
 		bind:value={level, requestLevel}
 		disabled={!available}
-		label="Guiding track — original vocal level"
+		label="Guide — original vocal level"
 		onValueCommit={(v) => oncommit?.(v)}
 	/>
 </div>

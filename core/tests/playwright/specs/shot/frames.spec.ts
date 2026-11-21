@@ -71,7 +71,7 @@ interface Frame {
 
 /** A 390x844 phone. shot.mjs's own default size, and `world.openPhone`'s. */
 const PHONE: Viewport = { width: 390, height: 844 };
-/** shot-settings.mjs's size, kept with its reason: settings is eleven cards over three scope routes, and 430x1500
+/** shot-settings.mjs's size, kept with its reason: settings is ten cards over three scope routes, and 430x1500
  *  at DPR 1 is what fits the LONGEST of them whole while staying inside the 2000px an agent can read back. */
 const SETTINGS: Viewport = { width: 430, height: 1500 };
 /** /metrics is an operator page with a 900px measure, so it is shot at desktop width; 1400 tall keeps the

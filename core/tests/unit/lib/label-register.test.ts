@@ -45,7 +45,7 @@ const colourRing = strip(read('src/lib/components/ColourRing.svelte'));
 const codeEntry = strip(read('src/lib/components/CodeEntry.svelte'));
 
 /** The text a `<Field.Label>` renders, tags and whitespace flattened. Interpolations are left spelled as written:
- *  `Kick out after · {graceLabel}` is one label whose tail is a value, not a second label. */
+ *  `Skip a quiet phone after · {graceLabel}` is one label whose tail is a value, not a second label. */
 function fieldLabelTexts(source: string): string[] {
 	return [...source.matchAll(/<Field\.Label[^>]*>([\s\S]*?)<\/Field\.Label\s*>/g)]
 		.map((m) =>
@@ -67,9 +67,7 @@ function selectFieldLabels(source: string): string[] {
 
 test("GuidingTrack's rail label wears the field primitive's own dress, with no eyebrow inside it", () => {
 	// The label's TEXT is a bare child of the primitive — no span, so nothing can override the dress.
-	expect(guidingTrack).toMatch(
-		/<Field\.Label data-inline for="guiding-track">\s*Guiding track\s*<span class="gt-val">/
-	);
+	expect(guidingTrack).toMatch(/<Field\.Label data-inline for="guiding-track">\s*Guide\s*<span class="gt-val">/);
 	// The section register's two properties are absent from the whole file, not merely from that row.
 	expect(guidingTrack).not.toMatch(/text-transform|letter-spacing|class="lab"/);
 

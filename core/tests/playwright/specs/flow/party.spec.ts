@@ -8,7 +8,7 @@
 // defended.
 //
 // THE ROUTABLE ADVERTISED ORIGIN is a precondition, not a claim. Core boots on 127.0.0.1 here, which the TV
-// correctly calls unreachable and answers with the "No external IP set" notice; the old flow bailed rather than
+// correctly calls unreachable and answers with the "Phones can’t open this address" notice; the old flow bailed rather than
 // measure an attract screen it believed had no join address left on it. So the first test DECLARES a routable
 // address through the product's own settings surface before opening the TV — `joinOrigin` outranks
 // ENCORE_PUBLIC_ORIGIN, and the world fixture exposes no per-test core env. Measured while porting: with the
@@ -155,7 +155,7 @@ test('the attract screen is legible at ten feet', async ({ world }) => {
 	await tv.locator(SEL.attract).waitFor({ timeout: 20_000 });
 	expect(
 		await tv.locator(SEL.badQr).count(),
-		'the TV is advertising a join address phones cannot reach, so it is showing the "No external IP set" notice ' +
+		'the TV is advertising a join address phones cannot reach, so it is showing the "Phones can’t open this address" notice ' +
 			'— correct behaviour, but it means this test never applied the routable origin it declared'
 	).toBe(0);
 

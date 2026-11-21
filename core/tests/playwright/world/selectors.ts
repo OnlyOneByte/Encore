@@ -268,16 +268,14 @@ export const SEL = {
 	nowNameScoped: '.lower-third .ls-name',
 	nowSongScoped: '.lower-third .ls-song',
 	/** Lyrics overlay internals. `.reel` scrolls, `.viewport` clips it, `.row`/`.row.current` are the
-	 *  lines, `.lyrics.unverified` flags ASR-only text, `.ls-source` names the provenance (`.ls-asr` its
-	 *  amber guess variant), `.ball` is the bouncing dot. */
+	 *  lines, `.lyrics.unverified` flags ASR-only text (the amber tint, the TV's only word-free sign of a guess),
+	 *  `.ball` is the bouncing dot. */
 	lyrics: '.lyrics',
 	lyricsReel: '.lyrics .reel',
 	lyricsViewport: '.lyrics .viewport',
 	lyricsRow: '.lyrics .row',
 	lyricsRowCurrent: '.lyrics .row.current',
 	lyricsUnverified: '.lyrics.unverified',
-	lsSource: '.ls-source',
-	lsAsr: '.ls-asr',
 	ball: '.ball',
 	/** The full-screen tap-to-start affordance the autoplay-block probe checks for. */
 	autoplayHint: '.autoplay-hint',
@@ -308,7 +306,7 @@ export const SEL = {
 
 	// settings
 	/** By id, because a settings page has many controls with similar visible labels ("Off" appears in four
-	 *  different pickers). It resolves a settings CARD too, since each of the eleven carries an id of its own.
+	 *  different pickers). It resolves a settings CARD too, since each of the ten carries an id of its own.
 	 *
 	 *  `SEL.settingsTab` ('#tab-<scope>') RETIRED WITH THE IN-PAGE TABLIST: the three scopes are three ROUTES now, so
 	 *  a spec navigates to `/settings`, `/settings/you` or `/settings/server` and waits on a control rather than
