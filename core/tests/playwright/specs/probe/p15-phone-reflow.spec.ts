@@ -47,6 +47,10 @@ interface Reading {
  * `spills` is the third arm: an element inside a Button that pokes out of the Button's own box. A centred row
  * whose min-content is wider than its box splits the excess either side, so the page can measure a clean 320
  * while the icon hangs off the left border and the Badge off the right one.
+ *
+ * The Button is found by its own `group/button` class, NOT `data-slot="button"`: a Button rendered through a
+ * bits-ui `child` snippet takes the primitive's spread props, and those overwrite `data-slot` (the `/settings/server`
+ * `Advanced` trigger reads `collapsible-trigger`), so a data-slot match never saw that row.
  */
 async function read(page: Page): Promise<Reading> {
 	return page.evaluate(async () => {
@@ -96,7 +100,7 @@ async function read(page: Page): Promise<Reading> {
 			}
 			if (r.width === 0 && r.height === 0) continue;
 			if (!isText && r.right > de.clientWidth + 0.5) out.offenders.push(describe(el, r));
-			const box = (isText ? el : el.parentElement)?.closest('[data-slot="button"]')?.getBoundingClientRect();
+			const box = (isText ? el : el.parentElement)?.closest('.group\\/button')?.getBoundingClientRect();
 			if (box && (r.left < box.left - 0.5 || r.right > box.right + 0.5))
 				out.spills.push(spill(el, r, isText ? n : null));
 		}
@@ -184,14 +188,18 @@ test('/settings reflows at 320px with the text doubled', async ({ world, page })
  * hypothetical here: the room scope's door into the machine scope carried a second `Badge` for one build, and the
  * test above caught it overflowing by 9px. You was never measured at 320px before the settings split, because it
  * lived on a `Tabs.Content` the driver never opened; it carries the colour ring and the destructive confirm.
+ *
+ * THE NAME IS EDITED FIRST, because `Save and close` renders only while the draft is dirty: a clean arrival
+ * measures a page without its one block row.
  */
 test('/settings/you reflows at 320px with the text doubled', async ({ world, page }) => {
 	await world.joinAs(page, 'ReflowYou');
 	await page.goto('/settings/you');
+	await page.locator(SEL.setting('profile-name')).fill('ReflowYou2');
 	assertReflows(
 		'/settings/you',
 		await measure(page, '/settings/you', '/settings/you', () =>
-			page.locator(SEL.setting('profile-name')).waitFor({ state: 'attached' })
+			page.getByRole('button', { name: 'Save and close' }).waitFor({ state: 'visible' })
 		)
 	);
 });

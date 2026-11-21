@@ -239,11 +239,13 @@
 		</Card.Header>
 		<Card.Content>
 			<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has no click-outside
-					dismissal, which a destructive confirm must not have. -->
+					dismissal, which a destructive confirm must not have.
+					`size="block"` because the trigger already fills this column: it is what lets the label wrap at 200% text
+					instead of spilling out of both sides of its box. -->
 			<AlertDialog.Root bind:open={confirmingLeave}>
 				<AlertDialog.Trigger>
 					{#snippet child({ props })}
-						<Button {...props} variant="destructive" onclick={askLeave}>Leave the room</Button>
+						<Button {...props} variant="destructive" size="block" onclick={askLeave}>Leave the room</Button>
 					{/snippet}
 				</AlertDialog.Trigger>
 				<AlertDialog.Content>
