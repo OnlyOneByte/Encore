@@ -113,7 +113,7 @@ test('activeWordIndex: the "ball" sits on the word being sung, -1 between words'
 
 // Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong, which is the most
 // misleading state the overlay can be in: the notice exists because the result LOOKS finished.
-import { isAutoTranscribed, provenanceLabel, type LyricsProvenance } from '$lib/tv/lyrics';
+import { isAutoTranscribed, type LyricsProvenance } from '$lib/tv/lyrics';
 
 const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
 	textSource: 'lrclib',
@@ -141,12 +141,10 @@ test('a real human caption track is not labelled', () => {
 });
 
 // The worker's wrong-text gate rides on `vouched`, not on `textConfidence` (W3 review r2), so the overlay's
-// "not verified" treatment has to read it: the same hand-authored track, doubted, still says "Captions" but
-// must not render as verified.
-test('a caption track no wrong-text gate vouched for IS labelled, and keeps its provenance', () => {
+// "not verified" treatment has to read it: the same hand-authored track, doubted, must not render as verified.
+test('a caption track no wrong-text gate vouched for IS labelled', () => {
 	const doubted = prov({ textSource: 'captions', textConfidence: 'high', vouched: false });
 	expect(isAutoTranscribed(doubted)).toBe(true);
-	expect(provenanceLabel(doubted)).toBe(provenanceLabel(prov({ textSource: 'captions' })));
 });
 
 test('UNKNOWN provenance says nothing — never claims verified OR guessed', () => {
@@ -155,37 +153,6 @@ test('UNKNOWN provenance says nothing — never claims verified OR guessed', () 
 
 test('coarse LINE timing alone is not flagged unverified when text is authoritative', () => {
 	expect(isAutoTranscribed(prov({ timing: 'line' }))).toBe(false);
-});
-
-// The provenance tag is a SOURCE label, never a confidence or quality score. It must name the source for
-// every kind and stay silent when provenance is unknown. Each arm asserts a DISTINCT string, so a map
-// that folds two sources onto one label reds.
-test('LRCLIB / authored record is named', () => {
-	expect(provenanceLabel(prov({ textSource: 'lrclib' }))).toBe('LRCLIB');
-});
-
-test('a caption track is named as the video captions', () => {
-	expect(provenanceLabel(prov({ textSource: 'captions' }))).toBe('From the video captions');
-});
-
-test('ASR is named auto-transcribed', () => {
-	expect(provenanceLabel(prov({ textSource: 'asr', textConfidence: 'low' }))).toBe('Auto-transcribed');
-});
-
-test('hand-pasted text is named as pasted by hand', () => {
-	expect(provenanceLabel(prov({ textSource: 'manual' }))).toBe('Pasted by hand');
-});
-
-test('UNKNOWN provenance (pre-candidate artifact) renders NO tag -- not "unknown"', () => {
-	expect(provenanceLabel(null)).toBeNull();
-	expect(provenanceLabel(undefined)).toBeNull();
-});
-
-test('every source kind gets a DISTINCT, non-empty label -- none collide', () => {
-	const kinds = ['lrclib', 'captions', 'asr', 'manual'] as const;
-	const labels = kinds.map((k) => provenanceLabel(prov({ textSource: k })));
-	for (const l of labels) expect(typeof l === 'string' && l.length > 0).toBe(true);
-	expect(new Set(labels).size).toBe(kinds.length);
 });
 
 // Pause-based line splitting: whisper segments are not lyric lines.

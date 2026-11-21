@@ -3,7 +3,7 @@
 // `routes/song/[mediaId]`, with a third variant on `routes/tv` — so no test could reach any of them. The sheet's
 // live controls are /queue's now-playing card today, and it is the third caller.
 import { test, expect } from 'bun:test';
-import { songFacts, soundingKeyLine } from '$lib/song-facts';
+import { songFacts, keyShiftLabel } from '$lib/song-facts';
 import type { SongProfile } from '$lib/contract';
 
 /** `keyTonic: 7` is G. Mirrors the fixture in tests/unit/contract/process/song-profile.test.ts. */
@@ -47,7 +47,6 @@ test('THE THIRD CONDITION: a shift that lands back on the same label is not a sh
 });
 
 test('a downward shift uses a real minus sign in the label, not a hyphen', () => {
-	// The phone surfaces are typographic on purpose; the TV is not — see `soundingKeyLine`.
 	expect(songFacts(profile(), -3).keyLabel).toBe('Key · −3');
 	expect(songFacts(profile(), -3).keyLabel).not.toContain('-');
 });
@@ -77,19 +76,12 @@ test('the range facts come through for a profile that has them', () => {
 	expect(f.octaves).toBeGreaterThan(0);
 });
 
-// ── the TV's line ────────────────────────────────────────────────────────────
+// ── the TV's words ───────────────────────────────────────────────────────────
 
-test('soundingKeyLine is ASCII, because a TV browser may have no glyph for a typographic sign', () => {
-	expect(soundingKeyLine(profile(), 0)).toBe('G major');
-	expect(soundingKeyLine(profile(), 2)).toBe('A major · +2');
-	const down = soundingKeyLine(profile(), -2);
-	expect(down).toBe('F major · -2');
-	// The distinction from the phone's form, pinned: a real minus here would risk a tofu box mid-line.
-	expect(down).not.toContain('−');
-});
-
-test('soundingKeyLine is null with no trustworthy key, and absent for no profile', () => {
-	expect(soundingKeyLine(profile({ keyTonic: null, keyMode: null }), 0)).toBe(null);
-	expect(soundingKeyLine(null, 3)).toBe(null);
-	expect(soundingKeyLine(undefined, 0)).toBe(null);
+test('keyShiftLabel names the shift and never the key, and is silent at 0', () => {
+	expect(keyShiftLabel(0)).toBe(null);
+	expect(keyShiftLabel(2)).toBe('Key +2');
+	expect(keyShiftLabel(-2)).toBe('Key −2');
+	// A real minus, never a hyphen.
+	expect(keyShiftLabel(-2)).not.toContain('-');
 });

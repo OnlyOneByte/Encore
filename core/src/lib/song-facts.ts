@@ -6,10 +6,8 @@
  * of `routes/queue`, which is the caller that replaced it. The three callers today are /queue, /song/[mediaId] and
  * /tv.
  *
- * TWO FORMS ON PURPOSE, and they must not be merged. The phone uses typographic punctuation (a real minus sign and a
- * middot); the TV uses ASCII `+`/`-` with a Latin-1 middot, because a typographic accidental or arrow is a codepoint
- * whose glyph a smart-TV browser may simply not have — there, a missing glyph is a tofu box in the middle of the one
- * line telling a singer what key they are hearing.
+ * THE KEY NAME IS THE PHONE'S. The TV shows only the SHIFT (`keyShiftLabel`), never `A minor`: the room cannot use a
+ * music-theory name, and the singer already reads it on their phone where they pick the key.
  */
 import {
 	originalKeyLabel,
@@ -52,11 +50,9 @@ export function songFacts(profile: SongProfile | null | undefined, keyShift: num
 }
 
 /**
- * The TV's single-line form: what the room is HEARING, plus the shift. Null with no trustworthy key, so a song
- * without one shows nothing rather than a guess. ASCII throughout — see the header.
+ * The TV's key words: `Key −2` / `Key +3` while the song is shifted, null at 0 so nothing shows. The lower third's
+ * line, the TV's one key display.
  */
-export function soundingKeyLine(profile: SongProfile | null | undefined, keyShift: number): string | null {
-	const label = soundingKeyLabel(profile, keyShift);
-	if (!label) return null;
-	return keyShift === 0 ? label : `${label} · ${keyShift > 0 ? '+' : ''}${keyShift}`;
+export function keyShiftLabel(semitones: number): string | null {
+	return semitones ? `Key ${semitones > 0 ? '+' : '−'}${Math.abs(semitones)}` : null;
 }

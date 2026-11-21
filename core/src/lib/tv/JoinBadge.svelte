@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { joinAddressLabel } from '$lib/tv/join-address';
+	import { joinAddressLabel, UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX } from '$lib/tv/join-address';
 
 	interface Props {
 		/** Data-URL QR encoding the /join URL (built server-side in +page.server.ts). */
@@ -12,11 +12,10 @@
 		// A NUMBER is pixels, right for the fixed-geometry corner card; a STRING is any CSS length used verbatim, so the
 		// TV hero can pass a `vmin` token and grow with a 4K panel instead of dead-ending at a pixel cap.
 		size?: number | string;
-		/** A loopback / bare-hostname join address: render the operator notice, not a QR whose every scan fails. */
+		/** A loopback / bare-hostname join address: the HERO adds the host's notice beside the QR. The corner ignores it. */
 		unreachable?: boolean;
-		// Printed in the two treatments with no typed-path block of their own: the CORNER card and the UNREACHABLE
-		// notice, where the code is still typable by anyone reaching the app on another address. The HERO treatment
-		// deliberately IGNORES it, because attract and the lobby print it themselves across the type ladder.
+		// Printed on the CORNER card, which has no typed-path block of its own. The HERO treatment deliberately IGNORES
+		// it, because attract and the lobby print it themselves across the type ladder.
 		roomCode?: string | null;
 	}
 
@@ -44,20 +43,10 @@
 
 	THE UNROUTABLE-ADDRESS NOTICE is one line BESIDE a QR that still renders, and the STATED TRADE is that a guest can
 	scan a code that will not resolve — accepted, because the address is only unroutable when nobody has set a party
-	address, which in practice means a laptop showing this to itself. The fix clause is HIDDEN in the corner treatment
-	rather than written twice, so the one string cannot drift.
+	address, which in practice means a laptop showing this to itself. It is HERO-ONLY: attract and the lobby are the
+	empty room where the host is setting up. Mid-song the room is watching and nobody fixes an address from the sofa,
+	so the corner never shows it; /settings/server says it too, under the field that fixes it.
 -->
-{#snippet notice()}
-	{#if unreachable}
-		<!--
-			THE `.badqr` FAMILY NAMES ARE KEPT ON PURPOSE, even though nothing here is a card any more: it is how the e2e
-			contract, the party flow and the scaling probe recognise "this screen advertises an address no phone can reach".
-		-->
-		<p class={['badqr', { corner: placement === 'corner', hero: placement === 'hero' }]} role="status">
-			<b class="badqr-t">No external IP set</b><span class="badqr-fix">Set the party address in Settings</span>
-		</p>
-	{/if}
-{/snippet}
 
 {#if placement === 'corner'}
 	<div class="corner" aria-label="Scan to join Encore">
@@ -67,7 +56,6 @@
 		<div class="meta">
 			<div class="t">Scan to join</div>
 			<div class="u">{shortUrl}</div>
-			{@render notice()}
 			<!-- The typed path, mid-song: a camera that will not scan leaves the code as the only way in. -->
 			{#if roomCode}
 				<div class="c">code <b>{roomCode}</b></div>
@@ -82,7 +70,15 @@
 		<div class="qr" style="--qr: {qrLength}">
 			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
 		</div>
-		{@render notice()}
+		{#if unreachable}
+			<!--
+				THE `.badqr` FAMILY NAMES ARE KEPT ON PURPOSE, even though nothing here is a card any more: it is how the e2e
+				contract, the party flow and the scaling probe recognise "this screen advertises an address no phone can reach".
+			-->
+			<p class="badqr" role="status">
+				<b class="badqr-t">{UNREACHABLE_JOIN}</b><span class="badqr-fix">{UNREACHABLE_JOIN_FIX}</span>
+			</p>
+		{/if}
 	</div>
 {/if}
 
@@ -126,9 +122,7 @@
 		}
 	}
 
-	/* Scoped `:not(.badqr)` so this FLEX ROW does not reach the unreachable-join notice, which reuses `corner` only for
-	   its pin: unscoped, the notice's block children become side-by-side columns and the fix is squeezed off-screen. */
-	.corner:not(.badqr) {
+	.corner {
 		position: absolute;
 		right: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
@@ -197,13 +191,5 @@
 		display: block;
 		font-weight: 500;
 		color: var(--ink-dim);
-	}
-	/* The STATE earns its place on the corner card; the REMEDY does not — nobody fixes an env var from the sofa. */
-	.corner .badqr {
-		margin-top: 5px;
-		text-align: left;
-	}
-	.corner .badqr-fix {
-		display: none;
 	}
 </style>

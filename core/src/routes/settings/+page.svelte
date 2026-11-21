@@ -111,12 +111,11 @@
 		and the whole outline was its h1. Screen-reader users navigate a long dashboard by heading, so
 		`role="heading" aria-level={2}` is added at each call site rather than re-vendoring the primitive, which
 		forwards restProps for exactly this. Level 2 because PageHeader owns the single h1.
-		`Card.Scope` above each title is the scope mark — one line naming what a change in this card reaches, so the
-		answer is never further away than the card the control is in. -->
+		NO per-card scope mark here: every card on this page reaches the same room, and the sticky header already says
+		"Everyone in this room", so a mark on each card was the same line five times. -->
 	<Card.Root id="rotation">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.room.blastRadius}</Card.Scope>
-			<Card.Title role="heading" aria-level={2}>Rotation</Card.Title>
+			<Card.Title role="heading" aria-level={2}>Turns</Card.Title>
 		</Card.Header>
 		<Card.Content>
 			<!-- FIRST, because this is the one room setting changed mid-song: four code sites say so, `queue-order.ts`'s
@@ -130,11 +129,11 @@
 			/>
 
 			<Field.Label for="presence-grace">
-				Kick out after · {graceLabel}
+				Skip a quiet phone after · {graceLabel}
 			</Field.Label>
 			<FieldSlider
 				id="presence-grace"
-				label="Grace period before a quiet phone loses its turn"
+				label="Skip a quiet phone after"
 				type="single"
 				min={MIN_PRESENCE_GRACE_MINUTES}
 				max={MAX_PRESENCE_GRACE_MINUTES}
@@ -152,16 +151,15 @@
 		deepest panel, 1025.8px of scrolling from the top. It is on the first screen now. -->
 	<Card.Root id="sound">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.room.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Sound</Card.Title>
 		</Card.Header>
 		<Card.Content>
 			<Field.Label for="guide-default">
-				Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
+				Guide · {Math.round(settings.room.guideLevelDefault * 100)}%
 			</Field.Label>
 			<FieldSlider
 				id="guide-default"
-				label="Default guiding-track level for the room"
+				label="Default guide level for the room"
 				type="single"
 				min={0}
 				max={100}
@@ -184,7 +182,6 @@
 
 	<Card.Root id="tv">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.room.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>The TV</Card.Title>
 		</Card.Header>
 		<Card.Content>
@@ -298,7 +295,6 @@
 	<!-- The TV's second half, so it stays directly after it. The tallest card on this scope. -->
 	<Card.Root id="lyrics">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.room.blastRadius}</Card.Scope>
 			<Card.Title role="heading" aria-level={2}>Lyrics on the TV</Card.Title>
 		</Card.Header>
 		<Card.Content>
@@ -420,11 +416,10 @@
 		be read without changing page. -->
 	<Card.Root id="quality">
 		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.room.blastRadius}</Card.Scope>
-			<Card.Title role="heading" aria-level={2}>Process quality</Card.Title>
+			<Card.Title role="heading" aria-level={2}>Sound quality</Card.Title>
 		</Card.Header>
 		<Card.Content>
-			<Field.Label for="quality-ceiling">Quality ceiling</Field.Label>
+			<Field.Label for="quality-ceiling">Sound quality</Field.Label>
 			<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
 			<NativeSelect
 				id="quality-ceiling"
@@ -434,7 +429,7 @@
 						maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
 					})}
 			>
-				<option value="">No cap — use the server default</option>
+				<option value="">Best available</option>
 				{#each qualityCeilings as c (c.rank)}
 					<option value={c.rank}>Up to {c.label}</option>
 				{/each}
@@ -453,11 +448,11 @@
 	</Button>
 
 	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name. It sits
-		under Process quality for the adjacency above.
+		under Sound quality for the adjacency above.
 		NO BADGE, and this is a MEASURED refusal rather than restraint: a second chip on this row read `every room`,
 		which p15 caught overflowing the 320px column by 9px at 200% text (the chip measures 135.5px there and the
 		Button base is `whitespace-nowrap`, so it cannot reflow). The blast radius is stated on arrival, in the
-		destination's own scope line, and again on all four of its cards — this row only has to name the place. -->
+		destination's own sticky scope line — this row only has to name the place. -->
 	<Button variant="outline" size="block" href={SETTINGS_SCOPES.server.href}>
 		<Icon name="gear" />
 		{SETTINGS_SCOPES.server.label}
