@@ -455,8 +455,8 @@
 	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name. It sits
 		under Process quality for the adjacency above.
 		NO BADGE, and this is a MEASURED refusal rather than restraint: a second chip on this row read `every room`,
-		which p15 caught overflowing the 320px column by 9px at 200% text (the chip measures 135.5px there and the
-		Button base is `whitespace-nowrap`, so it cannot reflow). The blast radius is stated on arrival, in the
+		which p15 caught overflowing the 320px column by 9px at 200% text (the chip measures 135.5px there, and `block`
+		then kept the Button base's `whitespace-nowrap`; it wraps now). The blast radius is stated on arrival, in the
 		destination's own scope line, and again on all four of its cards — this row only has to name the place. -->
 	<Button variant="outline" size="block" href={SETTINGS_SCOPES.server.href}>
 		<Icon name="gear" />
@@ -471,7 +471,7 @@
 		replaced.
 		SAME `outline` + `size="block"` SHAPE as the machine door, and NO BADGE for the measured reason recorded on
 		that one: a second chip on a door row overflowed the 320px column by 9px at 200% text, because the chip is
-		135.5px there and the Button base is `whitespace-nowrap` so it cannot reflow. -->
+		135.5px there and `block` then kept the Button base's `whitespace-nowrap`. -->
 	<Button variant="outline" size="block" href={SETTINGS_SCOPES.you.href}>
 		<Icon name="mic" />
 		{SETTINGS_SCOPES.you.label}

@@ -31,6 +31,7 @@ interface Reading {
 	clientWidth: number;
 	elements: number;
 	offenders: Offender[];
+	spills: Offender[];
 }
 
 /**
@@ -41,26 +42,52 @@ interface Reading {
  * `document.fonts.ready` is awaited INSIDE the read: a text metric decides whether a row overflows, so a
  * measurement taken against fallback metrics is a measurement of a different layout. It replaces the old
  * driver's flat 1200ms settle.
+ *
+ * `spills` is the third arm: an element inside a Button that pokes out of the Button's own box. A centred row
+ * whose min-content is wider than its box splits the excess either side, so the page can measure a clean 320
+ * while the icon hangs off the left border and the Badge off the right one.
  */
 async function read(page: Page): Promise<Reading> {
 	return page.evaluate(async () => {
 		await document.fonts.ready;
 		const de = document.documentElement;
-		const out: Reading = { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, elements: 0, offenders: [] };
-		const walk = document.createTreeWalker(de, NodeFilter.SHOW_ELEMENT);
-		for (let el = walk.nextNode() as Element | null; el; el = walk.nextNode() as Element | null) {
-			out.elements++;
-			const r = el.getBoundingClientRect();
-			if (r.width === 0 && r.height === 0) continue;
-			if (r.right <= de.clientWidth + 0.5) continue;
+		const out: Reading = {
+			scrollWidth: de.scrollWidth,
+			clientWidth: de.clientWidth,
+			elements: 0,
+			offenders: [],
+			spills: []
+		};
+		const describe = (el: Element, r: DOMRect) => {
 			const cls =
 				typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
-			out.offenders.push({
+			return {
 				sel: el.tagName.toLowerCase() + cls,
 				right: Math.round(r.right * 100) / 100,
 				width: Math.round(r.width * 100) / 100,
 				text: (el.textContent ?? '').trim().slice(0, 40)
-			});
+			};
+		};
+		// Text nodes too, for the spill arm only: a Button's bare label is a text node, and it is what spills when the
+		// label cannot wrap. A Range measures it; the node is reported by its parent element.
+		const walk = document.createTreeWalker(de, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+		const range = document.createRange();
+		for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+			const isText = n.nodeType === Node.TEXT_NODE;
+			const el = isText ? n.parentElement : (n as Element);
+			if (!el || (isText && !n.textContent?.trim())) continue;
+			let r: DOMRect;
+			if (isText) {
+				range.selectNodeContents(n);
+				r = range.getBoundingClientRect();
+			} else {
+				out.elements++;
+				r = el.getBoundingClientRect();
+			}
+			if (r.width === 0 && r.height === 0) continue;
+			if (!isText && r.right > de.clientWidth + 0.5) out.offenders.push(describe(el, r));
+			const box = (isText ? el : el.parentElement)?.closest('[data-slot="button"]')?.getBoundingClientRect();
+			if (box && (r.left < box.left - 0.5 || r.right > box.right + 0.5)) out.spills.push(describe(el, r));
 		}
 		return out;
 	});
@@ -101,11 +128,12 @@ async function measure(page: Page, label: string, path: string, ready: () => Pro
 function detailOf(m: Reading): string {
 	return [
 		`scrollWidth=${m.scrollWidth} clientWidth=${m.clientWidth} (over by ${m.scrollWidth - m.clientWidth}px)`,
-		...m.offenders.map((o) => `  · ${o.sel}  right=${o.right} width=${o.width}  ${JSON.stringify(o.text)}`)
+		...m.offenders.map((o) => `  · ${o.sel}  right=${o.right} width=${o.width}  ${JSON.stringify(o.text)}`),
+		...m.spills.map((o) => `  ⇹ ${o.sel}  right=${o.right} width=${o.width}  ${JSON.stringify(o.text)}`)
 	].join('\n');
 }
 
-/** Both arms of one surface's claim, off ONE reading. */
+/** All three arms of one surface's claim, off ONE reading. */
 function assertReflows(label: string, m: Reading): void {
 	const where = `${label} at ${VIEWPORT_W}px with root font-size ${SCALED_ROOT_FONT_SIZE}`;
 	expect(m.scrollWidth, `${where} does not reflow (scrollWidth <= clientWidth)\n${detailOf(m)}`).toBeLessThanOrEqual(
@@ -113,6 +141,7 @@ function assertReflows(label: string, m: Reading): void {
 	);
 	// A clean scroll width WITH elements past the right edge means the overflow is CLIPPED, not reflowed.
 	expect(m.offenders, `${where} clips an element past the right edge\n${detailOf(m)}`).toHaveLength(0);
+	expect(m.spills, `${where} spills an element out of its Button's box (⇹)\n${detailOf(m)}`).toHaveLength(0);
 }
 
 /** The unjoined `/` IS the join surface, and its six-box code entry is the widest fixed row on it. */
@@ -144,30 +173,6 @@ test('/settings reflows at 320px with the text doubled', async ({ world, page })
  * hypothetical here: the room scope's door into the machine scope carried a second `Badge` for one build, and the
  * test above caught it overflowing by 9px. You was never measured at 320px before the settings split, because it
  * lived on a `Tabs.Content` the driver never opened; it carries the colour ring and the destructive confirm.
- *
- * THE MACHINE SCOPE IS DELIBERATELY NOT HERE, and that absence is a recorded finding rather than an oversight: it
- * fails BOTH ARMS of this claim today, on two rows that predate the split and belong to the Button primitive rather
- * than to the route. `Button`'s base is `whitespace-nowrap`, so at a doubled root font-size the `Advanced` trigger
- * and the `Processing metrics` out-link overflow their own `size="block"` boxes. EVERY FIGURE HERE IS
- * `scrollWidth` AGAINST `clientWidth` — the padding box, which is 2px inside the bounding rect these rows report —
- * because a reader reaching for `getBoundingClientRect().width` measures 158 and 256 instead and the pairs do not
- * reproduce: the trigger is 239 against 156, the out-link 312 against 254.
- *
- * AND THE SECOND ARM IS NOT CLEAN, which is what an earlier revision of this comment claimed. `justify-content:
- * center` does split the ink either side — each row's leading icon renders at a negative left, measured −1.36 on the
- * trigger and −25.47 on the out-link — but splitting it does not keep the right half inside 320, and `scrollWidth`
- * hides that because it clips start-side overflow: the real ink is `clientWidth` plus TWICE the right overflow, so
- * 322.7px in the trigger's 156px box and 370.9px in the out-link's 254px one. Driven at 320x480 DPR 2 with the root
- * at 32px, `/settings/server` reads documentElement `scrollWidth` 345 against `clientWidth` 320 — arm one over by
- * 25 — and TWO offenders past the right edge for arm two: `span.disclose-now` at right=321.36 inside the trigger,
- * and `span.encore-chip` (the `internal` Badge) at right=345.48 inside the out-link, which is the element that sets
- * the document's 345. Adding this route would therefore red on both arms, not one.
- *
- * `/stats`' `Party stats · safe to share` row is in the same state on the room scope (287 against 254) and passes
- * above — but by 0.25px, not by principle: 33px of right overflow puts its Badge's right edge at 320.25, inside this
- * file's 0.5px tolerance. Treat it as a row that has not failed YET. Cancelling the nowrap is a change to a variant
- * every surface in the app shares, which is not a settings decision — the two rows and the primitive need one
- * deliberate fix, and then this test.
  */
 test('/settings/you reflows at 320px with the text doubled', async ({ world, page }) => {
 	await world.joinAs(page, 'ReflowYou');
@@ -176,6 +181,22 @@ test('/settings/you reflows at 320px with the text doubled', async ({ world, pag
 		'/settings/you',
 		await measure(page, '/settings/you', '/settings/you', () =>
 			page.locator(SEL.setting('profile-name')).waitFor({ state: 'attached' })
+		)
+	);
+});
+
+/**
+ * THE MACHINE SCOPE, so all three settings routes are measured. Its `Advanced` trigger and `Processing metrics ·
+ * internal` out-link are `size="block"` rows with a trailing note or Badge — the same shape as the room scope's
+ * `Party stats · safe to share` door, which overflowed by 28px while the Button base's nowrap applied to `block`.
+ */
+test('/settings/server reflows at 320px with the text doubled', async ({ world, page }) => {
+	await world.joinAs(page, 'ReflowServer');
+	await page.goto('/settings/server');
+	assertReflows(
+		'/settings/server',
+		await measure(page, '/settings/server', '/settings/server', () =>
+			page.locator(SEL.setting('engine')).waitFor({ state: 'attached' })
 		)
 	);
 });

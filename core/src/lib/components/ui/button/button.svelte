@@ -83,8 +83,13 @@
 			},
 			size: {
 				/* Fills its column — a form's one commit control. A VARIANT rather than a `class="w-full"` at the call site,
-				   because app.css scans only this directory for utilities and one written in a page is emitted nowhere. */
-				block: 'w-full min-h-tap',
+				   because app.css scans only this directory for utilities and one written in a page is emitted nowhere.
+				   A block cannot grow past its column, so at 200% text on a 320px phone its row has to fold instead:
+				   `flex-wrap` drops a trailing Badge or note to its own line rather than centring the excess out of both
+				   sides of the box, and `whitespace-normal` (as on `keycap`) lets a label longer than the box wrap.
+				   Without them p15 measured `/settings` over by 28px and `/settings/server` by 52px. The row gap exists
+				   only once a row has wrapped; the inset and `text-center` keep a wrapped label off the border, centred. */
+				block: 'w-full min-h-tap flex-wrap gap-y-[var(--space-3xs)] whitespace-normal px-[var(--space-sm)] text-center',
 				/* A content-hugging size that clears the 44px tap floor, which no registry size does (they run 24–40px).
 				   Reaching for `sm` silently drops a compliant control to 32px. `min-h-tap` rather than `h-tap`, so the label can
 				   grow the box at 200% text instead of overflowing it. */
