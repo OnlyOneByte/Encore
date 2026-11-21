@@ -295,7 +295,69 @@ function reorderHeld(width: number): Make {
 	};
 }
 
+/** Theo's /queue as the "Now singing" card comes (`arrive`: the room's first song) or goes (`leave`: that song
+ *  skipped, nothing behind it). What is under the card is held where it was drawn and eases to its new place
+ *  (`data-settle`, --motion-base), so nothing jumps. Arriving, the card then fades into the opened slot on the next
+ *  --motion-base; leaving, it is a cut. Each run first puts the room in the state before. CLS in metrics.json also
+ *  counts the fixed dock, whose top edge moves as the strip comes or goes: the root layout's. */
+function queueCard(moment: 'arrive' | 'leave'): Make {
+	return (browser, world, cleanup) => {
+		let maya: Page | undefined;
+		let theo: Page | undefined;
+		const skip = () => maya!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
+		return {
+			name: `phone-queue-card-${moment}`,
+			what:
+				moment === 'arrive'
+					? 'Phone 390x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the "Now singing" card fades into the opened slot (opacity, --motion-base after --motion-base); no jump, never text over text'
+					: 'Phone 390x844: /queue as the last song is skipped — the card goes at once (a cut) and the empty state eases up from where it was (transform, --motion-base), no jump',
+			subject: moment === 'arrive' ? SEL.queueNowCard : 'main > .below',
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!maya || !theo) {
+					const worker = await startFakeWorker(world);
+					cleanup(() => worker.stop());
+					maya = await world.openPhone('Maya');
+					theo = await world.openPhone('Theo');
+					await readySong(world, maya, 'caroline');
+				}
+				const playing = await skip().isVisible();
+				if (moment === 'arrive' && playing) await skip().click();
+				if (moment === 'leave' && !playing) await queueReady(maya, 'caroline');
+				await expect(maya.locator(SEL.npStripTitle)).toHaveCount(moment === 'arrive' ? 0 : 1, { timeout: 10_000 });
+				const page = await asSinger(browser, world, opts, theo);
+				await page.goto('/queue');
+				if (moment === 'arrive') await expect(page.getByText('Nothing queued yet')).toBeVisible();
+				else await expect(page.locator(SEL.queueNowCard)).toContainText(/caroline/i);
+				await page.waitForTimeout(1_000);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				if (moment === 'arrive') {
+					await queueReady(maya!, 'caroline');
+					await page.locator(SEL.queueNowCard).waitFor({ timeout: 10_000 });
+				} else {
+					await skip().click();
+					await page.locator(SEL.queueNowCard).waitFor({ state: 'detached', timeout: 10_000 });
+				}
+			},
+			only: '.now, .below',
+			stripClip: async () => ({ x: 0, y: 0, width: 390, height: 600 }),
+			observe: (page) =>
+				page.evaluate(() => ({
+					card: !!document.querySelector('main > .now'),
+					underTop: document.querySelector('main > .below')?.getBoundingClientRect().top ?? null
+				}))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'phone-queue-card-arrive': queueCard('arrive'),
+	'phone-queue-card-leave': queueCard('leave'),
 	'phone-dock-your-song-390': dockYourSong(390),
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),

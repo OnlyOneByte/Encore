@@ -62,6 +62,9 @@ export class RoomLink {
 	lostName: string | null = null;
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
+	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
+	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". */
+	playbackSynced = false;
 	playback: PlaybackState = {
 		currentEntryId: null,
 		positionSec: 0,
@@ -440,7 +443,10 @@ export class RoomLink {
 			nextSingers.delete(e.singerId);
 			this.singers = nextSingers;
 		}
-		if (e.type === 'playback:state') this.playback = e.state;
+		if (e.type === 'playback:state') {
+			this.playback = e.state;
+			this.playbackSynced = true;
+		}
 		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn(e.cmd);
 		// The WHOLE event, not four unpacked fields: the failure arm needs `requestedBy` as well, and a fifth
 		// positional argument on a five-line signature is how the next one gets dropped on the way in.

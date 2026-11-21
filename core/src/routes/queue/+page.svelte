@@ -30,7 +30,8 @@
 	import { queueCardKind, nextPlayableEntryId, entryPlayable } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import type { QueueStore } from '$lib/stores/queue';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		gripVisible,
 		liveSortTarget,
@@ -98,6 +99,7 @@
 	   polite region below diffs successive lists, and an empty pre-socket list looks exactly like an empty queue, so
 	   without this the first real sync read as N additions. See `QueueStore.synced`. */
 	let queueSynced = $state(false);
+	let playbackSynced = $state(false);
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -119,6 +121,7 @@
 			pendingKind = room.pendingKind;
 			store = room.queue;
 			queueSynced = room.queue?.synced ?? false;
+			playbackSynced = room.playbackSynced;
 		};
 		sync();
 		// A queue op's refusal reaches the guest through the root layout's one `room.onError` sink.
@@ -581,6 +584,52 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
+	/* THE PAGE HOLDS STILL WHEN THE CARD COMES OR GOES. The card is the top of the column, so the room's first song
+	   pushed everything under it down by the card's height in one frame, and the last one leaving pulled it all back
+	   up: CLS about 0.3 each way, with nobody on this phone touching anything. Reserving the slot would leave an empty
+	   card on an idle queue, so `.below` is moved in LAYOUT at once and held where it was by a transform in the same
+	   frame, which a layout shift does not count, then eased home on --motion-base (`data-settle`).
+	   ARRIVING, THE SLOT OPENS FIRST AND THE CARD FADES INTO IT. The content eases down through the card's box, so the
+	   card stays at opacity 0 for that --motion-base and fades in on the next one (`.arrive`): fading both at once drew
+	   two legible layers of text for about 130 ms. LEAVING IS A CUT ON PURPOSE: the card goes with its entry, and an
+	   exit fade would need the card kept in the DOM after its song ended, so the content simply eases up into the gap.
+	   This is the one motion here that has to read geometry: the distance is the card's own height, which no token
+	   names. Keyed on the entry rather than on "is there a card", so a new song's taller or shorter card eases too.
+	   Under reduced motion the CSS does nothing and it is a cut, as every other entrance in the tree is. `nowArrived`
+	   says the card's fade is running: never set under reduced motion, where no `animationend` would clear it, and
+	   cleared by the fade's own end (not a child's, which bubbles), so a later remount starts from false. */
+	let below = $state<HTMLElement | undefined>(undefined);
+	// A primitive, so an emit that re-mints the same entry re-runs neither effect (and forces no layout read).
+	const nowId = $derived(nowEntry?.id ?? null);
+	let belowTopWas: number | undefined;
+	$effect.pre(() => {
+		void nowId;
+		belowTopWas = below?.getBoundingClientRect().top;
+	});
+	/* Rendered by Svelte rather than written onto the node: a selector on an attribute the template never sets is
+	   pruned from the stylesheet as unused. The turn alternates so a second ease restarts without replacing the
+	   subtree, which would drop focus and a drag. */
+	let settle = $state<{ dy: number; turn: 'a' | 'b' } | null>(null);
+	let nowArrived = $state(false);
+	const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
+	let settleFor: string | null | undefined;
+	$effect(() => {
+		const id = nowId;
+		/* NOT ARMED UNTIL THE PAGE HAS BEEN TOLD. The card is keyed on `playback`, whose first `playback:state` lands a
+		   beat after the first `queue:sync` on a hard load (a reload, a tab the phone discarded). A card that turns up
+		   then came WITH the page, not with a song starting, and easing it in held the list where "your card comes to
+		   you" read it as already in reach. */
+		if (!queueSynced || !playbackSynced || settleFor === undefined || !below || belowTopWas === undefined) {
+			settleFor = queueSynced && playbackSynced ? id : undefined;
+			return;
+		}
+		if (id === settleFor) return;
+		if (settleFor === null) nowArrived = !untrack(() => reducedMotion.current);
+		settleFor = id;
+		const dy = belowTopWas - below.getBoundingClientRect().top;
+		if (dy !== 0) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
+	});
+
 	const mediaTitleOf = (id: string) => songDisplay(mediaCatalog.get(id)).title || 'Untitled';
 	// The moved block calls this name; home spelled it `mediaTitle`.
 	const mediaTitle = mediaTitleOf;
@@ -607,7 +656,13 @@
 		{#if nowEntry}
 			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
 			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
-			<div class="now">
+			<div
+				class="now"
+				class:arrive={nowArrived}
+				onanimationend={(ev) => {
+					if (ev.target === ev.currentTarget) nowArrived = false;
+				}}
+			>
 				<p class="now-eyebrow">{NOW_SINGING}</p>
 				<h2 class="now-title">{nowDisplay.title || nowMedia?.title || 'Untitled'}</h2>
 				<p class="now-by">
@@ -686,32 +741,38 @@
 			</div>
 		{/if}
 
-		{#if deckEntry}
-			<OnDeckCard
-				title={deckDisplay.title || deckMedia?.title || 'Untitled'}
-				artist={deckDisplay.artist}
-				profile={deckMedia?.songProfile ?? null}
-				keyShift={deckKey}
-				guidePct={deckGuideDraft ?? deckGuideServerPct}
-				guideAvailable={!!deckMedia && hasGuidingTrack(deckMedia)}
-				timeLeft={minutesLeft(deckRemain)}
-				headsUp={deckHeadsUp}
-				singerColor={me.color}
-				notYetName={deckNotYet ? (singers.get(deckNotYet.singerId)?.displayName ?? 'the next singer') : null}
-				onkey={setDeckKey}
-				onguideinput={(pct) => (deckGuideDraft = pct)}
-				onguidecommit={setDeckGuide}
-				onnotyet={notYet}
-			/>
-		{/if}
-
-		{#if queued.length}
-			<h2 class="grouphead">Queued</h2>
-			<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
-			{#if reorderNote}
-				<p class={['reorder-note', { held: noteIsHold }]}>{reorderNote}</p>
+		<div
+			class="below"
+			bind:this={below}
+			data-settle={settle?.turn}
+			style:--settle-from={settle ? `${settle.dy}px` : undefined}
+		>
+			{#if deckEntry}
+				<OnDeckCard
+					title={deckDisplay.title || deckMedia?.title || 'Untitled'}
+					artist={deckDisplay.artist}
+					profile={deckMedia?.songProfile ?? null}
+					keyShift={deckKey}
+					guidePct={deckGuideDraft ?? deckGuideServerPct}
+					guideAvailable={!!deckMedia && hasGuidingTrack(deckMedia)}
+					timeLeft={minutesLeft(deckRemain)}
+					headsUp={deckHeadsUp}
+					singerColor={me.color}
+					notYetName={deckNotYet ? (singers.get(deckNotYet.singerId)?.displayName ?? 'the next singer') : null}
+					onkey={setDeckKey}
+					onguideinput={(pct) => (deckGuideDraft = pct)}
+					onguidecommit={setDeckGuide}
+					onnotyet={notYet}
+				/>
 			{/if}
-			<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
+
+			{#if queued.length}
+				<h2 class="grouphead">Queued</h2>
+				<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
+				{#if reorderNote}
+					<p class={['reorder-note', { held: noteIsHold }]}>{reorderNote}</p>
+				{/if}
+				<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
 			what this page shipped first and what broke reordering. The reorder arithmetic is ONE INDEX SPACE: `i`,
 			`dragFrom`, `dragTo` and `count: queued.length` all index `queued`, and `measureRowBoxes()` reads `.qrow`
 			in DOM ORDER — a class BOTH card kinds carry. Rendering ready rows in one section and cooking rows in a
@@ -723,17 +784,17 @@
 			shape: rotation order is one order, so `seq` must number every row in it. Splitting the list made the
 			cooking card show a sparkle while the ready rows numbered 1..n, and the printed order then contradicted
 			the rotation the server keeps. -->
-			{#each queued as e, i (e.id)}
-				{@const s = singers.get(e.singerId)}
-				{@const media = mediaCatalog.get(e.mediaId)}
-				{@const live = mediaStatus.get(e.mediaId)}
-				{@const card = queueCardKind(media, live)}
-				<!-- THE GATE IS "NOT PLAIN", NEVER AN ENUMERATION OF KINDS. It read `card === 'processing' || card ===
+				{#each queued as e, i (e.id)}
+					{@const s = singers.get(e.singerId)}
+					{@const media = mediaCatalog.get(e.mediaId)}
+					{@const live = mediaStatus.get(e.mediaId)}
+					{@const card = queueCardKind(media, live)}
+					<!-- THE GATE IS "NOT PLAIN", NEVER AN ENUMERATION OF KINDS. It read `card === 'processing' || card ===
 				'failed'` while those were the only two, and a FIFTH kind added later would fall through this `{:else}` to
 				a plain QueueRow — i.e. the bug would survive its own fix while a Playwright assertion on `.proc` kept
 				passing. `plain` is the only kind QueueRow owns, so that is the term to test. -->
-				{#if card !== 'plain'}
-					<!-- THE SAME SIX REORDER PROPS THE ROW BELOW GETS, and they are six rather than one because this route
+					{#if card !== 'plain'}
+						<!-- THE SAME SIX REORDER PROPS THE ROW BELOW GETS, and they are six rather than one because this route
 					used to pass `reorderable` ALONE — a prop ProcessingCard reads only as an extra term in its
 					actions-cluster gate, never as the handle's gate, which is `grip`. So the card rendered no handle and
 					wired no `ongripdown`/`onnudge`, and a cooking song could not be moved by drag or by arrow key while
@@ -749,86 +810,87 @@
 					height, so dragging a tall cooking card shifts its shorter neighbours by a cooking-card height. The
 					committed target is unaffected — `liveSortTarget` counts measured row CENTRES — so this is in-gesture
 					appearance only. The reverse case already shipped, since `shift` was always passed here. -->
-					<!-- `status`/`pct` ARE HANDED OVER AS THEY ARE, with no invented default. This block used to open with
+						<!-- `status`/`pct` ARE HANDED OVER AS THEY ARE, with no invented default. This block used to open with
 					`{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed', pct: 0 }}`, which was dead code only
 					because every non-plain kind then required a live status — the moment one of them stopped requiring
 					one, that fallback would have silently handed every stranded turn the ran-and-failed copy. The card
 					reads these two on its processing kind alone and documents what an absent status means there. -->
-					<ProcessingCard
-						kind={card}
-						seq={liveSeq(i, dragFrom, dragTo)}
-						title={mediaTitleOf(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						singerAway={awaySingers.has(e.singerId)}
-						status={live?.status}
-						pct={live?.pct ?? 0}
-						etaSec={live?.etaSec}
-						pending={pendingKind.get(e.id) ?? null}
-						onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
-						onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
-						grip={gripsVisible && e.id !== pinnedId}
-						gripId={e.id}
-						moving={movingId === e.id && dragging}
-						dragY={movingId === e.id && dragging ? dragY : 0}
-						reorderable={gripsVisible}
-						shift={rowShift(i, dragFrom, dragTo)}
-						ongripdown={(ev) => onGripPointerDown(e, ev)}
-						onnudge={(delta) => nudge(e.id, delta)}
-					/>
-				{:else}
-					<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
+						<ProcessingCard
+							kind={card}
+							seq={liveSeq(i, dragFrom, dragTo)}
+							title={mediaTitleOf(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							singerAway={awaySingers.has(e.singerId)}
+							status={live?.status}
+							pct={live?.pct ?? 0}
+							etaSec={live?.etaSec}
+							pending={pendingKind.get(e.id) ?? null}
+							onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
+							onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
+							grip={gripsVisible && e.id !== pinnedId}
+							gripId={e.id}
+							moving={movingId === e.id && dragging}
+							dragY={movingId === e.id && dragging ? dragY : 0}
+							reorderable={gripsVisible}
+							shift={rowShift(i, dragFrom, dragTo)}
+							ongripdown={(ev) => onGripPointerDown(e, ev)}
+							onnudge={(delta) => nudge(e.id, delta)}
+						/>
+					{:else}
+						<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
 					places the row, so a number never corrects itself when the patch lands. -->
-					<QueueRow
-						seq={liveSeq(i, dragFrom, dragTo)}
-						title={mediaTitleOf(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						mine={e.singerId === me?.id}
-						singerAway={awaySingers.has(e.singerId)}
-						up={e.id === nextPlayableId}
-						subtitle={e.id === deckEntry?.id
-							? ''
-							: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
-						pending={pendingKind.get(e.id) ?? null}
-						removable={e.singerId === me?.id}
-						grip={gripsVisible && e.id !== pinnedId}
-						gripSlot={gripsVisible && e.id === pinnedId}
-						gripId={e.id}
-						moving={movingId === e.id && dragging}
-						dragY={movingId === e.id && dragging ? dragY : 0}
-						shift={rowShift(i, dragFrom, dragTo)}
-						ongripdown={(ev) => onGripPointerDown(e, ev)}
-						onnudge={(delta) => nudge(e.id, delta)}
-						onremove={() => store?.removeEntry(e.id)}
-					/>
-				{/if}
-			{/each}
-		{:else if !queueSynced}
-			<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
+						<QueueRow
+							seq={liveSeq(i, dragFrom, dragTo)}
+							title={mediaTitleOf(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							mine={e.singerId === me?.id}
+							singerAway={awaySingers.has(e.singerId)}
+							up={e.id === nextPlayableId}
+							subtitle={e.id === deckEntry?.id
+								? ''
+								: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
+							pending={pendingKind.get(e.id) ?? null}
+							removable={e.singerId === me?.id}
+							grip={gripsVisible && e.id !== pinnedId}
+							gripSlot={gripsVisible && e.id === pinnedId}
+							gripId={e.id}
+							moving={movingId === e.id && dragging}
+							dragY={movingId === e.id && dragging ? dragY : 0}
+							shift={rowShift(i, dragFrom, dragTo)}
+							ongripdown={(ev) => onGripPointerDown(e, ev)}
+							onnudge={(delta) => nudge(e.id, delta)}
+							onremove={() => store?.removeEntry(e.id)}
+						/>
+					{/if}
+				{/each}
+			{:else if !queueSynced}
+				<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
 			said "Nothing queued yet" over a full queue for that whole window on every cold load. -->
-			<SkeletonRows count={4} label="Loading the queue…" />
-		{:else}
-			<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
+				<SkeletonRows count={4} label="Loading the queue…" />
+			{:else}
+				<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
 			actually running: a song playing and nobody queued behind it. That is the moment the page most needs to
 			ask for a song. Gated on `queued` alone now, because a cooking song IS a queued entry and renders above. -->
-			<Empty.Root>
-				<Empty.Content>
-					<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
-					{#if nowEntry}
-						<Empty.Title>Nobody's up next</Empty.Title>
-						<Empty.Description>
-							{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
-						</Empty.Description>
-					{:else}
-						<Empty.Title>Nothing queued yet</Empty.Title>
-						<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
-					{/if}
-					<Button href="/" size="block">Find a song</Button>
-				</Empty.Content>
-			</Empty.Root>
-		{/if}
+				<Empty.Root>
+					<Empty.Content>
+						<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
+						{#if nowEntry}
+							<Empty.Title>Nobody's up next</Empty.Title>
+							<Empty.Description>
+								{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
+							</Empty.Description>
+						{:else}
+							<Empty.Title>Nothing queued yet</Empty.Title>
+							<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
+						{/if}
+						<Button href="/" size="block">Find a song</Button>
+					</Empty.Content>
+				</Empty.Root>
+			{/if}
+		</div>
 	</main>
 
 	<!-- ONE polite region for both the queue's own announcements and the reorder results, `aria-atomic` so a fast
@@ -864,6 +926,45 @@
 		box-shadow:
 			var(--shadow-sm),
 			inset 0 1px 0 var(--edge-hi);
+	}
+
+	/* Everything under the card, in one box so one transform can hold it still. Same column rhythm as `main`. */
+	.below {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+
+	/* Two identical names, so writing the other one restarts the ease. See `settleFor` in the script. */
+	@media (prefers-reduced-motion: no-preference) {
+		.below[data-settle='a'] {
+			animation: settle-a var(--motion-base) ease-out;
+		}
+		.below[data-settle='b'] {
+			animation: settle-b var(--motion-base) ease-out;
+		}
+		/* Two --motion-base long, held at 0 for the first (the settle's), so the card is invisible while the content
+		   passes through its box. A hold inside the keyframes rather than an `animation-delay`: one animation that
+		   starts with the settle, rather than one whose start event fires a --motion-base later. */
+		.now.arrive {
+			animation: arrive calc(var(--motion-base) * 2) ease-out;
+		}
+	}
+	@keyframes settle-a {
+		from {
+			transform: translateY(var(--settle-from));
+		}
+	}
+	@keyframes settle-b {
+		from {
+			transform: translateY(var(--settle-from));
+		}
+	}
+	@keyframes arrive {
+		from,
+		50% {
+			opacity: 0;
+		}
 	}
 
 	/* The SECTION register, matching `.grouphead` — this is a label over a block, not a field label. */
