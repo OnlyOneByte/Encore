@@ -18,6 +18,7 @@
 	import type { Media, PublicSinger, QueueEntry } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
+	import type { RoomStatus } from '$lib/stores/room';
 	import { originalKeyLabel, songDisplay } from '$lib/contract';
 	import {
 		artistFacetsOf,
@@ -29,6 +30,7 @@
 		type LibrarySort
 	} from '$lib/library-browse';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
+	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
@@ -40,6 +42,7 @@
 	import { rememberedKey } from '$lib/stores/remembered-key';
 
 	let me = $state<PublicSinger | null>(null);
+	let status = $state<RoomStatus>('checking');
 	/* `$state.raw`, NOT `$state`, for the three mirrored collections: `sync()` REASSIGNS each one wholesale from the
 	   room link and nothing here ever mutates them, so deep reactivity buys nothing and costs a proxy per object.
 	   `library` is the whole ready catalog and every Media carries nested `songProfile` and `lyricsCandidates`, so
@@ -62,6 +65,7 @@
 	onMount(() => {
 		const sync = () => {
 			me = room.me;
+			status = room.status;
 			library = room.library;
 			libraryTags = room.libraryTags;
 			libraryLoaded = room.libraryLoaded;
@@ -485,8 +489,14 @@
 			{/if}
 		</main>
 	</div>
-{:else}
+{:else if status === 'not-joined'}
 	<JoinLanding />
+{:else}
+	<!-- Not yet known to be in the room: the tab's own grey rows, never the join form. See `/queue`'s gate. -->
+	<div class="library-page">
+		<PageHeader title="Your library" icon="library" />
+		<main><RoomPending unreachable={status === 'unreachable'} /></main>
+	</div>
 {/if}
 
 <style>

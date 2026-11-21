@@ -6,6 +6,7 @@
 	import { SINGER_COLORS, songDisplay, type PlayerCommand } from '$lib/contract';
 	import { nextPlayableEntryId } from '$lib/readiness';
 	import { room } from '$lib/stores/room';
+	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
 	import { buzzOnce } from '$lib/on-deck';
@@ -64,7 +65,10 @@
 	const tapTarget = () => transportTarget(target, performance.now());
 	let canStart = $state(false);
 	// For the dock's offline cue — see the banner in the markup for why it lives here and not on a route.
-	let connected = $state(true);
+	let offline = $state(false);
+	let status = $state<RoomStatus>('checking');
+	let placeholder = $state(false);
+	let synced = $state(false);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
 	/* The row is for the AUDIENCE, and the room can turn it off. On the singer's own phone it RESTS rather than
@@ -125,7 +129,10 @@
 			   `nextPlayableEntryId` is the SAME predicate the server's `nextPlayable` uses, so the strip can no longer
 			   promise a turn the server will skip. */
 			queueCount = room.entries.filter((e) => e.status === 'queued').length;
-			connected = room.connected;
+			offline = room.offline;
+			status = room.status;
+			placeholder = room.placeholder;
+			synced = room.queue?.synced ?? false;
 			reactRow = !!entry && room.settings.room.tvReactions;
 			canReact = reactRow && entry?.singerId !== me;
 			canStart =
@@ -227,8 +234,23 @@
 		if (entryId) transport({ cmd, entryId });
 	}
 
-	// A guest on the landing page has no room to be a remote for.
-	const showChrome = $derived(isPhoneSurface && me !== null);
+	/* A guest on the landing page has no room to be a remote for. A joined phone gets the dock WHOLE: once the room's
+	   first sync has said what is in the rotation, so the strip is in it from the first frame instead of growing the
+	   fixed dock under the guest's thumb (CLS 0.0057 a load, the dock's only shift), or once the link is plainly down,
+	   so "Reconnecting…" still shows on a network that never lets the socket up. */
+	const showChrome = $derived(isPhoneSurface && status === 'joined' && (synced || offline));
+	/* NOTHING ON A JOIN SCREEN until the link has an answer or PENDING_GRACE_MS has passed: a blank first frame is not a
+	   layout shift, and a joined shell that is then pulled away for the join screen was (CLS 0.055). ONLY the three
+	   tabs that branch on the link's status: every other page (`/stats`, `/settings`, `/song/…`) renders the same for
+	   either answer and ships its content in the server's HTML, which a blanket gate emptied. */
+	const JOIN_SCREENS = ['/', '/queue', '/library'];
+	const showPage = $derived(
+		!isPhoneSurface ||
+			!JOIN_SCREENS.includes(page.url.pathname) ||
+			status === 'joined' ||
+			status === 'not-joined' ||
+			placeholder
+	);
 
 	/* THE SINGLE WRITER OF --dock-h, the bottom chrome's MEASURED height, which every scrolling column reserves in
 	   normal flow. Measured rather than derived from tokens, and app.css records the attempt that failed: a tab
@@ -353,7 +375,9 @@
 />
 
 <div class="app-shell">
-	{@render children()}
+	{#if showPage}
+		{@render children()}
+	{/if}
 </div>
 
 {#if showChrome}
@@ -381,7 +405,7 @@
 			THE OTHER HALF OF THAT SPLIT IS `transport()` ABOVE, which says the thing this bar cannot: not "the
 			link is down" but "the command you just issued was lost". Those are different questions, and this bar
 			can only ever answer the first. -->
-		{#if !connected}
+		{#if offline}
 			<p class="offline-bar" role="status" aria-live="polite">
 				<Icon name="warning" /> Reconnecting…
 			</p>
