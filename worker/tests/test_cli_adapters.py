@@ -920,3 +920,4 @@ def test_a_thread_that_cannot_start_kills_the_child_and_frees_the_slot(
         cli.run(["sleep", "30"], cancel=token)
     assert token.wait_idle(0.0) is True, "a run whose thread never started kept its slot"
     assert children and children[0].poll() is not None, "the child outlived the failed run"
+    assert children[0].returncode == -signal.SIGKILL, "the child ran to its end instead of being killed"
