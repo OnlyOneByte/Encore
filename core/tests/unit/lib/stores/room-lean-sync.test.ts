@@ -73,9 +73,9 @@ async function connected() {
 	};
 }
 
-const syncOf = (media: Media[]): ServerEvent => ({
+const syncOf = (media: Media[], rev = 1): ServerEvent => ({
 	type: 'queue:sync',
-	rev: 1,
+	rev,
 	entries: [{ id: 'e1', mediaId: 'q', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1 }],
 	media
 });
@@ -88,6 +88,20 @@ test('search -> library -> lean sync: titles of rows the sync does not carry sti
 	expect(link.titleOf('hit')).toBe('Sweet Caroline');
 	expect(link.titleOf('lib')).toBe('Library Song');
 	expect(link.titleOf('q')).toBe('Queued Song');
+});
+
+test('the catalog only grows: a raw hit survives a sync, a status event, a library refresh and another sync', async () => {
+	// The search page drops an open result whose id leaves the catalog, reading that as "deleted" (#songGone). That
+	// is only true while nothing else ever removes a row, which is what this pins.
+	const { link, deliver } = await connected();
+	const hits = [song('raw', 'Raw Hit', { stemStatus: 'none' }), song('ready', 'Ready Hit')];
+	link.mergeMedia(hits); // what the search tab does with its answer
+	deliver(syncOf([song('q', 'Queued Song')]));
+	deliver({ type: 'media:status', mediaId: 'raw', status: 'queued', pct: 10 });
+	await link.refreshLibrary();
+	deliver(syncOf([song('q', 'Queued Song')], 2));
+
+	for (const id of ['raw', 'ready', 'lib', 'q']) expect(link.mediaCatalog.has(id), id).toBe(true);
 });
 
 test("a sync's copy of a song REPLACES the phone's older copy of it", async () => {

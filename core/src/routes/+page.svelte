@@ -50,7 +50,8 @@
 			me = room.me;
 			mediaCatalog = room.mediaCatalog;
 			// Every search row was merged into the catalog, so one missing from it is a song the room refused as
-			// deleted (`#songGone`): the open answer stops offering it. Reassigned only when something left.
+			// deleted (`#songGone`): the open answer stops offering it. Reassigned only when something left. Relies on the
+			// catalog never losing a row any other way, pinned by room-lean-sync.test.ts "the catalog only grows".
 			const live = (list: Media[]) => list.filter((m) => mediaCatalog.has(m.id));
 			if (live(readyResults).length !== readyResults.length) readyResults = live(readyResults);
 			if (live(rawResults).length !== rawResults.length) rawResults = live(rawResults);
