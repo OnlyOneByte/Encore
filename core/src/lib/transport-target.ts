@@ -5,8 +5,10 @@
 // the first skip, and a second tap after that named the next song and took the next singer's turn too (review r2,
 // 974-M2: two real taps 40-80 ms apart took two songs). So for a short settle window after the song on the strip
 // changes, the transport keeps naming the song that was there before: the server drops the tap and the phone says
-// so ("Already skipped. Tap again to skip this one too.", `$lib/phrasing/stale-phrasing`). A deliberate skip of the
-// new song inside that window needs one more tap.
+// so ("That song just ended. Tap again to skip this one.", `$lib/phrasing/stale-phrasing`). The window runs from the
+// strip's change, not from that notice, so a re-tap within the first second of the change is dropped again (the same
+// notice updates in place) and only a tap after it skips the new song. Restarting the window on a stale reply instead
+// would let a three-tap mash take the next singer's song (review of #985, nit 1).
 
 /** Long enough for two people reaching for skip at the end of a bad song; short of the TV's 2.5 s intro card. */
 export const SETTLE_MS = 1000;
