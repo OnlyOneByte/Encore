@@ -449,3 +449,25 @@ test('`synced` separates "no list yet" from "an empty list": false fresh and aft
 	expect(store.synced).toBe(true);
 	expect(store.entries).toHaveLength(0);
 });
+
+test('reorderPending is true while THIS phone`s move or Not yet is unconfirmed, and not for an add or a key', () => {
+	// Proposal 14: a change of On deck while one is in flight is this phone's own doing, so it says nothing.
+	const { store } = makeStore();
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 1,
+		entries: [
+			{ id: 'a', mediaId: 'm1', singerId: 'me', status: 'queued', rotationSeq: 0, addedAt: 1 },
+			{ id: 'b', mediaId: 'm2', singerId: 'ana', status: 'queued', rotationSeq: 1, addedAt: 2 }
+		]
+	});
+	store.addSong('m3');
+	store.setEntryPrefs('a', -1, null);
+	expect(store.reorderPending).toBe(false);
+	store.notYet('a', 1);
+	expect(store.reorderPending).toBe(true);
+	const fresh = makeStore().store;
+	fresh.onServerEvent({ type: 'queue:sync', rev: 1, entries: store.entries });
+	fresh.moveToIndex('b', 0);
+	expect(fresh.reorderPending).toBe(true);
+});
