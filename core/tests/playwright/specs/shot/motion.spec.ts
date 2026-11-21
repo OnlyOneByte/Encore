@@ -14,7 +14,8 @@ import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
-import { captureMotion, type MotionScenario, type RealtimeReport } from '../../world/motion';
+import { captureMotion, type MotionScenario } from '../../world/motion';
+import type { RealtimeReport } from '../../world/motion-realtime';
 import { burst, putRoom, stage } from '../../world/reactions';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { join } from 'node:path';
@@ -583,6 +584,12 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 				const realtime = (result.metrics.realtime ?? {}) as Record<string, RealtimeReport>;
 				for (const [run, r] of Object.entries(realtime)) {
 					expect(r.travelPx.each.length, `${name} ${run}: no \`each\` element was on screen`).toBeGreaterThan(0);
+					// A throttled run whose busy loop did not slow down ran at full speed: it proves nothing about load.
+					if (r.throttle > 1)
+						expect(
+							r.throttleRatio,
+							`${name} ${run}: the ${r.throttle}× CPU throttle did not take`
+						).toBeGreaterThanOrEqual(r.throttle / 3);
 					if (run !== 'realtime-late') continue;
 					expect(r.stall, `${name} ${run}: the stall never ran`).not.toBeNull();
 					// A stall at the mount that did not make a first frame late did not hold the thread.

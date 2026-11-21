@@ -1,6 +1,8 @@
-// The real-time pass's numbers and its GIF budget (world/motion.ts), from hand-built traces: what `ui:review`
-// prints for a timing row has to mean what docs/UI-CHECKLIST.md says it means.
+// The real-time pass's numbers and its GIF budget (world/motion-realtime.ts), from hand-built traces: what
+// `ui:review` prints for a timing row has to mean what docs/UI-CHECKLIST.md says it means.
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import {
 	analyseRealtime,
 	encodeRealtimeGif,
@@ -8,7 +10,7 @@ import {
 	MAX_FILE_BYTES,
 	type RawFrame,
 	type RealtimeTrace
-} from '../../playwright/world/motion';
+} from '../../playwright/world/motion-realtime';
 
 /** [id, l, t, r, b, opacity]: a 40 px disc at `top` in the lane. */
 const disc = (id: number, top: number, op = 1) => [id, 100, top, 140, top + 40, op];
@@ -21,10 +23,29 @@ const trace = (frames: RealtimeTrace['frames'], extra: Partial<RealtimeTrace> = 
 	t0: 0,
 	...extra
 });
-const run = { label: 'realtime-late 400', throttle: 1, stall: null, windowMs: 1000, screencastFrames: 5 };
+const run = {
+	label: 'realtime-late 400',
+	throttle: 1,
+	throttleRatio: null,
+	stall: null,
+	windowMs: 1000,
+	screencastFrames: 5
+};
 const analyse = (tr: RealtimeTrace) => analyseRealtime(tr, run);
 
 describe('analyseRealtime', () => {
+	test('touching is not an overlap; 1 px in is', () => {
+		const touching = analyse(trace([{ t: 16, e: [disc(1, 100), disc(2, 140)], a: [] }]));
+		expect([touching.overlap.frames, touching.minGapPx]).toEqual([0, 0]);
+		const into = analyse(trace([{ t: 16, e: [disc(1, 100), disc(2, 139)], a: [] }]));
+		expect([into.overlap.frames, into.overlap.worstPx, into.minGapPx]).toEqual([1, 1, -1]);
+	});
+
+	test('the measured throttle is kept, to a tenth', () => {
+		const r = analyseRealtime(trace([]), { ...run, throttle: 6, throttleRatio: 5.6123 });
+		expect([r.throttle, r.throttleRatio]).toEqual([6, 5.6]);
+	});
+
 	test('two visible discs 10 px apart: no overlap, a 10 px gap', () => {
 		const r = analyse(trace([{ t: 16, e: [disc(1, 100), disc(2, 150)], a: [] }]));
 		expect(r.overlap.frames).toBe(0);
@@ -116,7 +137,30 @@ const frame = (ms: number, seed: number, size = 24): RawFrame => {
 	return { ms, width: size, height: size, data };
 };
 
+/** Every frame's delay in ms, from the GIF's Graphic Control Extensions (21 F9 04, flags, u16 LE centiseconds). */
+function delaysMs(gif: Buffer): number[] {
+	const out: number[] = [];
+	for (let i = 0; i + 5 < gif.length; i++)
+		if (gif[i] === 0x21 && gif[i + 1] === 0xf9 && gif[i + 2] === 0x04) out.push(gif.readUInt16LE(i + 4) * 10);
+	return out;
+}
+
 describe('encodeRealtimeGif', () => {
+	test('each frame is held until the next one was painted; the last is held 800 ms', () => {
+		const a = frame(0, 1);
+		// 0 and 40 are the same picture, so the first frame lasts until 120; then 120 -> 300.
+		const out = encodeRealtimeGif([a, { ...a, ms: 40 }, frame(120, 2), frame(300, 3)], 'x.gif');
+		expect(delaysMs(out.gif)).toEqual([120, 180, 800]);
+	});
+
+	test('halved, each kept frame also carries the dropped one after it', () => {
+		const frames = Array.from({ length: 6 }, (_, i) => frame(i * 40, i));
+		const full = encodeRealtimeGif(frames, 'x.gif', Infinity);
+		expect(delaysMs(full.gif)).toEqual([40, 40, 40, 40, 40, 800]);
+		const half = encodeRealtimeGif(frames, 'x.gif', full.gif.length - 1);
+		expect(delaysMs(half.gif)).toEqual([80, 80, 800]);
+	});
+
 	test('identical neighbours become one frame', () => {
 		const a = frame(0, 1);
 		const out = encodeRealtimeGif([a, { ...a, ms: 40 }, { ...a, ms: 80 }, frame(120, 2)], 'x.gif');
@@ -148,4 +192,18 @@ describe('pickStripFrames', () => {
 	test('the frames nearest the first overlaps are added', () => {
 		expect(pickStripFrames(ms, [504], 4)).toEqual([0, 33, 50, 66, 99]);
 	});
+});
+
+test('publish-media refuses --slow with --realtime before touching anything', () => {
+	const script = join(import.meta.dir, '../../playwright/ui-review-media.ts');
+	for (const order of [
+		['--slow', '--realtime'],
+		['--realtime=late', '--slow']
+	]) {
+		const r = spawnSync('bun', [script, 'publish', '1', ...order, 'row'], { encoding: 'utf8' });
+		expect([r.status, r.stderr.trim()]).toEqual([
+			1,
+			'ui-review-media: --slow and --realtime pick different runs; use one of them'
+		]);
+	}
 });

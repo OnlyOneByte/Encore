@@ -18,7 +18,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { MAX_FILE_BYTES, overCap } from './world/motion';
+import { MAX_FILE_BYTES, overCap } from './world/motion-realtime';
 
 const BRANCH = 'ui-review-media';
 const REPO_URL = 'https://github.com/OnlyOneByte/Encore';
@@ -89,16 +89,23 @@ function publish(args: string[], url: string) {
 	let gif = 'clip.gif';
 	let strip = 'filmstrip.png';
 	const rows: string[] = [];
+	const modes = new Set<string>();
 	while (args.length) {
 		const a = args.shift()!;
 		if (a === '--dir') dir = segment('--dir', args.shift() ?? '');
-		else if (a === '--slow') gif = 'clip-slow4x.gif';
+		else if (a === '--slow') {
+			gif = 'clip-slow4x.gif';
+			modes.add('--slow');
+		}
 		// A timing row's real-time run INSTEAD of its seek run: still two files per row.
 		else if (a === '--realtime' || a === '--realtime=late') {
 			const run = a === '--realtime' ? 'realtime' : 'realtime-late';
 			[gif, strip] = [`${run}.gif`, `filmstrip-${run}.png`];
+			modes.add('--realtime');
 		} else rows.push(segment('row', a));
 	}
+	// The slow GIF is the seek run's: with the real-time strip it would publish a pair from two different runs.
+	if (modes.size > 1) throw new Refused('--slow and --realtime pick different runs; use one of them');
 	const out = resolve(process.env.MOTION_OUT ?? 'tests/playwright/.artifacts/motion');
 	if (!existsSync(out)) throw new Refused(`${out} does not exist: run bun run ui:review first, or set MOTION_OUT`);
 	// With no rows named, every row that has this GIF: `--realtime` alone means the rows that opted in.
