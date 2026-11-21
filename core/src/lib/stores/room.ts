@@ -355,7 +355,7 @@ export class RoomLink {
 		clearScar(mediaId);
 		// And its live status, whichever refusal brought us here: a `failed` left behind would show a re-added copy
 		// of the song as failed until a new status arrived.
-		this.mediaStatus = new Map([...this.mediaStatus].filter(([id]) => id !== mediaId));
+		this.clearMediaStatus(mediaId);
 		this.#emit();
 		if (tell) this.#fail("That song isn't in the library any more.");
 	}
@@ -369,8 +369,8 @@ export class RoomLink {
 		this.mediaCatalog = next;
 		this.#emit();
 	}
-	/** Only for ids the catalog does NOT already hold — used to re-apply failed-process scars after a queue:sync
-	 * without clobbering a fresher server copy of the same song. */
+	/** Only for ids the catalog does NOT already hold, so a scar seeded on connect or a failure's own row never
+	 * clobbers a fresher server copy. */
 	mergeMissingMedia(list: Media[]): void {
 		if (!list.length) return;
 		const next = new Map(this.mediaCatalog);

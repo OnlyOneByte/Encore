@@ -247,3 +247,21 @@ test('a failed song refused as deleted stays gone after the next sync: no scar p
 	// And a reload would not seed it back either.
 	expect(activeScars()).toEqual([]);
 });
+
+test('a reload keeps a failed song: its stored scar is seeded on connect and survives the syncs after it', async () => {
+	// The library endpoint never returns a failed song and a sync only adds rows, so the merge on connect is the ONLY
+	// thing that brings this row back after a reload.
+	g.localStorage = memoryStorage();
+	const first = await connected();
+	first.link.mergeMedia([song('sc', 'Scarred Song', { stemStatus: 'queued' })]);
+	first.deliver({ type: 'media:status', mediaId: 'sc', status: 'failed', pct: 0 }); // the scar is recorded
+	first.link.close();
+
+	const { link, deliver } = await connected(); // the reload: a new link on the same storage
+	deliver(syncOf([song('q', 'Queued Song')]));
+	await link.refreshLibrary();
+	deliver(syncOf([song('q', 'Queued Song')], 2));
+
+	expect(link.titleOf('sc')).toBe('Scarred Song');
+	expect(link.mediaStatus.get('sc')?.status).toBe('failed');
+});
