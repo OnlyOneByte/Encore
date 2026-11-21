@@ -28,8 +28,16 @@ const CUTS = new Set(['tv-song-intro']);
 
 /** A track longer than the 30 s heads-up window, so the on-deck row can cross it. The fixture's own are 8 s. */
 const LONG_TRACK = { file: 'long-take.wav', seconds: 36, hz: [196, 246.94, 293.66] };
+/** Two more songs, so each of the bar row's five pages (seek, three live, reduced) makes a song of its own. */
+const BAR_TRACKS = [
+	{ file: 'open-road.wav', seconds: 8, hz: [196, 246.94, 293.66] },
+	{ file: 'night-drive.wav', seconds: 8, hz: [220, 261.63, 329.63] }
+];
 /** Rows that boot their core with more than the demo library. */
-const LIBRARY: Record<string, typeof DEMO_LIBRARY> = { 'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK] };
+const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
+	'phone-on-deck-heads-up': [...DEMO_LIBRARY, LONG_TRACK],
+	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS]
+};
 
 let joins = 0;
 
@@ -124,6 +132,21 @@ function dockYourSong(width: number): Make {
 				})
 		};
 	};
+}
+
+/** Until media `id` has its instrumental, as `readySong` waits, without asking for it to be made. */
+async function awaitReady(phone: Page, id: string): Promise<void> {
+	await expect
+		.poll(
+			async () => {
+				const body = (await phone.request.get('/api/library').then((r) => r.json())) as {
+					library: { id: string; instrumentalRef?: string | null }[];
+				};
+				return body.library.some((m) => m.id === id && !!m.instrumentalRef);
+			},
+			{ timeout: 60_000, message: `${id} never reached ready` }
+		)
+		.toBe(true);
 }
 
 const SCENARIOS: Record<string, Make> = {
@@ -325,9 +348,12 @@ const SCENARIOS: Record<string, Make> = {
 	 *  figures (proposal 05): the fill only ever grows. One song is made first so the card has a time to show; each
 	 *  run then sings a fresh song, so all three passes catch a bar still filling. */
 	'phone-processing-bar': (browser, world, cleanup) => {
-		const songs = ['caroline', 'bohemian', 'prayer'];
+		const songs = ['caroline', 'bohemian', 'prayer', 'open-road', 'night-drive'];
 		let run = 0;
 		let ready = false;
+		let prev: string | undefined; // the last pass's media id
+		let song = '';
+		const ownCard = (page: Page) => page.locator(SEL.processing).filter({ hasText: new RegExp(song, 'i') });
 		return {
 			name: 'phone-processing-bar',
 			what: 'Phone 390x844: the processing bar taking one real step ("NN% · under a minute"), keepalive zeros every 250 ms between the figures, the fill growing left to right (--motion-base)',
@@ -356,9 +382,12 @@ const SCENARIOS: Record<string, Make> = {
 					baseURL: world.baseURL
 				});
 				const page = await ctx.newPage();
-				const song = songs[run++ % songs.length]!;
+				song = songs[run++ % songs.length]!;
 				await world.joinAs(page, `Bar${run}`);
-				await world.awaitDemoTrack(song);
+				// The last pass's song finishes first: its card turning into a ready row above this one would
+				// shift the layout mid-capture, and it would be a second bar on screen.
+				if (prev) await awaitReady(page, prev);
+				prev = (await world.awaitDemoTrack(song)).id;
 				await openBrowseFromHome(page);
 				await page.locator(SEL.search).fill(song);
 				await page
@@ -368,14 +397,21 @@ const SCENARIOS: Record<string, Make> = {
 					.first()
 					.click();
 				await openQueue(page);
-				await expect(page.locator(SEL.processing).first()).toContainText(/\d+% · under a minute/, { timeout: 30_000 });
+				await expect(page.locator(SEL.processing)).toHaveCount(1);
+				await expect(ownCard(page)).toContainText(/\d+% · under a minute/, { timeout: 30_000 });
+				// Later passes' cards sit below the earlier songs, under the fixed dock: bring this one to the middle.
+				await ownCard(page).evaluate((el) => el.scrollIntoView({ block: 'center' }));
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
 			},
-			// The worker's next figure is the trigger; it lands within one `slowMs`.
-			trigger: async () => {},
+			// The worker's next figure is the trigger; it lands within one `slowMs`. Waiting for it is what gives the
+			// reduced pass's short burst a jump to show.
+			trigger: async (page) => {
+				const readout = ownCard(page).locator('.stage span:last-child');
+				await expect(readout).not.toHaveText((await readout.textContent()) ?? '', { timeout: 8_000 });
+			},
 			only: '[data-slot="progress-indicator"]',
-			stripClip: async (page) => (await page.locator(SEL.processing).first().boundingBox()) ?? undefined,
+			stripClip: async (page) => (await ownCard(page).boundingBox()) ?? undefined,
 			observe: (page) =>
 				page.evaluate(() => ({
 					readout: document.querySelector('.proc .stage span:last-child')?.textContent?.trim() ?? null
