@@ -8,6 +8,7 @@
 import {
 	DEFAULT_EFFECTIVE_SETTINGS,
 	heldEntryId,
+	mediaStagePosition,
 	singHistoryFrom,
 	songDisplay,
 	type ServerEvent,
@@ -110,8 +111,15 @@ export class RoomLink {
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string, kind: 'error' | 'info') => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
+	/** Ids whose live status is only a scar's stand-in, with nothing heard from the server since. The server's own
+	 * word (a live event, or /api/library's seed) replaces it: a scar is this device's memory of an attempt, and
+	 * a Try again after the TTL left it saying "failed" over a job the server calls in flight and unservable. */
+	#fromScar = new Set<string>();
+	/** During a re-connect's library re-read: the songs a frame (or this phone's own act) has spoken for since the
+	 *  socket came back. The snapshot is older than those, so the seed leaves them alone. */
+	#heardSinceReconnect: Set<string> | null = null;
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
-	/** The socket has been up once, so the next `connected` edge is a RE-connect. */
+	/** The socket has been up once, so the next `connected` edge is a RE-connect that may have missed frames. */
 	#wasConnected = false;
 
 	/** Notified after every change to the fields above. Returns a disposer. */
@@ -229,9 +237,15 @@ export class RoomLink {
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 			getLastRev: () => this.queue?.rev ?? 0,
 			onConnectionChange: (c) => {
-				// A socket that comes BACK is when a lost session shows: the server upgrades a phone with no valid session
-				// to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
-				if (c && this.#wasConnected) void this.#recheckMe();
+				if (c && this.#wasConnected) {
+					// A socket that comes BACK is when a lost session shows: the server upgrades a phone with no valid
+					// session to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
+					void this.#recheckMe();
+					// And it re-reads the library: frames sent while the socket was down (a core restart, a worker that
+					// came or went meanwhile) are lost, and the seed is what a reload would say. The first connect has its own.
+					this.#heardSinceReconnect = new Set();
+					void this.refreshLibrary(true);
+				}
 				if (c) this.#wasConnected = true;
 				// The socket says it is open BEFORE it sends `hello`, so the reply's `queue:sync` and `playback:state` both land
 				// after this: a reader sees one resync, not a song that left and then a first song.
@@ -247,14 +261,7 @@ export class RoomLink {
 		// The live status map is in-memory only, so a reload erases a failed process. A persisted scar is seeded back as a
 		// synthetic `failed` status and flows through the same readiness path a live failure takes, with no extra UI.
 		// Merged ONCE: a sync adds to the catalog rather than replacing it, so nothing has to put these back later.
-		const scarred = activeScars();
-		if (scarred.length) {
-			// The library endpoint returns only ready and processing media, so a failed song is not in the catalog.
-			this.mergeMissingMedia(scarred);
-			const withScars = new Map(this.mediaStatus);
-			for (const m of scarred) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
-			this.mediaStatus = withScars;
-		}
+		this.seedScars(activeScars());
 
 		this.#state = 'live';
 		this.#ws.open();
@@ -469,6 +476,9 @@ export class RoomLink {
 		// and a later real progress report for the same job arrives without it, which must clear the stall.
 		next.set(mediaId, { status, pct, etaSec, unservable });
 		this.mediaStatus = next;
+		this.#fromScar.delete(mediaId); // the server's own word now; a later seed must not overwrite it
+		this.#heardSinceReconnect?.add(mediaId);
+
 		// The catalog copy follows, so readiness agrees without a full sync: a failed or canceled process settles back to
 		// un-processed server-side, and preserving the mid-flight status here leaves a row reading as processing.
 		const m = this.mediaCatalog.get(mediaId);
@@ -490,7 +500,9 @@ export class RoomLink {
 			// A failure carries its row, so a phone that never fetched the song (an admin-started process) names it.
 			if (e.media) this.mergeMissingMedia([e.media]);
 			const failedMedia = this.mediaCatalog.get(mediaId);
-			if (failedMedia) {
+			// Not for a `restated` failure: it died once, and re-recording on every re-tell restarts the scar's 30 minutes,
+			// so a flapping worker would keep it alive for ever.
+			if (failedMedia && !e.restated) {
 				/* THE SCAR STAYS ROOM-WIDE, deliberately, and it is NOT what made the reported defect. It renders on no
 				   persistent surface — it only re-reads as failed-with-retry if THIS phone searches that exact song
 				   again — its statement is room-TRUE (the process really did die in this room), and it expires in
@@ -515,8 +527,9 @@ export class RoomLink {
 			   admin-side process nobody asked for is news for whoever is looking.
 			   THE ONE TRADE, recorded because it is real: `enqueue` dedupes, and a reused job keeps its ORIGINAL
 			   requester, so a second singer who taps the same song gets no toast. Their search row still reads
-			   failed-with-retry, and their /queue row still draws a non-plain card by the paragraph above. */
-			if (!e.requestedBy || e.requestedBy === this.me?.id) {
+			   failed-with-retry, and their /queue row still draws a non-plain card by the paragraph above.
+			   A `restated` failure was announced when it happened; it is re-sent only because its cause changed. */
+			if (!e.restated && (!e.requestedBy || e.requestedBy === this.me?.id)) {
 				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
 			}
 		}
@@ -568,6 +581,8 @@ export class RoomLink {
 	/** Optimistically mark a song as processing, before the request lands. */
 	setMediaStatus(mediaId: string, live: LiveMediaStatus): void {
 		this.mediaStatus = new Map(this.mediaStatus).set(mediaId, live);
+		this.#fromScar.delete(mediaId); // this phone's own act is fresher than its scar
+		this.#heardSinceReconnect?.add(mediaId);
 		this.#emit();
 	}
 	/** Roll an optimistic process mark back — the request never started. */
@@ -631,7 +646,11 @@ export class RoomLink {
 	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
 	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so
 	 * /library can say it could not ask instead of claiming the room owns nothing. */
-	async refreshLibrary(): Promise<void> {
+	async refreshLibrary(reconnect = false): Promise<void> {
+		// A flapping socket can start a second re-connect read before this one returns. That read owns a fresh heard-set,
+		// so this older one neither seeds over it nor clears it.
+		const heard = this.#heardSinceReconnect;
+		const superseded = () => reconnect && this.#heardSinceReconnect !== heard;
 		try {
 			// Reset wherever a new attempt BEGINS, the idiom `/`'s runSearch states: cleared on the retry rather than
 			// only on the next success, so a retry that fails again is not read against the previous failure.
@@ -644,11 +663,12 @@ export class RoomLink {
 			this.library = snapshot.library ?? [];
 			this.libraryTags = snapshot.tags ?? {};
 			this.mergeMedia(this.library);
-			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] =
+			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }[] =
 				snapshot.processing ?? [];
-			if (processing.length) {
-				this.mergeMedia(processing.map((c) => c.media));
-				this.seedMediaStatus(processing);
+			if (processing.length) this.mergeMedia(processing.map((c) => c.media));
+			if (!superseded()) {
+				this.seedMediaStatus(processing, reconnect);
+				this.seedNoMakerFailures(snapshot.noMakerFailed ?? []);
 			}
 			this.#emit();
 		} catch {
@@ -659,16 +679,60 @@ export class RoomLink {
 			// In `finally`, so a failed fetch still RESOLVES the loading state: left false, /library would spin forever
 			// on a dropped request. What it must not then render is the EMPTY state — that is `libraryFailed`'s job.
 			this.libraryLoaded = true;
+			if (reconnect && !superseded()) this.#heardSinceReconnect = null;
 			this.#emit();
 		}
 	}
 
-	/** Seed statuses from a /api/library snapshot. A live broadcast is fresher, so never overwrite one. */
-	seedMediaStatus(list: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[]): void {
-		if (!list.length) return;
+	/** Seed statuses from a /api/library snapshot.
+	 *  - On a first load, a live broadcast is fresher, so it is never overwritten.
+	 *  - On a RE-connect the rule is the other way round: everything held is from before the drop, which is why this
+	 *    re-read exists (a core restart re-says `unservable` before any socket is back). The server's row replaces the
+	 *    held status, and a held in-flight status the server no longer lists goes (the job died, or finished, unheard).
+	 *    A frame heard SINCE the re-connect still wins: it is newer than the snapshot. */
+	seedMediaStatus(
+		list: { media: Media; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }[],
+		reconnect = false
+	): void {
+		if (!list.length && !reconnect) return;
+		const listed = new Set(list.map((c) => c.media.id));
+		const stale = (id: string) => reconnect && !this.#heardSinceReconnect?.has(id);
 		const next = new Map(this.mediaStatus);
 		for (const c of list)
-			if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
+			if (!next.has(c.media.id) || this.#fromScar.delete(c.media.id) || stale(c.media.id))
+				next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec, unservable: c.unservable });
+		for (const [id, s] of next)
+			if (!listed.has(id) && stale(id) && mediaStagePosition(s.status) >= 0 && s.status !== 'ready') next.delete(id);
+		this.mediaStatus = next;
+		this.#emit();
+	}
+
+	/** This device's failed-process scars, seeded as stand-in `failed` statuses until the server says otherwise. */
+	seedScars(scars: Media[]): void {
+		if (!scars.length) return;
+		// The library endpoint returns only ready and processing media, so a failed song is not in the catalog.
+		this.mergeMissingMedia(scars);
+		const withScars = new Map(this.mediaStatus);
+		for (const m of scars)
+			if (!withScars.has(m.id)) {
+				withScars.set(m.id, { status: 'failed', pct: 0 });
+				this.#fromScar.add(m.id);
+			}
+		this.mediaStatus = withScars;
+	}
+
+	/** Queued turns the server says died because no worker could run them (/api/library's `noMakerFailed`): the
+	 * server's CURRENT cause of every failure this phone holds. A live in-flight status is kept and a scar's stand-in is
+	 * replaced, as in `seedMediaStatus`; a held `failed` takes the cause either way, because a failure's cause is about
+	 * now — the fleet may have come or gone while this phone's socket was down (a core restart), and no frame said so. */
+	seedNoMakerFailures(mediaIds: string[]): void {
+		const listed = new Set(mediaIds);
+		const next = new Map(this.mediaStatus);
+		for (const id of listed)
+			if (!next.has(id) || this.#fromScar.delete(id) || next.get(id)!.status === 'failed')
+				next.set(id, { status: 'failed', pct: 0, unservable: true });
+		for (const [id, s] of next)
+			if (s.status === 'failed' && s.unservable && !listed.has(id)) next.set(id, { ...s, unservable: undefined });
 		this.mediaStatus = next;
 		this.#emit();
 	}

@@ -1,6 +1,6 @@
 // ON DECK, driven for real: three singers, a fake worker so the songs are ready, Theo singing, Maya next, Ana
 // behind her. Maya sets −2 on her on-deck card before her turn; Theo skips; the TV opens on Maya's song with
-// "G minor · -2" in the lower third. Frames go to ON_DECK_OUT (or the test's output dir), phone at 390x844 in both colour
+// "Key -2" in the lower third. Frames go to ON_DECK_OUT (or the test's output dir), phone at 390x844 in both colour
 // schemes, TV at 1920x1080.
 //
 // The fixture tracks are 8 seconds long, so the song before yours is ALWAYS inside the 30-second heads-up: the
@@ -36,7 +36,7 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
 		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
 		await expect(deck).toContainText('Key · −2');
-		await expect(deck).toContainText('You’re next');
+		await expect(deck).toContainText("You're next");
 		// The key is said once on this screen: the card's "A minor → G minor", not again on Maya's queued row.
 		await expect(maya.locator('.qrow', { hasText: 'sweet-caroline' })).not.toContainText('minor');
 		await expect(maya.locator('.qrow', { hasText: 'livin-on-a-prayer' })).toContainText('minor');
@@ -54,11 +54,11 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 		await expect(deck).toHaveCount(0);
 		await maya.screenshot({ path: join(out, 'phone-singing-after-preset.png') });
 
-		// The TV says the key ONCE: the lower third's "G minor · -2", never a second chip on the intro card.
+		// The TV says the key ONCE: the lower third's "Key -2" (#992's words), never a second chip on the intro card.
 		const tv = await world.openTv();
 		const intro = tv.locator(SEL.stateNext);
 		await expect(intro).toBeVisible({ timeout: 30_000 });
-		await expect(tv.locator(SEL.lowerThird)).toContainText('· -2');
+		await expect(tv.locator(SEL.lowerThird)).toContainText('Key -2');
 		await expect(intro).not.toContainText('Key');
 		for (const scheme of ['dark', 'light'] as const) {
 			await tv.emulateMedia({ colorScheme: scheme });

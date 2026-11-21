@@ -40,6 +40,7 @@ function harness(verdict?: 'audible' | 'silent' | 'unknown' | 'throw') {
 	const readied: string[] = [];
 	const measured: string[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		attempts,
 		registry,

@@ -113,8 +113,10 @@ export const SEL = {
 	npCheers: '.dock .cheers',
 	npCheer: '.dock .cheers .cheer',
 	npCheersClose: '.dock .cheers .close',
-	/** The singer's name, or "Ready when you are" on the queued-but-not-playing branch. */
+	/** The singer's name, on the `hasSong` branch. */
 	npStripWho: '.dock .strip .who',
+	/** With a queue but nothing playing: "Ready when you are", "Making karaoke…", or why no karaoke is coming. */
+	npStripStatus: '.dock .strip .status',
 	/** The strip's ONLY filled control, which is why `.btn.primary` identifies it: play/pause is the one
 	 *  control whose state a resting fill encodes. The old `.disc` — artwork, progress ring and glyph in one
 	 *  element — has no successor; the progress is a separate `aria-hidden` hairline. */

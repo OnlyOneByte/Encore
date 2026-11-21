@@ -4,7 +4,7 @@
 	// Every guest-facing string below is PARTY ENGLISH: a guest waits for a karaoke track, not an "instrumental".
 	import { untrack } from 'svelte';
 	import type { Readiness } from '$lib/readiness';
-	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -46,6 +46,8 @@
 		/** Present, the bar shows `overallProcessPct(status, pct)` rather than the raw per-step pct, which fills to
 		 * 100% at the end of EVERY step and jumps backward when the next resets it. Absent, the raw pct is used. */
 		status?: MediaStatus;
+		/** The server's verdict that no connected worker can make this (`media:status.unservable`). */
+		unservable?: boolean;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
 		/** False is the metadata-only case, and BOTH actions must go with it: the branches below are an either/or, so
@@ -68,6 +70,7 @@
 		tags,
 		pct = 0,
 		status,
+		unservable = false,
 		inQueue = false,
 		processable = true,
 		onadd,
@@ -126,6 +129,9 @@
 	   matches the `Live` chip that sits beside it on most of these same rows. */
 
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
+	/* "PROCESSING" THAT NOBODY IS RUNNING: the server has said no connected worker can make it, so the row says what the
+	   TV, the strip and the queue card say, with no bar, no sparkle and no percentage — any figure would be invented. */
+	const stalled = $derived(readiness === 'processing' && unservable);
 
 	/* WHAT IS ANNOUNCED, and deliberately NOT `stateChip`, which carries the percentage. The chip's text changes on every
 	   whole-percent step, so as a live region it announced hundreds of times per song and drowned out the queue
@@ -133,9 +139,11 @@
 	   row with no process state, which renders no region at all. Only a CHANGE out of `bornStage` reaches the region —
 	   see the markup at the foot of this file. */
 	const announcedStage = $derived(
-		readiness === 'processing' || readiness === 'failed' || readiness === 'ready'
-			? processStageLabel(readiness === 'processing' ? 'queued' : readiness === 'failed' ? 'failed' : 'ready')
-			: ''
+		stalled
+			? STALLED_TURN_LABEL
+			: readiness === 'processing' || readiness === 'failed' || readiness === 'ready'
+				? processStageLabel(readiness === 'processing' ? 'queued' : readiness === 'failed' ? 'failed' : 'ready')
+				: ''
 	);
 	/* THE STAGE THIS ROW WAS BORN IN, captured once at init and never again. `untrack` rather than a bare read, which
 	   is this tree's idiom for exactly this position (TvPlayer.svelte, settings/you's drafts): a bare read of a rune
@@ -148,6 +156,7 @@
 		if (readiness === 'ready') return processStageLabel('ready');
 		// A dead process must say so, or it keeps rendering the in-flight line forever on a stopped job.
 		if (readiness === 'failed') return processStageLabel('failed');
+		if (stalled) return STALLED_TURN_LABEL;
 		// 'queued' is the LEAST-COMMITTAL in-flight value: the row has no worker sub-status and naming a step would
 		// print a guess as fact. Only the READOUT is rounded — the bar keeps the unrounded value so its transition
 		// stays smooth, and an unrounded readout prints "31.200000000000003%".
@@ -170,7 +179,7 @@
 				: // Announced BEFORE the inQueue branch because it is the stronger fact: this song can never be
 					// sung here, so "Already in the queue" would be both wrong and beside the point.
 					!processable
-					? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
+					? "Can't sing this one — it's a name match only. Search for the song to make karaoke."
 					: inQueue
 						? 'Already in the queue'
 						: 'Add a turn'
@@ -206,7 +215,7 @@
 					mark inside it is laid out on the discarded third line and never paints on a phone. -->
 				<div class="title-line">
 					<span class="t">{title}</span>
-					{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+					{#if readiness === 'processing' && !stalled}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 				</div>
 				<!-- THE BYLINE NOW CARRIES THE MEASUREMENTS — see `metaFacts`. One expression and no inline `{#if}`, so it
 					cannot contribute a stray newline to the element's text. -->
@@ -250,7 +259,7 @@
 						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
 					</div>
 				{/if}
-				{#if readiness === 'processing'}
+				{#if readiness === 'processing' && !stalled}
 					<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
 					<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
 				{/if}

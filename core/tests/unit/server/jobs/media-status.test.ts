@@ -59,6 +59,7 @@ function harness(startMedia: Media = media({ stemStatus: 'queued' })) {
 	const mediaById = new Map<string, Media>([[startMedia.id, startMedia]]);
 	const broadcasts: ServerEvent[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry,
 		mediaById,

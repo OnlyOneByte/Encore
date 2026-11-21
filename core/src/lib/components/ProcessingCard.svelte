@@ -43,8 +43,8 @@
 		// A processing song is still a QUEUE ENTRY, so it gets the same controls a ready row does — a minutes-long
 		// process is a long time to be stuck on a mis-tap. All absent outside the rotation, where there is no slot.
 		onremove?: () => void;
-		/** Ask for the karaoke again. Present only on a STALLED card, where the turn exists and nothing is making
-		 * its karaoke — `processAndQueue`'s `hasQueuedTurn` branch, so the turn is kept rather than re-added. */
+		/** Ask for the karaoke again. Present only on a STALLED or FAILED card, where the turn exists and nothing
+		 * is making its karaoke — `processAndQueue`'s `hasQueuedTurn` branch, so the turn is kept rather than re-added. */
 		onretry?: () => void;
 		reorderable?: boolean;
 		/** The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean. This card is draggable in

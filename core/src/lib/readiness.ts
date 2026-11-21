@@ -86,6 +86,37 @@ export function queueCardKind(
 	return 'stalled';
 }
 
+/** What the QUEUED turns add up to, for the two surfaces that summarise the rotation in one line: the TV lobby and
+ * the phone strip. A FOLD OVER `queueCardKind`, never a second classifier, so a summary cannot say "Making karaoke…"
+ * over rows that each say no karaoke is coming — which both of them did, because each counted every unplayable turn
+ * as in flight. */
+export interface WaitingTurns {
+	/** Turns whose karaoke is being made right now. */
+	making: number;
+	/** Singers holding a turn nothing is making karaoke for (failed or stalled), once each, in rotation order. */
+	stuckSingerIds: string[];
+	/** A stuck turn is stuck because no connected worker can make it — the server said so — not because it failed. */
+	noMaker: boolean;
+}
+
+export function waitingTurns(
+	queued: { singerId: string; mediaId: string }[],
+	mediaOf: (mediaId: string) => Media | undefined,
+	liveOf: (mediaId: string) => { status: MediaStatus; unservable?: boolean } | undefined
+): WaitingTurns {
+	const out: WaitingTurns = { making: 0, stuckSingerIds: [], noMaker: false };
+	for (const e of queued) {
+		const live = liveOf(e.mediaId);
+		const kind = queueCardKind(mediaOf(e.mediaId), live);
+		if (kind === 'processing') out.making++;
+		else if (kind !== 'plain') {
+			if (!out.stuckSingerIds.includes(e.singerId)) out.stuckSingerIds.push(e.singerId);
+			if (live?.unservable) out.noMaker = true;
+		}
+	}
+	return out;
+}
+
 /** Whether offering "make karaoke" makes sense: only for a song neither done nor in flight, AND whose audio can
  * actually be acquired. A FAILED song qualifies. IT MUST TAKE THE MEDIA, not just its readiness: a metadata-only hit
  * that can never be processed reads as un-acquired exactly like a fresh upload, and offering Sing there takes the

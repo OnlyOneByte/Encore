@@ -25,6 +25,7 @@
 	import ReactionRow, { CHEER_TRAY_MS } from '$lib/ui/ReactionRow.svelte';
 	import { progressFraction } from '$lib/clock';
 	import type { ReactionKind } from '$lib/contract';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { tick } from 'svelte';
 
 	let {
@@ -37,6 +38,7 @@
 		hasSong,
 		canStart,
 		queueCount,
+		waitingLine = processStageLabel('queued'),
 		entryId = null,
 		connected = true,
 		onrestart,
@@ -54,6 +56,9 @@
 		hasSong: boolean;
 		canStart: boolean;
 		queueCount: number;
+		/** What a queue with nothing playable is waiting on: "Making karaoke…", or why no karaoke is coming. Worded by
+		 * the layout from the fold the TV lobby reads, so the strip cannot say "Making karaoke…" under dead rows. */
+		waitingLine?: string;
 		/** The current entry: a song change closes the cheer tray, since its label named the singer before. */
 		entryId?: string | null;
 		/** False while the link is down: "Reconnecting…" takes the title slot. */
@@ -159,7 +164,10 @@
 					<span class="song">{title ?? 'Untitled'}</span>
 				{/key}
 			{:else if live}
-				<span class="who">{canPlay ? 'Ready when you are' : 'Making karaoke…'}</span>
+				<!-- `.status`, which WRAPS to two lines inside its box, never `.who`, which does not shrink: the waiting line
+					can be a whole sentence, and at 320px it ran under the restart button. Not `.song` either, which means
+					"a song is playing" to every spec reading the strip. -->
+				<span class="status">{canPlay ? 'Ready when you are' : waitingLine}</span>
 			{:else}
 				<span class="idle">Nothing playing</span>
 			{/if}
@@ -291,6 +299,21 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: var(--ink-dim);
+	}
+
+	/* The waiting line, in the name's weight. It WRAPS, to two lines at most: it can be a whole sentence with two ways
+	   out in it ("Your song didn't work. Try again or pick another."), and on Sing and Library it is the singer's only
+	   notice, so an ellipsis cut the remedy off at 390 and both at 320. Two lines of this size and leading fit inside
+	   the strip's one tap floor, so the dock does not grow. */
+	.status {
+		min-width: 4ch;
+		overflow: hidden;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		line-height: var(--lh-snug);
+		font-weight: 600;
 	}
 
 	.tp {

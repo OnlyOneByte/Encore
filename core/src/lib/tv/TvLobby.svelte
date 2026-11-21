@@ -13,9 +13,12 @@
 		roster: RosterMember[];
 		/** How many present singers did not fit in `roster`. */
 		overflow?: number;
-		// Queued entries that cannot play yet. `tvScreen()` routes a queued-but-unplayable entry HERE, so a headline
-		// that only describes "nobody has picked" contradicts the phone, which says "You're next once it's ready".
+		// Queued entries whose karaoke is being MADE. `tvScreen()` routes a queued-but-unplayable entry HERE, so a
+		// headline that only describes "nobody has picked" contradicts the phone's "Making karaoke…" card.
 		pendingCount?: number;
+		/** What the room is waiting on when turns are queued and NONE is being made (`stuckTurnsLines`). Without it
+		 * a dead turn read "Making karaoke… this takes a minute" for as long as it sat there. */
+		stuck?: { headline: string; next: string } | null;
 		/** The advertised join address is unroutable — render the operator notice, not a dead QR. */
 		unreachable?: boolean;
 		/** Without it, the state a latecomer walks in on is the one state with no typed way in. */
@@ -32,6 +35,7 @@
 		roster,
 		overflow = 0,
 		pendingCount = 0,
+		stuck = null,
 		unreachable = false,
 		roomCode = null,
 		overdue = false,
@@ -60,11 +64,12 @@
 			? pendingCount === 1
 				? processStageLabel('queued')
 				: `${processStageLabel('queued')} · ${pendingCount} in line`
-			: 'Waiting for someone to pick a song…'
+			: (stuck?.headline ?? 'Waiting for someone to pick a song…')
 	);
 
-	// The line under the headline, in `screen.ts` so a unit test can read every wording of it.
-	const sub = $derived(lobbyLine(count, processing, overdue));
+	// The line under the headline, in `screen.ts` so a unit test can read every wording of it. A stuck turn's way out
+	// replaces the "pick a song" prompt, but never the line for a song being made.
+	const sub = $derived(!processing && stuck ? stuck.next : lobbyLine(count, processing, overdue));
 </script>
 
 <!--

@@ -16,7 +16,8 @@ import type {
 } from '../../contract';
 import { publishStemFormat } from '../media/paths';
 import { sourceUriFor, resolveProcessSeparator } from '../../contract';
-import type { JobRepository } from './repository';
+import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
+import { readinessOf } from '../media/readiness';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry, type WorkerSession } from './registry';
 import {
@@ -52,8 +53,43 @@ export type Broadcast = (event: ServerEvent) => void;
 
 /** Ceiling on continuous unservability before terminal `failed`; without it the job parks `queued`
  *  forever. Two minutes rides out a worker restart or a fleet coming up, without hanging a job that is
- *  genuinely unservable. */
-const UNSERVABLE_TTL_MS = 120_000;
+ *  genuinely unservable. `ENCORE_UNSERVABLE_TTL_MS` shortens it for a probe that films what follows it (the
+ *  ui:review row of a Try again after the TTL), which would otherwise wait two minutes per run. */
+const UNSERVABLE_TTL_MS = positiveMs(process.env.ENCORE_UNSERVABLE_TTL_MS) ?? 120_000;
+
+/** A positive whole number of milliseconds, or undefined: a 0 or negative TTL would fail every job on first sight. */
+export function positiveMs(raw: string | undefined): number | undefined {
+	const n = Math.floor(Number(raw));
+	return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** How the TTL's failure names its cause in `jobs.error`, read back by /api/library so a client that loads after
+ *  the failure still says "no maker" rather than "that song didn't work". */
+export const UNSERVABLE_ERROR_PREFIX = 'no connected worker advertised capability';
+
+/**
+ * THE ONE ANSWER to "which waiting songs died for want of a maker that is still missing?", shared by /api/library (a
+ * client that loads now) and the hub's re-tell (clients already listening), so the two cannot drift.
+ *
+ * A song counts when it waits in a QUEUED turn, nothing of it is made yet, and its last chain job died at the TTL. It
+ * stays "no maker" while ANY step from the one that died to the end of the chain has no connected worker: a worker
+ * that only fetches does not make the song singable, so it must not clear the verdict.
+ */
+export function noMakerMedia(
+	entries: readonly { status: string; mediaId: string }[],
+	deps: { mediaById: Map<string, Media>; jobs: Pick<JobRepository, 'lastChainJob'>; settings?: GlobalSettings },
+	offered: ReadonlySet<string>
+): string[] {
+	return [...new Set(entries.filter((e) => e.status === 'queued').map((e) => e.mediaId))].filter((id) => {
+		const m = deps.mediaById.get(id);
+		if (!m || readinessOf(m) !== 'unacquired') return false;
+		const last = deps.jobs.lastChainJob(id);
+		if (last?.status !== 'failed' || !last.error?.startsWith(UNSERVABLE_ERROR_PREFIX)) return false;
+		return OUTSTANDING_CHAIN.slice(OUTSTANDING_CHAIN.indexOf(last.jobType)).some(
+			(step) => !offered.has(requiredCapability(step, deps.settings))
+		);
+	});
+}
 
 export interface WorkerHubDeps {
 	jobs: JobRepository;
@@ -79,6 +115,9 @@ export interface WorkerHubDeps {
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
+	/** The room's queue, read when what the fleet offers changes: whose "no maker" that change just flipped. REQUIRED,
+	 *  so a construction that forgets it fails typecheck: nothing else would notice, the re-tell would just go quiet. */
+	queueEntries: () => readonly { status: string; mediaId: string }[];
 }
 
 /** Validates an inbound frame BEFORE anything reads a field off it. This family carries DISPATCH
@@ -309,6 +348,64 @@ export class WorkerHub {
 		return this.#trails.get(jobId) ?? [];
 	}
 
+	/** Whether the sweep has already found no connected worker for this job. It broadcasts that only on FIRST sight,
+	 *  so any later `media:status` for the same job must carry it, or the room reads the stall as cleared. */
+	isUnservable(jobId: string): boolean {
+		return this.#unservableSince.has(jobId);
+	}
+
+	/** Every capability some connected worker advertises — the set dispatch routes against. */
+	#offered(): Set<string> {
+		return new Set(this.#d.registry.list().flatMap((w) => w.capabilities));
+	}
+
+	/** `noMakerMedia` against this hub's workers and settings: what /api/library reports to a client that loads now. */
+	noMakerMedia(entries: readonly { status: string; mediaId: string }[], offered = this.#offered()): string[] {
+		const deps = { mediaById: this.#d.mediaById, jobs: this.#d.jobs, settings: this.#processSettings() };
+		return noMakerMedia(entries, deps, offered);
+	}
+
+	/**
+	 * What the fleet offers decides "no maker", and nothing else would tell a room that already holds a verdict. So on
+	 * every change of what the fleet offers, each waiting song whose verdict flipped is re-sent:
+	 * - was "no maker", is not: a plain failure. The song still needs a Try again, which now can work.
+	 * - was not, is now (the last capable worker left): the failure with `unservable`, so live screens say what a
+	 *   reload says, "Can't make new karaoke right now".
+	 *
+	 * STATELESS ON PURPOSE: it compares the fleet before and after, so a worker that leaves and rejoins re-tells it
+	 * both ways, and so does the first join after a core restart (the registry starts empty). A second worker with
+	 * the same capabilities changes nothing and says nothing.
+	 *
+	 * `restated`, not `requestedBy`: the singer was already told "try again" when the job died, and a second notice
+	 * minutes later, once per rejoin of a flapping worker, would be noise. The status alone moves every screen.
+	 *
+	 * shortcut: a SETTINGS change re-tells nothing, though it moves the required capability (a room switched to a
+	 * model a connected worker already offers clears "no maker" for a reload, not live). Admin-only and rare; call
+	 * this from the settings write if it ever matters.
+	 */
+	#retellOnFleetChange(before: Set<string>): void {
+		const after = this.#offered();
+		if (after.size === before.size && [...after].every((c) => before.has(c))) return;
+		const entries = this.#d.queueEntries();
+		const was = new Set(this.noMakerMedia(entries, before));
+		const now = new Set(this.noMakerMedia(entries, after));
+		const tell = (mediaId: string, unservable: true | undefined) => {
+			// With its row, like every failure: a phone that never fetched the song can still draw it.
+			const media = this.#d.mediaById.get(mediaId);
+			this.#d.broadcast({ type: 'media:status', mediaId, status: 'failed', pct: 0, unservable, restated: true, media });
+		};
+		for (const mediaId of was) if (!now.has(mediaId)) tell(mediaId, undefined);
+		for (const mediaId of now) if (!was.has(mediaId)) tell(mediaId, true);
+	}
+
+	/** A worker's socket closed. `release` deregisters it (server.ts owns the socket map); the room is then told what
+	 *  the fleet's loss changed. */
+	workerLeft(release: () => void): void {
+		const before = this.#offered();
+		release();
+		this.#retellOnFleetChange(before);
+	}
+
 	/**
 	 * A worker's capability list, COLLAPSED for a log line.
 	 *
@@ -329,6 +426,7 @@ export class WorkerHub {
 	 * `stems:model:<token>` until this frame arrived.
 	 */
 	#onCatalogue(msg: Extract<WorkerMessage, { type: 'worker:catalogue' }>): void {
+		const before = this.#offered();
 		const applied = this.#d.registry.catalogue(msg.workerId, msg.capabilities, msg.separators, this.#d.now());
 		if (!applied) return; // stale: the worker closed before its catalogue landed
 
@@ -351,11 +449,13 @@ export class WorkerHub {
 		// "upstream" is stated because it is NOT our measurement — see SeparatorOffer's doc comment.
 		const top = best ? `; best upstream ${best.upstreamInstrumentalSdr?.toFixed(2)} dB (${best.token})` : '';
 		console.log(`[hub] worker ${msg.workerId} offers ${msg.separators.length} separation models: ${breakdown}${top}`);
+		this.#retellOnFleetChange(before);
 		this.dispatch();
 	}
 
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
+		const before = this.#offered();
 		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
 		// `cpuCount` is the worker's EFFECTIVE count; `(contained)` marks a slice of a bigger box.
 		const hw = msg.host
@@ -375,6 +475,7 @@ export class WorkerHub {
 			// to agree. A worker that publishes a different container writes a file whose recorded ref 404s.
 			publishStemFormat: publishStemFormat()
 		});
+		this.#retellOnFleetChange(before);
 		this.dispatch();
 	}
 
@@ -590,11 +691,7 @@ export class WorkerHub {
 			const since = this.#unservableSince.get(job.id);
 			if (since !== undefined) {
 				if (now - since < UNSERVABLE_TTL_MS) continue;
-				const updated = this.#d.jobs.fail(
-					job.id,
-					`no connected worker advertised capability '${cap}' within ${ttlSec}s`,
-					now
-				);
+				const updated = this.#d.jobs.fail(job.id, `${UNSERVABLE_ERROR_PREFIX} '${cap}' within ${ttlSec}s`, now);
 				this.#unservableSince.delete(job.id);
 				reportTerminalFailure(updated, 'unservable', this.#failureSinks());
 				continue;

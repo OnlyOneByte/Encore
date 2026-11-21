@@ -320,7 +320,10 @@ export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, dep
 			// /api/lyrics-reselect are the only callers and both pass the session's singer — and a chained
 			// follow-up inherits it (see `inheritsProcess` at the requeue in worker-hub). `null` means nobody
 			// asked, which the client reads as "tell the room".
-			requestedBy: job.singerId ?? undefined
+			requestedBy: job.singerId ?? undefined,
+			// WHY it died, when the reason is that no worker can make it: there is still no maker, so the room
+			// keeps "Can't make new karaoke right now" rather than being sent to pick another song that dies too.
+			unservable: cause === 'unservable' || undefined
 		});
 	}
 	console.warn(

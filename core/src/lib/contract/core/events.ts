@@ -94,6 +94,9 @@ export type ServerEvent =
 			requestedBy?: string;
 			// On `failed` only: the song's row, so a phone that never fetched it can name it in the notice.
 			media?: Media;
+			// A failure the room was already told about, re-sent because its CAUSE changed (a maker joined): every
+			// phone redraws the row, and nobody is told "try again" a second time.
+			restated?: boolean;
 	  }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }

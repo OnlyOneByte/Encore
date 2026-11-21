@@ -69,8 +69,9 @@ test('the polite region speaks on a CHANGE of stage, never on mount', () => {
 	expect(card).not.toMatch(/^<div class="vh" role="status">\{stageLabel\}<\/div>/m);
 });
 
-test('the retry is wired to the stalled kind only, and keeps the turn', () => {
-	expect(queuePage).toContain("onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}");
+test('the retry is wired to every kind nothing is making karaoke for, and keeps the turn', () => {
+	// Stalled AND failed: a failed card with no retry left the "try again" notice pointing at nothing.
+	expect(queuePage).toContain("onretry={card !== 'processing' ? () => retryKaraoke(e.mediaId) : undefined}");
 	// The process ALONE — the turn already exists, so nothing here may add a second one.
 	expect(queuePage).toContain('void room.requestProcess(mediaId);');
 	expect(queuePage).not.toMatch(/retryKaraoke[\s\S]{0,400}store\?\.addSong/);

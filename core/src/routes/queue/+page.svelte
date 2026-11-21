@@ -453,7 +453,8 @@
 		if (reason) endDrag(false, reason);
 	});
 
-	/** THE RETRY ON A STALLED CARD: the turn is already in the rotation, so this asks for the PROCESS alone.
+	/** THE RETRY ON A STALLED OR FAILED CARD — every card nothing is making karaoke for. A failed one is the case the
+	 * "try again" notice names, so leaving it without the control sent the guest looking for a button. The turn is already in the rotation, so this asks for the PROCESS alone.
 	 *
 	 * NOT THROUGH `processAndQueue`, and that is the one place this could have looked tidier and been worse. That
 	 * function pairs an ADD with a process; here the turn exists by construction — this is only reachable from a
@@ -829,7 +830,7 @@
 							pct={live?.pct ?? 0}
 							etaSec={live?.etaSec}
 							pending={pendingKind.get(e.id) ?? null}
-							onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
+							onretry={card !== 'processing' ? () => retryKaraoke(e.mediaId) : undefined}
 							onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
 							grip={gripsVisible && e.id !== pinnedId}
 							gripId={e.id}
