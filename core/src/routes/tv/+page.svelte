@@ -114,12 +114,9 @@
 	let slotEntryId = $state<{ A: string | null; B: string | null }>({ A: null, B: null });
 
 	// At PLAYBACK, not in the worker: a song's pulldown depends on the live library median, a property of the room's
-	// whole catalog at play time.
-	const libraryLoudnessLevels = $derived(
-		[...mediaCatalog.values()]
-			.map((m) => m.songProfile?.loudnessLufs ?? null)
-			.filter((v): v is number => typeof v === 'number')
-	);
+	// whole catalog at play time. The server sends those levels on every sync (`loudnessLevelsOf`), because the sync's
+	// media is only the queued songs.
+	let libraryLoudnessLevels = $state<number[]>([]);
 	// ATTENUATE-ONLY: never above 1, so the feature off / below the floor / unmeasured all resolve to unity.
 	function resolveMasterLevel(m: PlaybackSnapshot | null): number {
 		return loudnessNormalizationGain({
@@ -280,6 +277,7 @@
 			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 			// The ONLY writer of `mediaCatalog`, and it takes a FULL server list, so no partial local edit is expressible.
 			if (e.media) mediaCatalog = mergeCatalog(mediaCatalog, e.media);
+			if (e.loudness) libraryLoudnessLevels = e.loudness;
 			// An OMITTED `online` means "no info", not "nobody here", and must not blank a roster we hold.
 			if (e.online) online = e.online;
 			if (e.away) away = e.away;

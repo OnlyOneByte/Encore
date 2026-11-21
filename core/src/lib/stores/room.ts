@@ -238,8 +238,11 @@ export class RoomLink {
 				this.roomGuideDefault = e.settings.room.guideLevelDefault;
 			}
 			if (e.singers) this.singers = new Map(e.singers.map((s) => [s.id, s]));
-			if (e.media) this.mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-			// Re-apply failed-process scars: a sync REPLACES the catalog, so without this the first sync wipes the scarred row.
+			// ADDS rather than replaces: a sync carries only the queued songs, so replacing would erase every row search and
+			// the library merged in, and a title would fall back to its id. The catalog is only read by id, so a stale extra
+			// row is harmless.
+			if (e.media) this.mediaCatalog = new Map([...this.mediaCatalog, ...e.media.map((m) => [m.id, m] as const)]);
+			// Re-apply failed-process scars, for ids the catalog does not hold.
 			if (this.#scarred.length) this.mergeMissingMedia(this.#scarred);
 			// An omitted list means "no info", not "nobody is away" — do not blank what we have.
 			if (e.away) this.awaySingers = new Set(e.away);

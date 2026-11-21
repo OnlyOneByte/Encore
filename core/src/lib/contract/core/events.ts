@@ -67,7 +67,10 @@ export type ServerEvent =
 			rev: number;
 			entries: QueueEntry[];
 			singers?: PublicSinger[];
+			// The QUEUED songs only; the library is fetched over HTTP.
 			media?: Media[];
+			// Measured LUFS of every song in the library, for the TV's loudness median.
+			loudness?: number[];
 			online?: string[];
 			away?: string[];
 			settings?: EffectiveSettings;
