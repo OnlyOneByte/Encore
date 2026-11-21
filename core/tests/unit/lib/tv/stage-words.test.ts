@@ -73,12 +73,18 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
  * THE TV STAYS ASCII FOR SIGNS (song-facts.ts's header): a typographic minus, arrow or accidental is a codepoint a
  * smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. `’`, `—`, `·`, `…` and `●` are
  * allowed — main's TV has always shipped them — and NOTHING ELSE outside ASCII is: a list of banned blocks missed
- * the next block over (`➜`). An HTML entity (`&rarr;`) or a `\u` escape is the same codepoint spelled in ASCII, so
- * it is refused too. Held two ways: every TV source as text, and the strings the TV imports from outside `lib/tv`
- * as the values they really render.
+ * the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or a CSS escape (`"\2192"`) is
+ * the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV source as text, and the strings
+ * the TV imports from outside `lib/tv` as the values they really render.
+ *
+ * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0· '`, and an
+ * NBSP is a space with no glyph to tofu. Only the escape, because a literal NBSP cannot be told from a space in
+ * review.
  */
-const NOT_TV_SAFE = /[^\t -~’—·…●\u00a0]|&#?[a-z0-9]+;/iu;
-const ESCAPE = /\\u(?!00a0)\{?[0-9a-f]{4}/i;
+const NOT_TV_SAFE = /[^\t -~’—·…●]|&#?[a-z0-9]+;/iu;
+const ESCAPE = /\\u(?!00a0)\{?[0-9a-f]{4}|\\x[89a-f][0-9a-f]/i;
+// A CSS escape is `\` plus 1-6 hex digits; one above U+007F draws a non-ASCII glyph from a `content:` string.
+const CSS_ESCAPE = /\\([0-9a-f]{1,6})/gi;
 // Data, never drawn: the CJK punctuation ranges the lyric line-joiner matches against.
 const NOT_DRAWN = /^\s*const CJK_JOINS = /;
 
@@ -93,6 +99,17 @@ test('no TV source draws a sign outside ASCII', () => {
 			.map((line) => `${f}: ${line.trim()}`)
 	);
 	expect(hits).toEqual([]);
+});
+
+test('no TV style block spells a non-ASCII glyph as a CSS escape', () => {
+	const hits = tv.flatMap(({ f, text }) =>
+		[...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].flatMap(([, css]) =>
+			[...css!.matchAll(CSS_ESCAPE)].filter(([, hex]) => parseInt(hex!, 16) > 0x7f).map(([esc]) => `${f}: ${esc}`)
+		)
+	);
+	expect(hits).toEqual([]);
+	// Non-vacuity: the census reached a style block.
+	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('<style>');
 });
 
 const STATUSES = Object.keys({
