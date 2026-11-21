@@ -50,7 +50,7 @@ export interface MotionScenario {
 	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
 	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails.
 	 *  What it can't see: z-order (a subject painted under another element still counts as shown); a `clip-path`
-	 *  shape other than `inset()` (it counts as the whole box); and transformed clipping ancestors, whose padding
+	 *  shape other than `inset()`, or an `inset()` it can't read (`calc()`, a box keyword), counts as the whole box; and transformed clipping ancestors, whose padding
 	 *  box is approximate (`scale` > 1 can falsely fail, `scale` < 1 can hide a sliver clip). */
 	subject: string;
 	/** Seek run only: once the trigger resolves, drop every page `setTimeout` callback, pending or new, until the
@@ -453,6 +453,7 @@ function subjectState(
 				let p = el.parentElement;
 				for (; p && p !== document.body; p = p.parentElement) {
 					const cs = getComputedStyle(p);
+					if (cs.display === 'contents') continue; // no box, so never a containing block
 					if (pos === 'fixed' ? holdsFixed(cs) : pos !== 'absolute' || cs.position !== 'static' || holdsFixed(cs))
 						return p;
 				}
