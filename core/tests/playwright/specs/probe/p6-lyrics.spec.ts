@@ -322,23 +322,35 @@ test('the active word is drawn, walks the line and tracks the audio clock', asyn
 test('the current line is legible at TV distance: size and contrast', async ({ world }) => {
 	const stage = await lyricsStage(world);
 	try {
-		await expect(stage.tv.locator(SEL.lyricsRowCurrent)).toBeAttached({ timeout: 25_000 });
-		// ONE reading, at 1920x1080 because the TV's type scale is vh-relative.
-		const geom = await stage.tv.evaluate(
-			({ rowCurrent, viewport }) => {
-				const current = document.querySelector(rowCurrent);
-				if (!current) return null;
-				const cs = getComputedStyle(current);
-				return {
-					currentTextPx: parseFloat(cs.fontSize),
-					currentColor: cs.color,
-					viewportH: document.querySelector(viewport)?.getBoundingClientRect().height ?? null,
-					currentText: current.textContent?.trim() ?? ''
-				};
-			},
-			{ rowCurrent: SEL.lyricsRowCurrent, viewport: SEL.lyricsViewport }
-		);
-		expect(geom, 'no current line was on stage to measure').not.toBeNull();
+		// ONE reading, at 1920x1080 because the TV's type scale is vh-relative. POLLED until a current line is on
+		// stage, not read once after an attach check: the reel can mount for a beat before the opening "Now singing"
+		// card unmounts it (`onFirstSongReady`), so a single read can land inside the card and find no line at all.
+		type Geom = { currentTextPx: number; currentColor: string; viewportH: number | null; currentText: string };
+		let reading: Geom | null = null;
+		await expect
+			.poll(
+				async () => {
+					reading = await stage.tv.evaluate(
+						({ rowCurrent, viewport }) => {
+							const current = document.querySelector(rowCurrent);
+							if (!current) return null;
+							const cs = getComputedStyle(current);
+							return {
+								currentTextPx: parseFloat(cs.fontSize),
+								currentColor: cs.color,
+								viewportH: document.querySelector(viewport)?.getBoundingClientRect().height ?? null,
+								currentText: current.textContent?.trim() ?? ''
+							};
+						},
+						{ rowCurrent: SEL.lyricsRowCurrent, viewport: SEL.lyricsViewport }
+					);
+					return reading !== null;
+				},
+				{ timeout: 25_000, message: 'no current line was on stage to measure' }
+			)
+			.toBe(true);
+		// Assigned inside the poll, so control flow still types it `null` here.
+		const geom = reading as Geom | null;
 
 		expect(
 			geom?.currentTextPx,
@@ -348,10 +360,12 @@ test('the current line is legible at TV distance: size and contrast', async ({ w
 
 		// Against the BLACK stage floor, which is why the divisor is a literal 0 luminance rather than a measured
 		// backdrop: the reel paints over the stage, and a mid-grey ink is the regression this catches.
-		const rgb = /rgba?\((\d+)[^\d]+(\d+)[^\d]+(\d+)/.exec(geom?.currentColor ?? '');
+		const rgb = /rgba?\((\d+)[^\d]+(\d+)[^\d]+(\d+)(?:\s*[,/]\s*([\d.]+))?/.exec(geom?.currentColor ?? '');
 		expect(rgb, `the ink colour ${geom?.currentColor} is not an rgb() this can measure`).not.toBeNull();
+		// A translucent ink composites over the black floor as its channels times alpha.
+		const alpha = rgb?.[4] === undefined ? 1 : Number(rgb[4]);
 		const linear = [1, 2, 3]
-			.map((i) => Number(rgb?.[i]) / 255)
+			.map((i) => (Number(rgb?.[i]) / 255) * alpha)
 			.map((s) => (s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)));
 		const lum = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
 		const ratio = (lum + 0.05) / 0.05;
