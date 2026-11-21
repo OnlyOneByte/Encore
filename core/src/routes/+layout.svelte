@@ -138,7 +138,14 @@
 		sync();
 		const unsubscribe = room.subscribe(sync);
 		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing. Worded per command.
-		const unstale = room.onStaleTransport((cmd) => transportNotice(staleNotice(cmd)));
+		const unstale = room.onStaleTransport((cmd) => {
+			/* A skip that landed on THIS phone's own new turn says nothing: the tap already got what it asked for, and
+			   "You're up" says the rest. A notice beside it read as if the skip had failed (integration-1, IN-02).
+			   Another phone's dropped skip, or this phone's on someone else's song, is still told. */
+			const cur = room.entries.find((e) => e.id === room.playback.currentEntryId);
+			if (cmd === 'skip' && cur && cur.singerId === room.me?.id) return;
+			transportNotice(staleNotice(cmd));
+		});
 		return () => {
 			unsubscribe();
 			unstale();
