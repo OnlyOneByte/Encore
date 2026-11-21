@@ -82,7 +82,7 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
  * review.
  */
 const NOT_TV_SAFE = /[^\t -~’—·…●]|&#?[a-z0-9]+;/iu;
-const ESCAPE = /\\u(?!00a0)\{?[0-9a-f]{4}|\\x[89a-f][0-9a-f]/i;
+const ESCAPE = /\\u(?!00a0|\{0*a0\})(?:\{[0-9a-f]+\}|[0-9a-f]{4})|\\x[89a-f][0-9a-f]/i;
 // A CSS escape is `\` plus 1-6 hex digits; one above U+007F draws a non-ASCII glyph from a `content:` string.
 const CSS_ESCAPE = /\\([0-9a-f]{1,6})/gi;
 // Data, never drawn: the CJK punctuation ranges the lyric line-joiner matches against.
