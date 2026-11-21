@@ -129,6 +129,9 @@
 	// How far into a song a promoted screen still swaps its plain src for the guide mix: past the gapless swap and the
 	// claim's round trip (the r8 probe landed at +300 ms), short of where a reload is a restart anyone would hear.
 	const REDECIDE_WITHIN_SEC = 2;
+	// `resumeTarget` was set by that re-decide, not by a cold mount: if the src it settles on is the one already
+	// playing, nothing reloads and the hold must go. Plain: bookkeeping.
+	let redecideResume = false;
 
 	// GUARDED ON THE ID *VALUE*, not the `media` signal, whose identity churns on any queue mutation: keying on the
 	// signal reset a MID-SONG slot, and `canplaythrough` will NOT fire again on a loaded element, so `onready` was spent
@@ -149,6 +152,9 @@
 		// A new song re-takes the mix decision from scratch: a non-mix song must not inherit the previous `routed`.
 		mixSettled = false;
 		plainThisSong = false;
+		// A re-decide's held position belongs to the song it was taken in, never the next one.
+		if (redecideResume) resumeTarget = undefined;
+		redecideResume = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
 		// `currentSrc` is deliberately NOT cleared: the element still holds the old src, and clearing makes the assign
@@ -413,9 +419,16 @@
 		// Promoted with this slot only PRE-WARMING the next song (hidden and paused at 0): nobody is listening, so it
 		// re-decides its mix now and the next song gets its guide. So does a slot that is PLAYING but has barely begun (a
 		// claim at the gapless swap lands just after it): the reload costs the room well under a second, and its playhead
-		// is held as the resume target so `canplay` puts the guide mix back there. Past that, the plain src stays.
-		if (plainThisSong && (!active || v.currentTime < REDECIDE_WITHIN_SEC)) {
-			if (active) resumeTarget = v.currentTime;
+		// is held as the resume target so `canplay` puts the guide mix back there. Past that, the plain src stays. Only a
+		// GUIDE-MIX song is worth that pause (nothing else would reload), and only on a page that has had a tap: with no
+		// activation the context cannot run, and the gate would hold the song paused for the 10 s resume bound only to
+		// settle plain (a 15 s grace hand-off to a copy nobody touched). `userActivation` absent: assume it can.
+		const canRoute = wantsEagerGraph(guidePlan) && navigator.userActivation?.hasBeenActive !== false;
+		if (plainThisSong && (!active || (canRoute && v.currentTime < REDECIDE_WITHIN_SEC))) {
+			if (active) {
+				resumeTarget = v.currentTime;
+				redecideResume = true;
+			}
 			plainThisSong = false;
 			mixSettled = false;
 		}
@@ -503,8 +516,16 @@
 		// whose slot has no routed graph yet), which would otherwise play on, rewound by the new song's seek, under the
 		// new singer's card until the gate settles. Main dropped the new song outright in that case.
 		if (decision.changed) {
-			if (decision.src) master.src = decision.src;
-			else master.pause();
+			if (decision.src) {
+				master.src = decision.src;
+				// The reload now owns the held resume: its own `canplay` applies it.
+				redecideResume = false;
+			} else master.pause();
+		} else if (redecideResume && resolved && mixSettled) {
+			// The re-decide settled on the src the element already plays (routing degraded): nothing reloads, so the held
+			// resume would wait for a later re-buffer's `canplay` and jump the song back to the claim. Drop it.
+			redecideResume = false;
+			resumeTarget = undefined;
 		}
 		// A NOT-PLAYABLE pass must leave BOTH shadows AND the element's src untouched: clearing `currentSrc` tells the
 		// transport the still-playing song has no src. The two are written in LOCKSTEP, or a half-stale entry token
@@ -539,6 +560,9 @@
 			}}
 			onerror={() => active && visible && !!master?.getAttribute('src') && onerror?.()}
 			ontimeupdate={() => {
+				// A resume is pending on the playing slot (a reload's first `timeupdate` reads 0 before `canplay` seeks it
+				// back): saying 0 would flip the lyrics and send the room a position it never had.
+				if (active && resumeTarget !== undefined) return;
 				if (master) onposition?.(master.currentTime, master.duration);
 			}}
 		></audio>
