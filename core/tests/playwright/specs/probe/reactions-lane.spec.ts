@@ -339,3 +339,57 @@ test('a room of five bursting at once: the waiting line drops the oldest, the sc
 		await worker.stop();
 	}
 });
+
+/** How long the TV's main thread is held right after the first disc mounts: a long frame on a busy TV, well past
+ *  the release spacing's slack (Reactions.svelte, SPACING_MS). */
+const STALL_MS = 400;
+
+test('a disc whose first frame is late still keeps its distance from the next one', async ({ world }) => {
+	const { worker, fans, tv } = await stage(world, 1);
+	try {
+		// Hold the main thread once, as the first disc mounts and before it can paint: its rise starts STALL_MS late
+		// while the wall clock runs on. Nightly 44844250303 caught the same overlap from a slow frame on CI.
+		await tv.evaluate(
+			({ q, ms }) => {
+				const w = window as unknown as { __stalled: number };
+				w.__stalled = 0;
+				const mo = new MutationObserver((records) => {
+					if (!records.some((m) => [...m.addedNodes].some((n) => n instanceof Element && n.matches(q)))) return;
+					mo.disconnect();
+					const until = performance.now() + ms;
+					while (performance.now() < until);
+					w.__stalled++;
+				});
+				mo.observe(document.body, { childList: true, subtree: true });
+			},
+			{ q: SEL.tvReaction, ms: STALL_MS }
+		);
+		await burst(fans);
+		const samples = await sampleWindow(tv, SAMPLE_WINDOW_MS);
+		const stalled = await tv.evaluate(() => (window as unknown as { __stalled: number }).__stalled);
+		expect(stalled, 'the stall never ran, so this proves nothing').toBe(1);
+		expect(peakOf(samples), 'the burst never put two discs on screen at once').toBeGreaterThanOrEqual(2);
+		const touching: unknown[] = [];
+		for (const [i, s] of samples.entries())
+			for (let a = 0; a < s.discs.length; a++)
+				for (let b = a + 1; b < s.discs.length; b++)
+					if (overlap(s.discs[a], s.discs[b]) > 0) touching.push({ sample: i, a: s.discs[a], b: s.discs[b] });
+		expect(touching, 'two reaction discs overlapped after a late first frame').toEqual([]);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('with reduced motion the stream still releases every disc in turn', async ({ world }) => {
+	const { worker, fans, tv } = await stage(world, 1);
+	try {
+		// The fade, not the rise, starts each disc's spacing here: the line must not stall on the first one.
+		await tv.emulateMedia({ reducedMotion: 'reduce' });
+		await burst(fans);
+		await expect
+			.poll(() => mounted(tv), { message: 'the waiting line stalled after the first disc' })
+			.toBeGreaterThanOrEqual(3);
+	} finally {
+		await worker.stop();
+	}
+});
