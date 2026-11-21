@@ -1,7 +1,7 @@
-// THE REACTION ROW COMES BACK. dock-cls.spec.ts proves the singer's row RESTS when their song starts (same slot,
-// faded, inert). This is the other leg (#986 review nit 1): Maya, Theo, Maya — Theo's row rests for his song and must
-// be live again for Maya's next one. Before #986 that was a fresh mount, so a row stuck resting (`inert` left on,
-// `visibility` never restored) was impossible; now it is one prop flip, and nothing else would notice.
+// THE CHEER KEY COMES BACK. dock-cls.spec.ts proves the singer's Cheer key RESTS when their song starts (same slot,
+// faded, inert). This is the other leg (#986 review nit 1): Maya, Theo, Maya — Theo's key rests for his song and must
+// be live again for Maya's next one. It is one prop flip, so a key stuck resting (`inert` left on, `visibility`
+// never restored) is possible, and nothing else would notice.
 // While resting it must also be gone for every input: not hit-testable, not focusable, and absent from Chrome's own
 // accessibility tree. Both motion modes, because the rest is a fade that `reduce` skips.
 import type { Page } from '@playwright/test';
@@ -46,7 +46,7 @@ async function tabStops(p: Page): Promise<string[]> {
 }
 
 for (const reduce of [false, true]) {
-	test(`the singer's reaction row rests for their song and comes back after it (reduced motion: ${reduce})`, async ({
+	test(`the singer's Cheer key rests for their song and comes back after it (reduced motion: ${reduce})`, async ({
 		world
 	}) => {
 		const worker = await startFakeWorker(world);
@@ -68,43 +68,47 @@ for (const reduce of [false, true]) {
 			const dock = theo.locator(SEL.dock);
 			const before = await dock.boundingBox();
 
-			// Theo's song: his row rests.
-			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			// Theo's song: his key rests. Ana, a fan of both songs, has the tray open as it changes: it must close,
+			// because its label named Maya. Maya skips, since Ana's transport is under her tray.
+			await ana.locator(SEL.npCheerKey).click({ timeout: 5_000 });
+			await expect(ana.locator(SEL.npCheers)).toHaveCount(1);
+			await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 5_000 });
-			await expect(theo.locator(SEL.npCheers)).toHaveAttribute('inert');
+			await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 5_000 });
+			// One-shot, not retrying: the tray's own 6 s timer would satisfy a retrying assertion.
+			expect(await ana.locator(SEL.npCheers).count(), 'the tray stayed open across a song change').toBe(0);
+			await expect(theo.locator(SEL.npCheerKey)).toHaveAttribute('inert');
 			const ok = theo.getByRole('button', { name: 'OK' });
 			if (await ok.isVisible()) await ok.click();
-			await expect(theo.locator(SEL.npCheer).first()).toHaveCSS('visibility', 'hidden');
+			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'hidden');
 			expect(await axCheers(theo), 'cheers Chrome exposes to assistive tech while resting').toEqual([]);
-			const box = (await theo.locator(SEL.npCheer).first().boundingBox())!;
+			const box = (await theo.locator(SEL.npCheerKey).boundingBox())!;
 			const hit = await theo.evaluate(
-				([x, y]) => document.elementFromPoint(x, y)?.closest('.cheer') !== null,
+				([x, y]) => document.elementFromPoint(x, y)?.closest('.cheer-key') !== null,
 				[box.x + box.width / 2, box.y + box.height / 2]
 			);
-			expect(hit, 'a resting cheer is hit-testable').toBe(false);
+			expect(hit, 'a resting Cheer key is hit-testable').toBe(false);
 			expect(
 				(await tabStops(theo)).filter((c) => c.includes('cheer')),
-				'a resting cheer takes focus'
+				'a resting Cheer key takes focus'
 			).toEqual([]);
 			// The audience at the same moment: live.
-			await expect(ana.locator(SEL.npCheers)).not.toHaveAttribute('inert');
-			await expect(ana.locator(SEL.npCheer)).toHaveCount(4);
-			for (const c of await ana.locator(SEL.npCheer).all()) await expect(c).toHaveCSS('opacity', '1');
+			await expect(ana.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
+			await expect(ana.locator(SEL.npCheerKey)).toHaveCSS('opacity', '1');
 
-			// Maya's next song: Theo is back in the audience, and so is his row.
+			// Maya's next song: Theo is back in the audience, and so is his key.
 			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/prayer|livin/i, { timeout: 5_000 });
-			await expect(theo.locator(SEL.npCheers)).not.toHaveAttribute('inert');
-			for (const c of await theo.locator(SEL.npCheer).all()) {
-				await expect(c).toHaveCSS('opacity', '1');
-				await expect(c).toHaveCSS('visibility', 'visible');
-			}
-			expect((await axCheers(theo)).length, 'the live row is back in the accessibility tree').toBeGreaterThan(0);
+			await expect(theo.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
+			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('opacity', '1');
+			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'visible');
+			expect((await axCheers(theo)).length, 'the live key is back in the accessibility tree').toBeGreaterThan(0);
 			expect(
 				(await tabStops(theo)).filter((c) => c.includes('cheer')).length,
-				'the live row takes focus'
+				'the live key takes focus'
 			).toBeGreaterThan(0);
-			// A real pointer tap: Playwright's actionability check refuses an element hit-testing does not reach.
+			// Real pointer taps: Playwright's actionability check refuses an element hit-testing does not reach.
+			await theo.locator(SEL.npCheerKey).click({ timeout: 5_000 });
 			await theo.locator(SEL.npCheer).first().click({ timeout: 5_000 });
 			expect(await shifts(theo), 'layout shift over the round trip').toEqual([]);
 			expect(await dock.boundingBox()).toEqual(before);

@@ -369,7 +369,7 @@
 		<!-- THE OFFLINE PILL MOVED TO THE DOCK. It lived here, in a deliberately non-sticky topbar, where it measured
 			`top: -2420px, inViewport: false` on a 59-row list — in the DOM and 2.4k pixels above the fold. The dock is
 			fixed and on every surface, so the cue is now visible at every scroll position on every route, and `/queue`
-			and `/library` gain one they never had. See the banner at `.offline-bar` in +layout.svelte. -->
+			and `/library` gain one they never had. See the offline cue in NowPlayingStrip.svelte. -->
 		{#if me}
 			<div class="me-cluster">
 				<div class="me-slot">

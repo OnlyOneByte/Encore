@@ -34,7 +34,6 @@
 	   you touch a style here, re-measure or say less. */
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
-	import Icon from '$lib/ui/Icon.svelte';
 	import { Toaster } from '$lib/components/ui/sonner';
 
 	let { children } = $props();
@@ -74,11 +73,10 @@
 	let lost = $state(false);
 	// Presence is keyed on the rotation having ANYTHING in it; `canStart` keys only the play button. See the strip.
 	let queueCount = $state(0);
-	/* The row is for the AUDIENCE, and the room can turn it off. On the singer's own phone it RESTS rather than
-	   leaving: its slot stays and only the buttons fade, because removing it shrank the fixed dock 71 px in the one
-	   frame the song became yours (CLS 0.0163, the dock's only layout shift). */
-	let reactRow = $state(false);
+	/* Cheering is for the AUDIENCE, and the room can turn it off. Either way the strip's Cheer key keeps its slot and
+	   only hides, so the dock never changes shape (proposal 13). */
 	let canReact = $state(false);
+	let entryId = $state<string | null>(null);
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
 	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
@@ -107,6 +105,7 @@
 			positionSec = room.playback.positionSec;
 			durationSec = media?.durationSec ?? 0;
 			hasSong = !!entry;
+			entryId = entry?.id ?? null;
 			target = observeShown(target, entry?.id ?? null, performance.now());
 			const mine = youreUpTurn({
 				previousId: lastCurrentId,
@@ -139,8 +138,7 @@
 			placeholder = room.placeholder;
 			synced = room.queue?.synced ?? false;
 			lost = room.lostName !== null;
-			reactRow = !!entry && room.settings.room.tvReactions;
-			canReact = reactRow && entry?.singerId !== me;
+			canReact = !!entry && room.settings.room.tvReactions && entry.singerId !== me;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -255,7 +253,7 @@
 	   nothing in this strip either. The next broadcast redraws it. So "nothing happened" is indistinguishable from
 	   "it worked", which is the one shape where silence cannot be read at all, and the guest's only remaining move
 	   is to tap again.
-	   WHY NOT JUST THE `.offline-bar` BELOW. It answers "is the link up?", where a tap asks "did MY skip happen?",
+	   WHY NOT JUST THE STRIP'S "Reconnecting…" CUE. It answers "is the link up?", where a tap asks "did MY skip happen?",
 	   and it deliberately refuses to say which taps survive — its own note records the split, because the queue's
 	   do and the transport's do not. Nor is it reliably up when a send fails: `connected` flips in the socket's
 	   `onclose`/`#presumeDead`, while a send reports false as soon as `readyState` leaves OPEN, so a tap in the
@@ -433,30 +431,13 @@
 		inside a single positioned parent — two fixed siblings would each need their own inset arithmetic and would
 		disagree the moment one of them changed height. -->
 	<div class="dock" bind:clientHeight={dockH}>
-		<!-- THE OFFLINE CUE, AND IT BELONGS HERE RATHER THAN ON A ROUTE. It used to exist only in `/`'s topbar, which
-			is deliberately NOT sticky, so on a 59-row result list it was measured at `top: -2420px, inViewport: false`
-			— present in the DOM, 2.4k pixels above the fold, on the one surface that needs it least. `/queue` owns
-			pause, skip, ±semitone and the guiding-track slider and read `room.connected` nowhere at all; `/library`
-			likewise. Three of the behavioural review's findings were that same gap on three surfaces.
-			The dock is `position: fixed` and renders on every joined phone surface, so a cue here is visible at every
-			scroll position on every route, and there is exactly one of it.
-			--warn, NOT --danger: a dropped socket self-heals on the next backoff tick, and --danger is reserved for a
-			failure that will not. The queue store keeps accepting taps while offline and resends them on resync, so
-			this is "your taps are being held" for a QUEUE op and "your taps are lost" for a PLAYER command, which is
-			why the copy says only Reconnecting.
-			IT USED TO SAY "your taps are saved", AND THAT WAS HALF FALSE. `QueueStore.resendPending()` really does
-			replay a pending add or move on resync, so for the queue it was true. Player commands — pause, skip,
-			±key, the guiding track — go through `RoomLink.command`, which is one `#ws?.send()` with no pending
-			ledger behind it: dropped means lost. Promising both was the same overstatement this review kept
-			finding elsewhere, so the bar now states the fact it can keep and nothing more.
-			THE OTHER HALF OF THAT SPLIT IS `transport()` ABOVE, which says the thing this bar cannot: not "the
-			link is down" but "the command you just issued was lost". Those are different questions, and this bar
-			can only ever answer the first. -->
-		{#if offline}
-			<p class="offline-bar" role="status" aria-live="polite">
-				<Icon name="warning" /> Reconnecting…
-			</p>
-		{/if}
+		<!-- THE OFFLINE CUE IS THE STRIP'S, in its title slot, and it belongs in the dock rather than on a route: the
+			dock is `position: fixed` on every joined phone surface, so the cue is visible at every scroll position,
+			and there is exactly one of it. It used to be its own `.offline-bar` row here, which grew the dock on
+			every wifi blip. It says only "Reconnecting…": the queue store resends a pending add or move on resync,
+			while a player command is one `send()` with no ledger behind it, so "your taps are saved" was half false.
+			`transport()` above says the other half: not "the link is down" but "the command you just issued was lost". -->
+		<!-- `room.offline`, as the old bar read it (#996): the link is plainly down, not a backoff blip. -->
 		<NowPlayingStrip
 			title={title}
 			singerName={singerName}
@@ -467,10 +448,12 @@
 			hasSong={hasSong}
 			canStart={canStart}
 			queueCount={queueCount}
+			entryId={entryId}
+			connected={!offline}
 			onrestart={() => targeted('restart')}
 			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
 			onskip={() => targeted('skip')}
-			onreact={reactRow ? (kind) => room.react(kind) : undefined}
+			onreact={(kind) => room.react(kind)}
 			reactResting={!canReact}
 		/>
 		<TabBar pathname={page.url.pathname} />
@@ -510,23 +493,6 @@
 		/* The chrome spans the viewport but its CONTENT aligns with the column above it, or the transport sits under
 		   the page's trailing margin on a wide screen while the rows it controls sit inboard. */
 		justify-items: center;
-	}
-
-	.offline-bar {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-xs);
-		margin: 0;
-		padding: var(--space-2xs) var(--space-lg);
-		background: var(--warn-bg);
-		border-top: 1px solid var(--warn-line);
-		color: var(--warn);
-		font-size: var(--ph-text-sm);
-		/* NO nowrap and a floor of none: this bar spans the dock's full width, so a long string wraps to a second
-		   line rather than overflowing. The pill it replaced was `white-space: nowrap` in a flex topbar, where its
-		   133px min-content width pushed `scrollWidth` to 334 against a 320 viewport. */
-		text-align: center;
 	}
 
 	.dock > :global(*) {

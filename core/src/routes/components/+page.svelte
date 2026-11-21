@@ -582,11 +582,9 @@
 			/>
 		</div>
 		<div>
-			<!-- BLANK ON PURPOSE, and the caption is the frame: the strip's whole top-level condition is
-					`hasSong || queueCount > 0`, so an idle room renders NOTHING and the tab bar alone holds the bottom. The band
-					it replaced showed "Nothing playing" beside a disabled transport whose play button was the brightest
-					thing on the screen. -->
-			<p class="caption">Nothing playing and nothing queued — renders NOTHING, by design</p>
+			<!-- The strip keeps its height in an idle room (proposal 13), but shows NO transport: the band before it put a
+					disabled Play, the brightest thing on the screen, beside this copy. -->
+			<p class="caption">Nothing playing and nothing queued — "Nothing playing", no transport</p>
 			<NowPlayingStrip
 				title={null}
 				singerName={null}
@@ -597,6 +595,24 @@
 				hasSong={false}
 				canStart={false}
 				queueCount={0}
+				onrestart={() => {}}
+				ontoggleplay={() => {}}
+				onskip={() => {}}
+			/>
+		</div>
+		<div>
+			<p class="caption">The link is down — "Reconnecting…" takes the title slot, same height</p>
+			<NowPlayingStrip
+				title="Sweet Caroline"
+				singerName="Maya"
+				singerColor={SINGER_COLORS[0]}
+				isPlaying
+				elapsedSec={48}
+				durationSec={201}
+				hasSong
+				canStart
+				queueCount={1}
+				connected={false}
 				onrestart={() => {}}
 				ontoggleplay={() => {}}
 				onskip={() => {}}
