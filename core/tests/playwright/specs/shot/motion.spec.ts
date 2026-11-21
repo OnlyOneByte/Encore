@@ -1,7 +1,8 @@
 // THE MOTION TABLE — the `shot` project's sibling for things that MOVE. A frame table (frames.spec.ts) proves a
 // state at rest; this proves the trip between two states, as a GIF for a human and a ms-labelled filmstrip for
 // an agent reviewer. Evidence, not assertions: like every `shot` spec it cannot fail a build on taste, only on
-// the capture itself breaking (no motion caught where motion is expected, or motion caught where a cut is), and
+// the capture itself breaking (no motion caught where motion is expected, motion caught where a cut is, or a frame
+// after the trigger that does not show the row's `subject`), and
 // on a moving element whose duration, delay or colour is a literal instead of a token (`literalsAllowed` waives
 // exactly one named literal, with a reason).
 //
@@ -16,6 +17,7 @@ import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { join } from 'node:path';
+import { SETTLE_MS } from '$lib/transport-target';
 
 /** `cleanup` runs after the capture, pass or fail: a row that starts a fake worker stops it there. */
 type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown>) => void) => MotionScenario;
@@ -48,16 +50,21 @@ async function asSinger(
 	return ctx.newPage();
 }
 
+/** Skip whatever is on until the room is empty. Each skip waits past the strip's settle window (SETTLE_MS, #974),
+ *  so the next skip names the song now on it. */
+async function drain(phone: Page): Promise<void> {
+	const skip = phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
+	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
+		await skip.click();
+		await phone.waitForTimeout(SETTLE_MS + 250);
+	}
+	await expect(phone.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+}
+
 /** Drain the room, then Maya singing caroline past her intro card, with Theo next. */
 async function mayaThenTheo(phones: { maya: Page; theo: Page; ana: Page }): Promise<void> {
 	const { maya, theo, ana } = phones;
-	const skip = ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
-	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
-		await skip.click();
-		// Past the strip's settle window, so the next skip names the song now on it.
-		await ana.waitForTimeout(1_200);
-	}
-	await expect(ana.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 10_000 });
+	await drain(ana);
 	await queueReady(maya, 'caroline');
 	await queueReady(theo, 'believin');
 	await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
@@ -103,6 +110,9 @@ function dockYourSong(width: number): Make {
 				await page.locator(`${SEL.npCheers}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.cheer',
+			// The cheer row, not its buttons: they fade to opacity 0 by design, while the row keeps its height and
+			// opacity. A collapsed or removed row fails here; the whole dock would not.
+			subject: SEL.npCheers,
 			stripClip: async () => ({ x: 0, y: 604, width, height: 240 }),
 			observe: (page) =>
 				page.evaluate(() => {
@@ -131,7 +141,9 @@ const SCENARIOS: Record<string, Make> = {
 			columns: 6,
 			open: async (opts) => {
 				if (!ph) {
-					const worker = await startFakeWorker(world);
+					// 36 s stems, so Maya's song is still on while each run opens Theo's page under load: an 8 s one
+					// could end first and start Theo's song before the trigger.
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
 					cleanup(() => worker.stop());
 					ph = {
 						maya: await world.openPhone('Maya'),
@@ -155,6 +167,9 @@ const SCENARIOS: Record<string, Make> = {
 				await page.locator('.youre-up').waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.youre-up',
+			subject: '.youre-up',
+			// The sheet's wall-clock dismiss (`youreUpTimer`, +layout.svelte) would otherwise fire between seeked frames.
+			holdTimers: true,
 			// The dock and the sheet over it: the whole page in ~16 frames is past 2000 px tall.
 			stripClip: async () => ({ x: 0, y: 444, width: 390, height: 400 }),
 			observe: (page) =>
@@ -208,6 +223,7 @@ const SCENARIOS: Record<string, Make> = {
 				.catch(() => {});
 		},
 		only: '.phrase-line',
+		subject: '.phrase-line',
 		literalsAllowed: {
 			match: 'phrase-fade on div.phrase-line: literal timing 0.6s',
 			reason: 'a slower swap for a screen nobody is acting on (tv/+page.svelte)'
@@ -247,6 +263,7 @@ const SCENARIOS: Record<string, Make> = {
 			await page.getByRole('button', { name: 'Leave the room' }).click();
 			await page.locator('[role="alertdialog"]').waitFor({ state: 'attached' });
 		},
+		subject: '[role="alertdialog"]',
 		observe: (page) => page.evaluate(() => ({ dialogOpen: !!document.querySelector('[role="alertdialog"]') }))
 	}),
 
@@ -289,6 +306,7 @@ const SCENARIOS: Record<string, Make> = {
 			// The card AND its children: the eyebrow's ink fades on its own transition, which `section.deck` alone files
 			// under `others` and never seeks.
 			only: 'section.deck, section.deck *',
+			subject: 'section.deck.heads-up',
 			// The card and a little of what is around it: the whole 390x844 page in 15 frames is past 2000 px tall.
 			stripClip: async (page) => {
 				const box = await page.locator('section.deck').boundingBox();
@@ -303,28 +321,33 @@ const SCENARIOS: Record<string, Make> = {
 		};
 	},
 
-	/** The TV's "Now singing" card for the evening's first song. A phone queues a ready song into an idle room and
-	 *  the TV takes over the screen with the card for the intro hold. Each run first skips the last run's song, so
-	 *  it opens on an idle room again. */
+	/** The TV's "Now singing" card at a change of singer, which since #974 is every change, not only the first
+	 *  song. Ana sings caroline on this TV with Maya next; Ana's skip hands the room to Maya and the card takes over
+	 *  the screen for the intro hold. Each run drains the room and starts Ana's song again, past her own card. */
 	'tv-song-intro': (browser, world, cleanup) => {
-		let phone: Page | undefined;
+		let ana: Page | undefined;
+		let maya: Page | undefined;
 		return {
 			name: 'tv-song-intro',
-			what: 'TV 1920x1080: the "Now singing" card arriving for the first song: a CUT for the card itself (proposal 04 changes this). Behind it, the stage background and the player slot fade in over 250 ms; they are listed under live.others',
+			what: 'TV 1920x1080: the "Now singing" card for Maya as Ana skips to her, the handoff on every change of singer: a CUT, in and out, for the card itself. Behind it, whatever fades is listed under live.others',
 			stepMs: 33,
 			scale: 0.5,
 			columns: 5,
 			startTimeoutMs: 1_500,
 			open: async (opts) => {
-				if (!phone) {
-					const worker = await startFakeWorker(world);
+				if (!ana || !maya) {
+					// 36 s stems, so Ana's song is still on at the trigger however slowly the TV page opens.
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
 					cleanup(() => worker.stop());
-					phone = await world.openPhone('Ana');
-					await readySong(world, phone, 'caroline');
+					ana = await world.openPhone('Ana');
+					maya = await world.openPhone('Maya');
+					await readySong(world, ana, 'caroline');
+					await readySong(world, ana, 'believin');
 				}
-				const skip = phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
-				if (await skip.isVisible()) await skip.click();
-				await expect(phone.locator(SEL.npStripTitle)).toHaveCount(0);
+				// This row is the suite's critical path (~45 s, `liveMs` ~25 s): each of its 5 opens drains the room
+				// (SETTLE_MS waits) and then waits out Ana's own "Now singing" card. The 36 s stems are not the cost;
+				// shortening them lets Ana's song end before the trigger under load.
+				await drain(ana);
 				const ctx = await browser.newContext({
 					...opts,
 					viewport: { width: 1920, height: 1080 },
@@ -333,16 +356,24 @@ const SCENARIOS: Record<string, Make> = {
 				await ctx.addCookies([world.tvCookie]);
 				const page = await ctx.newPage();
 				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-				// Ana has joined, so the idle TV is the lobby, not the attract screen.
 				await expect(page.locator(SEL.lobby)).toBeVisible();
+				await queueReady(ana, 'caroline');
+				await queueReady(maya, 'believin');
+				// Ana's own card comes and goes: the run opens on her song, with Maya next.
+				await expect(page.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
+				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
 			},
 			trigger: async (page) => {
-				await queueReady(phone!, 'caroline');
+				await ana!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 				await expect(page.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
 			},
 			only: '.state-next, .state-next *',
+			subject: '.state-next',
+			// The card's intro hold is a wall-clock timeout (`interstitialTimer`, tv/+page.svelte): it would take the
+			// CUT's after frame away.
+			holdTimers: true,
 			observe: (page) =>
 				page.evaluate(() => ({ introText: document.querySelector('.state-next')?.textContent?.trim() ?? null }))
 		};
@@ -375,6 +406,10 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 				else expect(declared, `${name}: no animation was caught after the trigger`).toBeGreaterThan(0);
 				// Check 3 and the colour half of check 8: what the CSS authored, not what it measured.
 				expect(tokens.problems, `${name}: literal durations, delays or colours`).toEqual([]);
+				// Every frame after the trigger shows what the row is about; one that does not captured something else.
+				expect(result.metrics.subject, `${name}: frames without the subject, in ms after the trigger`).toMatchObject({
+					missingMs: { seek: [], reduced: [] }
+				});
 			} finally {
 				for (const fn of cleanups) await fn();
 			}
