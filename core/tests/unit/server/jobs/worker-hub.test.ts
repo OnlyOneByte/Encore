@@ -663,6 +663,8 @@ test('a terminally failed stems job settles the media back to un-processed and s
 	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled — retryable again
 	const statuses = broadcasts.filter((e) => e.type === 'media:status');
 	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
+	// The failure carries the settled row, so a phone that never fetched the song can name it.
+	expect((statuses.at(-1) as Extract<ServerEvent, { type: 'media:status' }>).media).toEqual(mediaById.get('m1')!);
 });
 
 test('a failed ALIGN leaves a separated song singable — it does not settle the stems side', () => {

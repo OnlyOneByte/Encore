@@ -67,7 +67,10 @@ export type ServerEvent =
 			rev: number;
 			entries: QueueEntry[];
 			singers?: PublicSinger[];
+			// The QUEUED songs only; the library is fetched over HTTP.
 			media?: Media[];
+			// Measured LUFS of every song in the library, for the TV's loudness median.
+			loudness?: number[];
 			online?: string[];
 			away?: string[];
 			settings?: EffectiveSettings;
@@ -88,6 +91,8 @@ export type ServerEvent =
 			etaSec?: number;
 			unservable?: boolean;
 			requestedBy?: string;
+			// On `failed` only: the song's row, so a phone that never fetched it can name it in the notice.
+			media?: Media;
 	  }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }

@@ -143,7 +143,15 @@ export class RoomLink {
 		this.queue = new QueueStore({
 			singerId: this.me.id,
 			sendCommand: (cmd: ClientCommand) => this.#ws?.send({ type: 'queue:command', command: cmd }),
-			onReject: (reason) => this.#fail(`Couldn't do that: ${reason}`),
+			onReject: (reason) => {
+				// The hub's own wording for an add of a song it no longer holds (hub.ts `validateCommand`).
+				const gone = /^unknown media: (.+)$/.exec(reason);
+				if (gone) {
+					this.#songGone(gone[1]!);
+					// Said for this tap: its process refusal, if still in flight, stays silent.
+					if (this.#processInFlight.has(gone[1]!)) this.#toldWhileProcessing.add(gone[1]!);
+				} else this.#fail(`Couldn't do that: ${reason}`);
+			},
 			// Read at apply time, not captured: both the algorithm and the sing history change while the party runs, and
 			// predicting with a stale ordering is what makes a row jump.
 			ordering: () => ({
@@ -239,8 +247,11 @@ export class RoomLink {
 				this.roomGuideDefault = e.settings.room.guideLevelDefault;
 			}
 			if (e.singers) this.singers = new Map(e.singers.map((s) => [s.id, s]));
-			if (e.media) this.mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-			// Re-apply failed-process scars: a sync REPLACES the catalog, so without this the first sync wipes the scarred row.
+			// ADDS rather than replaces: a sync carries only the queued songs, so replacing would erase every row search and
+			// the library merged in, and a title would fall back to its id. The catalog is only read by id, so a stale extra
+			// row is harmless.
+			if (e.media) this.mediaCatalog = new Map([...this.mediaCatalog, ...e.media.map((m) => [m.id, m] as const)]);
+			// Re-apply failed-process scars, for ids the catalog does not hold.
 			if (this.#scarred.length) this.mergeMissingMedia(this.#scarred);
 			// An omitted list means "no info", not "nobody is away" — do not blank what we have.
 			if (e.away) this.awaySingers = new Set(e.away);
@@ -302,6 +313,8 @@ export class RoomLink {
 		}
 		// Surface a died process instead of leaving the row stuck, and persist a per-device scar so it survives a reload.
 		if (status === 'failed') {
+			// A failure carries its row, so a phone that never fetched the song (an admin-started process) names it.
+			if (e.media) this.mergeMissingMedia([e.media]);
 			const failedMedia = this.mediaCatalog.get(mediaId);
 			if (failedMedia) {
 				/* THE SCAR STAYS ROOM-WIDE, deliberately, and it is NOT what made the reported defect. It renders on no
@@ -334,6 +347,18 @@ export class RoomLink {
 				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
 			}
 		}
+	}
+
+	/** A song deleted since this phone fetched it: a sync carries only queued songs, so nothing else drops its row, and
+	 * the shelf and an open search keep offering it. Drops it from both, and says so on EVERY refused tap: a tap that
+	 * is refused in silence is a dead end. `tell` is false only for the second refusal of one tap (see requestProcess). */
+	#songGone(mediaId: string, tell = true): void {
+		const next = new Map(this.mediaCatalog);
+		next.delete(mediaId);
+		this.mediaCatalog = next;
+		this.library = this.library.filter((m) => m.id !== mediaId);
+		this.#emit();
+		if (tell) this.#fail("That song isn't in the library any more.");
 	}
 
 	/** The catalog is otherwise fed ONLY by queue:sync/patch, so a song that came from search or the library has no
@@ -388,6 +413,7 @@ export class RoomLink {
 	 * the root layout routes `onError` to `toast.error` on every surface. */
 	async requestProcess(mediaId: string): Promise<void> {
 		this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
+		this.#processInFlight.add(mediaId);
 		try {
 			const res = await fetch('/api/process', {
 				method: 'POST',
@@ -401,7 +427,14 @@ export class RoomLink {
 				   turn back on a transient refusal would delete a turn the guest genuinely asked for. What the guest
 				   is left holding is exactly the state the stalled card exists to name. */
 				this.clearMediaStatus(mediaId);
-				this.#fail(body.error ?? 'Could not start process');
+				if (res.status === 409 && body.error === 'unknown media') {
+					// ONE notice per tap: the same tap's add is refused too. Silent when that refusal already said it,
+					// or will (the add is still pending); otherwise this is the tap's only refusal, so say it.
+					const tappedAdd = this.entries.some(
+						(e) => e.mediaId === mediaId && this.queue?.pendingKindById.get(e.id) === 'add'
+					);
+					this.#songGone(mediaId, !this.#toldWhileProcessing.has(mediaId) && !tappedAdd);
+				} else this.#fail(body.error ?? 'Could not start process');
 				return;
 			}
 			// The stems were already on disk (processed on an earlier night) — nothing to wait for.
@@ -409,8 +442,13 @@ export class RoomLink {
 		} catch {
 			this.clearMediaStatus(mediaId);
 			this.#fail("Couldn't start that.");
+		} finally {
+			this.#processInFlight.delete(mediaId);
+			this.#toldWhileProcessing.delete(mediaId);
 		}
 	}
+	#processInFlight = new Set<string>();
+	#toldWhileProcessing = new Set<string>();
 	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
 	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
 	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so

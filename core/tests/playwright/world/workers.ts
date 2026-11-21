@@ -62,6 +62,12 @@ export interface FakeWorkerFaults {
 	 * existing spec exercises.
 	 */
 	guideMix?: boolean;
+	/**
+	 * The `songProfile.loudnessLufs` every stems job reports. Default `null`, which is NOT a measurement — so by
+	 * default nothing this worker publishes enters the library loudness median. A spec whose subject is loudness
+	 * normalization sets it, and swaps workers to give different songs different levels.
+	 */
+	loudnessLufs?: number | null;
 }
 
 export interface FakeWorkerOptions extends FakeWorkerFaults {
@@ -161,6 +167,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		noProfile = false,
 		noVocals = false,
 		guideMix = false,
+		loudnessLufs = null,
 		seconds = 8
 	} = options;
 
@@ -297,10 +304,10 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 						p05Midi: 55,
 						p95Midi: 67,
 						histogram: Array.from({ length: 20 }, (_, i) => Math.round(Math.sin((i / 19) * Math.PI) * 40) / 10),
-						// Spelled `null` where the old worker omitted the key. Identical on the wire as far as core
+						// `null` by default, where the old worker omitted the key. Identical on the wire as far as core
 						// is concerned — `normalizeSongProfile` reads an absent one as null — and stated here so the
-						// fixture cannot be mistaken for a loudness MEASUREMENT.
-						loudnessLufs: null
+						// fixture cannot be mistaken for a loudness MEASUREMENT unless a spec asks for one.
+						loudnessLufs
 					};
 				}
 				send({

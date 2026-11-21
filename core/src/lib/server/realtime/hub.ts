@@ -121,6 +121,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (!op.entry.singerId) return 'missing singerId';
 			// Rejected rather than silently rewritten, which would desync the sender's optimistic copy.
 			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
+			// The phone parses this wording to say the song was deleted: keep in step with room.ts `onReject`/`#songGone`.
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			// applyOp overwrites in place on id match, so an id colliding with a DIFFERENT live entry would
 			// let one phone hijack another's turn and orphan the displaced media's process. Re-adding the
@@ -233,7 +234,13 @@ export function handleQueueCommand(
 /** Media records referenced by the given entries (so observers can render titles for others' adds). */
 export function mediaFor(entries: QueueEntry[], deps: Pick<HubDeps, 'mediaById'>): Media[] {
 	const ids = new Set(entries.map((e) => e.mediaId));
-	return [...deps.mediaById.values()].filter((m) => ids.has(m.id));
+	return [...ids].map((id) => deps.mediaById.get(id)).filter((m): m is Media => m !== undefined);
+}
+
+/** The measured LUFS of every song the box holds. The TV's loudness median is a property of the WHOLE library, so it
+ *  rides the sync as numbers instead of as every media row. Same derivation the TV used to run over its catalog. */
+export function loudnessLevelsOf(media: Iterable<Media>): number[] {
+	return [...media].map((m) => m.songProfile?.loudnessLufs ?? null).filter((v): v is number => typeof v === 'number');
 }
 
 /** Derived here rather than passed in, so exactly one place decides "current" ordering — via the SHARED
@@ -246,7 +253,8 @@ export function orderingOf(deps: Pick<HubDeps, 'getSettings' | 'listSingers'>): 
 	};
 }
 
-/** The resync path. Carries the singer and media directories so clients can render per-entry names. */
+/** The resync path. Carries the singers and the QUEUED songs' media so clients can render per-entry names; the rest of
+ *  the library is `/api/library`'s job, and only its loudness levels ride along. */
 export function syncEvent(
 	state: AuthoritativeState,
 	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings'>
@@ -256,7 +264,8 @@ export function syncEvent(
 		rev: state.rev,
 		entries: state.entries as QueueEntry[],
 		singers: deps?.listSingers?.(),
-		media: deps ? [...deps.mediaById.values()] : undefined,
+		media: deps ? mediaFor(state.entries, deps) : undefined,
+		loudness: deps ? loudnessLevelsOf(deps.mediaById.values()) : undefined,
 		online: deps?.listOnline?.(),
 		away: deps?.listAway?.(),
 		settings: deps?.getSettings?.()

@@ -310,6 +310,10 @@ export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, dep
 			type: 'media:status',
 			mediaId: job.mediaId,
 			status: mediaStatusFor(job),
+			// The row rides the failure, because a sync carries only queued songs: a phone that never fetched this
+			// one would otherwise name it by its id in "Couldn't make karaoke for …". Unconditional, because this
+			// path only ever sees a terminal job, which `mediaStatusFor` reports as `failed`.
+			media,
 			pct: job.progressPct,
 			etaSec: job.etaSec ?? undefined,
 			// WHO TO TELL "try again". The job has carried this since it was enqueued — /api/process and
