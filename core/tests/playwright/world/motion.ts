@@ -42,6 +42,23 @@ export interface MotionScenario {
 	name: string;
 	/** What the reviewer should look for. Written into metrics.json and onto the strip. */
 	what: string;
+	/** CSS selector for the element the row is ABOUT. Every frame after the trigger, in the seek and the reduced
+	 *  runs, must show it: not `visibility: hidden`, with a non-zero area of its box left after the ancestors that
+	 *  clip it (`overflow`, `contain: paint`, an `inset()` `clip-path`) and the frame's crop (the strip's, when it
+	 *  has one) cut it. Opacity is not checked per frame, so a fade-in's first frame counts, but the LAST frame of each
+	 *  run (the seek's settled end, the reduced burst's last shot) must also show it at an effective opacity (the
+	 *  product up its ancestors) above 0: a subject that never becomes visible is missing. A frame without it
+	 *  shows something else, so `metrics.subject.missingMs` lists it and the row fails.
+	 *  What it can't see: z-order (a subject painted under another element still counts as shown); a `clip-path`
+	 *  shape other than `inset()`, or an `inset()` it can't read (`calc()`, a box keyword), counts as the whole box; and transformed clipping ancestors, whose padding
+	 *  box is approximate (`scale` > 1 can falsely fail, `scale` < 1 can hide a sliver clip). */
+	subject: string;
+	/** Seek run only: once the trigger resolves, drop every page `setTimeout` callback, pending or new, until the
+	 *  page closes. For rows whose subject has a wall-clock dismiss (the "You're up" sheet, the TV card) that would
+	 *  otherwise fire between seeked frames and take the subject away under a frozen animation. Off by default,
+	 *  because it also hides timer-sequenced motion (a staggered reveal); each dropped callback is listed in
+	 *  `metrics.heldTimers` and counted on the strip. */
+	holdTimers?: boolean;
 	/** Bring a page to the state just BEFORE the motion. Gets a fresh page per run. */
 	open(contextOptions: BrowserContextOptions): Promise<Page>;
 	/** Fire the motion. Must resolve once the trigger has been delivered (not once motion ends). */
@@ -126,6 +143,10 @@ function instrument() {
 	type M = {
 		armed: boolean;
 		freeze: boolean;
+		/** Seek runs of a `holdTimers` row only: set once the trigger resolves; see the `setTimeout` wrapper below. */
+		hold: boolean;
+		/** The callbacks `hold` dropped: the timer's delay and when it came due, in ms after `arm()`. */
+		held: { delayMs: number; atMs: number }[];
 		t0: number;
 		caught: Animation[];
 		others: Animation[];
@@ -140,6 +161,8 @@ function instrument() {
 	const m: M = {
 		armed: false,
 		freeze: false,
+		hold: false,
+		held: [],
 		t0: 0,
 		caught: [],
 		others: [],
@@ -151,6 +174,8 @@ function instrument() {
 		arm(freeze, only) {
 			m.armed = true;
 			m.freeze = freeze;
+			m.hold = false;
+			m.held = [];
 			m.only = only;
 			m.others = [];
 			m.t0 = performance.now();
@@ -194,6 +219,21 @@ function instrument() {
 	};
 	document.addEventListener('animationstart', fromEvent, true);
 	document.addEventListener('transitionrun', fromEvent, true);
+
+	// Pause-and-seek stops the page's animation clock, so it stops its timers too: a wall-clock timer firing while
+	// frames are seeked (the "You're up" sheet's or the TV card's dismiss) would change the page under a frozen
+	// animation, or take a CUT's after frame away. Once a `holdTimers` row's seek trigger has resolved (`hold`), no
+	// timeout fires, pending or new, and each one dropped is recorded in `held`; the page is closed after that run.
+	// Deliberately NOT held: `setInterval` and `requestAnimationFrame` loops (VisualizerStage, LyricsOverlay) run on
+	// wall-clock in every run. String handlers pass through untouched.
+	const setTimeoutReal = window.setTimeout;
+	window.setTimeout = ((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
+		typeof handler !== 'function'
+			? setTimeoutReal(handler, ms, ...args)
+			: setTimeoutReal(() => {
+					if (!m.hold) handler(...args);
+					else m.held.push({ delayMs: Number(ms) || 0, atMs: Math.round(performance.now() - m.t0) });
+				}, ms)) as typeof window.setTimeout;
 
 	const animate = Element.prototype.animate;
 	Element.prototype.animate = function (...args: Parameters<Element['animate']>) {
@@ -368,37 +408,156 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
-/** Pause-and-seek capture. Returns frames at -1 (pre-trigger), 0, step, … endTime, and the settled end. */
-async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, step: number) {
+/** Is `s.subject` on screen inside `area` (page px; the viewport when absent), with a non-zero area of it left
+ *  after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
+ *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
+ *  opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the product up the
+ *  ancestor chain) above 0, and is what a run's last frame must have. */
+function subjectState(
+	page: Page,
+	selector: string,
+	area: Clip | undefined
+): Promise<{ shown: boolean; opaque: boolean }> {
+	return page.evaluate(
+		([sel, a]) => {
+			type R = { l: number; t: number; r: number; b: number };
+			const cut = (p: R, q: R): R => ({
+				l: Math.max(p.l, q.l),
+				t: Math.max(p.t, q.t),
+				r: Math.min(p.r, q.r),
+				b: Math.min(p.b, q.b)
+			});
+			const rect = (el: Element): R => {
+				const r = el.getBoundingClientRect();
+				return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+			};
+			const opacity = (el: Element | null) => {
+				let o = 1;
+				for (; el; el = el.parentElement) o *= Number(getComputedStyle(el).opacity);
+				return o;
+			};
+			// Does `el` hold fixed (and so also absolute) descendants? The usual triggers; enough for this app.
+			const holdsFixed = (cs: CSSStyleDeclaration) =>
+				cs.transform !== 'none' ||
+				cs.translate !== 'none' ||
+				cs.scale !== 'none' ||
+				cs.rotate !== 'none' ||
+				cs.perspective !== 'none' ||
+				cs.filter !== 'none' ||
+				cs.backdropFilter !== 'none' ||
+				/paint|layout|strict|content/.test(cs.contain) ||
+				/transform|translate|scale|rotate|perspective|filter/.test(cs.willChange);
+			// The nearest ancestor whose overflow clip applies to `el`: its containing block, not just its parent.
+			const containingBlock = (el: Element): Element | null => {
+				const pos = getComputedStyle(el).position;
+				let p = el.parentElement;
+				for (; p && p !== document.body; p = p.parentElement) {
+					const cs = getComputedStyle(p);
+					if (cs.display === 'contents') continue; // no box, so never a containing block
+					if (pos === 'fixed' ? holdsFixed(cs) : pos !== 'absolute' || cs.position !== 'static' || holdsFixed(cs))
+						return p;
+				}
+				return null; // the viewport, which `box` already is; `body`'s overflow goes to the viewport
+			};
+			// shortcut: only `inset()` is measured; another shape counts as its whole border box. Upgrade if a
+			// subject or its ancestors ever use circle()/polygon()/path().
+			const clipPath = (el: Element, r: R): R => {
+				const m = /^inset\(([^)]*?)(?:\s+round\s[^)]*)?\)$/.exec(getComputedStyle(el).clipPath);
+				if (!m) return r;
+				const v = m[1].trim().split(/\s+/);
+				const [t, rt, b, l] = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+				const len = (s: string, full: number) => (s.endsWith('%') ? (parseFloat(s) / 100) * full : parseFloat(s));
+				const w = r.r - r.l;
+				const h = r.b - r.t;
+				return { l: r.l + len(l, w), t: r.t + len(t, h), r: r.r - len(rt, w), b: r.b - len(b, h) };
+			};
+			const visibleRect = (el: Element): R => {
+				let v = rect(el);
+				// clip-path clips every descendant, fixed ones included, so it is read up the whole DOM chain.
+				for (let p: Element | null = el; p && p !== document.documentElement; p = p.parentElement) {
+					if (getComputedStyle(p).clipPath !== 'none') v = cut(v, clipPath(p, rect(p)));
+				}
+				// Overflow and paint containment clip to the padding box, per axis, along the containing-block chain.
+				for (let p = containingBlock(el); p; p = containingBlock(p)) {
+					const cs = getComputedStyle(p);
+					if (cs.display === 'inline' || cs.display === 'contents') continue; // overflow and contain don't apply
+					const paint = /paint|strict|content/.test(cs.contain);
+					const r = rect(p);
+					const pad: R = {
+						l: r.l + p.clientLeft,
+						t: r.t + p.clientTop,
+						r: r.l + p.clientLeft + p.clientWidth,
+						b: r.t + p.clientTop + p.clientHeight
+					};
+					if (paint || cs.overflowX !== 'visible') v = { ...v, l: Math.max(v.l, pad.l), r: Math.min(v.r, pad.r) };
+					if (paint || cs.overflowY !== 'visible') v = { ...v, t: Math.max(v.t, pad.t), b: Math.min(v.b, pad.b) };
+				}
+				return v;
+			};
+			const box = a
+				? { l: a.x - scrollX, t: a.y - scrollY, r: a.x - scrollX + a.width, b: a.y - scrollY + a.height }
+				: { l: 0, t: 0, r: innerWidth, b: innerHeight };
+			const inside = [...document.querySelectorAll(sel)].filter((el) => {
+				if (getComputedStyle(el).visibility === 'hidden') return false;
+				const v = cut(visibleRect(el), box);
+				return v.r > v.l && v.b > v.t;
+			});
+			return { shown: inside.length > 0, opaque: inside.some((el) => opacity(el) > 0) };
+		},
+		[selector, area ?? null] as const
+	);
+}
+
+/** Pause-and-seek capture. Returns frames at -1 (pre-trigger), 0, step, … endTime, and the settled end, plus the
+ *  times of any frame after the trigger that did not show the subject inside `area` (the last frame also needs
+ *  it opaque), and the timeouts a `holdTimers` row dropped. The page is frozen, so a frame and its check agree. */
+async function seekRun(page: Page, s: MotionScenario, clip: Clip | undefined, area: Clip | undefined, step: number) {
 	const shot = (c = clip) => page.screenshot({ clip: c, caret: 'hide', animations: 'allow' });
+	const missingMs: number[] = [];
+	const check = async (ms: number, last: boolean) => {
+		const st = await subjectState(page, s.subject, area);
+		if (!st.shown || (last && !st.opaque)) missingMs.push(ms);
+	};
+	const heldTimers = () =>
+		page.evaluate(
+			() => (window as unknown as { __motion: { held: { delayMs: number; atMs: number }[] } }).__motion.held
+		);
 	const pre = await shot();
 	await page.evaluate(
 		(only) => (window as unknown as { __motion: { arm(f: boolean, o: string | null): void } }).__motion.arm(true, only),
 		s.only ?? null
 	);
 	await s.trigger(page);
+	if (s.holdTimers)
+		await page.evaluate(() => ((window as unknown as { __motion: { hold: boolean } }).__motion.hold = true));
 	// Nothing animated: a CUT. Keep the after frame too, so the strip shows the jump instead of only the before.
-	if (!(await waitForCatch(page, s.startTimeoutMs ?? 3000)))
+	if (!(await waitForCatch(page, s.startTimeoutMs ?? 3000))) {
+		const after = await shot();
+		await check(0, true);
 		return {
 			frames: [
 				{ ms: -1, png: pre },
-				{ ms: 0, png: await shot() }
+				{ ms: 0, png: after }
 			],
-			animations: []
+			animations: [],
+			missingMs,
+			heldTimers: await heldTimers()
 		};
+	}
 	const animations = await page.evaluate(describeCaught, 'caught');
 	const end = Math.max(...animations.map((a) => (Number.isFinite(a.endTimeMs) ? a.endTimeMs : a.durationMs)));
 	const frames: Frame[] = [{ ms: -1, png: pre }];
 	const times: number[] = [];
 	for (let t = 0; t < end; t += step) times.push(t);
 	times.push(end);
-	for (const t of times) {
+	for (const [i, t] of times.entries()) {
 		await page.evaluate((ms) => {
 			for (const a of (window as unknown as { __motion: { caught: Animation[] } }).__motion.caught) a.currentTime = ms;
 		}, t);
 		frames.push({ ms: Math.round(t), png: await shot() });
+		await check(Math.round(t), i === times.length - 1);
 	}
-	return { frames, animations };
+	return { frames, animations, missingMs, heldTimers: await heldTimers() };
 }
 
 async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
@@ -460,7 +619,9 @@ async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
 	};
 }
 
-/** Under reduce there is usually nothing to seek, so this is a real-time burst: screenshots as fast as they come. */
+/** Under reduce there is usually nothing to seek, so this is a real-time burst: screenshots as fast as they come.
+ *  The page is live here, so the subject is read just before AND just after each shot, and a frame is missing only
+ *  when both reads miss it (the last frame: when neither has it opaque). */
 async function reducedRun(page: Page, s: MotionScenario, clip: Clip | undefined, windowMs: number) {
 	const pre = await page.screenshot({ clip, caret: 'hide' });
 	await page.evaluate(
@@ -472,11 +633,20 @@ async function reducedRun(page: Page, s: MotionScenario, clip: Clip | undefined,
 	// Timed from the trigger RESOLVING: a clock-driven trigger (the TV's) can spend seconds waiting first.
 	const t0 = Date.now();
 	const frames: Frame[] = [{ ms: -1, png: pre }];
-	while (Date.now() - t0 < windowMs)
-		frames.push({ ms: Date.now() - t0, png: await page.screenshot({ clip, caret: 'hide' }) });
+	const missingMs: number[] = [];
+	let last = { ms: 0, opaque: false };
+	while (Date.now() - t0 < windowMs) {
+		const ms = Date.now() - t0;
+		const before = await subjectState(page, s.subject, clip);
+		frames.push({ ms, png: await page.screenshot({ clip, caret: 'hide' }) });
+		const after = await subjectState(page, s.subject, clip);
+		if (!before.shown && !after.shown) missingMs.push(ms);
+		last = { ms, opaque: before.opaque || after.opaque };
+	}
+	if (!last.opaque && !missingMs.includes(last.ms)) missingMs.push(last.ms);
 	const animations = await page.evaluate(describeCaught, 'caught');
 	const others = await page.evaluate(describeCaught, 'others');
-	return { frames, animations, others };
+	return { frames, animations, others, missingMs };
 }
 
 // ── encoders ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -626,7 +796,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			const stripClip = s.stripClip ? await s.stripClip(page) : gifClip;
 			// The GIF and the strip may want different crops, so frames are shot once at the union (the GIF clip)
 			// and the strip is re-shot only when its crop differs.
-			const gifRun = await seekRun(page, s, gifClip, step);
+			const gifRun = await seekRun(page, s, gifClip, stripClip, step);
 			return { gifRun, stripClip, gifClip, observed: await s.observe?.(page) };
 		})
 	);
@@ -646,7 +816,11 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 			await filmstrip(
 				browser,
 				`${s.name} — seek-rendered, ${step} ms steps`,
-				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples · ${tokens.summary}`,
+				`${s.what} · frames are exact animation times (paused + currentTime), not wall-clock samples · ${tokens.summary} · ${
+					seek.gifRun.missingMs.length
+						? `SUBJECT ${s.subject} MISSING at ${seek.gifRun.missingMs.join(', ')} ms`
+						: `subject ${s.subject} in every frame`
+				}${s.holdTimers ? ` · ${seek.gifRun.heldTimers.length} ${seek.gifRun.heldTimers.length === 1 ? 'timer' : 'timers'} held` : ''}`,
 				stripFrames,
 				cols
 			)
@@ -714,6 +888,13 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		motionEndMs: motionEnd,
 		seekFrames: seek.gifRun.frames.length,
 		seekObserved: seek.observed,
+		// Frames after the trigger that do not show the row's subject. Empty, or the row captured something else.
+		subject: {
+			selector: s.subject,
+			missingMs: { seek: seek.gifRun.missingMs, reduced: reduced.missingMs }
+		},
+		// The seek run's dropped timeouts, so a hold is never invisible. null: this row does not hold timers.
+		heldTimers: s.holdTimers ? seek.gifRun.heldTimers : null,
 		live,
 		reducedMotion: {
 			animationsStarted: reduced.animations.length,
