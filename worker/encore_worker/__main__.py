@@ -216,6 +216,7 @@ async def main() -> None:
         backend=backend.name,
         host=report.to_wire(),
         on_settled=settled,
+        stop_job=_stop,
         # Enumerated OFF the event loop after registration — 4.8 s cold, and a picker's contents must not
         # delay the handshake. None on a box without the `audiosep` extra, which skips the frame entirely.
         catalogue=zoo.announcement if hardware.module_available("audio_separator") else None,
@@ -562,16 +563,60 @@ async def _run(
         source_uri=assign.source_uri,
         params=assign.params or {},
     )
+    # Set BEFORE the keepalive task exists, so every task and thread this job starts carries it.
+    token = cli.tokens[job.job_id] = cli.CancelToken()
+    bound = cli.current_token.set(token)
     # One task per job, cancelled in `finally` below.
     keeper = asyncio.create_task(
-        transport_client.keepalive(client, job.job_id, _STAGE_FOR.get(assign.action, Stage.SEPARATING))
+        transport_client.keepalive(
+            client,
+            job.job_id,
+            _STAGE_FOR.get(assign.action, Stage.SEPARATING),
+            every_sec=config.keepalive_sec,
+            ceiling_sec=config.job_ceiling_sec,
+        )
     )
     try:
         return await _dispatch(assign, job, config, adapters, separator, client, dbos)
     finally:
+        cli.current_token.reset(bound)
         keeper.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await keeper
+        # A cancelled run leaves its token for `_stop`, which runs after this unwinds.
+        task = asyncio.current_task()
+        if task is None or not task.cancelling():
+            cli.tokens.pop(job.job_id, None)
+
+
+#: How long a stop waits before it says the job's work is still running. It goes on waiting: a SIGKILLed
+#: child is reaped in milliseconds, so what outlives this is in-process work (the zoo), which holds the box.
+_STOP_WAIT_SEC = 10.0
+
+
+async def _stop(job_id: str) -> None:
+    """Stop a job the core took back: its workflow first, so DBOS starts no further step, then its children.
+
+    Returns once the job's work has ended (its `run` children and any in-process call counted by
+    `cli.in_job`), which is what keeps the slot counted until then (WK-02).
+    """
+    token = cli.tokens.pop(job_id, None)
+    try:
+        await durable.cancel(job_id)
+    except Exception as exc:  # noqa: BLE001 - the children must still be killed
+        print(
+            f"[worker] job {job_id}: could not cancel its workflow ({type(exc).__name__}: {exc})", flush=True
+        )
+    if token is None:
+        return
+    token.cancel()
+    if await asyncio.to_thread(token.wait_idle, _STOP_WAIT_SEC):
+        return
+    print(
+        f"[worker] job {job_id}: still running {_STOP_WAIT_SEC:.0f}s after its stop; holding its slot",
+        flush=True,
+    )
+    await asyncio.to_thread(token.wait_idle, None)
 
 
 #: The stage a keepalive reports for each action, so the phone shows the right word while a long step runs.

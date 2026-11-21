@@ -30,6 +30,13 @@ def redact_token(text: str) -> str:
 #: or the reaper requeues a healthy job.
 KEEPALIVE_SEC = 10.0
 
+# A BACKSTOP, not the hang detector: `cli.run`'s silence deadline catches a hung subprocess in minutes, so
+# this bounds only what nothing can kill (the in-process zoo), well past a slow CPU zoo pass on a long song.
+# shortcut: fixed, not derived from history; core could fail a job past max(3600, 3 × its ETA) instead.
+
+#: Seconds, from JOB start, that the keepalive vouches for a job before core's lease may lapse.
+JOB_CEILING_SEC = 6 * 3600.0
+
 #: Backends this worker knows how to build a separator for.
 BACKENDS = ("torch", "mlx")
 
@@ -111,6 +118,7 @@ class Config:
     #: — see `_default_zoo_dir`.
     zoo_model_dir: str = ""
     keepalive_sec: float = KEEPALIVE_SEC
+    job_ceiling_sec: float = JOB_CEILING_SEC
     #: The container published stems are written in — CORE'S DECISION, announced at handshake. Not
     #: `ENCORE_STEM_FORMAT`, which is the SCRATCH container a separator writes (docs/arch/05-worker.md §2.5).
     publish_stem_format: str = "flac"
@@ -192,6 +200,7 @@ class Config:
             mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
             zoo_model_dir=text("ENCORE_ZOO_MODEL_DIR", _default_zoo_dir(src)),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),
+            job_ceiling_sec=_positive_float(src, "ENCORE_JOB_CEILING_SEC", JOB_CEILING_SEC),
             # A FALLBACK only: core announces the live value at handshake and that wins. This exists so a
             # worker started against an older core, which announces nothing, still publishes something.
             publish_stem_format=text("ENCORE_PUBLISH_STEM_FORMAT", "flac").lstrip(".").lower(),

@@ -17,6 +17,10 @@ from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 #: measures around -91 dBFS; -90 leaves headroom for dither so a legitimately quiet passage is not refused.
 SILENCE_FLOOR_DBFS = -90.0
 
+#: How a run that lost ownership before publishing begins its `why`. `durable._run_id` reads it: such a run
+#: recorded no result worth replaying.
+ABANDONED = "abandoned before publishing"
+
 
 @dataclass(frozen=True, slots=True)
 class StemsOutcome:
@@ -90,7 +94,7 @@ async def run_stems(job: JobRef, steps: SeparateSteps) -> StemsOutcome:
     except NotOurJob as lost:
         return StemsOutcome(
             published=None,
-            why=f"abandoned before publishing: {lost}",
+            why=f"{ABANDONED}: {lost}",
             audio=separated,
             profile=profile,
         )

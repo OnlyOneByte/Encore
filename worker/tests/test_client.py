@@ -1028,3 +1028,115 @@ async def test_a_step_reporter_called_from_dbos_s_loop_runs_on_the_clients() -> 
 
     await reporter.state("j1", "align-global", 0, "agree", "why", None)  # from the client's own loop
     assert seen[-1] is main_loop and len(seen) == 4
+
+
+# ── stopping a job the core took back (WK-02) and the keepalive ceiling (WK-03) ──────────────────
+
+
+class LiveSocket(FakeSocket):
+    """A `FakeSocket` the test feeds WHILE the session runs, so a frame can land after a job has started."""
+
+    def __init__(self, inbound: list[dict[str, object]] | None = None) -> None:
+        super().__init__(inbound)
+        self.later: asyncio.Queue[dict[str, object] | None] = asyncio.Queue()
+
+    async def __aiter__(self) -> AsyncIterator[str]:
+        for frame in self.inbound:
+            yield json.dumps(frame)
+        self.drained.set()
+        while (late := await self.later.get()) is not None:
+            yield json.dumps(late)
+        await self.release.wait()
+
+    async def feed(self, frame: dict[str, object]) -> None:
+        """Hand one frame to the client and wait until it has been dispatched."""
+        await self.later.put(frame)
+        while not self.later.empty():
+            await asyncio.sleep(0)
+        for _ in range(5):  # the dispatch itself, and the task wake-ups it schedules
+            await asyncio.sleep(0)
+
+
+class Stopper:
+    """A `stop_job` that holds until released, as `__main__._stop` holds until the killed child is reaped."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, job_id: str) -> None:
+        self.calls.append(job_id)
+        self.entered.set()
+        await self.release.wait()
+
+
+async def test_a_cancelled_job_keeps_its_slot_until_its_work_has_stopped() -> None:
+    """The sweep's WK-02: the slot was freed the instant the coroutine was cancelled, while the separator
+    child kept running, so the box took the next job on top of it."""
+    gate, stopper = Gate(), Stopper()
+    sock = LiveSocket([assign("j1")])
+    c = client(sock, run_job=gate)
+    c.stop_job = stopper
+    async with Session(c, sock):
+        await asyncio.wait_for(gate.entered.wait(), 5.0)
+        await sock.feed({"type": "job:cancel", "jobId": "j1"})
+        await asyncio.wait_for(stopper.entered.wait(), 5.0)
+        await sock.feed(assign("j2"))
+        rejected = [s for s in sock.sent if s.get("type") == "job:reject"]
+        assert [r["jobId"] for r in rejected] == ["j2"], "still busy: j1's work has not stopped yet"
+        stopper.release.set()
+        await c.drain(timeout_sec=5.0)
+        assert c.running_jobs() == frozenset()
+        await sock.feed(assign("j3"))
+        gate.release.set()
+        await sock.later.put(None)
+    assert stopper.calls == ["j1"]
+    assert "j3" in [s["jobId"] for s in sock.sent if s.get("type") == "job:accept"], "the slot came back"
+
+
+async def test_a_job_revoked_in_a_claim_answer_is_stopped() -> None:
+    """Revoked while the connection was down: the core gave it to someone else, so the work here is waste."""
+    gate, stopper = Gate(), Stopper()
+    stopper.release.set()
+    sock = LiveSocket([assign("j1")])
+    c = client(sock, run_job=gate)
+    c.stop_job = stopper
+    async with Session(c, sock):
+        await asyncio.wait_for(gate.entered.wait(), 5.0)
+        await sock.feed({"type": "job:claim-ack", "revoked": ["j1"]})
+        await c.drain(timeout_sec=5.0)
+        await sock.later.put(None)
+    assert stopper.calls == ["j1"]
+    assert "job:complete" not in sock.types()
+
+
+async def test_a_job_still_ours_is_not_stopped_when_its_task_is_cancelled() -> None:
+    """A shutdown cancels every task too. Its workflows must stay resumable, so nothing is stopped."""
+    gate, stopper = Gate(), Stopper()
+    sock = LiveSocket([assign("j1")])
+    c = client(sock, run_job=gate)
+    c.stop_job = stopper
+    async with Session(c, sock):
+        await asyncio.wait_for(gate.entered.wait(), 5.0)
+        c._running["j1"].cancel()
+        await c.drain(timeout_sec=5.0)
+        await sock.later.put(None)
+    assert stopper.calls == []
+
+
+async def test_keepalive_goes_quiet_past_its_ceiling() -> None:
+    """A timer cannot tell slow from hung, so a job stuck where nothing can kill it refreshed core's lease
+    forever. Past the ceiling the keepalive returns, and core's reaper takes the job."""
+    sock = FakeSocket()
+    c = client(sock)
+
+    async def no_sleep(seconds: float) -> None:
+        pass
+
+    async with Session(c, sock):
+        await asyncio.wait_for(
+            keepalive(c, "j1", Stage.SEPARATING, every_sec=10.0, ceiling_sec=35.0, sleep=no_sleep), 1.0
+        )
+
+    assert sock.types().count("job:progress") == 3, "ticks at 10, 20 and 30 s, none past the 35 s ceiling"

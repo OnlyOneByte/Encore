@@ -15,9 +15,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from encore_worker.steps.api import AlignSteps, SeparateSteps
+from encore_worker.steps.cancel import bind_cancel_token
 from encore_worker.steps.records import AlignOutcome, JobRef
 from encore_worker.workflows.align import run_align
-from encore_worker.workflows.stems import StemsOutcome, run_stems
+from encore_worker.workflows.stems import ABANDONED, StemsOutcome, run_stems
 
 #: Builds the steps for one job. A closure over process-level state (adapters, config, the transport), so
 #: nothing job-specific has to survive serialisation.
@@ -41,7 +42,7 @@ def register(
 
     Called ONCE from the composition root, before the first job: `DBOS.workflow` mutates a global registry, so
     registering on first use would put that mutation in a job's critical path and surface a name collision as
-    a failed job. `dbos=None` is a supported state — a box without durable state is degraded, not broken.
+    a failed job. `dbos=None` is a supported state; `bind_cancel_token` is docs/arch/05-worker.md §8.1.
     """
     global _align_flow, _stems_flow, _align_steps_for, _stems_steps_for
     _align_steps_for = align_steps_for
@@ -59,11 +60,13 @@ def register(
     @DBOS.workflow(name="encore-align")
     async def align_flow(job: JobRef) -> AlignOutcome:
         assert _align_steps_for is not None
+        bind_cancel_token(job)
         return await run_align(job, _align_steps_for(job))
 
     @DBOS.workflow(name="encore-stems")
     async def stems_flow(job: JobRef) -> StemsOutcome:
         assert _stems_steps_for is not None
+        bind_cancel_token(job)
         return await run_stems(job, _stems_steps_for(job))
 
     _align_flow = align_flow
@@ -147,7 +150,7 @@ async def _run_id(job_id: str) -> str:
     current = job_id
     for requeue in itertools.count(1):
         status = await DBOS.get_workflow_status_async(current)
-        if status is None or status.status != "ERROR":
+        if status is None or not _ended_without_result(status):
             return current
         forked = f"{job_id}{_REQUEUE}{requeue}"
         if await DBOS.get_workflow_status_async(forked) is None:
@@ -159,3 +162,30 @@ async def _run_id(job_id: str) -> str:
             return forked
         current = forked
     raise AssertionError("unreachable: itertools.count never ends")  # pragma: no cover
+
+
+def _ended_without_result(status: Any) -> bool:
+    """ERROR, CANCELLED or an ABANDONED publication: docs/arch/05-worker.md §8.1."""
+    if status.status in ("ERROR", "CANCELLED"):
+        return True
+    output = getattr(status, "output", None)
+    if isinstance(output, AlignOutcome):
+        return bool(getattr(output, "abandoned", False))
+    return isinstance(output, StemsOutcome) and output.published is None and output.why.startswith(ABANDONED)
+
+
+async def cancel(job_id: str) -> None:
+    """Cancel job `job_id`'s live run, so DBOS starts none of its remaining steps."""
+    if _align_flow is None and _stems_flow is None:
+        return
+    from dbos import DBOS  # noqa: PLC0415
+
+    current = job_id
+    for requeue in itertools.count(1):
+        forked = f"{job_id}{_REQUEUE}{requeue}"
+        if await DBOS.get_workflow_status_async(forked) is None:
+            break
+        current = forked
+    status = await DBOS.get_workflow_status_async(current)
+    if status is not None and status.status in ("PENDING", "ENQUEUED"):
+        await DBOS.cancel_workflow_async(current)

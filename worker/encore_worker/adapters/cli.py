@@ -7,12 +7,18 @@ fetch-only workers are possible. The caption parser's rules are docs/arch/05-wor
 
 from __future__ import annotations
 
+import contextlib
 import glob
 import os
 import re
+import signal
 import subprocess
-from collections.abc import Mapping, Sequence
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 
 from encore_worker.adapters.ports import InfraFault, ProgressSink
 from encore_worker.domain.document import Segment
@@ -75,13 +81,106 @@ def looks_like_oom(output: str) -> bool:
     return any(marker in low for marker in OOM_MARKERS)
 
 
-def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout_sec: float = 3600.0) -> str:
+class CancelToken:
+    """One job's stop signal, and a count of the children it still has alive.
+
+    The count is what lets the transport keep a cancelled job's slot until its work has REALLY stopped: an
+    `asyncio` cancel ends the awaiting coroutine at once, while the child it was waiting on keeps running in
+    its thread (WK-02).
+    """
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._live = 0
+        self._idle = threading.Condition()
+
+    def cancel(self) -> None:
+        self._stop.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._stop.is_set()
+
+    def wait_idle(self, timeout_sec: float | None) -> bool:
+        """Block until no child of this job is alive (None: however long). False if one still is."""
+        with self._idle:
+            return self._idle.wait_for(lambda: self._live == 0, timeout_sec)
+
+    @contextlib.contextmanager
+    def busy(self) -> Iterator[None]:
+        """Count work that is not a `run` child (an in-process separator) as alive, so its slot is held too.
+        Entered in the WORKER THREAD, never around the `await`: a cancelled await would leave it at once."""
+        self._started()
+        try:
+            yield
+        finally:
+            self._ended()
+
+    def _started(self) -> None:
+        with self._idle:
+            self._live += 1
+
+    def _ended(self) -> None:
+        with self._idle:
+            self._live -= 1
+            self._idle.notify_all()
+
+
+def in_job[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Call `fn` counted on the running job's token. For `asyncio.to_thread(in_job, port.method, …)`."""
+    token = current_token.get()
+    if token is None:
+        return fn(*args, **kwargs)
+    with token.busy():
+        return fn(*args, **kwargs)
+
+
+class Stalled(ToolFailed):
+    """A tool printed nothing for its whole idle allowance: hung, not slow.
+
+    NOT retryable. The same source stalls the same way on the next attempt, and three attempts of a hung
+    download were three hours of "Making karaoke…" before the room was told; this way it is about a minute.
+    """
+
+    retryable = False
+
+
+#: The running job's token. A context variable rather than a parameter on every adapter, because
+#: `asyncio.to_thread` carries the caller's context into its thread: the job sets it once and every `run`
+#: under it, however deep, can be stopped.
+current_token: ContextVar[CancelToken | None] = ContextVar("encore_cancel_token", default=None)
+
+#: Every running job's token, by job id: set by the transport's job runner, read back by `bind` and `_stop`.
+tokens: dict[str, CancelToken] = {}
+
+
+def bind(job_id: str) -> None:
+    """Make job `job_id`'s token the current one, on whichever loop and context this runs."""
+    current_token.set(tokens.get(job_id))
+
+
+#: How often the watchdog looks at the deadline and the token. Bounds how late a kill can land.
+_WATCH_SEC = 0.5
+
+
+def run(
+    argv: Sequence[str],
+    *,
+    on_progress: ProgressSink | None = None,
+    timeout_sec: float = 3600.0,
+    idle_sec: float | None = None,
+    cancel: CancelToken | None = None,
+) -> str:
     """Run a command to completion, returning its combined output.
 
-    SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. `start_new_session` puts
-    the child in its own process group, so a timeout kills the whole tree rather than orphaning ffmpeg
-    children still writing into a scratch directory.
+    SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. The child gets its own
+    process group, so a kill takes the whole tree. The deadline, the token and `idle_sec` (no output for
+    that long: `Stalled`) are a WATCHDOG thread's to enforce, because reading output blocks (WK-03).
     """
+    token = cancel if cancel is not None else current_token.get()
+    if token is not None and token.cancelled:
+        # A DBOS step retry, or the next step of a job already stopped: nothing to start.
+        raise ToolFailed(argv, -1, "cancelled")
     lines: list[str] = []
     proc = subprocess.Popen(  # noqa: S603 - argv is built by the pure builders above, never a shell string
         list(argv),
@@ -91,26 +190,78 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
         bufsize=1,
         start_new_session=True,
     )
+    if token is not None:
+        token._started()
+    done = threading.Event()
+    why: list[str] = []  # set by the watchdog before it kills, read after the child is reaped
+    heard = [time.monotonic()]  # when the child last printed a line; written by the reader below
+
+    def watch() -> None:
+        deadline = time.monotonic() + timeout_sec
+        while not done.wait(_WATCH_SEC):
+            now = time.monotonic()
+            if token is not None and token.cancelled:
+                why.append("cancelled")
+            elif now >= deadline:
+                why.append(f"timed out after {timeout_sec:.0f}s")
+            elif idle_sec is not None and now - heard[0] >= idle_sec:
+                why.append(f"stalled: no output for {idle_sec:.0f}s")
+            else:
+                continue
+            _kill_group(proc)
+            return
+
+    # `stdout=PIPE` above guarantees this; narrowed without an `assert`, which `-O` would strip.
+    stream = proc.stdout
+    if stream is None:  # pragma: no cover - unreachable with stdout=PIPE
+        raise ToolFailed(argv, -1, "no stdout pipe")
+    failed: list[BaseException] = []  # what the reader raised (a progress sink's fault), re-raised here
+
+    def read() -> None:
+        try:
+            for line in stream:
+                heard[0] = time.monotonic()
+                lines.append(line)
+                # A killed run reports nothing more, even from a descendant that outlives it: its job is over.
+                if on_progress is not None and not why:
+                    pct = parse_pct(line)
+                    if pct is not None:
+                        on_progress(pct)
+        except BaseException as exc:  # noqa: BLE001 - handed to the calling thread below
+            failed.append(exc)
+            why.append("raised")  # a kill like the watchdog's, so the slot waits for the group below
+            _kill_group(proc)
+
+    watchdog = threading.Thread(target=watch, name=f"watch-{os.path.basename(argv[0])}", daemon=True)
+    reader = threading.Thread(target=read, name=f"read-{os.path.basename(argv[0])}", daemon=True)
+    watchdog.start()
+    reader.start()
     try:
-        # `stdout=PIPE` above guarantees this; narrowed without an `assert`, which `-O` would strip.
-        stream = proc.stdout
-        if stream is None:  # pragma: no cover - unreachable with stdout=PIPE
-            raise ToolFailed(argv, -1, "no stdout pipe")
-        for line in stream:
-            lines.append(line)
-            if on_progress is not None:
-                pct = parse_pct(line)
-                if pct is not None:
-                    on_progress(pct)
-        code = proc.wait(timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-        raise ToolFailed(argv, -1, f"timed out after {timeout_sec:.0f}s") from None
+        code = proc.wait()
+        # Drain every line before returning: the last ones carry the final figure and ffmpeg's report. A kill,
+        # before the child exited or after, ends that wait at the group grace: a descendant that left the
+        # group with stdout open (`setsid`) would otherwise hold the read, and the slot, until it chose to go.
+        while reader.is_alive() and not why:
+            reader.join(_WATCH_SEC)
+        reader.join(_GROUP_GONE_SEC)
     except BaseException:
-        proc.kill()
+        _kill_group(proc)
         proc.wait()
+        why.append("raised")
         raise
+    finally:
+        done.set()
+        watchdog.join()
+        if why:
+            # Reaping the child is not the group being gone: its own children die a moment later, and the slot
+            # this count holds must outlast them.
+            _await_group_gone(proc.pid)
+        if token is not None:
+            token._ended()
+    if failed:
+        raise failed[0]
+    if why:
+        raise (Stalled if why[0].startswith("stalled") else ToolFailed)(argv, -1, why[0])
     output = "".join(lines)
     if code != 0:
         if looks_like_oom(output):
@@ -121,6 +272,48 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
             )
         raise ToolFailed(argv, code, output)
     return output
+
+
+def _kill_group(proc: subprocess.Popen[str]) -> None:
+    """SIGKILL the child's whole process group. Already gone is fine: it is the outcome wanted."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+#: The longest a killed group's stragglers are waited for. They die in milliseconds; this only bounds a box
+#: where the group cannot be inspected.
+_GROUP_GONE_SEC = 2.0
+
+
+def _await_group_gone(pgid: int) -> None:
+    """Block until no LIVE process of group `pgid` is left, or `_GROUP_GONE_SEC` has passed."""
+    deadline = time.monotonic() + _GROUP_GONE_SEC
+    while time.monotonic() < deadline and _group_alive(pgid):
+        time.sleep(0.02)
+
+
+def _group_alive(pgid: int) -> bool:
+    """Does group `pgid` have a member that is not a zombie? On Linux, read off /proc, because a zombie stays
+    a member until it is reaped, and a container whose PID 1 reaps nothing (the worker image) never does.
+    Elsewhere, any member at all counts."""
+    if not os.path.isdir("/proc/self"):
+        try:
+            os.killpg(pgid, 0)
+        except (ProcessLookupError, PermissionError):
+            return False
+        return True
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat") as stat:
+                # `pid (comm) state ppid pgrp …`; comm may hold spaces, so split after its closing paren.
+                fields = stat.read().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == pgid and fields[0] != "Z":
+            return True
+    return False
 
 
 def parse_pct(line: str) -> int | None:
@@ -134,6 +327,13 @@ def parse_pct(line: str) -> int | None:
 # ── argv builders (pure) ─────────────────────────────────────────────────────────────────────────
 
 
+#: yt-dlp's own per-socket read timeout: a dead connection errors out rather than waiting forever.
+YTDLP_SOCKET_TIMEOUT_SEC = 30
+
+#: yt-dlp prints a progress line many times a second, so this long without one is a hang (`Stalled`).
+YTDLP_IDLE_SEC = 60.0
+
+
 def audio_argv(source_uri: str, out_dir: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
     """Download the best audio-only stream as a single file.
 
@@ -144,7 +344,10 @@ def audio_argv(source_uri: str, out_dir: str, ytdlp_bin: str = "yt-dlp") -> list
     return [
         ytdlp_bin,
         "--no-playlist",
-        # Newline-delimited progress, so `run` can parse a percentage out of it line by line.
+        "--socket-timeout",
+        str(YTDLP_SOCKET_TIMEOUT_SEC),
+        # Newline-delimited progress, so `run` can parse a percentage out of it line by line — and so a
+        # silence of `YTDLP_IDLE_SEC` means a hang rather than a long line.
         "--newline",
         "-f",
         "bestaudio/best",
@@ -167,6 +370,8 @@ def caption_argv(
     return [
         ytdlp_bin,
         "--no-playlist",
+        "--socket-timeout",
+        str(YTDLP_SOCKET_TIMEOUT_SEC),
         "--skip-download",
         "--write-auto-subs" if automatic else "--write-subs",
         "--sub-langs",
@@ -227,7 +432,7 @@ class YtDlpAudio:
         self._bin = ytdlp_bin
 
     def fetch(self, source_uri: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> str:
-        run(audio_argv(source_uri, out_dir, self._bin), on_progress=on_progress)
+        run(audio_argv(source_uri, out_dir, self._bin), on_progress=on_progress, idle_sec=YTDLP_IDLE_SEC)
         found = sorted(glob.glob(os.path.join(out_dir, "original.*")))
         if not found:
             raise ToolFailed([self._bin], 0, f"yt-dlp reported success but wrote nothing into {out_dir}")
@@ -243,7 +448,7 @@ class YtDlpCaptions:
     def fetch(self, source_uri: str, out_dir: str, *, automatic: bool) -> Sequence[Segment]:
         template = os.path.join(out_dir, "captions.%(ext)s")
         try:
-            run(caption_argv(source_uri, template, self._bin, automatic=automatic))
+            run(caption_argv(source_uri, template, self._bin, automatic=automatic), idle_sec=YTDLP_IDLE_SEC)
         except ToolFailed:
             return ()  # a video with no track of this kind is the common case
         path = find_caption_file(out_dir)
