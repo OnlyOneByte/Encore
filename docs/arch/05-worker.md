@@ -838,6 +838,21 @@ field is **appended, never inserted**, restored through a helper that fills what
 lacks — because pickle restores a slotted record positionally and left a newly added field unset, so a job
 in flight at an upgrade failed on the first read of it, fork after fork, until the ceiling.
 
+### 8.1 Runs a requeue must not replay, and stopping a run
+
+**A requeue forks, rather than replays, three kinds of run** (`durable._ended_without_result`). An ERROR
+run, as above. A CANCELLED one: the worker cancels the workflow of a job the core took back, and DBOS
+answers a start under a cancelled id with the cancellation. And a stems or align run that **abandoned** its
+publication: it finished SUCCESS, but what it recorded is a lost race for ownership, and on a one-worker
+box the requeue lands on the same box and replayed that refusal until `maxAttempts`, in milliseconds.
+Align's publish is a recorded step that raised `NotOurJob`, so its fork resumes AT PUBLISH. Stems records
+no steps, so its fork separates again from the start; a resume there needs DBOS steps around separate and
+publish. Fetch is not durable and replays nothing.
+
+**The cancel token is bound inside each workflow body**, not only where the job starts. DBOS runs a fork
+or a recovered run on its own loop, in a context that never saw the transport set the token, so without
+each body binding it first (`steps.cancel.bind_cancel_token`) a cancel stopped the DBOS row and left the child running.
+
 ## 9. Configuration and capability
 
 **One place, and it raises.** Everything the worker reads from its environment is parsed once at the

@@ -11,6 +11,7 @@ import asyncio
 import os
 from collections.abc import Mapping
 
+from encore_worker.adapters import cli
 from encore_worker.adapters import separate as sep
 from encore_worker.adapters.encode import EncodeFailed, FfmpegEncoder
 from encore_worker.adapters.ports import AudioProbe, Separator
@@ -73,7 +74,11 @@ class SeparateStepsImpl:
         """
         if self._sep is None:
             raise _Permanent("this worker has no separator engine, so it cannot serve a stems job")
-        stems = await asyncio.to_thread(self._sep.separate, input_wav, self._work(job), on_progress=None)
+        # `in_job` counts the call on the job's token IN its thread, so a stop holds the slot until the
+        # separation returns even when it is in-process (the zoo) and there is no child to kill (WK-02).
+        stems = await asyncio.to_thread(
+            cli.in_job, self._sep.separate, input_wav, self._work(job), on_progress=None
+        )
         return AudioRef(
             path=stems.instrumental_path,
             duration_sec=0.0,  # measured after publication; the separator does not report it

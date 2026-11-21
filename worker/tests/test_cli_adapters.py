@@ -7,6 +7,13 @@ YouTube url carrying a list parameter turns one song into a two-hundred-track do
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import os
+import shutil
+import signal
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -452,3 +459,341 @@ def test_a_word_timed_cues_word_stream_is_exactly_its_published_text() -> None:
         starts = [float(str(w["start"])) for w in words]
         assert starts == sorted(starts)
         assert all(float(str(cue["start"])) <= at <= float(str(cue["end"])) for at in starts)
+
+
+# ── the watchdog and the cancel token (WK-02, WK-03) ─────────────────────────────────────────────
+
+
+def _alive(pid: int) -> bool:
+    """Running, as opposed to gone or a zombie: an orphan killed under a PID 1 that never reaps stays one."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    status = Path(f"/proc/{pid}/status")
+    return not (status.exists() and "\nState:\tZ" in status.read_text())
+
+
+def test_a_child_that_hangs_with_its_output_open_is_killed_at_its_deadline() -> None:
+    """The sweep's probe: this returned normally after 6.0 s, the deadline only being checked after EOF."""
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="timed out after 1s"):
+        cli.run(["sh", "-c", "sleep 6"], timeout_sec=1.0)
+    assert time.monotonic() - started < 2.5, "killed at its deadline, not when it chose to exit"
+
+
+def test_a_cancelled_run_leaves_no_live_child(tmp_path: Path) -> None:
+    """The sweep's other probe: a cancelled job's child was still alive. The whole GROUP goes, grandchild
+    included, which is the ffmpeg-under-demucs shape."""
+    pidfile = tmp_path / "pid"
+    token = cli.CancelToken()
+    threading.Timer(0.3, token.cancel).start()
+    started = time.monotonic()
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["sh", "-c", f"sleep 30 & echo $! > {pidfile}; wait"], cancel=token)
+    assert time.monotonic() - started < 2.0
+    assert token.wait_idle(0.0), "no child of this job is counted alive"
+    grandchild = int(pidfile.read_text())
+    deadline = time.monotonic() + 2.0
+    while _alive(grandchild) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not _alive(grandchild), "the child's own children are killed with it"
+
+
+def test_a_run_under_a_cancelled_token_starts_nothing(tmp_path: Path) -> None:
+    """A DBOS step retry after a stop, or the job's next step: refused before anything is spawned."""
+    token = cli.CancelToken()
+    token.cancel()
+    marker = tmp_path / "ran"
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        cli.run(["sh", "-c", f"touch {marker}"], cancel=token)
+    assert not marker.exists()
+
+
+def test_the_running_job_token_reaches_a_run_in_a_worker_thread() -> None:
+    """`asyncio.to_thread` carries the job's context, so a `run` deep inside an adapter can be stopped
+    without the token being threaded through every signature."""
+    token = cli.CancelToken()
+
+    async def job() -> None:
+        cli.current_token.set(token)
+        asyncio.get_running_loop().call_later(0.3, token.cancel)
+        await asyncio.to_thread(cli.run, ["sh", "-c", "sleep 30"])
+
+    with pytest.raises(cli.ToolFailed, match="cancelled"):
+        asyncio.run(asyncio.wait_for(job(), 5.0))
+
+
+def test_a_child_that_finishes_in_time_is_untouched() -> None:
+    assert cli.run(["sh", "-c", "echo ok"], timeout_sec=5.0) == "ok\n"
+
+
+def test_a_child_that_goes_quiet_is_killed_as_stalled_long_before_its_deadline() -> None:
+    """The review's (a): the deadline is an hour, so only a SILENCE can turn a hang into a failure in about
+    a minute. Stalled is not retryable, so the job is not given two more hung hours."""
+    started = time.monotonic()
+    with pytest.raises(cli.Stalled, match="stalled: no output for 1s") as stalled:
+        cli.run(["sh", "-c", "echo starting; sleep 30"], timeout_sec=3600.0, idle_sec=1.0)
+    assert time.monotonic() - started < 2.5
+    assert stalled.value.retryable is False
+
+
+def test_a_child_that_keeps_printing_is_not_stalled() -> None:
+    script = "for i in 1 2 3 4 5 6; do echo $i; sleep 0.3; done"
+    assert cli.run(["sh", "-c", script], idle_sec=1.0).split() == ["1", "2", "3", "4", "5", "6"]
+
+
+def test_yt_dlp_gives_up_on_a_dead_socket_itself() -> None:
+    for argv in (audio_argv("u", "/tmp/w"), caption_argv("u", "/tmp/c", automatic=True)):
+        assert argv[argv.index("--socket-timeout") + 1] == "30"
+
+
+def test_work_counted_in_job_holds_the_token_busy_until_it_returns() -> None:
+    """The in-process zoo has no child to kill, so without this a stop freed its slot while it ran."""
+    token = cli.CancelToken()
+
+    def separation() -> str:
+        time.sleep(0.6)
+        return "done"
+
+    def in_thread() -> str:
+        cli.current_token.set(token)
+        return cli.in_job(separation)
+
+    worker = threading.Thread(target=in_thread)
+    worker.start()
+    time.sleep(0.2)
+    assert token.wait_idle(0.0) is False, "still separating"
+    assert token.wait_idle(2.0) is True
+    worker.join()
+
+
+def _record_run(monkeypatch: pytest.MonkeyPatch, module: object) -> list[dict[str, object]]:
+    """Replace `module.run` with a recorder of each call's keyword arguments."""
+    calls: list[dict[str, object]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> str:
+        calls.append(kwargs)
+        return ""
+
+    monkeypatch.setattr(module, "run", fake_run)
+    return calls
+
+
+def test_every_yt_dlp_call_carries_the_silence_allowance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A minute: yt-dlp prints progress many times a second, so 60 s without a line is a hang."""
+    assert cli.YTDLP_IDLE_SEC == 60.0
+    calls = _record_run(monkeypatch, cli)
+    (tmp_path / "original.webm").write_bytes(b"x")
+    cli.YtDlpAudio("yt-dlp").fetch("u", str(tmp_path))
+    cli.YtDlpCaptions("yt-dlp").fetch("u", str(tmp_path), automatic=True)
+    assert [c.get("idle_sec") for c in calls] == [60.0, 60.0]
+
+
+def test_torch_demucs_carries_its_silence_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Five minutes: demucs redraws its bar every chunk, but loading the model prints nothing."""
+    from encore_worker.adapters import separate  # noqa: PLC0415
+
+    calls = _record_run(monkeypatch, separate)
+    separate.TorchDemucs(model="htdemucs").separate("/in.wav", "/out")
+    assert [c.get("idle_sec") for c in calls] == [300.0]
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc/self"), reason="reads /proc, Linux's")
+def test_a_group_of_only_zombies_is_gone_but_a_running_one_is_not() -> None:
+    """A killed child's group is waited out before its slot is freed, and a zombie never reaped (a container
+    whose PID 1 reaps nothing) must not hold that wait for good."""
+    import subprocess  # noqa: PLC0415
+
+    live = subprocess.Popen(["sleep", "30"], start_new_session=True)  # noqa: S607
+    dead = subprocess.Popen(["true"], start_new_session=True)  # noqa: S607
+    try:
+        deadline = time.monotonic() + 5
+        while Path(f"/proc/{dead.pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z":
+            assert time.monotonic() < deadline, "the child never exited"
+            time.sleep(0.01)
+        assert cli._group_alive(live.pid) is True
+        assert cli._group_alive(dead.pid) is False, "a zombie is not alive"
+    finally:
+        live.kill()
+        live.wait()
+        dead.wait()
+    assert cli._group_alive(live.pid) is False
+
+
+def test_a_progress_sink_that_raises_stops_the_tool_and_reaches_the_caller() -> None:
+    """The output is read on its own thread; a fault there must still end the run, as it did inline."""
+
+    def sink(pct: int) -> None:
+        raise RuntimeError("the sink broke")
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="the sink broke"):
+        cli.run(["sh", "-c", "echo '[download]  10.0% of 5MiB'; sleep 30"], on_progress=sink)
+    assert time.monotonic() - started < 3.0, "the child was left running"
+
+
+def _cancelled_run(token: cli.CancelToken, script: str) -> tuple[threading.Thread, list[float]]:
+    """Start `run` on `script` under `token` in a thread; the list gets the moment `run` came back."""
+    returned: list[float] = []
+
+    def go() -> None:
+        with pytest.raises(cli.ToolFailed, match="cancelled"):
+            cli.run(["sh", "-c", script], cancel=token)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    return thread, returned
+
+
+def test_a_killed_runs_slot_is_held_until_its_whole_group_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child is reaped before its own children have died (CI saw it): the token must stay busy, and `run`
+    must not return, while the group has a live member. The group check is faked, so no timing decides it."""
+    gone_at = [float("inf")]
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: time.monotonic() < gone_at[0])
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, "sleep 30")
+    time.sleep(0.2)
+    token.cancel()
+    time.sleep(1.0)  # the watchdog has killed the child (within 0.5 s); the faked group lives on
+    assert not returned and token.wait_idle(0.0) is False, "the slot was freed while the group still lived"
+    gone_at[0] = time.monotonic()
+    thread.join(3.0)
+    assert returned and token.wait_idle(0.0) is True
+
+
+def test_the_wait_for_a_group_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A group that never empties to the check (an un-inspectable box) still lets the slot go at the bound."""
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: True)
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.8)
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, "sleep 30")
+    time.sleep(0.2)
+    cancelled = time.monotonic()
+    token.cancel()
+    thread.join(5.0)
+    assert returned, "the wait never ended"
+    assert 0.8 <= returned[0] - cancelled < 2.5, returned[0] - cancelled
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_descendant_that_left_the_group_cannot_hold_a_cancelled_run(tmp_path: Path) -> None:
+    """`killpg` misses a process that called `setsid`, and one that kept stdout open held the read, and the
+    slot, until it chose to exit. A killed run stops waiting on the pipe once its group is gone."""
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, f"setsid sh -c 'echo $$ > {pidfile}; exec sleep 30' & sleep 30")
+    try:
+        time.sleep(0.4)
+        cancelled = time.monotonic()
+        token.cancel()
+        thread.join(6.0)
+        assert returned, "the escaped descendant held the cancelled run"
+        assert returned[0] - cancelled < 4.0
+    finally:
+        _kill_escaped(pidfile)
+
+
+def _kill_escaped(pidfile: Path) -> None:
+    if pidfile.exists() and pidfile.read_text().strip():
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+
+def test_a_sink_fault_holds_the_slot_until_the_group_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sink fault kills the group like a cancel does, so it must wait for the group the same way."""
+    gone_at = [float("inf")]
+    monkeypatch.setattr(cli, "_group_alive", lambda pgid: time.monotonic() < gone_at[0])
+    token = cli.CancelToken()
+    returned: list[float] = []
+
+    def sink(pct: int) -> None:
+        raise RuntimeError("the sink broke")
+
+    def go() -> None:
+        with pytest.raises(RuntimeError, match="the sink broke"):
+            cli.run(["sh", "-c", "echo '[download]  10.0% x'; sleep 30"], on_progress=sink, cancel=token)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    time.sleep(1.0)
+    assert not returned and token.wait_idle(0.0) is False, "the slot was freed while the group still lived"
+    gone_at[0] = time.monotonic()
+    thread.join(3.0)
+    assert returned and token.wait_idle(0.0) is True
+
+
+def test_a_finished_run_has_read_every_line_before_it_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child is reaped before the reader has the last lines: those carry the final figure and ffmpeg's
+    report, so `run` must not return until the reader has them. A sink slower than the kill grace holds the
+    reader back, so only a full drain passes."""
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.05)
+    seen: list[int] = []
+
+    def sink(pct: int) -> None:
+        if pct == 100:
+            time.sleep(0.6)
+        seen.append(pct)
+
+    script = 'i=1; while [ $i -le 100 ]; do echo "[download] $i.0% x"; i=$((i+1)); done; echo done'
+    output = cli.run(["sh", "-c", script], on_progress=sink)
+    assert seen[-1] == 100
+    assert output.count("\n") == 101 and output.endswith("done\n")
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_cancel_after_the_child_exits_is_not_held_by_a_descendant(tmp_path: Path) -> None:
+    """The child exits 0 while a `setsid` descendant keeps stdout open: `run` is still draining when the
+    cancel lands, and must stop waiting at the group grace, not when the descendant chooses to exit."""
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    thread, returned = _cancelled_run(token, f"setsid sh -c 'echo $$ > {pidfile}; exec sleep 30' & exit 0")
+    try:
+        time.sleep(0.6)
+        assert not returned, "the drain did not wait for the open pipe"
+        cancelled = time.monotonic()
+        token.cancel()
+        thread.join(6.0)
+        assert returned, "the escaped descendant held the cancelled run"
+        assert returned[0] - cancelled < 4.0
+    finally:
+        _kill_escaped(pidfile)
+
+
+@pytest.mark.skipif(shutil.which("setsid") is None, reason="needs util-linux's setsid")
+def test_a_killed_run_reports_no_more_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A descendant that outlives the kill and prints a figure, before `run` returns or after, must not move a
+    job that is over."""
+    monkeypatch.setattr(cli, "_GROUP_GONE_SEC", 0.3)
+    pidfile = tmp_path / "escaped"
+    token = cli.CancelToken()
+    calls: list[int] = []
+    returned: list[float] = []
+    script = (
+        f'setsid sh -c \'echo $$ > {pidfile}; sleep 1; echo "[download] 55.0% x"; sleep 1.5; '
+        f'echo "[download] 66.0% x"; sleep 1\' & sleep 30'
+    )
+
+    def sink(pct: int) -> None:
+        calls.append(pct)
+
+    def go() -> None:
+        with pytest.raises(cli.ToolFailed, match="cancelled"):
+            cli.run(["sh", "-c", script], cancel=token, on_progress=sink)
+        returned.append(time.monotonic())
+
+    thread = threading.Thread(target=go, daemon=True)
+    thread.start()
+    try:
+        time.sleep(0.2)
+        token.cancel()
+        thread.join(5.0)
+        assert returned
+        time.sleep(3.5)
+        assert calls == [], "a killed run's descendant moved its progress"
+    finally:
+        _kill_escaped(pidfile)
