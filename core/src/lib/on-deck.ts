@@ -40,6 +40,30 @@ export function deckEntryOf(
 	return queued.find((e) => e.id === nextPlayableId && e.singerId === meId);
 }
 
+/**
+ * MY entry WAS On deck and is not now, though it is still queued, someone else still sings, and I did not cause it (no
+ * Not yet or move of mine in flight) — the moment a guest who set their key is owed one line (proposal 14). Returns who
+ * is On deck instead, and whether mine is the next playable song after theirs; null means say nothing.
+ */
+export function deckBump(o: {
+	wasDeckId: string | null;
+	queued: QueueEntry[];
+	nextPlayableId: string | null;
+	nowSingerId: string | undefined;
+	meId: string | undefined;
+	selfCaused: boolean;
+	playable: (e: QueueEntry) => boolean;
+}): { singerId: string; youreNext: boolean } | null {
+	const { wasDeckId, queued, nextPlayableId, nowSingerId, meId, selfCaused, playable } = o;
+	if (!wasDeckId || selfCaused || !nowSingerId || nowSingerId === meId) return null;
+	if (!queued.some((e) => e.id === wasDeckId)) return null; // it started playing, or it was removed
+	if (deckEntryOf(queued, nextPlayableId, nowSingerId, meId)?.id === wasDeckId) return null;
+	const at = queued.findIndex((e) => e.id === nextPlayableId);
+	const now = queued[at];
+	if (!now || now.singerId === meId) return null;
+	return { singerId: now.singerId, youreNext: queued.slice(at + 1).find(playable)?.id === wasDeckId };
+}
+
 /** "~2 min" until the current song ends; null when its length is unknown. */
 export function minutesLeft(remainSec: number | null): string | null {
 	if (remainSec === null) return null;
@@ -54,4 +78,8 @@ export function buzzOnce(entryId: string, vibrate: ((p: number[]) => boolean) | 
 	if (buzzed.has(entryId) || !vibrate) return false;
 	buzzed.add(entryId);
 	return vibrate(HEADS_UP_BUZZ);
+}
+/** The entry lost On deck while still queued: its heads-up has to buzz again when its turn comes back round. */
+export function rearmBuzz(entryId: string): void {
+	buzzed.delete(entryId);
 }

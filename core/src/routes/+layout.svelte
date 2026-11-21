@@ -3,16 +3,16 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { SINGER_COLORS, songDisplay, type PlayerCommand } from '$lib/contract';
-	import { nextPlayableEntryId } from '$lib/readiness';
+	import { SINGER_COLORS, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
+	import { entryPlayable, nextPlayableEntryId } from '$lib/readiness';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
-	import { buzzOnce } from '$lib/on-deck';
+	import { buzzOnce, deckBump, deckEntryOf, rearmBuzz } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
-	import { YOURE_UP } from '$lib/phrasing/turn-phrasing';
+	import { YOURE_UP, deckBumpNotice } from '$lib/phrasing/turn-phrasing';
 	import { staleNotice } from '$lib/phrasing/stale-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
@@ -83,6 +83,8 @@
 	let youreUpTimer: ReturnType<typeof setTimeout> | undefined;
 	// Plain, not $state: only `sync` reads it, to see the current entry CHANGE.
 	let lastCurrentId: string | null = null;
+	// Plain, for the same reason: my entry that was On deck as of the last `sync`.
+	let lastDeckId: string | null = null;
 	function dismissYoureUp() {
 		clearTimeout(youreUpTimer);
 		youreUp = null;
@@ -141,7 +143,36 @@
 					(id) => room.mediaCatalog.get(id),
 					(id) => room.mediaStatus.get(id)
 				) !== null;
+			noticeDeckBump();
 		};
+		/* MY ON DECK WENT TO SOMEONE ELSE, and I did not cause it (proposal 14): one line, on any tab, beside "You're up".
+		   A song ahead finishing being made, or an away singer's turn coming back, moves On deck as silently as a drag
+		   used to — nobody's fault, so it names who goes first and never who moved it. Edge-triggered on `lastDeckId`,
+		   so it says it once per loss, and the lost entry's heads-up buzz is re-armed for when its turn comes back. */
+		function noticeDeckBump(): void {
+			const queued = room.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+			const playable = (e: QueueEntry) =>
+				entryPlayable(room.mediaCatalog.get(e.mediaId), room.mediaStatus.get(e.mediaId));
+			const nextPlayableId = queued.find(playable)?.id ?? null;
+			const nowSingerId = room.entries.find((e) => e.id === room.playback.currentEntryId)?.singerId;
+			const deckNow = deckEntryOf(queued, nextPlayableId, nowSingerId, me ?? undefined)?.id ?? null;
+			if (lastDeckId && lastDeckId !== deckNow && queued.some((e) => e.id === lastDeckId)) rearmBuzz(lastDeckId);
+			const bump = deckBump({
+				wasDeckId: lastDeckId,
+				queued,
+				nextPlayableId,
+				nowSingerId,
+				meId: me ?? undefined,
+				selfCaused: room.queue?.reorderPending ?? false,
+				playable
+			});
+			lastDeckId = deckNow;
+			if (bump)
+				transportNotice(
+					deckBumpNotice(room.singers.get(bump.singerId)?.displayName ?? 'Someone', bump.youreNext),
+					'info'
+				);
+		}
 		sync();
 		const unsubscribe = room.subscribe(sync);
 		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing. Which words, if

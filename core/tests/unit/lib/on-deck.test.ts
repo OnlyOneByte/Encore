@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
-import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_BUZZ } from '$lib/on-deck';
+import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, rearmBuzz, deckBump, HEADS_UP_BUZZ } from '$lib/on-deck';
+import { deckBumpNotice } from '$lib/phrasing/turn-phrasing';
 import { applyAndReseq, type QueueEntry } from '$lib/contract';
 
 const e = (id: string, singerId: string, over: Partial<QueueEntry> = {}): QueueEntry => ({
@@ -68,4 +69,73 @@ test('the heads-up buzzes once per entry, and not at all without vibrate', () =>
 	expect(buzzOnce('x1', vibrate)).toBe(true);
 	expect(buzzOnce('x1', vibrate)).toBe(false);
 	expect(calls).toEqual([HEADS_UP_BUZZ]);
+});
+
+test('an entry that lost On deck is re-armed: its heads-up buzzes again when its turn comes back', () => {
+	const calls: number[][] = [];
+	const vibrate = (p: number[]) => (calls.push(p), true);
+	expect(buzzOnce('x2', vibrate)).toBe(true);
+	rearmBuzz('x2');
+	expect(buzzOnce('x2', vibrate)).toBe(true);
+	expect(calls).toEqual([HEADS_UP_BUZZ, HEADS_UP_BUZZ]);
+});
+
+// ---- proposal 14: the bumped notice --------------------------------------------------------------------------
+// Maya sings. Ana's `cook` is ahead of Theo's `theo1` and still cooking, so Theo is On deck; then it finishes.
+const bumpQ = [e('cook', 'ana'), e('theo1', 'theo'), e('ana2', 'ana')];
+const bump = (over: Partial<Parameters<typeof deckBump>[0]> = {}) =>
+	deckBump({
+		wasDeckId: 'theo1',
+		queued: bumpQ,
+		nextPlayableId: 'cook',
+		nowSingerId: 'maya',
+		meId: 'theo',
+		selfCaused: false,
+		playable: all,
+		...over
+	});
+
+test('a song ahead finishing being made: Theo hears who goes first, and that he is right behind', () => {
+	expect(bump()).toEqual({ singerId: 'ana', youreNext: true });
+});
+
+test('not right behind: the second line is about the key instead', () => {
+	const q = [e('cook', 'ana'), e('bob1', 'bob'), e('theo1', 'theo')];
+	expect(bump({ queued: q })).toEqual({ singerId: 'ana', youreNext: false });
+});
+
+test('a song still cooking between us does not count: I am still the next to SING after Ana', () => {
+	const q = [e('cook', 'ana'), e('bob1', 'bob'), e('theo1', 'theo')];
+	expect(bump({ queued: q, playable: (x) => x.id !== 'bob1' })).toEqual({ singerId: 'ana', youreNext: true });
+});
+
+test('silent when I caused it: my own Not yet or move is in flight', () => {
+	expect(bump({ selfCaused: true })).toBeNull();
+});
+
+test('silent when nothing changed, when my song started or left, and when nobody else is singing', () => {
+	expect(bump({ nextPlayableId: 'theo1' })).toBeNull(); // still On deck
+	expect(bump({ queued: bumpQ.filter((x) => x.id !== 'theo1') })).toBeNull(); // it is playing now, or removed
+	expect(bump({ nowSingerId: undefined })).toBeNull(); // idle room
+	expect(bump({ nowSingerId: 'theo' })).toBeNull(); // my own song is on
+	expect(bump({ wasDeckId: null })).toBeNull(); // I was not On deck
+});
+
+test('silent when my OTHER song is On deck now: I still go next', () => {
+	const q = [e('theo0', 'theo'), e('theo1', 'theo')];
+	expect(bump({ queued: q, nextPlayableId: 'theo0' })).toBeNull();
+});
+
+test('the bumped notice names who goes first, never who moved it', () => {
+	expect(deckBumpNotice('Ana', true)).toBe('Ana’s going first. You’re next.');
+	expect(deckBumpNotice('Ana', false)).toBe('Ana’s going first. Your key is saved.');
+});
+
+test('a cross-singer move-to-index keeps the moved entry`s key and guide (what the repro saw survive)', () => {
+	const q = [e('theo1', 'theo', { keyShift: -1, guideLevel: 0.3 }), e('ana1', 'ana'), e('ana2', 'ana')].map((x, i) => ({
+		...x,
+		rotationSeq: i
+	}));
+	const after = applyAndReseq(q, { op: 'move-to-index', id: 'ana2', toIdx: 0 });
+	expect(after.find((x) => x.id === 'theo1')).toMatchObject({ keyShift: -1, guideLevel: 0.3 });
 });

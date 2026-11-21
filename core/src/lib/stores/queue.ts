@@ -88,6 +88,10 @@ export class QueueStore {
 		}
 		return kinds;
 	}
+	/** Is a reorder of THIS phone's still unconfirmed? Then a change of who is On deck is this phone's own doing. */
+	get reorderPending(): boolean {
+		return [...this.#pending.values()].some((p) => ['move', 'move-to-index', 'not-yet'].includes(p.op.op));
+	}
 
 	subscribe(fn: (entries: QueueEntry[]) => void): () => void {
 		this.#subs.add(fn);
