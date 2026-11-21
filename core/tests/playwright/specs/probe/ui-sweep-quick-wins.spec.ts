@@ -3,32 +3,9 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { queueReady, readySong } from '../../world/actors';
 import type { Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
-
-/** Process a demo track to READY before anyone queues it, so a queued turn starts at once. */
-async function readySong(world: World, phone: Page, query: string): Promise<void> {
-	const track = await world.awaitDemoTrack(query);
-	await phone.request.post('/api/process', { data: { mediaId: track.id } });
-	await expect
-		.poll(
-			async () => {
-				const body = (await phone.request.get('/api/library').then((r) => r.json())) as {
-					library: { id: string; instrumentalRef?: string | null }[];
-				};
-				return body.library.some((m) => m.id === track.id && !!m.instrumentalRef);
-			},
-			{ timeout: 60_000, message: `"${query}" never became ready — is the fake worker connected?` }
-		)
-		.toBe(true);
-}
-
-async function queueReady(phone: Page, query: string): Promise<void> {
-	await openBrowseFromHome(phone);
-	await phone.locator(SEL.search).fill(query);
-	await phone.locator(SEL.addTurn).first().click();
-}
 
 /** The strip's two text boxes, as laid out. */
 async function stripBoxes(page: Page) {
