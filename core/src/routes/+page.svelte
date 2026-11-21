@@ -49,6 +49,11 @@
 		const sync = () => {
 			me = room.me;
 			mediaCatalog = room.mediaCatalog;
+			// Every search row was merged into the catalog, so one missing from it is a song the room refused as
+			// deleted (`#songGone`): the open answer stops offering it. Reassigned only when something left.
+			const live = (list: Media[]) => list.filter((m) => mediaCatalog.has(m.id));
+			if (live(readyResults).length !== readyResults.length) readyResults = live(readyResults);
+			if (live(rawResults).length !== rawResults.length) rawResults = live(rawResults);
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
 			library = room.library;
