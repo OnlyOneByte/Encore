@@ -101,6 +101,27 @@ test('Maya`s raced drag is told who is on deck and whose song goes after, as inf
 	expect(link.entries.filter((e) => e.status === 'queued').map((e) => e.id)[0]).toBe('believin');
 });
 
+/** The link's playback as the server sends it: `currentEntryId` names whose song is on. */
+const playing = (currentEntryId: string): ServerEvent => ({
+	type: 'playback:state',
+	rev: 2,
+	state: { currentEntryId, isPlaying: true, positionSec: 5, keyShift: 0, guideLevel: null, background: null }
+});
+
+test('the phone holds the server`s entry: Theo`s On deck while Maya sings, nothing while Theo sings back to back', async () => {
+	const { link, deliver } = await connectedAs('ana', 'Ana');
+	deliver(playing('caroline'));
+	expect(link.heldId).toBe('believin');
+	deliver({
+		type: 'queue:sync',
+		rev: 3,
+		entries: [entry('theo-1', 'theo', 0, 'playing'), entry('theo-2', 'theo', 1), entry('ana-1', 'ana', 2)],
+		media: [song('m')]
+	});
+	deliver(playing('theo-1'));
+	expect(link.heldId).toBeNull();
+});
+
 test('Ana dragging her own song hears "You"', async () => {
 	const { notices } = await raceAs('ana', 'Ana');
 	expect(notices).toEqual([{ message: 'Theo’s on deck. You go right after.', kind: 'info' }]);

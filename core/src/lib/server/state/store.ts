@@ -95,8 +95,12 @@ export class AuthoritativeState {
 	}
 
 	/** Apply a queue op authoritatively via the SHARED `applyAndReseq` (the same function the client optimistic store runs), which handles move-as-addedAt-permute, prunes terminal entries, and re-derives the room's ordering as contiguous rotationSeq. Bumps rev, schedules write-behind, and returns the canonical op + the authoritative (pruned, reseq'd) entries snapshot for the broadcast. */
-	applyQueueOp(op: QueueOp): { rev: number; canonicalOps: QueueOp[]; entries: QueueEntry[] } {
-		this.#entries = applyAndReseq(this.#entries, op, this.#orderingOf());
+	applyQueueOp(
+		op: QueueOp,
+		extra: Partial<Ordering> = {}
+	): { rev: number; canonicalOps: QueueOp[]; entries: QueueEntry[] } {
+		// `extra` is what only the caller knows: the held On deck entry an add must land behind (hub.ts).
+		this.#entries = applyAndReseq(this.#entries, op, { ...this.#orderingOf(), ...extra });
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, canonicalOps: [op], entries: this.entries };

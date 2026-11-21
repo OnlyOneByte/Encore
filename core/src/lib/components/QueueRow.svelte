@@ -22,6 +22,8 @@
 		/** Show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean:
 		 * the grip is a promise that a move will land, and the conditions for that are argued there. */
 		grip?: boolean;
+		/** No grip, but keep its column so the number lines up with rows that have one. */
+		gripSlot?: boolean;
 		/** This is the row being dragged. Its offset is `dragY`, applied as a transform. */
 		moving?: boolean;
 		/** Live pointer offset in px for the moving row. CSS-var driven — see the `.moving` rule. */
@@ -49,6 +51,7 @@
 		removable = false,
 		shift = 0,
 		grip = false,
+		gripSlot = false,
 		moving = false,
 		dragY = 0,
 		ongripdown,
@@ -121,6 +124,10 @@
 							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
 						}}><Icon name="grip" /></Button
 					>
+				{:else if gripSlot}
+					<!-- A row someone else cannot move (proposal 14's held On deck) keeps the handle's COLUMN, empty and inert, so
+						its number lines up with every row that has one. Not a button: nothing to press, no focus stop. -->
+					<span class="size-tap shrink-0" aria-hidden="true" data-grip-slot></span>
 				{/if}
 				<!-- THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node — which gives the
 						digit an entrance with no class-toggle timer and no geometry read, and a geometry read throws on the mount rung. -->

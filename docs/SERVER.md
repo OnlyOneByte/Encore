@@ -382,10 +382,17 @@ broadcasts never wait on a DB read. The reconciliation model is in `docs/ARCHITE
   unconditionally; touching somebody else's needs `queue:reorder-any` / `queue:remove-any`, which every
   joined singer also has. `move` can never cross singers by construction — it permutes one singer's picks
   among slots that singer already holds — so a cross-singer move must be `move-to-index`.
-- **On deck is held (proposal 14).** While a song plays, the room's next playable entry (`heldOnDeck`,
-  rotation.ts) keeps its turn: a `move` or `move-to-index` by anyone but ITS owner that would move it, or put a
-  row in front of it, is refused with `on deck is held: <id>` — the moved row's owner included. Its owner keeps
-  every move. Lifted in an idle room and while its singer is away. The check is last in `entryOpRefusal`.
+- **On deck is held (proposal 14).** While its On deck card shows — someone else sings and it plays next — the
+  room's next playable entry keeps its turn. Which entry that is has ONE rule, `heldEntryId`
+  (contract/queue/on-deck-hold.ts), read by the server, the phone's pinned row and both sides' add placement:
+  - a `move` or `move-to-index` by anyone but ITS owner that would move it, or put a row in front of it, is
+    refused with `on deck is held: <id>` — the moved row's owner included (last check in `entryOpRefusal`);
+  - an `add` lands no higher than just after it under every queue order: `insertEntry` clamps the policy's index
+    through `Ordering.heldId`, which the hub supplies and the phone predicts from the same rule;
+  - its owner keeps every move. Not held in an idle room, for the current singer's own back-to-back song (no card
+    shows), or while its singer is away — that last is one line, `HOLD_LIFTS_WHILE_AWAY`, an open owner question.
+  Changing the room's queue order mid-song re-places only future adds, never existing rows, so it cannot reorder
+  past the hold; a later "re-sort on change" would have to respect it.
 - **`can()` gates only CROSS-ACTOR operations.** Removing or reordering your own entry needs no capability;
   `queue:remove-any` / `queue:reorder-any` gate acting on someone else's. Routing a singer's own move
   through a capability check blocks their own song the moment `can()` starts enforcing a host role.

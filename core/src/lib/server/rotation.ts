@@ -3,6 +3,7 @@
 import {
 	applyAndReseq,
 	assignSeqs,
+	heldEntryId,
 	readyToSing,
 	type Ordering,
 	type QueueEntry,
@@ -37,18 +38,17 @@ export function nextPlayable(
 	return { next: null, held };
 }
 
-/** THE HELD ENTRY (proposal 14): while a song plays, the room's next playable entry keeps its turn against anyone but its
- *  owner, because that is when its singer's phone shows the On deck card and they set their key. Null in an idle room,
- *  where the server starts a ready song at once, and while its singer is away: a guest who left must not stall the room. */
+/** THE HELD ENTRY (proposal 14): the room's next playable entry while its singer's On deck card shows. Which entries
+ *  qualify is the shared `heldEntryId` rule, so the phone pins the same row and both sides clamp adds behind it. */
 export function heldOnDeck(
 	entries: QueueEntry[],
 	mediaById: Map<string, Media>,
 	ordering: Ordering,
 	away: readonly string[]
 ): QueueEntry | null {
-	if (!entries.some((e) => e.status === 'playing')) return null;
 	const { next } = nextPlayable(entries, mediaById, ordering);
-	return next && !away.includes(next.singerId) ? next : null;
+	const nowSingerId = entries.find((e) => e.status === 'playing')?.singerId;
+	return heldEntryId(next, nowSingerId, (id) => away.includes(id)) ? next : null;
 }
 
 /** Would `op` move the held entry, or put an entry in front of it that was not there before? Judged on the list the op

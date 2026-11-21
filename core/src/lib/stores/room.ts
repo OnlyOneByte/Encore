@@ -7,6 +7,7 @@
 
 import {
 	DEFAULT_EFFECTIVE_SETTINGS,
+	heldEntryId,
 	singHistoryFrom,
 	songDisplay,
 	type ServerEvent,
@@ -23,6 +24,7 @@ import {
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
+import { nextPlayableEntryId } from '$lib/readiness';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
@@ -123,6 +125,22 @@ export class RoomLink {
 	#fail(message: string, kind: 'error' | 'info' = 'error'): void {
 		for (const fn of this.#errorHandlers) fn(message, kind);
 	}
+	/** The entry the On deck hold protects, by the shared `heldEntryId` rule over the shared `nextPlayableEntryId`:
+	 *  what the queue tab pins, and what an optimistic add lands behind, as the server does (proposal 14). */
+	get heldId(): string | null {
+		const queued = this.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+		const nextId = nextPlayableEntryId(
+			queued,
+			(id) => this.mediaCatalog.get(id),
+			(id) => this.mediaStatus.get(id)
+		);
+		const nowSingerId = this.entries.find((e) => e.id === this.playback.currentEntryId)?.singerId;
+		return heldEntryId(
+			queued.find((e) => e.id === nextId),
+			nowSingerId,
+			(id) => this.awaySingers.has(id)
+		);
+	}
 	/** The queue tab's own line for a reorder the hold stopped (`onDeckHeldNote`), from the entries the link holds. */
 	#heldNote(heldId: string, movedId: string): string {
 		const singerOf = (id: string) => this.entries.find((e) => e.id === id)?.singerId;
@@ -179,7 +197,8 @@ export class RoomLink {
 			// predicting with a stale ordering is what makes a row jump.
 			ordering: () => ({
 				order: this.settings.room.queueOrder,
-				lastSungAt: singHistoryFrom(this.singers.values())
+				lastSungAt: singHistoryFrom(this.singers.values()),
+				heldId: this.heldId
 			})
 		});
 		this.queue.subscribe((entries) => {

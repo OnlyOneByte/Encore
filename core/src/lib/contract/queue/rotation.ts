@@ -20,11 +20,13 @@ export function assignSeqs(entries: QueueEntry[], _ordering: Ordering = {}): Que
 }
 
 /** Insert a NEW entry at the position the room's policy picks, then renumber. The policy is consulted EXACTLY
- *  here and nowhere else, against the stored QUEUED list. See docs/SERVER.md#queue-ordering-and-rotation. */
+ *  here and nowhere else, against the stored QUEUED list, and its answer is clamped to just after a held On deck
+ *  entry (`ordering.heldId`) so no policy can put a new song in front of it. See docs/SERVER.md#queue-ordering-and-rotation. */
 export function insertEntry(entries: QueueEntry[], entry: QueueEntry, ordering: Ordering = {}): QueueEntry[] {
 	const stored = storedOrder(entries.filter((e) => e.id !== entry.id));
 	const { slots, queued } = splitQueued(stored);
-	const at = insertIndexFor(queued, entry, ordering);
+	const held = ordering.heldId ? queued.findIndex((e) => e.id === ordering.heldId) : -1;
+	const at = Math.max(insertIndexFor(queued, entry, ordering), held + 1);
 	const nextQueued = queued.slice();
 	nextQueued.splice(at, 0, entry);
 	return renumber(weave(stored, slots, nextQueued));

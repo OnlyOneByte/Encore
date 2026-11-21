@@ -227,7 +227,12 @@ export function handleQueueCommand(
 		op = { op: 'add', entry: { ...entry, deferred, addedAt: deps.state.nextAddedAt() } };
 	}
 
-	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
+	// An add lands behind a held On deck entry under every queue order (proposal 14, `insertEntry`).
+	const held =
+		op.op === 'add'
+			? heldOnDeck(deps.state.entries as QueueEntry[], deps.mediaById, orderingOf(deps), deps.listAway?.() ?? [])
+			: null;
+	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op, { heldId: held?.id ?? null });
 
 	// AFTER applying, so the hook sees the post-remove queue and can decide whether to cancel.
 	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);

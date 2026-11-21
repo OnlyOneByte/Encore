@@ -85,6 +85,21 @@ test('someone else`s drag stops under the On deck row, says why, and Theo`s card
 		// The held row has no grip on a phone that does not own it; every other row keeps one.
 		await expect(maya.locator(SEL.queueRow, { hasText: 'believin' }).locator(SEL.queueGrip)).toHaveCount(0);
 		await expect(maya.locator(SEL.queueRow, { hasText: 'brightside' }).locator(SEL.queueGrip)).toHaveCount(1);
+		// ...but it keeps the grip's column, so its number lines up with the rows that have one.
+		const seqX = async (song: string) =>
+			(await maya.locator(SEL.queueRow, { hasText: song }).locator('.seq').boundingBox())!.x;
+		expect(Math.abs((await seqX('believin')) - (await seqX('brightside')))).toBeLessThan(1);
+		// The line is nobody's fault, so it is not in the warning colour the "nothing was moved" notes use.
+		const noteColor = await maya.locator('.reorder-note').evaluate((el) => getComputedStyle(el).color);
+		const warn = await maya.evaluate(() => {
+			const p = document.createElement('p');
+			p.style.color = 'var(--warn)';
+			document.body.append(p);
+			const c = getComputedStyle(p).color;
+			p.remove();
+			return c;
+		});
+		expect(noteColor).not.toBe(warn);
 
 		// Theo's phone and the TV: nothing happened, which is the point. Sampled across 3 s, not once.
 		for (const ms of [300, 1000, 3000]) {

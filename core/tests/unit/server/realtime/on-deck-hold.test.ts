@@ -124,3 +124,36 @@ test('removing someone else`s held entry is not a reorder and is not held', () =
 	const { deps } = room();
 	expect(validateCommand(cmd({ op: 'remove', id: 'believin' }), deps)).toBeNull();
 });
+
+test('back to back is not held: while Theo sings, his own next song shows no card, so Maya may put Ana first', () => {
+	const state = new AuthoritativeState();
+	state.hydrate([entry('theo-1', 'theo', { status: 'playing' }), entry('theo-2', 'theo'), entry('ana-1', 'ana')], null);
+	const deps: HubDeps = {
+		state,
+		publish: () => {},
+		mediaById: new Map([['ready', media('ready')]]),
+		actorSingerId: 'maya'
+	};
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'ana-1', toIdx: 0 }), deps)).toBeNull();
+});
+
+test('an add cannot take On deck either: a never-sung guest under "longest ago" lands right behind Theo', () => {
+	const lastSungAt = new Map([
+		['maya', 3],
+		['theo', 1],
+		['ana', 2]
+	]);
+	const state = new AuthoritativeState(undefined, 250, () => ({ order: 'least-recently-sung', lastSungAt }));
+	state.hydrate(
+		[entry('caroline', 'maya', { status: 'playing' }), entry('believin', 'theo'), entry('prayer', 'ana')],
+		null
+	);
+	const deps: HubDeps = {
+		state,
+		publish: () => {},
+		mediaById: new Map([['ready', media('ready')]]),
+		actorSingerId: 'zoe'
+	};
+	handleQueueCommand(cmd({ op: 'add', entry: entry('zoe-1', 'zoe') }), deps);
+	expect(queuedIds(state)).toEqual(['believin', 'zoe-1', 'prayer']);
+});

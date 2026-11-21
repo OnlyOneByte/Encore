@@ -68,6 +68,8 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let awaySingers = $state<Set<string>>(new Set());
+	/** The entry the On deck hold protects (`room.heldId`), or null. */
+	let heldId = $state<string | null>(null);
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	let playback = $state<PlaybackState>({
 		currentEntryId: null,
@@ -105,6 +107,7 @@
 			singers = room.singers;
 			mediaCatalog = room.mediaCatalog;
 			awaySingers = room.awaySingers;
+			heldId = room.heldId;
 			mediaStatus = room.mediaStatus;
 			playback = room.playback;
 			positionSec = room.playback.positionSec;
@@ -321,21 +324,19 @@
 	let rowBounds = $state<{ top: number; height: number }[]>([]);
 	// Announced through the SAME polite region the queue uses, and rendered visibly: a sighted guest needs it.
 	let reorderNote = $state('');
+	/** The note is the hold's sentence, which is nobody's fault, rather than a "nothing was moved". */
+	let noteIsHold = $state(false);
 	/** The grip the gesture began on, so focus can be returned to it. */
 	let openerEl: HTMLElement | null = null;
 	let dragTeardown: (() => void) | null = null;
 
 	/** Where the dragged row currently sits, which is both what the list renders and what a release commits. */
 	const dragFrom = $derived(movingId ? queuedIdx(movingId) : -1);
-	/* ON DECK IS HELD (proposal 14): while a song plays, the server refuses anyone but its owner a reorder that moves the
-	   next playable entry or lands a row in front of it (hub.ts `entryOpRefusal`). So that row has no grip here unless it
-	   is mine, and a row behind it stops one below it — the drop lands where the guest saw it. Lifted while its singer is
-	   away, as on the server. */
-	const pinnedId = $derived.by(() => {
-		if (!nowEntry || !nextPlayableId) return null;
-		const e = queued.find((x) => x.id === nextPlayableId);
-		return e && e.singerId !== me?.id && !awaySingers.has(e.singerId) ? e.id : null;
-	});
+	/* ON DECK IS HELD (proposal 14): while its On deck card shows, the server refuses anyone but its owner a reorder that
+	   moves that entry or lands a row in front of it (hub.ts `entryOpRefusal`). Which entry is held is the link's
+	   `heldId`, the shared rule the server uses. So that row has no handle here unless it is mine, and a row behind it
+	   stops one below it — the drop lands where the guest saw it. */
+	const pinnedId = $derived(heldId && queued.find((x) => x.id === heldId)?.singerId !== me?.id ? heldId : null);
 	const pinnedIdx = $derived(pinnedId ? queuedIdx(pinnedId) : -1);
 	/** The highest slot the row at `from` may take. A row in front of the held one may still go anywhere. */
 	function floorFor(from: number): number {
@@ -371,7 +372,10 @@
 		const to = keyboardMoveTarget(from, delta, queued.length, floor);
 		if (to === null) {
 			// Stopped by the hold rather than by the top of the list: say why, as a release there does.
-			if (from + delta >= 0 && from + delta < floor) reorderNote = liveMsg = heldNoteFor(id);
+			if (from + delta >= 0 && from + delta < floor) {
+				reorderNote = liveMsg = heldNoteFor(id);
+				noteIsHold = true;
+			}
 			return;
 		}
 		commitMove(id, to);
@@ -386,7 +390,9 @@
 		const to = dragTo;
 		// Where the guest reached for, with no hold: further up than `to` means the hold stopped the drop.
 		const reached = to >= 0 ? liveSortTarget(dragGeometry) : -1;
-		if (commit && id && !note && reached < to) note = heldNoteFor(id);
+		const held = commit && id !== null && !note && reached < to;
+		if (held) note = heldNoteFor(id);
+		noteIsHold = held;
 		dragTeardown?.();
 		dragTeardown = null;
 		if (commit && id) commitMove(id, to >= 0 ? to : null);
@@ -631,7 +637,7 @@
 			<h2 class="grouphead">Queued</h2>
 			<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
 			{#if reorderNote}
-				<p class="reorder-note">{reorderNote}</p>
+				<p class={['reorder-note', { held: noteIsHold }]}>{reorderNote}</p>
 			{/if}
 			<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
 			what this page shipped first and what broke reordering. The reorder arithmetic is ONE INDEX SPACE: `i`,
@@ -715,6 +721,7 @@
 						pending={pendingKind.get(e.id) ?? null}
 						removable={e.singerId === me?.id}
 						grip={gripsVisible && e.id !== pinnedId}
+						gripSlot={gripsVisible && e.id === pinnedId}
 						gripId={e.id}
 						moving={movingId === e.id && dragging}
 						dragY={movingId === e.id && dragging ? dragY : 0}
@@ -880,6 +887,10 @@
 		margin: 0;
 		font-size: var(--ph-text-sm);
 		color: var(--warn);
+	}
+	/* The hold's sentence is nobody's mistake, so it is not dressed as a warning. */
+	.reorder-note.held {
+		color: var(--ink-dim);
 	}
 
 	/* Visually hidden but still in the a11y tree: `display: none` and `visibility: hidden` both remove it from the
