@@ -32,10 +32,16 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = { 'phone-on-deck-heads-up':
 let joins = 0;
 
 /** A fresh context that is already this phone's singer, so each of the three runs gets its own page. */
-async function asSinger(browser: Browser, world: World, opts: BrowserContextOptions, state: Page): Promise<Page> {
+async function asSinger(
+	browser: Browser,
+	world: World,
+	opts: BrowserContextOptions,
+	state: Page,
+	width = 390
+): Promise<Page> {
 	const ctx = await browser.newContext({
 		...opts,
-		viewport: { width: 390, height: 844 },
+		viewport: { width, height: 844 },
 		baseURL: world.baseURL,
 		storageState: await state.context().storageState()
 	});
@@ -59,7 +65,60 @@ async function mayaThenTheo(phones: { maya: Page; theo: Page; ana: Page }): Prom
 	await ana.waitForTimeout(3_000);
 }
 
+/** The dock as the song becomes yours, at one phone width: the reaction row's buttons fade out IN PLACE (opacity,
+ *  --motion-base) and the row keeps its slot, so the dock does not move. "You're up" rises over it in the same
+ *  moment and is listed under live.others. CLS must read 0 in metrics.json. */
+function dockYourSong(width: number): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		return {
+			name: `phone-dock-your-song-${width}`,
+			what: `Phone ${width}x844: the dock as Theo’s song starts — the cheer buttons fade out in place (opacity, --motion-base), the row keeps its height, the dock does not move (CLS 0)`,
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world);
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					await readySong(world, ph.maya, 'caroline');
+					await readySong(world, ph.maya, 'believin');
+					await world.openTv();
+				}
+				await mayaThenTheo(ph);
+				const page = await asSinger(browser, world, opts, ph.theo, width);
+				await page.goto('/');
+				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+				await expect(page.locator(SEL.npCheer).first()).toBeVisible();
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await page.locator(`${SEL.npCheers}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: '.cheer',
+			stripClip: async () => ({ x: 0, y: 604, width, height: 240 }),
+			observe: (page) =>
+				page.evaluate(() => {
+					const r = document.querySelector('.dock')!.getBoundingClientRect();
+					return {
+						dock: { y: r.y, h: r.height },
+						rowInert: document.querySelector('.dock .cheers')?.hasAttribute('inert') ?? null
+					};
+				})
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'phone-dock-your-song-390': dockYourSong(390),
+	'phone-dock-your-song-320': dockYourSong(320),
 	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
 	 *  drains the room and starts again from Maya's song. */
 	'phone-youre-up': (browser, world, cleanup) => {
