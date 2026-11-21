@@ -39,16 +39,19 @@ async function awaitStatus(
 	return { wait, close: () => ws.close() };
 }
 
-/** A YouTube hit, as in the replay that found this: the box has no ffmpeg to index the seeded library with. */
-async function sing(phone: Page, query: string): Promise<void> {
+/** A YouTube hit, as in the replay that found this: the box has no ffmpeg to index the seeded library with. The row
+ * must NAME the query — the box is debounced, so the previous query's rows can still be on screen. Returns its title. */
+async function sing(phone: Page, query: string, names: RegExp): Promise<string> {
 	await openBrowseFromHome(phone);
 	await phone.locator(SEL.search).fill(query);
-	await phone
+	const row = phone
 		.locator(SEL.songRow)
-		.filter({ hasText: /caroline/i })
-		.locator(SEL.singAction)
-		.first()
-		.click();
+		.filter({ hasText: names })
+		.filter({ has: phone.locator(SEL.singAction) })
+		.first();
+	const title = ((await row.locator(SEL.rowTitle).first().textContent()) ?? '').trim();
+	await row.locator(SEL.singAction).click();
+	return title;
 }
 
 async function shoot(label: string, pages: Record<string, Page>): Promise<void> {
@@ -116,7 +119,7 @@ for (const scenario of ['failing stems', 'no worker'] as const) {
 				scenario === 'failing stems' ? f.status === 'failed' : f.unservable === true
 			);
 			try {
-				await sing(maya, 'sweet caroline');
+				await sing(maya, 'sweet caroline', /caroline/i);
 				await watch.wait;
 				if (scenario === 'no worker') {
 					// The search row the guest just tapped tells the same truth, not "Making karaoke… 0%".
@@ -129,7 +132,15 @@ for (const scenario of ['failing stems', 'no worker'] as const) {
 					// And no progress bar: a bar near 0 reads as slow, not stopped.
 					await expect(row.locator('[aria-label="Process progress"]')).toHaveCount(0);
 				}
+				// The dead card says it, under its own buttons: no toast covers them on /queue (390 is this phone).
+				// `data-removed` is sonner's leaving toast, still in the DOM for its exit animation.
+				const notice = maya.locator('[data-sonner-toast]:not([data-removed="true"])', {
+					hasText: "Couldn't make karaoke"
+				});
+				if (scenario === 'failing stems') await expect(notice).toBeVisible(); // on the Sing tab it is the news
 				await openQueue(maya);
+				// Read once, not polled: a poll would simply outwait the toast's 4 s.
+				expect(await notice.count()).toBe(0);
 				const label = scenario === 'failing stems' ? 'failed' : 'no-worker';
 				const expected =
 					scenario === 'failing stems'
@@ -159,11 +170,72 @@ for (const scenario of ['failing stems', 'no worker'] as const) {
 					// The way forward is on the card, which is what the "try again" toast points at.
 					const retry = maya.locator(`${SEL.processing} [data-testid="card-retry"]`);
 					await expect(retry).toBeVisible();
+					if (scenario === 'failing stems') {
+						// With a maker the hold ends at the worker's first making status, well inside its 1.5s ceiling:
+						// the room's real answer is never masked by a stalled look the server did not report.
+						const again = await awaitStatus(world.baseURL, (f) => f.status === 'failed');
+						// Every frame from the tap to the verdict: the card keeps both buttons, so its height never moves.
+						await maya.evaluate(() => {
+							const w = window as unknown as { __rows: { buttons: number; h: number }[] };
+							w.__rows = [];
+							const t0 = performance.now();
+							const sample = () => {
+								const card = document.querySelector('.proc') as HTMLElement | null;
+								w.__rows.push({
+									buttons: card?.querySelectorAll('.next [data-testid]').length ?? 0,
+									h: Math.round(card?.getBoundingClientRect().height ?? 0)
+								});
+								if (performance.now() - t0 < 1_000) requestAnimationFrame(sample);
+							};
+							requestAnimationFrame(sample);
+						});
+						const tapped = Date.now();
+						try {
+							await retry.click();
+							await again.wait;
+						} finally {
+							again.close();
+						}
+						// The worker took the job and failed it again, well before the ceiling: the card already says so.
+						expect(Date.now() - tapped).toBeLessThan(1_200);
+						await expect(maya.locator(SEL.processing).first()).toContainText("Couldn't make karaoke", {
+							timeout: 250
+						});
+						await maya.waitForTimeout(1_100);
+						const rows = await maya.evaluate(
+							() => (window as unknown as { __rows: { buttons: number; h: number }[] }).__rows
+						);
+						expect(Math.min(...rows.map((r) => r.buttons)), 'the buttons vanished during the hold').toBe(2);
+						expect(new Set(rows.map((r) => r.h)).size, `the card changed height: ${JSON.stringify(rows)}`).toBe(1);
+						// A failure that lands while Maya is ON /queue raises no toast over the card either.
+						await maya.waitForTimeout(300);
+						expect(await notice.count()).toBe(0);
+					}
 					if (scenario === 'no worker') {
 						// Try again inside the 120s window reuses the job the sweep has already seen and will not
 						// re-announce, so the route's own frame must keep the verdict or every screen says "Making karaoke…".
+						// A bar or a sparkle for even one frame during the hold claims work nobody is doing: watch every mutation.
+						await maya.evaluate(() => {
+							const w = window as unknown as { __barSeen: boolean };
+							w.__barSeen = false;
+							new MutationObserver(() => {
+								if (document.querySelector('.proc [aria-label="Process progress"], .proc .sparkle')) w.__barSeen = true;
+							}).observe(document.body, { subtree: true, childList: true, attributes: true });
+						});
 						await retry.click();
+						// The tap answers at once, even though the server's verdict will not change, and holds the button.
+						await expect(maya.locator(SEL.processing).first()).toContainText('Trying again…', { timeout: 500 });
+						await expect(retry).toBeDisabled();
+						// Both ways out are held: Pick another stays in place, inert, for the hold too.
+						const pick = maya.locator(`${SEL.processing} [data-testid="card-pick-another"]`);
+						await expect(pick).toHaveAttribute('aria-disabled', 'true');
+						// And it LOOKS held: a link Button that kept full ink beside a dimmed Try again read as live, and
+						// ignored the tap. The same dimming as the real <button> beside it.
+						const opacity = (l: typeof pick) => l.evaluate((el) => getComputedStyle(el).opacity);
+						expect(await opacity(pick), 'Pick another looks live during the hold').toBe(await opacity(retry));
+						expect(await opacity(pick)).not.toBe('1');
 						await maya.waitForTimeout(2_000);
+						expect(await maya.evaluate(() => (window as unknown as { __barSeen: boolean }).__barSeen)).toBe(false);
 						await expect
 							.poll(() => screens(tv, maya, theo), { timeout: AGREE_MS, message: 'Try again cleared the verdict' })
 							.toEqual(expected);
@@ -173,6 +245,17 @@ for (const scenario of ['failing stems', 'no worker'] as const) {
 						await expect
 							.poll(() => screens(tv, maya, theo), { timeout: AGREE_MS, message: 'a reload lost the verdict' })
 							.toEqual(expected);
+						// The Library tab, with nothing made yet, must not promise to make one either.
+						await theo.goto(new URL('/library', world.baseURL).href);
+						await expect(theo.locator('body')).toContainText("Can't make new karaoke right now.", {
+							timeout: AGREE_MS
+						});
+						expect((await untruths({ theo }))['theo']).toBeUndefined();
+						// Nor the Sing tab before a search: it no longer offers to make karaoke for any song.
+						await theo.goto(new URL('/', world.baseURL).href);
+						await expect(theo.locator('body')).toContainText('Only ready songs can play right now.', {
+							timeout: AGREE_MS
+						});
 					}
 				} finally {
 					await shoot(label, { tv, 'maya-queue': maya, 'theo-home': theo });
@@ -205,7 +288,7 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	const theo = await world.openPhone('Theo');
 	const failed = await awaitStatus(world.baseURL, (f) => f.status === 'failed');
 	try {
-		await sing(maya, 'sweet caroline');
+		await sing(maya, 'sweet caroline', /caroline/i);
 		await failed.wait;
 	} finally {
 		failed.close();
@@ -239,7 +322,27 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	// 2. Try again opens a NEW unservable window; then everyone reloads — Maya on top of her 30-minute scar.
 	const again = await awaitStatus(world.baseURL, (f) => f.unservable === true);
 	try {
-		await maya.locator(`${SEL.processing} [data-testid="card-retry"]`).click();
+		// A bar or a sparkle in any frame of the hold would claim work nobody is doing.
+		await maya.evaluate(() => {
+			const w = window as unknown as { __barSeen: boolean };
+			w.__barSeen = false;
+			new MutationObserver(() => {
+				if (document.querySelector('.proc [aria-label="Process progress"], .proc .sparkle')) w.__barSeen = true;
+			}).observe(document.body, { subtree: true, childList: true, attributes: true });
+		});
+		const retry = maya.locator(`${SEL.processing} [data-testid="card-retry"]`);
+		await retry.click();
+		// A NEW job: its first frame is a stage the server synthesised, which must not end the hold. Still held, with
+		// the button disabled, at +150 ms and at +1.2 s; then the latest state, stalled, comes back.
+		const line = maya.locator(SEL.processing).first();
+		await maya.waitForTimeout(150);
+		expect(await line.textContent()).toContain('Trying again…');
+		expect(await retry.isDisabled()).toBe(true);
+		await maya.waitForTimeout(1_050);
+		expect(await line.textContent()).toContain('Trying again…');
+		expect(await retry.isDisabled()).toBe(true);
+		await expect(line).toContainText("Can't make this one right now", { timeout: 2_000 });
+		expect(await maya.evaluate(() => (window as unknown as { __barSeen: boolean }).__barSeen)).toBe(false);
 		await again.wait;
 	} finally {
 		again.close();
@@ -263,6 +366,64 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	await shoot('post-ttl', { tv, 'maya-queue': maya, 'theo-sing': theo });
 });
 
+test('Pick another swaps the song and keeps the spot ahead of a later singer', async ({ world }) => {
+	const worker = await startFakeWorker(world, {
+		fail: 'stems',
+		slowMs: 150,
+		capabilities: ['fetch:ytdlp', 'stems', 'align']
+	});
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const failed = await awaitStatus(world.baseURL, (f) => f.status === 'failed');
+		let deadTitle = '';
+		try {
+			deadTitle = await sing(maya, 'sweet caroline', /caroline/i);
+			await failed.wait;
+		} finally {
+			failed.close();
+		}
+		// Theo queues AFTER Maya's song died. A remove-and-re-add would put Maya behind him.
+		const theoTitle = await sing(theo, 'bohemian rhapsody', /bohemian/i);
+		await openQueue(maya);
+		await maya.locator('[data-testid="card-pick-another"]').click();
+		await maya.waitForURL((u) => u.pathname === '/' && u.searchParams.has('replace'));
+		await maya.locator(SEL.search).fill('livin on a prayer');
+		await maya
+			.locator(SEL.songRow)
+			.filter({ hasText: /prayer/i })
+			.first()
+			.waitFor();
+		await shoot('pick-another', { 'maya-home': maya });
+		const picked = (
+			(await maya
+				.locator(SEL.songRow)
+				.filter({ hasText: /prayer/i })
+				.first()
+				.locator(SEL.rowTitle)
+				.first()
+				.textContent()) ?? ''
+		).trim();
+		await maya
+			.locator(SEL.songRow)
+			.filter({ hasText: /prayer/i })
+			.locator(SEL.singAction)
+			.first()
+			.click();
+		await maya.waitForURL((u) => u.pathname === '/queue');
+		await expect
+			.poll(async () => (await maya.locator(SEL.queueTitle).allTextContents()).map((t) => t.trim()), {
+				timeout: AGREE_MS
+			})
+			.toEqual([picked, theoTitle]);
+		// The dead song's "try again" names a song no longer in the queue, so the swap dismisses it.
+		await expect(maya.locator('[data-sonner-toast]', { hasText: deadTitle })).toHaveCount(0);
+		await shoot('pick-another', { 'maya-queue-after': maya });
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('past the TTL, a maker joining ends "no maker" on every screen, live and after a reload', async ({ world }) => {
 	test.setTimeout(300_000);
 	const tv = await world.openTv();
@@ -270,7 +431,7 @@ test('past the TTL, a maker joining ends "no maker" on every screen, live and af
 	const theo = await world.openPhone('Theo');
 	const failed = await awaitStatus(world.baseURL, (f) => f.status === 'failed');
 	try {
-		await sing(maya, 'sweet caroline');
+		await sing(maya, 'sweet caroline', /caroline/i);
 		await failed.wait;
 	} finally {
 		failed.close();
@@ -343,7 +504,7 @@ test.describe(() => {
 		// A worker that takes the song to a making stage and then sits there.
 		const worker = await startFakeWorker(world, { slowMs: 60_000, capabilities: ['fetch:ytdlp', 'stems', 'align'] });
 		try {
-			await sing(maya, 'sweet caroline');
+			await sing(maya, 'sweet caroline', /caroline/i);
 			await openQueue(maya);
 			await expect(maya.locator(SEL.processing).first()).toContainText('%', { timeout: AGREE_MS });
 		} finally {

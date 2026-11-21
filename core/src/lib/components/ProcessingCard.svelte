@@ -5,8 +5,13 @@
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { MediaStatus } from '$lib/contract';
-	import type { QueueCardKind } from '$lib/readiness';
-	import { processReadout, processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
+	import { retryHoldAfter, type QueueCardKind } from '$lib/readiness';
+	import {
+		processReadout,
+		processStageLabel,
+		RETRYING_LABEL,
+		STALLED_TURN_LABEL
+	} from '$lib/phrasing/process-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
 	interface Props {
@@ -50,6 +55,9 @@
 		/** Ask for the karaoke again. Present only on a STALLED or FAILED card, where the turn exists and nothing
 		 * is making its karaoke — `processAndQueue`'s `hasQueuedTurn` branch, so the turn is kept rather than re-added. */
 		onretry?: () => void;
+		/** Where to choose a different song for THIS turn, keeping its place — a link, because it is a navigation. The
+		 * singer's own dead cards only: it takes their pick away, which is the remove gate's reason for ownership too. */
+		pickAnotherHref?: string;
 		reorderable?: boolean;
 		/** The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean. This card is draggable in
 		 * the same list as the uniform rows: `liveSortTarget` counts crossings against every row's measured CENTRE
@@ -82,6 +90,7 @@
 		noMaker = false,
 		onremove,
 		onretry,
+		pickAnotherHref,
 		reorderable = false,
 		grip = false,
 		gripId,
@@ -98,8 +107,50 @@
 	   failed card's line. A phone that missed the failure, and one that heard it, then read the same. The pct is
 	   shown separately in the stage row below, so the line itself omits it. */
 	const dead = $derived(kind === 'stalled' || kind === 'failed');
+	/* TRY AGAIN ANSWERS AT ONCE. With no maker the server's reply is the SAME stalled verdict within a frame, so
+	   the card never changed and the tap read as dead — an invitation to tap twice more. So the tap itself swaps
+	   the line to "Trying again…" for RETRY_ACK_MS, a flat hold that a VERDICT alone cuts short: a fresh `failed`
+	   or `ready` (`retryHoldAfter`). A stage never does, because the server synthesises one for a new job before any
+	   worker has it. Then the card follows the server.
+	   shortcut: a fixed hold, not a server ack; upgrade if /api/process ever returns its verdict to the caller. */
+	const RETRY_ACK_MS = 1500;
+	let retrying = $state(false);
+	let retryTimer: ReturnType<typeof setTimeout> | undefined;
+	let heldOver: MediaStatus | undefined;
+	/* THE BUTTON ROW OUTLIVES THE TAP'S OWN EFFECT. The tap marks the song `queued` at once, the card turns
+	   `processing`, and the route stops passing `onretry` / `pickAnotherHref` for a processing card — so the row
+	   vanished for the hold and came back, and the card shrank a row and grew again. The row is kept, disabled,
+	   for as long as the hold lasts; what the card does after it is the route's call again. */
+	let heldPick: string | undefined;
+	const showRetry = $derived(!!onretry || retrying);
+	const pickHref = $derived(pickAnotherHref ?? (retrying ? heldPick : undefined));
+	function retry() {
+		retrying = true;
+		heldPick = pickAnotherHref;
+		heldOver = status;
+		clearTimeout(retryTimer);
+		retryTimer = setTimeout(() => (retrying = false), RETRY_ACK_MS);
+		onretry?.();
+	}
+	$effect(() => {
+		if (!retrying) return;
+		const next = retryHoldAfter(heldOver, status);
+		if (next !== null) heldOver = next;
+		else {
+			retrying = false;
+			clearTimeout(retryTimer);
+		}
+	});
+	$effect(() => () => clearTimeout(retryTimer));
+
 	const stageLabel = $derived(
-		dead ? (noMaker ? STALLED_TURN_LABEL : processStageLabel('failed')) : processStageLabel(status ?? 'queued')
+		retrying
+			? RETRYING_LABEL
+			: dead
+				? noMaker
+					? STALLED_TURN_LABEL
+					: processStageLabel('failed')
+				: processStageLabel(status ?? 'queued')
 	);
 	// One expression for both unconfirmed states, so a pending reorder cannot re-borrow the add path's word.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
@@ -125,10 +176,12 @@
 	   from a search result, so recovering a stranded turn meant finding the song again first.
 	   THE LOOK FOLLOWS THE WORDS, so one line never wears two tones on two phones: the danger look goes with
 	   "Couldn't make karaoke" (a maker is here and a Try again will work), the warn look with "Can't make this one
-	   right now" (no maker). */
-	const failed = $derived(dead && !noMaker);
-	const stalled = $derived(dead && noMaker);
-	const inFlight = $derived(kind === 'processing');
+	   right now" (no maker).
+	   While a Try again is being acknowledged the card wears the stalled look (warn ink, no bar, no sparkle),
+	   whatever its kind: it is not "broken" in that moment and nothing has been measured yet, it is trying. */
+	const failed = $derived(dead && !noMaker && !retrying);
+	const stalled = $derived((dead && noMaker) || retrying);
+	const inFlight = $derived(kind === 'processing' && !retrying);
 	// `pct` is the worker's PER-STEP 0-100; the bar must show OVERALL completion, or every step reaching 100% fills
 	// the whole bar while later milestones have not started. Rounded only for the readout.
 	const overall = $derived(overallProcessPct(status ?? 'queued', pct));
@@ -215,29 +268,12 @@
 					</div>
 				{/if}
 			</Item.Content>
-			{#if !pending && (onretry || onremove || reorderable)}
+			{#if !pending && (onremove || reorderable)}
 				<Item.Actions data-align="start">
-					<!-- Reordering lives on the GRIP above, so this cluster holds the two controls that act on the TURN:
-							RETRY (stalled cards only) and REMOVE. `reorderable` only WIDENS the gate — it contributes nothing of
-							its own — so a card the route says may move but that is neither the guest's to remove nor stalled
-							renders this cluster empty.
-							RETRY IS UNGATED BY OWNERSHIP, unlike remove, and that asymmetry is the point: remove DESTROYS
-							someone's turn, a retry destroys nothing and /api/process is already callable by any joined singer
-							for any song from the Sing tab. Gating it on `singerId === me.id` would be stricter than the
-							affordance it duplicates — and in the owner's own library copy every stranded turn belongs to a
-							singer who is `· away`, so an ownership gate makes all 89 of them unfixable from any phone in the
-							room. The blast radius is bounded where it already was: `processState`'s over-limit arm caps
-							in-flight processes per singer. -->
-					{#if onretry}
-						<Button
-							variant="iconPrimary"
-							size="icon"
-							data-testid="card-retry"
-							aria-label="Make the karaoke for this turn — you keep your place in line"
-							title="Make the karaoke for this turn — you keep your place in line"
-							onclick={() => onretry?.()}><Icon name="sparkle" /></Button
-						>
-					{/if}
+					<!-- Reordering lives on the GRIP above, so this cluster holds REMOVE, the one control that ends the TURN.
+							`reorderable` only WIDENS the gate — it contributes nothing of its own — so a card the route says may
+							move but that is not the guest's to remove renders this cluster empty. The two ways FORWARD from a
+							dead card are words, in their own row below, because a guest has to read them to choose. -->
 					{#if onremove}
 						<Button
 							variant="outline"
@@ -249,21 +285,55 @@
 					{/if}
 				</Item.Actions>
 			{/if}
-			<div class="progress">
-				{#if failed}
-					<!-- No bar for a dead process: a bar stuck near 0 reads as stalled rather than failed, so the tinted stage
+			<!-- Keyed on the line, so a change of stage (a Try again landing, the making state arriving) pops in with
+					the app's `pop` keyframe at --motion-base, dropped under reduced motion. Never on mount: a list of
+					stranded turns does not all bounce on arrival. -->
+			{#key stageLabel}<div class="progress" class:stage-in={stageLabel !== bornStage}>
+					{#if failed}
+						<!-- No bar for a dead process: a bar stuck near 0 reads as stalled rather than failed, so the tinted stage
 							line carries the state on its own. -->
-					<div class="stage bad"><span>{stageLabel}</span></div>
-				{:else if stalled}
-					<!-- No bar and no percentage, for a stronger reason than the failed card's: there is no process to have
+						<div class="stage bad"><span>{stageLabel}</span></div>
+					{:else if stalled}
+						<!-- No bar and no percentage, for a stronger reason than the failed card's: there is no process to have
 							made progress, so ANY figure here would be invented. The line keeps `.stage`'s own --warn ink — see
 							the styles for why this card may not take the danger family. -->
-					<div class="stage"><span>{stageLabel}</span></div>
-				{:else}
-					<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
-					<div class="stage"><span>{stageLabel}</span><span>{processReadout(overall, pct, etaSec)}</span></div>
-				{/if}
-			</div>
+						<div class="stage"><span>{stageLabel}</span></div>
+					{:else}
+						<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
+						<div class="stage"><span>{stageLabel}</span><span>{processReadout(overall, pct, etaSec)}</span></div>
+					{/if}
+				</div>{/key}
+			{#if !pending && (showRetry || pickHref)}
+				<!-- RETRY IS UNGATED BY OWNERSHIP, unlike remove and pick-another, and that asymmetry is the point: remove
+						and pick-another take someone's pick away, a retry takes nothing and /api/process is already callable by
+						any joined singer for any song from the Sing tab. In the owner's own library copy every stranded turn
+						belongs to a singer who is `· away`, so an ownership gate would make all 89 unfixable from any phone in
+						the room. The blast radius is bounded where it already was: `processState`'s over-limit arm caps
+						in-flight processes per singer. -->
+				<div class="next">
+					{#if showRetry}
+						<Button
+							size="tap"
+							variant="secondary"
+							data-testid="card-retry"
+							title="Make the karaoke again — you keep your spot"
+							disabled={retrying}
+							onclick={retry}>Try again</Button
+						>
+					{/if}
+					{#if pickHref}
+						<!-- Held with Try again: the Button drops a disabled link's href and marks it aria-disabled. -->
+						<Button
+							size="tap"
+							variant="secondary"
+							data-testid="card-pick-another"
+							title="Pick another song — you keep your spot"
+							disabled={retrying}
+							href={pickHref}>Pick another</Button
+						>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	{/snippet}
 </Item.Root>
@@ -294,6 +364,18 @@
 	/* Spans first column through last whether or not the actions column rendered — load-bearing. */
 	.progress {
 		grid-column: 1 / -1;
+	}
+	/* The app's `pop` (app.css), timed by token rather than `.pop-in`'s literal, so the motion check reads it. */
+	@media (prefers-reduced-motion: no-preference) {
+		.progress.stage-in {
+			animation: pop var(--motion-base) cubic-bezier(0.2, 0.9, 0.3, 1.3);
+		}
+	}
+	.next {
+		grid-column: 1 / -1;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
 	}
 	.proc {
 		background: linear-gradient(var(--card), var(--card-tint));

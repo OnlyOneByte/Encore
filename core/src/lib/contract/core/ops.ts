@@ -15,6 +15,11 @@ export type QueueOp =
 	| { op: 'set-entry-prefs'; id: string; keyShift: number; guideLevel: number | null }
 	// "Not yet": a `move-to-index` that also spends the entry's one deferral, in ONE op so the two cannot split.
 	| { op: 'not-yet'; id: string; toIdx: number }
+	// SAME TURN, ANOTHER SONG: "Pick another, keep your spot" for a song that could not be made. id, singer,
+	// addedAt, rotationSeq and `deferred` stay, so the turn holds the place the held-slot rule kept for it. The
+	// PREFS do not: `keyShift` is the NEW song's remembered key (absolute, as in `set-entry-prefs`) and the guide
+	// goes back to the room default, or the new song would start in a key the singer chose for the dead one.
+	| { op: 'replace-media'; id: string; mediaId: string; keyShift: number }
 	| { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
@@ -54,6 +59,14 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			// A raw-seq fallback: the real path is `applyAndReseq` -> `moveToIndex`, so a direct caller here
 			// gets a raw index the next renumber overwrites.
 			next = entries.map((e) => (e.id === op.id ? { ...e, rotationSeq: op.toIdx } : e));
+			break;
+		case 'replace-media':
+			// A QUEUED turn only: the playing song's media is what the TV is decoding.
+			next = entries.map((e) =>
+				e.id === op.id && e.status === 'queued'
+					? { ...e, mediaId: op.mediaId, keyShift: op.keyShift, guideLevel: null }
+					: e
+			);
 			break;
 		case 'status':
 			next = entries.map((e) => (e.id === op.id ? { ...e, status: op.status } : e));

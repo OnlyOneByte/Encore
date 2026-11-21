@@ -48,10 +48,10 @@ test('UI-11: the Sing tab and Library toast take their titles from the same plac
 
 test('UI-13: one error sink, in the root layout, and no route registers its own', () => {
 	const layout = read('src/routes/+layout.svelte');
-	expect(layout).toContain('room.onError((message, kind) =>');
-	expect(layout).toContain(
-		"kind === 'info' ? toast.info(message, { duration: 4000 }) : toast.error(message, { duration: 4000 })"
-	);
+	expect(layout).toContain('room.onError((message, kind, id) => {');
+	expect(layout).toContain("if (kind === 'info') return void toast.info(message, { duration: 4000 });");
+	// `id` rides along so a later action can take back ONE notice (Pick another dismisses the dead song's).
+	expect(layout).toContain('toast.error(message, { duration: 4000, id });');
 	for (const route of [
 		'src/routes/+page.svelte',
 		'src/routes/queue/+page.svelte',

@@ -25,7 +25,7 @@ import {
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
-import { nextPlayableEntryId } from '$lib/readiness';
+import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
@@ -41,6 +41,12 @@ export interface LiveMediaStatus {
 	 * "Making karaoke… 0%" with a live bar for the whole 120s TTL on a job the room had already given up on.
 	 * Carrying it is plumbing, not protocol: `queueCardKind` turns it into a stalled card. */
 	unservable?: boolean;
+}
+
+/** The id of the "couldn't make karaoke … try again" notice for one song, so Pick another can dismiss THAT notice —
+ * the song it names has just left the queue — and nothing else on screen. */
+export function failureNoticeId(mediaId: string): string {
+	return `fail:${mediaId}`;
 }
 
 export class RoomLink {
@@ -106,10 +112,20 @@ export class RoomLink {
 	/** What each row is still waiting on, republished on every store emit. */
 	pendingKind = new Map<string, 'add' | 'move'>();
 
+	/** The room's queue is stuck because no worker can make anything: the verdict the TV and the strip say as
+	 *  "Can't make new karaoke right now", for a surface that must then not promise to make one. */
+	get noMaker(): boolean {
+		return waitingTurns(
+			this.entries.filter((e) => e.status === 'queued'),
+			(id) => this.mediaCatalog.get(id),
+			(id) => this.mediaStatus.get(id)
+		).noMaker;
+	}
+
 	#ws: WsClient | undefined;
 	#unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 	#subs = new Set<() => void>();
-	#errorHandlers = new Set<(message: string, kind: 'error' | 'info') => void>();
+	#errorHandlers = new Set<(message: string, kind: 'error' | 'info', id?: string) => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
 	/** Ids whose live status is only a scar's stand-in, with nothing heard from the server since. The server's own
 	 * word (a live event, or /api/library's seed) replaces it: a scar is this device's memory of an attempt, and
@@ -129,7 +145,7 @@ export class RoomLink {
 	}
 	/** A failure a human should see. Returns a disposer. No handler = the message is dropped; `+layout.svelte` holds the one.
 	 *  `info` is a refusal that is nobody's mistake (the On deck hold), said without the error dress. */
-	onError(fn: (message: string, kind: 'error' | 'info') => void): () => void {
+	onError(fn: (message: string, kind: 'error' | 'info', id?: string) => void): () => void {
 		this.#errorHandlers.add(fn);
 		return () => this.#errorHandlers.delete(fn);
 	}
@@ -143,8 +159,9 @@ export class RoomLink {
 	#emit(): void {
 		for (const fn of this.#subs) fn();
 	}
-	#fail(message: string, kind: 'error' | 'info' = 'error'): void {
-		for (const fn of this.#errorHandlers) fn(message, kind);
+	/** `id` names a notice a later action may take back (`failureNoticeId`). */
+	#fail(message: string, kind: 'error' | 'info' = 'error', id?: string): void {
+		for (const fn of this.#errorHandlers) fn(message, kind, id);
 	}
 	/** The entry the On deck hold protects, by the shared `heldEntryId` rule over the shared `nextPlayableEntryId`:
 	 *  what the queue tab pins, and what an optimistic add lands behind, as the server does (proposal 14). */
@@ -530,7 +547,11 @@ export class RoomLink {
 			   failed-with-retry, and their /queue row still draws a non-plain card by the paragraph above.
 			   A `restated` failure was announced when it happened; it is re-sent only because its cause changed. */
 			if (!e.restated && (!e.requestedBy || e.requestedBy === this.me?.id)) {
-				this.#fail(`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`);
+				this.#fail(
+					`Couldn't make karaoke for “${this.titleOf(mediaId)}” — try again.`,
+					'error',
+					failureNoticeId(mediaId)
+				);
 			}
 		}
 	}

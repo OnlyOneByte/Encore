@@ -4,6 +4,7 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
+	import { failureNoticeId } from '$lib/stores/room';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
@@ -14,10 +15,14 @@
 		noRowsState,
 		showsNoRows,
 		processingGroupIds,
+		waitingTurns,
 		type Readiness
 	} from '$lib/readiness';
-	import { processAndQueue } from '$lib/process-and-queue';
+	import { processAndQueue, REPLACE_PARAM } from '$lib/process-and-queue';
 	import { processingGroupHeading } from '$lib/phrasing/process-phrasing';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { toast } from 'svelte-sonner';
@@ -86,6 +91,21 @@
 	});
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+	/** The turn "Pick another" was tapped on, while it is still mine and still waiting. Anything else drops the mode,
+	 * so a stale link never swaps a song into a turn that has moved on. */
+	const replacing = $derived.by(() => {
+		const id = page.url.searchParams.get(REPLACE_PARAM);
+		return id ? (queued.find((e) => e.id === id && e.singerId === me?.id) ?? null) : null;
+	});
+	/* NO MAKER: an unprocessed pick would die the same way, so the banner points at a ready one — the TV and strip's
+	   "Can't make new karaoke right now", worded for this screen. */
+	const noMaker = $derived(
+		waitingTurns(
+			queued,
+			(id) => mediaCatalog.get(id),
+			(id) => mediaStatus.get(id)
+		).noMaker
+	);
 
 	function liveOf(id: string) {
 		return mediaStatus.get(id);
@@ -323,6 +343,19 @@
 	const rawView = $derived(libraryWindow(rawRows, revealedRaw));
 
 	function addSong(mediaId: string) {
+		/* PICK ANOTHER: the same turn, another song, so the spot the dead song held is kept — carrying THIS song's
+		   remembered key, never the dead one's. Back to /queue, where the turn now reads as the new song's card, and
+		   the dead song's "try again" notice is dismissed: it names a song that is no longer in the queue. */
+		if (replacing) {
+			// Read BEFORE the swap: the optimistic op rewrites the entry `replacing` derives from.
+			const deadMediaId = replacing.mediaId;
+			store?.replaceMedia(replacing.id, mediaId, rememberedKey(mediaId) ?? 0);
+			toast.dismiss(failureNoticeId(deadMediaId));
+			liveMsg = `${room.titleOf(mediaId)} takes your spot`;
+			if (navigator.vibrate) navigator.vibrate(8);
+			void goto(resolve('/queue'));
+			return;
+		}
 		store?.addSong(mediaId, rememberedKey(mediaId));
 		/* SAID HERE, because the row that confirms an add is on ANOTHER TAB now. The queue's announcer
 		   ($lib/phrasing/queue-announcement, which /queue drives) is deliberately silent about my own adds — "the row
@@ -398,6 +431,13 @@
 					gone with the shelf it labelled — the TabBar's Library tab sits in the fixed dock at the foot of every phone
 					surface, so a second route to the same page from the same screen was one count of the library too
 					many. -->
+			{#if replacing}
+				<!-- Says what the next tap does, because Sing does something different here: it swaps, it does not add. -->
+				<div class="replacing">
+					<p>{noMaker ? 'Pick a ready song' : 'Pick another song'} — you keep your spot.</p>
+					<Button variant="ghost" size="tap" href={resolve('/queue')}>Cancel</Button>
+				</div>
+			{/if}
 			<div class="find-row">
 				<div class="field-slot">
 					<FindField
@@ -600,7 +640,13 @@
 								 `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in the comment above
 								 that page's `PageHeader` (named, not line-numbered). -->
 							<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
-							<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
+							<!-- The promise is only true while something can make karaoke; with no maker it would send the guest
+									into the same dead end the banner above steers them away from. -->
+							<Empty.Description
+								>{noMaker
+									? 'Only ready songs can play right now.'
+									: "Find any song and we'll make the karaoke track for it."}</Empty.Description
+							>
 						</Empty.Header>
 						<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
 								they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
@@ -733,6 +779,14 @@
 		flex-wrap: wrap;
 		gap: var(--space-md);
 		margin-bottom: var(--space-5xl);
+	}
+	.replacing {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-md);
+		margin-bottom: var(--space-md);
+		color: var(--ink-dim);
 	}
 	/* The field takes the rest of the row and is the half that SHRINKS, which `min-width: 0` is what allows. */
 	.field-slot {

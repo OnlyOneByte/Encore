@@ -75,8 +75,10 @@ test('the retry is wired to every kind nothing is making karaoke for, and keeps 
 	// The process ALONE — the turn already exists, so nothing here may add a second one.
 	expect(queuePage).toContain('void room.requestProcess(mediaId);');
 	expect(queuePage).not.toMatch(/retryKaraoke[\s\S]{0,400}store\?\.addSong/);
-	// Ungated by ownership, deliberately: a retry destroys nothing, where `onremove` is `singerId === me?.id`.
-	expect(card).toContain('{#if onretry}');
+	// Ungated by ownership, deliberately: a retry destroys nothing, where `onremove` is `singerId === me?.id`. Shown
+	// while the route offers it, and held (disabled) through the tap's own hold, when the route stops offering it.
+	expect(card).toContain('const showRetry = $derived(!!onretry || retrying);');
+	expect(card).toContain('{#if showRetry}');
 });
 
 test('two comments that the retry would have made FALSE are rewritten', () => {

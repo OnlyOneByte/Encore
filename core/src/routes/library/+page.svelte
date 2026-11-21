@@ -56,6 +56,7 @@
 	/** Mirrored beside `libraryLoaded` because this page needs both: loaded says the fetch RETURNED, failed says it
 	 *  DIED. Without the second, one dropped request renders "No karaoke tracks yet" over a full library. */
 	let libraryFailed = $state(false);
+	let noMaker = $state(false);
 	/* Left un-raw deliberately, and it is not an oversight: Svelte proxies plain objects and arrays, never class
 	   instances, so there is no proxy here to avoid. */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -72,6 +73,8 @@
 			libraryFailed = room.libraryFailed;
 			entries = room.entries;
 			store = room.queue;
+			// The same verdict the Sing tab reads: with no maker, the empty state must not promise one.
+			noMaker = room.noMaker;
 		};
 		sync();
 		const stopMirror = room.subscribe(sync);
@@ -335,7 +338,11 @@
 					<div class="lib-empty">
 						<Empty.Header>
 							<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet</Empty.Title>
-							<Empty.Description>Find a song on the Sing tab and we'll make the karaoke track.</Empty.Description>
+							<Empty.Description
+								>{noMaker
+									? "Can't make new karaoke right now."
+									: "Find a song on the Sing tab and we'll make the karaoke track."}</Empty.Description
+							>
 						</Empty.Header>
 						<Button variant="secondary" size="tap" href="/">
 							<Icon name="search" /> Find a song
