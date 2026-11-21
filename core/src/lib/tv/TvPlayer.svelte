@@ -407,6 +407,12 @@
 		// GUIDE-MIX SONGS ARE THE ONE EXCEPTION and build EAGERLY, in SPLIT mode: their guiding track does not exist until
 		// the splitter runs. `mixSettled` gates the src and an attempt that never settles leaves the room silent, so the
 		// three settling paths below must stay exhaustive.
+		// Promoted with this slot only PRE-WARMING the next song (hidden and paused at 0): nobody is listening, so it
+		// re-decides its mix now and the next song gets its guide. Only the slot that is PLAYING keeps its plain src.
+		if (plainThisSong && !active) {
+			plainThisSong = false;
+			mixSettled = false;
+		}
 		if (wantsEagerGraph(guidePlan) && !plainThisSong) {
 			if (!masterGraph) masterGraph = new PitchShiftGraph(v, { split: true });
 			masterGraph.setGuideGain(effectiveGuide);
