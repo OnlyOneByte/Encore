@@ -322,23 +322,35 @@ test('the active word is drawn, walks the line and tracks the audio clock', asyn
 test('the current line is legible at TV distance: size and contrast', async ({ world }) => {
 	const stage = await lyricsStage(world);
 	try {
-		await expect(stage.tv.locator(SEL.lyricsRowCurrent)).toBeAttached({ timeout: 25_000 });
-		// ONE reading, at 1920x1080 because the TV's type scale is vh-relative.
-		const geom = await stage.tv.evaluate(
-			({ rowCurrent, viewport }) => {
-				const current = document.querySelector(rowCurrent);
-				if (!current) return null;
-				const cs = getComputedStyle(current);
-				return {
-					currentTextPx: parseFloat(cs.fontSize),
-					currentColor: cs.color,
-					viewportH: document.querySelector(viewport)?.getBoundingClientRect().height ?? null,
-					currentText: current.textContent?.trim() ?? ''
-				};
-			},
-			{ rowCurrent: SEL.lyricsRowCurrent, viewport: SEL.lyricsViewport }
-		);
-		expect(geom, 'no current line was on stage to measure').not.toBeNull();
+		// ONE reading, at 1920x1080 because the TV's type scale is vh-relative. POLLED until a current line is on
+		// stage, not read once after an attach check: the reel can mount for a beat before the opening "Now singing"
+		// card unmounts it (`onFirstSongReady`), so a single read can land inside the card and find no line at all.
+		type Geom = { currentTextPx: number; currentColor: string; viewportH: number | null; currentText: string };
+		let reading: Geom | null = null;
+		await expect
+			.poll(
+				async () => {
+					reading = await stage.tv.evaluate(
+						({ rowCurrent, viewport }) => {
+							const current = document.querySelector(rowCurrent);
+							if (!current) return null;
+							const cs = getComputedStyle(current);
+							return {
+								currentTextPx: parseFloat(cs.fontSize),
+								currentColor: cs.color,
+								viewportH: document.querySelector(viewport)?.getBoundingClientRect().height ?? null,
+								currentText: current.textContent?.trim() ?? ''
+							};
+						},
+						{ rowCurrent: SEL.lyricsRowCurrent, viewport: SEL.lyricsViewport }
+					);
+					return reading !== null;
+				},
+				{ timeout: 25_000, message: 'no current line was on stage to measure' }
+			)
+			.toBe(true);
+		// Assigned inside the poll, so control flow still types it `null` here.
+		const geom = reading as Geom | null;
 
 		expect(
 			geom?.currentTextPx,
