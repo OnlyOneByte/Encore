@@ -70,9 +70,15 @@ describe('analyseRealtime', () => {
 	});
 
 	test('dropped frames: rAF intervals over 1.5x the median', () => {
-		const frames = [0, 16, 32, 48, 100, 116].map((t) => ({ t, e: [disc(1, 100)], a: [] }));
+		// Intervals 16, 16, 30, 16, 100: 30 is past 1.5x the 16 ms median, so it counts as well as the 100.
+		const frames = [0, 16, 32, 62, 78, 178].map((t) => ({ t, e: [disc(1, 100)], a: [] }));
 		const r = analyse(trace(frames));
-		expect([r.droppedFrames, r.rafIntervals]).toEqual([1, 5]);
+		expect([r.droppedFrames, r.rafIntervals]).toEqual([2, 5]);
+	});
+
+	test('a frame with a visible overlap is not also a hidden one', () => {
+		const r = analyse(trace([{ t: 16, e: [disc(1, 100), disc(2, 135), disc(3, 170, 0)], a: [] }]));
+		expect([r.overlap.frames, r.hiddenOverlap]).toEqual([1, 0]);
 	});
 
 	test('first frame: mount to first start per disc, the worst of those that started', () => {
