@@ -1,6 +1,6 @@
 <!-- THE MACHINE SCOPE: model weights, binaries, credentials and hardware capability — everything whose cost is paid
-	once per server and felt in every room on it. Its one door is the link at the foot of the room scope, beside
-	Sound quality, which is the cap these defaults are capped by. docs/FRONTEND.md#settings -->
+	once per server and felt in every room on it. Its one door is the link at the foot of the room scope; the room's
+	Quality cap, in the Sound card there, is capped by these defaults. docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';

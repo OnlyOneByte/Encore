@@ -90,8 +90,8 @@
 		.sort((a, b) => a.rank - b.rank);
 
 	/* A cap at or above the default changes nothing, and the copy must say so rather than imply it raised quality. The
-	   default it is compared against is a MACHINE setting, which is why this card sits beside the door into that
-	   scope — it is the one room control whose meaning is relative to one on another page. */
+	   default it is compared against is a MACHINE setting — it is the one room control whose meaning is relative to
+	   one on another page, so this line is where that relation is read. */
 	const defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
 	const capAboveDefault = $derived(
 		settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank
@@ -129,7 +129,7 @@
 			/>
 
 			<Field.Label for="presence-grace">
-				Skip a quiet phone after · {graceLabel}
+				Skip a quiet phone after · <span class="value">{graceLabel}</span>
 			</Field.Label>
 			<FieldSlider
 				id="presence-grace"
@@ -177,6 +177,29 @@
 				/>
 				Match song loudness
 			</label>
+
+			<!-- LAST IN SOUND, because it is how the music is made, not how loud: it was its own card titled "Sound
+				quality" beside the machine door, and two cards cannot both be "Sound". It no longer sits above that door,
+				so `capAboveDefault`'s line below is what carries the cross-scope relation now. -->
+			<Field.Label for="quality-ceiling">Quality</Field.Label>
+			<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
+			<NativeSelect
+				id="quality-ceiling"
+				value={settings.room.maxQualityRank ?? ''}
+				onchange={(e) =>
+					onroom({
+						maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+					})}
+			>
+				<option value="">Best available</option>
+				{#each qualityCeilings as c (c.rank)}
+					<option value={c.rank}>Up to {c.label}</option>
+				{/each}
+			</NativeSelect>
+
+			{#if capAboveDefault}
+				<p class="warn">At or above the server default, so it changes nothing.</p>
+			{/if}
 		</Card.Content>
 	</Card.Root>
 
@@ -411,44 +434,13 @@
 		</Card.Content>
 	</Card.Root>
 
-	<!-- LAST ON THIS SCOPE, and immediately above the door into the machine scope: `capAboveDefault` compares this
-		room cap against the machine's default engine and model, so this is the one place the cross-scope relation can
-		be read without changing page. -->
-	<Card.Root id="quality">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Sound quality</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<Field.Label for="quality-ceiling">Sound quality</Field.Label>
-			<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
-			<NativeSelect
-				id="quality-ceiling"
-				value={settings.room.maxQualityRank ?? ''}
-				onchange={(e) =>
-					onroom({
-						maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
-					})}
-			>
-				<option value="">Best available</option>
-				{#each qualityCeilings as c (c.rank)}
-					<option value={c.rank}>Up to {c.label}</option>
-				{/each}
-			</NativeSelect>
-
-			{#if capAboveDefault}
-				<p class="warn">At or above the server default, so it changes nothing.</p>
-			{/if}
-		</Card.Content>
-	</Card.Root>
-
 	<!-- /stats is the GUEST dashboard, so it is the one safe to reach from any phone's surface. -->
 	<Button variant="outline" size="block" href="/stats">
 		<Icon name="sparkle" />
 		Party stats <Badge variant="neutral">safe to share</Badge>
 	</Button>
 
-	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name. It sits
-		under Sound quality for the adjacency above.
+	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name.
 		NO BADGE, and this is a MEASURED refusal rather than restraint: a second chip on this row read `every room`,
 		which p15 caught overflowing the 320px column by 9px at 200% text (the chip measures 135.5px there and the
 		Button base is `whitespace-nowrap`, so it cannot reflow). The blast radius is stated on arrival, in the
@@ -532,5 +524,10 @@
 		gap: var(--space-sm);
 		min-height: var(--tap);
 		font-size: var(--ph-text-md);
+	}
+	/* A label's value breaks as ONE piece: at 320 `Skip a quiet phone after · 1 hr 30 min` split inside the value,
+	   leaving `hr 30 min` alone on the second line. */
+	.value {
+		white-space: nowrap;
 	}
 </style>

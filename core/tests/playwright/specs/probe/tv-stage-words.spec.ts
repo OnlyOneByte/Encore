@@ -8,7 +8,7 @@ import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome } from '../../world/actors';
 
 const NOTICE = 'Phones can’t open this address';
-const FIX = 'Fix it in Settings → This machine';
+const FIX = 'Fix it in Settings -> This machine';
 
 test('the unreachable-address notice shows on attract and the lobby, and never on the stage', async ({ world }) => {
 	const tv = await world.openTv();

@@ -1373,25 +1373,24 @@ mark and all of its controls at once. The one exception, measured and recorded r
 Lyrics card is 857.6px, over that budget, so on the narrowest phone that card's mark can leave the screen before
 its last slider arrives.
 
-Every card also carries an `id`, so all eleven are addressable. There is deliberately NO `scroll-margin-block-start`
+Every card also carries an `id`, so all ten are addressable. There is deliberately NO `scroll-margin-block-start`
 yet: nothing in the tree links to a card fragment, and the offset needed is the sticky header's rendered bottom at
 rest, which is content-driven rather than a rung — the first real fragment link should bring that number, measured,
 with it.
 
-CARD ORDER, and the two moves that are not alphabetical. The room scope runs Turns, Sound, The TV, Lyrics on the
-TV, Sound quality. Turns is first because it holds the one room setting changed mid-song (four code sites say
+CARD ORDER, and the one move that is not alphabetical. The room scope runs Turns, Sound, The TV, Lyrics on the
+TV. Turns is first because it holds the one room setting changed mid-song (four code sites say
 so). **Sound is second, up from last**, because `GuidingTrack.svelte` records that this room DEFAULT and `/queue`'s
 per-turn override wear the same label in the same register, which makes it the control most likely to be
 mis-scoped — and it was the deepest control on the deepest panel. Measured: `#guide-default` moves from an absolute
-top of 1734.8 to 575.2, and from 1025.8px of scrolling to **zero**, at the same one tap from the Sing tab. **Sound
-quality is last**, immediately above the one door into the machine scope, because `capAboveDefault` compares the
-room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel` — putting the cap beside the door to
-what it caps is the only place that relation can be read without changing page. That move costs `#quality-ceiling`
-its place on the first screen (0 → 1116.7px of scrolling), which is the price of the adjacency and is paid once per
-party rather than once per turn. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
+top of 1734.8 to 575.2, and from 1025.8px of scrolling to **zero**, at the same one tap from the Sing tab. **Quality
+is Sound's last row**, not a card of its own: it was a separate "Sound quality" card above the door into the machine
+scope, and two cards on one page cannot both be headed "Sound". That gives up the adjacency to what it caps
+(`capAboveDefault` compares the room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel`), so the
+`At or above the server default` line under the field is now the one place that relation is read. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
 You scope runs You then Leaving.
 
-**THE ELEVENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
+**THE TENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
 card, and a scope page cannot mark a card that has no heading to mark — it is `Re-processing` now, with
 `role="heading" aria-level={2}` like the other ten. The disclosure itself did not work: measured closed, it
 reported `aria-expanded="false"` and carried the `hidden` attribute while computing `display: flex` over 318.2px of
@@ -1856,7 +1855,8 @@ code that will not resolve; that is accepted, because the address is only unrout
 party address, which in practice means a laptop showing this to itself. The `.badqr` family names are kept
 deliberately even though nothing about it is a card any more: they are how the e2e contract, the party flow
 and the scaling probe recognise the state. The notice is HERO-ONLY — attract and the lobby, the empty room where
-the host is setting up — and reads "Phones can’t open this address" / "Fix it in Settings → This machine". The
+the host is setting up — and reads "Phones can’t open this address" / "Fix it in Settings -> This machine" (ASCII `->`: the TV draws no typographic
+arrow or minus, see `song-facts.ts`). The
 corner card on the stage and over the takeovers never shows it: the room is watching, and nobody fixes an
 address from the sofa. `/settings/server`'s Joining card says the same first line, from the same constant in
 `src/lib/tv/join-address.ts`, when the address in effect fails `isUnreachableJoinOrigin`.

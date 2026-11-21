@@ -47,6 +47,7 @@ test('THE THIRD CONDITION: a shift that lands back on the same label is not a sh
 });
 
 test('a downward shift uses a real minus sign in the label, not a hyphen', () => {
+	// The phone surfaces are typographic on purpose; the TV is not — see `keyShiftLabel`.
 	expect(songFacts(profile(), -3).keyLabel).toBe('Key · −3');
 	expect(songFacts(profile(), -3).keyLabel).not.toContain('-');
 });
@@ -78,10 +79,11 @@ test('the range facts come through for a profile that has them', () => {
 
 // ── the TV's words ───────────────────────────────────────────────────────────
 
-test('keyShiftLabel names the shift and never the key, and is silent at 0', () => {
+test('keyShiftLabel is ASCII, names the shift and never the key, and is silent at 0', () => {
 	expect(keyShiftLabel(0)).toBe(null);
 	expect(keyShiftLabel(2)).toBe('Key +2');
-	expect(keyShiftLabel(-2)).toBe('Key −2');
-	// A real minus, never a hyphen.
-	expect(keyShiftLabel(-2)).not.toContain('-');
+	const down = keyShiftLabel(-2);
+	expect(down).toBe('Key -2');
+	// The distinction from the phone's form, pinned: a real minus here would risk a tofu box mid-line.
+	expect(down).not.toContain('−');
 });

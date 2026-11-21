@@ -474,7 +474,7 @@
 	});
 
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
-	/** `Key −2` while shifted, nothing at 0. Never the key's NAME: see `keyShiftLabel`. */
+	/** `Key -2` while shifted, nothing at 0. Never the key's NAME: see `keyShiftLabel`. */
 	const keyLine = $derived(keyShiftLabel(keyShift));
 	// The override wins when set; `null` defers to the room.
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
