@@ -22,6 +22,7 @@ import {
 	type TargetedCommand
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
+import { onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
@@ -94,7 +95,7 @@ export class RoomLink {
 
 	#ws: WsClient | undefined;
 	#subs = new Set<() => void>();
-	#errorHandlers = new Set<(message: string) => void>();
+	#errorHandlers = new Set<(message: string, kind: 'error' | 'info') => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 
@@ -103,8 +104,9 @@ export class RoomLink {
 		this.#subs.add(fn);
 		return () => this.#subs.delete(fn);
 	}
-	/** A failure a human should see. Returns a disposer. No handler = the message is dropped; `+layout.svelte` holds the one. */
-	onError(fn: (message: string) => void): () => void {
+	/** A failure a human should see. Returns a disposer. No handler = the message is dropped; `+layout.svelte` holds the one.
+	 *  `info` is a refusal that is nobody's mistake (the On deck hold), said without the error dress. */
+	onError(fn: (message: string, kind: 'error' | 'info') => void): () => void {
 		this.#errorHandlers.add(fn);
 		return () => this.#errorHandlers.delete(fn);
 	}
@@ -118,8 +120,15 @@ export class RoomLink {
 	#emit(): void {
 		for (const fn of this.#subs) fn();
 	}
-	#fail(message: string): void {
-		for (const fn of this.#errorHandlers) fn(message);
+	#fail(message: string, kind: 'error' | 'info' = 'error'): void {
+		for (const fn of this.#errorHandlers) fn(message, kind);
+	}
+	/** The queue tab's own line for a reorder the hold stopped (`onDeckHeldNote`), from the entries the link holds. */
+	#heldNote(heldId: string, movedId: string): string {
+		const singerOf = (id: string) => this.entries.find((e) => e.id === id)?.singerId;
+		const name = (id: string | undefined) => (id && this.singers.get(id)?.displayName) || 'Someone';
+		const moved = singerOf(movedId);
+		return onDeckHeldNote(name(singerOf(heldId)), moved === this.me?.id ? null : name(moved));
 	}
 
 	/** A song's display title, for a message about it. The catalog is right here, so nothing else needs to pass it. */
@@ -154,10 +163,13 @@ export class RoomLink {
 		this.queue = new QueueStore({
 			singerId: this.me.id,
 			sendCommand: (cmd: ClientCommand) => this.#ws?.send({ type: 'queue:command', command: cmd }),
-			onReject: (reason) => {
+			onReject: (reason, op) => {
 				// The hub's own wording for an add of a song it no longer holds (hub.ts `validateCommand`).
 				const gone = /^unknown media: (.+)$/.exec(reason);
-				if (gone) {
+				// hub.ts `ON_DECK_HELD`: two phones raced, and someone else's On deck kept its turn. Not an error.
+				const held = /^on deck is held: (.+)$/.exec(reason);
+				if (held) this.#fail(this.#heldNote(held[1]!, 'id' in op ? op.id : ''), 'info');
+				else if (gone) {
 					this.#songGone(gone[1]!);
 					// Said for this tap: its process refusal, if still in flight, stays silent.
 					if (this.#processInFlight.has(gone[1]!)) this.#toldWhileProcessing.add(gone[1]!);

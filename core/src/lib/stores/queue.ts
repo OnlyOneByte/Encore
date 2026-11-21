@@ -33,7 +33,7 @@ export interface QueueStoreDeps {
 	singerId: string;
 	mintId?: () => string; // injectable for deterministic tests
 	/** Optional: surface a rejected op to the UI (e.g. a toast). */
-	onReject?: (reason: string) => void;
+	onReject?: (reason: string, op: QueueOp) => void;
 	/** The room's ordering — which algorithm, plus the sing history it may read. A GETTER because both halves move at
 	 * runtime, and the optimistic prediction MUST be made with the same ordering the server will commit, or every add
 	 * lands in the wrong place for a frame and then snaps. Absent means fair rotation. */
@@ -253,6 +253,6 @@ export class QueueStore {
 		const base = pending.snapshot.map((x) => ({ ...x }));
 		this.#entries = this.#rebasePending(base, survivors);
 		this.#emit();
-		this.#deps.onReject?.(e.reason); // surface to the UI (toast)
+		this.#deps.onReject?.(e.reason, pending.op); // surface to the UI (toast)
 	}
 }

@@ -378,10 +378,14 @@ broadcasts never wait on a DB read. The reconciliation model is in `docs/ARCHITE
   anyone else — including `player:control`, `settings:write-global`, `settings:write-room`,
   `queue:reorder-any` and `queue:remove-any`. A capability check is therefore a LIVENESS check and not an
   authorization one; treat any new capability as open to every phone on the LAN.
-- **Ownership is the only finer-grained gate that exists.** A singer may reorder or remove their own entry
+- **Ownership is the only finer-grained gate that exists.** A singer may remove their own entry
   unconditionally; touching somebody else's needs `queue:reorder-any` / `queue:remove-any`, which every
   joined singer also has. `move` can never cross singers by construction — it permutes one singer's picks
   among slots that singer already holds — so a cross-singer move must be `move-to-index`.
+- **On deck is held (proposal 14).** While a song plays, the room's next playable entry (`heldOnDeck`,
+  rotation.ts) keeps its turn: a `move` or `move-to-index` by anyone but ITS owner that would move it, or put a
+  row in front of it, is refused with `on deck is held: <id>` — the moved row's owner included. Its owner keeps
+  every move. Lifted in an idle room and while its singer is away. The check is last in `entryOpRefusal`.
 - **`can()` gates only CROSS-ACTOR operations.** Removing or reordering your own entry needs no capability;
   `queue:remove-any` / `queue:reorder-any` gate acting on someone else's. Routing a singer's own move
   through a capability check blocks their own song the moment `can()` starts enforcing a host role.

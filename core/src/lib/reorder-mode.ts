@@ -33,8 +33,11 @@ export function liveSortTarget(opts: {
 	/** Every row's box in DOM (= queued) order, measured ONCE at press time, dragged row included. */
 	rowBoundsPx: readonly { top: number; height: number }[];
 	count: number;
+	/** The highest slot this row may take: one below a row On deck that is not this guest's (proposal 14). The live sort
+	 *  stops there, so the row lands where the guest saw it. */
+	minIndex?: number;
 }): number {
-	const { fromIndex, offsetPx, rowBoundsPx, count } = opts;
+	const { fromIndex, offsetPx, rowBoundsPx, count, minIndex = 0 } = opts;
 	if (count <= 0) return 0;
 	const own = rowBoundsPx[fromIndex];
 	// No usable measurement is "no movement" rather than a guess: a detached node measures nothing, and a list of
@@ -51,18 +54,18 @@ export function liveSortTarget(opts: {
 		// Upward: the leading edge is the top, and the scan runs the other way for the same reason.
 		for (let i = fromIndex - 1; i >= 0; i--) if (centre(i) > draggedTop) target = i;
 	}
-	return clampIndex(target, count);
+	return clampIndex(Math.max(minIndex, target), count);
 }
 
 /**
  * The non-drag path: one step of the same reorder, -1 for Arrow Up and +1 for Arrow Down. NULL at the ends of the
  * list, never a clamp — a clamp emits a move to the position the row already occupies, which the server accepts as
- * a real mutation and broadcasts to every other client.
+ * a real mutation and broadcasts to every other client. `minIndex` is `liveSortTarget`'s: a step above it is null too.
  */
-export function keyboardMoveTarget(fromIndex: number, delta: number, count: number): number | null {
+export function keyboardMoveTarget(fromIndex: number, delta: number, count: number, minIndex = 0): number | null {
 	if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= count) return null;
 	const to = fromIndex + delta;
-	if (to < 0 || to >= count) return null;
+	if (to < Math.max(0, minIndex) || to >= count) return null;
 	return to;
 }
 

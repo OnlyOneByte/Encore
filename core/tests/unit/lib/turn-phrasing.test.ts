@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { read } from '$test';
-import { NOW_SINGING, UP_NEXT, YOURE_UP } from '$lib/phrasing/turn-phrasing';
+import { NOW_SINGING, UP_NEXT, YOURE_UP, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 
 /*
  * guard: whose turn it is has ONE wording (UI-12). The TV's intro card said "Next up", its loading card "Up next" or
@@ -28,6 +28,11 @@ test('the turn labels are spelled once, in turn-phrasing', () => {
 			expect({ path, hit: literal.test(body) }).toEqual({ path, hit: false });
 		}
 	}
+});
+
+test('the On deck hold names the turn`s singer, and "You" for my own song', () => {
+	expect(onDeckHeldNote('Theo', 'Ana')).toBe('Theo’s on deck. Ana goes right after.');
+	expect(onDeckHeldNote('Theo', null)).toBe('Theo’s on deck. You go right after.');
 });
 
 test('the phone tab is titled for what it holds', () => {

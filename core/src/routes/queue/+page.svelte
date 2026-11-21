@@ -54,7 +54,7 @@
 	import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { NOW_SINGING } from '$lib/phrasing/turn-phrasing';
+	import { NOW_SINGING, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
@@ -327,10 +327,29 @@
 
 	/** Where the dragged row currently sits, which is both what the list renders and what a release commits. */
 	const dragFrom = $derived(movingId ? queuedIdx(movingId) : -1);
+	/* ON DECK IS HELD (proposal 14): while a song plays, the server refuses anyone but its owner a reorder that moves the
+	   next playable entry or lands a row in front of it (hub.ts `entryOpRefusal`). So that row has no grip here unless it
+	   is mine, and a row behind it stops one below it — the drop lands where the guest saw it. Lifted while its singer is
+	   away, as on the server. */
+	const pinnedId = $derived.by(() => {
+		if (!nowEntry || !nextPlayableId) return null;
+		const e = queued.find((x) => x.id === nextPlayableId);
+		return e && e.singerId !== me?.id && !awaySingers.has(e.singerId) ? e.id : null;
+	});
+	const pinnedIdx = $derived(pinnedId ? queuedIdx(pinnedId) : -1);
+	/** The highest slot the row at `from` may take. A row in front of the held one may still go anywhere. */
+	function floorFor(from: number): number {
+		return pinnedIdx >= 0 && from > pinnedIdx ? pinnedIdx + 1 : 0;
+	}
+	/** "Theo's on deck. Ana goes right after." — said when the hold is what stopped this move. */
+	function heldNoteFor(movedId: string): string {
+		const name = (id: string | undefined) => (id && singers.get(id)?.displayName) || 'Someone';
+		const moved = queued.find((e) => e.id === movedId);
+		return onDeckHeldNote(name(queued[pinnedIdx]?.singerId), moved?.singerId === me?.id ? null : name(moved?.singerId));
+	}
+	const dragGeometry = $derived({ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued.length });
 	const dragTo = $derived(
-		dragging && dragFrom >= 0
-			? liveSortTarget({ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued.length })
-			: -1
+		dragging && dragFrom >= 0 ? liveSortTarget({ ...dragGeometry, minIndex: floorFor(dragFrom) }) : -1
 	);
 
 	/* Every position is legal under `move-to-index`, so no ordering policy can discard a move: the only condition
@@ -348,8 +367,13 @@
 	/** One place per press, committed immediately; `keyboardMoveTarget` declines at the ends. */
 	function nudge(id: string, delta: number) {
 		const from = queuedIdx(id);
-		const to = keyboardMoveTarget(from, delta, queued.length);
-		if (to === null) return;
+		const floor = floorFor(from);
+		const to = keyboardMoveTarget(from, delta, queued.length, floor);
+		if (to === null) {
+			// Stopped by the hold rather than by the top of the list: say why, as a release there does.
+			if (from + delta >= 0 && from + delta < floor) reorderNote = liveMsg = heldNoteFor(id);
+			return;
+		}
 		commitMove(id, to);
 		liveMsg = `Moved to ${ordinal(to + 1)} in the queue.`;
 		// After the patch lands, because the row's DOM is recreated at its new position.
@@ -360,6 +384,9 @@
 	function endDrag(commit: boolean, note = '') {
 		const id = movingId;
 		const to = dragTo;
+		// Where the guest reached for, with no hold: further up than `to` means the hold stopped the drop.
+		const reached = to >= 0 ? liveSortTarget(dragGeometry) : -1;
+		if (commit && id && !note && reached < to) note = heldNoteFor(id);
 		dragTeardown?.();
 		dragTeardown = null;
 		if (commit && id) commitMove(id, to >= 0 ? to : null);
@@ -374,6 +401,8 @@
 		void tick().then(() => {
 			focusGrip(id, openerEl);
 			openerEl = null;
+			// A held drop DID commit, and the queue's own "Queue reordered" for it lands first: the reason says more.
+			if (note) liveMsg = note;
 		});
 	}
 
@@ -660,7 +689,7 @@
 						pending={pendingKind.get(e.id) ?? null}
 						onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
 						onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
-						grip={gripsVisible}
+						grip={gripsVisible && e.id !== pinnedId}
 						gripId={e.id}
 						moving={movingId === e.id && dragging}
 						dragY={movingId === e.id && dragging ? dragY : 0}
@@ -685,7 +714,7 @@
 							: (soundingKeyLabel(media?.songProfile ?? null, e.keyShift ?? 0) ?? '')}
 						pending={pendingKind.get(e.id) ?? null}
 						removable={e.singerId === me?.id}
-						grip={gripsVisible}
+						grip={gripsVisible && e.id !== pinnedId}
 						gripId={e.id}
 						moving={movingId === e.id && dragging}
 						dragY={movingId === e.id && dragging ? dragY : 0}
