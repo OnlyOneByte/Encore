@@ -147,9 +147,9 @@
 	   immediately rather than being pinned behind this phone's last tap. */
 	let keyDraft = $state<number | null>(null);
 	/* The draft is dropped the moment the server agrees with it, and when the song on the card changes: the reset
-	   effect below, keyed on the entry ID. A skip goes straight from one entry to the next, so `nowEntry` is never null
-	   in between, and keyed on that the next singer's card read the previous song's "+1" and the next tap sent +2
-	   over their On deck preset. */
+	   effect below, keyed on the entry ID. It can't key on `nowEntry` going null: a skip goes straight from one entry
+	   to the next, so it never is, and the next singer's card would show the previous song's "+1" and the next tap
+	   would send +2 over their On deck preset. */
 	$effect(() => {
 		if (keyDraft !== null && playback.keyShift === keyDraft) keyDraft = null;
 	});
