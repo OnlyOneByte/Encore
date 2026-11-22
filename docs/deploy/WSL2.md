@@ -1,12 +1,12 @@
 # Deploying Encore on Windows + WSL2 with an NVIDIA GPU
 
-Target: a Windows x86_64 box with an RTX 3080 (10 GB), serving a party over the LAN.
+Target: a Windows x86_64 box with an NVIDIA GPU, serving a party over the LAN.
 
 The approach is **not** "port Encore to Windows". It is to run the existing Linux containers inside
 WSL2 with GPU passthrough, so the deployment is a Linux deployment again and the images are unchanged.
-Core is Bun + SvelteKit and the worker is Python + torch; both already build for `linux/amd64`, and the
-worker's Dockerfile already takes a `TORCH_INDEX_URL` build-arg precisely so a GPU host can swap the
-torch wheels.
+Core is Bun + SvelteKit and the worker is Python + torch; both already build for `linux/amd64`, and
+`docker/worker.Dockerfile` takes a `TORCH_EXTRA` build-arg (`cpu` or `cu128`; `docker/compose.cuda.yaml`
+sets `cu128`) so a GPU host gets the CUDA torch wheels.
 
 > **Nothing in this runbook has been executed.** It was written from the repo's compose file,
 > Dockerfiles and route code on an aarch64 Linux box with no NVIDIA hardware. Treat every command as
@@ -20,10 +20,11 @@ Encore's whole join flow is _phones on the LAN scan a QR shown on the TV_. Two f
 
 - **Default WSL2 networking is NAT.** Windows can reach a WSL service on `localhost`, but **other
   devices on your LAN cannot reach it at all.** Phones will simply fail to connect.
-- **The QR follows the `Host` header of the request that loaded the TV.**
-  `src/routes/tv/+page.server.ts` builds `joinUrl` via `publicOrigin(request, url)`
-  (`src/lib/server/public-origin.ts`), which takes the authority from `X-Forwarded-Host` or
-  `Host`, and the scheme from `X-Forwarded-Proto` defaulting to `http`. So the QR contains whatever
+- **Unless an address is declared, the QR follows the `Host` header of the request that loaded the TV.**
+  `core/src/routes/tv/+page.server.ts` builds `joinUrl` via `joinOrigin(request, url)`
+  (`core/src/lib/server/public-origin.ts`): the `joinOrigin` setting if one is saved, else
+  `ENCORE_PUBLIC_ORIGIN`, else the request — the authority from `X-Forwarded-Host` or `Host`, and the
+  scheme from `X-Forwarded-Proto` defaulting to `http`. With neither declared, the QR contains whatever
   address the _TV browser_ used to load `/tv`. Open the TV at `http://localhost:3000/tv` and the QR
   says `localhost` — useless to a phone, even if the network were otherwise fine.
 
@@ -261,7 +262,7 @@ worker (uid 10001) could not write to it. Converting it to a bind mount breaks t
 Confirm the merge resolved the way you expect before building anything:
 
 ```bash
-$EC --profile stems config | less    # look for TORCH_INDEX_URL and driver: nvidia
+$EC --profile stems config | less    # look for TORCH_EXTRA: cu128 and driver: nvidia
 ```
 
 The overrides intentionally set no `ENCORE_*` device or capability variables any more — the worker
@@ -278,17 +279,9 @@ $EC --profile stems up -d
 $EC logs -f worker
 ```
 
-**Two knobs change meaning on a GPU** and are worth understanding before you tune anything. Both are
-set (or deliberately left unset) in the override file, with the reasoning inline there:
-
-- `ENCORE_DEMUCS_JOBS` and `ENCORE_TORCH_THREADS` are derived from CPU core count
-  (`auto_demucs_jobs`, `auto_torch_threads`). On the GPU path they are largely irrelevant, and the
-  worker may still print a CPU-derived value — treat that line as informational, not as a claim about
-  what the GPU is doing.
-- `ENCORE_WORKER_CONCURRENCY` now contends for **VRAM**, not cores. 10 GB is comfortable for one
-  separation, but not for a separation _and_ WhisperX large-v3 at the same time. Raise concurrency
-  only after watching `nvidia-smi` through a real process, and expect CUDA OOM rather than graceful
-  slowdown if you overcommit.
+**One knob changes meaning on a GPU:** `ENCORE_WORKER_CONCURRENCY` (default 1, read in
+`worker/encore_worker/host/config.py`) contends for **VRAM**, not cores. Raise it only after watching
+`nvidia-smi` through a real process, and expect CUDA OOM rather than graceful slowdown if you overcommit.
 
 ---
 
@@ -300,30 +293,23 @@ Work down this list; each one isolates a different failure.
 # 1. torch actually sees the GPU inside the worker container
 $EC exec worker python -c \
   "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-# expect: 2.8.0+cu128 True NVIDIA GeForce RTX 3080
+# expect: 2.8.0+cu128 True <your GPU's name>
 ```
 
-2. **Worker startup line.** `dial_home.py` resolves the backend and prints it. Grep the logs for:
+2. **Worker startup line.** `worker/encore_worker/__main__.py` probes the hardware, resolves the backend and
+   the device, and prints one line before it connects. Grep the logs for it:
 
    ```
-   [worker] separator backend: torch — explicitly configured torch (explicitly configured device cuda)
+   [worker] <worker id> on <platform> (<machine>); accelerator=cuda device=cuda backend=torch (<why>); capabilities=<list>
    ```
 
-   The device must be named. With nothing set, a working GPU reports auto-detection:
-
-   ```
-   [worker] hardware: accel=cuda cpus=8 device='NVIDIA GeForce RTX 3080' vram=10GiB mem=15GiB
-   [worker] separator backend: torch — auto-selected torch (auto-detected cuda)
-   ```
-
-   If it instead reports `accel=cpu` and "no accelerator detected", the GPU is not reachable inside the
-   container — driver, `nvidia-container-toolkit`, or the device reservation. Auto-detection falls back
-   to CPU **quietly**, which on this workload is the difference between minutes and most of an hour, so
-   on a box you _expect_ to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in `docker/.env`: per
-   `backends.py`'s contract an explicitly-requested-but-unavailable device _raises_, turning a silent
-   20x slowdown into a startup failure you cannot miss. The config line from `describe()` also carries
-   `device=`; `device=auto` there means nothing was forced, not that nothing was found — read the
-   `hardware:` line for what was actually detected.
+   `accelerator=` is what the probe found; `device=` is what the models are built on — `ENCORE_DEVICE` if you
+   set it, else the detected accelerator (`device_for` in the same file). If it reports `accelerator=cpu`, the
+   GPU is not reachable inside the container — driver, `nvidia-container-toolkit`, or the device reservation.
+   Detection falls back to CPU **quietly**, which on this workload is the difference between minutes and most
+   of an hour, so on a box you _expect_ to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in
+   `docker/.env`: the configured device wins over detection, so a missing GPU surfaces as a torch error
+   instead of a silent CPU run.
 
 3. **Core is reachable from Windows:** open `http://localhost:3000/tv` in a Windows browser.
 
@@ -371,13 +357,10 @@ $EC exec worker python -c \
    `nvidia-smi` during the process. If VRAM usage and GPU utilisation stay flat, the process is running on
    CPU regardless of what anything claims.
 
-8. **Re-measure.** Run the committed benchmark scripts on this box and add a CUDA column to
-   the benchmark record:
-   `docs/benchmarks/scripts/checkpoint_cost.py` and `docs/benchmarks/scripts/family_bench.sh`. Every
-   realtime factor recorded so far is from a 32-core Graviton 3 CPU box, and the ranking may reorder
-   entirely — the mel-band checkpoints won on CPU partly for architectural reasons that matter less
-   once tensor cores dominate. `SUMMARY.md` currently asserts that no engine becomes live-tier by
-   moving hardware; that was measured against an Intel Arc and is expected to be **false** here.
+8. **Re-measure.** Run the committed stem-separation benchmark on this box and add a CUDA machine to
+   its record: the scripts are in `docs/benchmarks/stem-separation/scripts/` (`bench.py`, `run-matrix.sh`),
+   and [Reproducing](../benchmarks/stem-separation/README.md#reproducing) gives the commands. No CUDA
+   machine is in that record yet, so the model ranking there may not hold on a GPU.
 
 ---
 
@@ -391,8 +374,8 @@ but it means:
 - Do not put this on a network you do not control.
 - If you ever need remote access, put it behind a tunnel or reverse proxy that does the
   authentication; do not expose it directly. If you do, make the proxy set `X-Forwarded-Host` and
-  `X-Forwarded-Proto` — `publicOrigin()` believes both, and they are what make the join QR encode the
-  public hostname and `https` instead of the container's own plain-HTTP address.
+  `X-Forwarded-Proto` — `joinOrigin()` and `publicOrigin()` believe both, and with no address declared
+  they are what make the join QR encode the public hostname and `https` instead of the container's own plain-HTTP address.
 
 ---
 
@@ -449,8 +432,8 @@ $EC --profile stems logs -f --tail=50 worker
 Migrations apply automatically on core's boot, so there is no separate step. `data/` and `media/`
 survive: they are volumes, not image content.
 
-A worker rebuild re-resolves the torch wheel from `TORCH_INDEX_URL`, so it is **multi-GB and slow** on
-the CUDA path. When only core changed, name it and skip that entirely: `$EC build core`.
+A worker rebuild that invalidates the dependency layer re-downloads the CUDA torch wheels
+(`TORCH_EXTRA=cu128`), which is **multi-GB and slow**. When only core changed, name it and skip that entirely: `$EC build core`.
 
 **WSL itself** — see §1. `wsl --version`, `wsl --update`, then `wsl --shutdown`. Do this when
 networking misbehaves or a `.wslconfig` key appears to be ignored, not routinely.
@@ -464,8 +447,8 @@ sudo nvidia-ctk runtime configure --runtime=docker   # re-run if the toolkit's c
 ```
 
 After any driver or toolkit change, re-run the §6 GPU gate before trusting a process — the failure mode is
-a worker that silently falls back to CPU, and the `[worker] hardware:` line reading `accel=cpu` on a box
-you expect to be `accel=cuda` is the tell.
+a worker that silently falls back to CPU, and the worker's startup line reading `accelerator=cpu` (§6) on a
+box you expect to be `accelerator=cuda` is the tell.
 
 Reclaiming space after several rebuilds, since torch layers accumulate fast:
 

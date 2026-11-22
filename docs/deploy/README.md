@@ -24,15 +24,15 @@ Compose's project directory.
 
 | file (in `docker/`)        | target                                                        | notes                                                                      |
 | -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `compose.cuda.yaml`  | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
-| `compose.intel.yaml` | Intel Arc (parked — the deploy box changed, and now BLOCKED) | Needs an `xpu` extra in `worker/pyproject.toml`, which does not exist  |
+| `compose.cuda.yaml`  | NVIDIA (e.g. Windows + WSL2 + an NVIDIA GPU)                  | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
+| `compose.intel.yaml` | Intel Arc (parked, and BLOCKED)                               | Needs an `xpu` extra in `worker/pyproject.toml`, which does not exist  |
 
 Both overrides now contain **only what is genuinely host-side**: the GPU device reservation, the
 `/dev/dri` passthrough, the numeric render/video group ids, and the `TORCH_EXTRA` build arg. They
 set **no `ENCORE_*` environment at all**. The worker probes its accelerator, derives its alignment
-device from the same decision, sizes its own parallelism against the _usable_ core count, and
-advertises only the capabilities it can prove — so anything these files declared would be a second,
-staler copy of facts the box already knows. The drift between an override's capability list and the
+device from the same decision, and advertises only the capabilities it can prove — so anything these
+files declared would be a second, staler copy of facts the box already knows. (Job concurrency is not
+probed: it is `ENCORE_WORKER_CONCURRENCY`, default 1, passed through by the base `compose.yaml`.) The drift between an override's capability list and the
 base compose file's is exactly what once left songs stuck at 0%.
 
 The one thing still worth stating by hand is `ENCORE_DEVICE=cuda` (or `xpu`) in `docker/.env`, if you want a
@@ -118,13 +118,8 @@ The index URLs below are the ones those extras resolve to:
 - `https://download.pytorch.org/whl/cu128` — cp312 manylinux and win_amd64 wheels both published
 - `https://download.pytorch.org/whl/xpu` — cp312 manylinux wheels published
 
-There used to be a `Dockerfile.intel` here, because Intel Arc support originally required
-`intel-extension-for-pytorch` as an extra pip install whose version had to be matched to _both_ the
-host driver and the pinned torch. **It has been deleted.** PyTorch ships native `torch.xpu` upstream and
-the `xpu` index carries the whole pinned set, so `compose.intel.yaml` uses the ordinary
-Dockerfile; `backends.py` still imports IPEX before torch when it happens to be installed, which makes
-that path belt-and-braces rather than something needing its own image. Recover it from git history if a
-specific driver pairing ever turns out to need IPEX after all.
+There is no separate Intel image: `compose.intel.yaml` overrides the ordinary
+`docker/worker.Dockerfile`'s build args and adds the `/dev/dri` device and the render/video groups, and PyTorch ships native `torch.xpu` upstream.
 
 Note the limit of the one-image goal, since it decides this directory's shape: a pip environment holds
 exactly **one** torch build (all three indexes publish the same version string with different build

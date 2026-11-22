@@ -3,19 +3,19 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { at } from '$test';
 
 /*
- * guard: the `--ph-text-*` ladder keeps its 12px floor, keeps its retired rung retired, and keeps the
+ * The `--ph-text-*` ladder keeps its 12px floor, keeps its retired rung retired, and keeps the
  * 24 -> 41.6px hole above `2xl` on the record as OPEN rather than quietly closed or quietly forgotten.
  *
- * The design review's finding 3 named TWO defects in this ladder: a crowded bottom (four rungs inside 3.5px, the
- * lowest of them 10.88px) and a hole at the top (one step of 1.7333 where nothing else on the ladder steps wider
- * than 1.2). Only the first was fixed. The second was DECLINED, on the ground that `--ph-text-3xl` has a single
- * font-size site in the whole app and is a DISPLAY size rather than the ladder's next reading step — so an
+ * Two shapes are ruled out (docs/UI-DESIGN.md §3): a crowded bottom (the retired `2xs` put four rungs inside 3.5px,
+ * the lowest 10.88px) and a rung minted in the hole at the top before anything reads it (the hole is one step of
+ * 1.7333 where nothing else on the ladder steps wider than 1.2). The hole stays open BY RULING: `--ph-text-3xl` has
+ * a single font-size site in the whole app and is a DISPLAY size rather than the ladder's next reading step — so an
  * intermediate rung would be declared and read by nothing, which is the defect `--shadow-md` already is.
  *
- * A declined half makes the RECORD the deliverable, and a record is the thing that rots. So this file pins the
- * arithmetic that app.css, docs/FRONTEND.md and docs/UI-DESIGN-REVIEW.md all quote, and it pins the one fact the
- * ruling rests on. Minting a rung in the hole, or giving `3xl` a second caller, reds here — which forces finding
- * 3's PARTIAL note to be re-read rather than left behind as a false statement.
+ * An open-by-ruling gap makes the RECORD the deliverable, and a record is the thing that rots. So this file pins the
+ * arithmetic app.css declares, the ladder table docs/UI-DESIGN.md §3 quotes from it, and the one fact the
+ * ruling rests on. Minting a rung in the hole, or giving `3xl` a second caller, reds here — which forces the
+ * ruling in docs/UI-DESIGN.md §3 to be re-read rather than left behind as a false statement.
  *
  * Sizes only. Nothing here measures a rendered glyph; `bun test` has no layout, and the px figures below are
  * arithmetic on the declarations at the default root.
@@ -23,7 +23,7 @@ import { at } from '$test';
 
 const appCss = readFileSync(at('src/app.css'), 'utf8');
 const frontend = readFileSync(at('../docs/FRONTEND.md'), 'utf8');
-const review = readFileSync(at('../docs/UI-DESIGN-REVIEW.md'), 'utf8');
+const design = readFileSync(at('../docs/UI-DESIGN.md'), 'utf8');
 
 /** `html` declares no font-size — `body` is `font-size: 100%`, deliberately (SC 1.4.4) — so a rem on this ladder
  *  is 16px at default browser settings, which is the basis every px figure in the prose uses. */
@@ -87,12 +87,12 @@ test('the ladder is eight rungs, opens on the 12px floor, and no adjacent pair i
 	// Collected rather than asserted one at a time, so a regression names the pair AND the ratio.
 	const ratios = rungs.slice(1).map((r, i) => [`${rungs[i]!.name}->${r.name}`, r.px / rungs[i]!.px] as const);
 	expect(ratios.filter(([, v]) => v < MIN_RATIO - 1e-9)).toEqual([]);
-	// The closest pair is xs -> sm, and 1.0933 is the digit app.css and the review's PARTIAL note both quote.
+	// The closest pair is xs -> sm, and 1.0933 is the digit app.css and docs/UI-DESIGN.md §3 both quote.
 	const tightest = ratios.reduce((a, b) => (b[1] < a[1] ? b : a));
 	expect(tightest[0]).toBe('xs->sm');
 	expect(tightest[1]).toBeCloseTo(1.0933, 4);
 
-	// The crowding HALF of finding 3, as fixed: its "four rungs inside 3.5px" is three rungs inside 2.4px.
+	// No crowded bottom: the three rungs under base sit inside 2.4px, where the retired 2xs put four inside 3.5px.
 	const subBase = rungs.filter((r) => r.px < 16);
 	expect(subBase).toHaveLength(3);
 	expect(subBase[subBase.length - 1]!.px - subBase[0]!.px).toBeCloseTo(2.4, 10);
@@ -115,7 +115,7 @@ test('`--ph-text-2xs` is retired: no declaration, no @theme alias, and no rule s
 test("the hole above 2xl is the ladder's only wide step, and 3xl still has the ONE caller the ruling rests on", () => {
 	const rungs = ladder();
 	// Nothing between the two. This is the assertion that reds when someone mints the 2rem rung that was tried
-	// and removed — at which point the PARTIAL note on finding 3 is what has to be revisited, not this line.
+	// and removed — at which point the ruling in docs/UI-DESIGN.md §3 is what has to be revisited, not this line.
 	expect(rungs.filter((r) => r.px > 24 && r.px < 41.6)).toEqual([]);
 
 	const ratios = rungs.slice(1).map((r, i) => r.px / rungs[i]!.px);
@@ -130,10 +130,10 @@ test("the hole above 2xl is the ladder's only wide step, and 3xl still has the O
 	expect(upTo2xl).toHaveLength(7);
 	expect(upTo2xl[6]!.px - upTo2xl[0]!.px).toBe(12);
 
-	/* THE FACT THE DECLINE RESTS ON, and A ONE THAT A RULING RESTS ON stays an exact list rather than a bound:
-	   finding 3's declined half is declined BECAUSE `3xl` is a display size with a single caller — /stats' hero tile,
+	/* THE FACT THE RULING RESTS ON stays an exact list rather than a bound:
+	   the hole stays open BECAUSE `3xl` is a display size with a single caller — /stats' hero tile,
 	   sitting over that page's own secondary tiles at `2xl`. A SECOND caller makes the 24 -> 41.6px hole a real
-	   reading step, so it must red here and send the reader back to the PARTIAL note rather than pass quietly.
+	   reading step, so it must red here and send the reader back to docs/UI-DESIGN.md §3 rather than pass quietly.
 	   Structurally a zero (zero second callers), which is why it is not the kind of count this file retired. */
 	expect(ruleSites('3xl')).toEqual(['routes/stats/+page.svelte']);
 	const stats = readFileSync(at('src/routes/stats/+page.svelte'), 'utf8');
@@ -141,24 +141,43 @@ test("the hole above 2xl is the ladder's only wide step, and 3xl still has the O
 	expect(stats).toContain('.n {\n\t\tfont-size: var(--ph-text-2xl);');
 });
 
-test('both records carry finding 3 as PARTIAL, naming the declined half and its reason', () => {
-	// The review doc is where a reader goes to ask "did this land?", so the marker has to be IN finding 3 and not
-	// in a status block somewhere else — this doc has none.
-	const start = review.indexOf('### 3. The type scale');
-	const end = review.indexOf('### 4. ');
+test('both records state the floor, the hole above 2xl as open by ruling, and its reason', () => {
+	// The design doc's type section is where a reader goes to ask "is this gap a mistake?", so the ruling has to
+	// be IN that section, beside the ladder it describes.
+	const start = design.indexOf('## 3. The type ladder');
+	const end = design.indexOf('## 4. ');
 	expect(start).toBeGreaterThan(-1);
 	expect(end).toBeGreaterThan(start);
-	const finding3 = review.slice(start, end);
-	expect(finding3).toContain('As FIXED — PARTIAL');
-	expect(finding3).toContain('DECLINED');
-	// Both halves have to be named, or "partial" does not say which one.
-	expect(finding3).toContain('crowding is closed');
-	expect(finding3).toContain('hole at the top is unchanged');
-	expect(finding3).toContain('minted WITH its first caller');
+	const typeSection = design.slice(start, end);
+	expect(typeSection).toContain('12px is the floor');
+	expect(typeSection).toContain('1.0933');
+	// The open half has to be named, and with the reason it stays open, or "open" reads as forgotten.
+	expect(typeSection).toContain('hole above `2xl` is open by ruling');
+	expect(typeSection).toContain('exactly one font-size site');
+	expect(typeSection).toContain('minted WITH its first caller');
 
 	// The design-system contract says the same thing where the rule itself is stated.
-	expect(frontend).toContain('HALF addressed');
 	expect(frontend).toContain('and that gap is deliberately left open');
+	expect(frontend).toContain('minted WITH its first caller');
+});
+
+test("docs/UI-DESIGN.md §3's ladder table quotes app.css's names, rem and px exactly", () => {
+	/* A QUOTED FIGURE NO TEST HOLDS is the rot this file exists to stop: the table is the first thing a reader of §3
+	   sees, and with only its prose pinned, editing `sm` to 0.85 / 13.6 left every test green. So each row is parsed
+	   out of the fenced block and compared with `ladder()`, which reads the declarations themselves. */
+	const typeSection = design.slice(design.indexOf('## 3. The type ladder'), design.indexOf('## 4. '));
+	const block = /```\n([\s\S]*?)\n```/.exec(typeSection);
+	expect(block).not.toBeNull();
+	const rows = block![1]!.split('\n').map((line) => line.split(/\s+/).filter((t) => t !== '' && !/^·+$/.test(t)));
+	expect(rows).toHaveLength(3);
+	const [names, rem, px] = rows as [string[], string[], string[]];
+	// The unit closes its row, so a row that lost or swapped its unit is a different table rather than a match.
+	expect(rem.at(-1)).toBe('rem');
+	expect(px.at(-1)).toBe('px');
+	const rungs = ladder();
+	expect(names).toEqual(rungs.map((r) => r.name));
+	expect(rem.slice(0, -1).map(Number)).toEqual(rungs.map((r) => r.rem));
+	expect(px.slice(0, -1).map(Number)).toEqual(rungs.map((r) => r.px));
 });
 
 test("every rung on the ladder is read, and `sm`'s three non-sites are each accounted for", () => {
