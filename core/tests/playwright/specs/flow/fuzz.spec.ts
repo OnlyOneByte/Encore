@@ -2,8 +2,7 @@
  * FUZZ — a seeded, stateful, adversarial input fuzzer for the karaoke room. The six invariants, the knobs and
  * the wire-command substitutions: docs/E2E.md#the-fuzz-invariants and #fuzzing-the-room.
  *
- * Ported from tests/e2e/fuzz.mjs (1,249 lines). What follows is the shape of that port, because every line of
- * it is load-bearing in a way a scenario's is not.
+ * What follows is the shape of the fuzzer, because every line of it is load-bearing in a way a scenario's is not.
  *
  * ONE LONG TEST, NOT ONE TEST PER INPUT. The live defects were in the ADJACENCY of inputs that no curated
  * sequence covers, so the subject is a SEQUENCE and not a state. A `test()` per input would boot a core per
@@ -13,9 +12,9 @@
  *
  * THE SEED IS THE PRODUCT. `FUZZ_SEED` must replay a run INPUT FOR INPUT or a reported seed reproduces
  * nothing and the tool is worthless. mulberry32, the `pick`/`int` wrappers, the deterministic `fuzzId`, and —
- * most importantly — the ORDER and the COUNT of `rnd()` calls at every call site are carried across
- * unchanged: `drawInput` spends exactly one draw, `driveInput` spends one for the phone index before it spends
- * anything else, and each input's own draws follow in the old order. Nothing here may read `Math.random` or
+ * most importantly — the ORDER and the COUNT of `rnd()` calls at every call site are fixed (changing
+ * either breaks every seed in `fuzz-seeds.ts`): `drawInput` spends exactly one draw, `driveInput` spends
+ * one for the phone index before it spends anything else, and each input's own draws follow in a fixed order. Nothing here may read `Math.random` or
  * the clock. The seed is printed first, in the summary, and in every failure message.
  *
  * WHICH SEEDS RUN. `FUZZ_SEED` replays that one seed. Without it, the run replays `fuzz-seeds.ts`, one test per
@@ -28,35 +27,28 @@
  * reading everything once would manufacture violations out of propagation delay.
  *
  * I6 CANNOT BE DROPPED OR WEAKENED. `webkitAudioDecodedByteCount` must CLIMB whenever the UI claims to be
- * playing, sampled twice DECODE_GAP_MS apart. The old driver's rule was that a run which never managed to
- * EVALUATE I6 exits 2 rather than green; here that is an assertion, so such a run FAILS and names the reason.
+ * playing, sampled twice DECODE_GAP_MS apart. A run which never managed to EVALUATE I6 is not green:
+ * that is an assertion, so such a run FAILS and names the reason.
  * It never passes, and it never skips: this repo already ruled that a permanently-skipped test is
  * indistinguishable from the rot it was meant to catch.
  *
- * NO AUTOPLAY GRANT. The old driver's `FUZZ_AUTOPLAY=1` (`--autoplay-policy=no-user-gesture-required`, printed
- * as NOT-A-TV) is DROPPED, not ported: a television grants no gesture, so a relaxed policy proves playback in
- * an environment the product never ships into (docs/E2E.md#autoplay), and this suite grants no such flag. The
- * playhead is bought the way p14 buys it — ONE REAL `mouse.click` on the TV, which is the only thing that
- * counts as activation; a synthetic `el.click()` is untrusted and grants none. The gestureless arm of
- * `autoplayRefused()` below is kept exactly as it was, because it is what keeps a REFUSING browser from
- * reporting a phantom I6; on this box nothing actually refuses (see world/autoplay.ts), so it stays quiet.
+ * NO AUTOPLAY GRANT. `--autoplay-policy=no-user-gesture-required` is never passed: a television grants no
+ * gesture, so a relaxed policy proves playback in an environment the product never ships into
+ * (docs/E2E.md#autoplay). The playhead is bought the way p14 buys it — ONE REAL `mouse.click` on the TV, which
+ * is the only thing that counts as activation; a synthetic `el.click()` is untrusted and grants none. The
+ * gestureless arm of `autoplayRefused()` below is what keeps a REFUSING browser from reporting a phantom I6;
+ * on this box nothing actually refuses (see world/autoplay.ts), so it stays quiet.
  *
- * WHAT THE FIXTURES REPLACED. `bootRoom` (free-port hunting, a bind test, seed-media, a spawned server, a
- * spawned fake worker, `owned.procs`/`owned.dirs`, signal handlers and `cleanup()`) is gone: `world` boots a
- * core per test with a seeded MEDIA_DIR and tears both down, and `startFakeWorker` publishes the real audio
- * and the real word-level lyrics that I4 and I6 need something to measure. Fault injection is therefore a
- * TYPED option (see FAULTS) rather than a `FAKE_*` env string.
+ * `world` boots a core per test with a seeded MEDIA_DIR and tears both down, and `startFakeWorker` publishes
+ * the real audio and the real word-level lyrics that I4 and I6 need something to measure. Fault injection is
+ * a TYPED option (see FAULTS) rather than an env string.
  *
- * TWO DRIVER FIXES, declared rather than smuggled — neither touches an invariant, a weight or a draw.
+ * THREE DRIVER RULES — none touches an invariant, a weight or a draw.
  *
- * ONE: the old `queue-add` left the phone sitting in the SEARCH
- * view, and a query REPLACED the rotation on the phone home (the `{#each queued}` loop was inside
- * `{#if !searchActive}`), so that phone rendered ZERO `.qrow` for the rest of the run while the server's waiting
- * set grew — which is a FALSE I5, manufactured by the driver. So the add RETURNS to the surface where this
- * phone's `.qrow` counts apply. That surface is now `/queue` rather than `/`: the rotation is its own tab, and
- * the Sing tab renders no `.qrow` at all, so "back to home" would manufacture exactly the same false I5 the fix
- * was written to remove. The transport is in the dock on every surface, so the taps still apply from there. The
- * invariant itself is untouched; `restOnQueue` and `openSearch` below are the two route helpers that implement
+ * ONE: `queue-add` RETURNS to `/queue`, where this phone's `.qrow` counts apply. Left in the SEARCH view, or
+ * on the Sing tab (which renders no `.qrow` at all), the phone shows ZERO `.qrow` while the server's waiting
+ * set grows — a FALSE I5, manufactured by the driver. The transport is in the dock on every surface, so the
+ * taps still apply from there. `restOnQueue` and `openSearch` below are the two route helpers that implement
  * it, and they `goto` rather than clicking the strip's link so a replay cannot branch on whether a strip was
  * rendered.
  *
@@ -64,18 +56,14 @@
  * same index into an array the room hands back in a different order, so two runs of one seed agree on every
  * actor, input, seam and number and disagree on WHICH SONG — which is a replay in name only.
  *
- * THREE, AND IT WAS A REPORTED DEFECT OF THIS DRIVER RATHER THAN OF THE ROOM: LEAD_SEC read
- * `settings.lyricsLeadMs` off the sync frame, but the frame carries `EffectiveSettings = { global, room }` and
- * the lead is a ROOM setting. That read always resolved `undefined`, so the fallback stood and I4's window ran
- * 300ms off-centre against a real default of 0 — the literal `0.3` happened to match `schema.ts`'s dead
- * `.default(300)` on the column, which no insert ever reaches because `setRoom` names every field. It now reads
- * `settings.room.lyricsLeadMs` and falls back to `DEFAULT_LYRICS_LEAD_MS`, so the window is centred on the lead
- * the room actually applies and cannot drift from the contract. I4's tolerance is +-1.0s, so this moved the
- * window's centre without changing which runs pass.
+ * THREE: LEAD_SEC reads `settings.room.lyricsLeadMs` off the sync frame — the frame carries
+ * `EffectiveSettings = { global, room }` and the lead is a ROOM setting; a bare `settings.lyricsLeadMs`
+ * resolves `undefined` — and falls back to `DEFAULT_LYRICS_LEAD_MS`, so I4's window is centred on the lead
+ * the room actually applies and cannot drift from the contract. (`schema.ts`'s `.default(300)` on the column
+ * is dead: no insert reaches it because `setRoom` names every field.)
  *
- * STILL CARRIED VERBATIM, because an assertion is MOVED here and never rewritten: `__fzRev` is tracked with a
- * comment about carrying a "real baseRev" when the contract has no baseRev on a queue command at all and
- * nothing sends one.
+ * `__fzRev` is tracked with a comment about carrying a "real baseRev" when the contract has no baseRev on a
+ * queue command at all and nothing sends one; it is left as is rather than tidied.
  */
 import { test, expect } from '../../world/fixtures';
 import type { Page, TestInfo } from '@playwright/test';
@@ -131,8 +119,8 @@ const FIRST_PLAYBACK_MS = 20_000;
 const timeBudgetMs = (inputs: number): number => 240_000 + inputs * 20_000;
 
 /**
- * FAULT INJECTION, as typed options on the fake worker rather than the old `FAKE_*` env strings — one per row
- * of docs/E2E.md#fault-injection. Empty by default, which is the worker the old driver spawned: `silentVocals`,
+ * FAULT INJECTION, as typed options on the fake worker rather than env strings — one per row
+ * of docs/E2E.md#fault-injection. Empty by default, the healthy worker: `silentVocals`,
  * `skipWrite`, `noProfile`, `noVocals`, `fail: 'stems' | 'align' | …`, `slowMs`, `silentInstrumental`, and
  * `guideMix` (the ONLY way `guide` inputs reach the enabled arm — `hasGuidingTrack()` reads `guideMixRef`).
  * Set one here to fuzz an unhappy path; leaving it empty keeps this run comparable to every other seed.
@@ -669,8 +657,7 @@ async function readTv(page: Page): Promise<TvState> {
  * A phone's own authenticated socket, opened ONCE and kept. A wire-substituted input goes out from THIS socket
  * so the server resolves the same singerId from the same session cookie and runs the same authorization.
  *
- * `__fzRev` and `__fzRejects` are carried across unchanged and neither is read — the old driver's comment says
- * the rev is tracked "so a queue command carries a real baseRev", but the contract has no baseRev on a queue
+ * `__fzRev` and `__fzRejects` are kept and neither is read — the rev is said to be tracked "so a queue command carries a real baseRev", but the contract has no baseRev on a queue
  * command (src/lib/contract/core/ops.ts) and nothing sends one. Reported rather than tidied.
  */
 async function openWire(page: Page): Promise<void> {
@@ -994,8 +981,8 @@ function atPreloadFloor(w: Room): boolean {
 }
 
 /**
- * The gestureless arm. The old driver's `!AUTOPLAY` term is gone with the flag it guarded — this suite never
- * grants autoplay, so the condition is unconditionally the gestureless one.
+ * The gestureless arm. This suite never grants autoplay, so the condition is unconditionally the
+ * gestureless one.
  */
 function autoplayRefused(w: Room): boolean {
 	return w.master?.paused === true && atPreloadFloor(w);
@@ -1478,7 +1465,7 @@ async function fuzzRun(world: World, testInfo: TestInfo, seed: number, inputs: n
 			const step: Step = { ...first, detail: `${first.detail} (opening add)` };
 			sequence.push(step);
 			console.log(stepLine(sequence.length - 1, step));
-			// Wait for the room to be PLAYING before deciding about the tap, where the old driver slept 1.2s.
+			// Wait for the room to be PLAYING before deciding about the tap, rather than sleeping.
 			// Bounded: a room that never starts is a finding the loop reports, not a reason to hang here.
 			const deadline = Date.now() + FIRST_PLAYBACK_MS;
 			let opening = await readRoom();
@@ -1532,8 +1519,8 @@ async function fuzzRun(world: World, testInfo: TestInfo, seed: number, inputs: n
 			// first line of it. The test still fails.
 			expect.soft(found, foundReport).toBeNull();
 		} else {
-			// NON-VACUITY FLOOR. The old driver exited 2 — never green — when it never managed to evaluate I6,
-			// because such a run measured nothing about audio. Here that is an assertion: it FAILS, and it never
+			// NON-VACUITY FLOOR. A run that never managed to evaluate I6 is never green, because such a run
+			// measured nothing about audio. That is an assertion: it FAILS, and it never
 			// skips, because a permanently-skipped test is indistinguishable from the rot it was meant to catch.
 			expect(
 				stats.I6.checked,

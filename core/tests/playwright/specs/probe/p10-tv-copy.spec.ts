@@ -1,7 +1,7 @@
-// Proposal 10, the screen half: a second /tv is a COPY. It shows the same song, plays it muted (`muted` AND volume 0,
+// P10, the screen half: a second /tv is a COPY. It shows the same song, plays it muted (`muted` AND volume 0,
 // since iOS Safari ignores `.volume`), makes no AudioContext, sends no telemetry, and offers "Make this the TV"; one tap
 // moves the seat, the old TV goes silent BEFORE the new one plays, and the old TV turns into the copy. The real TV shows
-// nothing new. `SHOT_DIR=<dir>` also writes the screenshots the PR shows.
+// nothing new. `SHOT_DIR=<dir>` also writes screenshots of each state.
 import { test, expect } from '../../world/fixtures';
 import { startFakeWorker } from '../../world/workers';
 import { readySong, queueReady, openBrowseFromHome } from '../../world/actors';
@@ -427,7 +427,7 @@ test('a mid-song claim on a guide-mix song keeps the song going, and the NEXT si
 		for (const s of [tv, copy, reader]) await tap(s);
 		await singTrack(phone, world.baseURL, TRACKS.caroline);
 		await expect.poll(() => audioOf(copy.page), { timeout: 30_000 }).toMatchObject({ muted: true, paused: false });
-		// Bo's guide-mix song is queued BEFORE the claim, so the copy pre-warms it while silent (the r5 repro).
+		// Bo's guide-mix song is queued BEFORE the claim, so the copy pre-warms it while silent.
 		await singTrack(bo, world.baseURL, TRACKS.believin);
 		// Late in the song (30 s stems), so a restart at 0:00 is unmistakable and the next song follows soon after.
 		await expect
@@ -471,7 +471,7 @@ test('a mid-song claim on a guide-mix song keeps the song going, and the NEXT si
 			.not.toBe(guideEntry);
 		const boEntry = (await serverPlayback(world.baseURL)).state.currentEntryId;
 		expect(boEntry, "the server dropped Bo's song").toBeTruthy();
-		// The takeover's own text since #992 ("That song won't play"), and the older wording too.
+		// The takeover's own text ("That song won't play"), and an older wording too.
 		const skipNotice = copy.page.getByText(/won.t play|would not play/i);
 		for (let i = 0; i < 24; i++) {
 			expect(await skipNotice.count(), `a "won't play" notice at sample ${i}`).toBe(0);
@@ -512,7 +512,7 @@ test('a key-shifted song makes no AudioContext on a copy, while the TV builds it
 	}
 });
 
-// THE SKIP ONTO A GUIDE-MIX SONG, on the TV alone (r6 review). A plain song plays; a skip makes a guide-mix song
+// THE SKIP ONTO A GUIDE-MIX SONG, on the TV alone. A plain song plays; a skip makes a guide-mix song
 // current in the SAME slot, which has no routed split graph yet, so its mix decision is pending for as long as the
 // audio start takes. Until then the element must be SILENT: it still holds the skipped song.
 for (const resumeMs of [0, 3_000, 8_000]) {
@@ -572,7 +572,7 @@ for (const resumeMs of [0, 3_000, 8_000]) {
 	});
 }
 
-// A CLAIM AT THE SWAP (r8 review). The copy's song ends and the gapless swap makes the warmed slot (Bo's guide-mix song,
+// A CLAIM AT THE SWAP. The copy's song ends and the gapless swap makes the warmed slot (Bo's guide-mix song,
 // decided plain while silent) the PLAYING one, and the claim lands then. Bo's song must still get its guide.
 //  - `boundary`: inside the swap edge, with the OLD TV's `ended` dropped on its way out. Nobody but the new seat can
 //    then tell the server the song ended, so the room moves on within a second only if the new seat says so.

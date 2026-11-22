@@ -3,7 +3,7 @@
  * tests/guards/layout/stage-scale.test.ts (deleted with that tree). Only a render settles that the `.tv` root
  * calc resolves as intended at 1920x1080, that every rem tier multiplies THAT root, and that `--ui-scale` at
  * its 0.8 bound keeps every tier at or above 20px. It is overridden IN PLACE, so this measures the real
- * cascade. Ported from tests/e2e/gates/measured-design.mjs.
+ * cascade.
  *
  * ONE TEST, because the readings are a SEQUENCE over one document: the 0.8 arm is a comparison against the
  * scale-1 root, and the `banana` arm only means anything after a real numeric override has been seen to work.

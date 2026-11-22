@@ -5,8 +5,8 @@
 // though a perfectly good Chromium is sitting right there. This falls back to whatever IS in the cache
 // rather than making every spec fail on a version digit.
 //
-// It replaces tests/e2e/lib/chromium.mjs, which only ever looked for Linux paths (`chrome-linux/chrome`) and
-// two pinned build numbers, so on a Mac it found nothing unless PW_CHROMIUM was already set.
+// It looks on every platform's paths, not only Linux's (`chrome-linux/chrome`), and at any cached build, not
+// pinned build numbers, so a Mac needs no PW_CHROMIUM.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';

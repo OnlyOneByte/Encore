@@ -1,4 +1,4 @@
-// THE /metrics FIXTURE, ported verbatim from tests/e2e/shot-metrics.mjs.
+// THE /metrics FIXTURE.
 //
 // WHY IT EXISTS AT ALL. /metrics fetches /api/metrics on mount and renders empty states without it, and a
 // per-test core has processed nothing — so the page under review would show none of the copy it is shot for.

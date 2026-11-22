@@ -26,7 +26,7 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
 }
 
 /**
- * KEPT AS A REGRESSION ORACLE, AND BANNED IN PRODUCTION — `tests/guards/subsystem-tv/transport.test.ts` asserts no
+ * KEPT AS A REGRESSION ORACLE, AND BANNED IN PRODUCTION — `tests/unit/lib/tv/transport.test.ts` asserts no
  * production call site passes this as `hasSrc`, then uses it to demonstrate the same-song-advance bug that a test of
  * `transportFor` alone cannot see. Src-string comparison only, so it is blind to two turns of the same song, which is
  * exactly what makes it the oracle. Production compares entry-scoped tokens with `slotHoldsSong`.

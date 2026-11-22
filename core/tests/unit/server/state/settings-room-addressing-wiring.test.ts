@@ -1,4 +1,4 @@
-// guard (reviewer advisory A1): making roomId REQUIRED stops a caller silently defaulting to
+// guard: making roomId REQUIRED stops a caller silently defaulting to
 // 'main', but it does not by itself pin WHICH room each production reader addresses — the source-scan
 // guard checks the call SHAPE, not the room VALUE, so it stays green whether a reader passes the live
 // room or the literal 'main'. This is the differential that pins the room VALUE: write a setting to the

@@ -91,7 +91,7 @@ test('an entry that lost On deck is re-armed: its heads-up buzzes again when its
 	expect(calls).toEqual([HEADS_UP_BUZZ, HEADS_UP_BUZZ]);
 });
 
-// ---- proposal 14: the bumped notice --------------------------------------------------------------------------
+// ---- the bumped notice --------------------------------------------------------------------------
 // Maya sings. Ana's `cook` is ahead of Theo's `theo1` and still cooking, so Theo is On deck; then it finishes.
 const bumpQ = [e('cook', 'ana'), e('theo1', 'theo'), e('ana2', 'ana')];
 /** A stand-in for `nextPlayableEntryId`: the first entry in `list` the room would actually play. */
@@ -129,7 +129,7 @@ test('a song still cooking between us does not count: I am still the next to SIN
 });
 
 test('a song the room will SKIP (failed on the TV) is never "next": both answers use the one rule passed in', () => {
-	// #994's skip, stubbed: the failed song heads the queue but the rule skips it, so Bob is On deck, then me.
+	// The failed-song skip, stubbed: the failed song heads the queue but the rule skips it, so Bob is On deck, then me.
 	const q = [e('failed', 'ana'), e('bob1', 'bob'), e('theo1', 'theo')];
 	expect(bump({ queued: q, nextPlayableOf: nextOf((x) => x.id !== 'failed') })).toEqual({
 		singerId: 'bob',

@@ -243,8 +243,8 @@
 			<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
 			{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
 				<!-- Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders
-						differently. It arrives as a custom property, never interpolated into `background:` — see
-						docs/GUARDS.md#colour-tokens-and-the-48-stop-palette. -->
+						differently. It arrives as a custom property, never interpolated into
+						`background:`. -->
 				<Field.Label data-inline for="tv-background-color">
 					Background colour
 					<span class="swatch" style="--swatch:{settings.room.tvBackgroundColor}" aria-hidden="true"></span>

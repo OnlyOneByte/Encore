@@ -1,5 +1,5 @@
 // THE CHEER KEY COMES BACK. dock-cls.spec.ts proves the singer's Cheer key RESTS when their song starts (same slot,
-// faded, inert). This is the other leg (#986 review nit 1): Maya, Theo, Maya — Theo's key rests for his song and must
+// faded, inert). This is the other leg: Maya, Theo, Maya — Theo's key rests for his song and must
 // be live again for Maya's next one. It is one prop flip, so a key stuck resting (`inert` left on, `visibility`
 // never restored) is possible, and nothing else would notice.
 // While resting it must also be gone for every input: not hit-testable, not focusable, and absent from Chrome's own

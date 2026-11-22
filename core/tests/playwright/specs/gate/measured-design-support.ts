@@ -1,6 +1,6 @@
 /*
- * THE MEASUREMENTS THEMSELVES, shared by the seven measured-design specs. Ported from
- * tests/e2e/gates/measured-design.mjs; the claims that consume them are one spec each.
+ * THE MEASUREMENTS THEMSELVES, shared by the seven measured-design specs; the claims
+ * that consume them are one spec each.
  *
  * WHY IT LIVES HERE AND NOT IN world/: everything in this file is knowledge about THIS gate — a sweep whose
  * hit-extent rule is the gate's own hard-won rule, a quarantine matcher, and two waits the gate's surfaces
@@ -172,8 +172,8 @@ export function fieldId(label: string, r: Reading): string {
 }
 
 /**
- * From the JOINED home screen, reach the search box — the three waits tests/e2e/lib/phone.mjs holds, inlined
- * here because that module lives in the tree this suite replaces. There is nothing to CLICK: the field is the
+ * From the JOINED home screen, reach the search box — the same three waits as `openBrowseFromHome`
+ * in world/actors.ts. There is nothing to CLICK: the field is the
  * first element in the home column, so this only waits, and it waits on three things separately so a failure
  * names which half is missing.
  */
@@ -186,7 +186,7 @@ export async function openBrowse(page: Page, timeout = 15_000): Promise<void> {
 }
 
 /** `locator.fill` dispatches `input` natively for `bind:value`; `change` goes out too because a `<select>` and
- *  a range input listen for that one instead. The old driver's `fill`, verbatim. */
+ *  a range input listen for that one instead. */
 export async function fill(page: Page, selector: string, value: string): Promise<void> {
 	const el = page.locator(selector).first();
 	await el.fill(value);
@@ -196,7 +196,7 @@ export async function fill(page: Page, selector: string, value: string): Promise
 /**
  * HEADLESS HAS NO NOTCH. Every `env(safe-area-inset-*)` resolves to 0, so `calc(10px + env(...))` and a bare
  * `10px` measure identically and an arm comparing them proves nothing. There is no Playwright API for this,
- * so it goes over CDP — the same wire call (`Emulation.setSafeAreaInsetsOverride`) the old driver made.
+ * so it goes over CDP: `Emulation.setSafeAreaInsetsOverride`.
  */
 export async function setSafeAreaInsets(
 	page: Page,

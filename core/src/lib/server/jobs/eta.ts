@@ -1,4 +1,4 @@
-// How long a song still has to cook, from this room's own history (proposal 05). Pure — the hub reads the
+// How long a song still has to cook, from this room's own history. Pure — the hub reads the
 // ledger and hands the rows in. AN ETA IS A CLAIM (`phrasing/position-sentence.ts`), so every gap returns null
 // rather than a guess: a box with no finished run of a step says nothing about that step, and the card says
 // nothing at all.

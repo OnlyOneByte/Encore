@@ -15,7 +15,7 @@ export interface LyricsCandidate {
 	timing: LyricsTiming;
 	/** The WORDS' standing, from where they came from — never how well they were timed. Load-bearing beyond
 	 *  display: auto captions are recorded `low` because they are ASR wearing a caption's clothes, which is
-	 *  what stops them ranking as authoritative. (Review M3: the v2 worker sent its TIMING grade here, so a
+	 *  what stops them ranking as authoritative. (The v2 worker sent its TIMING grade here, so a
 	 *  well-timed machine caption ranked authoritative and every line-synced sheet ranked as a guess.) */
 	textConfidence: LyricsConfidence;
 	/** `false` = a WRONG-TEXT gate on the worker measured these words against the audio and did not vouch for
@@ -23,7 +23,7 @@ export interface LyricsCandidate {
 	 *  (`TimedDoc.vouched`; docs/SERVER.md#lyrics-candidates-and-grading). A SECOND axis, not a confidence:
 	 *  `textConfidence` says where the words CAME FROM, and overloading it made an uploader's hand-authored
 	 *  caption track that the gate doubted read as `low` — which `lyricsSourceLabel` reports as "Auto
-	 *  captions", a false statement about its provenance rather than about its words (W3 review r2). Absent
+	 *  captions", a false statement about its provenance rather than about its words. Absent
 	 *  (older workers, stored rows, withdrawn documents whose gate never ran here) = vouched: nothing can
 	 *  infer this one, and a document no gate examined must not lose the standing its tier gives it. */
 	vouched?: boolean;
@@ -80,7 +80,7 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * graded against a partial baseline — and needs a dedicated bottom rung rather than a confidence
  * demotion. `agreement` keeps its legitimate use in `breaksTie`.
  *
- * A `low` TIMING GRADE COUNTS AS LINE TIMING, not word timing (worker review §3.7's second consumer). The
+ * A `low` TIMING GRADE COUNTS AS LINE TIMING, not word timing (the grade's second consumer). The
  * grade is an aggregate of the worker's PER-LINE verdicts — `high` only when at least 70% of the lines
  * could be vouched for, `low` when nothing vouches for any of them — so a `low` word document is one whose
  * word positions nobody stands behind, and 4 outranks 3 here for exactly the reason it does there: what you
@@ -90,7 +90,7 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * `timingConfidence` NOWHERE and a doubted word document tied with a fully vouched one at rank 5
  * (`tests/unit/contract/lyrics/worker-align-contract.json` records that history).
  *
- * THE DEMOTION THE CURRENT WORKER REACHES IS 3 -> 2, NOT 5 -> 4 (W6 review r1-spec-17). That worker writes a
+ * THE DEMOTION THE CURRENT WORKER REACHES IS 3 -> 2, NOT 5 -> 4. That worker writes a
  * document-level `low` in exactly one case — a pin a wrong-text gate would have refused — and in that same
  * case it also sends `vouched: false`, which `isAuthoritativeText` already reads, so both legs move together
  * and the pair lands on the unauthoritative rungs. 5 -> 4 is reachable only for a row STORED BEFORE `vouched`

@@ -1,14 +1,14 @@
 // guard: the alignment BENCH scores what this file's subject lights. Its `highlight` metric (a reject-if for
-// alignment changes: docs/PLAN-alignment-v3.md W4, 6c) reads "which word is lit" through a Python PORT of
+// alignment changes) reads "which word is lit" through a Python PORT of
 // lyrics.ts — parse, pause re-segmentation, orphan folding, activeLineIndex, activeWordIndex — as the overlay's
 // word-level branch uses them (docs/benchmarks/forced-alignment/scripts/e2e_lib.py). The fixture beside this test
 // is written FROM THE PORT (scripts/tv_parity.py); worker/tests/test_bench_e2e.py asserts the port still writes it,
 // and this test asserts lyrics.ts displays the same rows and lights the same word at every position.
 //
-// So a TV change that moves a row or a lit word (W6 plans `low` lines rendered line-level) is RED here until the
+// So a TV change that moves a row or a lit word (as rendering `low` lines line-level did) is RED here until the
 // port changes with it and the fixture is regenerated — never hand-edit the JSON. Otherwise the bench goes on
 // scoring a TV the room no longer sees. The one-off cross-check this replaces (0 of 60,000 positions disagreed)
-// was never committed, and three port mutations survived the suite (review round 2).
+// was never committed, and three port mutations survived the suite.
 import { test, expect } from 'bun:test';
 import { read } from '$test';
 import {
@@ -43,7 +43,7 @@ interface Parity {
 const fixture = JSON.parse(read('tests/unit/lib/tv/bench-highlight-parity.json')) as Parity;
 
 /** What the overlay lights at `pos`: the active line's active word, as a flat index into `doc.words`.
- *  `wipesWords` is part of it since W6 — a `low` row renders as one text node and lights nothing — and the
+ *  `wipesWords` is part of it — a `low` row renders as one text node and lights nothing — and the
  *  port's `tv_lit(wipe_low=True)` is what this mirrors. Without it the two trees would agree only on
  *  documents that carry no grade. */
 function litAt(doc: LyricsDoc, pos: number): number {
@@ -65,11 +65,11 @@ test('the bench fixture covers every rule the port models', () => {
 		'coverage-refusal',
 		'char-cap-without-a-pause',
 		'overlapping-and-reversed-words',
-		// W6: the low-line rule, its carry across a split, and the three grades that keep the wipe.
+		// The low-line rule, its carry across a split, and the three grades that keep the wipe.
 		'low-line-lights-no-word',
 		'low-line-splits-and-no-row-wipes',
 		'other-grades-still-wipe',
-		// W8: the CJK word gap, the one rule the two trees can now disagree about.
+		// The CJK word gap, the one rule the two trees can now disagree about.
 		'cjk-rebuilt-without-spaces',
 		'cjk-splits-at-a-pause'
 	])
@@ -79,7 +79,7 @@ test('the bench fixture covers every rule the port models', () => {
 
 test('the port joins the same codepoints this file does, enumerated', () => {
 	// The port cannot WRITE this file's class — Python's `re` has no Script_Extensions — so it carries a frozen
-	// copy, and only a one-off enumeration ever said the two were equal (review r1-tests-19). This is that
+	// copy, and only a one-off enumeration ever said the two were equal. This is that
 	// enumeration as a gate: a Unicode release that adds a Han codepoint moves `\p{scx=...}` here and not the
 	// copy there, and the two parity cases below exercise far too few characters to notice.
 	//
@@ -118,7 +118,7 @@ test("the port's constants are this file's", () => {
 
 test('the overlay lights words only in the branch the port models', () => {
 	// The port lights the active word of the active line under the `word` setting AND the per-line
-	// `wipesWords` grade (W6). A new condition here is a change the port must make too.
+	// `wipesWords` grade. A new condition here is a change the port must make too.
 	expect(read('src/lib/tv/LyricsOverlay.svelte')).toContain(fixture.overlay_word_branch);
 	expect(fixture.overlay_word_branch).toContain('wipesWords(l)');
 });

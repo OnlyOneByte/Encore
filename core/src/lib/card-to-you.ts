@@ -1,4 +1,4 @@
-// "Your card comes to you" (proposal 13, 2/2): when your On deck heads-up or your failed song needs you and its
+// "Your card comes to you": when your On deck heads-up or your failed song needs you and its
 // first control sits under the dock, /queue scrolls that card up once. Pure, so a bun test can decide it. See
 // routes/queue/+page.svelte.
 

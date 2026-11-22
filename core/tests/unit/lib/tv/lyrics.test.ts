@@ -140,7 +140,7 @@ test('a real human caption track is not labelled', () => {
 	expect(isAutoTranscribed(prov({ textSource: 'captions', textConfidence: 'high' }))).toBe(false);
 });
 
-// The worker's wrong-text gate rides on `vouched`, not on `textConfidence` (W3 review r2), so the overlay's
+// The worker's wrong-text gate rides on `vouched`, not on `textConfidence`, so the overlay's
 // "not verified" treatment has to read it: the same hand-authored track, doubted, must not render as verified.
 test('a caption track no wrong-text gate vouched for IS labelled', () => {
 	const doubted = prov({ textSource: 'captions', textConfidence: 'high', vouched: false });
@@ -564,9 +564,9 @@ test('confidence survives a resegment split, like a duet part does', () => {
 	for (const l of split) expect(l.confidence).toBe('low');
 });
 
-// ── W6's consumer: a `low` line renders line-level, so the word wipe is a per-LINE decision ──────
+// ── The grade's consumer: a `low` line renders line-level, so the word wipe is a per-LINE decision ──────
 //
-// The whole point of grading lines (worker review §3.7): nothing read per-line `confidence`, so the signal
+// The whole point of grading lines: nothing read per-line `confidence`, so the signal
 // bought nothing. `wipesWords` is the reader, and `LyricsOverlay.svelte`'s word branch is its only caller.
 
 test('a low line does not wipe words; every other grade does', () => {
@@ -609,7 +609,7 @@ test('a parsed document carries the grade the wipe rule reads', () => {
 	expect(doc.lines.map(wipesWords)).toEqual([false, true]);
 });
 
-// ── CJK joins without spaces (W8 stage 0, the non-Latin lane) ───────────────────────────────────────────
+// ── CJK joins without spaces (the non-Latin lane) ───────────────────────────────────────────
 // A Japanese or Chinese line is written with no space between its words, so the one space this renderer used
 // everywhere spelled such a line out character by character. `wordGap` is the rule, read by the reel's
 // inter-word gap AND by the text `lineFromWords` rebuilds, so the two cannot disagree.

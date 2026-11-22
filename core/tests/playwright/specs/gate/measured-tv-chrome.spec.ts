@@ -1,7 +1,7 @@
 /*
  * CLAIM 5b: `.fs-btn` overlaps NO z-tier-7 chrome box, at 1080p AND 4K. The button and the corner chrome all
  * sit at z-tier 7, so whichever is later in the DOM paints on top and a shared anchor is a silent occlusion no
- * source scan can see. Ported from tests/e2e/gates/measured-design.mjs.
+ * source scan can see.
  *
  * WHY SYNTHETIC BOXES: those classes render only in the PLAYING branch, which needs live WS playback this
  * drive has no processed media for. One element per class is MOUNTED under the real `.tv`, where the loaded

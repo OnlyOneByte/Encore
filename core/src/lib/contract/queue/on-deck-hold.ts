@@ -1,4 +1,4 @@
-// ON DECK IS HELD (proposal 14). PURE and shared, so the server's refusal, the phone's pinned row and both sides' add
+// ON DECK IS HELD. PURE and shared, so the server's refusal, the phone's pinned row and both sides' add
 // placement (`insertEntry`) agree on which entry is held. The hold exists while the On deck CARD shows: someone else is
 // singing and this entry plays next. See docs/SERVER.md#queue-ordering-and-rotation.
 

@@ -1,4 +1,4 @@
-# Core's checks on every PR, on a clean x86_64 box (proposal 06, sweeps/tooling.md §5).
+# Core's checks on every PR, on a clean x86_64 box.
 # The worker's are ci-worker.yml, so each runs only when its side can change. Probes and a random fuzz seed run
 # in nightly.yml, the worker's ML suite in ml.yml.
 #
@@ -8,7 +8,7 @@
 # skips waits forever on "Expected". Drop `paths-ignore` (or add an always-run stub job) before requiring it.
 name: CI
 
-# The repo is private, so Actions minutes are metered: a change that touches only the worker skips this. The
+# A change that touches only the worker cannot change this result, so it skips this. The
 # README and docs/ stay in, because core's `readme.test.ts` checks every link the README makes into them.
 # No `push: main`: a merge is a squash of a PR head that already passed here, and nightly.yml re-checks main.
 on:

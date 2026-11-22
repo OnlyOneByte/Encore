@@ -224,16 +224,16 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
  * expensive side.
  *
  * MEASURED ON THE TREE THAT SHIPS, and 40 ms is the ARGMAX rather than a round number taken on faith: over
- * the 5693 hand-timed word onsets of the 20-song JamendoLyrics bench corpus (PLAN W5/W6,
- * docs/benchmarks/forced-alignment; swept at 5 ms steps, `encore-align-bench/_runs/w5-leadcheck/`), the share
+ * the 5693 hand-timed word onsets of the 20-song JamendoLyrics bench corpus
+ * (docs/benchmarks/forced-alignment; swept at 5 ms steps), the share
  * of published word onsets inside the asymmetric band peaks at exactly 40 ms in every population a room can
  * be in — a claim-anchored document 73.2% -> 78.6%, the same songs decoded blind 73.2% -> 78.6%, a jittered
  * claim 67.8% -> 72.6%. The curve is a PLATEAU and not a knife edge (30 / 40 / 50 ms read 78.5 / 78.6 / 78.2),
  * so a few ms either way is free — but the TV latency flagged below is not a few ms, and an EFFECTIVE lead of
  * zero gives the whole 5.4 points back.
  *
- * AND EVERY EXISTING ROOM WAS BACKFILLED TO IT, which a changed default does not do by itself (W5 review
- * r1-spec-15 / r1-tests-18): `SettingsRepository.setRoom` writes every column on every save and `getRoom`
+ * AND EVERY EXISTING ROOM WAS BACKFILLED TO IT, which a changed default does not do by itself:
+ * `SettingsRepository.setRoom` writes every column on every save and `getRoom`
  * returns the stored row verbatim, so nothing reads the column default at runtime and any room that had ever
  * touched a TV or lyrics setting would have kept an effective lead of zero — the 5.4 points delivered to new
  * rooms only, two rooms on one install rendering differently, and nothing in the UI saying why.
@@ -242,17 +242,17 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
  * knob shipped at 0, so a stored 0 and the old default are indistinguishable and nobody can have chosen it
  * against a measurement that did not exist. A room that wants 0 sets it again and keeps it.
  *
- * THE REVIEW'S OWN FIGURE WAS 66.0% -> 75.0% AND IT STILL REPRODUCES — on the tree it was measured on, which
- * is no longer this one. Re-scored off the review's own cached emission matrices (the pre-W4 clock, the base
- * bundle, its own 40 ms `ONSET_LEAD_SEC`): 66.01% -> 74.95%, bias +3.7 ms. Since then W4 re-fitted the frame
- * clock and W5 flipped the default bundle to HuBERT-Large, which moved the distribution — onset bias +3.7 ms
+ * THE FIRST MEASUREMENT WAS 66.0% -> 75.0% AND IT STILL REPRODUCES — on the tree it was measured on, which
+ * is no longer this one. Re-scored off its own cached emission matrices (the old frame clock, the base
+ * bundle, its own 40 ms `ONSET_LEAD_SEC`): 66.01% -> 74.95%, bias +3.7 ms. Since then the frame clock was
+ * re-fitted and the default bundle flipped to HuBERT-Large, which moved the distribution — onset bias +3.7 ms
  * -> -3.4 ms, within 100 ms 78.7% -> 82.8% — so the band is fuller before any lead and the lead buys 5.4
  * points instead of 9. The DECISION survives the move intact; only the two percentages are this tree's.
  *
  * THIS IS A DISPLAY COMPENSATION AND NOT A TIMING CORRECTION, which is why it lives here and not in the
- * worker. The worker's own `generate.ONSET_LEAD_SEC` (30 ms, re-fitted in W4 on the exact 20 ms frame grid)
+ * worker. The worker's own `generate.ONSET_LEAD_SEC` (30 ms, re-fitted on the exact 20 ms frame grid)
  * is ACOUSTIC TRUTH — it removes the measured LATENESS of wav2vec2/HuBERT character onsets, bias +25.3 ms
- * before it and −3.1 ms after on W4's own base-bundle column (−3.4 ms on a HuBERT-Large claim-anchored
+ * before it and −3.1 ms after on the re-fit's base-bundle column (−3.4 ms on a HuBERT-Large claim-anchored
  * document, −7.0 ms blind) — and moving it would make the published artifact lie about where the words
  * are, for every consumer including the bench. Two leads, two jobs; they compose because they are applied in
  * different layers.

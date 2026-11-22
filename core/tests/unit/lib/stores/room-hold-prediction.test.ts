@@ -13,7 +13,7 @@ import {
 } from '$lib/contract';
 
 /*
- * Proposal 14, the PHONE's half of the hold: which entry it holds (`room.heldId`), and that its optimistic add lands
+ * The PHONE's half of the On deck hold: which entry it holds (`room.heldId`), and that its optimistic add lands
  * exactly where the server commits it. The room is longest-ago order, Maya singing, Ana's song still being made AHEAD
  * of Theo's ready one — so the held entry is the next PLAYABLE one, not the first queued — and Zoe, who has never sung,
  * adds a song the policy alone would put first. The real `connect()` path with browser globals stubbed, and the commit
@@ -195,7 +195,7 @@ test('a pending add is placed against the NEW list`s singer, not the old one: Ma
 	link.queue!.addSong('ready');
 	const cmd = lastCommand();
 	// Theo now sings and Maya's 2nd song is next. Read against the old list, Maya would still be singing, her own
-	// back-to-back song would hold nothing, and Zoe's add would land first (review of #1021).
+	// back-to-back song would hold nothing, and Zoe's add would land first.
 	const after = [
 		entry('believin', 'theo', 0, { status: 'playing' }),
 		entry('maya-2', 'maya', 1),

@@ -1,7 +1,7 @@
 /*
  * CLAIM 3: THE DOCK — one fixed container holding two stacked rows, the now-playing strip and the tab bar —
  * publishes its REAL measured height as --dock-h, composes the home-indicator inset exactly once, is reserved
- * by every scrolling column, and has NO OPEN STATE. Since proposal 13 THE DOCK IS STRIP + TABS ON EVERY JOINED
+ * by every scrolling column, and has NO OPEN STATE. THE DOCK IS STRIP + TABS ON EVERY JOINED
  * SURFACE: one height whether the room is idle, queued or emptied again. Measured across both transport states
  * (none in an idle room, three buttons with a queue), both insets, and five surfaces.
  *
@@ -282,8 +282,8 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 
 	/* ── STATE A — AT REST: THE STRIP IS UP, WITH NO TRANSPORT ───────────────────────────────────────────────
 	   A virgin room has nothing playing and nothing queued. The strip still renders, so the dock has its one height,
-	   but it reads "Nothing playing" with no transport: a disabled Play beside that copy was the design review's
-	   "the brightest element on screen does nothing". Measured at 390x844 (ui:review rows): a 93px dock, strip + tab bar. */
+	   but it reads "Nothing playing" with no transport: a disabled Play beside that copy would be the brightest
+	   element on screen and do nothing. Measured at 390x844 (ui:review rows): a 93px dock, strip + tab bar. */
 	const atRest = await take(page, 'A / at rest, no transport');
 	if (atRest) {
 		expect
@@ -332,8 +332,8 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   THIS ARM IS TWO-SIDED, which is the point of the one-fixed-container arrangement. The tab bar is the DOCK's
 	   bottom-most row and the dock's SOLE declarer — not the app's: `.app-shell` spends the same inset on the
 	   scrolling column (measured padding-bottom 0→34px there too) and the dock is NOT inside it, so the two terms
-	   cannot compound. A MISSING term reads as a dock delta of 0 and a DOUBLED one as 68. Measured at 390x844 on
-	   main before proposal 13, idle: tab bar padding-bottom 0→34px and the dock's own padding-bottom 0px at both
+	   cannot compound. A MISSING term reads as a dock delta of 0 and a DOUBLED one as 68. Measured at
+	   390x844 on the earlier dock (before the strip was always present), idle: tab bar padding-bottom 0→34px and the dock's own padding-bottom 0px at both
 	   insets; the dock grows by the inset alone. */
 	await setSafeAreaInsets(page, { bottom: SIMULATED_BOTTOM_INSET });
 	// A DWELL: the override is a compositor-side change, so the cascade re-resolves and repaints before the
@@ -481,8 +481,8 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.toBe(true);
 	}
 	// THE CROSS-STATE ARM, and it is the reason this is one test: the transport appearing must not move the dock.
-	// Before proposal 13 the strip itself appeared here and the dock grew 48 → 93 at 390x844 (evidence/p13), shifting the dock's top
-	// edge on every phone in the room; the one-height dock must publish the same number in both states.
+	// A dock whose strip appeared only with a queue grew 48 → 93 at 390x844, shifting the dock's top edge
+	// on every phone in the room; the one-height dock must publish the same number in both states.
 	if (atRest && live) {
 		expect
 			.soft(
@@ -903,7 +903,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 				`${readings.filter((r) => r.transportButtons === 0).length} without`
 		)
 		.toBe(true);
-	// ONE DOCK HEIGHT ACROSS EVERY READING AT INSET 0, every state and every surface (proposal 13).
+	// ONE DOCK HEIGHT ACROSS EVERY READING AT INSET 0, every state and every surface.
 	const heights = [...new Set(readings.filter((r) => r.insetBottom === 0).map((r) => r.dockVar))];
 	expect
 		.soft(heights.length, `CLAIM 3 the dock is one height in every state: published ${JSON.stringify(heights)}`)

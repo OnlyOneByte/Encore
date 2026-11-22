@@ -2,8 +2,7 @@
  * CLAIM 6: the ratified TV states, measured on the render. The source-scan half lived in
  * tests/guards/subsystem-tv/tv-ratified-states.test.ts (deleted with that tree). Only a render settles that
  * the join URL is ONE unbreakable token (scrollWidth <= clientWidth) at a realistic long LAN address, and that
- * no roster chip is OCCLUDED — swept at 6/10/12/13 guests, because name length is load-bearing here. Ported
- * from tests/e2e/gates/measured-design.mjs.
+ * no roster chip is OCCLUDED — swept at 6/10/12/13 guests, because name length is load-bearing here.
  *
  * ONE TEST: the four roster sizes are one INCREMENTAL drive — guests are added to a room that keeps the ones
  * already in it — and the URL arm is taken once, on the first populated sweep. Each size is a soft arm, so a
@@ -37,7 +36,7 @@ const NAMES = [
 	'Persephone'
 ];
 
-/** A CSS NAMED colour, never a `#hex` literal — the habit the old driver-selector ban taught, kept because a
+/** A CSS NAMED colour, never a `#hex` literal, because a
  *  `#`-led string in a test reads as an id selector to a human too. */
 const CHIP_COLOR = 'rebeccapurple';
 

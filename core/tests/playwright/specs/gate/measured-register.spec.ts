@@ -10,13 +10,9 @@
  * fixture and no core boots for it. It is in the `gate` project because it must fail the same build the
  * measurements do — a vacuous register is not a lesser failure than a short control.
  *
- * WHAT DID NOT COME ACROSS, and why: the deleted guard also source-scanned the old gate file (that it imports
- * `connect` from driver.mjs, that it names each of the four claims, that it has no `process.exit(2)`, and that
- * `package.json` points `gate:measured` at it) and scanned the whole e2e tree for a second spelling of the
- * safe-area driver method. Every one of those is about the SHAPE of a file this port replaces: there is no
- * driver.mjs here, the no-skip rule is now structural (playwright.config.ts's globalSetup fails on an unbuilt
- * tree; world/core.ts throws when core will not answer /health), and a spec's discovery is its directory. The
- * one arm with a live subject — that every FLOORS key is actually asserted by some spec — is kept below.
+ * NO SOURCE SCAN OF THE GATE'S FILES: the no-skip rule is structural (playwright.config.ts's globalSetup fails
+ * on an unbuilt tree; world/core.ts throws when core will not answer /health), and a spec's discovery is its
+ * directory. The arm with a live subject — that every FLOORS key is actually asserted by some spec — is below.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

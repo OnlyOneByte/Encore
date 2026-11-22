@@ -24,8 +24,6 @@
 // `autoplayIsBlocked` as an explicit PREMISE first, so a broken shim can never read as a pass. The alternative,
 // `--autoplay-policy=no-user-gesture-required`, is the forbidden direction: it would prove playback in an
 // environment no television is ever in (docs/E2E.md#autoplay).
-//
-// Ported from tests/e2e/probes/p13-tap-to-start.mjs.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
@@ -39,8 +37,8 @@ async function silentTelevision(world: import('../../world/fixtures').World) {
 	const phone = await world.openPhone('Singer13');
 	await openBrowseFromHome(phone);
 	const media = await singTrack(phone, world.baseURL, TRACKS.caroline);
-	// The old probe's first check — "a singer can join and queue the processed song" — asserted through its
-	// waits: a `.qrow`, or the now-playing chrome naming the song once the server auto-started it. A PLAYING
+	// "A singer can join and queue the processed song": a `.qrow`, or the now-playing chrome naming the song
+	// once the server auto-started it. A PLAYING
 	// entry renders no `.qrow` at all, so the strip's title is the reading that covers both.
 	await expect(
 		phone.locator(SEL.npStripTitle),
@@ -121,7 +119,7 @@ test('a single real tap unblocks autoplay and the decoder runs', async ({ world 
 
 		const a = await awaitMaster(tv);
 		// A MEASUREMENT INTERVAL, not a workaround: decoded bytes are a RATE, so the claim "the decoder is
-		// running" only exists as a difference across a known dwell. 3s is the old probe's own window.
+		// running" only exists as a difference across a known dwell. 3s is that dwell.
 		await tv.waitForTimeout(3000);
 		const b = await awaitMaster(tv);
 

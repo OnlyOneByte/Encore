@@ -1,24 +1,21 @@
 // P1 — GAPLESS PLAYBACK AND AUTO-ADVANCE. Two library songs processed to real decodable audio, queued as two
-// DIFFERENT singers, and the TV dense-polled at 40ms while the whole party happens. The old probe's F1–F9
+// DIFFERENT singers, and the TV dense-polled at 40ms while the whole party happens. The F1–F9
 // findings are the questions; each group of them that needs ONE observation is one test here.
 //
 // EVERY FINDING IS ANCHORED TO THE DECODED BYTE COUNTER AND THE WALL CLOCK, never to `paused`
 // (docs/E2E.md#proving-audio). Buffering alone gives a stuck element a non-zero decoded count, so "played"
 // requires a CLIMB past a floor that preload cannot reach.
 //
-// Ported from tests/e2e/probes/p1-gapless.mjs. Four things changed, all of them stated:
-//   · SEVERITY BECOMES PASS/FAIL EXACTLY AS THE OLD PROBE SCORED IT. It `record`ed findings at four severities
-//     and exited 1 only for CRITICAL or HIGH, so those are the expects below. The MEDIUM bands it tolerated are
-//     named in comments beside the thresholds they sit under, and NOT asserted — tightening them here would be
-//     a new claim wearing a ported one's clothes.
-//   · the old header says "Autoplay is GRANTED, so this is NOT-A-TV" while its code passes no such flag. This
-//     port passes none either, and takes ONE REAL TAP on the stage instead — the product's own route out of a
-//     silent television (p13).
+// Four choices, all of them stated:
+//   · ONLY CRITICAL AND HIGH FINDINGS FAIL, so those are the expects below. The MEDIUM bands that are tolerated
+//     are named in comments beside the thresholds they sit under, and NOT asserted.
+//   · no autoplay flag is passed. The probe takes ONE REAL TAP on the stage instead — the product's own route
+//     out of a silent television (p13).
 //   · F7 asked for `.attract` after the last song. `tvScreen` returns 'lobby' whenever anyone is in the room
 //     (src/lib/tv/screen.ts), and this party has two joined singers, so the assertion is "the stage left the
 //     playing state and stopped decoding" with either screen satisfying it. Requiring `.attract` specifically
 //     would require an EMPTY room, which a two-singer gapless run is not.
-//   · both songs are processed BEFORE either is queued, as the old probe did, so the first song does not start
+//   · both songs are processed BEFORE either is queued, so the first song does not start
 //     while the second is still separating — and the sampler starts BEFORE the adds, so the opening song-intro
 //     card is inside the window rather than half outside it.
 import { test, expect } from '../../world/fixtures';
@@ -40,7 +37,7 @@ import {
 import type { Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
-/** ~25 Hz — dense enough to see a boundary the size of one video frame. The old probe's own figure, and the
+/** ~25 Hz — dense enough to see a boundary the size of one video frame, and the
  *  reason every wall-clock claim below is resolved to ±one sample. */
 const SAMPLE_MS = 40;
 /** The fixtures are 8s and ENCORE_SONG_INTRO_MS defaults to 2500, so one song-to-song cycle is ~18.5s of screen
@@ -92,7 +89,7 @@ function firstPlaybackSample(samples: Sample[], srcMatch: (src: string) => boole
 	);
 }
 
-/** Distinct decoded-carrying src strings so far — the old probe's early-exit signal for "both songs were seen". */
+/** Distinct decoded-carrying src strings so far — the early-exit signal for "both songs were seen". */
 function distinctDecodedSrcs(samples: Sample[]): Set<string> {
 	const seen = new Set<string>();
 	for (const row of samples) {
@@ -237,8 +234,8 @@ test('F3 · the song-to-song boundary is neither a dead-air seam nor double audi
 		// Reported on a pass too, so drift shows before it crosses the budget.
 		console.log(`F3 ${detail}`);
 		test.info().annotations.push({ type: 'F3 seam', description: `${deltaMs}ms` });
-		// The A/B swap is one composited frame with no network, so low tens of ms is the shape. The old probe scored
-		// >400ms and <-80ms HIGH (a failing run) and 150..400ms MEDIUM (tolerated) — both HIGH thresholds are here.
+		// The A/B swap is one composited frame with no network, so low tens of ms is the shape. >400ms and
+		// <-80ms are HIGH (a failing run) and 150..400ms MEDIUM (tolerated) — both HIGH thresholds are here.
 		expect(deltaMs, `past ~250ms is an audible dead-air seam. ${detail}`).toBeLessThanOrEqual(400);
 		expect(deltaMs, `negative is double audio. ${detail}`).toBeGreaterThanOrEqual(-80);
 
@@ -268,7 +265,7 @@ test('F4/F9 · one voice at a time, with the next song really pre-warmed', async
 		const isSong1 = matcherFor(song1);
 		const isSong2 = matcherFor(song2);
 		// F4 · DOUBLE AUDIO: do two srcs grow their decoded counters inside one sample window? A SINGLE such window
-		// is sampling jitter — both counters moved between the same two reads — so the old probe scored 1 window LOW,
+		// is sampling jitter — both counters moved between the same two reads — so 1 window scores LOW,
 		// 2–3 MEDIUM, and only >3 HIGH. That last threshold is the assertion.
 		let simulRows = 0;
 		let firstSimulT = -1;
@@ -329,11 +326,11 @@ test('F5 · the song-intro card is rendered, holds its nominal beat, and names i
 	const { samples, singer1, singer2, worker } = await observeParty(world);
 	try {
 		// ENCORE_SONG_INTRO_MS defaults to 2500ms and the room goes openedOnce=false → true, so the card should
-		// appear at least once at the start of song 1 and once at the swap. The old probe asserted only its
-		// PRESENCE and then judged each card it actually saw, so a missing SECOND card is not a failure here
-		// either — it is a number in this message. (It IS missing on this tree: `onprewarmed` hands
+		// appear at least once at the start of song 1 and once at the swap. Only its PRESENCE is
+		// asserted, then each card actually seen is judged, so a missing SECOND card is not a failure here — it
+		// is a number in this message. (It IS missing on this tree: `onprewarmed` hands
 		// `ctl.onHiddenReady` a MEDIA id while the controller compares it against an ENTRY id, so the gapless swap
-		// never fires and the between-songs card never gets its way in. See this port's report.)
+		// never fires and the between-songs card never gets its way in.)
 		const cards = introCards(samples);
 		expect(
 			cards.length,
@@ -342,7 +339,7 @@ test('F5 · the song-intro card is rendered, holds its nominal beat, and names i
 		).toBeGreaterThanOrEqual(1);
 		for (const [k, c] of cards.entries()) {
 			const held = samples[c.endI]!.wallMs - samples[c.startI]!.wallMs;
-			// Nominal 2500ms, ±SAMPLE_MS at each edge. The old probe scored |drift| > 400ms MEDIUM and > 1200ms
+			// Nominal 2500ms, ±SAMPLE_MS at each edge. |drift| > 400ms scores MEDIUM and > 1200ms
 			// HIGH; only the HIGH threshold is asserted.
 			expect(
 				Math.abs(held - 2500),
@@ -364,11 +361,11 @@ test('F5 · the song-intro card is rendered, holds its nominal beat, and names i
 
 test('F6 · the lower third stops naming the previous singer at the swap', async ({ world }) => {
 	// ══ RE-AIMED AT THE PLAYBACK FLOOR, for the same reason as F3. ══
-	// The old probe read the name "during song 2" three samples after song 2's FIRST DECODED BYTE — which is the
+	// Reading the name "during song 2" three samples after song 2's FIRST DECODED BYTE lands in the
 	// pre-warm burst, taken while song 1 is still on screen and the lower third correctly still names song 1's
-	// singer. So it compared two moments inside song 1 and could only ever report "the name never changed".
-	// The claim itself is unchanged: the wall must stop naming the previous singer once the next song is playing.
-	// Only the moment it is read at moved, to when song 2 is actually being HEARD.
+	// singer. That compares two moments inside song 1 and can only ever report "the name never changed".
+	// The claim: the wall must stop naming the previous singer once the next song is playing, so the
+	// name is read when song 2 is actually being HEARD.
 	const { samples, song1, song2, worker } = await observeParty(world);
 	try {
 		const w1 = decodingWindow(samples, matcherFor(song1));

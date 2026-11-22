@@ -169,7 +169,7 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 		await expect(fan.locator(SEL.npCheerKey)).toBeFocused();
 
 		// The link drops with the tray open: "Reconnecting…" wins the title slot at once, not when the tray's 6 s
-		// timer runs out (review pr-1019-1020: 7.46 s), and the key rests, so no tap can be dropped silently.
+		// timer runs out (once measured at 7.46 s), and the key rests, so no tap can be dropped silently.
 		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
 		await expect(fan.locator(SEL.npCheers)).toHaveCount(1);
 		const dropped = Date.now();

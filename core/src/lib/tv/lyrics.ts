@@ -26,11 +26,11 @@ export interface LyricLine {
 	// Which abstract duet PART sings this line, written only when the worker's diarization is CONFIDENT: a solo or a
 	// low-confidence result leaves it undefined, which reads as one colour for the whole song. Never an identity.
 	// `part` ONLY: the v2 worker wrote the diarizer's raw `speaker` on every line it could attribute, with none of the
-	// song-level duet checks (review M15), so a document still carrying it is read as unattributed, not as a duet.
+	// song-level duet checks, so a document still carrying it is read as unattributed, not as a duet.
 	part?: string;
 	/** Per-line verdict from the worker's grading: `low` marks a line whose placement nothing could vouch
 	 *  for (a repeated chorus with no claims to anchor WHICH occurrence — the decode can bind a repeat to the
-	 *  wrong one, and since W6 the CTC trellis says how ambiguous the placement was). `wipesWords` is what
+	 *  wrong one, and the CTC trellis says how ambiguous the placement was). `wipesWords` is what
 	 *  reads it; absent on v1 documents. */
 	confidence?: LyricsConfidence;
 }
@@ -38,7 +38,7 @@ export interface LyricLine {
 /**
  * Should this line get the WORD-BY-WORD wipe, or only the line-level highlight?
  *
- * THE ONE READER of per-line `confidence` (worker review §3.7's "a consumer, or the signal is worthless").
+ * THE ONE READER of per-line `confidence` (a grade with no consumer is a worthless signal).
  * A word wipe is a claim about WHERE INSIDE THE LINE the singer is; a `low` grade says the worker could
  * not vouch for where the line itself sits, so a ball sweeping its words asserts precision the document
  * does not have. Lighting the whole row instead says only "this line is being sung", which is the same
@@ -294,7 +294,7 @@ export function activeWordIndex(line: LyricLine, pos: number): number {
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. `vouched` is in it because the
  *  "not verified" treatment reads `isAuthoritativeText`, and a wrong-text gate's doubt rides on that field
- *  rather than on `textConfidence` (W3 review r2): without it a doubt-band document would render as verified. */
+ *  rather than on `textConfidence`: without it a doubt-band document would render as verified. */
 export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing' | 'vouched'>;
 
 /** Should the lyrics render in the "not verified" visual treatment? */

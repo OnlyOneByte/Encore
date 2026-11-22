@@ -3,7 +3,7 @@
 // already shows the new one (`$lib/transport-target` keeps the strip naming the last song for a second), so "That
 // song already ended." read as wrong there. A key or guide change was made on a card that still showed the old song,
 // and for those it is the plain truth. So it is once the room has gone idle: no new song, so nothing to tap again
-// for (review of #985, must-fix 1). Guest words, straight apostrophes, and the last two words joined by a no-break
+// for. Guest words, straight apostrophes, and the last two words joined by a no-break
 // space (\u00a0) so no word sits alone on the second line at 390 or 320.
 import type { TargetedCommand } from '$lib/contract';
 

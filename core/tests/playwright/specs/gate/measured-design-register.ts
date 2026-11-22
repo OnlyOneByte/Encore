@@ -1,7 +1,6 @@
 /*
- * THE CONTROL REGISTER AND THE MEASURED NUMBERS — data only, no driving. Ported from
- * tests/e2e/gates/measured-design-register.mjs with every entry and every reason intact. The quarantine rules
- * are in docs/E2E.md#gates.
+ * THE CONTROL REGISTER AND THE MEASURED NUMBERS — data only, no driving. Every entry carries its reason.
+ * The quarantine rules are in docs/E2E.md#gates.
  *
  * ITS VERIFIER IS GONE. The register used to be read by `tests/guards/wiring/measured-design-gate.test.ts`,
  * which ran in `bun test` on every box and asserted the register is non-vacuous, that every quarantine entry

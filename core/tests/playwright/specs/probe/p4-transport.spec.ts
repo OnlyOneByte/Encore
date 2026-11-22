@@ -1,5 +1,5 @@
-// P4 — TRANSPORT, SEEK AND POSITION TELEMETRY. Each arm keeps its `T<n> ·` name from the old probe, so a
-// failure here still matches the arm it was filed under.
+// P4 — TRANSPORT, SEEK AND POSITION TELEMETRY. Each arm carries a `T<n> ·` name, so a failure here
+// matches the arm it was filed under.
 //
 // THE PHONE BAR IS ONLY AUTHORITATIVE AT PAUSE. `displayPos` interpolates from the last playback:state anchor
 // plus a wall clock, so during PLAY it climbs perfectly even while telemetry is dropping. Every phone-bar
@@ -10,14 +10,12 @@
 //
 // See docs/E2E.md#proving-audio — every arm is anchored to the decoded byte counter, never to `paused` alone.
 //
-// Ported from tests/e2e/probes/p4-transport.mjs. EVERY ARM HERE IS A TRANSPORT ARM — pause, resume, seek,
-// restart, skip — so none of them lost its subject when the now-playing sheet was deleted; the sheet only ever
-// appeared in this header. What moved is WHERE the controls are: all three live in the docked strip
-// (NowPlayingStrip.svelte), which has no open state, so none of them needs a gesture to reach. `play/pause` as an
-// aria-label is still retired in world/selectors.ts, for the original reason — it resolved against nothing while
-// reading as though the flow worked.
+// EVERY ARM HERE IS A TRANSPORT ARM — pause, resume, seek, restart, skip. All three controls live in the docked
+// strip (NowPlayingStrip.svelte), which has no open state, so none of them needs a gesture to reach. `play/pause`
+// as an aria-label is retired in world/selectors.ts — it resolved against nothing while reading as though the
+// flow worked.
 //
-// THE PHONE'S SPELLED CLOCK MOVED ROUTES, which is the one thing here that is more than a rename. The strip
+// THE PHONE'S SPELLED CLOCK IS ON /queue. The strip
 // carries an `aria-hidden` progress hairline and no numbers; the elapsed and remaining readouts live on /queue's
 // now-playing card. `phoneElapsed` below therefore reads a surface its caller has to navigate to first.
 import { test, expect } from '../../world/fixtures';
@@ -50,12 +48,11 @@ function parseClock(text: string | null): number | null {
 }
 
 /**
- * The elapsed clock on /queue's now-playing card. The old probe also captured the fill's scaleX; nothing asserted
- * on it, and the strip's progress is an `aria-hidden` hairline with no readout, so only the clock is read.
+ * The elapsed clock on /queue's now-playing card. The strip's progress is an `aria-hidden` hairline with no
+ * readout, so only the clock is read.
  *
- * THE CALLER MUST BE ON /queue. This used to read `.seekrow .time` in the sheet's body, which was reachable from
- * any phone surface; the phone spells its clock in exactly one place now, so this is a route change and not a
- * selector swap. It stays a bare read rather than navigating itself because its caller polls it.
+ * THE CALLER MUST BE ON /queue: the phone spells its clock in exactly one place. It stays a bare read rather
+ * than navigating itself because its caller polls it.
  */
 async function phoneElapsed(phone: Page): Promise<{ text: string | null; seconds: number | null }> {
 	const text = await phone.locator(SEL.queueElapsed).first().textContent();
@@ -65,7 +62,7 @@ async function phoneElapsed(phone: Page): Promise<{ text: string | null; seconds
 /**
  * Let the playhead reach `seconds` before acting on it. A PRECONDITION, not a dwell: "pause did not seek to 0"
  * and "the phone's clock did not reset to 0:00" are only distinguishable from a fresh start once the song has
- * genuinely got somewhere, and the old probe had that for free because it measured for 2.5s first.
+ * genuinely got somewhere.
  */
 async function awaitPlayhead(tv: Page, seconds: number): Promise<void> {
 	await expect
@@ -380,8 +377,8 @@ test('T1e/T1f · skip advances to the next song and that song decodes', async ({
 // still RUNS and still fails for the documented reason, so the observation stays alive — and if the behaviour ever
 // changes in either direction, this goes red and someone has to look. Re-decide by deleting this annotation.
 //
-// NOT rewritten to assert that advancing is correct, because nobody has claimed that. The old probe flagged it too
-// and exited 1 for it, so both suites agree on what the product does; only its severity is a judgement call.
+// NOT rewritten to assert that advancing is correct, because nobody has claimed that. What the product does is
+// not in doubt; only its severity is a judgement call.
 test('T2-oob · a seek beyond the duration must not advance the rotation', async ({ world }) => {
 	// INSIDE the body, deliberately: `test.fail()` at file scope applies to every test in the file, not the next
 	// one — it turned the other ten green tests in here into failures when written that way.
@@ -389,7 +386,7 @@ test('T2-oob · a seek beyond the duration must not advance the rotation', async
 		true,
 		'a seek past EOF advances the rotation — deferred by the owner, so this records the behaviour rather than gating on it'
 	);
-	// The assertion is the OLD PROBE'S, defect-name and all: it asserts the rotation does NOT advance, and its own
+	// The assertion names the defect: it asserts the rotation does NOT advance, and its own
 	// message says what it observed instead. Any joined singer can force-skip a song — and possibly chain through
 	// several — by seeking past EOF, which is why it was written as an authority claim rather than a transport one.
 	const { worker, phones } = await stage(world, [TRACKS.caroline, TRACKS.believin, TRACKS.bohemian], 2);
@@ -437,12 +434,10 @@ test('T6 · skipping the last song returns the server to no-current', async ({ w
 });
 
 test('T5 · there is NO transport at all when there is nothing to play', async ({ world }) => {
-	/* A STRONGER CLAIM THAN THIS ARM USED TO MAKE, and the rewrite is the point rather than a concession. It
-	   asserted that restart, play/pause and skip were each `disabled` on a drained room. The band rendered
-	   permanently, so `disabled` was the best answer available — and it left the design review's finding standing:
-	   the brightest element on an idle screen was a filled play button that did nothing. Since proposal 13 the
-	   strip stays, so the dock keeps one height, but on a drained room it reads "Nothing playing" and has no
-	   transport at all, not a disabled one. The dock and the tab bar must still be ATTACHED, because the bottom of
+	/* A STRONGER CLAIM THAN "each control is `disabled`": a disabled filled play button would be the brightest
+	   element on an idle screen and do nothing. The strip stays, so the dock keeps one height, but on a drained
+	   room it reads "Nothing playing" and has no transport at all, not a disabled one. The dock and the tab bar
+	   must still be ATTACHED, because the bottom of
 	   the screen is still navigation. */
 	const { worker, phones, tv } = await stage(world, [TRACKS.caroline], 1);
 	const phone = phones[0]!;

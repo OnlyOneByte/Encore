@@ -1,7 +1,5 @@
-// THE fixture. Everything a spec needs to make a real party happen, and the only place that knows how.
-//
-// Replaces, across the old tests/e2e tree: 31 readings of EPORT, 28 hand-rolled /health polls, 14 server
-// spawns, 21 scratch-directory dances, 25 browser launches, and 17 copies of bail().
+// THE fixture. Everything a spec needs to make a real party happen, and the only place that knows how: the
+// port, the /health poll, the server spawn, the scratch directory and the browser launch.
 //
 // WHY A CORE PER TEST, not per worker. The room code renders on /tv only while the room is EMPTY, and a boot
 // mints exactly one room — so two tests sharing a core cannot both start from a virgin room, and the second
