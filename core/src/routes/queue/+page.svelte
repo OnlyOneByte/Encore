@@ -9,6 +9,8 @@
 	   not in the queued list, so putting them under the list would separate a control from its subject by the whole
 	   scroll height of a party's queue. */
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { navigating } from '$app/state';
 	import {
 		SINGER_COLORS,
 		songDisplay,
@@ -52,6 +54,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import OnDeckCard from '$lib/components/OnDeckCard.svelte';
 	import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
+	import { cardScrollTarget, firstTimeFor, guestIsDriving } from '$lib/card-to-you';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { NOW_SINGING, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
@@ -475,6 +478,75 @@
 	$effect(() => {
 		if (deckHeadsUp && deckEntry) buzzOnce(deckEntry.id, navigator.vibrate?.bind(navigator));
 	});
+
+	/* YOUR CARD COMES TO YOU (proposal 13). When your On deck card turns heads-up, or your queued song's card turns
+	   failed, and its first control sits under the dock (at 320x568 the heads-up card starts below the dock's top
+	   edge whatever the dock's height), the page scrolls that card up to just below the sticky header. Once per
+	   entry, only your own card, smooth or instant under reduced motion, and never within CARD_SCROLL_QUIET_MS of
+	   the guest's own touch, wheel or key: a scroll is not a layout shift, but it must not fight a thumb. The failed
+	   card is found by its index among `.qrow`, which renders `queued` in order (see the list below). */
+	const myFailedIdx = $derived(
+		queued.findIndex(
+			(e) =>
+				e.singerId === me?.id && queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId)) === 'failed'
+		)
+	);
+	let lastInputMs: number | null = null;
+	$effect(() => {
+		const mark = () => (lastInputMs = performance.now());
+		const kinds = ['pointerdown', 'touchstart', 'wheel', 'keydown'] as const;
+		for (const k of kinds) window.addEventListener(k, mark, { capture: true, passive: true });
+		return () => {
+			for (const k of kinds) window.removeEventListener(k, mark, { capture: true });
+		};
+	});
+	/* NOT BEFORE THE ARRIVAL HAS SETTLED: on a client-side navigation to /queue, SvelteKit resets the scroll to the
+	   top after this page mounts, which cancels a smooth scroll started at mount (measured: target computed, page
+	   left at 0). `afterNavigate` runs once that is done.
+	   AND NOT ONLY THEN: since #996 the root layout renders this page only once /api/me answers, so on a hard load
+	   (a reload, or a phone tab the browser discarded while it slept) the page mounts after SvelteKit's first
+	   navigation has finished and its scroll reset has run, and `afterNavigate` never fires for it. A mount with no
+	   navigation in flight has already arrived. */
+	let arrived = $state(false);
+	afterNavigate(() => (arrived = true));
+	onMount(() => {
+		if (!navigating.to) arrived = true;
+	});
+	$effect(() => {
+		if (!arrived) return;
+		const wants: { id: string; find: () => Element | null | undefined }[] = [];
+		if (deckHeadsUp && deckEntry)
+			wants.push({ id: deckEntry.id, find: () => document.querySelector('.deck.heads-up') });
+		const failed = queued[myFailedIdx];
+		if (failed) wants.push({ id: failed.id, find: () => document.querySelectorAll('.qrow')[myFailedIdx] });
+		for (const w of wants) if (firstTimeFor(w.id)) void tick().then(() => bringUp(w.find()));
+	});
+	async function bringUp(card: Element | null | undefined): Promise<void> {
+		const control = card?.querySelector('button');
+		if (!card || !control) return;
+		/* GEOMETRY AFTER ANY SETTLE. A card that needs you can turn up in the frame the Now card changes, while the list
+		   under it is still held by a transform easing home; a rect read then is off by the hold's distance. So wait for
+		   every animation on the card or anything holding it, then read. Under reduced motion there is none to wait for. */
+		const holding = document
+			.getAnimations()
+			.filter((a) => a.effect instanceof KeyframeEffect && !!a.effect.target?.contains(card))
+			// An endless one (a pulse) never finishes and moves nothing the target depends on.
+			.filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
+		await Promise.allSettled(holding.map((a) => a.finished));
+		if (!card.isConnected || guestIsDriving(lastInputMs, performance.now())) return;
+		const root = getComputedStyle(document.documentElement);
+		const top = cardScrollTarget({
+			cardTop: card.getBoundingClientRect().top,
+			controlBottom: control.getBoundingClientRect().bottom,
+			headerBottom: document.querySelector('.page-header')?.getBoundingClientRect().bottom ?? 0,
+			dockTop: document.querySelector('.dock')?.getBoundingClientRect().top ?? window.innerHeight,
+			scrollY: window.scrollY,
+			gap: parseFloat(root.getPropertyValue('--space-sm')) || 0
+		});
+		if (top === null) return;
+		const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+		window.scrollTo({ top, behavior: still ? 'instant' : 'smooth' });
+	}
 	const deckNotYet = $derived(
 		deckEntry
 			? notYetTarget(queued, deckEntry.id, (e) =>
