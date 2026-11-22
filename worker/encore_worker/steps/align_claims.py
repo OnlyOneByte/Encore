@@ -101,7 +101,7 @@ _REPAIR_PAD_SEC = 1.0
 
 #: The widest BACKWARD move a re-opening may make, seconds. The rule exists for the 0.5-2 s band, and 2 s is
 #: where a gross line begins (the bench's own `GROSS_SEC`); `skipped_opening`'s other bound is the re-decode's
-#: own duration, which a merged cue outruns without ever biting (review r2-correctness-3).
+#: own duration, which a merged cue outruns without ever biting.
 _REOPEN_MAX_SEC = 2.0
 
 
@@ -119,7 +119,7 @@ class _Claims:
     windows: dict[int, tuple[float, float]]
     #: Lines whose cue wrote a USABLE end of its own — after its start, so neither a defaulted end nor a
     #: zero-length or reversed one. Only such an end may be READ (`skipped_opening`, `end_bias`): LOG.md,
-    #: "Caption cues: the two populations a duration floor separates"; review r2-correctness-4.
+    #: "Caption cues: the two populations a duration floor separates".
     ends_given: set[int]
 
 

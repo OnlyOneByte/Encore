@@ -195,7 +195,7 @@ def char_ids(
         token = dictionary.get(ch)
         if token is None:
             if not ch.isalpha():
-                continue  # the fold is a LETTER's (see above); a symbol is dropped as it was before W7
+                continue  # the fold is a LETTER's (see above); a symbol is dropped, as it always was
             for folded in _folds(ch, fold):
                 code = dictionary.get(folded) if folded.isalpha() else None
                 if code is not None and code not in excluded:
@@ -267,8 +267,8 @@ class _SlicedEmissions:
     log_probs: Any
     frame_sec: float
     dictionary: Mapping[str, int]
-    #: Carried from the sliced matrix, so a repair decode reads the same blank column the global one did
-    #: (review M9). Without it `regenerate`'s inner `generate` would fall back to 0 on exactly the models
+    #: Carried from the sliced matrix, so a repair decode reads the same blank column the global one did.
+    #: Without it `regenerate`'s inner `generate` would fall back to 0 on exactly the models
     #: where 0 is a letter.
     blank_id: int = 0
     #: Carried one filter further out, so a repair decode drops exactly the ids the global decode dropped. It
@@ -474,7 +474,7 @@ def reopened_line(line: Line, start: float) -> Line | None:
     For a decode that heard the line but not its OPENING — a sustained leading vowel the forced path absorbs
     into blank. Only the opening boundary moves; the first word's onset is the SHEET'S, so it is CUE_OPENED
     and scores 0.0. REFUSED when no OTHER word is aligned: that leaves the line unmeasured and graded `low`,
-    which is an adoption with a kept end (docs/arch/04-alignment.md §4, review r2-spec-12).
+    which is an adoption with a kept end (docs/arch/04-alignment.md §4).
     """
     if not line.words or not start < line.words[0].end or start >= line.start:
         return None

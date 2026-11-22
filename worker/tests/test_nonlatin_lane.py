@@ -1,8 +1,8 @@
-"""The NON-LATIN lane (W8 stage 0): a routed bundle has no wrong-text gate, so it may publish LINES only.
+"""The NON-LATIN lane: a routed bundle has no wrong-text gate, so it may publish LINES only.
 
 Routing a CJK/Cyrillic/Arabic script onto its own bundle is default-ON, and no bundle but the English ones
 has a `lexical.CALIBRATED` row — so on that lane the lift cannot refuse, the doubt band cannot grade and the
-placement margin abstains. W7 closed the GLOBAL engine's word document on it; these tests hold the whole lane
+placement margin abstains. The GLOBAL engine's word document is closed on it; these tests hold the whole lane
 to one rule: words need a witness (a calibration row, or a transcript of this very audio), the WINDOWED
 engine included, and what the lane does publish is the sheet's own line timings, unvouched.
 docs/arch/04-alignment.md §5.4.
@@ -69,7 +69,7 @@ THAI_RUNS = (
     "ฃคฅฆงจฉชซฌญฎฏฐฑฒณด",
 )
 
-#: The shape review r2-spec-8 measured: Thai DOMINANT, with enough Latin letters per line for the lift to be
+#: The script-fallback shape: Thai DOMINANT, with enough Latin letters per line for the lift to be
 #: measurable and for the English bundle to decode something. So the gate finds a row, measures a lift on the
 #: Latin remnant, and used to publish word timings for the Thai bulk nothing read.
 MIXED_SHEET = tuple(f"{thai} {english}" for thai, english in zip(THAI_RUNS, SUNG_WORDS, strict=True))
@@ -146,11 +146,11 @@ def test_words_need_a_calibration_row_or_a_transcript_of_this_audio() -> None:
     assert lexical.may_time_words(None, heard_on_this_audio=False) is False
     assert lexical.may_time_words(None, heard_on_this_audio=True) is True
     # AND THE ROW IS A BUNDLE'S: a script no bundle is for reaches the English row by fallback, which was
-    # fitted on text that vocabulary can spell (review r2-spec-8).
+    # fitted on text that vocabulary can spell.
     assert lexical.may_time_words(lexical.BANDS, heard_on_this_audio=False, nonlatin_script="Thai") is False
     assert lexical.may_time_words(lexical.BANDS, heard_on_this_audio=True, nonlatin_script="Thai") is True
     assert lexical.may_time_words(lexical.BANDS, heard_on_this_audio=False, nonlatin_script="") is True
-    # AND SINCE W10 THE ROW IS A PAIR'S, so the rule turns on the ROW's own language and not on the script
+    # AND THE ROW IS A PAIR'S, so the rule turns on the ROW's own language and not on the script
     # alone: a Han text holding an ENGLISH row found a FALLBACK and is still declined, while the same text
     # on its own calibrated pair is the first non-Latin WORD document this lane allows. The language is read
     # OFF THE ROW, so these two cases cannot be made to disagree by a caller passing the wrong one.
@@ -217,7 +217,7 @@ async def test_a_cjk_sheet_publishes_its_line_timings_unvouched_and_never_words(
 async def test_a_wrong_cjk_text_times_no_words_either_and_the_reason_is_the_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Another sheet's Han words on this song's clock: the shape the review rated HIGH, because on this lane
+    """Another sheet's Han words on this song's clock: the shape rated HIGH severity, because on this lane
     the lift cannot refuse it. It declines for want of a gate rather than being judged — the honest answer,
     and the one that cannot publish a wrong text as word timings."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
@@ -232,7 +232,7 @@ async def test_a_wrong_cjk_text_times_no_words_either_and_the_reason_is_the_bund
 
 
 async def test_a_windowed_aligner_times_no_words_on_a_routed_bundle(tmp_path: Path) -> None:
-    """The other word-timing exit, which W7 left open: an `Aligner` with no `emissions` reads no matrix, so
+    """The other word-timing exit, once left open: an `Aligner` with no `emissions` reads no matrix, so
     no lift can be measured on any bundle — and every calibration row is an English bundle's. A routed
     language therefore declines here too, and the English default keeps the behaviour it was measured on."""
     stem = sung_stem(tmp_path)
@@ -256,8 +256,8 @@ async def test_a_windowed_aligner_times_no_words_on_a_routed_bundle(tmp_path: Pa
 
 async def test_the_windowed_engine_keeps_the_two_exemptions_the_global_one_has(tmp_path: Path) -> None:
     """A transcript's words were heard on THIS recording, so they can be misheard but never another song's;
-    a human PIN publishes anyway, all-`low` and unvouched, as `_time_text_global` has it (review r1-tests-21);
-    `h3-ungated-words` is the control that restores the pre-W8 behaviour for a measurement."""
+    a human PIN publishes anyway, all-`low` and unvouched, as `_time_text_global` has it;
+    `h3-ungated-words` is the control that restores the ungated behaviour for a measurement."""
     stem = sung_stem(tmp_path)
     heard = await impl(tmp_path, reporter=Reporter(), aligner=WindowedAligner()).time_text(
         request(tmp_path, sheet(HAN_SHEET, tier=Tier.ASR), stem, language="zh")
@@ -275,7 +275,7 @@ async def test_the_windowed_engine_keeps_the_two_exemptions_the_global_one_has(t
     assert isinstance(chosen, TimedDoc), "a person's own text is not declined out from under them"
     assert chosen.confidence == "low" and chosen.vouched is False
     assert ("align-windowed", "pin-unvouched", None) in out.states
-    # THE GRADE IS ON THE LINES, not only on the record (review r2-correctness-4 / r2-tests-14): core's
+    # THE GRADE IS ON THE LINES, not only on the record: core's
     # `wipesWords` keeps the word-by-word wipe for a line with NO grade, so the trail's "every line graded
     # low" has to be true of the published document too.
     published = json.loads((tmp_path / chosen.ref).read_text(encoding="utf-8"))
@@ -373,8 +373,8 @@ async def test_the_romaniser_is_built_off_the_event_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """uroman spends ~2 s building its tables and the factory is asked per published document, so building it
-    ON the loop stalls every other job this worker is running — progress frames and the heartbeat included
-    (review r1-correctness-3). A display extra may not cost that."""
+    ON the loop stalls every other job this worker is running — progress frames and the heartbeat included.
+    A display extra may not cost that."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
     stem = sung_stem(tmp_path)
     built: list[int] = []
@@ -405,7 +405,7 @@ def test_the_shipped_worker_wires_the_factory_and_not_one_romaniser() -> None:
     assert root.build_adapters(Config(), device="cpu").romanizer is romanize.build_romanizer
 
 
-# ── the script the language cannot carry (review r2-spec-8) ───────────────────────────────────────────
+# ── the script the language cannot carry ──────────────────────────────────────────────────────────────
 
 
 def test_a_script_no_bundle_exists_for_falls_back_to_english_and_detect_says_so() -> None:
@@ -422,7 +422,7 @@ def test_a_script_no_bundle_exists_for_falls_back_to_english_and_detect_says_so(
 async def test_a_script_no_bundle_exists_for_times_no_words_on_the_calibrated_english_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2-spec-8: the lane's rule was read off the LANGUAGE the fallback picked, so a Thai sheet took
+    """The lane's rule was once read off the LANGUAGE the fallback picked, so a Thai sheet took
     the English bundle, found its calibration row and published word timings `high` and VOUCHED — the lift
     having measured the Latin remnant of a text whose bulk no vocabulary here spells. The rule is the TEXT's
     script now, so the attempt declines and the LINE_SYNC rung is what the room gets."""
@@ -514,8 +514,8 @@ async def test_the_unit_rules_are_built_off_the_event_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`mms-roman` builds uroman or cutlet inside `units.rules_for` — 2.23 s for `ko` on the box this was
-    measured on — and the display romaniser's fix did not cover this sibling path (review r2-correctness-3 /
-    r2-spec-10). Every one of the three call sites must be off the loop."""
+    measured on — and the display romaniser's fix did not cover this sibling path.
+    Every one of the three call sites must be off the loop."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
     built: list[int] = []
     real = units.rules_for
@@ -550,7 +550,7 @@ async def test_the_unit_rules_are_built_off_the_event_loop(
 async def test_the_unit_arm_reaches_the_steps_own_decode_and_its_lexical_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2-tests-13: nothing ran a W8 arm through `AlignStepsImpl`, so all eleven step-level `units=`
+    """Nothing ran a non-Latin arm through `AlignStepsImpl`, so all eleven step-level `units=`
     wirings survived mutation to None. This drives the real step on a Han sheet and reads the two things the
     arm must change: the PUBLISHED words are per-hanzi, and the lexical lift — whose shuffle is the unit
     rule's — is a different number from the whitespace rule's on the same matrix and the same text.
@@ -594,7 +594,7 @@ async def test_the_unit_arm_reaches_the_steps_own_decode_and_its_lexical_gate(
     # to, under the same control arm the bench measures it with.
     assert all("no lexical calibration for" in why for why in armed_why if "lexical" in why)
     english = ml.align_model_name("en")
-    # A row for (that bundle, zh): the key is a PAIR since W10, so the English row does not answer for a
+    # A row for (that bundle, zh): the key is a PAIR, so the English row does not answer for a
     # Chinese text on the English bundle — which is the borrow `calibration` refuses (XA-21). One is pasted
     # in here so the arm's reach into `lexical.lift` is readable at all.
     monkeypatch.setitem(
@@ -639,7 +639,7 @@ POSITIONAL_UNITS = {"_measured_lift": 2, "alignable_chars": 2, "letters_of": 3}
 
 
 def test_every_target_builder_in_the_step_is_given_the_attempts_own_unit_rules() -> None:
-    """Review r2-tests-13: all eleven step-level `units=` wirings survived mutation to None and the suite
+    """All eleven step-level `units=` wirings survived mutation to None and the suite
     stayed green, most of them being arm-only or repair-only paths a hermetic test cannot all reach. The two
     reachable ones have behavioural tests above; this reads the remaining ones as SOURCE, which is the only
     thing that can fail for a decode nothing in this suite runs.
@@ -690,8 +690,8 @@ def _callee(node: object) -> str:
 
 
 def _align_step_paths() -> list[Path]:
-    """Every module of the align step (`steps/align_*.py`), for the source guard above — W10 split the
-    step's module-level helpers into siblings, and a scan of one file would no longer see them all."""
+    """Every module of the align step (`steps/align_*.py`), for the source guard above — the step's
+    module-level helpers live in siblings, and a scan of one file would no longer see them all."""
     from encore_worker.steps import align_steps  # noqa: PLC0415
 
     assert align_steps.__file__ is not None
@@ -703,7 +703,7 @@ def _align_step_paths() -> list[Path]:
 async def test_the_romaniser_factory_is_asked_with_the_texts_own_script(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2-correctness-2: the factory was routed by LANGUAGE alone, and `detect` answers `en` for every
+    """The factory was once routed by LANGUAGE alone, and `detect` answers `en` for every
     script `SCRIPT_LANGUAGES` cannot name — so a Thai, Bengali or Armenian line got no second script at all
     though uroman ships tables for it. The step hands over the text's own script beside its language."""
     monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
@@ -732,7 +732,7 @@ async def test_the_romaniser_factory_is_asked_with_the_texts_own_script(
 def test_the_mms_bundle_is_refused_where_no_transliterator_can_be_built(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Review r2-spec-11: `mms-roman` switched the bundle to MMS_FA on the ARM NAME alone, while the
+    """`mms-roman` once switched the bundle to MMS_FA on the ARM NAME alone, while the
     romanised targets it exists to pair with come from the `romanize` extra — so on a box with `nonlatin` and
     not `romanize` every target was dropped by `char_ids` and the attempt died as "no line in this text
     carries an alignable character". The pairing is refused at the composition root instead."""

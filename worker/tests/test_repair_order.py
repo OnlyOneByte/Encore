@@ -7,7 +7,7 @@ every word inside its line. A backwards start makes the highlight jump and `deci
 timing. The property runs PER SEED so one violation names its seed, and every test runs on BOTH arms: the
 default, whose 4 known-inverting seeds keep `xfail(strict=True)`, and `m2-order-clamp`, which passes all 32.
 
-The scenarios, the four pre-W1 violations, what the arm costs and the mutation that justifies the per-seed
+The scenarios, the four original violations, what the arm costs and the mutation that justifies the per-seed
 shape are in docs/benchmarks/forced-alignment/LOG.md, "The repair-order property test, seed by seed".
 """
 
@@ -44,11 +44,11 @@ WORDS = (
 #: The seeds. 32 scenarios take about 5 s through the real `time_text`, including one ffmpeg read each.
 SEEDS = range(32)
 
-#: The seeds that published backwards word starts before W1 — review M2's three shapes (see above). The
+#: The seeds that once published backwards word starts — the three shapes (see above). The
 #: default clamp still does; the `m2-order-clamp` arm does not.
 FORMERLY_M2 = (2, 6, 12, 30)
 
-#: The two clamps every test here runs on: the shipped default and review M2's arm.
+#: The two clamps every test here runs on: the shipped default and the order-clamp arm.
 ARMS: Mapping[str, Config] = {
     "default": Config(),
     "m2-order-clamp": Config(align_experiments=frozenset({"m2-order-clamp"})),
@@ -260,7 +260,7 @@ def test_this_test_reads_out_of_order_exactly_as_measure_counts_it(
     assert not drifted, "\n".join(drifted)
 
 
-#: (arm, seed) for the property: the default's M2 seeds are STRICT xfails, so a default that stops
+#: (arm, seed) for the property: the default's `FORMERLY_M2` seeds are STRICT xfails, so a default that stops
 #: inverting them (or an arm that starts) is a red test, not a silent pass.
 PROPERTY = [
     pytest.param(
@@ -292,7 +292,7 @@ def test_repairs_never_publish_backwards_word_starts_or_words_outside_their_line
 def test_a_repair_that_cannot_keep_order_goes_back_to_the_blind_decode(
     runs: Callable[[str], list[Published]], seed: int
 ) -> None:
-    """What M2's fix does instead of squeezing: the run's BLIND lines, named on the trail, graded low.
+    """What the arm does instead of squeezing: the run's BLIND lines, named on the trail, graded low.
 
     The blind decode here is exact (tones at the true spans), so a refused line must sit where it is
     sung. A fix that dropped the line, squeezed it into the gap, or kept the misclaimed timing in order
@@ -320,8 +320,8 @@ def test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends(
 ) -> None:
     """The knob's difference is its REFUSALS plus the one thing the default does that the arm does not.
 
-    W1 could say "byte for byte": the arm and the default agreed wherever no run was refused. W6 gave the
-    DEFAULT a bounded left floor — where the line before a repair ends past its start, that neighbour's END
+    It once said "byte for byte": the arm and the default agreed wherever no run was refused. Now the DEFAULT
+    has a bounded left floor — where the line before a repair ends past its start, that neighbour's END
     comes back to the repair (`_clamped_v2`, `_pulled_end`) — while the arm keeps refusing instead. So on a
     seed the arm refused nothing, every line's TEXT, START, grade and word STARTS are still the default's,
     and the only cells that may differ are neighbour `end`s the default pulled IN: strictly earlier, landing

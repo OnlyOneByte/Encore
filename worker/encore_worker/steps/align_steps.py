@@ -154,8 +154,8 @@ class Adapters:
     #: `text` extra, and the SCRIPT half needs no adapter at all (docs/arch/04-alignment.md §9).
     detector: language.Detector | None = None
     #: A (language, dominant non-Latin script) -> its DISPLAY-ONLY romaniser, or None where this box has no
-    #: backend for it. None here romanises nothing, which is every document this worker published before W8
-    #: (XA-19).
+    #: backend for it. None here romanises nothing, which is every document published before romanisation
+    #: existed (XA-19).
     romanizer: Callable[[str, str], romanize.Romanizer | None] | None = None
 
 
@@ -218,7 +218,7 @@ class AlignStepsImpl:
         )
 
     async def _unit_rules(self, language_code: str) -> units.Rules:
-        """How THIS text becomes words, syllables and vocabulary lookups, under the three W8 arms.
+        """How THIS text becomes words, syllables and vocabulary lookups, under the three unit arms.
 
         One object per attempt, read by the decode, the repair, the lift and the margin alike, so no two of
         them can group one text differently (docs/arch/04-alignment.md §9.1, §14). OFF THE EVENT LOOP for
@@ -586,7 +586,7 @@ class AlignStepsImpl:
         if unvouched:
             # THE GRADE GOES ON THE LINES AND NOT ONLY ON THE RECORD: core's `wipesWords` keeps the
             # bouncing-ball wipe for a line with no grade, so an unvouched pin would sweep word by word over
-            # timings nothing vouched for (review r2-correctness-4; XA-14).
+            # timings nothing vouched for (XA-14).
             _grade_every_line_low(doc)
 
         residual = place.residual_against(doc, segments) if req.text.has_own_timings else None
@@ -854,12 +854,12 @@ class AlignStepsImpl:
         # THE DECODE ARMS, all default-off, read ONCE here: each belongs to every decode that produces THIS
         # document and to none of the GATE decodes (XA-12; docs/arch/04-alignment.md §14, §14.1).
         separate_lines = "linesep" in self._cfg.align_experiments
-        # W8's non-Latin lane: `plain` unless an arm is on, and then the SAME object for every decode of
+        # The non-Latin lane: `plain` unless an arm is on, and then the SAME object for every decode of
         # this attempt (docs/arch/04-alignment.md §9.1).
         unit_rules = await self._unit_rules(req.language)
         star_arm = "star" in self._cfg.align_experiments
-        # W9's research track (docs/arch/04-alignment.md §3.2). `priors-decide` IS the other three: the
-        # review's deciding arm is priors plus fusion plus optional lines with the ladder bypassed, and
+        # The research track (docs/arch/04-alignment.md §3.2). `priors-decide` IS the other three: the
+        # deciding arm is priors plus fusion plus optional lines with the ladder bypassed, and
         # measuring it under three separate names would be measuring three different arms.
         deciding_arm = "priors-decide" in self._cfg.align_experiments
         star_b_arm = "star-b" in self._cfg.align_experiments
@@ -950,7 +950,7 @@ class AlignStepsImpl:
         heard_on_this_audio = req.text.tier is Tier.ASR
         # AND A SCRIPT NO BUNDLE IS FOR REACHES A ROW THAT IS NOT ITS OWN: `language.SCRIPT_LANGUAGES` names
         # no language for it, so `detect` falls back to English and finds a CALIBRATED row fitted on text the
-        # English vocabulary spells. The lane's rule is the TEXT's script (review r2-spec-8).
+        # English vocabulary spells. The lane's rule is the TEXT's script.
         script = _nonlatin_script(req.text)
         if (
             not lexical.may_time_words(bands, heard_on_this_audio=heard_on_this_audio, nonlatin_script=script)
@@ -1165,7 +1165,7 @@ class AlignStepsImpl:
         dropped_skip_arcs: list[str] = []
         if skip_arcs_arm:
             said = [" ".join(text.lower().split()) for text in line_texts_active]
-            # A REPEAT IS EXEMPT (the review's roadmap item 15): the arc cannot tell which occurrence
+            # A REPEAT IS EXEMPT: the arc cannot tell which occurrence
             # is which, so bypassing one is as likely to drop the sung chorus as the unsung one.
             exempt = frozenset(at for at, text in enumerate(said) if text and said.count(text) > 1)
             unsung = await asyncio.to_thread(
@@ -1176,7 +1176,7 @@ class AlignStepsImpl:
                 stars=stars_wanted,
                 # THE PUBLISHER'S OWN GRAPH: under `star-b` the star states the publishing decode may
                 # bypass for free are mandatory targets in any graph that does not price them, and a
-                # detector on that trellis names lines about a decode nobody ran (review W9 r2-correctness-4).
+                # detector on that trellis names lines about a decode nobody ran.
                 star_penalty=STAR_PENALTY_NATS if star_b_arm else None,
                 exempt=exempt,
                 units=unit_rules,
@@ -1472,7 +1472,7 @@ class AlignStepsImpl:
             `_clamped_v2` resolves a repaired start against its predecessor's end by RESCALING the whole line,
             so re-opening onto occupied time pays with every measured word onset in it (XA-07,
             docs/arch/04-alignment.md §4). The end is read off `pending`, the batch being built: `generated`
-            still carries the end this batch is about to replace (review r2-correctness-1). An index not in
+            still carries the end this batch is about to replace. An index not in
             the document is NOT free — nothing can be checked against a line that is not there.
             """
             lines = generated.lines
@@ -1606,7 +1606,7 @@ class AlignStepsImpl:
                 # A decode that DID hear the line but opened past its claim over singing keeps every word it
                 # measured and only its opening boundary moves — the cheaper half of the same surrender, and
                 # the one an adoption cannot make (`generate.reopened_line`).
-                # DEFAULT ON since W9 (owner decision, PLAN 2026-10-09): it buys coverage, and the four
+                # DEFAULT ON by owner decision: it buys coverage, and the four
                 # Jamendo words it costs are a recorded waiver, not a loosened bound
                 # (docs/arch/04-alignment.md §14; `gates/w8b-arms.yaml` §2). `band-late-kept` is the control.
                 late = (
@@ -1648,7 +1648,7 @@ class AlignStepsImpl:
 
         async def fuse_in_the_mix() -> Any:
             """`emissions` with the mix's frames where the TARGET's envelope hears nothing inside a claim
-            window (the review's roadmap item 14), or `emissions` itself when no second witness is owed or
+            window, or `emissions` itself when no second witness is owed or
             none can be had."""
             if mix_target == stem_target:
                 decode_note.append("no fusion: the target IS the mix")
@@ -1683,7 +1683,7 @@ class AlignStepsImpl:
                 merged = await asyncio.to_thread(prior.fused, emissions.log_probs, heard.log_probs, mask)
                 # BACK AS THE KIND THE EMITTER PRODUCED. This arm changes the evidence and not the decoder,
                 # so the fused matrix is decoded by torchaudio's kernel — which `prior.fused`' numpy answer
-                # cannot be handed to (review W9 r2-spec-6).
+                # cannot be handed to.
                 merged = log_probs_like(emissions.log_probs, merged)
             except InfraFault:
                 raise  # the model, the kernel or the device: the JOB's fault, not this text's (XA-17)
@@ -1968,7 +1968,7 @@ class AlignStepsImpl:
             # NAMES THE READING THAT ACTUALLY FIRED: the cue's own written END against `end_bias`, never the
             # lead, both lead witnesses having been measured and refused (docs/arch/04-alignment.md §4).
             #
-            # THREE OUTCOMES, NAMED APART (review r2-correctness-6): published at the claim, re-fitted by the
+            # THREE OUTCOMES, NAMED APART: published at the claim, re-fitted by the
             # clamp, or never published at all — a run `m2-order-clamp` reverted has its BLIND timing back, so
             # calling it re-fitted says words were rescaled when the re-opening did not happen.
             kept = sorted(index for index in reopened_all if claim_onsets_published.get(index))
@@ -2090,7 +2090,7 @@ class AlignStepsImpl:
             sheet_reading,
             # THE MAP'S OWN DISPLACEMENT, so the rule can say whether the claims witness anything or merely
             # restate it: a document that published on the MAPPED sheet sits exactly this far from the sheet
-            # as served, whatever the audio says (review r2-spec-7, docs/arch/04-alignment.md §6.1).
+            # as served, whatever the audio says (docs/arch/04-alignment.md §6.1).
             clock_lag_sec=(
                 median(claim_clock.at(start) - start for start in claimed_as_given.values())
                 if claim_clock.applied and claimed_as_given
@@ -2323,7 +2323,7 @@ class AlignStepsImpl:
                 if separate_lines
                 else ""
             )
-            # ONLY UNDER A W8 ARM, and then ALWAYS: a run whose words are per-hanzi and one whose words are
+            # ONLY UNDER A UNIT ARM, and then ALWAYS: a run whose words are per-hanzi and one whose words are
             # whole lines publish different documents off the same text (docs/arch/04-alignment.md §9.1).
             + (
                 f"{_units_why(unit_rules, req.language, experiments)}; "

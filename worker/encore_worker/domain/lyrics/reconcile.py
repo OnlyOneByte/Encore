@@ -108,7 +108,7 @@ class LineJudgement:
     #: generated minus claimed, in seconds, raw (offset NOT removed): the trail-facing number.
     residual_sec: float
     #: generated minus the claim ON THE FITTED MODEL (claimed x scale + offset). THE one a caller may
-    #: threshold (review M4): the raw residual carries the whole sheet's offset and drift, so subtracting a
+    #: threshold: the raw residual carries the whole sheet's offset and drift, so subtracting a
     #: constant from it leaves a 2% tempo sheet's linear ramp intact and 38 of 50 lines read "gross".
     model_residual_sec: float = 0.0
 
@@ -273,7 +273,7 @@ def reconcile(
         )
 
     # ── shape, not one map. Both remaining classes are claims about STRUCTURE in the residuals, so both
-    # need enough pairs to have seen any (`MIN_FITTED_PAIRS`; review M4).
+    # need enough pairs to have seen any (`MIN_FITTED_PAIRS`).
     if len(pairs) >= MIN_FITTED_PAIRS:
         # STRUCTURAL needs a minority that disagrees GROSSLY, a line beyond a phrase of the fit: without it a
         # merely JITTERY sheet took this branch and had every out-of-band line re-decoded, which measured as

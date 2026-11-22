@@ -91,7 +91,7 @@ def test_a_text_it_cannot_contrast_is_unmeasured(texts: list[str]) -> None:
 
 
 def test_a_shuffle_that_reads_as_the_text_itself_is_no_contrast() -> None:
-    """W3 review r2. The contrast is a different TARGET SEQUENCE, not a different line string: `letters_of`
+    """The contrast is a different TARGET SEQUENCE, not a different line string: `letters_of`
     lowercases and drops what the dictionary has no id for, so a text whose word permutations reproduce its
     own letters — a chant, a `la la` outro, a hook-only caption track — had shuffles whose forced path WAS
     the text's. `best == own` made the lift exactly 0.0, which `band` reads as REFUSE, so the gate convicted
@@ -106,7 +106,7 @@ def test_a_shuffle_that_reads_as_the_text_itself_is_no_contrast() -> None:
 
 
 def test_the_note_prints_the_lift_at_the_precision_the_bands_are_set_on() -> None:
-    """W3 review r2: at two decimals a text at +0.195 read `+0.20 ... below the lexical gate (0.2)` — the
+    """At two decimals a text at +0.195 read `+0.20 ... below the lexical gate (0.2)` — the
     refusal note contradicting itself at the boundary it is read at most (`align_steps`)."""
     assert lexical.Lift(value=0.1954, letters=200, per_letter=-4.0).why().startswith("lexical lift +0.195 ")
 
@@ -177,7 +177,7 @@ def test_the_base_bundles_bands_keep_its_calibrated_populations_apart() -> None:
     threshold on either target (stem +0.189, mix +0.132), every protected right text on a stem sits above
     the doubt band (+0.359), and each band is non-empty and ordered.
 
-    `BANDS` IS THE BASE BUNDLE'S ROW AND NOT THE SHIPPED DEFAULT'S since W5's flip — it is what a matrix
+    `BANDS` IS THE BASE BUNDLE'S ROW AND NOT THE SHIPPED DEFAULT'S since the flip — it is what a matrix
     naming NO model is read as (a fake, a pre-field bench cache) and what `ENCORE_ALIGN_MODEL=
     WAV2VEC2_ASR_BASE_960H` resolves to. The shipped default's own separation is the test below."""
     bands = lexical.BANDS
@@ -188,7 +188,7 @@ def test_the_base_bundles_bands_keep_its_calibrated_populations_apart() -> None:
 
 
 def test_the_shipped_defaults_bands_keep_its_own_populations_apart() -> None:
-    """THE ROW EVERY PRODUCTION JOB IS NOW GATED ON (W5's flip), held to its own measurement and not to the
+    """THE ROW EVERY PRODUCTION JOB IS NOW GATED ON (the default), held to its own measurement and not to the
     base bundle's. On HuBERT-Large the stem populations separate by +0.547 where the base model's separate by
     +0.072 (right texts min +0.766, wrong max +0.219), so the floor clears the wrong population by +0.2306 —
     3-8 redraw SDs instead of one; on the mix they still overlap (wrong max +0.1157) and the floor is fitted
@@ -211,7 +211,7 @@ def test_the_shipped_defaults_bands_keep_its_own_populations_apart() -> None:
 
 
 def test_the_two_non_latin_rows_keep_their_own_populations_apart() -> None:
-    """W10's FIRST NON-LATIN ROWS, held to the fits that chose them rather than to any English row's shape.
+    """THE FIRST NON-LATIN ROWS, held to the fits that chose them rather than to any English row's shape.
 
     Both separate by two thirds of a nat per letter — wider than any English bundle's — and both abstain on
     the placement margin, nobody having read one of these trellises. The populations, the mix halves' much
@@ -248,9 +248,9 @@ def test_the_two_non_latin_rows_keep_their_own_populations_apart() -> None:
 
 
 def test_every_calibration_row_is_keyed_by_its_own_model_and_ordered() -> None:
-    """W4b: `CALIBRATED` is the ONE table, so a row filed under the wrong key would gate one model on
+    """`CALIBRATED` is the ONE table, so a row filed under the wrong key would gate one model on
     another's numbers — the exact defect the table exists to prevent — and a paste error is the realistic way
-    that happens. W10 makes the key a PAIR, MMS_FA serving zh and ko on lifts that are not each other's, so
+    that happens. The key is a PAIR, MMS_FA serving zh and ko on lifts that are not each other's, so
     both halves are held here. Every row is also held to the shape a calibration must have: ordered,
     non-empty bands and a share in (0, 1]."""
     assert lexical.CALIBRATED, "a worker with no calibrated model gates nothing"
@@ -266,7 +266,7 @@ def test_every_calibration_row_is_keyed_by_its_own_model_and_ordered() -> None:
 
 
 def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
-    """THE INVARIANT THAT LETS `adapters.ml` NOT IMPORT THIS MODULE (W4b 6b). The English bundle is a
+    """THE INVARIANT THAT LETS `adapters.ml` NOT IMPORT THIS MODULE. The English bundle is a
     per-device default there (`ALIGN_MODELS_BY_DEVICE`), and a default with no row would put a worker in the
     one state the table forbids: gates that stand down on every job, with nobody having typed a model name to
     be refused for. `ml` cannot check it itself — importing `lexical` would drag every threshold into the
@@ -281,14 +281,14 @@ def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
 
 
 def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() -> None:
-    """`is_calibrated` CANNOT SEE A HALF-MEASURED ROW, and W5's flip is the wave where that matters.
+    """`is_calibrated` CANNOT SEE A HALF-MEASURED ROW, and a default flip is where that matters.
 
     A row may exist with a field nobody fitted — `margin_floor_nats` is `float | None` for that reason, and
     `HUBERT_ASR_XLARGE`'s is None because no one has read one of its trellises. For a bundle an OPERATOR
     names, None is the designed behaviour: the rule abstains and the trail says which bundle had no floor.
     For a bundle a BOX DEFAULTS TO it is a silent borrow one threshold over — every job on that worker
-    running with W6's placement-ambiguity rule switched off — so the default's row is held to "has every
-    number" here, which is what made W5's flip a one-word change and would have refused a flip to XL."""
+    running with the placement-ambiguity rule switched off — so the default's row is held to "has every
+    number" here, which is what made the HuBERT flip a one-word change and would have refused a flip to XL."""
     from encore_worker.adapters import ml
 
     for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):
@@ -299,7 +299,7 @@ def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() 
         )
         for field in ("refuse_below", "ok_from", "mix_floor", "mix_ok_from", "line_sync_min_agreement"):
             assert getattr(row, field) > 0.0, f"{row.model}'s {field} is not a measurement"
-    # The fifth value is the one W4b's own review found missing from `align_steps` rather than from a row, so
+    # The fifth value is the one once found missing from `align_steps` rather than from a row, so
     # the default's share must be the row's and not the model-independent floor by coincidence of value.
     default = lexical.CALIBRATED[(ml.default_align_model("mps"), language.ENGLISH)]
     assert lexical.line_sync_share(default) == default.line_sync_min_agreement
@@ -322,7 +322,7 @@ def test_a_matrix_is_calibrated_by_its_own_model_or_by_nothing() -> None:
     assert lexical.calibration(Matrix("WAV2VEC2_LARGE_XLSR_53_DE")) is None
     assert lexical.is_calibrated(lexical.BANDS.model)
     assert not lexical.is_calibrated("WAV2VEC2_LARGE_XLSR_53_DE")
-    # AND THE LANGUAGE IS HALF THE KEY (W10): one bundle may serve several, so the English row must not
+    # AND THE LANGUAGE IS HALF THE KEY: one bundle may serve several, so the English row must not
     # answer for a language nobody fitted on it — "borrow a neighbour's row" is the defect the pair prevents.
     assert lexical.calibration(Matrix(lexical.BANDS.model), "zh") is None
     assert lexical.calibration(Matrix(""), "zh") is None, "an unnamed matrix is the ENGLISH default's only"
@@ -337,8 +337,8 @@ def test_a_matrix_is_calibrated_by_its_own_model_or_by_nothing() -> None:
 def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """What the table is FOR (W4b): two models gated at once, each on its own emission scale. W4b 6b adds
-    HuBERT rows this way, and `is_calibrated` is what an operator knob naming a model must check."""
+    """What the table is FOR: two models gated at once, each on its own emission scale. HuBERT rows are
+    added this way, and `is_calibrated` is what an operator knob naming a model must check."""
     other = lexical.Bands(
         model="HUBERT_ASR_LARGE",
         refuse_below=0.55,
@@ -358,14 +358,14 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
     assert lexical.band(0.5, on_stem=True, bands=got) is lexical.Band.REFUSE
     first = lexical.band(0.5, on_stem=True, bands=lexical.BANDS)
     assert first is lexical.Band.OK, "the first row is untouched by the new one"
-    # THE SHARE COMES OFF THE ROW TOO, and this is the only row in any test whose share is NOT 0.5 (W4b review
-    # r2): all three shipped rows fit 0.5 and `LINE_SYNC_SHARE_UNCALIBRATED` is 0.5, so without a row that
+    # THE SHARE COMES OFF THE ROW TOO, and this is the only row in any test whose share is NOT 0.5:
+    # all three shipped rows fit 0.5 and `LINE_SYNC_SHARE_UNCALIBRATED` is 0.5, so without a row that
     # differs, `line_sync_share` reading the constant instead of the field is indistinguishable from reading
     # the field — a mutation that ignores `bands` entirely passed the whole suite.
     assert lexical.line_sync_share(other) == 0.6, "this model's own share, not the uncalibrated constant"
     assert lexical.line_sync_share(lexical.BANDS) == lexical.BANDS.line_sync_min_agreement
     assert lexical.line_sync_share(None) == lexical.LINE_SYNC_SHARE_UNCALIBRATED
-    # AND SO DOES THE MARGIN FLOOR, which is the same argument one field later (W6 review r1-spec-9) with the
+    # AND SO DOES THE MARGIN FLOOR, which is the same argument one field later with the
     # opposite answer for a missing row: a share in SECONDS survives an unmeasured bundle, a floor on a sum of
     # LOG-PROBABILITIES does not, so `margin_floor` answers None and the rule abstains rather than borrowing.
     assert lexical.margin_floor(other) == 25.0, "this model's own floor"
@@ -377,11 +377,11 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
 
 
 def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None:
-    """`band` TAKES the row it judges by — there is no `bands=None -> BANDS` default (W4b review r2).
+    """`band` TAKES the row it judges by — there is no `bands=None -> BANDS` default.
 
-    The fallback shipped until r2 read what it costs: with it, one `band(value, on_stem=True)` in a new reader
+    A fallback would cost this: with it, one `band(value, on_stem=True)` in a new reader
     judges a HuBERT matrix's lift against the base model's floor (0.20 against 0.45) and publishes a wrong
-    text silently — the review's high-severity W3 finding, re-entered through a default argument. Required,
+    text silently — the cross-model threshold borrow, re-entered through a default argument. Required,
     the omission is a type error at the call site, which is why this test reads the SIGNATURE and not a
     value: no runtime behaviour can distinguish "no fallback" from "a fallback nobody reached".
     """
@@ -422,7 +422,7 @@ FRENCH = [
 
 
 def test_a_cognate_heavy_translation_can_lift_where_another_language_does_not() -> None:
-    """A KNOWN LIMIT, pinned hermetically because the bench cannot measure it (W3): no corpus song carries its
+    """A KNOWN LIMIT, pinned hermetically because the bench cannot measure it: no corpus song carries its
     lyrics in a second language (`e2e_lib.OPS`), so no translated-sheet mode exists. The lift contrasts the
     text's word ORDER with shuffles of it; a translation whose words keep the sung letters in order explains
     the audio better in its own order than shuffled, and lifts — here +1.98 nats/letter, above every band

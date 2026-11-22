@@ -179,7 +179,7 @@ def test_a_drifted_syllable_offset_is_refused_rather_than_scored(tmp_path: Path)
     """Scoring a unit against the wrong syllable's onset is the one failure this truth set could hide, so
     the loader checks every offset against its own line's text.
 
-    IT RAISES, and it answers None only for an ABSENT file (review r1-tests-20). Answering None for both
+    IT RAISES, and it answers None only for an ABSENT file. Answering None for both
     made a drifted file indistinguishable from "this corpus has no syllable truth": `discover` stored it on
     `Song.syllables`, `score_syllables` returned None, and `syllable_metrics` filtered the row out — so the
     song left the numerator AND the denominator and the "zh | 4 songs" header went on saying four.
@@ -207,8 +207,8 @@ def test_a_role_this_script_does_not_know_refuses_the_song_rather_than_shortenin
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`_syllables` drops a span with ANY `ttm:role`, while `parse` counted only the three it knows — so a
-    fourth role took timed spans out of `truth-*.json` with `dropped=[-]` printed beside it (review
-    r2-correctness-6). Every role is tallied now, and a name outside `DROPPED_ROLES` is a change to the
+    fourth role took timed spans out of `truth-*.json` with `dropped=[-]` printed beside it.
+    Every role is tallied now, and a name outside `DROPPED_ROLES` is a change to the
     SOURCE FORMAT: the song is refused, by name, and `build` exits non-zero so a CI leg can see it.
     """
     unknown = (
@@ -234,7 +234,7 @@ def test_a_role_this_script_does_not_know_refuses_the_song_rather_than_shortenin
 def test_the_printed_next_step_is_the_command_that_actually_runs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Review r2-tests-18: the hint read `truth_displacement.py --songs amll`, and these songs are only
+    """The hint used to read `truth_displacement.py --songs amll`, and these songs are only
     discovered under `--corpus nonlatin` (`e2e_lib.discover`), so run as printed it died with
     "--songs matched nothing" before measuring anything — on the one instruction an operator follows to
     admit a newly ingested non-Latin song."""

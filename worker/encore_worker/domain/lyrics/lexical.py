@@ -190,7 +190,7 @@ CALIBRATED: dict[Key, Bands] = {
         line_sync_min_agreement=0.5,
         margin_floor_nats=10.0,
     ),
-    #: THE FIRST NON-LATIN ROWS (W10), fitted on the AMLL corpus rather than the English 32: zh on MMS_FA
+    #: THE FIRST NON-LATIN ROWS, fitted on the AMLL corpus rather than the English 32: zh on MMS_FA
     #: under `mms-roman`, ja on whisperx's own bundle under `nonlatin-units`, each its own route's (XA-21).
     #: ko has no row — one song, so no wrong-text population to separate.
     ("MMS_FA", "zh"): Bands(

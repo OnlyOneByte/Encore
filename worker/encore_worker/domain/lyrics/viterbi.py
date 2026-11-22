@@ -2,8 +2,8 @@
 
 Pure numpy with int8 backpointers, in the style of NeMo's `aligner_utils` (Apache-2.0). On an empty `Graph`
 it is `torchaudio.functional.forced_align` frame for frame (XA-18), which is what makes it swappable; a
-non-empty one adds penalised SKIP arcs over a run of targets (the review's roadmap item 15), OPTIONAL
-frame-relative STAR states (phase B) and a per-frame onset BONUS at a chosen state (its item 14).
+non-empty one adds penalised SKIP arcs over a run of targets, OPTIONAL
+frame-relative STAR states (phase B) and a per-frame onset BONUS at a chosen state.
 
 docs/arch/04-alignment.md §3.2 for the graph and why each arc exists; LOG.md,
 "W9: a vendored decoder, and the three arms it unblocks" for what each one measured.
@@ -20,7 +20,7 @@ import numpy as np
 from encore_worker.domain.lyrics.generate import Decoder
 
 #: Nats charged for bypassing one line: a fixed cost plus one per alignable character
-#: (`SKIP_LINE_NATS + SKIP_CHAR_NATS * chars`). The refined pair of the review's roadmap item 15, measured
+#: (`SKIP_LINE_NATS + SKIP_CHAR_NATS * chars`). The refined pair, measured
 #: as a COMPLEMENT to the never-sung rule at +1 gross and 0 false drops.
 SKIP_LINE_NATS = 30.0
 SKIP_CHAR_NATS = 6.0
@@ -180,7 +180,7 @@ def _traceback(back: np.ndarray, last: int, arcs: _Arcs | None) -> tuple[np.ndar
 
     A code at or above `_FIRST_ARC_CODE` is only ever written under `arcs`, so one read here without them is
     a corrupt `back` and is REFUSED: read as "no arc" instead, the traceback would park on one state for the
-    rest of the song and return a wrong path as a good one (review W9 r2-tests-16).
+    rest of the song and return a wrong path as a good one.
     """
     frames = int(back.shape[0])
     path = np.empty(frames, dtype=np.int64)
@@ -222,7 +222,7 @@ def line_skips(
     """`(line index per arc, the arcs)` for every line of `blocks` not in `exempt`.
 
     `blocks` is `generate.line_blocks`'; the parallel index tuple is what turns `Alignment.skipped` back into
-    line indexes. A repeated line is exempted by the CALLER (the review's roadmap item 15), which is also
+    line indexes. A repeated line is exempted by the CALLER, which is also
     why this takes a set rather than the texts: whose definition of "a repeat" is the caller's business.
     """
     indexes: list[int] = []

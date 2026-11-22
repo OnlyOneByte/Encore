@@ -131,9 +131,9 @@ class Search:
     #: spent the search GIVES UP without transcribing. The one deliberate exception to "GiveUp only after
     #: ASR", that rule being about concluding a song has NO WORDS (docs/arch/04-alignment.md §3).
     pinned: bool = False
-    #: `syncMode=lines` (review H5): no word timing is published. Every text's first and only attempt is the
+    #: `syncMode=lines`: no word timing is published. Every text's first and only attempt is the
     #: gated LINE_SYNC rung, a text with no line timings of its own is skipped, and the ASR fallback still has
-    #: its turn (a transcript's segments are measured on this audio). Before H5 the mode was never read.
+    #: its turn (a transcript's segments are measured on this audio).
     line_only: bool = False
 
     _order: list[int] = field(default_factory=list, init=False)
@@ -227,7 +227,7 @@ class Search:
         Appended to the END of the walk, NOT re-sorted into it. `RunAsr` fires only once every entry has
         been tried, so the on-demand text can only follow them. Re-sorting by tier put it BEFORE the
         MACHINE captions it ran after, and the cursor, parked at the new text, walked onto those captions
-        a second time once it declined (review s11, repro'd with every attempt producing nothing: authored,
+        a second time once it declined (reproduced with every attempt producing nothing: authored,
         authored + line-sync, machine, machine + line-sync, ASR, then both machine attempts again).
         """
         self.pool.append(candidate)

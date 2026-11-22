@@ -25,7 +25,7 @@ DENSE_SCRIPTS: dict[str, frozenset[str]] = {
     "ko": frozenset(),
 }
 
-#: Per language, the scripts a SYLLABLE is one character of — the review's "mora, hanzi or Hangul block".
+#: Per language, the scripts a SYLLABLE is one character of — a mora, a hanzi or a Hangul block.
 SYLLABLE_SCRIPTS: dict[str, frozenset[str]] = {
     "zh": frozenset({language.HAN}),
     "ja": frozenset({language.HAN, language.KANA}),
@@ -124,7 +124,7 @@ def plain() -> Rules:
 
 
 def rules(language_code: str, *, script_units: bool, simplify: bool, transliterate: bool) -> Rules:
-    """The unit rules for `language_code` under the three W8 arms; `plain` where none of them applies.
+    """The unit rules for `language_code` under the three unit arms; `plain` where none of them applies.
 
     `transliterate` IMPLIES `script_units`: a romanised target is built per syllable fragment, and the
     fragments of a whole unsplit line would hand one span back for the line.
@@ -153,8 +153,8 @@ def rules(language_code: str, *, script_units: bool, simplify: bool, translitera
 #: THE ARM NAMES, spelled once so the step layer, the composition root and the bench cannot differ.
 SCRIPT_UNITS, SIMPLIFY, TRANSLITERATE = "nonlatin-units", "zh-simplify", "mms-roman"
 
-#: The control that puts every non-Latin language back on the whitespace rule and whisperx's own table —
-#: the configuration every row recorded before W10 was measured on.
+#: The control that puts every non-Latin language back on the whitespace rule and whisperx's own table — the
+#: configuration every row recorded before the per-language table shipped was measured on.
 UNROUTED = "nonlatin-unrouted"
 
 #: `Stage2.bundle` for "keep whisperx's own per-language table".

@@ -7,7 +7,7 @@ corroborated and `offset −0.88s` on the trail.
 
 THE RIG'S DECODER IS A REAL CTC VITERBI (`tests/ctc_fixture.py`) over a matrix that sings PHRASES. It was
 a script that returned the whole song's spans whatever it was handed. So every repair-window decode
-raised, `regenerate` swallowed it, and R3 ran in no test: deleting it left the suite green (review L8).
+raised, `regenerate` swallowed it, and R3 ran in no test: deleting it left the suite green.
 The fake is frame-for-frame equal to torchaudio's kernel on these matrices (`test_ml_contract.py`).
 """
 
@@ -42,7 +42,7 @@ PHRASES = [
     ("with me tonight", 8.0, 10.0),
     ("over the silver water", 12.0, 14.5),
     ("carry me home", 16.0, 18.0),
-    ("come and fly away", 22.0, 24.0),  # a REPEAT — the F2 case
+    ("come and fly away", 22.0, 24.0),  # a REPEAT — the wrong-occurrence case
     ("stars are out", 25.5, 27.5),
     ("morning light across the river", 30.0, 33.0),
     ("come and fly away", 35.0, 37.0),  # another repeat
@@ -104,16 +104,16 @@ def scripted_decoder(
 
     A real CTC Viterbi over the sung matrix. The whole song places each phrase on its true span, and a
     repair window gets its own slice decoded, with spans relative to that slice. `blank` is FORWARDED
-    rather than defaulted, so this fake decodes whatever column its matrix calls blank (review M9).
+    rather than defaulted, so this fake decodes whatever column its matrix calls blank.
     """
     return ctc_viterbi(log_probs, targets, blank)
 
 
 def unmeasured_lift(monkeypatch: pytest.MonkeyPatch) -> None:
     """For a SCRIPTED decoder, which scores every frame alike whatever the targets: its lexical lift reads 0
-    for any text, so the global engine's lexical gate (W3, `lexical.BANDS`) would refuse the song's own words
+    for any text, so the global engine's lexical gate (`lexical.BANDS`) would refuse the song's own words
     before the repair the test is about. Such a test takes the check out (`lexical.lift` unmeasurable, as
-    for a text under `lexical.MIN_LETTERS`) and the envelope gate decides, as it did before W3. The rig's
+    for a text under `lexical.MIN_LETTERS`) and the envelope gate decides, as it used to. The rig's
     own decoder is a real Viterbi over a sung matrix, which the lift reads (`test_lexical_gate.py`)."""
     from encore_worker.domain.lyrics import lexical
 
@@ -200,7 +200,7 @@ def test_an_untimed_sheet_is_word_timed_without_the_windowed_aligner(rig: Rig) -
 
 
 def test_repeated_lines_are_low_confidence_when_no_claims_anchor_them(rig: Rig) -> None:
-    """F2's consequence: a monotonic decode can bind a repeat to the wrong occurrence, and without claims
+    """The repeat hazard: a monotonic decode can bind a repeat to the wrong occurrence, and without claims
     nothing can vouch for which — so every repeated-text line degrades, unique lines stay high."""
     impl, _aligner, _trail, job, audio, tmp = rig
     timed = asyncio.run(impl.time_text(request(job, audio, timed=False)))
@@ -214,7 +214,7 @@ def test_repeated_lines_are_low_confidence_when_no_claims_anchor_them(rig: Rig) 
 
 def test_corroborating_claims_raise_repeats_to_high(rig: Rig) -> None:
     """The claims are the occurrence-anchor: an LRC agreeing line-for-line vouches for WHICH chorus each
-    repeat is, so the F2 degradation lifts."""
+    repeat is, so the repeat degradation lifts."""
     impl, _aligner, _trail, job, audio, tmp = rig
     timed = asyncio.run(impl.time_text(request(job, audio, timed=True)))
     assert isinstance(timed, TimedDoc)
@@ -300,7 +300,7 @@ def test_a_decode_that_refuses_this_text_fails_the_attempt_with_a_trail_note(
 ) -> None:
     """The kernel's own refusal of THESE targets (more characters than frames: the real kernel's message,
     `test_ml_contract`) is a fact about the text on this audio, so it is one attempt declining. The case
-    this test used to stage, "kernel gone", is the machinery's (review M7): below, and it raises."""
+    this test used to stage, "kernel gone", is the machinery's: below, and it raises."""
     from encore_worker.adapters import ml
 
     def refuse(*_a: object, **_k: object) -> tuple[list[int], list[float]]:
@@ -314,7 +314,7 @@ def test_a_decode_that_refuses_this_text_fails_the_attempt_with_a_trail_note(
     assert declines and declines[-1][4].startswith("decode failed: RuntimeError: targets length is too long")
 
 
-# ── machinery faults fail the JOB, not the attempt (review M7) ─────────────────────────────────────
+# ── machinery faults fail the JOB, not the attempt ─────────────────────────────────────────────────
 
 
 def test_a_model_that_would_not_load_fails_the_job_rather_than_declining(
@@ -429,7 +429,7 @@ def test_the_same_weak_correlation_at_a_real_lag_still_refuses(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The other side of the tier-2 band, and read through the gate's own scope: `unmeasured_lift`, because
-    since W4 review r1 the lift is the wrong-text verdict on a mix as well as on a stem, so the envelope
+    the lift is the wrong-text verdict on a mix as well as on a stem, so the envelope
     gate refuses only where no lift measured the text (the test above says the same)."""
     from encore_worker.domain.audio import activity
 
@@ -491,7 +491,7 @@ def test_when_claims_describe_the_audio_better_they_become_the_repair_anchors(
 
 
 def test_no_envelope_fit_runs_on_the_event_loop(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No envelope fit runs on the event loop (L6).
+    """No envelope fit runs on the event loop.
 
     `fit_shift` is synchronous numpy — 42 ms on a 60-minute recording even bounded — and the step sits
     inside a socket keepalive the reaper reads, so a fit on the loop stalls it. Every other call site was
@@ -692,7 +692,7 @@ def test_clamped_refits_repaired_lines_without_touching_trusted_ones() -> None:
     assert fixed.words[0].start < fixed.words[1].start, "internal order survives the refit"
 
 
-# M2's three shapes (review M2; `test_repair_order` seeds 6, 12 and 2/30 through the real `time_text`).
+# The three backwards-word shapes (`test_repair_order` seeds 6, 12 and 2/30 through the real `time_text`).
 # Each published backwards word starts under the old clamp; each now goes back to the blind line.
 
 
@@ -759,11 +759,11 @@ def test_clamped_fits_a_run_that_can_keep_order_and_leaves_the_last_line_unbound
 def default_clamp(
     lines: Sequence[Line], blind: Sequence[Line], repaired: set[int], frame_sec: float = 0.02
 ) -> tuple[tuple[Line, ...], frozenset[int], dict[int, float]]:
-    """The SHIPPED clamp (`_clamped` without `ordered`): v2's, with W6's bounded left floor.
+    """The SHIPPED clamp (`_clamped` without `ordered`): v2's, with the bounded left floor.
 
     Three values, the third being the PULLS it reports — `{index: seconds of overrun removed}` — which is a
     published timing changed on a line no stage repaired and therefore the one thing about this clamp the
-    trail has to carry (W6 review r1-spec-15 / r1-tests-19, `_pulls_why`).
+    trail has to carry (`_pulls_why`).
     """
     from encore_worker.steps.align_geometry import _clamped
 
@@ -778,9 +778,9 @@ def default_clamp(
 
 
 def test_the_default_clamp_never_refuses_and_still_publishes_m2s_first_shape() -> None:
-    """Without `m2-order-clamp` — the shipped default since W1 measured the arm failing its reject-if on
+    """Without `m2-order-clamp` — the shipped default since the arm was measured failing its reject-if on
     the corpus (`_clamped`) — seed 6's shape is SQUEEZED to 0.2 s at its own start, after its successor,
-    not refused. Nothing precedes the repair there, so W6's bounded floor has nothing to pull."""
+    not refused. Nothing precedes the repair there, so the bounded floor has nothing to pull."""
     trusted, following, blind = (
         two_word_line(0, 5.0, 8.0),
         two_word_line(2, 11.0, 14.0),
@@ -796,7 +796,7 @@ def test_the_default_clamp_never_refuses_and_still_publishes_m2s_first_shape() -
     assert not ordered(lines), "review M2's first shape, still published by the default"
 
 
-# W6's bounded left floor (`_clamped_v2`, `_pulled_end`): the floor used to be the previous published END,
+# The bounded left floor (`_clamped_v2`, `_pulled_end`): the floor used to be the previous published END,
 # which is the blind decode's own boundary — the reading the repair was there to correct — so it put the
 # repaired line back where the decode had it (7 gross line starts manufactured on HuBERT-Large, 3 on the
 # base bundle; the numbers are in `_clamped_v2`). The overlap is resolved at the neighbour's END instead.
@@ -810,7 +810,7 @@ def test_the_default_clamp_pulls_a_neighbours_end_back_instead_of_pushing_the_re
     repair = two_word_line(1, 7.0, 10.0)
     lines, refused, pulled = default_clamp((trusted, repair, following), (trusted, repair, following), {1})
     assert refused == frozenset()
-    # THE PULL IS REPORTED, by index and by how far (W6 review r1-spec-15 / r1-tests-19): line [0] is a line
+    # THE PULL IS REPORTED, by index and by how far: line [0] is a line
     # the ladder did not repair, its published END moved, and `provenance` deliberately still calls it the
     # blind decode's — so if this mapping were empty the trail would assert the decode timed that end.
     assert pulled == {0: pytest.approx(1.0)}
@@ -911,7 +911,7 @@ def many_word_line(index: int, onsets: Sequence[float], *, start: float, end: fl
 
 
 def test_a_pulled_tail_keeps_a_decoder_frame_for_every_word_it_re_fits() -> None:
-    """W6 review r2-spec-9. The ANCHOR is the last word starting before the boundary, and where it starts a
+    """The ANCHOR is the last word starting before the boundary, and where it starts a
     hair before it the tail's scale goes to ~0: this neighbour's last three words used to publish inside
     0.8 ms of 19.999, four words the TV can never light (it lights `start <= pos < end`) and three onsets no
     longer within a frame of anything measured. `_pulled_end`'s letter rule cannot see it — it measures the
@@ -938,7 +938,7 @@ def test_a_pulled_tail_keeps_a_decoder_frame_for_every_word_it_re_fits() -> None
 
 
 def test_a_repaired_lines_width_floor_is_a_refit_floor_and_the_pull_outranks_it() -> None:
-    """W6 review r2-correctness-4. `_clamped_v2` floors every repaired line at `_REPAIRED_MIN_SEC` as it
+    """`_clamped_v2` floors every repaired line at `_REPAIRED_MIN_SEC` as it
     remaps it, and a LATER iteration can pull that same line's end back inside the floor: two repairs 0.1 s
     apart cannot both be 0.2 s wide without overlapping, so the floor is unsatisfiable and the pull wins.
     That is the right way round — the start is what grading and every line metric read, and the alternative
@@ -986,7 +986,7 @@ def test_an_out_of_order_global_document_names_its_lines_on_the_trail(
     says which lines — `decide` drops the text to line sync over it, and the count alone names nothing.
 
     Forced by moving R3's repaired line 4 to start inside line 3 AFTER the real clamp (the default clamp
-    produces it on review M2's shapes, `test_repair_order`; the `m2-order-clamp` arm cannot). The note
+    produces it on the backwards-word shapes, `test_repair_order`; the `m2-order-clamp` arm cannot). The note
     precedes the verdict note, so the last `align-global` note — the one the bench reads as the verdict —
     is still the verdict."""
     from encore_worker.domain.lyrics.generate import remapped
@@ -1073,7 +1073,7 @@ def test_a_machinery_fault_on_the_mix_witness_degrades_rather_than_failing_the_j
 ) -> None:
     """R4 is OPTIONAL evidence, like the diarizer: an out-of-memory on the MIX's emission pass leaves the
     stem-invisible line on the stem's decode and says so on the trail. Failing the job over it would throw
-    away a document the stem already made, for a witness only some lines consult (review M7's line)."""
+    away a document the stem already made, for a witness only some lines consult."""
     from encore_worker.adapters.cli import OutOfMemory
 
     impl, aligner, trail, job, audio, tmp = rig
@@ -1191,7 +1191,7 @@ def test_an_r3_repair_that_lands_on_its_claim_is_two_witnesses_agreeing(
 ) -> None:
     """The same misbound chorus, now with the sheet's TIMED claims. The blind verdict disputes only that
     line, so R3 re-decodes it between its unique anchors — without reading the claims — and it lands on
-    its claim. Two independent measurements agreeing: `high` (review W1 r1). The rule for lines decoded
+    its claim. Two independent measurements agreeing: `high`. The rule for lines decoded
     INSIDE a claim window (the blind decode must have corroborated them) cannot apply here: R3 takes
     exactly the repeats the blind verdict did not corroborate, so it graded every R3 repair `low`."""
     from encore_worker.adapters import ml
@@ -1216,7 +1216,7 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
     reproduces that path word for word, CTC's monotonicity having already confined the repeat to the gap.
 
     R3 must still RUN — its trail note says every chorus line was re-decoded, and nothing raised. The
-    comparison is against the RAW decode bit for bit, which W4's word-end post-pass does not disturb on
+    comparison is against the RAW decode bit for bit, which the word-end post-pass does not disturb on
     this rig: one wav serves as both mix and vocals stem, so the step reads its align target as the MIX,
     where the post-pass does not run at all. Any difference is therefore a repair moving something."""
     from encore_worker.domain.lyrics.generate import generate
@@ -1245,7 +1245,7 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
 def test_a_repair_decode_that_raises_is_a_note_on_the_trail_not_a_silence(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review L8's exhibit: the rig's old decoder served the WHOLE song's spans whatever it was handed.
+    """The exhibit: the rig's old decoder served the WHOLE song's spans whatever it was handed.
     Every R3 window decode raised and `regenerate` swallowed it, which is how R3 went untested unseen.
     The originals are still kept, but the count and the first error are now on the trail, and the
     verdict note carries the count too."""
@@ -1306,7 +1306,7 @@ def test_anchored_runs_use_the_track_edges_when_no_anchor_exists() -> None:
     assert tail[0][1] == (10.0, 40.0)
 
 
-# ── the placement-margin demotion (review §3.7; W6, `domain/lyrics/margin.py`) ───────────────────
+# ── the placement-margin demotion (review §3.7, `domain/lyrics/margin.py`) ───────────────────────
 #
 # The KERNEL is proved in `test_margin.py` against an exhaustive per-frame DP. What is pinned here is the
 # WIRING, which is where the rule's two design decisions live: it is computed on the blind decode's own
@@ -1350,7 +1350,7 @@ def test_an_ambiguous_placement_demotes_a_line_nothing_else_vouches_for(
 def test_a_corroborated_line_keeps_its_grade_however_ambiguous_our_decode_was(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The restriction, and review H4's argument read forward: two INDEPENDENT measurements agreeing beats
+    """The restriction, and its argument read forward: two INDEPENDENT measurements agreeing beats
     the decode's own opinion of itself, and the margin is the decode's own opinion of itself. Measured on 4
     songs x truth/off15/drop50 (516 lines): charging corroborated lines for it cost 84 of 278 word wipes
     and found nothing, because claim-mode bad-among-high was already 0.00% (the figures LOG.md's "It is read
@@ -1447,7 +1447,7 @@ def near_repeat_request(job: JobRef, audio: AudioRef) -> TimeRequest:
 def test_the_fuzzy_repeat_arm_demotes_a_near_repeat_the_default_grades_high(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r2-tests-14. `conf-fuzzy-repeats` was built, priced on the corpus (49 near-repeats: 3 bad
+    """`conf-fuzzy-repeats` was built, priced on the corpus (49 near-repeats: 3 bad
     demoted, 30 correct demoted, 0 gross — the 10:1 trade that keeps it off) and tested NOWHERE: changing the
     call to `if False and "conf-fuzzy-repeats" in experiments` left the whole worker suite green, because the
     only test of it was `test_ownership`'s grep for the literal. So this asserts the three things the arm is:
@@ -1493,7 +1493,7 @@ def test_the_fuzzy_repeat_arm_demotes_a_near_repeat_the_default_grades_high(
 def test_the_fuzzy_repeat_arm_fires_on_a_bundle_with_no_measured_margin_floor(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r2-correctness-5. `margin.fuzzy_repeats` is a `difflib` ratio over the line TEXTS — no
+    """`margin.fuzzy_repeats` is a `difflib` ratio over the line TEXTS — no
     emission scale, no bundle, nothing to calibrate — and it was gated behind the MARGIN's abstention, so on
     `HUBERT_ASR_XLARGE` (a name `lexical.is_calibrated` passes, whose `margin_floor_nats` is deliberately
     None) an operator setting `ENCORE_ALIGN_EXPERIMENTS=conf-fuzzy-repeats` got the default grading with
@@ -1525,8 +1525,8 @@ def test_the_control_arm_stands_the_fuzzy_repeat_arm_down_and_says_so(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`conf-legacy` means the grading that preceded review §3.7, which has no demotion to widen, so the two
-    arms together are a contradiction — and the one thing that must not happen is the quiet reading of it
-    (W6 review r2-correctness-5). The clause names the arm, says it was requested, and says what stood it
+    arms together are a contradiction — and the one thing that must not happen is the quiet reading of it.
+    The clause names the arm, says it was requested, and says what stood it
     down, so a row recorded with both names cannot be read as the fuzzy arm's."""
     from encore_worker.domain.lyrics import margin
 
@@ -1547,7 +1547,7 @@ def test_the_control_arm_stands_the_fuzzy_repeat_arm_down_and_says_so(
 
 
 def test_both_new_arm_names_are_declared_experiments() -> None:
-    """W6 review r2-tests-15. The two tests of these arms construct `Config(align_experiments=...)` directly,
+    """The two tests of these arms construct `Config(align_experiments=...)` directly,
     so deleting either name from `ALIGN_EXPERIMENTS` left the full suite green while
     `ENCORE_ALIGN_EXPERIMENTS=conf-legacy` — the command `gates/w6-conf.yaml`'s own header prescribes for the
     baseline of a DEFAULT-ON grading change — made the worker refuse to START (`ConfigError`, by design: an
@@ -1563,7 +1563,7 @@ def test_both_new_arm_names_are_declared_experiments() -> None:
 def test_a_swallowed_fault_names_itself_so_it_cannot_read_as_the_control_arm(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r2-spec-7. The fault path and `conf-legacy` both reached the trail as "placement margins: not
+    """The fault path and `conf-legacy` both reached the trail as "placement margins: not
     measured, so grading is as it was before review §3.7" — one sentence for an operator's deliberate A/B and
     for a swallowed `MemoryError` that drops a DEFAULT-ON grading rule back to the rule it replaced (446
     `high` / 11.88% bad / 23 gross `high` lines against 286 / 2.80% / zero). A wrong-confidence report on a
@@ -1585,7 +1585,7 @@ def test_a_swallowed_fault_names_itself_so_it_cannot_read_as_the_control_arm(
 def test_an_unreadable_matrix_is_not_measured_and_does_not_read_the_score_half(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r2-tests-16. `_placement_margins` turns `{}` into "not measured", and THAT conversion is
+    """`_placement_margins` turns `{}` into "not measured", and THAT conversion is
     what keeps the half-control rule out of production: `margin.placement_margins` answers `{}` — without
     raising — for a matrix with no frames, a blank or target outside the vocabulary, or targets that do not
     fit the frames, and `margin.low_lines({}, scores)` would still apply its SCORE half. That is the third,
@@ -1612,7 +1612,7 @@ def test_an_unreadable_matrix_is_not_measured_and_does_not_read_the_score_half(
 def test_a_document_already_graded_low_throughout_does_not_pay_for_the_margins(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r2-spec-11. `line_confidence` returns `low` unconditionally inside the lexical DOUBT band,
+    """`line_confidence` returns `low` unconditionally inside the lexical DOUBT band,
     decided ~250 lines before the margins are taken, so the two Viterbi passes (0.43 s median, 1.16 s on the
     longest song measured, plus a float64 copy of the matrix) bought an `ambiguous` set that could not change
     one published grade. The trail still says the rule was not read and why, which is all the skip costs."""
@@ -1687,7 +1687,7 @@ def test_any_fault_means_not_measured_not_just_the_two_that_were_listed(
     """The except clause used to name `(ValueError, MemoryError)`, so any OTHER numpy fault escaped and lost
     a document that was already timed — and a guess at which exception a vectorised kernel raises is exactly
     the kind of list that goes stale. `InfraFault` still propagates: a machinery failure must not be
-    swallowed into a grade (review M7)."""
+    swallowed into a grade."""
     from encore_worker.adapters.ports import InfraFault
     from encore_worker.domain.lyrics import margin
 
@@ -1709,12 +1709,12 @@ def test_any_fault_means_not_measured_not_just_the_two_that_were_listed(
 def test_an_uncalibrated_bundle_abstains_rather_than_reading_the_base_models_nats(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r1-spec-9. The margin floor is a sum of log-probabilities, so it belongs to the bundle whose
-    trellis produced the margins (`lexical.Bands.margin_floor_nats`). `HUBERT_ASR_XLARGE` is reachable by name
-    and `is_calibrated` passes it, but nobody has decoded one of its matrices, so its row carries None and the
-    whole rule stands down — the two Viterbi passes are not even paid for. Before this the floor was a module
-    constant in `margin.py`, i.e. the base bundle's 10 nats on an unmeasured bundle with nothing in the
-    trail to say so, which is the review's high-severity W3 finding one field further on."""
+    """The margin floor is a sum of log-probabilities, so it belongs to the bundle whose trellis produced the
+    margins (`lexical.Bands.margin_floor_nats`). `HUBERT_ASR_XLARGE` is reachable by name and `is_calibrated`
+    passes it, but nobody has decoded one of its matrices, so its row carries None and the whole rule stands
+    down — the two Viterbi passes are not even paid for. Before this the floor was a module constant in
+    `margin.py`, i.e. the base bundle's 10 nats on an unmeasured bundle with nothing in the trail to say so:
+    the defect of an uncalibrated bundle silently reading the base model's bands, one field further on."""
     from encore_worker.domain.lyrics import lexical, margin
 
     assert lexical.is_calibrated("HUBERT_ASR_XLARGE"), "the hole is a row that exists with a field unfitted"

@@ -105,7 +105,7 @@ def test_an_end_stops_at_the_last_frame_the_envelope_measured() -> None:
 
 def test_a_cap_behind_the_end_is_a_no_op_and_never_a_shrink() -> None:
     """A misbound decode can publish a word whose successor starts BEFORE it ends (v2's clamp still does,
-    on review M2's shapes). The cap then sits behind the end, and the end stays.
+    on the backwards-start shapes). The cap then sits behind the end, and the end stays.
 
     The trailing word has no successor, so only the envelope and the 3 s cap bound it — and it may then
     overlap the word the document shows before it. That costs nothing: a document with a backwards pair is
@@ -226,7 +226,7 @@ def test_a_trailing_out_of_vocabulary_token_does_not_absorb_the_hold() -> None:
 
 
 def test_an_end_exactly_on_a_frame_boundary_is_walked_from_its_own_frame() -> None:
-    """W4 review r1: since W4's exact clock every decoded end IS `k * 0.02` (`generate._char_spans` stamps
+    """Since the exact clock every decoded end IS `k * 0.02` (`generate._char_spans` stamps
     `index * frame_sec`), and `int((k * 0.02) / 0.02)` is `k - 1` for 9721 of the first 200001 k — so the
     walk used to start one frame early, read the frame BEFORE the word's own end frame, find it silent and
     return the end untouched. Frame 29 is the first such k: `(29 * 0.02) / 0.02` is 28.999999999999996.
@@ -299,7 +299,7 @@ def random_document(rng: random.Random) -> Generated:
 
 
 def test_no_onset_ever_moves_and_no_end_ever_shrinks() -> None:
-    """The review's reject-if, over 500 random documents x both arms x a random envelope: every start is
+    """The reject-if, over 500 random documents x both arms x a random envelope: every start is
     the decode's own, every end is at or after the decode's, none has moved by more than the cap, and
     none crosses the next word's onset unless the decode had already crossed it."""
     rng = random.Random(20260929)
@@ -318,7 +318,7 @@ def test_no_onset_ever_moves_and_no_end_ever_shrinks() -> None:
             flat = [w for ln in after.lines for w in ln.words]
             raw = [w for ln in before.lines for w in ln.words]
             for position, (held, decoded) in enumerate(zip(flat, raw, strict=True)):
-                # THE NEXT SUNG ONSET, not the next word's (W4 review r1): a zero-width interpolated
+                # THE NEXT SUNG ONSET, not the next word's: a zero-width interpolated
                 # placeholder is not a cap, and the generator above emits them (`0.0` widths). See
                 # `test_a_trailing_out_of_vocabulary_token_does_not_absorb_the_hold` for why crossing one
                 # cannot light a wrong word, and `_next_sung` for the shape it comes from.

@@ -48,7 +48,7 @@ class Engine(StrEnum):
     #: aligner with no emission matrix; every knob applies to it.
     WINDOWED = "windowed"
     #: No engine ran: the text's OWN line timings, placed onto this recording's clock (`Knob.LINE_SYNC`).
-    #: Judged on its line spans, because it has no words to judge (review M1).
+    #: Judged on its line spans, because it has no words to judge.
     LINE_SYNC = "line-sync"
 
 
@@ -78,7 +78,7 @@ class TimingReport:
     #: line sync declare themselves (`measure.measure(..., engine=)`).
     engine: Engine = Engine.GLOBAL
     #: Lines carrying a usable timing — a timed word (word engines) or a line start (LINE_SYNC). What a
-    #: line-synced document is judged on, since it has no words (review M1: judged on `words`, a
+    #: line-synced document is judged on, since it has no words (when it was judged on `words`, a
     #: LINE_SYNC document was `usable=False` by construction, so the knob could never commit).
     lines: int = 0
     #: Why a GATE judged this text not to describe this audio, or None. Set only by a step that MEASURED it,

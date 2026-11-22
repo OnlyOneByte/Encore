@@ -295,7 +295,7 @@ OWN_STAR_NAME = "<model-star>"
 
 #: Nats BELOW each frame's own best log-probability that the star column sits at (docs/arch/04-alignment.md
 #: §3.1). The sweep, the objectives and the verdict: LOG.md, "W9: the star re-fitted out of sample, at an
-#: optimum outside the review's range" and "W7: the star/filler token, phase A" (W7's in-sample 1.0).
+#: optimum outside the review's range" and "W7: the star/filler token, phase A" (its in-sample 1.0).
 STAR_PENALTY_NATS = 0.3
 
 
@@ -562,7 +562,7 @@ class WhisperXAligner:
                     # A fact about the TEXT's language, so one attempt declines rather than the job failing.
                     # Not reached for a NAMED bundle, whose failure is this box's settings'.
                     raise
-                # A download, a Hub/cache failure, a device refusing the weights (review M7).
+                # A download, a Hub/cache failure, a device refusing the weights.
                 raise _machinery_fault(f"loading the {language!r} alignment model", failed) from failed
             return loaded
 

@@ -27,7 +27,7 @@ WINDOW_SEC = 1.0
 SCORE_DROP_NATS = 1.0
 
 #: Two lines whose texts are this similar are "the same line" to `fuzzy_repeats`. `difflib`'s ratio, on the
-#: normalised text: 0.8 is the review's figure.
+#: normalised text: 0.8, as proposed and never fitted.
 REPEAT_RATIO = 0.8
 
 #: Score difference below which two frames of a max-marginal curve are the SAME placement: the chosen
