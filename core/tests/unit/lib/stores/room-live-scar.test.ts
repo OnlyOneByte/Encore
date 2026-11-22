@@ -168,7 +168,7 @@ test("the requester's failure notice carries the id Pick another dismisses it by
 	const { link, send } = await connected();
 	link.mergeMedia([settled('x')]);
 	const ids: (string | undefined)[] = [];
-	link.onError((_message, id) => ids.push(id));
+	link.onError((_message, _kind, id) => ids.push(id));
 	send({ type: 'media:status', mediaId: 'x', status: 'failed', pct: 0, requestedBy: 's1' });
 	await until(() => ids.length === 1);
 	expect(ids).toEqual([failureNoticeId('x')]);

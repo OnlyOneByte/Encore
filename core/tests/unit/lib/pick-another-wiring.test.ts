@@ -31,7 +31,7 @@ const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
 
 test("the swap dismisses the dead song's notice by its id, and no other notice", () => {
 	// The failure notice carries an id the swap can name...
-	expect(roomStore).toContain('— try again.`, failureNoticeId(mediaId));');
+	expect(roomStore).toMatch(/— try again\.`,\s*'error',\s*failureNoticeId\(mediaId\)\s*\);/);
 	expect(layout).toContain('toast.error(message, { duration: 4000, id });');
 	// ...and /queue, where the dead card says the same words over its own buttons, shows none and takes one down.
 	expect(layout).toContain("if (page.url.pathname === '/queue') return;");
@@ -83,7 +83,9 @@ test('Try again on a dead card answers at once, then follows the real status', (
 test('a disabled LINK Button looks and acts disabled, as a disabled <button> does (Pick another in the hold)', () => {
 	const button = readFileSync(at('src/lib/components/ui/button/button.svelte'), 'utf8');
 	// `disabled:` matches a real <button> only; the link is disabled by `aria-disabled` and a dropped href.
-	expect(button).toContain('[&:is(a)[aria-disabled=true]]:pointer-events-none [&:is(a)[aria-disabled=true]]:opacity-50');
+	expect(button).toContain(
+		'[&:is(a)[aria-disabled=true]]:pointer-events-none [&:is(a)[aria-disabled=true]]:opacity-50'
+	);
 	expect(button).toContain('aria-disabled={disabled}');
 	// Never a bare `aria-disabled:`: the reorder grip is a <button> that sets it while staying live.
 	expect(button).not.toMatch(/(^|\s)aria-disabled:opacity/);
