@@ -2,8 +2,9 @@
  * The icon set, as path data. NO CODEPOINT MAY BE SHIPPED AS AN ICON: several transport codepoints carry
  * `Emoji_Presentation=Yes`, so colour emoji is their Unicode default, and the text-presentation selector is honoured
  * unreliably on exactly those. INLINE PATHS AND NO DEPENDENCY, because this app is self-hosted and expected to work on
- * a LAN with no internet. Geometry is Lucide's (ISC licence), a 24×24 grid with a 2px stroke; values are the svg's
- * INNER markup, and being compile-time constants with no interpolation is what makes {@html} in Icon.svelte safe.
+ * a LAN with no internet. Geometry is Lucide's (ISC licence; the text is in ./icons.LICENSE), a 24×24 grid with a
+ * 2px stroke; values are the svg's INNER markup, and being compile-time constants with no interpolation is what makes
+ * {@html} in Icon.svelte safe.
  */
 
 export const ICON_PATHS = {

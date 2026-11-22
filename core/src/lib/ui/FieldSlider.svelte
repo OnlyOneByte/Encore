@@ -27,7 +27,7 @@
 	 * binding — so while `value` rode `rest` the primitive always owned it: it wrote its own local copy on every
 	 * move and nothing re-asserted the caller's. For the nine OTHER sliders that was invisible, because every one of
 	 * them advances its own state from `onValueChange` and so always agreed. For GuidingTrack it was the shipping half
-	 * of docs/UI-REVIEW.md finding C: with the socket down the command was refused and the draft correctly
+	 * of the guide slider's spring-back: with the socket down the command was refused and the draft correctly
 	 * declined to move, but the thumb, the filled range and `aria-valuenow` had already advanced inside the
 	 * primitive and stayed there THROUGH the reconnect.
 	 * Both shapes are still available from here. Plain `value={x}` leaves the prop unbound, so the local state is

@@ -7,7 +7,7 @@ import { at } from '$test';
  *
  * `command` reports whether the frame reached the wire, and a PLAYER command is NOT resent on resync the way a
  * queue add is (`QueueStore.resendPending` has no counterpart on that path), so a dropped one is simply lost.
- * docs/UI-REVIEW.md finding C is the record: all five sites discarded the boolean, the only report was a
+ * The defect: all five sites discarded the boolean, the only report was a
  * `console.warn`, and two of the five held an optimistic value — so the ± keycap showed a shift the server had
  * never heard and the guide slider followed the finger through a drag the room never heard and then sprang back.
  *
