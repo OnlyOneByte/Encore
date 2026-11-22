@@ -62,6 +62,11 @@ export class RoomLink {
 	lostName: string | null = null;
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
+	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
+	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". False again
+	 *  from each socket open until that hello's `playback:state`: in between, `entries` can already be the new list
+	 *  while `playback` is still the old one. Joining again after a Leave reloads the page, so a new link starts here. */
+	playbackSynced = false;
 	playback: PlaybackState = {
 		currentEntryId: null,
 		positionSec: 0,
@@ -101,6 +106,7 @@ export class RoomLink {
 	pendingKind = new Map<string, 'add' | 'move'>();
 
 	#ws: WsClient | undefined;
+	#unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string, kind: 'error' | 'info') => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
@@ -227,6 +233,9 @@ export class RoomLink {
 				// to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
 				if (c && this.#wasConnected) void this.#recheckMe();
 				if (c) this.#wasConnected = true;
+				// The socket says it is open BEFORE it sends `hello`, so the reply's `queue:sync` and `playback:state` both land
+				// after this: a reader sees one resync, not a song that left and then a first song.
+				if (c) this.playbackSynced = false;
 				this.connected = c;
 				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
 				this.offline = !c;
@@ -250,7 +259,7 @@ export class RoomLink {
 		this.#state = 'live';
 		this.#ws.open();
 		// A socket that never comes up (a proxy that blocks it) still gets the cue, just not on a normal handshake.
-		setTimeout(() => {
+		this.#unreachableTimer = setTimeout(() => {
 			if (this.#state !== 'live' || this.connected || this.offline) return;
 			this.offline = true;
 			this.#emit();
@@ -359,6 +368,7 @@ export class RoomLink {
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
 	close(): void {
 		this.#state = 'closed';
+		clearTimeout(this.#unreachableTimer);
 		this.#ws?.close();
 		this.#ws = undefined;
 	}
@@ -440,7 +450,10 @@ export class RoomLink {
 			nextSingers.delete(e.singerId);
 			this.singers = nextSingers;
 		}
-		if (e.type === 'playback:state') this.playback = e.state;
+		if (e.type === 'playback:state') {
+			this.playback = e.state;
+			this.playbackSynced = true;
+		}
 		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn(e.cmd);
 		// The WHOLE event, not four unpacked fields: the failure arm needs `requestedBy` as well, and a fifth
 		// positional argument on a five-line signature is how the next one gets dropped on the way in.
