@@ -79,6 +79,9 @@
 	let upNext = $state<QueueEntry | null>(null);
 	const ctl = new GaplessController();
 	let tvState = $state(ctl.state);
+	// The entry the controller has the visible slot on. A natural end with a missed preload moves it to `upNext` a
+	// server round trip BEFORE `current` follows, so it is how the loading card tells its song from the one that ended.
+	let stageEntryId = $state<string | null>(null);
 	let visible = $state<Slot>('A');
 	let positionSec = $state(0);
 	let durationSec = $state(0);
@@ -168,9 +171,10 @@
 	}
 
 	function syncSlots() {
-		const visibleSlot = ctl.assignment().visible;
+		const { visible: visibleSlot, visibleEntryId } = ctl.assignment();
 		visible = visibleSlot;
 		tvState = ctl.state;
+		stageEntryId = visibleEntryId;
 		// The controller's view, not the raw pair: right after a natural end `current` is still the song that just ended.
 		const { visible: onScreen, hidden: warming } = ctl.slotEntries(current, upNext);
 		// SNAPSHOT HERE, and only here: `syncSlots` runs on explicit lifecycle transitions alone.
@@ -211,9 +215,10 @@
 		// or a removal arrives only here, and used to drop the next singer straight into their song with no card (UI-02).
 		// It names `cur`, the entry ACTUALLY starting, never `upNext`. Not before the evening's first song, which
 		// `onFirstSongReady` opens once it can play.
-		// `alreadyIntroduced` only protects the hold TIMER: after a natural end the card is already up for this entry,
-		// and re-entering would restart the hold and keep the card up one round trip longer. The card is right either way.
-		const alreadyIntroduced = tvState === 'interstitial' && introEntry?.id === cur?.id;
+		// ONE HANDOFF, ONE CARD: after a natural end the card already went up for this entry, and is still up as the hold or,
+		// once the hold is over on a missed preload, as the loading card. A slow round trip lands the confirm in the
+		// second, and re-entering there showed a second card with a second hold after a gap of lyrics.
+		const alreadyIntroduced = (tvState === 'interstitial' || tvState === 'loading') && introEntry?.id === cur?.id;
 		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced) {
 			introEntry = cur;
 			ctl.enterInterstitial();
@@ -283,10 +288,21 @@
 		syncSlots();
 	}
 
+	/**
+	 * The TV came up into a song the room is already partway through (a reload, a second TV): `hello` sends the
+	 * server's playhead before `nowplaying:changed`, and the evening's first song starts at 0. The card is for a change
+	 * of singer, and there is none here.
+	 */
+	const resuming = $derived(!openedOnce && seekSec > 0);
+
 	/** The opening song gets an intro too: `onEnded` reaches the interstitial only via a gapless swap. */
 	function onFirstSongReady() {
-		if (openedOnce || songIntroMs === 0 || !current) return;
+		if (openedOnce || !current) return;
+		// Read before `openedOnce` flips it. Set it on EVERY first ready, the intro off included: left false, `resuming`
+		// read any mid-song command's playhead as a reload and held back the loading card all evening.
+		const cameUpMidSong = resuming;
 		openedOnce = true;
+		if (cameUpMidSong || songIntroMs === 0) return;
 		introEntry = current;
 		ctl.enterInterstitial();
 		tvState = ctl.state;
@@ -566,8 +582,6 @@
 	const stageBg = $derived(
 		stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor, tvBackgroundDim)
 	);
-	// The overlay is live only while a song is actually on screen.
-	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// ADVANCE needs BOTH dimensions: the room INTENDS to play AND the master element is actually running.
 	// `isPlaying` alone stays true through a phone pause and an autoplay refusal — the room silent while the reel
 	// sweeps on wall-clock. VISIBILITY still rides `lyricsActive`.
@@ -588,6 +602,9 @@
 	// address on the wall and every scan fails silently. Attract and the lobby say so to the host; the stage never does.
 	const joinUnreachable = $derived(isUnreachableJoinOrigin(data.joinOrigin));
 
+	// The entry the stage is loading, which the loading card names. After a natural end with a missed preload it is
+	// `upNext`, while `current` is still the singer who just finished until the server confirms (IN-03).
+	const stageEntry = $derived([current, upNext].find((e) => !!e && e.id === stageEntryId) ?? null);
 	// ONE derived value, because as independent `{#if}` blocks at one z-index with `inset: 0` and non-exclusive
 	// conditions two full-screen panels paint over each other. `loading` is the FALLBACK for a missed preload,
 	// where `screen` derives `playing` over a not-yet-loaded element.
@@ -595,9 +612,12 @@
 		if (skipNotice) return 'error';
 		if (tvState === 'waiting') return 'waiting';
 		if (tvState === 'interstitial' && introEntry) return 'next';
-		if (tvState === 'loading' && current) return 'loading';
+		if (tvState === 'loading' && stageEntry && !resuming) return 'loading';
 		return null;
 	});
+	// The overlay is live only while a song is actually on screen. Not under the loading card either: `screen` says
+	// `playing` there, so the lyrics showed beside the card and then vanished when the hold began.
+	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial' && transient !== 'loading');
 	// Seeded from the room code, so a room's phrase rotation is deterministic.
 	// See docs/FRONTEND.md#the-attract-and-lobby-idles.
 	const phraseSeed = $derived(seedFromString(data.roomCode || 'encore-attract'));
@@ -897,19 +917,18 @@
 				{/each}
 			</div>
 		</div>
-	{:else if transient === 'loading'}
+	{:else if transient === 'loading' && stageEntry}
 		<!--
 			The MISSED-PRELOAD path, held until the visible player reports ready — affirmative, a song IS coming. It
-			announces `current`, the entry the visible player is loading toward, so it reads the same display the
-			lower-third does rather than deriving a second copy of it.
+			announces `stageEntry`, the entry the visible player is loading toward, with the "Up next" label until the
+			server confirms it, the same rule as the card above.
 		-->
+		{@const d = songDisplay(mediaOf(stageEntry))}
 		<div class="interstitial takeover state-next">
-			<div class="up-label">{NOW_SINGING}</div>
-			<div class="up-name hero-name">{singerName(current?.singerId)}</div>
+			<div class="up-label">{stageEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
+			<div class="up-name hero-name">{singerName(stageEntry.singerId)}</div>
 			<div class="up-song">
-				{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="up-artist-inline"
-						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
-					>{/if}
+				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
 			</div>
 		</div>
 	{/if}
