@@ -35,14 +35,25 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				media,
 				status: job ? mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined) : ('queued' as MediaStatus),
 				pct: job?.progressPct ?? 0,
-				etaSec: job?.etaSec ?? undefined
+				etaSec: job?.etaSec ?? undefined,
+				// The sweep says "no worker can run this" ONCE, on first sight, so a client that loads after that moment
+				// learns it here or never: without it a reload inside the 120s window drew "Making karaoke… 20%" again.
+				unservable: (job && app.workerHub.isUnservable(job.id)) || undefined
 			};
 		});
+
+	// Queued turns whose last job DIED because no worker could run it, and that nothing has picked up since. The TTL's
+	// failure broadcast carries that cause, but a phone or TV that loads after it has only the catalog, which says
+	// "un-processed" — and a reload then reads "that song didn't work, pick another" while the room still has no maker.
+	// Ids only: every one is already in the queue:sync each client holds. "No maker" is a claim about NOW, against the
+	// workers connected NOW — the same `noMakerMedia` the hub re-tells from when one arrives, so the two cannot drift.
+	const noMakerFailed = app.workerHub.noMakerMedia(app.state.entries);
 
 	// Gzipped: every phone refetches this on connect and on each song turning ready (~800 KB at 500 songs, ~100 KB gzipped).
 	return gzipJson(request, {
 		library,
 		processing,
+		noMakerFailed,
 		tags, // mediaId → its 'tag'-kind values, for the library row's chips; additive, a client that ignores it is unaffected
 		// Facets always describe the WHOLE ready library, never the current filter — otherwise picking an artist would collapse the facet list to that one artist and strand you there.
 		facets: { artists: app.media.artistFacets(), tags: app.media.tagFacets() },

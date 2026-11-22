@@ -27,7 +27,7 @@
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
-	import { queueCardKind, nextPlayableEntryId, entryPlayable } from '$lib/readiness';
+	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { tick, untrack } from 'svelte';
@@ -74,7 +74,9 @@
 	let awaySingers = $state<Set<string>>(new Set());
 	/** The entry the On deck hold protects (`room.heldId`), or null. */
 	let heldId = $state<string | null>(null);
-	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
+	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }>>(
+		new Map()
+	);
 	let playback = $state<PlaybackState>({
 		currentEntryId: null,
 		isPlaying: false,
@@ -129,6 +131,14 @@
 	});
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+	// The room's maker verdict, from the fold the TV lobby and the strip read, so a stalled card agrees with both.
+	const noMaker = $derived(
+		waitingTurns(
+			queued,
+			(id) => mediaCatalog.get(id),
+			(id) => mediaStatus.get(id)
+		).noMaker
+	);
 	/* WHAT WILL ACTUALLY PLAY NEXT, skipping anything still processing, matching the server's own `nextPlayable`.
 	   This is why `up` is keyed on an id rather than on `i === 0`: the first row in rotation order may be cooking,
 	   and crowning it would promise a turn the server will skip. `nextPlayableEntryId` lost its only production
@@ -453,7 +463,8 @@
 		if (reason) endDrag(false, reason);
 	});
 
-	/** THE RETRY ON A STALLED CARD: the turn is already in the rotation, so this asks for the PROCESS alone.
+	/** THE RETRY ON A STALLED OR FAILED CARD — every card nothing is making karaoke for. A failed one is the case the
+	 * "try again" notice names, so leaving it without the control sent the guest looking for a button. The turn is already in the rotation, so this asks for the PROCESS alone.
 	 *
 	 * NOT THROUGH `processAndQueue`, and that is the one place this could have looked tidier and been worse. That
 	 * function pairs an ADD with a process; here the turn exists by construction — this is only reachable from a
@@ -828,8 +839,9 @@
 							status={live?.status}
 							pct={live?.pct ?? 0}
 							etaSec={live?.etaSec}
+							noMaker={noMaker}
 							pending={pendingKind.get(e.id) ?? null}
-							onretry={card === 'stalled' ? () => retryKaraoke(e.mediaId) : undefined}
+							onretry={card !== 'processing' ? () => retryKaraoke(e.mediaId) : undefined}
 							onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
 							grip={gripsVisible && e.id !== pinnedId}
 							gripId={e.id}

@@ -291,6 +291,7 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([['m1', media('m1')]]);
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry,
 		mediaById,

@@ -307,7 +307,9 @@ const server = Bun.serve<SocketData>({
 			// Only the CURRENT socket deregisters: a reconnect's hello can land before the old socket's close, and
 			// that stale close must not forget the live worker (its heartbeats cannot bring it back).
 			if (ws.data.role === 'worker' && ws.data.workerId) {
-				releaseWorkerSocket(workerSockets, app.workers, ws.data.workerId, ws);
+				// Through the hub, so a worker taking the last copy of a capability with it re-tells "no maker".
+				const workerId = ws.data.workerId;
+				app.workerHub.workerLeft(() => releaseWorkerSocket(workerSockets, app.workers, workerId, ws));
 				return;
 			}
 			if (ws.data.tvKey !== undefined) {

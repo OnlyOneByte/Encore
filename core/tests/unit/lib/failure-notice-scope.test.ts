@@ -47,15 +47,15 @@ test('the client gates the NOTICE on the requester, and nothing else', () => {
 
 	const failedArm = room.slice(room.indexOf("if (status === 'failed') {"));
 	// The gate, with the `!e.requestedBy` fallback: an internal or admin-side process nobody asked for is still
-	// news for whoever is looking, which is the conservative direction.
-	expect(failedArm).toContain('if (!e.requestedBy || e.requestedBy === this.me?.id) {');
+	// news for whoever is looking, which is the conservative direction. A `restated` failure was announced already.
+	expect(failedArm).toContain('if (!e.restated && (!e.requestedBy || e.requestedBy === this.me?.id)) {');
 	// Server-side attribution against `me.id`, which comes from the session cookie — so the notice still finds
 	// the requester after they reload mid-wait. A client-side "did I tap this?" set would not survive that.
 	expect(failedArm).not.toContain('requestedThisDevice');
 
 	// And the gate wraps the TOAST only. The status map, the catalog's stemStatus and the scar are all unchanged
 	// by it: every phone still draws the row correctly, and B's /queue row still reads "Couldn't make karaoke".
-	const gateAt = failedArm.indexOf('if (!e.requestedBy');
+	const gateAt = failedArm.indexOf('if (!e.restated && (!e.requestedBy');
 	expect(failedArm.indexOf('recordScar(failedMedia)')).toBeLessThan(gateAt);
 	expect(failedArm.slice(gateAt)).toContain("Couldn't make karaoke for");
 });

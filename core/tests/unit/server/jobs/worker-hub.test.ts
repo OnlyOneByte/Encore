@@ -3,10 +3,11 @@
 // socket — sinks capture the effects.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { WorkerHub, validateWorkerMessage } from '$lib/server/jobs/worker-hub';
+import { WorkerHub, validateWorkerMessage, UNSERVABLE_ERROR_PREFIX, positiveMs } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { requiredCapability } from '$lib/server/jobs/dispatch';
 import { attemptSelection } from '$lib/contract';
 import {
 	attemptStages,
@@ -43,6 +44,7 @@ function harness() {
 	const broadcasts: ServerEvent[] = [];
 	let clock = T0;
 	const readied: string[] = [];
+	const queue: { status: string; mediaId: string }[] = [];
 	const hub = new WorkerHub({
 		jobs,
 		attempts,
@@ -51,9 +53,21 @@ function harness() {
 		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
 		broadcast: (e) => broadcasts.push(e),
 		onMediaReady: (mediaId) => readied.push(mediaId),
-		now: () => clock
+		now: () => clock,
+		queueEntries: () => queue
 	});
-	return { hub, jobs, attempts, registry, mediaById, sent, broadcasts, readied, setClock: (t: number) => (clock = t) };
+	return {
+		hub,
+		jobs,
+		attempts,
+		registry,
+		mediaById,
+		sent,
+		broadcasts,
+		readied,
+		queue,
+		setClock: (t: number) => (clock = t)
+	};
 }
 
 const cmdsOfType = (sent: { cmd: WorkerCommand }[], type: WorkerCommand['type']) =>
@@ -191,6 +205,7 @@ test('welcome carries the object-store config so a remote worker pulls/pushes vi
 	const jobs = new JobRepository(db);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry: new WorkerRegistry(),
 		mediaById: new Map<string, Media>(),
@@ -535,14 +550,207 @@ test('an unservable job past the TTL is failed and broadcasts failed', () => {
 	setClock(T0 + 119_000);
 	hub.dispatch();
 	expect(jobs.byId(job.id)!.status).toBe('queued');
+	// What /api/process reads for a repeat request, when the sweep stays silent.
+	expect(hub.isUnservable(job.id)).toBe(true);
 
 	setClock(T0 + 121_000);
 	hub.dispatch();
 	const failed = jobs.byId(job.id)!;
 	expect(failed.status).toBe('failed');
 	expect(failed.error).toContain('align');
+	expect(hub.isUnservable(job.id)).toBe(false);
+	// The CAUSE rides the failure: there is still no maker, so the room must not be sent to "pick another".
 	const last = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
-	expect(last).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
+	expect(last).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed', unservable: true });
+});
+
+// "No maker" is about NOW. The TTL's failure told the room there is none; a worker that brings the capability makes
+// that untrue, and nothing else would say so — the room goes on reading "Can't make new karaoke right now".
+const STEMS = requiredCapability('stems');
+/** m1 waits in a queued turn; its stems job dies at the TTL while the only worker offers align. */
+function ttlKilledStems() {
+	const h = harness();
+	h.queue.push({ status: 'queued', mediaId: 'm1' });
+	h.jobs.enqueue('m1', 'stems', 0, T0);
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	h.setClock(T0 + 121_000);
+	h.hub.dispatch();
+	expect(h.broadcasts.at(-1)).toMatchObject({ mediaId: 'm1', status: 'failed', unservable: true });
+	return h;
+}
+const plainFailures = (broadcasts: ServerEvent[]) =>
+	broadcasts.filter((e) => e.type === 'media:status' && e.mediaId === 'm1' && e.status === 'failed' && !e.unservable);
+const hello = (workerId: string, capabilities: string[]) =>
+	({ type: 'worker:hello', workerId, capabilities, concurrency: 1, version: '1' }) as const;
+
+test('a worker that brings the missing capability re-tells the room it is a plain failure, once', () => {
+	const { hub, broadcasts, mediaById } = ttlKilledStems();
+	hub.handle(hello('w2', [STEMS]));
+	expect(plainFailures(broadcasts)).toEqual([
+		{ type: 'media:status', mediaId: 'm1', status: 'failed', pct: 0, restated: true, media: mediaById.get('m1') }
+	]);
+	// A second worker with the same capability changes nothing the room could have heard.
+	hub.handle(hello('w3', [STEMS]));
+	expect(plainFailures(broadcasts)).toHaveLength(1);
+});
+
+test('a worker that brings something else re-tells nothing', () => {
+	const { hub, broadcasts } = ttlKilledStems();
+	hub.handle(hello('w2', [requiredCapability('fetch')]));
+	expect(plainFailures(broadcasts)).toHaveLength(0);
+	expect(hub.noMakerMedia([{ status: 'queued', mediaId: 'm1' }])).toEqual(['m1']);
+});
+
+// R5-RACE-1: a worker that joins, LEAVES and joins again. A reload in the gap re-seeded "no maker" from /api/library,
+// so the rejoin must say it again.
+test('a maker that leaves and rejoins re-tells it on every rejoin', () => {
+	const { hub, registry, broadcasts } = ttlKilledStems();
+	hub.handle(hello('w2', [STEMS]));
+	registry.remove('w2');
+	expect(hub.noMakerMedia([{ status: 'queued', mediaId: 'm1' }])).toEqual(['m1']);
+	hub.handle(hello('w3', [STEMS]));
+	expect(plainFailures(broadcasts)).toHaveLength(2);
+});
+
+// R5-RACE-2: a core restart builds a fresh hub over the same job rows, with an empty registry. Phones and the TV keep
+// "no maker" across the socket drop, so the first capable join after the restart must re-tell it.
+test('after a core restart, the first capable join re-tells it', () => {
+	const { jobs, registry, mediaById, broadcasts, queue } = ttlKilledStems();
+	for (const w of registry.list()) registry.remove(w.workerId);
+	const restarted = new WorkerHub({
+		jobs,
+		registry,
+		mediaById,
+		toWorker: () => {},
+		broadcast: (e) => broadcasts.push(e),
+		now: () => T0 + 200_000,
+		queueEntries: () => queue
+	});
+	restarted.handle(hello('w2', [STEMS, 'align']));
+	expect(plainFailures(broadcasts)).toHaveLength(1);
+});
+
+test('a song that died at fetch stays "no maker" until the whole rest of the chain has a worker', () => {
+	const { hub, jobs, broadcasts, queue, setClock } = harness();
+	queue.push({ status: 'queued', mediaId: 'm2' });
+	jobs.enqueue('m2', 'fetch', 0, T0);
+	hub.dispatch(); // first sight: no worker at all
+	setClock(T0 + 121_000);
+	hub.dispatch();
+	const told = () => broadcasts.filter((e) => e.type === 'media:status' && e.mediaId === 'm2' && e.restated);
+	// A worker that only fetches cannot make the song singable.
+	hub.handle(hello('w1', [requiredCapability('fetch')]));
+	expect(told()).toHaveLength(0);
+	hub.handle(hello('w2', [requiredCapability('stems'), 'align']));
+	expect(told()).toHaveLength(1);
+});
+
+test('a song whose turn is over is not re-told', () => {
+	const { hub, broadcasts, queue } = ttlKilledStems();
+	queue[0] = { status: 'playing', mediaId: 'm1' };
+	hub.handle(hello('w2', [STEMS]));
+	expect(plainFailures(broadcasts)).toHaveLength(0);
+});
+
+test('a catalogue that brings the capability re-tells it too', () => {
+	const { hub, broadcasts } = ttlKilledStems();
+	hub.handle({ type: 'worker:catalogue', workerId: 'w1', capabilities: [STEMS, 'align'], separators: [] });
+	expect(plainFailures(broadcasts)).toHaveLength(1);
+});
+
+// The other direction: the LAST capable worker leaving makes "no maker" true again. A reload would say so
+// (/api/library), so the live room must too, or two phones in one room read different words.
+const noMakerAgain = (broadcasts: ServerEvent[]) =>
+	broadcasts.filter(
+		(e) => e.type === 'media:status' && e.mediaId === 'm1' && e.status === 'failed' && e.unservable && e.restated
+	);
+
+test('the last capable worker leaving re-tells "no maker", as a reload would say it', () => {
+	const { hub, registry, broadcasts } = ttlKilledStems();
+	hub.handle(hello('w2', [STEMS]));
+	expect(noMakerAgain(broadcasts)).toHaveLength(0);
+	hub.workerLeft(() => registry.remove('w2'));
+	expect(noMakerAgain(broadcasts)).toHaveLength(1);
+	expect(hub.noMakerMedia([{ status: 'queued', mediaId: 'm1' }])).toEqual(['m1']);
+});
+
+test('a worker leaving while another still brings the capability re-tells nothing', () => {
+	const { hub, registry, broadcasts } = ttlKilledStems();
+	hub.handle(hello('w2', [STEMS]));
+	hub.handle(hello('w3', [STEMS]));
+	hub.workerLeft(() => registry.remove('w2'));
+	expect(noMakerAgain(broadcasts)).toHaveLength(0);
+});
+
+test('a catalogue that withdraws the capability re-tells "no maker" too', () => {
+	const { hub, broadcasts } = ttlKilledStems();
+	hub.handle({ type: 'worker:catalogue', workerId: 'w1', capabilities: [STEMS, 'align'], separators: [] });
+	hub.handle({ type: 'worker:catalogue', workerId: 'w1', capabilities: ['align'], separators: [] });
+	expect(noMakerAgain(broadcasts)).toHaveLength(1);
+});
+
+test("the verdict reads the room's model: a plain stems worker cannot make a roformer process", () => {
+	const effective: EffectiveSettings = {
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' },
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: null }
+	};
+	const db = migratedDb();
+	const jobs = new JobRepository(db);
+	const registry = new WorkerRegistry();
+	const hub = new WorkerHub({
+		jobs,
+		registry,
+		mediaById: new Map([['m1', media('m1')]]),
+		toWorker: () => {},
+		broadcast: () => {},
+		getSettings: () => effective,
+		now: () => T0,
+		queueEntries: () => []
+	});
+	jobs.fail(jobs.enqueue('m1', 'stems', 0, T0).id, `${UNSERVABLE_ERROR_PREFIX} 'stems:roformer' within 120s`, T0);
+	const waiting = [{ status: 'queued', mediaId: 'm1' }];
+	registry.hello('w1', ['stems', 'align'], 1, '1', T0);
+	expect(hub.noMakerMedia(waiting)).toEqual(['m1']);
+	registry.hello('w2', ['stems:roformer'], 1, '1', T0);
+	expect(hub.noMakerMedia(waiting)).toEqual([]);
+});
+
+test('a catalogue that SWAPS one capability for another is a change of the fleet, and re-tells', () => {
+	// Same count before and after, so only comparing the sets (not their sizes) sees it.
+	const effective: EffectiveSettings = {
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' },
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: null }
+	};
+	const jobs = new JobRepository(migratedDb());
+	const broadcasts: ServerEvent[] = [];
+	const hub = new WorkerHub({
+		jobs,
+		registry: new WorkerRegistry(),
+		mediaById: new Map([['m1', media('m1')]]),
+		toWorker: () => {},
+		broadcast: (e) => broadcasts.push(e),
+		getSettings: () => effective,
+		now: () => T0,
+		queueEntries: () => [{ status: 'queued', mediaId: 'm1' }]
+	});
+	jobs.fail(jobs.enqueue('m1', 'stems', 0, T0).id, `${UNSERVABLE_ERROR_PREFIX} 'stems:roformer' within 120s`, T0);
+	hub.handle(hello('w1', ['stems', 'align']));
+	expect(broadcasts.filter((e) => e.type === 'media:status' && e.restated)).toHaveLength(0);
+	hub.handle({ type: 'worker:catalogue', workerId: 'w1', capabilities: ['stems:roformer', 'align'], separators: [] });
+	expect(broadcasts.filter((e) => e.type === 'media:status' && e.restated && !e.unservable)).toHaveLength(1);
+});
+
+test('ENCORE_UNSERVABLE_TTL_MS takes only a positive whole number of milliseconds', () => {
+	expect(positiveMs('3000')).toBe(3000);
+	expect(positiveMs('2500.9')).toBe(2500);
+	for (const bad of [undefined, '', '0', '-5', 'soon', 'NaN']) expect(positiveMs(bad)).toBeUndefined();
+});
+
+test('a Try again since the death has its own status, so a join re-tells nothing', () => {
+	const { hub, jobs, broadcasts } = ttlKilledStems();
+	jobs.enqueue('m1', 'stems', 0, T0 + 122_000);
+	hub.handle(hello('w2', [STEMS]));
+	expect(plainFailures(broadcasts)).toHaveLength(0);
 });
 
 test('a job that finds a worker before the TTL is unaffected (no spurious fail)', () => {
@@ -665,6 +873,8 @@ test('a terminally failed stems job settles the media back to un-processed and s
 	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
 	// The failure carries the settled row, so a phone that never fetched the song can name it.
 	expect((statuses.at(-1) as Extract<ServerEvent, { type: 'media:status' }>).media).toEqual(mediaById.get('m1')!);
+	// A worker that RAN and died is a failed song, not a missing maker: "pick another" is the true next step.
+	expect((statuses.at(-1) as { unservable?: boolean }).unservable).toBeUndefined();
 });
 
 test('a failed ALIGN leaves a separated song singable — it does not settle the stems side', () => {
@@ -798,6 +1008,7 @@ function hubWithSettings(getSettings: () => EffectiveSettings) {
 	const mediaById = new Map<string, Media>([['m1', media('m1')]]);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry,
 		mediaById,

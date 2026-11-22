@@ -6,7 +6,8 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
-	import { nextPlayableEntryId } from '$lib/readiness';
+	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
+	import { processStageLabel, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
@@ -76,6 +77,7 @@
 	/* Cheering is for the AUDIENCE, and the room can turn it off. Either way the strip's Cheer key keeps its slot and
 	   only hides, so the dock never changes shape (proposal 13). */
 	let canReact = $state(false);
+	let waitingLine = $state('');
 	let entryId = $state<string | null>(null);
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
@@ -132,7 +134,17 @@
 			   told the truth about the same entry ("Making karaoke…" with a progress bar) and the dock contradicted it.
 			   `nextPlayableEntryId` is the SAME predicate the server's `nextPlayable` uses, so the strip can no longer
 			   promise a turn the server will skip. */
-			queueCount = room.entries.filter((e) => e.status === 'queued').length;
+			const queued = room.entries.filter((e) => e.status === 'queued');
+			queueCount = queued.length;
+			// The TV lobby's fold and words, so the two cannot disagree about a queue that is waiting.
+			const waiting = waitingTurns(
+				queued,
+				(id) => room.mediaCatalog.get(id),
+				(id) => room.mediaStatus.get(id)
+			);
+			waitingLine =
+				stuckTurnsLines(waiting, (id) => room.singers.get(id)?.displayName ?? 'Someone', me)?.headline ??
+				processStageLabel('queued');
 			offline = room.offline;
 			status = room.status;
 			placeholder = room.placeholder;
@@ -448,6 +460,7 @@
 			hasSong={hasSong}
 			canStart={canStart}
 			queueCount={queueCount}
+			waitingLine={waitingLine}
 			entryId={entryId}
 			connected={!offline}
 			onrestart={() => targeted('restart')}

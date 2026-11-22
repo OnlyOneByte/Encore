@@ -37,13 +37,16 @@
 	} from '$lib/tv/screen';
 	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
-	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { processStageLabel, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
+	import { waitingTurns } from '$lib/readiness';
 	import {
 		mergeCatalog,
 		syncLoudnessLevels,
 		snapshot,
 		processIsTerminal,
+		pruneLiveStatus,
+		seedLiveStatus,
 		type PlaybackSnapshot
 	} from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
@@ -53,6 +56,8 @@
 	let entries = $state<QueueEntry[]>([]);
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
+	// The last `media:status` per media — the lobby's ONLY use of it, so it never reaches the catalog or a playhead.
+	let liveStatus = $state<Map<string, Extract<ServerEvent, { type: 'media:status' }>>>(new Map());
 	let connected = $state(false);
 	// ONE TV PER ROOM: whether this screen holds the room's seat (`tv:seat`); null until the server says, which it does
 	// on connect. A COPY (`false`) shows the same stage, muted and sending no telemetry, so it can neither end the song
@@ -345,6 +350,7 @@
 		}
 		if (e.type === 'queue:sync') {
 			entries = e.entries;
+			liveStatus = pruneLiveStatus(liveStatus, e.entries);
 			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 			// The ONLY writer of `mediaCatalog`, and it takes a FULL server list, so no partial local edit is expressible.
 			// That list is the QUEUED songs only. A song queued after this sync arrives with the NEXT one: the gap
@@ -385,9 +391,13 @@
 			guideOverride = e.state.guideLevel;
 			keyShift = e.state.keyShift;
 		}
-		// A pure decision with NO state of its own: writing the catalog from here is how a process for one song reached the
-		// playhead of another. The READY flip is server-driven.
+		// NEVER writes the catalog: writing it from here is how a process for one song reached the playhead of another. The
+		// READY flip is server-driven. The lobby's `liveStatus` is the one thing recorded, and nothing on stage reads it.
 		if (e.type === 'media:status') {
+			// Copy-then-assign, as with `singers` below: the assignment is what publishes it.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			liveStatus = new Map(liveStatus).set(e.mediaId, e);
+			heardSinceReconnect?.add(e.mediaId);
 			// A terminal process never becomes playable and `enterWaiting()` sets no timer, so the party would stare at
 			// "Making the karaoke" forever.
 			const stuck = processIsTerminal(e);
@@ -414,17 +424,56 @@
 		}
 	}
 
+	// What the room was already told before this TV loaded — above all `unservable`, which the server says once.
+	// Best effort: without it the lobby is as before, and the next live status corrects it.
+	// On a RE-connect the snapshot replaces what was held from before the drop, except what a frame has said since.
+	// A read that a later re-connect overtook (a flapping socket) neither seeds nor clears: the later read owns the set,
+	// as on the phone (RoomLink.refreshLibrary).
+	const seedFromLibrary = (reconnect = false) => {
+		const heard = heardSinceReconnect;
+		const superseded = () => reconnect && heardSinceReconnect !== heard;
+		return fetch('/api/library')
+			.then((r) => (r.ok ? r.json() : null))
+			.then((j) => {
+				if (j && !superseded())
+					liveStatus = seedLiveStatus(liveStatus, j.processing ?? [], j.noMakerFailed ?? [], {
+						reconnect,
+						heard: heard ?? undefined
+					});
+			})
+			.catch(() => {})
+			.finally(() => {
+				if (reconnect && !superseded()) heardSinceReconnect = null;
+			});
+	};
+	let wasConnected = false;
+	// Plain, not $state: only the seed reads it. The songs a frame has spoken for since the socket came back.
+	let heardSinceReconnect: Set<string> | null = null;
+
 	onMount(() => {
 		ws = new WsClient({
 			// ONE TV PER ROOM: `role=tv` plus the resolved room code. See docs/FRONTEND.md#the-tv-socket.
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
 			// The TV holds NO queue rev of its own — it never handles queue:patch and adopts each queue:sync wholesale.
-			getLastRev: () => 0,
-			onConnectionChange: (c) => (connected = c),
+			// -1, not 0, so EVERY patch reads as a gap and fetches a sync: with 0 the room's rev-1 patch was the one it
+			// let through unread, so the first song queued after a boot never reached the TV lobby.
+			getLastRev: () => -1,
+			onConnectionChange: (c) => {
+				// A RE-connect re-seeds: frames sent while the socket was down (a core restart) are lost, and the
+				// lobby must say what a reload would.
+				if (c && wasConnected) {
+					// eslint-disable-next-line svelte/prefer-svelte-reactivity -- plain bookkeeping, never rendered
+					heardSinceReconnect = new Set();
+					void seedFromLibrary(true);
+				}
+				if (c) wasConnected = true;
+				connected = c;
+			},
 			onEvent: handleEvent
 		});
 		// Playback continues through a socket drop; WsClient only re-establishes the control channel.
 		ws.open();
+		void seedFromLibrary();
 		return () => ws?.close();
 	});
 
@@ -493,7 +542,6 @@
 			return !m || !isPlayable(m);
 		})
 	);
-	const pendingCount = $derived(pending.length);
 	// Songs still being made and past their estimate (`statusOverdue`), so the lobby says what the singer's phone
 	// says rather than "this takes a minute". Only `pending` songs count: a ready one is overdue no longer. A
 	// `SvelteSet`: one id flips at a time, in place.
@@ -503,6 +551,16 @@
 		if (isOverdue) overdueMedia.add(mediaId);
 		else overdueMedia.delete(mediaId);
 	}
+	// THE PHONE'S OWN CARD KINDS, folded: counting every unplayable turn as "processing" kept the lobby on "Making
+	// karaoke… this takes a minute" under turns the server had already failed or found no maker for.
+	const waiting = $derived(
+		waitingTurns(
+			entries.filter((e) => e.status === 'queued'),
+			(id) => mediaCatalog.get(id),
+			(id) => liveStatus.get(id)
+		)
+	);
+	const stuck = $derived(stuckTurnsLines(waiting, singerName));
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	// A failure belongs to ONE song, so a drained room or a new current song drops it, unlike the autoplay block, which
 	// is the TV's: kept, it sat over the next singer's song (or its waiting card, which never reports ready).
@@ -811,8 +869,9 @@
 			joinUrl={data.joinUrl}
 			roster={roster.shown}
 			overflow={roster.overflow}
-			pendingCount={pendingCount}
+			pendingCount={waiting.making}
 			overdue={overdue}
+			stuck={stuck}
 			unreachable={joinUnreachable}
 			roomCode={data.roomCode}
 			join={isCopy ? copyChip : undefined}
@@ -991,7 +1050,7 @@
 	{#if playbackFailedReason && !isAttract}
 		<div class="silent-room" role="status" aria-live="polite">
 			<span class="sr-mark"><Icon name="warning" /></span>
-			<span class="sr-head">This song <span class="grad-text">won’t play</span></span>
+			<span class="sr-head">This song <span class="grad-text">won't play</span></span>
 		</div>
 	{/if}
 

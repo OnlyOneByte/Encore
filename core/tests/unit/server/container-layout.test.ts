@@ -51,7 +51,14 @@ test('compose hands ENCORE_WORKER_TOKEN to both core and the worker', () => {
 // Forwarding a docker/.env value for these would point the container at a HOST path (dev.sh rewrites them
 // for the native run). Every other setting a service reads must be in its `environment:` list.
 const CONTAINER_OWNED: Record<'core' | 'worker', string[]> = {
-	core: ['HOST', 'DATA_DIR', 'FFMPEG_BIN', 'ENCORE_MIGRATIONS_DIR', 'ENCORE_DEV_HARNESS'],
+	core: [
+		'HOST',
+		'DATA_DIR',
+		'FFMPEG_BIN',
+		'ENCORE_MIGRATIONS_DIR',
+		'ENCORE_DEV_HARNESS',
+		'ENCORE_UNSERVABLE_TTL_MS' // a probe's knob (worker-hub.ts): it shortens the TTL so ui:review can film what follows
+	],
 	worker: [
 		'ENCORE_MEDIA_DIR',
 		'ENCORE_DBOS_DB',

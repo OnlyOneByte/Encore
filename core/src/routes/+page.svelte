@@ -17,6 +17,7 @@
 		type Readiness
 	} from '$lib/readiness';
 	import { processAndQueue } from '$lib/process-and-queue';
+	import { processingGroupHeading } from '$lib/phrasing/process-phrasing';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { toast } from 'svelte-sonner';
@@ -33,7 +34,9 @@
 	let entries = $state<QueueEntry[]>([]);
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
-	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
+	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }>>(
+		new Map()
+	);
 
 	/* THE SING TAB. One job — find a song and put it in the rotation — and exactly two states, with `searchActive`
 	   (a non-empty query) as the sole switch between them: a query shows its result groups, no query shows the idle
@@ -288,7 +291,8 @@
 				media: r.media!,
 				pct: r.live?.pct ?? 0,
 				etaSec: r.live?.etaSec,
-				status: r.live?.status
+				status: r.live?.status,
+				unservable: r.live?.unservable
 			}));
 	});
 
@@ -433,7 +437,12 @@
 				<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
 						answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
 				{#if processingRows.length}
-					<h2 class="grouphead">Making karaoke…</h2>
+					<!-- A heading is a claim about what follows: "Making karaoke…" only while some row really is being made. -->
+					<h2 class="grouphead">
+						{processingGroupHeading(
+							processingRows.map((c) => displayReadiness(c.media, liveOf(c.id)) === 'processing' && !c.unservable)
+						)}
+					</h2>
 					{#each processingView.shown as c (c.id)}
 						{@const r = displayReadiness(c.media, liveOf(c.id))}
 						<SongRow
@@ -441,6 +450,7 @@
 							readiness={r}
 							pct={c.pct}
 							status={c.status}
+							unservable={c.unservable}
 							inQueue={inMyQueue(c.id)}
 							processable={isProcessableSource(c.media.source)}
 							onadd={() => addSong(c.id)}
@@ -489,6 +499,7 @@
 							readiness={r}
 							pct={liveOf(m.id)?.pct ?? 0}
 							status={liveOf(m.id)?.status}
+							unservable={liveOf(m.id)?.unservable}
 							inQueue={inMyQueue(m.id)}
 							processable={isProcessableSource(m.source)}
 							onadd={() => addSong(m.id)}

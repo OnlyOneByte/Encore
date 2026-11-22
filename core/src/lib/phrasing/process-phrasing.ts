@@ -3,6 +3,7 @@
 // terms — what a guest waits for is a karaoke track, not "separating vocals".
 import type { MediaStatus } from '$lib/contract';
 import { minutesLeft } from '$lib/on-deck';
+import type { WaitingTurns } from '$lib/readiness';
 
 /** The guest-facing stage line — the sentence under the title while a song processes. `pct` is appended when present;
  * a caller that shows it separately can omit it. */
@@ -45,4 +46,38 @@ export function processReadout(overallPct: number, stepPct: number, etaSec?: num
  *
  * THE REMEDY IS ON THE CONTROL, not in the sentence: the card's retry button carries "you keep your turn", which
  * a sentence naming a button would duplicate and then outlive. */
-export const STALLED_TURN_LABEL = 'Karaoke hasn’t started — the rotation skips this turn until it does';
+export const STALLED_TURN_LABEL = "Can't make this one right now";
+
+/** The Sing tab's heading over the songs a search found that are not ready: a claim about what follows, so
+ * "Making karaoke…" only while some row really is being made, and otherwise the stalled line, plural over a group.
+ * `making` is one flag per row: in flight AND not condemned by the server. */
+export function processingGroupHeading(making: boolean[]): string {
+	if (making.some(Boolean)) return processStageLabel('queued');
+	return making.length === 1 ? STALLED_TURN_LABEL : "Can't make these right now";
+}
+
+/** WHAT THE ROOM IS WAITING ON when nothing queued can play and nothing is being made: the TV lobby's headline and
+ * line, and the phone strip's headline. One source, so the TV and every phone say the same sentence. `null` while
+ * something is being made, or nothing is stuck — the caller's ordinary copy is then the true one.
+ * NO MAKER OUTRANKS A FAILURE, because it is the one that also stops the NEXT song: a guest who picks another
+ * unprocessed song hits the same wall, so the honest move is a ready one.
+ * ANY OTHER STUCK TURN NAMES BOTH WAYS OUT, as its card does ("Couldn't make karaoke · Try again · Pick another"):
+ * once a maker is here, a song that died for want of one is made by a Try again, so "pick another" alone sent the
+ * guest away from a song that now works.
+ * ONE APOSTROPHE, the ASCII one, like "Couldn't make karaoke" on the card beside it. */
+export function stuckTurnsLines(
+	waiting: WaitingTurns,
+	nameOf: (singerId: string) => string,
+	me?: string | null
+): { headline: string; next: string } | null {
+	if (waiting.making || !waiting.stuckSingerIds.length) return null;
+	if (waiting.noMaker) return { headline: "Can't make new karaoke right now", next: 'Pick a ready song on your phone' };
+	const only = waiting.stuckSingerIds.length === 1 ? waiting.stuckSingerIds[0]! : null;
+	if (only && only === me)
+		return { headline: "Your song didn't work. Try again or pick another.", next: 'Try again or pick another' };
+	if (only) {
+		const name = nameOf(only);
+		return { headline: `${name}'s song didn't work`, next: `${name}, try again or pick another on your phone` };
+	}
+	return { headline: "Those songs didn't work", next: 'Try again or pick another on your phone' };
+}

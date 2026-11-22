@@ -52,7 +52,7 @@
 <section class={['deck', 'your-turn', { 'heads-up': headsUp }]} style="--singer:{singerColor}" aria-label="On deck">
 	<p class="eyebrow">
 		<!-- role=status so the switch to "You're next" is spoken; it changes once per turn, not every second. -->
-		<span role="status">{headsUp ? 'You’re next — grab the mic' : 'On deck'}</span>
+		<span role="status">{headsUp ? "You're next — grab the mic" : 'On deck'}</span>
 		{#if timeLeft && !headsUp}<span class="left">{timeLeft}</span>{/if}
 	</p>
 	<h2 class="title">

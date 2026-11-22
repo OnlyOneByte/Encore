@@ -41,6 +41,7 @@ function harness() {
 	const persisted: string[] = [];
 	let clock = T0;
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		attempts,
 		registry: new WorkerRegistry(),

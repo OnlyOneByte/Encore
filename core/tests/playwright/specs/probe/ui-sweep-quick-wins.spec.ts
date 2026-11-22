@@ -96,7 +96,8 @@ test('UI-06/07: the won’t-play overlay names no browser error, and the next so
 
 		const overlay = tv.locator('.silent-room');
 		await expect(overlay).toBeVisible({ timeout: 30_000 });
-		await expect(overlay).toHaveText(/won’t play/);
+		// The TV's copy is ASCII (the 03:26:59Z ruling, and the TV's own ASCII guard), so the straight apostrophe.
+		await expect(overlay).toHaveText(/won't play/);
 		await expect(overlay).not.toContainText('Error');
 
 		// The next song's audio never arrives, so its slot never reports ready: only the change of song can clear the

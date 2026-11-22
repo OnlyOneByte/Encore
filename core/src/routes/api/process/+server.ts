@@ -61,8 +61,12 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const m = app.mediaById.get(mediaId);
 	if (m) app.media.upsert(m);
 
-	// kick the dispatcher in case a worker is already connected + idle, and show the live bar now
-	app.workerHub.dispatch();
+	// Show the live bar now, THEN kick the dispatcher in case a worker is already connected + idle. The order is
+	// load-bearing: dispatch's unservable sweep broadcasts `unservable: true` once, on first sight, and a status
+	// published after it carries no flag — which every phone reads as "the stall cleared", so each drew
+	// "Making karaoke… 0%" for the whole 120s TTL on a job the server already knew nobody could run. A REPEAT
+	// request (Try again, or a second singer) gets the same deduped job the sweep has already seen, and the sweep will
+	// not say it again — so this frame carries the hub's current verdict itself.
 	// Where the SONG is, not a hardcoded 'queued': `enqueue` is idempotent and hands back the EXISTING live job when one is in flight (§6 dedup), so a second tap on an already-separating song must report the real state — otherwise it would broadcast 'queued' to the whole room and snap every phone's progress strip back to the first chip. Reuses the shared mapping so this endpoint cannot drift from the hub.
 	app.publish({
 		type: 'media:status',
@@ -72,8 +76,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			job.status === 'ready'
 				? completedStatusFor(job, m)
 				: mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined),
-		pct: job.progressPct
+		pct: job.progressPct,
+		unservable: app.workerHub.isUnservable(job.id) || undefined
 	});
+	app.workerHub.dispatch();
 
 	return json({ job: { id: job.id, mediaId, status: job.status } });
 };

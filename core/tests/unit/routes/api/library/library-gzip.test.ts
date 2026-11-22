@@ -30,7 +30,9 @@ function installApp() {
 			artistFacets: () => [],
 			tagFacets: () => []
 		},
-		jobs: { findOutstandingForMedia: () => undefined }
+		jobs: { findOutstandingForMedia: () => undefined },
+		state: { entries: [] },
+		workerHub: { noMakerMedia: () => [] }
 	};
 }
 

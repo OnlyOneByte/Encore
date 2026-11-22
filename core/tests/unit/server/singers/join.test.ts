@@ -57,6 +57,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		reaper: new JobReaper(jobs),
 		workers,
 		workerHub: new WorkerHub({
+			queueEntries: () => [],
 			jobs,
 			registry: workers,
 			mediaById,

@@ -1,7 +1,7 @@
 // The durable state-of-record for job processing. I/O layer only — legal-transition rules live in the
 // pure transitions.ts. See docs/ARCHITECTURE.md §7 and docs/SERVER.md#the-attempt-ledger.
 
-import { and, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
 import {
@@ -24,7 +24,7 @@ const SLOT_FREEING_STATUSES: JobStatus[] = ['failed', 'canceled'];
 // The steps that can still close one of a song's readiness gates, in pipeline order. `stems-upgrade` is
 // deliberately absent: it runs on an ALREADY singable song, so it is never what the room is waiting on.
 // Named once so `findOutstandingForMedia` and `mediaWithOutstandingJob` cannot answer over different chains.
-const OUTSTANDING_CHAIN: JobType[] = ['fetch', 'stems', 'align'];
+export const OUTSTANDING_CHAIN: readonly JobType[] = ['fetch', 'stems', 'align'];
 
 /** Optional fields a transition can patch alongside the status change. */
 export interface JobPatch {
@@ -138,6 +138,20 @@ export class JobRepository {
 		if (!job || !isTerminalJob(job.status)) return false;
 		this.#db.delete(jobs).where(eq(jobs.id, job.id)).run();
 		return true;
+	}
+
+	/** The most recently touched job across the readiness chain, terminal or not — what a client that loads after a
+	 *  turn died needs to learn WHY it died, since the live broadcast that said so is gone. */
+	lastChainJob(mediaId: string): Job | null {
+		return (
+			this.#db
+				.select()
+				.from(jobs)
+				.where(and(eq(jobs.mediaId, mediaId), inArray(jobs.jobType, OUTSTANDING_CHAIN)))
+				.orderBy(desc(jobs.updatedAt))
+				.limit(1)
+				.all()[0] ?? null
+		);
 	}
 
 	/** The first not-yet-finished job in pipeline order — checked across all three steps, so a song

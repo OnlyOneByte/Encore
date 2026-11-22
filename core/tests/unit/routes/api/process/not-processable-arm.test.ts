@@ -46,7 +46,7 @@ function installApp(mediaById: Map<string, Media>) {
 		settings: new SettingsRepository(db),
 		media: { upsert: () => {} },
 		publish: () => {},
-		workerHub: { dispatch: () => {} }
+		workerHub: { dispatch: () => {}, isUnservable: () => false }
 	};
 }
 

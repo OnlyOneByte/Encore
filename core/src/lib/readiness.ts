@@ -76,14 +76,47 @@ export function queueCardKind(
 	   NO AGE GATE, NO FIRST-SEEN MAP, NO CONSTANT, and the token rule is what settles that rather than taste. This
 	   arm cannot tell a turn whose process half never landed (permanent) from the one-round-trip window on ANOTHER
 	   guest's phone between the `queue:patch` carrying the add and the `media:status` the subsequent /api/process
-	   POST produces (transient) — so it is not entitled to --danger, and a --warn card saying no karaoke is being
-	   made for this turn is TRUE in both: during the window it is true and resolves in a moment, for a dead turn it
-	   is true forever. The flash is the truth arriving early, not a prediction that can be wrong. (The TAPPING
+	   POST produces (transient).
+	   shortcut: with a maker present the card follows the room's verdict (ruling 38) and says "Couldn't make
+	   karaoke" in the danger look, so during that window another guest's fresh pick can flash it for one frame before
+	   "Making karaoke…". Telling the window from a dead turn needs the server's word (or an age gate, below), which is
+	   a design call; upgrade if the flash is seen off a LAN. (The TAPPING
 	   phone sees no flash at all: `processAndQueue` runs the queue step then the process step, and the process step
 	   sets a live `queued` status BEFORE it awaits, so that phone holds one in the same tick as the add.)
 	   A CLIENT-SIDE age gate would also be a new lie rather than a guard: `addedAt` is a SERVER stamp, and
 	   comparing it against the device's `Date.now()` is cross-clock and skew-unsafe. */
 	return 'stalled';
+}
+
+/** What the QUEUED turns add up to, for the two surfaces that summarise the rotation in one line: the TV lobby and
+ * the phone strip. A FOLD OVER `queueCardKind`, never a second classifier, so a summary cannot say "Making karaoke…"
+ * over rows that each say no karaoke is coming — which both of them did, because each counted every unplayable turn
+ * as in flight. */
+export interface WaitingTurns {
+	/** Turns whose karaoke is being made right now. */
+	making: number;
+	/** Singers holding a turn nothing is making karaoke for (failed or stalled), once each, in rotation order. */
+	stuckSingerIds: string[];
+	/** A stuck turn is stuck because no connected worker can make it — the server said so — not because it failed. */
+	noMaker: boolean;
+}
+
+export function waitingTurns(
+	queued: { singerId: string; mediaId: string }[],
+	mediaOf: (mediaId: string) => Media | undefined,
+	liveOf: (mediaId: string) => { status: MediaStatus; unservable?: boolean } | undefined
+): WaitingTurns {
+	const out: WaitingTurns = { making: 0, stuckSingerIds: [], noMaker: false };
+	for (const e of queued) {
+		const live = liveOf(e.mediaId);
+		const kind = queueCardKind(mediaOf(e.mediaId), live);
+		if (kind === 'processing') out.making++;
+		else if (kind !== 'plain') {
+			if (!out.stuckSingerIds.includes(e.singerId)) out.stuckSingerIds.push(e.singerId);
+			if (live?.unservable) out.noMaker = true;
+		}
+	}
+	return out;
 }
 
 /** Whether offering "make karaoke" makes sense: only for a song neither done nor in flight, AND whose audio can

@@ -47,6 +47,7 @@ function harness(mediaOver: Record<string, Partial<Media>> = {}) {
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const broadcasts: ServerEvent[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry,
 		mediaById,

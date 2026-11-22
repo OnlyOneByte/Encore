@@ -488,6 +488,8 @@ export function getApp(): EncoreApp {
 		mediaStore: mediaStoreConfig,
 		// EFFECTIVE (global+room), so the room's downward-only quality ceiling actually reaches dispatch.
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
+		// Whose "no maker" a worker's arrival makes untrue: the queued turns, read at that moment.
+		queueEntries: () => state.entries,
 		// Persist the ready flip, or the next boot re-processes a song already on disk.
 		persistMedia: (mediaId) => {
 			const m = mediaById.get(mediaId);

@@ -74,13 +74,15 @@ export function lobbyOverdue(making: readonly QueueEntry[], overdueIds: Readonly
  * something true rather than "0 in the room". It says "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY,
  * so naming a control sends a whole room looking for a label no phone displays. While something is processing it says
  * the wait is the karaoke being made, and once that song is `overdue` (`etaSec < 0`) it says what the singer's phone
- * says ("Taking longer than usual") instead of still promising a minute.
+ * says ("Taking longer than usual") instead of still promising a minute. With nothing being made and a turn stuck,
+ * it is that turn's way out (`stuckTurnsLines`' `next`), never "pick a song" under a song that died.
  */
-export function lobbyLine(count: number, processing: boolean, overdue: boolean): string {
+export function lobbyLine(count: number, processing: boolean, overdue: boolean, stuckNext?: string | null): string {
 	if (processing) {
 		const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
 		return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
 	}
+	if (stuckNext) return stuckNext;
 	return count > 0
 		? `${count} in the room · search on your phone and pick a song`
 		: 'Scan to join, then search on your phone and pick a song';

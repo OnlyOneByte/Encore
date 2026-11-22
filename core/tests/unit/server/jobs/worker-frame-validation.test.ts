@@ -23,6 +23,7 @@ function harness() {
 	const jobs = new JobRepository(db);
 	const sent: unknown[] = [];
 	const hub = new WorkerHub({
+		queueEntries: () => [],
 		jobs,
 		registry: new WorkerRegistry(),
 		mediaById: new Map(),
