@@ -37,6 +37,8 @@
 	let me = $state<PublicSinger | null>(null);
 	let status = $state<RoomStatus>('checking');
 	let entries = $state<QueueEntry[]>([]);
+	/** The library read and the first queue sync have both landed, so `noMaker` is the room's verdict, not a default. */
+	let verdictKnown = $state(false);
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }>>(
@@ -69,6 +71,7 @@
 			if (live(rawResults).length !== rawResults.length) rawResults = live(rawResults);
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
+			verdictKnown = room.libraryLoaded && (room.queue?.synced ?? false);
 			library = room.library;
 			libraryTags = room.libraryTags;
 			store = room.queue;
@@ -394,7 +397,11 @@
 
 <!-- Its own title, which the route announcer reads on arrival: without one a tab arrival from /queue kept "Queue ·
 	Encore", and Pick another, which opens here from /queue, said so too. -->
-<svelte:head><title>{replacing ? 'Pick another · Encore' : 'Sing · Encore'}</title></svelte:head>
+<!-- The join screen is not the Sing tab: a guest who has not joined keeps the layout's plain "Encore". -->
+<svelte:head
+	><title>{status === 'not-joined' ? 'Encore' : replacing ? 'Pick another · Encore' : 'Sing · Encore'}</title
+	></svelte:head
+>
 
 <!-- TWO WHOLE BLOCKS, the join screen and the tab, never one `<main>` the join screen moves into: when a slow 401
 	replaces the placeholder (or a session is lost) the topbar goes, and a `<main>` that stayed would jump up under the
@@ -645,12 +652,17 @@
 								 that page's `PageHeader` (named, not line-numbered). -->
 							<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
 							<!-- The promise is only true while something can make karaoke; with no maker it would send the guest
-									into the same dead end the banner above steers them away from. -->
-							<Empty.Description
-								>{noMaker
-									? 'Only ready songs can play right now.'
-									: "Find any song and we'll make the karaoke track for it."}</Empty.Description
-							>
+									into the same dead end the banner above steers them away from. NEITHER LINE UNTIL THE VERDICT IS
+									KNOWN, and both in one grid cell so the box is always the taller one's height: a cold load printed
+									the promise, then took it back 120 ms later, and the block below it jumped (CLS 0.0039). -->
+							<Empty.Description>
+								<span class="promise">
+									<span class:shown={verdictKnown && !noMaker}
+										>Find any song and we'll make the karaoke track for it.</span
+									>
+									<span class:shown={verdictKnown && noMaker}>Only ready songs can play right now.</span>
+								</span>
+							</Empty.Description>
 						</Empty.Header>
 						<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
 								they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
@@ -783,6 +795,17 @@
 		flex-wrap: wrap;
 		gap: var(--space-md);
 		margin-bottom: var(--space-5xl);
+	}
+	/* Both wordings stacked in one cell: the box is the taller one's height whichever shows, or while neither does. */
+	.promise {
+		display: grid;
+	}
+	.promise > span {
+		grid-area: 1 / 1;
+		visibility: hidden;
+	}
+	.promise > .shown {
+		visibility: visible;
 	}
 	.replacing {
 		display: flex;

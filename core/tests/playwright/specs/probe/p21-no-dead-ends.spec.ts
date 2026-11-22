@@ -247,15 +247,17 @@ for (const scenario of ['failing stems', 'no worker'] as const) {
 							.toEqual(expected);
 						// The Library tab, with nothing made yet, must not promise to make one either.
 						await theo.goto(new URL('/library', world.baseURL).href);
-						await expect(theo.locator('body')).toContainText("Can't make new karaoke right now.", {
+						// Visible, not just present: both wordings share one reserved box and only the verdict's is shown.
+						await expect(theo.getByText("Can't make new karaoke right now.", { exact: true })).toBeVisible({
 							timeout: AGREE_MS
 						});
+						await expect(theo.getByText("we'll make the karaoke track")).toBeHidden();
 						expect((await untruths({ theo }))['theo']).toBeUndefined();
 						// Nor the Sing tab before a search: it no longer offers to make karaoke for any song.
 						await theo.goto(new URL('/', world.baseURL).href);
-						await expect(theo.locator('body')).toContainText('Only ready songs can play right now.', {
-							timeout: AGREE_MS
-						});
+						// Visible, not just present: both wordings share one reserved box and only the verdict's is shown.
+						await expect(theo.getByText('Only ready songs can play right now.')).toBeVisible({ timeout: AGREE_MS });
+						await expect(theo.getByText("we'll make the karaoke track")).toBeHidden();
 					}
 				} finally {
 					await shoot(label, { tv, 'maya-queue': maya, 'theo-home': theo });

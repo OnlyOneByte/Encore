@@ -46,16 +46,25 @@ test("the swap dismisses the dead song's notice by its id, and no other notice",
 });
 
 test('with no maker, the idle Sing tab drops the promise to make karaoke for any song', () => {
-	expect(home).toMatch(/noMaker\s*\?\s*'Only ready songs can play right now\.'\s*:\s*"Find any song and we'll make/);
+	// The join screen on `/` keeps the plain title; the Sing tab and Pick another get their own.
+	expect(home).toContain(
+		"{status === 'not-joined' ? 'Encore' : replacing ? 'Pick another · Encore' : 'Sing · Encore'}"
+	);
+	// Neither line until the verdict is known (library read + first queue sync), both in one reserved cell.
+	expect(home).toMatch(/<span class:shown=\{verdictKnown && !noMaker\}\s*>Find any song and we'll make/);
+	expect(home).toMatch(/<span class:shown=\{verdictKnown && noMaker\}\s*>Only ready songs can play right now\./);
+	expect(home).toContain('verdictKnown = room.libraryLoaded && (room.queue?.synced ?? false);');
 });
 
 const library = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
 const card = readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8');
 
 test('with no maker, the Library tab drops the promise to make karaoke too', () => {
+	// Neither line until the first queue sync (the fold `noMaker` reads), both in one reserved cell.
 	expect(library).toMatch(
-		/noMaker\s*\?\s*"Can't make new karaoke right now\."\s*:\s*"Find a song on the Sing tab and we'll make/
+		/<span class:shown=\{queueSynced && !noMaker\}\s*>Find a song on the Sing tab and we'll make/
 	);
+	expect(library).toMatch(/<span class:shown=\{queueSynced && noMaker\}\s*>Can't make new karaoke right now\./);
 	// The link's own verdict, verbatim — the derivation is tested in room-no-maker.test.ts.
 	expect(library).toContain('noMaker = room.noMaker;');
 });
