@@ -245,7 +245,7 @@ ENCORE_MEDIA_VOLUME=/srv/encore/media
 # forwards traffic arriving FROM the network, not the host's own loopback path, so this machine
 # typically cannot open http://<its-own-LAN-IP>:3000 — only localhost:3000. Without the override, a TV
 # opened on localhost puts `localhost` in the QR and every phone that scans it connects to itself.
-ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000
+ENCORE_PUBLIC_ORIGIN=http://192.168.1.20:3000
 ```
 
 ```bash

@@ -73,7 +73,7 @@ const COLLAB_RE = /(?:\bft\b\.?|\bfeat\b\.?|\bfeaturing\b|\bwith\b|\bx\b|&|,|\bv
 /** Separators between artist and title, longest first so " -- " beats " - ". */
 const SEPARATORS = [' — ', ' – ', ' -- ', ' - ', ' | ', ' _ ', '–', '—'];
 
-/** Corp-box titles are full of emoji and stray symbol runs. */
+/** Upload titles are often full of emoji and stray symbol runs. */
 function stripEmoji(s: string): string {
 	// Keeps letters, digits, punctuation and CJK. Stripping either half of a regional-indicator pair still removes the composed flag emoji, as intended.
 	// eslint-disable-next-line no-misleading-character-class

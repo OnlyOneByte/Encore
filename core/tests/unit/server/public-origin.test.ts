@@ -19,8 +19,8 @@ test('a bare LAN request is http, whatever the adapter claims', () => {
 });
 
 test('a proxy that reports https is believed — the tunnel case', () => {
-	const o = publicOrigin(req({ host: 'angryang-encore.v.tunnels.lab.aws.dev', 'x-forwarded-proto': 'https' }), url);
-	expect(o).toBe('https://angryang-encore.v.tunnels.lab.aws.dev');
+	const o = publicOrigin(req({ host: 'encore.example.test', 'x-forwarded-proto': 'https' }), url);
+	expect(o).toBe('https://encore.example.test');
 });
 
 test('a chain of proxies uses the CLIENT-facing scheme, which is the first entry', () => {
@@ -64,10 +64,10 @@ const withOrigin = <T>(value: string | undefined, fn: () => T): T => {
 
 test('an explicit origin wins over the request — the localhost-TV case', () => {
 	// This is the whole point: the TV is loaded on localhost, and the QR must still say the LAN IP.
-	const o = withOrigin('http://10.69.1.169:3000', () =>
+	const o = withOrigin('http://192.168.1.20:3000', () =>
 		publicOrigin(req({ host: 'localhost:3000' }), new URL('http://localhost:3000/tv'))
 	);
-	expect(o).toBe('http://10.69.1.169:3000');
+	expect(o).toBe('http://192.168.1.20:3000');
 });
 
 test('an explicit origin also overrides forwarding headers, so one setting is authoritative', () => {
@@ -106,7 +106,7 @@ test('unset falls back to the request, so existing deployments are unchanged', (
 // Invisible on the host box, because browsers accept Secure over http://localhost, so it only broke actual phones.
 
 test('a plain-HTTP LAN request is NOT https, so the cookie is not marked Secure', () => {
-	expect(publicOriginIsHttps(req({ host: '10.69.1.169:3000' }), url)).toBe(false);
+	expect(publicOriginIsHttps(req({ host: '192.168.1.20:3000' }), url)).toBe(false);
 });
 
 test('a request through an https proxy IS https, so the cookie stays Secure on a tunnel', () => {
@@ -120,7 +120,7 @@ test('an explicit https origin marks the cookie Secure', () => {
 test('an explicit http origin does NOT, even when a proxy claims https', () => {
 	// The override is authoritative for the QR, so it must be authoritative for the cookie too —
 	// otherwise the two disagree about the scheme and the cookie is dropped.
-	const secure = withOrigin('http://10.69.1.169:3000', () =>
+	const secure = withOrigin('http://192.168.1.20:3000', () =>
 		publicOriginIsHttps(req({ host: 'h', 'x-forwarded-proto': 'https' }), url)
 	);
 	expect(secure).toBe(false);
@@ -130,7 +130,7 @@ test('the cookie flag and the per-request origin can never disagree about the sc
 	// One derivation, two callers: assert they agree rather than trusting that they do. NOTE this is the PER-REQUEST
 	// origin, not the advertised join address — see the joinOrigin block below for why those two are allowed to differ.
 	const cases: Record<string, string>[] = [
-		{ host: '10.69.1.169:3000' },
+		{ host: '192.168.1.20:3000' },
 		{ host: 'h', 'x-forwarded-proto': 'https' },
 		{ host: 'h', 'x-forwarded-proto': 'http' }
 	];
@@ -149,9 +149,9 @@ test('a declared origin wins over every header — the localhost-TV case, from t
 	const o = resolveOrigin(
 		req({ host: 'localhost:3000', 'x-forwarded-host': 'proxy.example', 'x-forwarded-proto': 'https' }),
 		new URL('http://localhost:3000/tv'),
-		'http://10.69.1.169:3000'
+		'http://192.168.1.20:3000'
 	);
-	expect(o).toBe('http://10.69.1.169:3000');
+	expect(o).toBe('http://192.168.1.20:3000');
 });
 
 test('an empty or absent declaration falls through to the request, so clearing the field auto-detects', () => {
@@ -163,8 +163,8 @@ test('an empty or absent declaration falls through to the request, so clearing t
 test('with no app singleton the join address is the env var, then the request', () => {
 	// The settings repository lives on the app, which is absent under unit load and during prerender.
 	// That must degrade to the boot-time declaration rather than throwing and blanking the TV.
-	expect(withOrigin('http://10.69.1.169:3000', () => joinOrigin(req({ host: 'localhost:3000' }), url))).toBe(
-		'http://10.69.1.169:3000'
+	expect(withOrigin('http://192.168.1.20:3000', () => joinOrigin(req({ host: 'localhost:3000' }), url))).toBe(
+		'http://192.168.1.20:3000'
 	);
 	expect(withOrigin(undefined, () => joinOrigin(req({ host: '192.168.1.20:3000' }), url))).toBe(
 		'http://192.168.1.20:3000'

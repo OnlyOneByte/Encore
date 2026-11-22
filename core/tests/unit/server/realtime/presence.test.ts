@@ -44,13 +44,13 @@ it('PresenceTracker sockets — ref-counts multiple sockets: a second tab does n
 
 it('PresenceTracker sockets: tracks singers independently and reports arrival order', () => {
 	const p = new PresenceTracker();
-	p.connect('angelo');
+	p.connect('dana');
 	p.connect('maya');
 	p.connect('devon');
-	expect(p.online()).toEqual(['angelo', 'maya', 'devon']);
+	expect(p.online()).toEqual(['dana', 'maya', 'devon']);
 
 	p.disconnect('maya', NOW);
-	expect(p.online()).toEqual(['angelo', 'devon']);
+	expect(p.online()).toEqual(['dana', 'devon']);
 });
 
 it('PresenceTracker sockets: disconnect for an unknown singer is a no-op, not a phantom entry', () => {
@@ -224,10 +224,10 @@ it('membership rides the sync handshake: syncEvent carries both the here and awa
 	const state = new AuthoritativeState();
 	const ev = syncEvent(state, {
 		mediaById: new Map(),
-		listOnline: () => ['angelo', 'maya'],
+		listOnline: () => ['kai', 'maya'],
 		listAway: () => ['dana']
 	});
-	expect(ev.online).toEqual(['angelo', 'maya']);
+	expect(ev.online).toEqual(['kai', 'maya']);
 	expect(ev.away).toEqual(['dana']);
 });
 

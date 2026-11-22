@@ -161,8 +161,8 @@ This is the one deviation **not** recorded per file, because it is identical in 
 
 ## Adding the next component
 
-1. `cd. &&./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` fails — CodeArtifact
-   401). Run `bun test` from the **repo root** afterwards; `bunfig.toml` and its preload live there,
+1. `cd. &&./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` can fail against
+   a private global registry). Run `bun test` from the **repo root** afterwards; `bunfig.toml` and its preload live there,
    and running from `.` reports phantom failures.
 2. Strip every motion utility (§4) and check `var()` references resolve — a name that exists only in
    the `@theme` bridge mints a utility but emits **no** custom property, so reading it as
