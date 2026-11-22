@@ -1,5 +1,5 @@
 # W8's NON-LATIN lane: what an UNCALIBRATED bundle may publish (PLAN-alignment-v3 W8 stage 0). Narrative, the
-# truth set and every number below: README, "W8: the non-Latin truth set".
+# truth set and every number below: LOG.md, "W8: the non-Latin truth set".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --corpus nonlatin --language zh --songs amll-zh \
@@ -19,7 +19,7 @@
 # note, which this file is the four-song hand-counted companion to. W10 fitted `("MMS_FA", "zh")`, so zh IS
 # calibrated now: §1's `truth-times-no-words` / `truth-never-high` / `truth-line-synced-four` are expected
 # to FAIL on the shipped default, the paragraph above is no longer true of zh, and
-# `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` reproduces what they were written for. README, "W10: the
+# `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` reproduces what they were written for. LOG.md, "W10: the
 # first non-Latin calibration rows". ──
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.

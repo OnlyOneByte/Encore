@@ -74,7 +74,7 @@
 #     HuBERT-L    line      15      95.4      83.8  95.49  -6.4 ms   53         63.9       63.8
 #
 # VERDICT HERE: 7/10 on the base model and 8/10 on HuBERT-L, both REJECT, both on `highlight-not-down` and
-# `no-song-loses-lines`. The arm ships DEFAULT-OFF on that. Two things the README's section spells out and a
+# `no-song-loses-lines`. The arm ships DEFAULT-OFF on that. Two things the LOG.md's section spells out and a
 # reader of this file needs: (1) `no-jamendo-song-worse-at-word-pm300` FAILS on the base model (HILA -2.48) and
 # PASSES on HuBERT-L (worst song -0.62), so the models disagree about the arm's cost and not only its gain;
 # (2) the highlight failure is THE LEVEL — this level scores the raw decode's ends, and the shipped word-end

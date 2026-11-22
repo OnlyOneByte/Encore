@@ -8,7 +8,7 @@ timing. The property runs PER SEED so one violation names its seed, and every te
 default, whose 4 known-inverting seeds keep `xfail(strict=True)`, and `m2-order-clamp`, which passes all 32.
 
 The scenarios, the four pre-W1 violations, what the arm costs and the mutation that justifies the per-seed
-shape are in docs/benchmarks/forced-alignment/README.md, "The repair-order property test, seed by seed".
+shape are in docs/benchmarks/forced-alignment/LOG.md, "The repair-order property test, seed by seed".
 """
 
 from __future__ import annotations

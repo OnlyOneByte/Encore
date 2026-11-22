@@ -215,7 +215,7 @@ def test_the_two_non_latin_rows_keep_their_own_populations_apart() -> None:
 
     Both separate by two thirds of a nat per letter — wider than any English bundle's — and both abstain on
     the placement margin, nobody having read one of these trellises. The populations, the mix halves' much
-    thinner head-room and the per-song exhibits: README, "W10: the first non-Latin calibration rows";
+    thinner head-room and the per-song exhibits: LOG.md, "W10: the first non-Latin calibration rows";
     `_runs/w10-nonlatin-cal/` carries the runs.
     """
     zh = lexical.CALIBRATED[("MMS_FA", "zh")]

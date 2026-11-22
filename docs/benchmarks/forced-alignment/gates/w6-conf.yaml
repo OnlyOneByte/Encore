@@ -25,7 +25,7 @@
 #
 # WHAT IS ALREADY MEASURED, and what these gates are therefore expected to read (W6 confidence,
 # 2026-09-30; 20 Jamendo songs x `blind` through the shipped `time_text`, base model, 866 published lines,
-# plus a 4-song x truth/off15/drop50 claim probe — README "The confidence rule" has the tables):
+# plus a 4-song x truth/off15/drop50 claim probe — LOG.md "The confidence rule" has the tables):
 #
 #   blind   control  446 `high` (51.5%), 11.88% of them > 0.5 s off, 12.86% of the `low` ones (AT CHANCE,
 #                    which is review §3.7's opening measurement reproduced), 23 `high` lines > 2 s off
@@ -106,7 +106,7 @@ high-gross-zero-blind-jamendo: blind.jamendo.high_gross == 0
 # the YouTube half keeps THREE `high` lines more than 2 s off, on `hello` (1) and `rap-god` (2) — the
 # review's weaker half (margin AUROC 0.898 against Jamendo's 0.941), measured here at corpus scale on
 # CAPTION truth. It is user-visible: on those two songs the TV runs a word-by-word wipe across a line more
-# than 2 s from where it is sung. Closing it is next wave's work and the README names the candidates (a
+# than 2 s from where it is sung. Closing it is next wave's work and the LOG.md names the candidates (a
 # per-group threshold, the path score as a second conjunct, `conf-fuzzy-repeats`); until then this is a
 # bound being held to, so a FOURTH line reads as the regression it would be.
 high-gross-blind-at-most-three: blind.high_gross <= 3

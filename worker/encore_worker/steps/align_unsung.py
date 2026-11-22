@@ -3,7 +3,7 @@
 A line the audio never sings is dropped on three thresholds at once; a SPARED one comes back only where the
 blind decode's own speech mass vouches for it. `_skipped_lines` is the skip-arc arm's complementary read of
 the same question, off the trellis. Design: docs/arch/04-alignment.md §4, §3.2; the floors' readings are in
-docs/benchmarks/forced-alignment/README.md, "The never-sung floor".
+docs/benchmarks/forced-alignment/LOG.md, "The never-sung floor".
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from encore_worker.domain.lyrics import (
 )
 
 #: The never-sung rule's three thresholds, ALL required (the drop block in `_time_text_global`). ABSOLUTE on
-#: a P95-normalised envelope, and INERT on the MIX — README, "The never-sung floor", has every reading.
+#: a P95-normalised envelope, and INERT on the MIX — LOG.md, "The never-sung floor", has every reading.
 _NEVER_SUNG_SCORE_GAP = 2.0
 
 
@@ -29,13 +29,13 @@ _NEVER_SUNG_RATE = 2.0
 
 #: Fraction of the blind decode's own speech mass a SPARED never-sung line's claim window must carry before
 #: the `m6-*` arms put it back, its decode not being stuck at the window's edge either. Neither the mix's
-#: envelope nor the decode's score can answer this (README, "What brings a SPARED line back").
+#: envelope nor the decode's score can answer this (LOG.md, "What brings a SPARED line back").
 _SPOKEN_RATIO = 0.6
 
 
 #: ...and only where the witness hears the voice AT ALL: a matrix whose median speech mass over the blind
 #: decode's own lines is under this cannot vouch for one, the ratio above being a fraction of nothing there.
-#: The two populations: docs/benchmarks/forced-alignment/README.md, "What brings a SPARED line back".
+#: The two populations: docs/benchmarks/forced-alignment/LOG.md, "What brings a SPARED line back".
 _SPOKEN_FLOOR = 0.06
 
 

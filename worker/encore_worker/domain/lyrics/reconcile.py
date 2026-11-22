@@ -3,7 +3,7 @@
 THE ROLE REVERSAL: the claims are EVIDENCE rather than a search space, so they either corroborate ours or
 diagnose which known failure shape this sheet has. NO CLAIM IS "CORRECTED" HERE (XA-04). The classes, their
 residual patterns, which lines each lets a repair touch and why `Reconciliation.spread_sec` gates nothing:
-`docs/arch/04-alignment.md` §7; README, "Reconcile robustness: the fit, the classes, and which lines a repair
+`docs/arch/04-alignment.md` §7; LOG.md, "Reconcile robustness: the fit, the classes, and which lines a repair
 may touch".
 
 `AsClaimed.spread_sec` is the OTHER spread and it DOES gate: with `together` it separates one coherent
@@ -52,7 +52,7 @@ INLIER_SHARE = 0.9
 
 #: Share of paired lines that must sit within `AGREE_TOLERANCE_SEC` of the MEDIAN LAG before `off_sheet` may
 #: call that lag ONE displacement rather than lopsided scatter a MAD cannot see. Measured on the corpus's own
-#: coherent readings: README, "W8a: the share a coherent lag has to carry".
+#: coherent readings: LOG.md, "W8a: the share a coherent lag has to carry".
 MIN_COHERENT_SHARE = 0.7
 
 #: |scale - 1| beyond this and the tempo fit is DROPPED rather than clamped, which leaves the median offset.
@@ -400,7 +400,7 @@ class OffSheet:
     envelope_lag_sec: float
     #: Do the CLAIMS add a witness of their own? False when this whole lag is the claim clock's own map, which
     #: makes the first reading a restatement of a decision this pipeline made and the envelope the only
-    #: independent witness left. Measured per mode: README, "W8a: when the claims restate the clock".
+    #: independent witness left. Measured per mode: LOG.md, "W8a: when the claims restate the clock".
     claims_independent: bool = True
 
     def why(self) -> str:

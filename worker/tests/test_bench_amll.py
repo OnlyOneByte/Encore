@@ -3,7 +3,7 @@
 Hermetic — the TTML is written to tmp, no audio and no model is read. What matters here is that a WORD is the
 TTML's own whitespace grouping (so the truth words and `line.text.split()` are one tokenisation and
 `load_truth_words` accepts the file), that the voices the bench does not time are dropped and COUNTED, and
-that a file this benchmark cannot score is refused rather than written. README, "W8: the non-Latin truth set".
+that a file this benchmark cannot score is refused rather than written. LOG.md, "W8: the non-Latin truth set".
 """
 
 from __future__ import annotations

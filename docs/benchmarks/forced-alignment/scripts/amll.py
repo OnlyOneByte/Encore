@@ -8,7 +8,7 @@ Reads `<bench>/amll/<slug>/lyrics.ttml` (CC0, github.com/amll-dev/amll-ttml-db) 
 TTML writes with no space between them, so the truth words and `line.text.split()` are one tokenisation.
 Background vocals, translations and romanisations are dropped — the bench's truth is one voice's line
 sequence. The licence posture, what each song's audio is, and why a displaced song is dropped rather than
-shifted: README, "W8: the non-Latin truth set".
+shifted: LOG.md, "W8: the non-Latin truth set".
 """
 
 from __future__ import annotations
@@ -246,7 +246,7 @@ def write(directory: pathlib.Path, parsed: Parsed, ttml: pathlib.Path) -> None:
     # THE SYLLABLE FILE IS WHERE THIS LANE'S WORD TRUTH ACTUALLY IS: Chinese and Japanese write a line with
     # no space in it, so a "word" above is the whole line and nothing but this file times a character. Its
     # `line` and `at` are a CHARACTER OFFSET, so a published unit pairs with it whatever rule split it
-    # (`e2e_lib.load_truth_syllables`; README, "W8 stages 1-2").
+    # (`e2e_lib.load_truth_syllables`; LOG.md, "W8 stages 1-2").
     (directory / "truth-syllables.json").write_text(
         json.dumps(
             {

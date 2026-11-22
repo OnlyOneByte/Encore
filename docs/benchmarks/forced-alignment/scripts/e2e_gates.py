@@ -7,7 +7,7 @@ A gate is the CONDITION THAT MUST HOLD â€” the negation of a wave's reject-if â€
 expression over the two summaries, parsed with `ast` and walked node by node (never `eval`). A gate that
 cannot be evaluated is an ERROR, and an error fails the run exactly like a FAIL, because a gate that silently
 passes on missing data is how a regression ships. The full grammar, every ERROR condition and the gate-file
-formats are in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and
+formats are in `docs/benchmarks/forced-alignment/LOG.md`, "The harness scripts: what each one is for, and
 the limit it states".
 """
 
@@ -329,7 +329,7 @@ def _bias_moves(
     Its companions in `_song_moves` are shares where larger is better, so `min`/`max` of the signed delta
     name their worst and best. Ranking a signed median that way calls a song whose lag GREW the "best" mover
     whenever it grew upward, so displacement is ranked by DISTANCE FROM ZERO here, and the signed extremes are
-    printed under their direction rather than under a verdict. README, "W8a: the 0.5-2 s band".
+    printed under their direction rather than under a verdict. LOG.md, "W8a: the 0.5-2 s band".
     """
     readings = [
         (float(run[s]["bias_ms"]), float(base[s]["bias_ms"]), s)

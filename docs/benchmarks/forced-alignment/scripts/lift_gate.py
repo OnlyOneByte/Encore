@@ -8,7 +8,7 @@ It fits `lexical.lift`'s bands for both consumers — the LINE_SYNC rung and the
 documents — over every right and wrong text the bench serves, through the SHIPPED helper and decoder off the
 bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, or a refusal to pick one where the
 populations overlap; `line_sync_min_agreement` comes from `line_gate.py`. A row is one (bundle, LANGUAGE)
-pair's, so `--corpus nonlatin --language zh` fits that lane's row off its own songs. README, "The lexical
+pair's, so `--corpus nonlatin --language zh` fits that lane's row off its own songs. LOG.md, "The lexical
 calibration rows, exhibit by exhibit" and "W10: the first non-Latin calibration rows".
 """
 

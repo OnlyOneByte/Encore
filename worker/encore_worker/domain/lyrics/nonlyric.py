@@ -4,7 +4,7 @@ A separate module from `clean.py`, which removes FORMAT and judges nothing. Four
 a closed allowlist, a bracket, a colon or the author's own marking: a whole-line section header (R1), a
 leading label prefix with the rest of the line KEPT (R2), an unnoted line in a track that notes its sung ones
 (R3), and a YouTube ASR non-speech marker (R4). Why this is a correctness fix rather than an accuracy one, and
-the three deliberate NON-rules: `docs/arch/04-alignment.md` §8; README, "The non-lyric floor, as arithmetic".
+the three deliberate NON-rules: `docs/arch/04-alignment.md` §8; LOG.md, "The non-lyric floor, as arithmetic".
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ ASR_MARKERS: tuple[str, ...] = ("music", "applause", "laughter")
 
 #: R3's floor: the share of a track's WORDED lines that must carry a music note before an UNNOTED line reads
 #: as not sung. At the BOTTOM of the measured population, the cost either side being asymmetric — below it the
-#: rule DELETES real sung lines (README, "The non-lyric floor, as arithmetic").
+#: rule DELETES real sung lines (LOG.md, "The non-lyric floor, as arithmetic").
 NOTED_SHARE = 0.8
 
 #: …and R3 needs enough of a track to read a convention off. Four noted lines is a chorus; a two-line
@@ -116,7 +116,7 @@ def noted_track(raw_texts: Sequence[str], cleaned_texts: Sequence[str]) -> bool:
     Reads the RAW lines, `clean_line` removing the very marking this is evidence about, and counts only the
     lines that have WORDS and that R1/R4 have not already answered. Both exclusions are measured: counting a
     bare `♪` line fired R3 on every real lyric of one shape, and counting a `[Chorus]` label made a labelled
-    sheet read as LESS marked than the same sheet unlabelled (README, "The non-lyric floor, as arithmetic").
+    sheet read as LESS marked than the same sheet unlabelled (LOG.md, "The non-lyric floor, as arithmetic").
     """
     if len(raw_texts) != len(cleaned_texts):  # pragma: no cover - a caller bug, not an input
         raise ValueError("raw_texts and cleaned_texts must be parallel")

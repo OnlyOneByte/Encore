@@ -24,7 +24,7 @@ OOV_CONFIDENCE = "low"
 CUE_OPENED = "cue-opened"
 
 #: Seconds every char span's START is pulled back toward the true acoustic onset, clamped at the previous
-#: span's end. MEASURED and not tuned, on STARTS only (README, "Re-fitting `ONSET_LEAD_SEC`").
+#: span's end. MEASURED and not tuned, on STARTS only (LOG.md, "Re-fitting `ONSET_LEAD_SEC`").
 ONSET_LEAD_SEC = 0.03
 
 
@@ -409,7 +409,7 @@ def trimmed(line: Line, end: float, *, frame_sec: float) -> Line | None:
     `remapped`'s sibling and NOT a special case of it — only the sub-series from the ANCHOR moves, and the
     anchor WALKS BACK while its tail cannot hold one `frame_sec` per word still to be placed. Called by
     `align_steps._pulled_end`, the bounded left floor of the repair clamp (XA-07). Both properties, the walk
-    and its price: docs/arch/04-alignment.md §4; README, "The clamp's left floor was the bug, not the ladder".
+    and its price: docs/arch/04-alignment.md §4; LOG.md, "The clamp's left floor was the bug, not the ladder".
     """
     kept = [word for word in line.words if word.start < end]
     while kept and end - kept[-1].start < (len(line.words) - len(kept)) * frame_sec:

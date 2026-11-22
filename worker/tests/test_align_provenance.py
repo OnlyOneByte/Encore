@@ -6,7 +6,7 @@ decode, a line re-decoded inside its claim window landing on its claim by constr
 a line R4 timed on the MIX is not re-decoded on the stem by a later stage (L1); and the never-sung rule
 does not bin a claimed line the stem is silent in but the mix is not (M6). L1's and M6's arms ship
 DEFAULT-OFF, so both sides of each are pinned. The rules are docs/arch/04-alignment.md §4, §6 and §12 and
-the arms' numbers README, "The L1 arms, priced on the song the review read them from"; the aligner serves
+the arms' numbers LOG.md, "The L1 arms, priced on the song the review read them from"; the aligner serves
 the stem's and the mix's matrices separately, which is what lets a test say which one R4 read.
 """
 
@@ -1094,7 +1094,7 @@ def test_a_repair_window_widens_only_its_end_and_never_past_the_next_cue(
     `claim_start - _REPAIR_PAD_SEC`. The decode then smears line 3 five seconds past line 4's cue, and
     uncapped the window would be a single-line forced decode over the next line's whole slot. Line 0's
     pad runs past zero, which is why the edge tests read the RECORDED window rather than recomputing it.
-    README, "The repair window's two caps, priced", carries what each cap bought."""
+    LOG.md, "The repair window's two caps, priced", carries what each cap bought."""
     from encore_worker.domain.lyrics import generate as gen
 
     real = gen.regenerate
@@ -1424,7 +1424,7 @@ def test_the_report_relates_the_claims_by_the_LAST_reconcile_where_grading_reads
 # ── W8a: a re-decode that opened past its claim ───────────────────────────────────────────────────────
 
 #: The sustained leading vowel, as a matrix: the sixth line is HEARD from 27.90 s where its cue opens at
-#: 27.00 s, and both close at 30.00 s. `Kinematic_-_Peyote`'s band lines in miniature (README, "W8a: the
+#: 27.00 s, and both close at 30.00 s. `Kinematic_-_Peyote`'s band lines in miniature (LOG.md, "W8a: the
 #: late half of the band, and the end that witnesses it").
 LATE_OPENING = [
     (text, 27.9, 30.0) if i == 5 else (text, start, end) for i, (text, start, end) in enumerate(UNIQUE)
@@ -1435,7 +1435,7 @@ EARLY_BLIND = [
 ]
 
 
-#: The re-opening rule is DEFAULT-ON since W9, so its tests need no knob. README, "W9: `band-reopen` flipped
+#: The re-opening rule is DEFAULT-ON since W9, so its tests need no knob. LOG.md, "W9: `band-reopen` flipped
 #: default-on, and the four words the owner waived".
 REOPEN: frozenset[str] = frozenset()
 
@@ -1493,7 +1493,7 @@ def test_a_repair_that_opened_past_its_claim_but_ended_with_it_is_reopened_there
     Adoption was the other candidate and it costs the word metrics, so only the opening boundary moves
     (`generate.reopened_line`); the first word's onset is then the SHEET'S, scores 0.0 and is marked
     `CUE_OPENED` so nothing that counts aligned onsets counts it (review r1-spec-11). The rule is DEFAULT-ON
-    since W9, so its control `band-late-kept` is asserted here too: README, "W9: `band-reopen` flipped
+    since W9, so its control `band-late-kept` is asserted here too: LOG.md, "W9: `band-reopen` flipped
     default-on, and the four words the owner waived".
     """
     got = _late_opening(tmp_path, monkeypatch, cue=(27.0, 30.0))

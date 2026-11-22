@@ -22,7 +22,8 @@ mid-alignment resumes at the step it was on instead of redoing the ASR pass.
 > | [`../docs/arch/05-worker.md`](../docs/arch/05-worker.md) | separation and the measured stem roles, the audio profile, artifacts and scratch, ffmpeg, providers, transport and ownership, durability, config, and 14 more invariants |
 >
 > Every **measurement** — sweeps, per-song readings, threshold fits, benchmark history — is in
-> [`../docs/benchmarks/forced-alignment/README.md`](../docs/benchmarks/forced-alignment/README.md) and
+> [`../docs/benchmarks/forced-alignment/LOG.md`](../docs/benchmarks/forced-alignment/LOG.md) (current numbers in its
+> [`README.md`](../docs/benchmarks/forced-alignment/README.md)) and
 > [`../docs/benchmarks/stem-separation/README.md`](../docs/benchmarks/stem-separation/README.md). A
 > docstring says WHAT and WHY in a few lines and cites the path (owner directive, 2026-10-01).
 

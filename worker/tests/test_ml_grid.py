@@ -1,8 +1,8 @@
 """The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache (6a/M9/M10).
 
 A stand-in model makes every assertion exact and fast; `test_ml_contract.py` holds the real pass.
-The clock bugs these pin: README, "The clock was wrong twice over"; why each fixture length was
-chosen: README, "The emission frame grid, as `test_ml_grid.py`'s fixtures state it".
+The clock bugs these pin: LOG.md, "The clock was wrong twice over"; why each fixture length was
+chosen: LOG.md, "The emission frame grid, as `test_ml_grid.py`'s fixtures state it".
 """
 
 from __future__ import annotations

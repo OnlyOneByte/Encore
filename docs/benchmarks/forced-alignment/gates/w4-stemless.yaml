@@ -72,7 +72,7 @@
 # the flip bought. Section 2 is the gate a CANDIDATE DEFAULT is judged by — no worse than what ships, on the
 # population that ships — and read post-flip, with the default as the base, it is answered: the default
 # passes all 7 by construction (this file's non-vacuity check, 10/14 overall), `h3-mix-envelope` fails 6 of
-# 7 and `h3-mix-floor` all 7. README's "The stemless mode" carries the per-song evidence.
+# 7 and `h3-mix-floor` all 7. LOG.md's "The stemless mode" carries the per-song evidence.
 #
 # THE DECISION WAS TAKEN (W4 review r1) AND IS NOW RECORDED UNDER ITS OWN NAME (rebench r2): on the mix the
 # lift's floor REPLACES the envelope gate, `results/w4-stemless-time_text.*` IS the shipped path, and W3's

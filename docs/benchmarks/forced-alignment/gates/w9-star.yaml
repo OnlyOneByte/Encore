@@ -1,6 +1,6 @@
 # W9 §3.10 / D3 — THE STAR AT THE RE-FITTED P, read on the 28-SONG ACCURACY BASIS.
 # `ENCORE_ALIGN_EXPERIMENTS=star` with `ml.STAR_PENALTY_NATS = 0.3` against the same code without it.
-# The sweep, the four objectives and the two hold-out schemes: README, "W9: the star re-fitted out of sample,
+# The sweep, the four objectives and the two hold-out schemes: LOG.md, "W9: the star re-fitted out of sample,
 # at an optimum outside the review's range"; the digest is `results/w9-star-sweep.json`.
 #
 # WHY THIS FILE AND NOT `w7-star.yaml`. That file is W7's verdict and its header still reads "at the shipped
@@ -175,7 +175,7 @@ high-gross-truth-zero: truth.scored.high_gross == 0
 # a `high` line more than 0.5 s out and has no per-song row in the summary, so it is read per MODE. On the 28
 # it is 0 everywhere today except `jit` (7) and `blind` (43), the two modes with no trustworthy claim to
 # corroborate against. THE RE-FITTED ARM TRIPS THE `jit` ONE: 7 -> 8 at P = 0.3, one more confidently-wrong
-# published line, while `blind` improves 43 -> 39 (README, "The star at the re-fitted P = 0.3").
+# published line, while `blind` improves 43 -> 39 (LOG.md, "The star at the re-fitted P = 0.3").
 blind-high-bad-not-up: blind.scored.high_bad <= base.blind.scored.high_bad
 jit-high-bad-not-up: jit.scored.high_bad <= base.jit.scored.high_bad
 drop50-high-bad-zero: drop50.scored.high_bad == 0

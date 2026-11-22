@@ -17,7 +17,7 @@
 # WHY THESE GATES EXIST AT ALL. Every line metric this harness carried before W8a reads `abs(error)`, so a
 # document every line of which is 0.86 s LATE scores exactly like one scattered ±0.86 s. That symmetry is
 # what let five songs sit in the 0.5-2 s band through eight waves with `gross = 0` and `confidence=high`.
-# These are the gates whose ABSENCE let it through; the README table they are written on is
+# These are the gates whose ABSENCE let it through; the LOG.md table they are written on is
 # "What the harness could not see, and now reports".
 #
 # READ THE POOLED FIGURE AS A TRAP, not as the measure. `truth`'s pooled `bias_ms` over all 32 songs is

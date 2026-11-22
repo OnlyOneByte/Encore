@@ -16,7 +16,7 @@ import pytest
 from encore_worker.domain.lyrics import language, romanize
 
 #: One SYNTHETIC line per backend, in the script that backend is for — never a sheet's words
-#: (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
+#: (docs/benchmarks/forced-alignment/LOG.md, "Why no fixture holds a lyric").
 LINES = {
     "zh": "山水风云雨雪",
     "ja": "山の上に雲が流れる",

@@ -1,6 +1,6 @@
 # W8b's ARMS RATCHET: the rule that `word-aligned-not-down` was standing in for. Read on any sweep whose rows
 # carry `words.unaligned_errors` (W8b onward) — the DEFAULT, to hold the floors, and an arms-on A/B, to judge it.
-# Narrative, every number below and the four words that decided the re-judgement: README, "W8b: re-judging
+# Narrative, every number below and the four words that decided the re-judgement: LOG.md, "W8b: re-judging
 # `word-aligned-not-down`". The per-word instrument is `scripts/word_provenance.py`.
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
@@ -28,7 +28,7 @@
 # ONE FILE, BOTH LEVELS: every floor in section 2 reads the same on `run_align` and `time_text`. `headers` and
 # `drop50` are the two modes that do NOT (their paired-word denominators differ between levels), so section 4
 # holds them against the baseline instead, which needs no per-level constant; their per-level numbers are in
-# section 4's header and in the README.
+# section 4's header and in the LOG.md.
 #
 # MEASURED READINGS, 76 rules (77 with `run_gates`' built-in no-error-rows), scored on `_runs/w8a-def-ra` and
 # `_runs/w8ar2-arms-ra` re-read with `words.unaligned_errors` derived from their own recorded documents — every
@@ -43,7 +43,7 @@
 # `test_the_w8b_arms_floors_are_read_on_the_first_live_rows_that_carry_the_onsets`.
 # THE ARMS READ 66/69 on sections 1-3 — `published-pm100-jit` 76.59
 # against 76.64, `published-pm250-jit` 89.37 against 89.40, `published-pm300-jit` 90.51 against 90.54, and
-# nothing else. Four words, named in the README; the arm's `headers` (5 words) and `drop50` (1) moves are all
+# nothing else. Four words, named in the LOG.md; the arm's `headers` (5 words) and `drop50` (1) moves are all
 # BETTER, which is what section 4 would have read had an arms row carried the onsets. A pre-W8b run reads 21
 # PASS and 48 ERROR, which is the fail-loud direction: no row carries the onsets, so no floor may be called
 # clear.
@@ -120,7 +120,7 @@ published-aae-truth: truth.jamendo.word_published_aae_ms <= 86.6
 # can clear those bars by refusing another word (review W9 r1-spec-9, r2-tests-11). What makes the exception
 # per-word rather than pooled is that the 14-song W8a selection the owner priced on read +-300 95.86 ->
 # 95.79 while the full 32 read it up.
-# README, "W9: `band-reopen` flipped default-on, and the four words the owner waived".
+# LOG.md, "W9: `band-reopen` flipped default-on, and the four words the owner waived".
 published-pm100-jit: jit.jamendo.word_published_pm100 >= 76.59
 published-pm250-jit: jit.jamendo.word_published_pm250 >= 89.37
 published-pm300-jit: jit.jamendo.word_published_pm300 >= 90.51
@@ -187,7 +187,7 @@ relabelled-at-most-jit: jit.jamendo.word_interpolated <= base.jit.jamendo.word_i
 # `headers` aligns 5378 Jamendo words at `run_align` and 5240 at `time_text`, `drop50` 2172 and 2459 — so one
 # absolute floor is either dead at one level or wrong at the other. The lower of the two readings is no ratchet
 # either: at `headers` it is 2.58 points of slack (82.79 against 80.21 at +-100), 147 Jamendo words, where the
-# arm this file judges moves FIVE. And these are two of the seven modes the README's table shows the arm firing
+# arm this file judges moves FIVE. And these are two of the seven modes the LOG.md's table shows the arm firing
 # in, so leaving them to section 1's accounting — which a pure retime never violates — is the blindness this
 # file exists to close (review r2-correctness-4). A base-relative rule needs no per-level constant, holds at
 # both levels and bites at one word. BOTH SIDES MUST CARRY THE FAMILY: read against a baseline recorded before

@@ -17,7 +17,7 @@ import ast
 import io
 import re
 import tokenize
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
@@ -166,13 +166,17 @@ def test_every_cited_section_number_names_a_heading_that_exists(repo: Path) -> N
     )
 
 
-#: `README, "The claim clock's own exhibits"` — the other half of the pointer idiom, and the commoner half,
-#: since a measurement README is organised by TITLE rather than by number. The quoted run must be a heading or
-#: a bold lead-in somewhere in `TITLE_DOCS`; a typo'd or renamed title matches nothing and fails.
-TITLE_CITATION = re.compile(r'README(?:\.md)?`?[^"\n]{0,12}?"([^"]{8,120})"')
+#: `LOG.md, "The claim clock's own exhibits"` — the other half of the pointer idiom, and the commoner half,
+#: since a measurement log is organised by TITLE rather than by number. The quoted run must be a heading or
+#: a bold lead-in of the document the citation NAMES; a typo'd, renamed or moved title matches nothing.
+TITLE_CITATION = re.compile(r'(?P<doc>README(?:\.md)?|LOG\.md)`?[^"\n]{0,12}?"(?P<title>[^"]{8,120})"')
 
-#: Where a cited title may live. `README` alone is ambiguous between the measurement README and the worker's,
-#: so all of them are searched: what this rule is for is a title that exists NOWHERE.
+#: The forced-alignment measurement log. A `LOG.md, "..."` citation is looked up in it alone, and a
+#: `README, "..."` one never is: a title that moved into the log with its pointer still saying README fails.
+LOG_DOC = "docs/benchmarks/forced-alignment/LOG.md"
+
+#: Where a `README` title may live. `README` alone is ambiguous between the measurement README and the
+#: worker's, so all of them are searched: what this rule is for is a title that exists NOWHERE in them.
 TITLE_DOCS = (
     "docs/benchmarks/forced-alignment/README.md",
     "docs/benchmarks/stem-separation/README.md",
@@ -199,32 +203,55 @@ def _prose_of(source: str) -> str:
     return re.sub(r"\s+", " ", " ".join(parts))
 
 
-def _doc_titles(repo: Path) -> list[str]:
-    """Every heading and every bold lead-in of `TITLE_DOCS`, lowercased."""
+def _doc_titles(repo: Path, docs: tuple[str, ...]) -> list[str]:
+    """Every heading and every bold lead-in of `docs`, lowercased."""
     titles: list[str] = []
-    for doc in TITLE_DOCS:
+    for doc in docs:
         text = (repo / doc).read_text(encoding="utf-8")
         titles += [match.group(1).strip().lower() for match in re.finditer(r"^#{2,4}\s+(.*)$", text, re.M)]
         titles += [match.group(1).strip().lower() for match in re.finditer(r"\*\*([^*\n]{8,160})\*\*", text)]
     return titles
 
 
+#: The non-Python files that carry title pointers: the design documents and the gate files beside the log.
+TITLE_POINTER_DOCS = ("docs/arch/*.md", "docs/benchmarks/forced-alignment/gates/*.yaml")
+
+
+def _doc_prose(text: str) -> str:
+    """A Markdown or YAML file as one line: `#` comment and `>` quote markers stripped, so a wrapped title
+    still reads whole."""
+    return re.sub(r"\s+", " ", re.sub(r"(?m)^\s*(?:#+|>)[ \t]?", "", text))
+
+
+def _title_citations(repo: Path) -> dict[tuple[str, str], list[str]]:
+    """`{(cited doc, title): the files citing it}` over the code roots and `TITLE_POINTER_DOCS`."""
+    sources: list[tuple[Path, Callable[[str], str]]] = [
+        (path, _prose_of) for root in CODE_ROOTS for path in sorted((repo / root).rglob("*.py"))
+    ]
+    sources += [(path, _doc_prose) for pattern in TITLE_POINTER_DOCS for path in sorted(repo.glob(pattern))]
+    cited: dict[tuple[str, str], list[str]] = {}
+    for path, prose in sources:
+        for match in TITLE_CITATION.finditer(prose(path.read_text(encoding="utf-8"))):
+            doc = "LOG.md" if match.group("doc") == "LOG.md" else "README"
+            cited.setdefault((doc, match.group("title").strip()), []).append(str(path.relative_to(repo)))
+    return cited
+
+
 def test_every_cited_section_title_names_a_heading_or_a_lead_in(repo: Path) -> None:
-    titles = _doc_titles(repo)
-    assert len(titles) > 200, f"only {len(titles)} titles found across TITLE_DOCS — the scan has broken"
-    cited: dict[str, list[str]] = {}
-    for root in CODE_ROOTS:
-        for source in sorted((repo / root).rglob("*.py")):
-            for match in TITLE_CITATION.finditer(_prose_of(source.read_text(encoding="utf-8"))):
-                cited.setdefault(match.group(1).strip(), []).append(str(source.relative_to(repo)))
-    assert len(cited) > 20, f"only {len(cited)} README section titles are cited — the pointer idiom has gone"
+    titles = {"README": _doc_titles(repo, TITLE_DOCS), "LOG.md": _doc_titles(repo, (LOG_DOC,))}
+    assert len(titles["LOG.md"]) > 200, f"only {len(titles['LOG.md'])} titles found in {LOG_DOC}"
+    cited = _title_citations(repo)
+    assert len(cited) > 20, f"only {len(cited)} section titles are cited — the pointer idiom has gone"
+    assert any(citer.endswith(".yaml") for citers in cited.values() for citer in citers), (
+        "no gate file's title pointer was read — TITLE_POINTER_DOCS has stopped matching"
+    )
     missing = {
-        title: sorted(set(citers))
-        for title, citers in cited.items()
-        if not any(title.lower() in known for known in titles)
+        (doc, title): sorted(set(citers))
+        for (doc, title), citers in cited.items()
+        if not any(title.lower() in known for known in titles[doc])
     }
-    assert not missing, "the worker cites README sections that do not exist: " + "; ".join(
-        f'"{title}" (from {", ".join(citers)})' for title, citers in sorted(missing.items())
+    assert not missing, "these cite a section the named document does not hold: " + "; ".join(
+        f'{doc}, "{title}" (from {", ".join(citers)})' for (doc, title), citers in sorted(missing.items())
     )
 
 
@@ -400,10 +427,10 @@ def _modules_named(repo: Path, dotted: str) -> list[Path]:
     return found
 
 
-def test_the_measurement_readme_is_still_cited(repo: Path) -> None:
+def test_the_measurement_log_is_still_cited(repo: Path) -> None:
     """The one pointer that proves the numbers went somewhere rather than away."""
-    assert "docs/benchmarks/forced-alignment/README.md" in _cited_paths(repo), (
-        "nothing in the worker points at the measurement README any more — the prose either kept its "
+    assert "docs/benchmarks/forced-alignment/LOG.md" in _cited_paths(repo), (
+        "nothing in the worker points at the measurement log any more — the prose either kept its "
         "numbers or lost them"
     )
 

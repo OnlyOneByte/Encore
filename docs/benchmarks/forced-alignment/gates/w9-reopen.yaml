@@ -1,7 +1,7 @@
 # W9: THE NEW SHIPPED DEFAULT, with `band-reopen` flipped ON (owner decision, PLAN 2026-10-09). This file is
 # the post-flip BASELINE's gate — the one a later wave re-reads — and `gates/w9.yaml` is the pre-flip half of
 # the same wave, kept because its byte-identity section is the proof that the research track and the star
-# re-fit cost nothing. Narrative and the four waived words: README, "W9: `band-reopen` flipped default-on, and
+# re-fit cost nothing. Narrative and the four waived words: LOG.md, "W9: `band-reopen` flipped default-on, and
 # the four words the owner waived".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \

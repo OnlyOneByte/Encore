@@ -80,13 +80,13 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
 
 #: Seconds within which a line of the text's own blind decode counts as agreeing with its MAPPED claim. TWO
 #: BANDS IN ONE — the gate's and `_line_sync_clock`'s — so `line_gate.py --near` moves both. In SECONDS, which
-#: no model makes mean something else, so it is not a per-model row (README, "The LINE_SYNC rung").
+#: no model makes mean something else, so it is not a per-model row (LOG.md, "The LINE_SYNC rung").
 _LINE_SYNC_NEAR_SEC = 1.0
 
 
 #: Share of a sheet's claimed lines that must DECODE before the decode may speak for it — one bar for both
 #: readers of that decode, so a mixed-script track's Latin fragment cannot decide for forty Korean lines.
-#: What this gate cannot see, and why the lag term that would was rejected: README, "The LINE_SYNC rung".
+#: What this gate cannot see, and why the lag term that would was rejected: LOG.md, "The LINE_SYNC rung".
 _LINE_SYNC_MIN_DECODED_SHARE = 0.5
 
 
@@ -236,7 +236,7 @@ def _mapped(segments: Sequence[Segment], clock: claimmap.ClaimMap) -> tuple[Segm
 
 #: The most claimed starts `_in_claim_order` will hold before it leaves the sheet alone, as a share of its
 #: timed lines and never fewer than one. Many of them is a sheet whose order nobody can reconstruct
-#: (README, "A STRAY STAMP ONLY").
+#: (LOG.md, "A STRAY STAMP ONLY").
 _MAX_HELD_SHARE = 0.05
 
 

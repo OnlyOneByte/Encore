@@ -177,7 +177,7 @@ flip-jamendo-truth-gross-zero: truth.jamendo.gross == 0
 #       **27/33** — section 3's four (it is the base bundle), plus `w6-jamendo-word-pm300` at 94.97 against the
 #       94.98 bound and `w6-jamendo-word-end-pm100` at 80.00 against 80.02. Both are DILUTION, not regression:
 #       the arm adds 8 aligned words and 1 scored line and moves no existing word, so a ratio set on 5183 words
-#       is being read on 5191 (README "…RECOMMENDED, not flipped" prices it). That those two literals — and only
-#       those two, out of 25 in section 1 — are the ones a +1-line change trips is this file's own evidence that
-#       section 1 is tight rather than decorative.
+#       is being read on 5191 (LOG.md "re-priced: its recorded costs are GONE, and it is now free — RECOMMENDED,
+#       not flipped" prices it). That those two literals — and only those two, out of 25 in section 1 — are the
+#       ones a +1-line change trips is this file's own evidence that section 1 is tight rather than decorative.
 #   The exact per-run readings are in each `results/w6-*.json` `meta.gates`; this note is the map to them.

@@ -2,7 +2,7 @@
 # round-1 fixes land in the vendored graph (`domain/lyrics/viterbi.py`), the arms' wiring and trail, the
 # gate files and `worker/tests`; the argument for not re-benching was that every one of them is reached
 # only through a default-off knob. This file is that argument read as a digest instead. Narrative:
-# README, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
+# LOG.md, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w9r1-ra \

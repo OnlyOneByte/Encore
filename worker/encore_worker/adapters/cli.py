@@ -491,7 +491,7 @@ def parse_vtt(text: str) -> tuple[Segment, ...]:
     """Cues from a WebVTT or SRT body, with YouTube's ROLLING auto-caption shape handled.
 
     One parser for both formats, body lines joined with SPACES, and four rules for a roll-up — each of them a
-    defect the parser this replaced had: docs/arch/05-worker.md §6.1, with the counts in README, "Caption
+    defect the parser this replaced had: docs/arch/05-worker.md §6.1, with the counts in LOG.md, "Caption
     cues: the two populations a duration floor separates".
     """
     blocks: list[tuple[tuple[float, float], list[str]]] = []
@@ -544,11 +544,11 @@ _TAG_SPAN = re.compile(r"</?[a-zA-Z][^<>]*>")
 
 #: Seconds below which a cue is a roll-up MARKER rather than a caption: placed in the EMPTY band the two
 #: populations leave, 10 ms markers against 1.15 s captions. NOT a frame count — it is 2.5 of `adapters/ml`'s
-#: 20 ms hops (README, "Caption cues: the two populations a duration floor separates").
+#: 20 ms hops (LOG.md, "Caption cues: the two populations a duration floor separates").
 MIN_CUE_SEC = 0.05
 
 #: How many cues must overlap their predecessor before OVERLAP ALONE proves a roll-up. One pair is not a
-#: convention and latching on it deleted a repeated line (docs/arch/05-worker.md §6.1; README, "Caption cues:
+#: convention and latching on it deleted a repeated line (docs/arch/05-worker.md §6.1; LOG.md, "Caption cues:
 #: the two populations a duration floor separates", for the 16-track census).
 _ROLLING_OVERLAPS = 2
 

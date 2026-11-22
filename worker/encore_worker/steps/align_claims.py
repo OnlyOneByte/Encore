@@ -118,7 +118,7 @@ class _Claims:
     #: at or before its start keeps its own zero length, which is what `ClaimMap.windows` preserves too.
     windows: dict[int, tuple[float, float]]
     #: Lines whose cue wrote a USABLE end of its own — after its start, so neither a defaulted end nor a
-    #: zero-length or reversed one. Only such an end may be READ (`skipped_opening`, `end_bias`): README,
+    #: zero-length or reversed one. Only such an end may be READ (`skipped_opening`, `end_bias`): LOG.md,
     #: "Caption cues: the two populations a duration floor separates"; review r2-correctness-4.
     ends_given: set[int]
 

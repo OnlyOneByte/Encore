@@ -5,7 +5,7 @@ holds the bit-compatibility claim against the real kernel. What is left, and wha
 WIRING: which decode each arm reaches, what the trail says it did, and that the claim-fed arms cannot
 promote a line the blind decode never corroborated.
 
-Every arm ships OFF; the verdicts are the corpus harness's (docs/benchmarks/forced-alignment/README.md,
+Every arm ships OFF; the verdicts are the corpus harness's (docs/benchmarks/forced-alignment/LOG.md,
 "W9: a vendored decoder, and the three arms it unblocks").
 """
 
@@ -51,7 +51,7 @@ def packed(phrases: Sequence[Phrase], duration: float, hit: float = 0.99) -> Mat
     unsung line across its neighbours' spare frames for almost nothing — so on it no skip arc at the
     shipped price can ever pay, and a step-level test of the arcs would be testing the fixture. Packed,
     an extra character has to be bought from the silence at `log hit − log rest`, which is what a real
-    matrix charges (docs/benchmarks/forced-alignment/README.md, the W9 section).
+    matrix charges (docs/benchmarks/forced-alignment/LOG.md, the W9 section).
     """
     vocab = max(DIC.values()) + 1
     rest = math.log((1.0 - hit) / (vocab - 1))
@@ -158,7 +158,7 @@ def test_the_arcs_take_nothing_from_a_sheet_the_recording_sings(
     matrix, where every line is in the audio and in the order the audio sings it, the arcs cost no line.
 
     NOT A GENERAL PROPERTY — the corpus priced the arm at 5 false drops in `truth`, and the test below is
-    the fixture that pays it (README, "W9: the research track, priced on the corpus").
+    the fixture that pays it (LOG.md, "W9: the research track, priced on the corpus").
     """
     armed = attempt(
         tmp_path / "on",
@@ -185,7 +185,7 @@ def test_the_arcs_do_cost_a_sung_line_when_the_sheet_misorders_it() -> None:
 
     `_runs/w9-graph/arms28.json` (28 songs, shipped 30 + 6/char) reads `true_dropped` 5 at `truth` — lines
     the audio does contain and the arcs bypass anyway — which is one of the two readings that refused the
-    arm (README, "W9: the research track, priced on the corpus"). A monotone path cannot place two lines the
+    arm (LOG.md, "W9: the research track, priced on the corpus"). A monotone path cannot place two lines the
     sheet orders against the recording, and bypassing the dearer one is cheaper than smearing it.
     """
     texts = [text for text, _s, _e in UNIQUE]
@@ -669,11 +669,11 @@ def test_the_deciding_arm_stands_in_for_the_repair_ladder(
     assert f"{len(PHRASES)} primed" in bypassed, bypassed
 
 
-# ── the knob, and the README sentence that counts this track ─────────────────────────────────────
+# ── the knob, and the LOG.md sentence that counts this track ─────────────────────────────────────
 
 
 def test_the_readme_counts_the_hermetic_tests_this_track_actually_has() -> None:
-    """The README's hermetic-test count for this track is how a later wave decides whether an arm is
+    """The measurement log's hermetic-test count for this track is how a later wave decides whether an arm is
     covered, and it had drifted by six before anything derived it (review W9 r2-spec-9).
 
     The two whole files are counted from the files; `test_ml_contract.py`'s figure is the two cases that
@@ -681,7 +681,7 @@ def test_the_readme_counts_the_hermetic_tests_this_track_actually_has() -> None:
     """
     import re
 
-    readme = Path(__file__).resolve().parents[2] / "docs/benchmarks/forced-alignment/README.md"
+    readme = Path(__file__).resolve().parents[2] / "docs/benchmarks/forced-alignment/LOG.md"
     prose = re.sub(r"\s+", " ", readme.read_text(encoding="utf-8"))  # the sentence wraps
     said = re.search(
         r"\*\*(\d+) hermetic tests\*\* carry it: \*\*(\d+)\*\* in `tests/test_viterbi\.py`, "

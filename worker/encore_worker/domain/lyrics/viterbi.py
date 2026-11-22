@@ -5,7 +5,7 @@ it is `torchaudio.functional.forced_align` frame for frame (XA-18), which is wha
 non-empty one adds penalised SKIP arcs over a run of targets (the review's roadmap item 15), OPTIONAL
 frame-relative STAR states (phase B) and a per-frame onset BONUS at a chosen state (its item 14).
 
-docs/arch/04-alignment.md §3.2 for the graph and why each arc exists; README,
+docs/arch/04-alignment.md §3.2 for the graph and why each arc exists; LOG.md,
 "W9: a vendored decoder, and the three arms it unblocks" for what each one measured.
 """
 

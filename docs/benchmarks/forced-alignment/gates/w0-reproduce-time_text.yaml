@@ -48,7 +48,7 @@
 #   A file that fails by construction is noise a later wave reads as regression, which is what
 #   W4b was asked to stop.
 # WHAT IT NOW MEANS: not "the harness reproduces the review" — that is unreachable across a deliberate clock
-#   change and the review's numbers live on in this header and in README's "The E2E harness" — but "the
+#   change and the review's numbers live on in this header and in LOG.md's "The E2E harness" — but "the
 #   harness still reproduces W4's recorded row". It is a DETERMINISM gate: a harness change, an emissions-cache
 #   change or an accidental default flip that moves these ten numbers fails here. The review baseline itself
 #   is still reproducible from `results/baseline-v2.json`, which is unchanged and is what `--compare` reads.
@@ -66,7 +66,7 @@
 #   read against rather than this file quietly failing in ten places.
 #
 # jit is absent ON PURPOSE (unchanged): the review seeded it with the process-salted hash(slug), so its
-# 34 / 84.1 / 95.4 is one draw nobody can repeat (README, "jit caveat"). Counts are integers, so "within 0.5"
+# 34 / 84.1 / 95.4 is one draw nobody can repeat (LOG.md, "jit caveat"). Counts are integers, so "within 0.5"
 # means exact. The tolerances are the review baseline's own (0.5 pt, ±2 ms of bias): they were never about the
 # review's precision but about what a re-run of the same code may move, which a clock change does not alter.
 # The ten literals are `results/w6-hubert-time_text.json`'s, the SHIPPED default's (W5's rebase; the base

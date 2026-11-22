@@ -3,7 +3,7 @@
 The sheet's line spans say where singing is expected, the audio's RMS envelope says where it is, and the lag
 between the two envelopes is the offset; Pearson `r` at that lag is the gate. Why a forced aligner cannot fix
 this itself, the measured pass-through and the two rejected gates are in
-`docs/benchmarks/forced-alignment/README.md`, "The fix, and what it measured"; the gate's three tiers are in
+`docs/benchmarks/forced-alignment/LOG.md`, "The fix, and what it measured"; the gate's three tiers are in
 `docs/arch/04-alignment.md` §5.2.
 """
 
@@ -21,7 +21,7 @@ HOP_SEC = 0.02
 MAX_SHIFT_SEC = 8.0
 
 #: Pearson `r` below which the fit is REFUSED. Calibrated on few points and thin (narrowest margin
-#: 0.306 -> 0.476): README, "The fix, and what it measured".
+#: 0.306 -> 0.476): LOG.md, "The fix, and what it measured".
 MIN_CORRELATION = 0.40
 
 #: Percentile taken as "this track's loud level". Not the max, which one clipped frame would scale
@@ -41,7 +41,7 @@ class ShiftFit:
     @property
     def usable(self) -> bool:
         """Trustworthy enough to move a sheet with? NOT gated on the shift's size, unlike
-        `place.MIN_SHIFT_SEC`: `docs/benchmarks/forced-alignment/README.md`, "The fix, and what it
+        `place.MIN_SHIFT_SEC`: `docs/benchmarks/forced-alignment/LOG.md`, "The fix, and what it
         measured"."""
         return self.correlation >= MIN_CORRELATION
 
@@ -84,7 +84,7 @@ def _bounded_correlation(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.n
     """`np.correlate(a, b, "full")` restricted to lags in `[-reach, reach]`, plus the first lag returned.
 
     Lag `L` means `b` DELAYED by `L` frames, the sense `np.roll(expected, L)` reads; a lag with no overlap is
-    not returned. Why the padded VALID correlation is the same sum: README, "L6: bounded-lag correlation, off
+    not returned. Why the padded VALID correlation is the same sum: LOG.md, "L6: bounded-lag correlation, off
     the event loop".
     """
     if len(a) == 0 or len(b) == 0:
@@ -111,7 +111,7 @@ def fit_shift(
 
     Cross-correlated rather than searched, so it can run before EVERY alignment, and bounded to `+-reach`
     lags — a work reduction rather than an approximation. Correlation 0.0, never usable, for an empty or
-    constant envelope. README, "L6: bounded-lag correlation, off the event loop".
+    constant envelope. LOG.md, "L6: bounded-lag correlation, off the event loop".
     """
     if len(actual) == 0 or len(expected) == 0:
         return ShiftFit(seconds=0.0, correlation=0.0)
@@ -144,7 +144,7 @@ def fit_sheet_to_audio(
 ) -> ShiftFit:
     """`fit_shift` over a decoded signal and a sheet's line spans. The call the align step makes.
 
-    PREFER THE VOCALS STEM: residuals are 10-20 ms against it and 140-150 ms against the mix (README, "The
+    PREFER THE VOCALS STEM: residuals are 10-20 ms against it and 140-150 ms against the mix (LOG.md, "The
     fix, and what it measured").
     """
     actual = envelope(signal, rate, hop)

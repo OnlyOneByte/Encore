@@ -137,7 +137,7 @@ Verdict = Accept | Retime | NextText
 
 #: The knobs each engine READS. GLOBAL reads LINE_SYNC alone, WINDOWED reads every knob, and a LINE_SYNC
 #: document reads none, being terminal. Why offering one an engine ignores is a measured regression:
-#: docs/arch/04-alignment.md §3, priced in README, "The W2 corpus row".
+#: docs/arch/04-alignment.md §3, priced in LOG.md, "The W2 corpus row".
 _READS: Mapping[Engine, frozenset[Knob]] = {
     Engine.GLOBAL: frozenset({Knob.LINE_SYNC}),
     Engine.WINDOWED: frozenset(Knob),
@@ -289,7 +289,7 @@ def order_pool(tiers: list[Tier], corroborated: list[bool] | None = None) -> lis
     stable, so the caller's own ranking survives. Why ASR is the reliable fallback rather than the desperate
     one, and why corroboration breaks the tie instead of arrival order: docs/arch/04-alignment.md §3.
     WHAT IT DOES NOT DO: separate two texts that both look right — a lift needs an emission matrix, so that
-    ranking is a per-attempt GATE instead (README, "W7: the provider pool is real now").
+    ranking is a per-attempt GATE instead (LOG.md, "W7: the provider pool is real now").
     """
     order = {Tier.CANDIDATE: 0, Tier.ASR: 1, Tier.MACHINE: 2}
     backed = corroborated or [False] * len(tiers)

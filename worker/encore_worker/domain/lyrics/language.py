@@ -102,7 +102,7 @@ def script_of(ch: str) -> str | None:
     """The writing system `ch` belongs to, or None when it is not a scripted character.
 
     READ OFF THE CHARACTER'S UCD NAME rather than a range table, and A DECOMPOSABLE CHARACTER THROUGH ITS BASE
-    LETTER (README, "Language: the detector's cost, and three censuses").
+    LETTER (LOG.md, "Language: the detector's cost, and three censuses").
     """
     if not ch.isalpha():
         return None
@@ -212,7 +212,7 @@ _SCRIPT_MARKERS: Mapping[str, tuple[tuple[str, str], ...]] = {
 _MIN_MARKERS = 2
 
 #: And what SHARE of the script's letters they must be, a bare count not scaling with the sheet. Two orders
-#: under what a sheet WRITTEN in the language carries (README, "Language: the detector's cost").
+#: under what a sheet WRITTEN in the language carries (LOG.md, "Language: the detector's cost").
 _MARKER_SHARE = 0.005
 
 
@@ -246,7 +246,7 @@ def model_language(language: str, *, on_mix: bool, route_latin: bool = False) ->
     STAYS ON THE DEFAULT (ENGLISH) BUNDLE, on a stem AND on the mix, unless `route_latin`, while A NON-LATIN
     SCRIPT ALWAYS ROUTES. `language` is the TEXT's (`TextRef.language`), never this function's own answer, so
     only the emission pass and the windowed aligner read this. Both reasons each way:
-    docs/arch/04-alignment.md §9 and §5.4; README, "The language reading, widened from n=7 to n=59".
+    docs/arch/04-alignment.md §9 and §5.4; LOG.md, "The language reading, widened from n=7 to n=59".
     """
     if not language:
         return ENGLISH
@@ -283,7 +283,7 @@ def lingua_detector(languages: Iterable[str] = LATIN_LANGUAGES) -> Detector | No
 
     OPTIONAL BY DESIGN, so with no detector Latin script stays English — the configuration every recorded row
     was measured on. RESTRICTED TO THE LANGUAGES A BUNDLE EXISTS FOR, which is accuracy and not only speed
-    (README, "Language: the detector's cost, and three censuses").
+    (LOG.md, "Language: the detector's cost, and three censuses").
     """
     try:
         from lingua import IsoCode639_1, LanguageDetectorBuilder  # noqa: PLC0415

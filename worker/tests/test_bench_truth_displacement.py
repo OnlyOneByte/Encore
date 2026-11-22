@@ -3,7 +3,7 @@
 Hermetic — the envelopes are synthesised and the metadata is written to tmp, so no audio and no model is read.
 What matters here is that the four songs that leave accuracy scoring leave it on NUMBERS in
 `corpus-truth.json` rather than on their names, that the pooled `all` reading never moves because of the
-exclusion, and that a results file says which songs scored. README, "W8b: the corpus's own truth, measured,
+exclusion, and that a results file says which songs scored. LOG.md, "W8b: the corpus's own truth, measured,
 and the 28 songs that score".
 """
 
@@ -532,7 +532,7 @@ def test_every_excluded_song_is_excluded_by_the_rule_and_every_kept_one_fails_a_
 
 def test_numbs_displacement_is_not_established_by_the_rule_and_the_record_says_why() -> None:
     """1 of 35 starts in silence — because the stem is never quiet at one, which the note carries with the
-    two readings that do not need silence. README, "numb is excluded on a displacement the silence arbiter
+    two readings that do not need silence. LOG.md, "numb is excluded on a displacement the silence arbiter
     cannot see"."""
     entry = lib.load_corpus_truth()[UNUSABLE]
     assert entry.onsets == 1 and entry.confidence == lib.THIN and not entry.displaced
@@ -761,7 +761,7 @@ def test_the_28_song_baseline_is_what_the_committed_bases_say_over_the_songs_tha
     The pooled reading of a results file written before `scored` existed is recoverable from its own per-song
     entries, so the README's headline is pinned to data in the repo: `truth` ±500 97.07 % / band 44 / missing
     32 over 1504 lines at `run_align`, and 97.12 % / 44 / 10 over 1526 at `time_text` — against 90.45 % and
-    163 band lines over all 32. README, "Both ways: 32 songs and the 28 that score".
+    163 band lines over all 32. LOG.md, "Both ways: 32 songs and the 28 that score".
     """
     excluded = set(lib.accuracy_exclusions())
     for name, lines, pm500, band, missing, pooled32 in (

@@ -23,7 +23,7 @@
 # line's, and no reading we have tells it from this line's sung early (rap-god 11 of those lines,
 # shape-of-you 5, both on contiguous cues).
 #
-# MEASURED BEFORE WRITTEN, 14 songs at `truth` on the warm store (`_runs/w8a-fix3-truth`, README "W8a: the
+# MEASURED BEFORE WRITTEN, 14 songs at `truth` on the warm store (`_runs/w8a-fix3-truth`, LOG.md "W8a: the
 # late half of the band, and the end that witnesses it"): ±500 752 -> 755 of 907, gross 0 -> 0, not one
 # confidence changed, 8 lines moved. `Kinematic_-_Peyote` 10/14 -> 13/14 (its [5] +0.784, [11] +0.909 and
 # [13] +0.960 land on 0.000); bohemian-rhapsody's [25] [67] [68] go +0.330/+0.370/+0.290 -> +0.004/-0.072/

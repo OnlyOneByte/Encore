@@ -1,7 +1,7 @@
 # W3 reject-if, the RUN_ALIGN LEVEL'S OWN measured numbers (PLAN-alignment-v3 W3, review §3 item 4, H3).
 # Run BESIDE `gates/w3.yaml`, which serves both levels and therefore carries the LOOSER of the two literals.
 #
-# WHY A SECOND FILE (W3 review r2). `lexical.BANDS`'s docstring and the bench README both claim the two
+# WHY A SECOND FILE (W3 review r2). `lexical.BANDS`'s docstring and the bench LOG.md both claim the two
 # measured wrong-text counts are capped "so a second wrong text cannot start publishing unnamed". They are
 # not, at this level: one gate file serves both, and `wrongtext-pass-at-most-measured: wrongtext.wrongtext_pass
 # <= 0.32` is `time_text`'s literal (0.32 = 1/320, the raw-claim level's one doubt-band document). At

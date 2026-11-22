@@ -466,7 +466,7 @@ def test_a_star_absorbs_audio_the_text_does_not_mention() -> None:
     assert starts == sorted(starts), "the stars kept the path monotone"
 
 
-# ── P, the one number the arm chooses (README, "W9: the star re-fitted out of sample, at an optimum
+# ── P, the one number the arm chooses (LOG.md, "W9: the star re-fitted out of sample, at an optimum
 # outside the review's range") ─────────────────────────────────────────────────────────────────────────
 
 
@@ -484,7 +484,7 @@ def test_a_lower_penalty_absorbs_more_and_the_fitted_one_still_holds_the_intro()
     constant carries is a curve in P and a later wave reading it needs the code's direction to be the same
     one. The cliff is the arm's whole behaviour: above it the star is too expensive to enter and the
     uncovered intro drags the text back again. WHERE it falls is the FIXTURE's, between 1 and 2 nats, so the
-    shipped P is pinned as a literal below (README, "What the hermetic fixture can and cannot say about P").
+    shipped P is pinned as a literal below (LOG.md, "What the hermetic fixture can and cannot say about P").
     """
     text = LINES[1:]
     matrix = tempting(text)
@@ -504,7 +504,7 @@ def test_the_shipped_penalty_is_the_one_the_corpus_fitted() -> None:
     The re-fit put the optimum at 0.1-0.3, BELOW the review's [1, 4] band, buying `drop50` gross 82 -> 11 at
     ±500/text 75.72 -> 86.03 on the 32-song pool. Every other test here reads the constant symbolically and
     the fixture's cliff sits between 1 and 2 nats, so a revert to W7's 1.0 left the suite green (review W9
-    r1-tests-12). README, "W9: the star re-fitted out of sample" and its fixture-ladder table.
+    r1-tests-12). LOG.md, "W9: the star re-fitted out of sample" and its fixture-ladder table.
     """
     assert ml.STAR_PENALTY_NATS == 0.3
 

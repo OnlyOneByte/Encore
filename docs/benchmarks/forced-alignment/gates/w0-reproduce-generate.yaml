@@ -33,7 +33,7 @@
 #   +4 ms, 141/5693 > 2 s; ends 73.2 / phrase-final 40.6 / 73.6 / -106 ms, painted highlight 67.3), measured by
 #   `bench.py --global --words` and `_review-scratch/pe-acc/exp_ends.py` on the pre-W4 clock. The provenance of
 #   each of those numbers — including which matrices the review's own were computed on, and that the shipped
-#   decoder reads the review's figures exactly on them — is kept in README's "The E2E harness".
+#   decoder reads the review's figures exactly on them — is kept in LOG.md's "The E2E harness".
 # REBASED ONTO: `results/w4-generate.json` (`--level generate --modes blind --songs jamendo`, 20 songs, base
 #   model, the W4 clock; the run's rows are `_runs/w4-generate/rows.jsonl`).
 # WHY: `--level generate` IS the decode, so W4's 6a moved every number here by construction — the exact

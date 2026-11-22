@@ -52,7 +52,7 @@ documentation set living inside a package. The owner's directive moved it here, 
 12 252 of code. The two counts were taken by different instruments days apart, so all three columns differ,
 not only the code one; neither is wrong and the ratio is the point. Both counts, and the check that no
 measured number was lost in the move, are in
-[`../benchmarks/forced-alignment/README.md`](../benchmarks/forced-alignment/README.md), "W7b".)
+[`../benchmarks/forced-alignment/LOG.md`](../benchmarks/forced-alignment/LOG.md), "W7b".)
 
 ## Why this tree exists separately
 

@@ -1167,7 +1167,7 @@ def test_r3_redecodes_a_misplaced_blind_repeat_inside_its_anchor_gap(
     where it is sung. No claim says which chorus is which, so the unique neighbours around it bound the
     window. Delete R3 (mutation, measured) and the line publishes at 18.34 s instead of 21.96 s.
 
-    An exact Viterbi reproduces its own global path between its own anchors (the README's measured R3
+    An exact Viterbi reproduces its own global path between its own anchors (the LOG.md's measured R3
     no-op; pinned below). So the misplacement is made the only honest way: the GLOBAL pass hears the
     second chorus at 18.4 s, and the repair window decodes the real song it is handed."""
     from encore_worker.adapters import ml
@@ -1353,7 +1353,7 @@ def test_a_corroborated_line_keeps_its_grade_however_ambiguous_our_decode_was(
     """The restriction, and review H4's argument read forward: two INDEPENDENT measurements agreeing beats
     the decode's own opinion of itself, and the margin is the decode's own opinion of itself. Measured on 4
     songs x truth/off15/drop50 (516 lines): charging corroborated lines for it cost 84 of 278 word wipes
-    and found nothing, because claim-mode bad-among-high was already 0.00% (the figures README's "It is read
+    and found nothing, because claim-mode bad-among-high was already 0.00% (the figures LOG.md's "It is read
     on ONE branch" section and `align_steps`' own comment carry: 278 -> 194 `high`, 53.9% -> 37.6%)."""
     _margins(monkeypatch, dict.fromkeys(range(len(PHRASES)), 0.0))
     impl, _aligner, _trail, job, audio, tmp = rig

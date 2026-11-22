@@ -1,7 +1,7 @@
 # W8b's WAVE GATE: the 28-SONG ACCURACY BASELINE, ratcheted — the first gate file in this build whose accuracy
 # rules are counted over the songs whose truth its own audio corroborates (PLAN-alignment-v3 W8b; owner decision
 # 1 of the wave). `gates/w8a.yaml` keeps working untouched over all 32; this file is the other half of the same
-# sweep. Narrative, the measurement behind the exclusion and the per-song numbers: README, "W8b: the corpus's
+# sweep. Narrative, the measurement behind the exclusion and the per-song numbers: LOG.md, "W8b: the corpus's
 # own truth, measured, and the 28 songs that score" and "What the four carried, and what the exclusion does NOT
 # move". The exclusion itself is DATA, not a song list in a gate file: `corpus-truth.json` + `e2e_lib`'s
 # `TruthQuality.exclusion`, re-derived and checked on every load.
@@ -37,7 +37,7 @@
 # the 163 `truth` band lines (73 %), 21 of the 53 missing, and 94 of 94 `high`-but-wrong lines — every one.
 # bad-guy's +780 lag reads r 0.19 and corroborates nothing, so its exclusion rests on the silence arbiter at
 # TWICE each of its own bars (`TruthQuality.silence_stands_alone`); believer's and tfr-chosen's lags do
-# corroborate, at r 0.47 and 0.61. README, "The rule, and what each conjunct refuses".
+# corroborate, at r 0.47 and 0.61. LOG.md, "The rule, and what each conjunct refuses".
 #
 # MEASURED READINGS, 153 rules (154 with `run_gates`' built-in no-error-rows). The W8b sweep reads **154/154 at
 # BOTH forced levels** (`results/w8b-{run_align,time_text}.json`, 2026-10-05, code `4804fae43eb43d7c`), and so
@@ -45,7 +45,7 @@
 # goes red on seven rules (`docs-unchanged-{truth,jit,drop50}`, `onsets-unchanged-{truth,jit}`,
 # `no-song-gains-{truth,jit}`) while every accuracy floor passes, which is the shape of change this file is for;
 # pinned in `test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved`. Readings and the per-song
-# table: README, "W8b: the sweep, read both ways". Those two readings were taken OFFLINE
+# table: LOG.md, "W8b: the sweep, read both ways". Those two readings were taken OFFLINE
 # (`_tools/offline_gates.py w8b.yaml results/w8b-LEVEL.json results/w8b-base-LEVEL.json`) because one sweep
 # takes one `--compare` and `gates/w8a.yaml` was read inline against ITS base on the same rows.
 #
@@ -211,7 +211,7 @@ coherent-shift-none-scored-blind: count((abs(blind.scored.song.bias_ms) > 250) *
 # ... and the same count over all 32, as an EQUALITY on the excluded four — the rule that keeps the block above
 # from being a gate that counts nothing. believer, numb, bad-guy and tfr-chosen at `truth` / `off05` /
 # `extraverse` / `credit`; `drop20` drops tfr-chosen's shifted lines and reads 3. Both levels agree on these
-# five modes; the others differ by a song and their per-level numbers are in the README.
+# five modes; the others differ by a song and their per-level numbers are in the LOG.md.
 coherent-shift-four-over-all-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) == 4
 coherent-shift-four-over-all-off05: count((abs(off05.song.bias_ms) > 250) * (off05.song.mad_ms <= 250)) == 4
 coherent-shift-four-over-all-extraverse: count((abs(extraverse.song.bias_ms) > 250) * (extraverse.song.mad_ms <= 250)) == 4

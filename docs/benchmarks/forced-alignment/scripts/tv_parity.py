@@ -8,7 +8,7 @@ The bench's `highlight` metric reads "which word is lit" through `e2e_lib`'s POR
 `core/src/lib/tv/lyrics.ts`, and three port mutations once passed the whole suite. So this fixture is written
 FROM THE PORT and asserted in BOTH trees — `worker/tests/test_bench_e2e.py` and
 `core/tests/unit/lib/tv/lyrics-bench-parity.test.ts` — and an edit on either side that moves a lit word fails
-one of them. Change the other side with it and re-run this script; never hand-edit the JSON. README, "The
+one of them. Change the other side with it and re-run this script; never hand-edit the JSON. LOG.md, "The
 harness scripts", has the documents and what is EXPECTED of each.
 """
 
@@ -165,7 +165,7 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
             # W8's non-Latin lane: CJK writes no space between its words. Each line carries NO text, so
             # both trees rebuild it from the words and the gap rule is what they must agree on — including
             # Hangul, which spaces its words like Latin, and the mixed line's CJK/Latin boundary. The text
-            # is SYNTHETIC in every script (README, "Why no fixture holds a lyric").
+            # is SYNTHETIC in every script (LOG.md, "Why no fixture holds a lyric").
             "cjk-rebuilt-without-spaces",
             {
                 "lines": [
@@ -306,7 +306,7 @@ def dump(fixture: dict[str, Any]) -> str:
 
 def cjk_ranges() -> str:
     """`lib.TV_CJK_JOINS` enumerated, for the core test that enumerates `lyrics.ts`'s own class against it —
-    an equality nothing re-checked until review r1-tests-19 (README, "Core: one gap rule")."""
+    an equality nothing re-checked until review r1-tests-19 (LOG.md, "Core: one gap rule")."""
     ranges = lib.cjk_join_ranges()
     body = ",\n".join(f"  [{lo},{hi}]" for lo, hi in ranges)
     head = json.dumps(
