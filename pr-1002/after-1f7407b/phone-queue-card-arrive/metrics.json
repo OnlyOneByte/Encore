@@ -1,0 +1,193 @@
+{
+  "scenario": "phone-queue-card-arrive",
+  "what": "Phone 390x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the \"Now singing\" card fades into the opened slot (opacity, --motion-base after --motion-base); no jump, never text over text",
+  "capturedAt": "2026-11-21T20:05:14.108Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-settle-a",
+      "target": "div.below",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-qegr5c-settle-a var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-arrive",
+      "target": "div.now.arrive",
+      "durationMs": 500,
+      "delayMs": 0,
+      "endTimeMs": 500,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "svelte-qegr5c-arrive calc(var(--motion-base) * 2) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 500,
+  "seekFrames": 18,
+  "seekObserved": {
+    "card": true,
+    "underTop": 495.796875
+  },
+  "subject": {
+    "selector": ".now",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-settle-a",
+        "target": "div.below",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-qegr5c-settle-a var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-arrive",
+        "target": "div.now.arrive",
+        "durationMs": 500,
+        "delayMs": 0,
+        "endTimeMs": 500,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qegr5c-arrive calc(var(--motion-base) * 2) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "card": true,
+      "underTop": 495.796875
+    },
+    "droppedFrames": {
+      "median": 11,
+      "min": 10,
+      "max": 11
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 1
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 33.4,
+      "max": 50
+    },
+    "clsMax": 0.0262
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 8,
+    "observed": {
+      "card": true,
+      "underTop": 495.796875
+    }
+  },
+  "timingsMs": {
+    "seekMs": 6051,
+    "encodeMs": 1683,
+    "liveMs": 6754,
+    "reducedMs": 2528,
+    "reducedEncodeMs": 383
+  },
+  "files": {
+    "clip.gif": 319699,
+    "clip-slow4x.gif": 319699,
+    "filmstrip.png": 453092,
+    "filmstrip-reduced.png": 142255
+  }
+}

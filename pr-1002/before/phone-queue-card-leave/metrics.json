@@ -1,0 +1,72 @@
+{
+  "scenario": "phone-queue-card-leave",
+  "what": "Phone 390x844: /queue as the last song is skipped — the card goes and the empty state eases up from where it was (transform, --motion-base), no jump",
+  "capturedAt": "2026-11-21T03:25:29.423Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "card": false,
+    "underTop": null
+  },
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "card": false,
+      "underTop": null
+    },
+    "droppedFrames": {
+      "median": 2,
+      "min": 2,
+      "max": 3
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "clsMax": 0.316
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 6,
+    "observed": {
+      "card": false,
+      "underTop": null
+    }
+  },
+  "timingsMs": {
+    "seekMs": 8649,
+    "encodeMs": 684,
+    "liveMs": 14941,
+    "reducedMs": 2228,
+    "reducedEncodeMs": 389
+  },
+  "files": {
+    "clip.gif": 31363,
+    "clip-slow4x.gif": 31363,
+    "filmstrip.png": 87621,
+    "filmstrip-reduced.png": 129456
+  }
+}
