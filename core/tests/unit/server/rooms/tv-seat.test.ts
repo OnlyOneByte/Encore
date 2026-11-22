@@ -14,7 +14,8 @@ const ROOM = 'room-1';
 /** Past the slow-boot window: the TV has been on long enough that only the 15 s grace applies when it goes. */
 const ON_A_WHILE = 60_000;
 
-function world(persisted: string | null = null) {
+/** `early`: how many ms before its time each timer fires, as Bun's does against Date.now(). */
+function world(persisted: string | null = null, early = 0) {
 	let now = 1_000_000;
 	const saved = new Map<string, string | null>([[ROOM, persisted]]);
 	// The fake clock's timers: `advance` only moves time, `tick` also runs every booked sweep that has come due.
@@ -24,7 +25,7 @@ function world(persisted: string | null = null) {
 		load: (r) => saved.get(r) ?? null,
 		save: (r, h) => saved.set(r, h),
 		now: () => now,
-		schedule: (ms, run) => timers.push({ at: now + ms, run }),
+		schedule: (ms, run) => timers.push({ at: now + ms - early, run }),
 		announce: (n) => announced.push(...n)
 	});
 	return {
@@ -322,6 +323,53 @@ test('an older tab of the screen that holds the seat can still claim it: the gua
 		{ key: 1, mine: true }
 	]);
 	expect(w.timers.map((t) => t.at - 1_000_000)).toEqual([15_000, 60_000]);
+});
+
+// The p10-tv-seat probe's flake: Bun's timer fired 1 ms before Date.now() said the wait was over, that sweep found
+// nothing to do, and nothing else was booked, so the copy was never promoted.
+test('a booked sweep that fires a millisecond early still promotes the copy: restart, and the TV closing', () => {
+	const restart = world('tvA', 1);
+	restart.seats.connect(ROOM, 1, 'laptop');
+	restart.tick(59_999);
+	expect(restart.announced).toEqual([]);
+	restart.tick(1);
+	expect(restart.announced).toEqual([{ key: 1, mine: true }]);
+
+	const close = world(null, 1);
+	close.seats.connect(ROOM, 1, 'tvA');
+	close.seats.connect(ROOM, 2, 'laptop');
+	close.tick(ON_A_WHILE + 1);
+	close.seats.disconnect(ROOM, 1);
+	close.tick(14_999);
+	expect(close.announced).toEqual([]);
+	close.tick(1);
+	expect(close.announced).toEqual([{ key: 2, mine: true }]);
+	// The re-booked sweep was the last: no timer is left running once nothing waits.
+	close.tick(TV_SEAT_SLOW_BOOT_MS);
+	expect(close.timers).toEqual([]);
+});
+
+// A copy a timed sweep promoted has no sweep booked at the end of its own 60 s window (only a connect or a claim
+// books one), so when it closes early in that window the window outlasts the close's 15 s sweep by up to 45 s.
+test('a promoted copy that closes inside its 60 s window hands over the moment the window ends', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 3, 'tablet');
+	w.seats.connect(ROOM, 2, 'laptop');
+	w.tick(ON_A_WHILE + 1);
+	w.seats.disconnect(ROOM, 1);
+	w.tick(15_000);
+	expect(w.announced).toEqual([{ key: 2, mine: true }]);
+	w.tick(10_000);
+	w.seats.disconnect(ROOM, 2);
+	// Step to each booked sweep in turn (`tick` runs every due timer at the END time): the close's 15 s sweep, the
+	// first close's 60 s sweep, then 1 ms before the window ends.
+	w.tick(15_000);
+	w.tick(20_000);
+	w.tick(14_999);
+	expect(w.mine(3)).toBe(false);
+	w.tick(1);
+	expect(w.mine(3)).toBe(true);
 });
 
 test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
