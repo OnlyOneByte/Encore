@@ -63,7 +63,9 @@ export class RoomLink {
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
 	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
-	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". */
+	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". Never goes back
+	 *  to false, like `queue.synced`: a reconnect's hello replaces the state, and joining again after a Leave reloads
+	 *  the page, so a new link starts here. */
 	playbackSynced = false;
 	playback: PlaybackState = {
 		currentEntryId: null,
