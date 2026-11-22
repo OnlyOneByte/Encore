@@ -53,6 +53,17 @@ test('publish and prune commit as the source clone, not the global identity', ()
 	}
 });
 
+test('GIT_AUTHOR_* / GIT_COMMITTER_* in the environment do not override the identity', () => {
+	const src = source('OnlyOneByte', '22626742+OnlyOneByte@users.noreply.github.com');
+	for (const k of ['AUTHOR', 'COMMITTER']) {
+		env[`GIT_${k}_NAME`] = 'Work Name';
+		env[`GIT_${k}_EMAIL`] = 'someone@work.example';
+	}
+	const r = run(src, 'publish', '7', 'row');
+	expect([r.status, r.stderr]).toEqual([0, expect.any(String)]);
+	expect(who(join(root, 'origin.git'), 'ui-review-media')).toBe(`${OWNER}|${OWNER}`);
+});
+
 test('a clone whose email is not a noreply address publishes nothing', () => {
 	const src = source('Someone', 'someone@work.example');
 	const r = run(src, 'publish', '7', 'row');

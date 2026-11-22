@@ -30,8 +30,11 @@ const PRUNE_AT_BYTES = 200 * 1024 * 1024;
 const SEGMENT = /^(?!\.{1,2}$)[\w.-]+$/;
 
 class Refused extends Error {}
+/** Without these, an exported GIT_AUTHOR_EMAIL (say) would beat the `-c user.email` that identity() passes. */
+const env = { ...process.env };
+for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) delete env[k];
 const git = (args: string[], cwd?: string, input?: string) =>
-	execFileSync('git', args, { cwd, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+	execFileSync('git', args, { cwd, input, env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 const segment = (what: string, value: string) => {
 	if (!SEGMENT.test(value)) throw new Refused(`${what} "${value}" must be one plain name (letters, digits, . _ -)`);
