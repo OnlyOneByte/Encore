@@ -37,8 +37,9 @@ from encore_worker.adapters import ports
 
 HERE = Path(__file__).resolve().parent
 
-#: The bench corpus. DURABLE on purpose: the review's copy lived in /tmp, which macOS wipes on reboot.
-DEFAULT_BENCH_ROOT = "/Volumes/workplace/personal/encore-align-bench"
+#: The bench corpus when `$ENCORE_BENCH_ROOT` is unset. In the home directory rather than /tmp, which macOS
+#: wipes on reboot.
+DEFAULT_BENCH_ROOT = Path.home() / "encore-bench"
 
 #: The 3 TheFatRat songs live in the repo (their truth is pinned there; their audio is rebuilt by
 #: `stem-separation/scripts/prepare.py`), not in the bench root.
@@ -552,7 +553,7 @@ class Song:
 
 
 def bench_root() -> Path:
-    """`$ENCORE_BENCH_ROOT`, defaulting to the durable corpus."""
+    """`$ENCORE_BENCH_ROOT`, defaulting to `~/encore-bench`."""
     return Path(os.environ.get("ENCORE_BENCH_ROOT") or DEFAULT_BENCH_ROOT)
 
 

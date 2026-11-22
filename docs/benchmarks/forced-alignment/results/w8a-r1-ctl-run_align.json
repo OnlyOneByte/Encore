@@ -43,7 +43,7 @@
    "tfr-flyaway",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 139
@@ -77,7 +77,7 @@
   "asr": "off",
   "sync_mode": "forced",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-r1-ctl-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8a-r1-ctl-ra/rows.jsonl",
   "baseline": "W8a ROUND 1 CONTROL at --level run_align: the DEFAULT path on the review's tree, over the 14 songs x 13 modes that hold every move the band-reopen arm makes (bench runner, 2026-10-03, HuBERT-Large, 182 cases, seed 0, --tfr-audio youtube, mps, asr off, syncMode forced, NO experiments). NOT A CORPUS ROW — 14 of 32 songs, 13 of 16 modes; later waves compare against results/w8a-run_align.json. ITS ONE CLAIM, MEASURED: identical to results/w8a-run_align.json on all 182 shared cases over 20 identity columns including doc_sha256, onsets_sha256, confidence, w500, band, gross, high, high_bad and the per-line errors (0 differ), so the review's edits to align_steps.py and generate.py are inert on the default path and the recorded corpus rows stand. Emissions: 26 read from disk, 0 computed, 507 s. README, \"W8a round 1: the band-reopen arm, re-read with the free-time guard\"."
  },
  "summary": {

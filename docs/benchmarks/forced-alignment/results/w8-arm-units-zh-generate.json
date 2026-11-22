@@ -28,7 +28,7 @@
    "amll-zh-zaijian"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
    "dirty_files": 50
@@ -46,7 +46,7 @@
   "mode_seconds": {
    "truth": 43.2
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8-arm-units-zh/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8-arm-units-zh/rows.jsonl",
   "gates": [
    {
     "file": "gates/w8-units.yaml",

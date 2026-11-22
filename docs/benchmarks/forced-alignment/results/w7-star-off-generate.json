@@ -52,7 +52,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 29
@@ -74,7 +74,7 @@
    "drop50": 2.2,
    "extraverse": 4.4
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-star-off-generate/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-star-off-generate/rows.jsonl",
   "baseline": "W7 3.10 star phase A, the DECODE axis, ARM OFF (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, emitter 1a2fd6852bd30243): --level generate, HuBERT-Large, 32 songs x 4 text modes, 128 cases. The control cell of the pair gates/w7-star.yaml run A prescribes. REPRODUCES the off-bench sweep recorded as results/w7-star-sweep.json ('off' column) through the SHIPPED harness: gross truth(=full sheet) 77, drop20 197, drop50 323, extraverse 116, pooled 713; +-500/text 80.51 / 69.83 / 48.34 / 78.30. Denominators: in_text 1746+1402+865+1746 = 5759 lines served, 46 of them unscored (14+10+8+14), so +-500/text is over the FULL served text and no skipped line leaves the denominator."
  },
  "summary": {

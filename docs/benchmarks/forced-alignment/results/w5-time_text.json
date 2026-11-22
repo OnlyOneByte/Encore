@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "1c81d89ffb3810174750b0206529517c28ee3e07",
    "dirty_files": 80
@@ -98,7 +98,7 @@
    "credit": 51.3,
    "wrongtext+ownclock": 154.1
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w5-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w5-tt/rows.jsonl",
   "baseline": "DECLARED NEW BASELINE for W5 and later waves (bench runner, 2026-10-01). This is the SHIPPED DEFAULT at --level time_text: HuBERT-Large (ml.DEFAULT_ALIGN_MODEL after W5's flip), 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, device mps, on the post-flip + post-hygiene + post-ad-libs(OFF) tree. It REPLACES results/baseline-v2.json (the review's base-bundle reproduction) and results/w6-hubert-time_text.json (the same bundle one tree earlier) as the --compare base: it is IDENTICAL TO THE DIGIT to w6-hubert-time_text on every metric of all 16 modes, because e2e.TimeTextDriver serves the claims RAW and the shipped time_text cleans nothing -- so W5's text work cannot reach this level, which is itself the cheapest proof the hygiene did not leak into the decode, the repair ladder or the interpolator. For the level where W5's text work DOES live, compare against results/w5-run_align.json.",
   "gates": [
    {

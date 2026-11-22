@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "52f0eec909fb52702c1d33c951ba5366afb6b508",
    "dirty_files": 17
@@ -100,7 +100,7 @@
   },
   "asr": "off",
   "sync_mode": "forced",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-base-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w5r2-base-ra/rows.jsonl",
   "baseline": "THE SAME-TREE BASE-BUNDLE CONTROL for results/w5r2-run_align.json (bench runner, 2026-10-01, code e2c1027b6cc491a2): --model WAV2VEC2_ASR_BASE_960H, same 1088 cases, same seed, same corpus, same emitter. It exists because gates/w5-denominator.yaml and gates/w5-flip.yaml ask 'are two BUNDLES comparable' and 'what did the flip keep', and either question read against a base that does NOT share W5's text hygiene mixes the hygiene into the model difference. 1079 of 1088 cases reproduce results/w5-base-run_align.cases.jsonl in every compared field including both digests; 8 differ in served_lines alone and ONE moves a metric (hello extraverse, scored 63 -> 72 against HuBERT-L's 74 — the 2-line gap that makes denominator-extraverse-at-most-five-songs read 6).",
   "gates": [
    {

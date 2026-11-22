@@ -54,7 +54,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 39
@@ -76,7 +76,7 @@
   },
   "asr": "off",
   "sync_mode": "lines",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-star-lines-wt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-star-lines-wt/rows.jsonl",
   "baseline": "W7 3.10 star phase A, the WRONG-TEXT floor in --sync-mode lines, which is the one sync mode where the gated LINE_SYNC rung is a text's ONLY attempt (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, ENCORE_ALIGN_EXPERIMENTS=star, P = 1.0): --level run_align --sync-mode lines --modes wrongtext,wrongtext+ownclock, HuBERT-Large, 640 cases, 470 s. Two modes only, by design: the arm is already REJECTED at forced run_align (gates/w7-star.yaml 32/36, results/w7-star-run_align.json) and ships default-off, so a full 1088-case lines arm would price something nobody will switch on — but W7's MUST is that the wrong-text floor holds with EVERY new path active, and the rung's own gate had not been read with a starred trellis under it. READING: wrong-text pass 0/320 + 0/320 = 0 of 640, all 640 refused, 640 line-sync retries, 0 lines scored, 0 gross, 0 high-gross, 0 error rows. gates/w7-wrongtext.yaml 10/10. That is expected rather than lucky — the lexical gate reads the UNSTARRED matrix by construction (host.config.ALIGN_EXPERIMENTS, 'star') — and it is the point of reading it: a wiring bug that let the starred width reach the gate would have shown up as an admission or an ERROR here.",
   "gates": [
    {

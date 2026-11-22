@@ -28,7 +28,7 @@
    "bad-guy",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "52f0eec909fb52702c1d33c951ba5366afb6b508",
    "dirty_files": 25
@@ -51,7 +51,7 @@
    "headers": 22.3,
    "blind": 21.9
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-tt-control/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w5r2-tt-control/rows.jsonl",
   "baseline": "GATE-2 EVIDENCE, not a corpus row: the 32-case control that shows W5 review round 2 moved NOTHING at --level time_text (bench runner, 2026-10-01, code e2c1027b6cc491a2). The 8 songs whose served texts the hygiene touches (hello, bohemian-rhapsody, feel-my-heart, bad-guy, shape-of-you, rap-god, believer, tfr-chosen) x truth/extraverse/headers/blind, including hello extraverse — the ONE case that moves at run_align. All 32 reproduce results/w5-time_text.cases.jsonl in every compared field including doc_sha256 and onsets_sha256, because e2e.TimeTextDriver serves the claims RAW (e2e.py: TextRef(segments=claims.segments())) and the shipped time_text cleans nothing, so no text-hygiene change can reach this level. Compared against results/w6-hubert-time_text.cases.jsonl the same 32 cases have IDENTICAL onsets_sha256 and scored and differ only in doc bytes (the grading-only per-line confidence field W6 added)."
  },
  "summary": {

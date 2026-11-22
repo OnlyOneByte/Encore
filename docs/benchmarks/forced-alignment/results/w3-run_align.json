@@ -63,7 +63,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "fd98f0c166bbfc87408d276f63f8a073cd4a8a05",
    "dirty_files": 2
@@ -99,7 +99,7 @@
   },
   "asr": "off",
   "sync_mode": "forced",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w3-run_align/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w3-run_align/rows.jsonl",
   "note": "Summary document for `e2e.py --compare` (this .json, never the .cases.jsonl, which is a compact per-case digest without the raw per-line/per-word errors). Raw rows (recomputable with --summarize): meta.rows_full in the bench root.",
   "wave": "W3",
   "round": "wave bench",

@@ -69,7 +69,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 155
@@ -106,7 +106,7 @@
   "asr": "off",
   "sync_mode": "forced",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8ar2-arms-ra/rows.jsonl",
   "baseline": "W8a ROUND 2 RE-PRICE, BOTH BAND ARMS ON (ENCORE_ALIGN_EXPERIMENTS=band-reopen,band-off-sheet) at --level run_align, after the round-2 review (bench runner, 2026-10-04, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, syncMode forced, code 35d1360e6d5b3a5c). REPLACES results/w8a-arms-run_align.json, stale because the round-2 fixes changed all three arm rules (skipped_opening's 2.0 s _REOPEN_MAX_SEC cap and its batch-fresh free-time read, reopened_line's other-aligned-word requirement, off_sheet's MIN_COHERENT_SHARE conjunct). COST: the combined arm key is its own emitter fingerprint, so this sweep COMPUTED 60 matrices (1454 s) and the time_text companion then read all 60 from disk (1078 s). THE ARMS STAY DEFAULT-OFF. gates/w8a.yaml 151/154 - REJECT on word-aligned-not-down-truth (5378 -> 5373), word-aligned-not-down-jit (5102 -> 5096) and demotion-removes-only-bad-high-offm1 (23 good high lines on never-be-alone, band-off-sheet's false positive, unchanged from round 1). THE TWO ROUND-1 REJECTIONS THE GUARD WAS BUILT FOR ARE GONE: no-song-loses-jit -2.17 -> 0.00 and word-pm300-not-down-jit 95.86 -> 95.90. gates/w8a-fix.yaml 93/94 (only word-aligned-down-at-most-reopenings-truth, 5373 against a budget of 5374 measured on round 1's 182-case subset); gates/w8a-r1-reopen.yaml 118/125 (4 of the 7 are those subset-derived word budgets; high-held-off05 and high-held-offm1 are the OTHER arm's demotion, which that reopen-only file was never written against; displaced-songs-not-pulled-off05 is tfr-chosen +1 line, the 0.36 s pull round 1's generated-read guard refused and the batch-fresh pending read re-admits). CHANGED CASES 28 of 1088, a strict SUBSET of round 1's 37 with 0 new: 26 with onsets moved (band-reopen), 2 grade-only (band-off-sheet: bad-guy off05 high 49 -> 0 with all 49 bad, the one true positive; never-be-alone offm1 high 23 -> 0 with 0 bad). ONE song moves at truth, Kinematic_-_Peyote 71.43 -> 92.86 (+21.43); the four displaced songs are untouched (bad-guy 3.12, numb 20.00, believer 70.83, tfr-chosen 75.00) and all 15 songs at 100% +-500 hold. Pooled gross unchanged in every mode (0 in all 11 right-text modes), high>2s 0, wrongtext 0/320 and wrongtext+ownclock 0/320 refused, 0 lines scored. band 163 -> 160 truth, 162 -> 159 headers, 158 -> 155 extraverse, 219 -> 217 jit, 133 -> 131 drop20, 165 -> 163 credit, 167 -> 166 off05. Jamendo words at truth +-100 85.46 -> 85.54, +-300 97.16 -> 97.23, AAE 71.1 -> 70.6 ms, highlight 81.40 -> 81.50; aligned falls 5 with aligned+interpolated identical in EVERY mode - round 1's provenance accounting, not lost accuracy. README: 'W8a round 2: the two arms re-priced on the full corpus'.",
   "gates": [
    {

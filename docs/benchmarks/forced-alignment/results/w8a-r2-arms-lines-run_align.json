@@ -69,7 +69,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 159
@@ -106,7 +106,7 @@
   "asr": "off",
   "sync_mode": "lines",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-lines/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8ar2-arms-lines/rows.jsonl",
   "baseline": "W8a ROUND 2 RE-PRICE, BOTH BAND ARMS ON (ENCORE_ALIGN_EXPERIMENTS=band-reopen,band-off-sheet) at --level run_align --sync-mode lines, after the round-2 review (bench runner, 2026-10-04, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps; 960 s, 32 matrices read from disk, 0 computed). VOLUNTEERED, not owed by the re-price brief, and it answers the question the brief left open: AT THE LINE_SYNC RUNG THE ARMS CHANGE NOTHING. 0 of 1088 cases differ from the shipped default (results/w8a-lines-run_align.cases.jsonl) on doc_sha256, onsets_sha256, confidence, high, high_bad, w500 or gross - in round 1 and round 2 alike (results/w8a-arms-lines-run_align.cases.jsonl is also 0) - because neither skipped_opening/reopened_line nor off_sheet's demotion is reached on the path that publishes a line-sync document. gates/w8a-lines.yaml 99/99 PASS, which is therefore the default's own reading re-read. gates/w8a.yaml and gates/w8a-fix.yaml are NOT written for this rung (no word metrics, no blind rows, forced-rung thresholds) and read 137/154 and 85/94 with 8 and 7 ERRORs on absent metrics; they are recorded here only so the attempt is on the record.",
   "gates": [
    {

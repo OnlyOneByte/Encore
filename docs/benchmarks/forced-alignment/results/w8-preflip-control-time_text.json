@@ -34,7 +34,7 @@
    "Quentin_Hannappe_-_Keep_On"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
    "dirty_files": 48
@@ -59,7 +59,7 @@
    "headers": 10.4,
    "credit": 13.7
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8-tt-preflip/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8-tt-preflip/rows.jsonl",
   "baseline": "THE CONTROL that attributes results/w8-time_text.json's 19 moved documents to the W9 flip and not to W8: ENCORE_ALIGN_EXPERIMENTS=band-late-kept on the W8 tree, the 6 songs whose documents differ, 7 right-text modes, 42 cases, EVERY FIELD of results/w9-time_text.cases.jsonl reproduced including doc_sha256 and onsets_sha256."
  },
  "summary": {

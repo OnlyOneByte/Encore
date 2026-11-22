@@ -56,7 +56,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 33
@@ -78,7 +78,7 @@
    "drop50": 2.6,
    "extraverse": 5.3
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-star-on-generate/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-star-on-generate/rows.jsonl",
   "baseline": "W7 3.10 star phase A, the DECODE axis, ARM ON (ENCORE_ALIGN_EXPERIMENTS=star, P = STAR_PENALTY_NATS = 1.0; bench runner, 2026-10-01, code fd9a5a6ddb641cd3): --level generate, HuBERT-Large, 32 songs x 4 text modes, 128 cases, 32 matrices recomputed cold because align_experiments is in the emission cache key. Against results/w7-star-off-generate.json on the SAME tree: gross 77 -> 67, 197 -> 140, 323 -> 232, 116 -> 112 (pooled 713 -> 551, -22.7%); +-500/text 80.51 -> 82.90, 69.83 -> 76.13, 48.34 -> 60.60, 78.30 -> 80.28; zero-gross songs 12 -> 14, 1 -> 3, 0 -> 1, 9 -> 11. So the decode gain the off-bench sweep (results/w7-star-sweep.json) fitted is REAL through the shipped code path, to the digit. THE COST THE OFF-BENCH SWEEP DID NOT SHOW: word ENDS get worse where line starts get better - phrase-final end+-100 30.5 -> 28.3 on the full sheet and 30.5 -> 28.2 on extraverse, and highlight (sung-second coverage) 64.7 -> 63.7 and 61.0 -> 60.0. The star absorbs the frames the last word of a line used to be charged, so the line it starts is right and the word it ends is early."
  },
  "summary": {

@@ -37,7 +37,7 @@
    "Tom_Orlando_-_The_One__feat._Tina_G_",
    "Wordsmith_-_The_Statement"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "1e0a571b745f342562b41cb88b9758d8d25ebc4d",
    "dirty_files": 36

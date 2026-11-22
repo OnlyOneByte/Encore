@@ -11,14 +11,14 @@
   "target": "stem",
   "tfr_audio": "youtube",
   "wrong_k": 10,
-  "rows": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-ra/rows.jsonl",
+  "rows": "<bench-root>/_runs/w5r2-ra/rows.jsonl",
   "row_codes": [
    "e2c1027b6cc491a2"
   ],
   "merged_from": [
-   "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-ra-rest",
-   "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-ra-ev",
-   "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-ra-wt"
+   "<bench-root>/_runs/w5r2-ra-rest",
+   "<bench-root>/_runs/w5r2-ra-ev",
+   "<bench-root>/_runs/w5r2-ra-wt"
   ],
   "modes": [
    "truth",
@@ -38,7 +38,7 @@
    "credit",
    "wrongtext+ownclock"
   ],
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w5r2-ra/rows.jsonl",
   "baseline": "ROUND-2 RE-BENCH of results/w5-run_align.json, and the row later waves should compare against at --level run_align (bench runner, 2026-10-01, code e2c1027b6cc491a2, emitter a51283424a0195e1). The SHIPPED DEFAULT (HuBERT-Large) over 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, asr off, syncMode forced. EVERY case was re-measured on the post-review-round-2 tree (three invocations, merged by _tools/merge_runs.py: extraverse, the two wrong-text modes, the other thirteen); 1079 of 1088 reproduce results/w5-run_align.cases.jsonl in EVERY compared field INCLUDING doc_sha256 and onsets_sha256, 8 differ in served_lines alone (wrongtext+ownclock donor slices, refused on both trees) and ONE moves a metric: hello extraverse, scored 63 -> 74 / served 63 -> 80 / text pm500 85.14 -> 100.00 / gross 0 = 0, because review r2 raised nonlyric.NOTED_SHARE 0.5 -> 0.8 and that mode's donor verse puts the share at 63/80 = 0.7875, inside the band R3 now abstains in. The --level time_text baseline is UNCHANGED and is still results/w5-time_text.json: that level serves the claims RAW, so no text-hygiene change can reach it (32-case control _runs/w5r2-tt-control reproduces it byte-identically, hello extraverse included).",
   "gates": [
    {

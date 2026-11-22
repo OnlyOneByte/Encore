@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 28
@@ -100,7 +100,7 @@
   },
   "asr": "off",
   "sync_mode": "lines",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-lines/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-lines/rows.jsonl",
   "baseline": "W8a's LINES BAND BASELINE: results/w7-lines-run_align.json's OWN ROWS re-summarised offline on the W8a harness, which added the signed band metrics (band, bias_ms, mad_ms). NOT A NEW RUN - 0 model seconds; every pre-existing metric is identical to w7-lines-run_align.json case for case.",
   "gates": [
    {
@@ -118,7 +118,7 @@
     ]
    }
   ],
-  "rows": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-lines/rows.jsonl"
+  "rows": "<bench-root>/_runs/w7-lines/rows.jsonl"
  },
  "summary": {
   "truth": {

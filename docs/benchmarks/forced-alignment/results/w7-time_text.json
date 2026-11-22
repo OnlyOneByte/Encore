@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 24
@@ -99,7 +99,7 @@
    "credit": 56.2,
    "wrongtext+ownclock": 158.6
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-tt/rows.jsonl",
   "baseline": "W7 CONTROL at --level time_text on the shipped default (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, emitter 1a2fd6852bd30243): HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, syncMode forced, NO experiments. Measures W7's three DEFAULT-ON changes together — language as an INPUT end to end (M8/3.9: Transcribed.language, TextRef.language on the four acquiring steps, generate.char_ids as the one target filter with its NFKD fold), M9's blank_id read off the matrix, and M13's provider ranking + L5's duration retry in policy.decide. EVERY one of the 1088 cases reproduces results/w5-time_text.json: 0 of 32 songs changed its published document's bytes in any mode (count(song.doc_changed) == 0), and every printed metric reads (=). So the plumbing is a byte-level no-op on an English Latin-script sheet, which is what M8's routing policy promises. gates/w7.yaml 45/45, gates/w7-words.yaml 25/25, gates/w7-wrongtext.yaml 10/10.",
   "gates": [
    {

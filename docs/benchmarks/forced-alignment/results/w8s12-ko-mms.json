@@ -25,7 +25,7 @@
    "amll-ko-gangnam-style"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
    "dirty_files": 16
@@ -43,7 +43,7 @@
   "mode_seconds": {
    "truth": 22.9
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8s12-ko-mms/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8s12-ko-mms/rows.jsonl",
   "gates": [
    {
     "file": "w8-units.yaml",
