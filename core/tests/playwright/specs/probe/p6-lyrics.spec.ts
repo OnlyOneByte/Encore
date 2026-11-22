@@ -137,6 +137,8 @@ interface OverlayClasses {
 	hlClass: string | null;
 	ballClass: string | null;
 	ballPresent: boolean;
+	/** A dot marker is DRAWN, since the TV draws no `●` (stage-words.test.ts): a square box, round and filled. */
+	ballDrawn: boolean;
 	fontFamily: string | null;
 	textTransform: string | null;
 	unverified: boolean;
@@ -149,7 +151,15 @@ async function readClasses(tv: Page): Promise<OverlayClasses | null> {
 			const w = document.querySelector(rowCurrent);
 			const cs = w ? getComputedStyle(w) : null;
 			const b = document.querySelector(ball);
+			const bs = b ? getComputedStyle(b) : null;
+			const bw = Math.round(parseFloat(bs?.width ?? ''));
 			return {
+				ballDrawn:
+					!!bs &&
+					bw > 8 &&
+					Math.round(parseFloat(bs.height)) === bw &&
+					bs.borderRadius === '50%' &&
+					bs.backgroundColor !== 'rgba(0, 0, 0, 0)',
 				hlClass: [...l.classList].find((c) => c.startsWith('hl-')) ?? null,
 				ballClass: b ? ([...b.classList].find((c) => ['bounce', 'steady', 'underline'].includes(c)) ?? null) : null,
 				ballPresent: !!b,
@@ -427,6 +437,15 @@ test('lyrics-ball (bounce / steady / underline / off) applies live to the marker
 		const ballClass = overlayField(stage.tv, 'ballClass');
 		await putRoom(stage.phone, { lyricsBall: 'steady' });
 		await expect.poll(ballClass, { message: 'lyrics-ball=steady did not reach the marker' }).toBe('steady');
+		// Read in the same frame as the class, and kept: between words there is no marker at all.
+		let drawn: boolean | null = null;
+		await expect
+			.poll(async () => {
+				const c = await readClasses(stage.tv);
+				if (c?.ballClass === 'steady') drawn = c.ballDrawn;
+				return drawn;
+			})
+			.toBe(true);
 		await putRoom(stage.phone, { lyricsBall: 'underline' });
 		await expect.poll(ballClass, { message: 'lyrics-ball=underline did not reach the marker' }).toBe('underline');
 		await putRoom(stage.phone, { lyricsBall: 'off' });
