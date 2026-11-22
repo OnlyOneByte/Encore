@@ -139,11 +139,13 @@ test('320x568: a reload during your heads-up brings the card up (the phone woke 
 	const { worker, theo } = await theoOnDeck(world);
 	try {
 		await expect(theo.locator('.deck.heads-up')).toBeVisible({ timeout: SECS * 1_000 });
+		// At the top BEFORE the reload, so the page comes back at 0. A scrollTo after the reload would race the
+		// bring-up and could wipe it, failing the test for the wrong reason.
 		await theo.mouse.wheel(0, -2_000);
+		await theo.evaluate(() => window.scrollTo(0, 0));
 		await theo.waitForTimeout(500);
 		await theo.reload();
 		await expect(theo.locator('.deck.heads-up')).toBeVisible({ timeout: 10_000 });
-		await theo.evaluate(() => window.scrollTo(0, 0));
 		await expect.poll(async () => reachable(await reach(theo, '.deck')), { timeout: 5_000 }).toBe(true);
 		expect((await reach(theo, '.deck')).scrollY, 'the page scrolled').toBeGreaterThan(0);
 	} finally {
