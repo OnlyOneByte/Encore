@@ -392,6 +392,10 @@
 	let liveMsg = $state('');
 </script>
 
+<!-- Its own title, which the route announcer reads on arrival: without one a tab arrival from /queue kept "Queue ·
+	Encore", and Pick another, which opens here from /queue, said so too. -->
+<svelte:head><title>{replacing ? 'Pick another · Encore' : 'Sing · Encore'}</title></svelte:head>
+
 <!-- TWO WHOLE BLOCKS, the join screen and the tab, never one `<main>` the join screen moves into: when a slow 401
 	replaces the placeholder (or a session is lost) the topbar goes, and a `<main>` that stayed would jump up under the
 	guest (CLS 0.074 at 390). A new block is an insertion, not a shift — the swap `/queue` and `/library` make. Unjoined,

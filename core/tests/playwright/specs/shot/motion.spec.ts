@@ -371,8 +371,9 @@ const HOLD_SAMPLES = { at250: 250, at1000: 1000, settled: 2200 };
 
 function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): MotionScenario {
 	let maya: Page | undefined;
-	// Before the tap: stalled inside the window; "Couldn't make karaoke" once the TTL has killed the job.
-	const before = afterTtl ? "Couldn't make karaoke" : "Can't make this one right now";
+	// Before the tap: no worker, so the dead card follows the room's verdict either side of the TTL (ruling 38), and a
+	// Try again that changes nothing ends on the words it started from.
+	const before = "Can't make this one right now";
 	return {
 		name: afterTtl ? 'phone-stalled-retry-after-ttl' : 'phone-stalled-retry',
 		what: `Phone 390x844, no worker${afterTtl ? ', after the TTL' : ''}: Try again on a dead card — the line pops to "Trying again…" (pop, --motion-base), holds 1.5 s, then the stalled line`,
@@ -392,6 +393,19 @@ function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): Mot
 				await maya.locator(SEL.songRow).first().locator(SEL.singAction).click();
 			}
 			const page = await asSinger(browser, world, opts, maya);
+			// AFTER THE TTL MEANS AFTER IT: wait for the server to call the song dead for want of a maker, with no job in
+			// flight. A run that opened inside the previous run's 3 s window tapped a job the TTL then killed mid-hold, and
+			// that verdict rightly cut the hold short.
+			if (afterTtl)
+				await expect
+					.poll(
+						async () => {
+							const lib = await (await page.request.get(`${world.baseURL}/api/library`)).json();
+							return (lib.noMakerFailed?.length ?? 0) > 0 && !(lib.processing?.length ?? 0);
+						},
+						{ timeout: 20_000, message: 'the TTL never killed the job' }
+					)
+					.toBe(true);
 			await page.goto('/');
 			await openQueue(page);
 			await expect(page.locator(SEL.processing).first()).toContainText(before, { timeout: 20_000 });

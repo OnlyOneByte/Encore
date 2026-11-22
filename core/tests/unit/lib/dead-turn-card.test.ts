@@ -100,10 +100,11 @@ test("a dead card's line AND look follow the ROOM's maker verdict, whatever its 
 	// Failed and stalled alike: a phone that missed the failure says what the phones that heard it say, and with no
 	// maker every dead card says what the strip and the TV say.
 	expect(card).toContain("const dead = $derived(kind === 'stalled' || kind === 'failed');");
-	expect(card).toMatch(/dead\s*\?\s*\(noMaker\s*\?\s*STALLED_TURN_LABEL\s*:\s*processStageLabel\('failed'\)\)/);
+	expect(card).toMatch(/dead\s*\?\s*\(?\s*noMaker\s*\?\s*STALLED_TURN_LABEL\s*:\s*processStageLabel\('failed'\)/);
 	// Same words, same tone: the danger look goes with "Couldn't make karaoke", the warn look with the stalled line.
-	expect(card).toContain('const failed = $derived(dead && !noMaker);');
-	expect(card).toContain('const stalled = $derived(dead && noMaker);');
+	// (Try again's hold wears the stalled look whatever the verdict: pick-another-wiring.test.ts.)
+	expect(card).toContain('const failed = $derived(dead && !noMaker && !retrying);');
+	expect(card).toContain('const stalled = $derived((dead && noMaker) || retrying);');
 	// The split this replaced: a failed card that ignored the verdict.
 	expect(card).not.toMatch(/kind === 'failed'\s*\?\s*processStageLabel\('failed'\)/);
 	// The verdict is the same fold the TV lobby and the strip word their lines from, over the same queued turns.

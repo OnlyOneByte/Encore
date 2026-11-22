@@ -388,6 +388,8 @@ test('Pick another swaps the song and keeps the spot ahead of a later singer', a
 		await openQueue(maya);
 		await maya.locator('[data-testid="card-pick-another"]').click();
 		await maya.waitForURL((u) => u.pathname === '/' && u.searchParams.has('replace'));
+		// Its own title, which the route announcer reads: not the "Queue · Encore" it was opened from.
+		await expect(maya).toHaveTitle('Pick another · Encore');
 		await maya.locator(SEL.search).fill('livin on a prayer');
 		await maya
 			.locator(SEL.songRow)

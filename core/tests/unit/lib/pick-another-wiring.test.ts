@@ -68,8 +68,8 @@ test('Try again on a dead card answers at once, then follows the real status', (
 	expect(card).toMatch(/retrying\s*\?\s*RETRYING_LABEL/);
 	// During the hold the card claims nothing measured: no bar, no sparkle — then it follows the server. A failed
 	// card leaves its failed look for the hold too, or it reads "Couldn't make karaoke" under "Trying again…".
-	expect(card).toContain("const failed = $derived(kind === 'failed' && !retrying);");
-	expect(card).toContain("const stalled = $derived(kind === 'stalled' || retrying);");
+	expect(card).toContain('const failed = $derived(dead && !noMaker && !retrying);');
+	expect(card).toContain('const stalled = $derived((dead && noMaker) || retrying);');
 	expect(card).toContain("const inFlight = $derived(kind === 'processing' && !retrying);");
 	expect(card).toContain('retryTimer = setTimeout(() => (retrying = false), RETRY_ACK_MS);');
 	// …or sooner, on a verdict only: the decision is `retryHoldAfter` (retry-hold.test.ts), fed the status the tap was
