@@ -311,6 +311,19 @@ test('a claim by the screen that already holds the seat moves nothing and books 
 	expect(w.mine(1)).toBe(true);
 });
 
+test('an older tab of the screen that holds the seat can still claim it: the guard is the socket, not the screen', () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvA');
+	expect(w.mine(2)).toBe(true);
+	w.timers.splice(0);
+	expect(w.seats.claim(ROOM, 1)).toEqual([
+		{ key: 2, mine: false },
+		{ key: 1, mine: true }
+	]);
+	expect(w.timers.map((t) => t.at - 1_000_000)).toEqual([15_000, 60_000]);
+});
+
 test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
 	const w = world();
 	const booked = () => w.timers.splice(0).map((t) => t.at - 1_000_000);
