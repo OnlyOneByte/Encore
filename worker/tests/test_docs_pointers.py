@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import io
 import re
+import subprocess
 import tokenize
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -457,6 +458,21 @@ def test_no_citation_leads_to_a_gitignored_working_document(repo: Path) -> None:
         f"these exemptions are no longer cited and must be deleted from EXEMPT_CITATIONS: {stale}. "
         "An exemption nobody uses reads as a defect that is still open."
     )
+
+
+def test_the_working_documents_are_not_committed(repo: Path) -> None:
+    """`WORKING_DOCUMENTS` says a fresh clone has none of them, which holds only while git tracks none.
+
+    Asked of git rather than of the disk: a working copy may hold one on purpose, ignored but not committed.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", *sorted(WORKING_DOCUMENTS)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert not tracked, f"these gitignored working documents are committed anyway: {tracked}. `git rm` them."
 
 
 def _resolves(candidate: Path) -> bool:

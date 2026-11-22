@@ -8,7 +8,7 @@
  * which is why a drop clears the draft instead of holding it. That is the rule `/queue`'s `keyDraft` already
  * states for the ± keycaps, applied to the one other control that holds an optimistic value.
  *
- * The defect it exists for is on record in docs/UI-REVIEW.md finding C: the control followed the finger through a
+ * The defect it exists for: the control followed the finger through a
  * drag the room never heard, and then sprang back on release — which reads as the app being broken rather than as
  * the network being down. THIS MODULE OWNS THE DRAFT HALF of that, which is the spring-back and the readout;
  * holding the primitive's own copy of the value still is `GuidingTrack.svelte`'s, and neither half fixes the

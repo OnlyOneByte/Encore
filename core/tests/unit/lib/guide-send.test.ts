@@ -121,7 +121,7 @@ test('with the wire known bad the draft does not advance inside the window eithe
 
 test('a commit supersedes the trailing send, and a LANDED commit leaves the draft standing', () => {
 	/* The release may not fall through to the server echo. The old drag-scoped flag did, so a commit that landed
-	   still showed the OLD level for one round trip — the spring-back docs/UI-REVIEW.md finding C describes,
+	   still showed the OLD level for one round trip — the guide slider's spring-back,
 	   whose dropped half this file's second test covers. Only the room agreeing clears the draft now, and that
 	   arm lives in the route's effect. */
 	const r = rig();

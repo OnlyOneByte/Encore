@@ -2,6 +2,9 @@
 name = "encore-worker"
 version = "0.1.0"
 description = "Encore worker — durable audio/lyrics processing as DBOS workflows"
+readme = "README.md"
+license = "PolyForm-Noncommercial-1.0.0"
+authors = [{ name = "OnlyOneByte" }]
 requires-python = ">=3.12"
 
 # The RUNTIME set that is not ML. Everything heavy is an extra below, so `uv sync` on a dev box
@@ -237,6 +240,10 @@ nonlatin = [
     "fugashi==1.5.2",
     "opencc-python-reimplemented==0.1.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/OnlyOneByte/Encore"
+Repository = "https://github.com/OnlyOneByte/Encore"
 
 [dependency-groups]
 # PEP 735. A plain `uv sync` (base + this group) runs the fast suite, `pytest -m "not ml"`, and the lint and

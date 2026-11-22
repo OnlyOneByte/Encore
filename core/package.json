@@ -1,5 +1,14 @@
 {
 	"name": "encore",
+	"description": "Self-hosted karaoke for a room full of phones",
+	"license": "PolyForm-Noncommercial-1.0.0",
+	"author": "OnlyOneByte (https://github.com/OnlyOneByte)",
+	"homepage": "https://github.com/OnlyOneByte/Encore",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/OnlyOneByte/Encore.git",
+		"directory": "core"
+	},
 	"private": true,
 	"type": "module",
 	"scripts": {
