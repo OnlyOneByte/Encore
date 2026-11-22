@@ -1,4 +1,4 @@
-"""W9's research arms where they reach the shipped step: the vendored decoder, and what it unblocks.
+"""The research arms where they reach the shipped step: the vendored decoder, and what it unblocks.
 
 `test_viterbi.py` holds the GRAPH (the arcs, their price, the superset property) and `test_ml_contract.py`
 holds the bit-compatibility claim against the real kernel. What is left, and what this file is, is the
@@ -154,7 +154,7 @@ def test_the_arc_leaves_unsung_a_line_the_recording_never_contained(
 def test_the_arcs_take_nothing_from_a_sheet_the_recording_sings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The false-drop direction, which is the one the review measured the replacement arm failing: on THIS
+    """The false-drop direction, which is the one the corpus measured the replacement arm failing: on THIS
     matrix, where every line is in the audio and in the order the audio sings it, the arcs cost no line.
 
     NOT A GENERAL PROPERTY — the corpus priced the arm at 5 false drops in `truth`, and the test below is
@@ -172,7 +172,7 @@ def test_the_arcs_take_nothing_from_a_sheet_the_recording_sings(
     assert "skip arcs left unsung" not in str(armed.verdict[4])
     assert [line["text"] for line in armed.lines] == [text for text, _s, _e in UNIQUE]
     # THE DETECTOR STILL HAS TO SAY IT LOOKED: a run that found nothing is otherwise silent about a graph
-    # that is not the publishing decode's (review W9 r1-correctness-2).
+    # that is not the publishing decode's.
     assert clause(armed, "vendored decoder") == (
         f"vendored decoder: a detector graph offered a skip arc at "
         f"{viterbi.SKIP_LINE_NATS:g} + {viterbi.SKIP_CHAR_NATS:g} nats/char, "
@@ -228,7 +228,7 @@ def test_a_line_printed_exactly_twice_is_already_a_repeat(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The exemption's BOUNDARY, which the three-occurrence fixture above leaves open: `said.count(text) > 1`
-    weakened to `> 2` passed every test in this file (review W9 r2-tests-12), and a line printed twice is
+    weakened to `> 2` passed every test in this file, and a line printed twice is
     the commonest repeat a sheet has.
 
     Both halves are here — the step exempts the PAIR, and the exemption is what keeps the second occurrence
@@ -269,7 +269,7 @@ def test_a_line_printed_exactly_twice_is_already_a_repeat(
 def test_the_arcs_run_before_the_never_sung_rule_and_both_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A COMPLEMENT and never a replacement (the review measured the replacement at +21 gross and +17 false
+    """A COMPLEMENT and never a replacement (the corpus measured the replacement at +21 gross and +17 false
     drops): the arcs run first, on the blind decode, and the three-signal rule then grades what is left —
     so a sheet carrying one of each loses both lines and the trail names both reasons, in that order.
 
@@ -312,7 +312,7 @@ def test_the_detector_reads_the_matrix_and_the_graph_the_publishing_decode_reads
 ) -> None:
     """A detector run on another decode's evidence names lines about a decode that never happened: under
     `star-b` the publishing matrix carries the star column and its graph may BYPASS every star for free,
-    so the detector has to read the same column and the same topology (review W9 r2-correctness-4).
+    so the detector has to read the same column and the same topology.
 
     Mandatory stars are not a smaller difference than the wrong matrix: each one is a state the detector's
     path must spend a frame on, which is evidence the publishing path never has to buy.
@@ -365,7 +365,7 @@ def test_star_b_is_expressed_in_the_vendored_graph_and_says_so(
 
     THE GRAPH CLAUSE MUST NOT BE THE CONTROL'S. `_graph_why` reports an unreported graph as "an empty graph,
     so this is torchaudio's own path", so an armed decode that noted nothing printed the `vendored` control's
-    sentence byte for byte while really running a star bypass per line (review W9 r1-correctness-2).
+    sentence byte for byte while really running a star bypass per line.
     """
     got = attempt(
         tmp_path / "on",
@@ -389,7 +389,7 @@ def test_star_b_abstains_from_the_placement_margin_rule(
 ) -> None:
     """`_placement_margins` decodes the PLAIN topology and takes no graph, so under `star-b` — whose
     published decode bypasses every star for free — a margin read here would demote lines on a trellis no
-    decode of the document used (review W9 r1-correctness-5). Phase A is consistent, its star being
+    decode of the document used. Phase A is consistent, its star being
     mandatory in both, so it keeps the rule: the abstention belongs to the GRAPH, not to the column.
     """
     shape: dict[str, Any] = {
@@ -487,7 +487,7 @@ def test_the_primed_decode_does_not_decide_which_repeats_the_ladder_sees(
     """R3 takes the repeats the BLIND verdict did not corroborate (XA-03), and the primed arms RE-READ the
     verdict on a claim-primed document, where a line the prior pulled onto its claim reads corroborated.
     Reading THAT set withholds from R3 exactly the repeats the prior moved, while `line_confidence`'s
-    ANCHORED branch grades its output on blind corroboration regardless (review W9 r1-correctness-4).
+    ANCHORED branch grades its output on blind corroboration regardless.
 
     The re-read is STUBBED to corroborate everything, because the shipped 4-nat peak is unfitted and cannot
     reach this fixture's 3.6 s — and this rule may not depend on how far a prior happens to pull.
@@ -568,7 +568,7 @@ def test_the_fused_matrix_decodes_on_the_kind_of_matrix_the_emitter_produced(
     handed — while `prior.fused` is in `domain/`, which may not import torch and so answers in numpy.
 
     Every other test here decodes with the pure-numpy fake, which accepts either, so the arm read as if it
-    had re-decoded on a box where it could not (review W9 r2-spec-6). Here the emitter's matrix is a real
+    had re-decoded on a box where it could not. Here the emitter's matrix is a real
     tensor and the decoder demands one, exactly as `forced_align_decoder`'s first line does.
     """
     torch = pytest.importorskip("torch")
@@ -600,8 +600,8 @@ def test_the_fusion_declines_a_mix_another_bundle_emitted(
 ) -> None:
     """`prior.fused` swaps whole ROWS, so a row of one matrix has to BE a row of the other — and all it can
     compare is the WIDTH. The mix is emitted under its own language routing, which `lang-route-mix` can
-    resolve to a different bundle, so the vocabulary is checked where both are in hand (review W9
-    r1-spec-10). Here the mix keeps the width and reverses the map, which a width check cannot see.
+    resolve to a different bundle, so the vocabulary is checked where both are in hand.
+    Here the mix keeps the width and reverses the map, which a width check cannot see.
     """
     from tests import test_align_provenance as prov
 
@@ -630,7 +630,7 @@ def test_the_fusion_declines_a_mix_another_bundle_emitted(
 def test_the_deciding_arm_stands_in_for_the_repair_ladder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The review's deciding arm is priors plus fusion plus optional lines WITH THE LADDER BYPASSED, so on
+    """The deciding arm is priors plus fusion plus optional lines WITH THE LADDER BYPASSED, so on
     a sheet the ladder repairs it must publish the primed decode instead and leave no repaired timing.
 
     THE CONTROL IS `vendored`, NOT THE DEFAULT. A repair window is handed `ml.forced_align_decoder`, which
@@ -653,7 +653,7 @@ def test_the_deciding_arm_stands_in_for_the_repair_ladder(
     assert f"{len(UNIQUE)} primed" in sources, sources
 
     # R3 IS THE RUNG A UNIQUE SHEET CANNOT SEE: with no repeated line it never fires under either arm, so
-    # the bypass has nothing to refuse there (review W9 r1-tests-16). The repeat-carrying fixture, with the
+    # the bypass has nothing to refuse there. The repeat-carrying fixture, with the
     # decoder mishearing ONE chorus occurrence and the sheet's own claims disputing exactly that line, is
     # where the control's ladder reaches it.
     repeating = misheard_repeat()
@@ -673,8 +673,8 @@ def test_the_deciding_arm_stands_in_for_the_repair_ladder(
 
 
 def test_the_readme_counts_the_hermetic_tests_this_track_actually_has() -> None:
-    """The measurement log's hermetic-test count for this track is how a later wave decides whether an arm is
-    covered, and it had drifted by six before anything derived it (review W9 r2-spec-9).
+    """The measurement log's hermetic-test count for this track is how a later change decides whether an arm
+    is covered, and it had drifted by six before anything derived it.
 
     The two whole files are counted from the files; `test_ml_contract.py`'s figure is the two cases that
     hold this decoder against the real kernel, which is a subset and stays the sentence's own claim.

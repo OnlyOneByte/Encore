@@ -172,7 +172,7 @@ def decide(report: TimingReport, attempt: Attempt) -> Verdict:
             return Retime(Knob.LINE_SYNC, f"{_unusable(report)} — degrading to the text's own line timings")
         if report.engine is Engine.LINE_SYNC or Knob.LINE_SYNC in attempt.tried:
             # The old message ("carries no line timings") was wrong here: the text HAS them, and they
-            # were just tried (review W0 note). A line-sync step that returned nothing reports no engine.
+            # were just tried. A line-sync step that returned nothing reports no engine.
             what = (
                 _unusable(report)
                 if report.engine is Engine.LINE_SYNC

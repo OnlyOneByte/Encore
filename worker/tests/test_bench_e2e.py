@@ -1,8 +1,8 @@
 """The E2E alignment bench harness (`docs/benchmarks/forced-alignment/scripts/e2e.py` + `e2e_lib.py`).
 
 The bench is the GATE every later alignment wave is accepted or rejected by, so a defect in it moves every
-verdict at once — silently, because a wrong metric still prints a plausible number. Two from the review's
-own scratch harness are pinned here: pairing lines by TEXT, which mis-pairs a repeated chorus whenever a
+verdict at once — silently, because a wrong metric still prints a plausible number. Two from an earlier
+scratch harness are pinned here: pairing lines by TEXT, which mis-pairs a repeated chorus whenever a
 line is dropped, and seeding jitter with the process-salted `hash(slug)`, which made its jit row
 unrepeatable. Hermetic: no model, no corpus. The claim/metric/cache half is plain data; the driver runs the
 REAL `AlignStepsImpl.time_text` over a synthetic song with a fake aligner and a spreading decoder, and the
@@ -240,7 +240,7 @@ def test_wrong_text_cross_pairs_are_k_distinct_other_songs() -> None:
 
 
 def test_own_clock_puts_another_songs_words_on_this_songs_caption_clock() -> None:
-    """`wrongtext+ownclock` (W1 review r2): the same-video wrong-words case a caption track of THIS video in
+    """`wrongtext+ownclock`: the same-video wrong-words case a caption track of THIS video in
     other words presents (a translation). Every truth line keeps its own span and takes the donor's line in
     the same position, cycling a shorter donor; the donor is the plain wrongtext case's, and no line pairs."""
     corpus = [
@@ -334,7 +334,7 @@ def test_word_scores_follow_bench_py() -> None:
 
 
 def test_syllable_scores_pair_on_a_character_offset_whatever_split_the_line() -> None:
-    """W8 stages 1-2's deciding metric, and the reason it is not the word metric.
+    """The syllable stages' deciding metric, and the reason it is not the word metric.
 
     One Chinese line, six hanzi, no space: the whitespace rule publishes it as ONE word, so every syllable
     of the line is scored against that word's single onset; `nonlatin-units` publishes six, each on its own.
@@ -420,7 +420,7 @@ def test_a_syllable_no_published_unit_covers_is_unpaired_and_a_case_with_no_trut
 
 
 def test_a_truth_syllable_on_a_line_the_document_dropped_is_counted_as_unpublished() -> None:
-    """Review r1-spec-8: it was in NO bucket — not aligned, not interpolated, not unpaired — so the ko cell
+    """Such a syllable used to be in NO bucket — not aligned, not interpolated, not unpaired — so the ko cell
     read 481 + 30 + 0 against an `in_text` of 535 and the 24 spans on the 7 lines its document is missing
     were invisible to every gate in `gates/w8-units.yaml`. The four counts now sum to the denominator.
 
@@ -464,7 +464,7 @@ def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() 
     """`word_published_*` reads the start the document publishes, whatever the word's provenance.
 
     The aligned-only family is one word short of the paired set here, and that word is on its truth to the
-    millisecond — so the two families disagree by construction, which is the point. W8b's re-judgement of
+    millisecond — so the two families disagree by construction, which is the point. The re-judgement of
     `word-aligned-not-down` turned on exactly this gap: LOG.md, "W8b: re-judging `word-aligned-not-down`"."""
     song = song_of(
         [("one two", 0.0, 2.0), ("three four", 3.0, 5.0)],
@@ -492,7 +492,7 @@ def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() 
 
 
 def test_the_published_family_cannot_be_moved_by_relabelling_a_word_that_did_not_move() -> None:
-    """The owner's W8b question, as a metric: re-label a word and leave its start alone.
+    """The relabelling question, as a metric: re-label a word and leave its start alone.
 
     Every aligned-only column moves (the word leaves both numerator and denominator); every
     `word_published_*` column is identical, because the denominator is `aligned + interpolated`."""
@@ -521,7 +521,7 @@ def test_a_row_from_before_the_published_family_reads_none_unless_nothing_was_in
 
     A row with no interpolated word has an empty list by arithmetic and is read; one with interpolated words
     cannot be reconstructed, and reading it as "no unaligned onsets" would score the aligned half twice and
-    flatter the run. `gates/w8b-arms.yaml` is written knowing a pre-W8b baseline ERRORs on it."""
+    flatter the run. `gates/w8b-arms.yaml` is written knowing a baseline without the family ERRORs on it."""
     song = worded("j")
     got = claims(song, "truth")
     doc = exact_doc(song, got)
@@ -571,7 +571,7 @@ def test_line_metrics_keep_e2e2s_definitions() -> None:
 
 
 def test_a_coherent_offset_and_a_symmetric_spread_differ_only_in_the_signed_metrics() -> None:
-    """W8a's blindness, as a test. Every ±N metric is symmetric, so a document every line of which is 0.86 s
+    """A blind spot, as a test. Every ±N metric is symmetric, so a document every line of which is 0.86 s
     LATE scores exactly like one whose lines are scattered ±0.86 s — which is how five songs sat in the
     0.5-2 s band through eight waves. `bias_ms` separates them and `mad_ms` says which is coherent."""
     song = song_of(TEN)
@@ -595,7 +595,7 @@ def test_a_coherent_offset_and_a_symmetric_spread_differ_only_in_the_signed_metr
 
 def test_a_signed_column_prints_its_delta_instead_of_taking_the_comparison_down() -> None:
     """`bias_ms` is the first `--compare` column whose own format already asks for a sign, and a delta is
-    signed too: `format(x, "++.0f")` raises, so the first real comparison after W8a added the column died
+    signed too: `format(x, "++.0f")` raises, so the first real comparison after the column was added died
     with `Invalid format specifier` and printed NO gate verdicts at all.
 
     Run against itself every delta is `=`, which is exactly why 2-3 hours of sweep had to be spent to see it.
@@ -727,7 +727,7 @@ def test_the_bench_aligner_serves_memory_then_disk_and_never_recomputes(
 def test_the_cache_is_keyed_on_the_model_the_aligner_loaded_not_on_its_label(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r1: the key's model part used to be the harness's GUESS (`--model`, else whisperx's static
+    """The key's model part used to be the harness's GUESS (`--model`, else whisperx's static
     default table). An adapter that picks its model another way (an env knob, a per-device default) or a
     Hub checkpoint that moves would then be served the OLD model's matrices under the same label."""
     from encore_worker.adapters import ml
@@ -773,7 +773,7 @@ def test_the_loaded_identity_digests_the_weights_and_the_dictionary(monkeypatch:
 
 
 def test_the_emitter_fingerprint_names_ffmpeg_and_transformers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Review r1: `load_audio` decodes and resamples through the PATH ffmpeg, and transformers runs any
+    """`load_audio` decodes and resamples through the PATH ffmpeg, and transformers runs any
     Hub checkpoint; neither was in the key, so an upgrade of either served stale matrices."""
     monkeypatch.setattr(e2e.shutil, "which", lambda _name: None)
     versions = e2e.emitter_versions()
@@ -789,7 +789,7 @@ def test_the_emitter_fingerprint_names_ffmpeg_and_transformers(monkeypatch: pyte
 def test_the_model_override_loads_the_named_bundle_and_leaves_the_default_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`--model` is the review harness's override: the named torchaudio bundle, cached under its own key."""
+    """`--model` is the harness's override: the named torchaudio bundle, cached under its own key."""
     pytest.importorskip("torch", reason="the bundle loader moves the model onto a torch device")
     from encore_worker.adapters import ml
 
@@ -873,9 +873,9 @@ def spreading_decoder(
 
 def spread_decodes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every decode through `spreading_decoder`, and no lexical lift. Its scores are flat (-0.4 a frame
-    whatever the targets), so every text's lift reads 0 and the global engine's lexical gate (W3) would
+    whatever the targets), so every text's lift reads 0 and the global engine's lexical gate would
     refuse the song's own words before the harness saw a document. These rigs test the HARNESS, so they
-    take the check out (`lexical.lift` unmeasurable: the envelope gate decides, as it did before W3); the
+    take the check out (`lexical.lift` unmeasurable: the envelope gate decides, as it once did); the
     gate itself is tested on the CTC fixture's real Viterbi (`test_lexical_gate.py`)."""
     from encore_worker.adapters import ml
     from encore_worker.domain.lyrics import lexical
@@ -948,7 +948,7 @@ def test_injected_header_lines_publish_but_are_not_scored(rig: tuple[Any, Any]) 
 def test_a_row_carries_the_repair_decodes_that_raised(
     rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A swallowed repair fault looks exactly like a repair nobody needed (review L8), so each row
+    """A swallowed repair fault looks exactly like a repair nobody needed, so each row
     carries the trail's `repair-faults` notes. Clean rows carry an empty list, not a missing key."""
     from encore_worker.adapters import ml
 
@@ -1041,7 +1041,7 @@ def test_the_tv_lights_the_word_whose_half_open_span_holds_the_position() -> Non
 
 def test_a_line_misbound_late_blanks_the_tv_until_playback_reaches_it() -> None:
     """The TV scans lines IN ORDER and stops at the first that starts after `pos`, so one line bound 40 s late
-    hides every line after it. Painting each word's span (the review's highlight) cannot see this."""
+    hides every line after it. Painting each word's span (a naive highlight) cannot see this."""
     lines = [
         tv_line(("early", 0.0, 1.0, 0)),
         tv_line(("misbound", 50.0, 51.0, 1)),
@@ -1052,7 +1052,7 @@ def test_a_line_misbound_late_blanks_the_tv_until_playback_reaches_it() -> None:
 
 
 def test_a_low_graded_row_lights_no_word_because_the_tv_wipes_none(tmp_path: Path) -> None:
-    """The port of W6's consumer (review §3.7): `lyrics.ts` `wipesWords` — a `low` line renders as one text
+    """The port of the TV consumer (review §3.7): `lyrics.ts` `wipesWords` — a `low` line renders as one text
     node, so the TV lights nothing while it is sung. `wipe_low` is OFF by default here and the `highlight`
     metric keeps it off DELIBERATELY (`score_highlight` owns that argument); the fixture is written with it
     ON, so both trees are held to the rule.
@@ -1225,7 +1225,7 @@ def test_the_flat_view_and_per_song_metrics_name_what_the_gates_read() -> None:
 
 
 def test_the_flat_view_names_interpolated_words_so_a_gate_can_read_the_whole_accounting() -> None:
-    """W8a round 1: a `generate.CUE_OPENED` word is paired but not aligned, so `word_aligned` FALLS where the
+    """A `generate.CUE_OPENED` word is paired but not aligned, so `word_aligned` FALLS where the
     re-opening rule fires. `word_interpolated` is the other half of that accounting, and their sum is what the
     `word-accounting-whole-*` rules in `gates/w8a-r1-reopen.yaml` assert nothing left."""
     song = song_of([("one two", 0.0, 2.0)], words=[(0.0, 0.5), (1.0, 1.5)])
@@ -1238,9 +1238,9 @@ def test_the_flat_view_names_interpolated_words_so_a_gate_can_read_the_whole_acc
 
 
 def test_unsung_counts_the_published_lines_no_truth_line_pairs_with() -> None:
-    """W1 review r1 (spec-5): an injected header or credit that PUBLISHES is never scored, so no ±N metric
-    could see M6 put back all 33 its mix envelope spared. `unsung` counts them per published document,
-    none for a refused one, and per song for the gates."""
+    """An injected header or credit that PUBLISHES is never scored, so no ±N metric could see a fix put back
+    all 33 lines its mix envelope spared. `unsung` counts them per published document, none for a refused one,
+    and per song for the gates."""
     song = worded("s")
     got = claims(song, "headers")
     shown = [
@@ -1409,7 +1409,7 @@ def lines_rows(mode: str, songs: int, *, refused: int = 0) -> list[Any]:
 def lines_run(**refusals: int) -> list[Any]:
     """Rows for all 16 modes of `--modes all,wrongtext+ownclock` at `--sync-mode lines`: 32 songs committed
     per timed mode, `blind` refused (no claims, so the rung has nothing to place) and both wrong-text modes
-    refused, as the W3 sweep measured. `refusals` refuses that many songs of a named mode."""
+    refused, as the `w3` sweep measured. `refusals` refuses that many songs of a named mode."""
     rows = [
         row
         for mode in lib.ALL_MODES
@@ -1450,7 +1450,7 @@ def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_ri
 
 
 #: `gates/w8b-arms.yaml`'s published-onset floors: mode -> (±100, ±250, ±300, AAE ms). `jit`'s first three are
-#: W9's named exception, the rest W8b's. LOG.md, "W8b: re-judging `word-aligned-not-down`" and "W9:
+#: a named exception, the rest measured. LOG.md, "W8b: re-judging `word-aligned-not-down`" and "W9:
 #: `band-reopen` flipped default-on, and the four words the owner waived".
 W8B_PUBLISHED_FLOORS: Mapping[str, tuple[float, float, float, float]] = {
     "truth": (82.79, 94.43, 95.36, 86.6),
@@ -1492,9 +1492,9 @@ def published_view(mode: str | None = None, **nudge: Any) -> Any:
 
 
 def test_the_w8b_arms_file_judges_where_words_landed_and_not_what_they_were_called() -> None:
-    """`gates/w8b-arms.yaml`: the ratchet W8b put beside `word-aligned-not-down` after re-judging it.
+    """`gates/w8b-arms.yaml`: the ratchet put beside `word-aligned-not-down` after re-judging it.
 
-    The owner's decision was that a small aligned/interpolated reclassification is bookkeeping when the words
+    The decision was that a small aligned/interpolated reclassification is bookkeeping when the words
     did not move, so this file must PASS that and FAIL a move — identically whether or not the moved word was
     re-labelled, which is the half `word_aligned` misses. Every floor is pinned to the measurement, because a
     floor typed one digit off cannot bite. LOG.md, "W8b: re-judging `word-aligned-not-down`"."""
@@ -1524,7 +1524,7 @@ def test_the_w8b_arms_file_judges_where_words_landed_and_not_what_they_were_call
         assert failed == moved, f"relabel={relabel}: {failed}"
     # Section 4: `headers` and `drop50` carry no absolute floor (their paired-word denominators differ between
     # the two levels), so a change that moves published starts ONLY under label injection or a half-dropped
-    # sheet used to pass the whole file — section 1's accounting never sees a retime (r2-correctness-4).
+    # sheet used to pass the whole file — section 1's accounting never sees a retime.
     assert not {name for name in floors if name.endswith(("-headers", "-drop50"))}
     held = {rule.name for rule in rules if rule.name.startswith("published-held-")}
     assert len(held) == 8 and {n.rsplit("-", 1)[1] for n in held} == {"headers", "drop50"}
@@ -1545,7 +1545,7 @@ def test_the_hubert_reject_if_file_resolves_every_name_and_is_not_vacuous() -> N
     compared with itself gains nothing."""
     rules = gates.parse_gates((GATES_DIR / "w4b-hubert.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 21, "the 21 the file's header reports; `run_gates` adds the built-in no-error-rows"
-    # W4b REVIEW R1 ADDED THE TWO AAE GATES, and they must be REAL ones: `blind-aae-not-up` used to read the
+    # THE TWO AAE GATES must be REAL ones: `blind-aae-not-up` used to read the
     # signed `word_bias_ms`, so the model axis gated the median and not the absolute error at all.
     absolute = {r.name: r.expr for r in rules if r.name.endswith("aae-not-up")}
     assert set(absolute) == {"blind-aae-not-up", "truth-aae-not-up"}
@@ -1598,13 +1598,13 @@ def test_the_wave_reject_if_file_reproduces_the_bench_verdict_on_the_committed_r
 
 
 def test_the_w2_displacement_ratchet_keeps_w2s_allowance_and_reads_zero_on_its_own_base() -> None:
-    """`gates/w2.yaml`'s displacement allowance stays W2's, whatever the `--compare` base is rebased to.
+    """`gates/w2.yaml`'s displacement allowance stays its own, whatever the `--compare` base is rebased to.
 
-    W4b's rebase moved the base to `results/w4-*.json` AND re-priced eleven of thirteen per-song literals
-    at W4's own worst-vs-W3, which together make the bound mean "displace a song as far as the last wave
-    did, AGAIN": `credit` -45 against a W4 row already -44.68 below W3 is ~89 pt of cumulative loss on a
+    A rebase moved the base to `results/w4-*.json` AND re-priced eleven of thirteen per-song literals at the
+    `w4` row's own worst-vs-`w3`, which together make the bound mean "displace a song as far as the last
+    change did, AGAIN": `credit` -45 against a `w4` row already -44.68 below `w3` is ~89 pt total loss on a
     0-100 metric, read as green, and each new literal sat 0.02-0.6 pt inside the change it excused. The
-    base may move — that is what a rebase is for — but the ALLOWANCE is W2's."""
+    base may move — that is what a rebase is for — but the ALLOWANCE is the file's own."""
     rules = gates.parse_gates((GATES_DIR / "w2.yaml").read_text(encoding="utf-8"))
     bounds = {
         gate.name.removeprefix("no-worse-displacement-"): float(gate.expr.rsplit(">=", 1)[1])
@@ -1633,7 +1633,7 @@ def test_the_w2_displacement_ratchet_keeps_w2s_allowance_and_reads_zero_on_its_o
         w3 = gates.view_of(gates.load_document(results / f"w3-{level}.json"))
         ratchet = {r.gate.name: r.status for r in gates.run_gates(rules, w4, w4)}
         assert set(ratchet.values()) == {"PASS"}, [n for n, s in ratchet.items() if s != "PASS"]
-        # ...and against the base the literals were READ from, W4's own displacement shows as the price it is.
+        # ...and against the base the literals were READ from, `w4`'s displacement shows as the price it is.
         priced = gates.run_gates(rules, w4, w3)
         spent = {
             r.gate.name.removeprefix("no-worse-displacement-")
@@ -1645,7 +1645,7 @@ def test_the_w2_displacement_ratchet_keeps_w2s_allowance_and_reads_zero_on_its_o
 
 
 def test_the_linesep_decode_gate_file_reproduces_the_recorded_verdict_on_both_models() -> None:
-    """`gates/w4b-linesep-generate.yaml` and the four cells it judged (review 6c / D1, W4b). Scored on the
+    """`gates/w4b-linesep-generate.yaml` and the four cells it judged (item 6c, `linesep`). Scored on the
     COMMITTED rows, which makes this the one gate test that pins a real measurement rather than a synthetic
     one: the arm ships DEFAULT-OFF because of exactly these verdicts, so a later edit to the file or to the
     rows that quietly changes them must not pass unnoticed.
@@ -1669,7 +1669,7 @@ def test_the_linesep_decode_gate_file_reproduces_the_recorded_verdict_on_both_mo
 
     assert failures("base-off", "base-off") == ["blind-jamendo-gross-down", "songs-better-at-word-pm300"]
     # THE RECORDED VERDICT. 7/10 on the base model: the separator buys 12 gross lines and 5.1 pts of ±500 and
-    # still fails review 6c's per-song ±300 bound (HILA -2.48) on top of the two below.
+    # still fails 6c's per-song ±300 bound (HILA -2.48) on top of the two below.
     assert failures("base-line", "base-off") == [
         "highlight-not-down",
         "no-jamendo-song-worse-at-word-pm300",
@@ -1686,7 +1686,7 @@ def test_the_linesep_e2e_gate_file_reads_the_recorded_verdict_and_is_not_vacuous
 
     On the IDENTITY (the committed base row as both sides) every bound PASSES and only the SHOULD gain
     fails, which is the typo check the file was written for. On the ARM the header's eight fail: four are
-    gates `--level generate` passed or could not read, including review 6c's own `e2e-gross-down-truth`;
+    gates `--level generate` passed or could not read, including 6c's own `e2e-gross-down-truth`;
     the two `highlight-not-down-*` gates PASS against the decode axis's -0.9, which is what makes the
     generate-level highlight failure the LEVEL and not the arm; and `truth-aae-not-up` is +12.9 ms of
     absolute word error with the MEDIAN bias unmoved, so it sits beside `onset-bias-not-worse-blind`."""
@@ -1724,7 +1724,7 @@ def test_the_linesep_e2e_gate_file_reads_the_recorded_verdict_and_is_not_vacuous
 
 def test_the_run_align_reject_if_file_reads_that_levels_own_zero_and_nothing_looser() -> None:
     """`gates/w3-run_align.yaml` exists because one gate file served both levels and its wrong-text cap is the
-    LOOSER level's literal (W3 review r2): at `run_align` the measurement is 0/320, so a regression to 1/320
+    LOOSER level's literal: at `run_align` the measurement is 0/320, so a regression to 1/320
     cleared `gates/w3.yaml`'s `<= 0.32`. These four gates are absolute, and a run where one wrong text
     published fails every one of them — which is what the shared file could not do."""
     rules = gates.parse_gates((GATES_DIR / "w3-run_align.yaml").read_text(encoding="utf-8"))
@@ -1811,9 +1811,9 @@ def test_the_word_end_reject_if_file_reads_the_gain_the_songs_that_lose_and_any_
     so a mistyped mode or metric must not read as a clean run (an unmeasured key is an ERROR by design).
 
     Each of its four conditions is exercised in the direction it exists for: the two gain gates FAIL on the
-    control's own rows (a run compared with itself gains nothing — the non-vacuity check the W3 gate files set
+    control's own rows (a run compared with itself gains nothing — the non-vacuity check older gate files set
     the habit of); the per-song gate tolerates 3 songs losing word-end ±100 and fails at 4, which is exactly
-    where the review drew it; and ONE moved onset fails `onsets-unchanged` while every other gate still
+    where the tolerance was drawn; and ONE moved onset fails `onsets-unchanged` while every other gate still
     passes, which is the whole point of the item."""
     rules = gates.parse_gates((GATES_DIR / "w4-ends.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 5, "the 5 the file's header reports; `run_gates` adds the built-in no-error-rows"
@@ -1913,7 +1913,7 @@ def test_run_align_runs_the_real_workflow_and_its_first_attempt_is_the_time_text
 def test_the_detector_the_acquiring_steps_get_is_the_runs_own_setting(
     rig: tuple[Any, Any], tmp_path: Path
 ) -> None:
-    """W7 review r1-spec-9. At `--level run_align` the REAL `fetch_captions` / `fetch_provider_lyrics` run, so
+    """At `--level run_align` the REAL `fetch_captions` / `fetch_provider_lyrics` run, so
     `language.detect` runs — but this harness built `Adapters(...)` with no `detector`, which is a
     configuration where Latin script can only answer `en`, while the shipped composition root
     (`__main__.build_adapters`) builds `language.lingua_detector()`. The seam now exists and `--detector`
@@ -1937,7 +1937,7 @@ def test_the_detector_the_acquiring_steps_get_is_the_runs_own_setting(
 
 
 def test_a_nonlatin_run_refuses_songs_of_a_language_other_than_the_one_it_declares() -> None:
-    """Review r1-tests-18: `--corpus nonlatin` refused only `--language en`, and `--songs` has no default —
+    """`--corpus nonlatin` used to refuse only `--language en`, and `--songs` has no default —
     so the documented reproduction of `gates/w8-units.yaml` decoded the 2 ja and the 1 ko song on the zh
     bundle, under zh unit rules (a kana or Hangul token stays ONE word there), and pooled all three into one
     `syllable_pm300`. The slug declares the language, so the slug is the check.
@@ -1958,7 +1958,7 @@ def test_a_nonlatin_run_refuses_songs_of_a_language_other_than_the_one_it_declar
 def test_an_explicit_romanize_shipped_fails_closed_where_its_package_is_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Review r1-spec-9: the factory PROMISED `--detector`'s fail-closed behaviour and returned the shipped
+    """The factory once PROMISED `--detector`'s fail-closed behaviour and returned the shipped
     factory unconditionally, so on a box without the `romanize` extra the run completed, stamped
     `meta["romanize"] = "shipped"` and produced documents byte-identical to `--romanize off` — a row naming
     a configuration it never measured.
@@ -1973,7 +1973,7 @@ def test_an_explicit_romanize_shipped_fails_closed_where_its_package_is_absent(
         e2e.build_romanizer_factory("shipped", "zh")
 
 
-#: EVERY RESULTS ROW WRITTEN BEFORE THE DETECTOR STAMP EXISTED (W8a). Named as the CLOSED set it is, rather
+#: EVERY RESULTS ROW WRITTEN BEFORE THE DETECTOR STAMP EXISTED. Named as the CLOSED set it is, rather
 #: than allow-listing the waves that may carry the stamp — the past cannot grow, so this cannot go stale, and
 #: it still catches a pre-stamp row that somehow gains one.
 PRE_DETECTOR_STAMP_ROWS = (
@@ -1994,7 +1994,7 @@ PRE_DETECTOR_STAMP_ROWS = (
 def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_recorded_one(
     tmp_path: Path,
 ) -> None:
-    """W7 review r2-spec-10: the disclosure was inoperative in BOTH directions, so a `--compare` that only
+    """The disclosure was once inoperative in BOTH directions, so a `--compare` that only
     looked where both sides recorded the key skipped it against every baseline written before the stamp. A
     missing key reads as `lib.RUN_DEFAULTS["detector"]`, which is what its absence always meant.
 
@@ -2054,7 +2054,7 @@ def test_run_align_serves_an_untimed_sheet_through_the_provider(rig: tuple[Any, 
     assert row["ref"].endswith("synthetic-lrclib-word.json")
 
 
-#: Level run_align's H2 rig: the phrases end at 37 s of 60, so stem coverage is THIN (< 0.80) and the
+#: Level run_align's swap rig: the phrases end at 37 s of 60, so stem coverage is THIN (< 0.80) and the
 #: policy retries on the mix — whose vocals, here, sit 3 s later than the stem's. No repeated line, so
 #: no R3 re-decode blurs which attempt produced what.
 TAIL = 60.0
@@ -2085,7 +2085,7 @@ class TwoTrackAligner:
 def test_h2_fixed_the_thin_coverage_stem_document_publishes_with_no_mix_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review H2 as the harness sees it, FIXED (W1). This rig once recorded the swap: the stem document
+    """The stem/mix swap as the harness sees it, FIXED. This rig once recorded the swap: the stem document
     (1 gross) replaced by the mix retry's (7), written over the same ref. The global engine reads no mix
     knob now (R4 is its per-line mix witness), so the thin-coverage stem document is the one published."""
 
@@ -2152,7 +2152,7 @@ def test_a_text_with_nothing_to_align_walks_the_whole_ladder_to_no_lyrics(
     assert (second["knob"], second["result"], second["decision"]) == ("line-sync", "refused", "next")
     assert [e["verdict"] for e in row["trail"]] == ["retime", "next", "asr-fallback", "give-up"]
     # "bundle unnamed" because this rig's matrices are numpy fakes: the shipped `ml.Emissions` always names
-    # its bundle and the rung's note opens with it (W4b review r1, `align_notes._bundle_why`).
+    # its bundle and the rung's note opens with it (`align_notes._bundle_why`).
     assert str(row["trail"][1]["why"]).startswith("line sync refused: bundle unnamed; sheet-span envelope r=")
     assert row["asr_requested"] is True
     assert row["transcriptions"] == [
@@ -2163,7 +2163,7 @@ def test_a_text_with_nothing_to_align_walks_the_whole_ladder_to_no_lyrics(
 
 
 def test_a_count_in_on_the_singing_line_syncs_and_publishes(rig: tuple[Any, Any], tmp_path: Path) -> None:
-    """Review M1 through the harness: an unalignable text claimed on the singing passes the sheet-span gate
+    """A count-in through the harness: an unalignable text claimed on the singing passes the sheet-span gate
     (r 0.50 at zero lag) and its LINE_SYNC document is the one published — no longer dropped for ASR and
     then NO LYRICS."""
     driver, synthetic = rig
@@ -2252,7 +2252,7 @@ def test_the_transcript_cache_remembers_the_language_whisper_heard(tmp_path: Pat
     route a REPLAYED `run_align` case to the default bundle where a cold one routed it to the song's own —
     two runs measuring different configurations. An entry written before the field existed is a MISS rather
     than a `None` language: all six entries in the bench root's `_transcripts` predate it, so serving one
-    would measure the pre-W7 configuration. A recorded `None` is still a HIT, so the key is always written."""
+    would measure the default bundle. A recorded `None` is still a HIT, so the key is always written."""
     audio = tmp_path / "vocals.wav"
     audio.write_bytes(b"RIFF....")
 
@@ -2325,7 +2325,7 @@ def test_a_song_that_lost_its_value_fails_a_per_song_delta_instead_of_dropping_o
     )
 
 
-# ── review round 1: denominators, gates, identity, provenance ────────────────────────────────────────
+# ── denominators, gates, identity, provenance ────────────────────────────────────────────────────────
 
 #: Two Jamendo-shaped songs with word truth: 2 lines of 3 words, each word sung for 0.3 s.
 WORDED = [("fly away home", 1.0, 2.0), ("come back soon", 3.0, 4.0)]
@@ -2352,7 +2352,7 @@ def worded(slug: str) -> Any:
 
 
 def test_a_refused_case_stays_in_every_denominator_that_counts_the_text() -> None:
-    """Review r1 (correctness-1, spec-8, tests-15): a refused row used to carry no word or highlight
+    """A refused row used to carry no word or highlight
     denominator, and `missing` summed published rows only, so refusing a song RAISED PCO and the
     highlight. Now its words, sung seconds and lines stay in; only e2e2's published-only ±500 ignores it."""
     good, bad = worded("good"), worded("bad")
@@ -2396,8 +2396,8 @@ def test_a_refused_case_stays_in_every_denominator_that_counts_the_text() -> Non
 
 
 def test_an_error_row_is_not_a_refused_wrong_text_and_fails_the_gate_run() -> None:
-    """Review r1 (tests-16): an ERROR used to sit in the wrong-text denominator as a refusal, so a helper
-    that raised on some texts LOWERED the pass rate and passed W3's 'must fall' gate on a crash."""
+    """An ERROR used to sit in the wrong-text denominator as a refusal, so a helper that raised
+    on some texts LOWERED the pass rate and passed `gates/w3.yaml`'s 'must fall' gate on a crash."""
     jam, other = song_of(TEN, slug="j"), song_of(TEN, slug="o", group="youtube")
     rows = [
         lib.row_of(
@@ -2436,8 +2436,8 @@ def test_error_rows_exit_3_even_without_a_gate_file(
 
 
 def test_a_label_stripped_line_scores_as_the_lyric_it_is() -> None:
-    """Review r1 (correctness-3): the `headers` mode's inline label paired only when it PUBLISHED, so a
-    W5 rule that strips `CHORUS:` (M11) read as mismatched and lit wrong — worse than the bug. Measured on
+    """The `headers` mode's inline label used to pair only when it PUBLISHED, so a
+    rule that strips `CHORUS:` read as mismatched and lit wrong — worse than the bug. Measured on
     this rig: stripped 3/6 aligned and 0.9/1.8 s lit before the fix; now 6/6 and 1.8/1.8 s either way."""
     song = worded("s")
     got = lib.Claims(
@@ -2495,7 +2495,7 @@ def test_a_head_label_moves_the_LINE_start_even_though_the_word_metrics_ignore_i
 
 
 def test_a_documents_source_lines_do_not_read_as_a_changed_document() -> None:
-    """W1 r1: the worker records a document's whole text (`sourceLines`) when its lines lost some of it, for
+    """The worker records a document's whole text (`sourceLines`) when its lines lost some of it, for
     a later re-pick. The TV never reads it, so the digest is of the bytes the worker writes WITHOUT it — a
     document written before the key existed and the same document with it compare equal — while any
     change to what the TV renders still changes it."""
@@ -2513,7 +2513,7 @@ def test_a_documents_source_lines_do_not_read_as_a_changed_document() -> None:
 
 
 def test_documents_are_digested_per_song_for_the_doc_changed_gates() -> None:
-    """Review r1 (spec-14): W1's reject-if — 'a published doc changes on a song whose stem coverage is
+    """The reject-if — 'a published doc changes on a song whose stem coverage is
     >= 0.80' — had nothing to read: no document digest and no attempt-1 coverage per song."""
     song = worded("s")
     doc = exact_doc(song, claims(song, "truth"))
@@ -2603,7 +2603,7 @@ def lost_views() -> tuple[Any, Any]:
 def test_a_per_song_gate_never_passes_over_a_song_that_lost_its_value_or_was_not_run(
     expr: str, why: str
 ) -> None:
-    """Review r1: every one of these used to PASS (`1 >= -1`, `0 == 0`) on this pair of summaries."""
+    """Every one of these used to PASS (`1 >= -1`, `0 == 0`) on this pair of summaries."""
     with pytest.raises(gates.GateError, match=why):
         gates.evaluate(expr, *lost_views())
 
@@ -2637,7 +2637,7 @@ def test_a_pooled_baseline_comparison_needs_the_same_songs() -> None:
 def test_identity_that_falls_back_to_text_on_a_word_timed_document_is_an_error_row(
     rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r1 (correctness-7): a capture miss silently reverted a row to e2e2's text pairing."""
+    """A capture miss used to silently revert a row to e2e2's text pairing."""
     import contextlib
 
     driver, song = rig
@@ -2658,7 +2658,7 @@ def test_identity_that_falls_back_to_text_on_a_word_timed_document_is_an_error_r
 def test_the_drivers_build_the_shipped_steps_with_the_config_they_are_given(
     rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Review r1 (correctness-6): every driver built a bare `Config()`, so an ENCORE_ALIGN_* knob set for an
+    """Every driver used to build a bare `Config()`, so an ENCORE_ALIGN_* knob set for an
     arm run never reached the shipped code. `main` reads `Config.from_env()`; the drivers pass it on."""
     from encore_worker.host.config import Config, ConfigError
 
@@ -2693,11 +2693,11 @@ def test_the_drivers_build_the_shipped_steps_with_the_config_they_are_given(
         core_url: str = "ws://x"
 
     assert lib.align_config(WithArms()) == {"align_experiments": ["claim-clock", "lift"]}
-    # No arm on is the default path, keyed as before the knob existed (W1 added it): the W0 emission cache
+    # No arm on is the default path, keyed as before the knob existed: the original emission cache
     # and baselines stay valid for a default run, and naming an arm still moves the key.
     assert lib.align_config(Config()) == {}
     assert lib.align_config(Config(align_model=None)) == {}
-    # `align_model` IS NOT IN IT AT ALL (W4b review r2, spec-14 / correctness-6): it says how the operator
+    # `align_model` IS NOT IN IT AT ALL: it says how the operator
     # SPELLED the bundle, not what was computed, and it sits inside `emitter_fingerprint`, so recording it for
     # the env spelling alone gave one computation two emission-store namespaces — a cold recompute of 64
     # matrices for the recipe README and `Config.align_model` both give — plus a `--compare` warning between
@@ -2711,7 +2711,7 @@ def test_the_drivers_build_the_shipped_steps_with_the_config_they_are_given(
     assert e2e.emitter_fingerprint(Config(align_experiments=frozenset({"linesep"}))) != flagged, (
         "an arm still re-keys: only the bundle's SPELLING is dropped"
     )
-    # ...AND THE KNOB IS LOADED, not only recorded (W4b review r1): `align_config` above wrote
+    # ...AND THE KNOB IS LOADED, not only recorded: `align_config` above wrote
     # `align_model: HUBERT_ASR_LARGE` into `run.json` while the aligner resolved this device's default, so the
     # command README gives for sweeping a non-default bundle measured the DEFAULT one under the candidate's
     # name — 2-3 hours of sweep labelled as the wrong model.
@@ -2734,8 +2734,8 @@ def test_the_drivers_build_the_shipped_steps_with_the_config_they_are_given(
 
 
 def test_a_resume_under_other_code_or_settings_is_refused(tmp_path: Path) -> None:
-    """Review r1 (correctness-5): the resume guard compared settings only, and HEAD stays one commit for
-    a whole uncommitted wave, so rows from two versions of `time_text` pooled under one meta record."""
+    """The resume guard used to compare settings only, and HEAD stays one commit for a whole
+    run of uncommitted edits, so rows from two versions of `time_text` pooled under one meta record."""
     package = tmp_path / "encore_worker"
     (package / "__pycache__").mkdir(parents=True)
     (package / "a.py").write_text("x = 1\n")
@@ -2760,19 +2760,19 @@ def test_a_resume_under_other_code_or_settings_is_refused(tmp_path: Path) -> Non
     table = gates.format_compare(mixed, plain)
     assert "run's rows were measured on 2 different worker trees" in table
     assert "WARNING: align_config differs" in table
-    # AND THE TWO SIDES' `code` IS PRINTED AS ITS OWN LINE (W4b review r2, spec-10). It is not a WARNING —
-    # a wave's run differs from an earlier wave's baseline in code by definition, which is why `COMPARED_META`
-    # leaves it out — but W4b's 6c linesep cell was read against a control measured on an EARLIER TREE OF THE
-    # SAME WAVE and nothing said so, so eight failures were attributed wholly to the separator.
+    # AND THE TWO SIDES' `code` IS PRINTED AS ITS OWN LINE. It is not a WARNING —
+    # a candidate run differs from an earlier baseline in code by definition, which is why `COMPARED_META`
+    # leaves it out — but the 6c linesep cell was read against a control measured on an EARLIER TREE OF THE
+    # SAME CHANGE and nothing said so, so eight failures were attributed wholly to the separator.
     assert "NOTE: code differs — run c2, base c1" in table
     same = gates.View(modes={}, songs={}, meta={"align_config": {}, "code": "c1"})
     assert "code differs" not in gates.format_compare(same, plain), "silent when the trees agree"
 
 
 def test_the_tfr_songs_run_on_a_stem_separated_from_the_workers_own_mix_by_default(tmp_path: Path) -> None:
-    """Review r1 (spec-13, M14): the tfr songs aligned on the producer's ORACLE vocals with the stems' sum
+    """The tfr songs used to align on the producer's ORACLE vocals with the stems' sum
     as the mix. The default is now the youtube mix and a stem separated from it; the oracle pair is kept
-    only to reproduce the review."""
+    only to reproduce the older rows."""
     repo = tmp_path / "repo"
     for slug in lib.TFR_SLUGS:
         (repo / slug).mkdir(parents=True)
@@ -2803,7 +2803,7 @@ def test_the_tfr_songs_run_on_a_stem_separated_from_the_workers_own_mix_by_defau
 def test_run_align_serves_cleaned_claims_and_pairs_them_back_by_identity(
     rig: tuple[Any, Any], tmp_path: Path
 ) -> None:
-    """Review r1 (spec-12): the harness ports returned raw claim text where every production adapter
+    """The harness ports used to return raw claim text where every production adapter
     returns `clean_segments(...)`, so text hygiene in `clean.py` could never reach a score. A `♪ ♪` line is
     dropped (renumbering the request) and `♪ … ♪` stripped; identity still pairs every line to truth."""
     driver, synthetic = rig
@@ -2850,9 +2850,9 @@ def test_a_request_that_is_not_the_served_claims_is_an_error_row(
 def test_run_align_scores_the_file_the_tv_reads_and_errors_when_it_is_not_the_published_attempts(
     rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r1 (spec-9): the published attempt's bytes AS RETURNED were scored. A stem attempt and its mix
+    """The published attempt's bytes AS RETURNED used to be scored. A stem attempt and its mix
     retry share one ref, so a job that publishes attempt 1's record after attempt 2 overwrote the file (a
-    partial W1 best-so-far) would show the room one document while the bench scored another."""
+    partial best-so-far) would show the room one document while the bench scored another."""
     driver, song = rig
     job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ok")
     fine = job.run(e2e.Case(song, "truth", 0))
@@ -2876,7 +2876,7 @@ def test_run_align_scores_the_file_the_tv_reads_and_errors_when_it_is_not_the_pu
     assert "not the published attempt 1's" in row["exception"] and row["scored"] == 0
 
 
-# ── review round 2: faults, pools, setups, claims, keys, the TV port ────────────────────────────────
+# ── faults, pools, setups, claims, keys, the TV port ────────────────────────────────────────────────
 
 
 class MixFaultAligner:
@@ -2902,7 +2902,7 @@ class MixFaultAligner:
 def test_a_fault_time_text_caught_is_an_error_row_not_a_refusal(
     rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2 (correctness-1): `time_text` catches an emissions / decode / audio fault itself and DECLINES
+    """`time_text` catches an emissions / decode / audio fault itself and DECLINES
     ("decode failed: ..."), so an MPS out-of-memory, a full disk under the cache or a decoder that raises on
     some texts scored as a REFUSAL — a wrong text correctly refused, its lines missing — at both levels."""
     from encore_worker.adapters import ml
@@ -2942,7 +2942,7 @@ def test_a_fault_time_text_caught_is_an_error_row_not_a_refusal(
 
 
 def test_a_lexical_check_that_raised_is_a_caught_fault_not_a_pass() -> None:
-    """W1 review r2: the LINE_SYNC rung publishes on the sheet gate alone when its lexical check raised, and
+    """The LINE_SYNC rung publishes on the sheet gate alone when its lexical check raised, and
     says so; the harness must read that as a fault it caught, as it reads a decode that raised."""
     raised = (
         "sheet-span envelope r=0.71 @ +0.00s, 8 lines; no lexical check: it raised ValueError: x; 8 lines"
@@ -2960,7 +2960,7 @@ def test_a_lexical_check_that_raised_is_a_caught_fault_not_a_pass() -> None:
 
 
 def test_a_global_lexical_check_that_raised_is_a_caught_fault_not_a_pass() -> None:
-    """W3: the global engine gates a word document on the envelope alone when its lexical check raised, and
+    """The global engine gates a word document on the envelope alone when its lexical check raised, and
     its verdict note says so; the harness reads that as a fault it caught. An exemption (the ASR tier, a
     short text) or a measured lift is a verdict."""
     raised = "envelope r=0.61 (blind), r=0.61 (repaired); no lexical check: it raised ValueError: x; untimed"
@@ -3047,8 +3047,8 @@ def test_the_bench_aligner_records_a_cache_fault_and_still_raises(
 def test_a_published_record_that_matches_no_attempt_is_an_error_row(
     rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2 (correctness-5): a job that published a record no attempt returned (a diarizer or a W1
-    best-so-far rebuilding it) scored as REFUSED — lyrics on the TV, missing lines in the bench."""
+    """A job that published a record no attempt returned (a diarizer or a
+    best-so-far rebuilding it) used to score as REFUSED — lyrics on the TV, missing lines in the bench."""
     import dataclasses
 
     driver, song = rig
@@ -3056,8 +3056,8 @@ def test_a_published_record_that_matches_no_attempt_is_an_error_row(
 
     async def rebuilt(job: Any, steps: Any) -> Any:
         result = await real(job, steps)
-        # FLIPPED, not a fixed value: whichever grade the attempt had, the record now differs from it (W1's
-        # blind-only corroboration, review H4, grades this rig's truth document `medium`).
+        # FLIPPED, not a fixed value: whichever grade the attempt had, the record now differs from it (the
+        # blind-only corroboration grades this rig's truth document `medium`).
         flipped = "medium" if result.published.confidence == "high" else "high"
         return dataclasses.replace(
             result, published=dataclasses.replace(result.published, confidence=flipped)
@@ -3072,7 +3072,7 @@ def test_a_published_record_that_matches_no_attempt_is_an_error_row(
 
 
 def test_an_injected_header_is_never_claimed_to_end_before_it_starts() -> None:
-    """Review r2 (correctness-6): a header opened at the previous line's claimed END, which authored
+    """A header used to open at the previous line's claimed END, which authored
     captions run past the next section's start (and a section starts every 8 lines with no gap at all), so
     12 of the corpus's 233 headers were claimed inverted — The_Rinn's `Chorus:` 226.51 -> 218.88 s."""
     overlapping = [(f"line number {i}", 2.5 * i, 2.5 * i + 3.0) for i in range(20)]  # each runs 0.5 s long
@@ -3104,7 +3104,7 @@ def gross_rows(grosses: Sequence[int], mode: str = "truth") -> list[Any]:
 
 
 def test_a_reduction_of_the_baseline_ranges_over_the_songs_the_run_measured() -> None:
-    """Review r2 (correctness-2): the baseline's per-song values reduced over its OWN songs, so a run that
+    """The baseline's per-song values used to reduce over its OWN songs, so a run that
     measured fewer passed: base a (0 gross) and b (9), run a alone (3) read `3 <= 9`."""
     base, run = gross_rows([0, 9]), gross_rows([3])
     fewer = (gates.view_of(document(run)), gates.view_of(document(base)))
@@ -3125,7 +3125,7 @@ def test_a_reduction_of_the_baseline_ranges_over_the_songs_the_run_measured() ->
 
 
 def test_delta_of_a_per_song_reference_is_an_error_not_the_pooled_delta() -> None:
-    """Review r2 (correctness-3): `delta(truth.song.gross)` silently read the POOLED number."""
+    """`delta(truth.song.gross)` used to silently read the POOLED number."""
     base, run = gross_rows([0, 9]), gross_rows([3, 5])
     views = (gates.view_of(document(run)), gates.view_of(document(base)))
     with pytest.raises(gates.GateError, match="min_song_delta"):
@@ -3135,7 +3135,7 @@ def test_delta_of_a_per_song_reference_is_an_error_not_the_pooled_delta() -> Non
 
 
 def test_a_baseline_gate_across_another_measurement_setup_is_an_error(tmp_path: Path) -> None:
-    """Review r2 (correctness-4, spec-7): `--compare` only WARNED on a level / tfr audio / seed mismatch and
+    """`--compare` used to only WARN on a level / tfr audio / seed mismatch and
     the gates went on. Measured on the committed results: the oracle-stem reference sweep against the youtube
     baseline passed `drop20.gross <= base.drop20.gross` as 41 <= 51, a gap the tfr audio alone made."""
     rows = spread_rows([0.1, 0.1])
@@ -3174,7 +3174,7 @@ def test_a_baseline_gate_across_another_measurement_setup_is_an_error(tmp_path: 
 def test_an_uncalibrated_bundle_is_announced_recorded_and_ungatable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """W4b REVIEW R2 (spec-13): the harness swept an uncalibrated `--model` / `ENCORE_ALIGN_MODEL` in silence
+    """The harness used to sweep an uncalibrated `--model` / `ENCORE_ALIGN_MODEL` in silence
     where production refuses to start on one, and with every emission-scale gate stood down the wrong-text
     verdict falls back to the sheet-span envelope gate — 125/320 wrongtext passes on this corpus — so a row
     reading `wrongtext_pass 0.00` under the new bundle's name would be the ENVELOPE gate's number. The run is
@@ -3233,9 +3233,9 @@ def test_an_uncalibrated_bundle_is_announced_recorded_and_ungatable(
 
 
 def test_the_banner_reads_the_PAIR_so_a_routed_bundle_is_not_called_uncalibrated(tmp_path: Path) -> None:
-    """W10 FINAL REVIEW. `lexical.CALIBRATED`'s key became `(bundle, LANGUAGE)` and this call site kept the
+    """`lexical.CALIBRATED`'s key became `(bundle, LANGUAGE)` and this call site kept the
     one-argument form, whose default language is `en` — so `("MMS_FA", "en")` is absent, and every zh and ja
-    run was stamped `uncalibrated` the moment W10 fitted their rows. The stamp is not cosmetic: it makes
+    run was stamped `uncalibrated` the moment their rows were fitted. The stamp is not cosmetic: it makes
     `wrongtext_pass` an ERROR for every gate, which is the one metric a lane that has just started
     publishing WORDS most needs read, and it says a worker would refuse to start on a bundle production
     routes to by default."""
@@ -3306,8 +3306,8 @@ def test_summarize_and_a_rows_baseline_carry_the_setup_their_run_recorded(
 def test_the_emissions_key_moves_with_the_align_settings_and_the_code_ml_imports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review r2 (spec-9, tests-14): the key hashed `adapters/ml.py` alone and no worker setting. A
-    default-off arm inside `emissions()` (W4 6a's frame grid behind ENCORE_ALIGN_EXPERIMENTS) would share
+    """The key used to hash `adapters/ml.py` alone and no worker setting. A
+    default-off arm inside `emissions()` (say, item 6a's grid behind ENCORE_ALIGN_EXPERIMENTS) would share
     its knob-off twin's matrices, and a frame-grid helper MODULE that ml.py calls would leave the key where
     it was."""
     from encore_worker.host.config import Config
@@ -3376,12 +3376,12 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
     assert host <= set(inspect.signature(e2e.BenchAligner.__init__).parameters)
     built = e2e.BenchAligner(device="cpu", jobs=3)
     assert built._matrices == ml._emission_cache_size(3), "`jobs` reaches the LRU through the bench"
-    # AND THE BUNDLE IS THE SHIPPED ONE (W4b 6b): an absent `--model` resolves through the same per-device
+    # AND THE BUNDLE IS THE SHIPPED ONE (item 6b): an absent `--model` resolves through the same per-device
     # policy the factory uses, so a run with no bundle named measures what production loads rather than
     # whisperx's per-language table (the base model, on every box).
     assert built._model == ml.default_align_model("cpu") == e2e.default_model("en", "cpu")
     assert e2e.BenchAligner(device="cpu", model="HUBERT_ASR_XLARGE")._model == "HUBERT_ASR_XLARGE"
-    # AND W10's PER-LANGUAGE STAGE-2 TABLE, which reaches a different field: a bare constructor routes
+    # AND THE PER-LANGUAGE STAGE-2 TABLE, which reaches a different field: a bare constructor routes
     # nothing, and a table routes the language it NAMES and no neighbour of it (XA-21).
     assert e2e.BenchAligner(device="cpu")._nonlatin_routes == {}
     armed = e2e.BenchAligner(device="cpu", nonlatin_routes={"zh": ml.MMS_ALIGN_MODEL})
@@ -3393,7 +3393,7 @@ def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
 def test_every_retime_knob_is_a_metric_whether_or_not_it_was_used(
     rig: tuple[Any, Any], tmp_path: Path
 ) -> None:
-    """Review r2 (spec-10): only the knobs that OCCURRED got a `retime_<knob>` key, so W1's H2 gate
+    """Only the knobs that OCCURRED used to get a `retime_<knob>` key, so the stem/mix swap's gate
     `truth.retime_align_on_mix == 0` was an unknown-metric ERROR exactly when the fix worked."""
     from encore_worker.domain.lyrics.policy import Knob
 
@@ -3408,7 +3408,7 @@ def test_every_retime_knob_is_a_metric_whether_or_not_it_was_used(
 
 
 def test_the_canonical_no_new_gross_gate_sees_a_song_that_flipped_to_refused() -> None:
-    """Review r2 (tests-12): `gross` counts published lines only, so a song with 2 gross lines that flips to
+    """`gross` counts published lines only, so a song with 2 gross lines that flips to
     refused — or drops one of them — reads FEWER, and `count(song.gross_up) == 0` passed on both. The
     documented form adds `missing` (text lines not scored), which rises with either."""
     song = song_of(TEN, slug="s0")
@@ -3430,7 +3430,7 @@ def test_the_canonical_no_new_gross_gate_sees_a_song_that_flipped_to_refused() -
 
 
 def test_the_highlight_port_lights_what_the_committed_parity_fixture_says() -> None:
-    """Review r2 (spec-11, tests-13): the port's parity with `lyrics.ts` rested on an uncommitted one-off bun
+    """The port's parity with `lyrics.ts` once rested on an uncommitted one-off bun
     run. The fixture is written from the port (`scripts/tv_parity.py`) and core's
     `lyrics-bench-parity.test.ts` holds `lyrics.ts` to it; here the port and the generator are held to it."""
     tv_parity: Any = _load("tv_parity")
@@ -3449,7 +3449,7 @@ def test_the_highlight_port_lights_what_the_committed_parity_fixture_says() -> N
 
 
 def test_the_cjk_join_class_is_the_enumeration_both_trees_are_held_to() -> None:
-    """Review r1-tests-19: `TV_CJK_JOINS` is a FROZEN COPY of `lyrics.ts`'s `\\p{scx=...}` class — Python's
+    """`TV_CJK_JOINS` is a FROZEN COPY of `lyrics.ts`'s `\\p{scx=...}` class — Python's
     `re` has no Script_Extensions — and only a one-off enumeration ever said the two were equal. The
     committed ranges are that enumeration: this side holds the copy to them and core's
     `lyrics-bench-parity.test.ts` enumerates `wordGap` over all 0x110000 codepoints against the same file,
@@ -3493,7 +3493,7 @@ def test_where_truth_words_overlap_the_later_started_one_is_the_one_being_sung()
 
 
 def test_doc_changed_over_a_baseline_song_the_run_lacks_is_an_error() -> None:
-    """Review r2 (tests-15, 1): W1's `count(song.doc_changed * (base.song.coverage >= 0.8)) == 0` must not
+    """The `count(song.doc_changed * (base.song.coverage >= 0.8)) == 0` must not
     pass vacuously on a `--songs` subset."""
     rows = spread_rows([0.1, 0.1])
     for row in rows:
@@ -3508,7 +3508,7 @@ def test_doc_changed_over_a_baseline_song_the_run_lacks_is_an_error() -> None:
 def test_main_refuses_to_resume_across_a_code_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Review r2 (tests-15, 2): `code` in `run_config` stops a resume from pooling two `time_text`s."""
+    """`code` in `run_config` stops a resume from pooling two `time_text`s."""
     from encore_worker.host.config import Config
 
     monkeypatch.setattr(e2e.Config, "from_env", staticmethod(lambda env=None: Config()))
@@ -3526,7 +3526,7 @@ def test_main_refuses_to_resume_across_a_code_change(
 
 
 def test_the_default_cache_key_is_the_loaded_models_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Review r2 (tests-15, 3): every test injected `identify=`, so the DEFAULT — `loaded_identity` — was
+    """Every test used to inject `identify=`, so the DEFAULT — `loaded_identity` — was
     unpinned; a constant there made the key the harness's label guess again."""
     torch = pytest.importorskip("torch")
     model = torch.nn.Linear(2, 3)
@@ -3540,7 +3540,7 @@ def test_the_default_cache_key_is_the_loaded_models_identity(monkeypatch: pytest
     assert aligner.identities == {"en": identity}
 
 
-# ── W3: the gates' readings on the rows, the lines sync mode, the compact digest ─────────────────────
+# ── the gates' readings on the rows, the lines sync mode, the compact digest ─────────────────────────
 
 
 def test_the_lexical_lift_is_on_the_row_at_full_precision(
@@ -3570,7 +3570,7 @@ def test_a_lines_run_sends_the_sync_mode_and_keeps_the_rungs_own_note(
     rig: tuple[Any, Any], tmp_path: Path
 ) -> None:
     """`--sync-mode lines`: every text's only attempt is the gated LINE_SYNC rung, and that rung writes no
-    `align-global` note — W1 review r2 read its sheet fit and lift through a scratch wrapper. The row and
+    `align-global` note — its sheet fit and lift were once read through a scratch wrapper. The row and
     each attempt carry the rung's verdict and note now; a forced run sends no `syncMode` at all."""
     driver, song = rig
     lines = e2e.RunAlignDriver(
@@ -3596,7 +3596,7 @@ def test_a_lines_run_sends_the_sync_mode_and_keeps_the_rungs_own_note(
     assert e2e.main(["--sync-mode", "lines"]) == 2, "a job parameter: run_align only"
 
 
-# ── W4: the stemless dimension (`--no-stem`) ─────────────────────────────────────────────────────────
+# ── the stemless dimension (`--no-stem`) ─────────────────────────────────────────────────────────────
 
 
 class PathAligner(VoicedAligner):
@@ -3687,7 +3687,7 @@ def test_a_stemless_run_is_its_own_setup_and_an_unrecorded_target_is_the_stem() 
 
 
 def test_modes_all_expands_beside_other_modes_once_each() -> None:
-    """`--modes all,wrongtext+ownclock` is W3's whole sweep in one run; `all` alone is unchanged."""
+    """`--modes all,wrongtext+ownclock` is the `w3` sweep in one run; `all` alone is unchanged."""
     assert e2e.parse_modes("all") == list(lib.ALL_MODES)
     assert e2e.parse_modes("all,wrongtext+ownclock") == [*lib.ALL_MODES, "wrongtext+ownclock"]
     assert e2e.parse_modes("jit, all ,truth") == ["jit", *(m for m in lib.ALL_MODES if m != "jit")]
@@ -3712,7 +3712,7 @@ def test_a_lines_run_is_its_own_setup_and_an_unrecorded_sync_mode_is_forced() ->
 
 
 def test_a_line_sync_check_that_raised_is_a_caught_fault_whatever_the_rung_decided() -> None:
-    """W3: the rung's timing check (the text's blind decode) or its lexical check raising hands the text to
+    """The rung's timing check (the text's blind decode) or its lexical check raising hands the text to
     another gate, which may publish OR refuse it: either way the row is an ERROR, not a verdict."""
     decode_raised = (
         "sheet-span envelope r=0.71 @ +0.00s, 8 lines; lexical lift +1.20; no decode check: it raised X"
@@ -3812,7 +3812,7 @@ def _refuses(row: dict[str, Any], theta: float) -> bool:
 
 def test_the_committed_calibration_rows_name_the_model_they_were_measured_on() -> None:
     """The other half of the same hole: every committed row set must name the bundle its numbers belong to, or
-    W4b's second model leaves no way to tell which rows produced which thresholds. Deriving bands means
+    a second model leaves no way to tell which rows produced which thresholds. Deriving bands means
     writing rows, so this holds each file to the row it fits — and to a model the table actually has, since a
     row set naming a bundle `CALIBRATED` does not hold is a calibration nothing reads."""
     from encore_worker.domain.lyrics import lexical
@@ -3824,14 +3824,14 @@ def test_the_committed_calibration_rows_name_the_model_they_were_measured_on() -
         "w3-lift-mix.json": base,
         "w3-line-gate.json": base,
         "w2-line-gate.json": base,
-        # W4's re-read of the same rung on the exact clock (review r2: it was committed and cited nowhere).
+        # The re-read of the same rung on the exact clock (it was once committed and cited nowhere).
         "w4-line-gate.json": base,
         "w4-lift-stem.json": base,
         "w4-lift-mix.json": base,
-        # W4b's never-sung calibration. Not a lift row set, but the same rule: its three literals are read on
+        # The never-sung calibration. Not a lift row set, but the same rule: its three literals are read on
         # one model's decode, so a row set that did not name it could be mistaken for another model's.
         "w4b-unsung-gate.json": base,
-        # W4b 6b: the SHIPPED default's own recalibration, on the same texts and the same decoder, and the
+        # Item 6b: the SHIPPED default's own recalibration, on the same texts and the same decoder, and the
         # two bundles reachable by name only (`ml.ALIGN_MODELS_BY_DEVICE` is empty — no CUDA sweep exists).
         "w4b-lift-stem-hubert-large.json": "HUBERT_ASR_LARGE",
         "w4b-lift-mix-hubert-large.json": "HUBERT_ASR_LARGE",
@@ -3847,7 +3847,7 @@ def test_the_committed_calibration_rows_name_the_model_they_were_measured_on() -
 
 
 def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -> None:
-    """W4b REVIEW R2 (correctness-7): `mix_ok_from` is the one band a person reads off the per-band timing
+    """`mix_ok_from` is the one band a person reads off the per-band timing
     table, and neither HuBERT row's reading was on the record. L's **0.40** appeared nowhere at all (0.30 and
     0.35 fit the module's stated rule equally), and XL's **0.30** was justified with the three exhibits that
     support it while a fourth text in the same population contradicts it. Both derivations are in `lexical`'s
@@ -3911,13 +3911,13 @@ def test_the_calibration_procedure_reproduces_the_shipped_row_from_the_committed
     mix = capsys.readouterr().out
     assert f"-> mix_floor={lexical.BANDS.mix_floor:.2f}" in mix, mix[-400:]
     assert "mix_ok_from from the per-band table above" in mix, "the one threshold a person must still read"
-    # THE MIX MARGIN, printed since W4b review r1 and quoted by `mix_floor`'s block: the base row keeps
+    # THE MIX MARGIN, printed and quoted by `mix_floor`'s block: the base row keeps
     # +0.0349 with NO wrong text in the half-step under the floor. It is the margin that decides a stemless
     # song terminally, and no row stated it until the XL row turned out to have +0.0021 of it.
     assert "Head-room over the wrong population: +0.0349   wrong texts at or above 0.1250: 0" in mix
 
-    # AND THE COST THE SAME BLOCK QUOTES, counted off the same rows rather than off W3's (review r1: the
-    # docstring, README and `align_steps` all still said W3's 48 while the row of record read 54).
+    # AND THE COST THE SAME BLOCK QUOTES, counted off the same rows rather than off `w3`'s (the
+    # docstring, README and `align_steps` once all said `w3`'s 48 while the row of record read 54).
     rows = json.loads((results / "w4-lift-mix.json").read_text(encoding="utf-8"))["rows"]
     right = [r for r in rows if r["mode"] in lift_gate.RIGHT_MODES]
     under = [r for r in right if r["lift"] < lexical.BANDS.mix_floor]
@@ -3962,7 +3962,7 @@ def test_the_procedure_reproduces_the_hubert_rows_too(
     """The same procedure reproduces the HuBERT rows, which is what makes "recalibrate per model" real.
 
     The shipped bundle is HuBERT-Large (XLarge on CUDA), so each row has to be derivable from its own
-    committed rows by the same three commands. `ok_from` is the one field W4b restated — the old "higher
+    committed rows by the same three commands. `ok_from` is the one field restated — the old "higher
     split fit, rounded up" would have demoted five protected right texts of one song on HuBERT-L — so it is
     asserted both as the number and as the property the rule exists for: the band holds a drop50 and no
     protected right text. Head-room is asserted per model, L clearing the wrong population by 28x the base
@@ -3983,7 +3983,7 @@ def test_the_procedure_reproduces_the_hubert_rows_too(
     assert lift_gate.main(["--from", str(results / f"w4b-lift-mix-hubert-{slug}.json")]) == 0
     mix = capsys.readouterr().out
     assert f"-> mix_floor={row.mix_floor:.2f}" in mix, mix[-400:]
-    # THE MIX MARGIN PER ROW (W4b review r1). Both HuBERT rows fit the same 0.15 floor, and the margin is
+    # THE MIX MARGIN PER ROW. Both HuBERT rows fit the same 0.15 floor, and the margin is
     # where they diverge: L keeps the base row's +0.0343 with nothing in the half-step below, XL keeps
     # **+0.0021** with THREE wrong texts there — its third caveat, and the reason a CUDA sweep that re-fits
     # this row must re-read the mix half rather than assume the stem's 9x margin carries over.
@@ -3998,7 +3998,7 @@ def test_the_procedure_reproduces_the_hubert_rows_too(
 def test_the_fitted_row_refuses_to_pick_a_threshold_when_the_populations_overlap() -> None:
     """The other half of "fail loudly or refuse to gate", at calibration time: a model whose right and wrong
     texts OVERLAP has no threshold meeting review §3.4, and the procedure must say so rather than round the
-    midpoint of a negative gap into a plausible-looking band. A wave that sees this ships the model with NO
+    midpoint of a negative gap into a plausible-looking band. A change that sees this ships the model with NO
     row, which makes the gates stand down instead of convicting right texts."""
     overlapping = [
         {"song": "s1", "group": lib.JAMENDO, "mode": "truth", "variant": 0, "lift": 0.10, "letters": 200},
@@ -4032,13 +4032,13 @@ def test_the_band_gates_read_the_corpus_they_were_written_on() -> None:
     verdicts = gates.run_gates(rules, view, view)
     assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
     assert len(rules) == 110, "every rule in the file is scored here, so a new one has to be measured"
-    # Review r2-correctness-5: every per-song coherence count carries a companion forbidding the ESCAPE ROUTE
+    # Every per-song coherence count carries a companion forbidding the ESCAPE ROUTE
     # it leaves open — a song drops out of the count by having its `mad_ms` rise past 250, which flipping the
     # sign of half of its band-line errors does while every `abs(error)` metric in the file holds.
     coherent = {g.name.removeprefix("coherent-songs-") for g in rules if g.name.startswith("coherent-songs-")}
     scatter = {g.name.removeprefix("scatter-not-up-") for g in rules if g.name.startswith("scatter-not-up-")}
     assert coherent == scatter and len(coherent) == 13, "both halves, for all thirteen gated modes"
-    # Review r2-spec-13: the demotion is read in every right-text mode, and in the sharp form that fails when
+    # The demotion is read in every right-text mode, and in the sharp form that fails when
     # a CORRECT `high` line is removed — the corpus's `offm1` false positive, which that file's own `high`
     # floor cannot see, its 2% of slack being a small song's worth of lines.
     changed = {g.name.removeprefix("docs-unchanged-") for g in rules if g.name.startswith("docs-unchanged-")}
@@ -4050,7 +4050,7 @@ def test_the_band_gates_read_the_corpus_they_were_written_on() -> None:
     }, "the two modes the sweep found the conjunction firing in"
     # Every `band` rule carries a denominator rule for the same mode. `band` is an absolute count over the
     # scored lines of published cases, so without this pairing "fewer band lines" and "fewer published lines"
-    # read alike — review r1-tests-20, and `w7-star.yaml`'s `missing-not-up` is the precedent.
+    # read alike — `w7-star.yaml`'s `missing-not-up` is the precedent.
     banded = {g.name.removeprefix("band-not-up-") for g in rules if g.name.startswith("band-not-up-")}
     held = {g.name.removeprefix("band-missing-not-up-") for g in rules if "missing-not-up" in g.name}
     assert banded == held and len(banded) == 14, "all fourteen right-text modes, band and denominator both"
@@ -4088,7 +4088,7 @@ def test_the_fix_gates_read_the_corpus_they_were_written_on() -> None:
     # The gate that reads backwards on purpose, said by what it MEANS rather than by an equality: no sheet the
     # REFERENCE reads as displaced may gain ±500, because on those four songs gaining it is publishing the
     # reference's own error. Selected off the base, so re-anchoring their truth retires the rule instead of
-    # reddening it (review r1-spec-17) — and the upper bound still catches a FIFTH displaced song.
+    # reddening it — and the upper bound still catches a FIFTH displaced song.
     assert by_name["displaced-songs-at-most-four-truth"].endswith("<= 4")
     assert "abs(truth.song.bias_ms) > 250" in by_name["displaced-songs-at-most-four-truth"]
     pulled = by_name["displaced-songs-not-pulled-truth"]
@@ -4098,20 +4098,20 @@ def test_the_fix_gates_read_the_corpus_they_were_written_on() -> None:
         "no literal equality on a count a corrected reference will legitimately drive to zero"
     )
     # The arm's one measured regression was per-song, so every right-text mode carries a per-song rule, not
-    # the four this file first listed (review r1-correctness-7). `drop50` is out: half its claims gone breaks
+    # the four this file first listed. `drop50` is out: half its claims gone breaks
     # the pairing and one song refuses, which makes `min_song_delta` an ERROR rather than a reading.
     loses = {g.name.removeprefix("no-song-loses-") for g in rules if g.name.startswith("no-song-loses-")}
     assert len(loses) == 13 and "drop50" not in loses and "truth" in loses and "headers" in loses
     # And the two the remedy was chosen for (adoption would have taken Jamendo words out of `aligned`). The
-    # re-opened FIRST word does leave `aligned` — round 1 made its onset the sheet's — so the rule is the
+    # re-opened FIRST word does leave `aligned` — re-opening made its onset the sheet's — so the rule is the
     # accounting plus a bound of one word per re-opened line, never "`word_aligned` cannot fall", which was
-    # red against the shipped tree by construction (review r2-spec-10).
+    # red against the shipped tree by construction.
     assert "word_aligned" in by_name["word-aligned-down-at-most-reopenings-truth"]
     assert by_name["word-aligned-down-at-most-reopenings-truth"].endswith("- 4")
     assert "word_interpolated" in by_name["word-accounting-whole-truth"]
     assert not any(g.name.startswith("word-aligned-not-down-") for g in rules)
     assert by_name["perfect-songs-held-truth"].endswith(">= 15")
-    # Review r2-correctness-5, as in `w8a-band.yaml`: the displaced-songs counts may not be satisfied by a
+    # As in `w8a-band.yaml`, the displaced-songs counts may not be satisfied by a
     # song's `mad_ms` rising out of the selector.
     displaced = {g.name.rsplit("-", 1)[1] for g in rules if g.name.startswith("displaced-songs-held-")} | {
         "truth"
@@ -4120,9 +4120,9 @@ def test_the_fix_gates_read_the_corpus_they_were_written_on() -> None:
 
 
 def test_the_band_baseline_is_w7s_own_rows_re_summarised() -> None:
-    """`results/w8a-band-run_align.json` is W7's 1088 cases put back through `--summarize` on the W8a harness,
-    NOT a new sweep — `gates/w8a-band.yaml` cites this test for that claim, which only holds while every
-    metric W7 already carried reads the same number here, pooled and per song."""
+    """`results/w8a-band-run_align.json` is `w7`'s 1088 cases put back through `--summarize` on a newer
+    harness, NOT a new sweep — `gates/w8a-band.yaml` cites this test for that claim, which only holds while
+    every metric `w7` already carried reads the same number here, pooled and per song."""
     results = SCRIPTS.parent / "results"
     w7 = json.loads((results / "w7-run_align.json").read_text(encoding="utf-8"))
     band = json.loads((results / "w8a-band-run_align.json").read_text(encoding="utf-8"))
@@ -4188,18 +4188,18 @@ def test_the_wave_gates_read_both_levels_they_are_written_for() -> None:
     by_name = {gate.name: gate.expr for gate in rules}
     # Every `band` rule carries a denominator rule for the same mode, as `w8a-band.yaml` does: `band` is an
     # absolute count over the scored lines of published cases, so without the pairing "fewer band lines" and
-    # "fewer published lines" read alike (review r1-correctness-8 / r1-spec-13 / r1-tests-20).
+    # "fewer published lines" read alike.
     banded = {n.removeprefix("band-not-up-") for n in by_name if n.startswith("band-not-up-")}
     held = {n.removeprefix("band-missing-not-up-") for n in by_name if "missing-not-up" in n}
     assert banded | {"truth"} == held and len(held) == 14, "all fourteen modes, band and denominator both"
     # The count that reads backwards on purpose, as `gates/w8a-fix.yaml`'s own displaced-songs rule does: no
     # repair may pull the four sheets that precede their own singing onto their cues. Said by what it MEANS
     # and selected off the BASE, so re-anchoring their truth retires the rule rather than reddening it
-    # (review r1-spec-17); the upper bound still catches a fifth displaced song.
+    # — and the upper bound still catches a fifth displaced song.
     assert by_name["coherent-songs-truth"].endswith("<= 4")
     pulled = by_name["coherent-songs-not-pulled-truth"]
     assert "abs(base.truth.song.bias_ms) > 250" in pulled and pulled.endswith("== 0")
-    # The three modes whose gross W7 left nonzero are the three gated against the baseline, not at zero.
+    # The three modes whose gross `w7` left nonzero are the three gated against the baseline, not at zero.
     relative = {n.removeprefix("gross-not-up-") for n in by_name if n.startswith("gross-not-up-")}
     assert relative == {"blind", "drop20", "drop50"}
     assert "high-gross-blind-at-most-three" in by_name, "the one `high` > 2 s residue, named"
@@ -4213,8 +4213,8 @@ def test_the_wave_gates_read_both_levels_they_are_written_for() -> None:
 
 
 def test_the_shipped_tree_gates_are_an_identity_claim_both_baselines_satisfy() -> None:
-    """`gates/w8a-default.yaml` says the SHIPPED tree is byte-identical to W7, both band arms being off, and
-    it must therefore pass against W7's own rows on both sides at both levels — 103/103, with no rule red.
+    """`gates/w8a-default.yaml` says the SHIPPED tree is byte-identical to `w7`, both band arms being off, and
+    it must therefore pass against `w7`'s own rows on both sides at both levels — 103/103, with no rule red.
 
     That is the whole point of the file: a default-off arm is only honest if the default path is measured, and
     an arm leaking into the default is the one failure mode `ENCORE_ALIGN_EXPERIMENTS` has. Its red reading
@@ -4231,8 +4231,8 @@ def test_the_shipped_tree_gates_are_an_identity_claim_both_baselines_satisfy() -
     # The two modes the arms-on sweep demoted a document in are the two this file pins `high` on by name.
     assert by_name["high-identical-off05"] == "off05.high == base.off05.high"
     assert by_name["high-identical-offm1"] == "offm1.high == base.offm1.high"
-    # And the arms exist to be flipped, so the names have to be real ones the CLI would accept. W9 flipped
-    # `band-reopen` default-on and retired the name for its control, the idiom docs/arch/04-alignment.md §14
+    # And the arms exist to be flipped, so the names have to be real ones the CLI would accept. `band-reopen`
+    # was flipped default-on, retiring the name for its control, the idiom docs/arch/04-alignment.md §14
     # states: the file keeps judging the same rule, now from the other side.
     from encore_worker.host.config import ALIGN_EXPERIMENTS
 
@@ -4244,7 +4244,7 @@ def test_every_gate_file_replays_a_name_the_knob_still_accepts() -> None:
     """A gate file's header IS its replay command, so a retired name turns the file into a config crash
     rather than a measurement — and `Config` refuses an unknown experiment by design.
 
-    W9 retired `band-reopen` and three files went on prescribing it (review W9 r1-tests-18), which the
+    `band-reopen` was retired and three files went on prescribing it, which the
     one-file assertion above could not see. This reads every file in the directory instead.
     """
     import re
@@ -4285,7 +4285,7 @@ def test_the_line_sync_gates_read_the_rung_they_were_written_on() -> None:
     assert [r.gate.name for r in verdicts if r.status != "PASS"] == [], gates.format_gates(verdicts)
     by_name = {gate.name: gate.expr for gate in rules}
     # The denominator pairing this rung needs MORE than the word rung, its gate being a refusal gate: every
-    # `band` rule carries a `missing` rule for the same mode (review r1-correctness-8 / r1-tests-20).
+    # `band` rule carries a `missing` rule for the same mode.
     banded = {n.removeprefix("band-not-up-") for n in by_name if n.startswith("band-not-up-")}
     held = {n.removeprefix("band-missing-not-up-") for n in by_name if "missing-not-up" in n}
     assert banded == held and len(held) == 13, "every mode this rung scores, band and denominator both"
@@ -4304,11 +4304,11 @@ def test_the_line_sync_gates_read_the_rung_they_were_written_on() -> None:
 
 
 def test_the_wave_baselines_are_w7s_own_rows_re_summarised() -> None:
-    """`results/w8a-base-time_text.json` and `results/w8a-base-lines-run_align.json` are W7's own rows put
-    back through `--summarize` on the W8a harness, as `w8a-band-run_align.json` is — 0 model seconds.
+    """`results/w8a-base-time_text.json` and `results/w8a-base-lines-run_align.json` are `w7`'s own rows put
+    back through `--summarize` on a newer harness, as `w8a-band-run_align.json` is — 0 model seconds.
 
-    They exist because a `base.MODE.band` gate cannot read a metric that did not exist when W7 swept, so the
-    claim that has to hold is that nothing ELSE moved: every metric W7 recorded reads the same number here,
+    They exist because a `base.MODE.band` gate cannot read a metric that did not exist when `w7` swept, so the
+    claim that has to hold is that nothing ELSE moved: every metric `w7` recorded reads the same number here,
     pooled and per song, and the only keys gained are the three the band gates need."""
     results = SCRIPTS.parent / "results"
     for old, new in (
@@ -4407,8 +4407,8 @@ def test_the_committed_unsung_rows_hold_the_never_sung_floors_record() -> None:
     }
     assert max(levels[False]) > min(levels[True]), "and the two populations overlap: no floor sorts them"
 
-    # AND THE CONCLUSION IS A STEM CONCLUSION (W4b review r1). `measure` read `song.vocals` for all 192 rows,
-    # while review L2's objection is about the MIX — where the band fills the gaps between lines, so 0.10 is
+    # AND THE CONCLUSION IS A STEM CONCLUSION. `measure` read `song.vocals` for all 192 rows,
+    # while the bleed objection is about the MIX — where the band fills the gaps between lines, so 0.10 is
     # nowhere near them and the rule cannot fire at all. That target ships (a stemless song aligns on its
     # mix), so the record must say which target it priced and the harness must price the other one too.
     assert str(body.get("target") or lib.STEM_TARGET) == lib.STEM_TARGET
@@ -4436,7 +4436,7 @@ def test_unsung_gate_floors_are_capped_and_never_turn_the_rule_off() -> None:
 
 
 def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> None:
-    """W2 re-derived the rung's agreement share and `_LINE_SYNC_NEAR_SEC` on MAPPED claims, and the numbers in
+    """`w2` re-derived the rung's agreement share and `_LINE_SYNC_NEAR_SEC` on MAPPED claims; the numbers in
     `align_lines`' docstrings are read off these rows — so the row set has to say which band it was measured
     in and carry BOTH placements, or the delta it is cited for (88 -> 33 refused) cannot be recomputed."""
     from encore_worker.domain.lyrics import lexical
@@ -4465,8 +4465,8 @@ def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> No
 def test_the_committed_w4_rows_re_read_the_line_sync_thresholds_on_the_exact_clock() -> None:
     """`results/w4-line-gate.json` holds the LINE_SYNC thresholds' re-read on the exact clock.
 
-    W4 6a moved every emission matrix, so the share and `_LINE_SYNC_NEAR_SEC` were read on a scale they
-    were not fitted on; the re-read was committed and cited NOWHERE. W2 defended 0.5 by the gap between the
+    Item 6a moved every emission matrix, so the share and `_LINE_SYNC_NEAR_SEC` were read on a scale they
+    were not fitted on; the re-read was committed and cited NOWHERE. `w2` defended 0.5 by the gap between the
     two documents more than 20% gross (shares 0.24 and 0.32) and the rest's p10 (0.54); on the exact clock
     no right text is more than 20% gross, so the separation is re-read against the quality population the
     rows carry — 2 documents under half their lines within 1 s of truth, and 410 at 80% or more. One
@@ -4519,12 +4519,12 @@ def test_the_committed_w4_rows_re_read_the_line_sync_thresholds_on_the_exact_clo
 
 
 def test_a_committed_row_set_names_the_bundle_it_was_measured_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    """W3 review r1: both calibration scripts wrote `"model": "default"` into their `--out`, while
+    """Both calibration scripts used to write `"model": "default"` into their `--out`, while
     `lexical.BANDS.model` names a bundle and the harness already resolves that name for the emission cache's
-    key. Once W4b runs them with `--model <hubert>` and adds its row, an older row set reading "default"
+    key. Once a sweep runs them with `--model <hubert>` and adds its row, an older row set reading "default"
     leaves nothing in the record to prove which model produced which thresholds.
 
-    RESOLVED PER DEVICE since W4b 6b, because that is what an unnamed bundle MEANS now (`e2e.default_model`):
+    RESOLVED PER DEVICE since item 6b, because that is what an unnamed bundle MEANS now (`e2e.default_model`):
     the name a row set is filed under has to be the one the aligner loaded, and on a CUDA box that is a
     different bundle from an MPS box's."""
     monkeypatch.setattr(e2e, "default_model", lambda language, device: f"THE-{language.upper()}-{device}")
@@ -4536,8 +4536,8 @@ def test_a_committed_row_set_names_the_bundle_it_was_measured_on(monkeypatch: py
 def test_line_gate_scores_at_the_band_the_rung_applies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`--tau` defaults to `lexical.BANDS.refuse_below`, the number the rung itself gates on since W3 review
-    r1 — not a literal of its own — so a recalibration re-scores this table on the shipped gate. Read through
+    """`--tau` defaults to `lexical.BANDS.refuse_below`, the number the rung itself gates on
+    — not a literal of its own — so a recalibration re-scores this table on the shipped gate. Read through
     `--from`, which decodes nothing."""
     from encore_worker.domain.lyrics import lexical
 
@@ -4579,12 +4579,12 @@ def test_line_gate_prints_both_placements_and_the_documents_no_line_lands_in(
 ) -> None:
     """`line_gate.py` prints both placements and the documents no line lands in.
 
-    The same rule read on W3's placement (`w3_near`) and on the mapped one (`near`), with the count
+    The same rule read on the old placement (`w3_near`) and on the mapped one (`near`), with the count
     `gates/w3-lines.yaml` holds: published documents with NO line within ±500 ms of truth. A row set from
     before the map is skipped rather than read as a comparison, and the share is passed in from the shipped
     model row. `gross` and `w3_gross` differ in this fixture ON PURPOSE: they used to be equal while both
-    columns' gross came from one hardcoded `r['gross']`, so the W3 column printed the W2 placement's count
-    — 0 where the committed rows' W3 placement is 47 — and no test could see it."""
+    columns' gross came from one hardcoded `r['gross']`, so the `w3` column printed the mapped count
+    — 0 where the committed rows' `w3` placement is 47 — and no test could see it."""
     mapped = {
         "song": "s1",
         "mode": "truth",
@@ -4613,7 +4613,7 @@ def test_line_gate_prints_both_placements_and_the_documents_no_line_lands_in(
     assert len(got) == 2, "the mode and the ALL row"
     assert "W3 refused   1/  1" in got[0] and "W2 refused   0/  1" in got[0]
     assert "zero-±500 docs   0" in got[0] and "maps 1/1 (decode-median 1), held 1" in got[0]
-    # The W3 column's own zero-±500 count is unreadable here (it refused the row), which is the point of the
+    # The `w3` column's own zero-±500 count is unreadable here (it refused the row), which is the point of the
     # gate's `refused == 0` factor: a refused song scores 0 and must not be counted as a misplaced document.
     shown_by_w3 = {**mapped, "w3_near": 0.9}
     both = line_gate.placements([shown_by_w3], 0.2, ["truth"], share)[0]
@@ -4635,7 +4635,7 @@ def test_line_gate_reads_the_shipped_agreement() -> None:
 
     decoded = [L(0, 1.0), L(1, 5.0), L(2, 9.5), L(4, 20.0)]
     got = line_gate.claim_agreement(decoded, {0: 1.5, 1: 5.5, 2: 12.0, 3: 15.0}, 1.0)
-    # `pairs` is the share's DENOMINATOR, recorded since W3 review r2 so the rung's minimum decoded share can
+    # `pairs` is the share's DENOMINATOR, recorded so the rung's minimum decoded share can
     # be re-read from a stored run: line 4 decoded but is unclaimed, line 3 is claimed but never decoded.
     assert got == {"near": 2 / 3, "median_gap": 0.5, "offset": -0.5, "near_fit": 2 / 3, "pairs": 3.0}
     assert set(line_gate.claim_agreement(decoded[:2], {0: 1.0, 1: 5.0}, 1.0).values()) == {None}
@@ -4670,7 +4670,7 @@ def conf_rows(
     """Two songs a mode, SIX word-timed lines each, and the SAME timings whatever the grades are.
 
     Line 0 is 3 s off, line 1 is 0.9 s off, lines 2-5 are exact; `high` names which lines each song grades
-    `high`, the only thing this wave changes, which is why the alignment metrics must read identical on
+    `high`, the only thing the change alters, which is why the alignment metrics must read identical on
     both sides of the comparison. Word truth matters: `highlight` and every `word_*` metric are None
     without it and a gate reading None is an ERROR, so a wordless fixture would let a mistyped word metric
     pass as "not measured". `late` is `{slug: seconds}` and pushes that song's last line out — the one knob
@@ -4746,7 +4746,7 @@ def test_the_confidence_reject_if_file_reads_precision_coverage_the_zero_and_a_m
         view = gates.view_of(conf_document(**kw))
         return {r.gate.name: r.status for r in gates.run_gates(rules, view, control)}
 
-    # W6's measured shape: the two out-of-tolerance lines demoted on `blind`, claim modes untouched.
+    # The measured shape: the two out-of-tolerance lines demoted on `blind`, claim modes untouched.
     ok = statuses(blind_high=(2, 3, 4, 5))
     assert {name: status for name, status in ok.items() if status != "PASS"} == {}
     # A run identical to its control gains nothing, so the halving gate must FAIL — the non-vacuity check
@@ -4790,7 +4790,7 @@ def test_the_wave_level_reject_if_file_reads_the_four_recorded_verdicts() -> Non
     This file and `gates/w6-ladder.yaml` hold every clamp and flip claim of the wave and were validated
     only by replaying rows offline, by hand, once. The four readings: the shipped default against the tree
     it replaces (sections 1-2 clean, section 3's four FAILing at the base bundle's own numbers, section 3
-    being the CANDIDATE's bar); W4b's row as both sides, so every relative gate reads `=` against itself;
+    being the CANDIDATE's bar); the `w4b` row as both sides, so every relative gate reads `=` against itself;
     the HuBERT candidate, where four absolute wins PASS and the one FAIL is 8 song-modes gaining a gross
     line; and the `m6-window-spare` arm, where exactly the two dilution literals trip and nothing else."""
     rules = gates.parse_gates((GATES_DIR / "w6.yaml").read_text(encoding="utf-8"))
@@ -4878,9 +4878,9 @@ def test_the_clamp_reject_if_file_reads_its_recorded_verdict_and_bites_on_a_move
     """`gates/w6-ladder.yaml` (31 gates): the recorded verdict, and that the clamp gate still bites.
 
     Its `clamp-blind-documents-unchanged` MUST reached a 2-3 hour sweep in a form NO run of this tree could
-    satisfy — the control is a pre-W6 row and the same wave rewrites per-line `confidence`, so every blind
-    document's BYTES move while no onset does; the gate now reads `onsets_changed`. The recorded verdict is
-    31/31 at both levels against `results/w4b-base-*` and 28/31 against W4b's own row as both sides,
+    satisfy — the control is a `w4b-base` row and the same change rewrites per-line `confidence`, so every
+    blind document's BYTES move while no onset does; the gate now reads `onsets_changed`. The recorded verdict
+    is 31/31 at both levels against `results/w4b-base-*` and 28/31 against the `w4b` row as both sides,
     failing exactly the three line-start claims the clamp fix makes (gross 3 > 1, ±500 96.42 < 96.9,
     zero-gross songs 18 < 19). Hermetically, one word 50 ms late fails it and a grade-only change does not."""
     rules = gates.parse_gates((GATES_DIR / "w6-ladder.yaml").read_text(encoding="utf-8"))
@@ -4906,7 +4906,7 @@ def test_the_clamp_reject_if_file_reads_its_recorded_verdict_and_bites_on_a_move
         "clamp-jamendo-zero-gross-songs-up",
     ]
 
-    # The hermetic half. A GRADE-ONLY change is what W6 actually shipped on the blind population.
+    # The hermetic half. A GRADE-ONLY change is what actually shipped on the blind population.
     control = gates.view_of(conf_document(blind_high=(0, 1, 2, 3, 4, 5)))
     graded = gates.run_gates(rules, gates.view_of(conf_document(blind_high=(2, 3, 4, 5))), control)
     by_name = {r.gate.name: r for r in graded}
@@ -4927,7 +4927,7 @@ def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> Non
     `tv_lit` gained `wipe_low` and the parity fixture is written with it True — the shipped TV lights no
     word on a `low` row — while `score_highlight` calls it with the default, so the one metric with TV
     semantics measured a TV that no longer exists and the wave's product change had no number at all. The
-    split is right (folding a display policy into that metric would re-baseline every row since W0); the
+    split is right (folding a display policy into that metric would re-baseline every row ever recorded); the
     silence was not, `high`/`high_bad`/`high_gross` being line-start errors that never answer "when the TV
     lights a word, is it the right one". Two runs differing only in one line's `confidence` pin both."""
     wiped_all = lib.summarize(conf_rows(mode="blind", high=(0, 1, 2, 3, 4, 5)))["blind"]["jamendo"]
@@ -4956,7 +4956,7 @@ def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> Non
 
 
 def test_w7s_own_gate_files_replay_the_verdicts_the_wave_was_accepted_on() -> None:
-    """W7's five gate files, replayed: 203 green readings plus the star's REJECT, none loaded by a test.
+    """The five `w7` gate files, replayed: 203 green readings plus the star's REJECT, none loaded by a test.
 
     `w7.yaml` says the three default-on changes cost nothing and `w7-star.yaml` is what rejected the star,
     so all of it is scored on the COMMITTED summaries: an edit to a file, a result document or `e2e_gates`
@@ -5031,8 +5031,8 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
     """`gates/w9-star.yaml`: the re-fit's reject-if on the 28-song SCORED pool, read on committed summaries.
 
     A gate file is worth what it rejects, so three readings: the default against itself, the in-sample
-    P = 1.0 arm — which it must still reject, on MORE clauses than `w7-star.yaml`'s 32-song pooled rules
-    did — and a pre-W8b baseline, where the pooled 28-song rules must ERROR rather than be called clear.
+    P = 1.0 arm — which it must still reject, on MORE clauses than `w7-star.yaml`'s 32-song pooled rules did —
+    and a pre-`scored` baseline, where the pooled 28-song rules must ERROR rather than be called clear.
 
     LOG.md, "W9: the star re-fitted out of sample, at an optimum outside the review's range".
     """
@@ -5056,10 +5056,10 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
         "a MUST that the default itself cannot pass is a mis-transcribed literal, not a ratchet"
     )
 
-    # (2) W7's arm at the IN-SAMPLE P = 1.0, which this file must still reject — and does, on 8 clauses
-    # readable from the committed pair (the pooled `scored.` rules need a post-W8b summary, below). The one
+    # (2) The `w7` arm at the IN-SAMPLE P = 1.0, which this file must still reject — and does, on 8 clauses
+    # readable from the committed pair (the pooled `scored.` rules need a newer summary, below). The one
     # that is NEW here is `no-scored-song-gains-a-gross-line`: 15 song x mode cells against the 32-song
-    # YouTube clause's 14, so W7's verdict is NOT a denominator artefact — it gets worse on the honest pool.
+    # YouTube clause's 14, so `w7`'s verdict is NOT a denominator artefact — it gets worse on the honest pool.
     total, failed, errored = read("w7-star-run_align", "w7-run_align")
     assert total == 72
     assert [name for name in failed if "pm500" not in name] == [
@@ -5075,7 +5075,7 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
 
     # (3) FAIL-LOUD on a baseline that predates the `scored` group. The unreadable rules are EXACTLY those
     # that ask the BASELINE for a pooled 28-song number; a per-song `scored.` rule still reads, the pool
-    # coming from the live `corpus-truth.json` by slug, which is why part (2) works on W7's summaries at all.
+    # coming from the live `corpus-truth.json` by slug, which is why part (2) works on `w7` summaries at all.
     _total, _failed, errored = read("w8b-run_align", "w7-run_align")
     assert len(errored) == 39, [gate.name for gate in errored]
     assert {gate.name for gate in errored} == {
@@ -5086,7 +5086,7 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
 
     # (4) THE ARM'S OWN READING, which is the verdict the README publishes and the one nothing pinned.
     # `jit-high-bad-not-up` is in it because §3.7's rule has two halves and the file carried only
-    # `high_gross` until review W9 r1-spec-11: `high_bad` is a `high` line more than 0.5 s out, and the
+    # `high_gross` for a while: `high_bad` is a `high` line more than 0.5 s out, and the
     # re-fitted star posts one more of them at `jit` (7 -> 8) while improving `blind` (43 -> 39).
     total, failed, errored = read("w9-star-on-run_align", "w9-run_align")
     assert (total, errored) == (72, [])
@@ -5105,10 +5105,10 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
 
 
 def test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites() -> None:
-    """`gates/w9-research.yaml`: the bar every W9 research arm is judged against, on committed rows.
+    """`gates/w9-research.yaml`: the bar every research arm is judged against, on committed rows.
 
     A gate file is worth what it rejects, so three readings: the default against itself, the `vendored`
-    control clause against runs whose documents really differ, and a pre-W8b baseline that must ERROR.
+    control clause against runs whose documents really differ, and a pre-`scored` baseline that must ERROR.
     LOG.md, "W9: a vendored decoder, and the three arms it unblocks".
     """
     results = SCRIPTS.parent / "results"
@@ -5166,11 +5166,11 @@ def test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites()
 
 
 def test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip() -> None:
-    """`gates/w9-r1.yaml`: the review fix pass published the post-flip baseline's bytes, read on the rows.
+    """`gates/w9-r1.yaml`: the fix pass published the post-flip baseline's bytes, read on the rows.
 
     An identity file is worth only what it can fail on, so three readings: the post-fix row against the
-    baseline it must match, the same row against W8b's PRE-flip row — where section 1 must fail on exactly
-    the modes the flip fires in — and a pre-W8b baseline, where the pooled `scored.` reads must ERROR.
+    baseline it must match, the same row against the `w8b` PRE-flip row — where section 1 must fail on exactly
+    the modes the flip fires in — and a pre-`scored` baseline, where the pooled `scored.` reads must ERROR.
 
     LOG.md, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
     """
@@ -5213,7 +5213,7 @@ def test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip() -
         "onsets-unchanged-truth",
     ], "the flip's 26 documents, by mode; everything else in the file still holds on the pre-flip row"
 
-    # (3) FAIL-LOUD on a baseline that predates the `scored` group, as every W8b-onward file is. The
+    # (3) FAIL-LOUD on a baseline that predates the `scored` group, as every file since it was added is. The
     # unreadable rules are every one that asks the BASE for a `scored` address — including this file's
     # three `sum(base.scored.song.…)` pools, which `w9-star.yaml`'s version of this assertion excludes
     # because its pools are written on the group and not on the rows.
@@ -5225,7 +5225,7 @@ def test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip() -
 
 
 def test_the_exact_frame_clock_took_the_offset_and_tempo_gross_down_not_up() -> None:
-    """The W8a review was handed "the clock put gross up in off3 / tempo098 / tempo102 / drop50" as its first
+    """The claim "the clock put gross up in off3 / tempo098 / tempo102 / drop50" was the first
     priority; on the committed rows three of the four fell by an order of magnitude and sit at zero.
 
     Here so the refutation is a reading rather than a paragraph. LOG.md, "W8a review: the three bench
@@ -5249,10 +5249,10 @@ def test_the_exact_frame_clock_took_the_offset_and_tempo_gross_down_not_up() -> 
 def test_w2s_ratchet_is_green_on_the_shipped_tree_and_its_run_align_deficit_is_one_song() -> None:
     """`gates/w2.yaml` read against the rebase target its own header names: 89/89 at `time_text`.
 
-    The "83/85 -> 50/85" the review was handed was a ratchet read against a STALE base — a default-on clock
+    The reported "83/85 -> 50/85" was a ratchet read against a STALE base — a default-on clock
     swap replaces every emission matrix — and the remedy already in the file is to move the `--compare` base
     without re-pricing an allowance. At `run_align` it is NOT green, and 12 of the 20 red rules are selected
-    by `numb` alone, on the WORKFLOW path only: the lead W8a task 3 left for the next wave.
+    by `numb` alone, on the WORKFLOW path only: the open lead, left for a later change.
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w2.yaml").read_text(encoding="utf-8"))
@@ -5332,9 +5332,9 @@ def test_the_twenty_eight_song_gates_read_both_levels_they_are_written_for() -> 
     """`gates/w8b.yaml`: the accuracy baseline counted over the 28 songs whose truth their own audio
     corroborates, read against each level's own baseline on both sides.
 
-    ALL of it holds there, unlike `gates/w8a.yaml`, because W8b changed no file under `encore_worker` and the
-    file's prediction is therefore IDENTITY. The reading it would reject is pinned below on the arms-on rows,
-    so "this file has teeth" is a test and not a sentence in its header.
+    ALL of it holds there, unlike `gates/w8a.yaml`, because the 28-song sweep changed no file under
+    `encore_worker` and the file's prediction is therefore IDENTITY. The reading it would reject is pinned
+    below on the arms-on rows, so "this file has teeth" is a test and not a sentence in its header.
     """
     rules = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 153, "every rule in the file is scored here, so a new one has to be measured"
@@ -5363,13 +5363,13 @@ def test_the_twenty_eight_song_gates_read_both_levels_they_are_written_for() -> 
 
 
 def test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved() -> None:
-    """`gates/w8b.yaml` WHOLE, read on a tree that is NOT the default: the W8a band arms.
+    """`gates/w8b.yaml` WHOLE, read on a tree that is NOT the default: the `w8a` band arms.
 
     The header's claim is that the identity half goes red on seven rules while every accuracy floor passes, so
-    all 153 are scored here — on `results/w8b-arms-run_align.json`, W8a's own arms rows re-summarised on the
-    W8b harness (0 model seconds) so the `scored` group its 86 accuracy rules read exists at all. On the
-    committed `w8a-r2-arms-run_align.json` those 86 ERROR for want of it, which is fail-loud and not a reading
-    (review r2-tests-13). LOG.md, "W8b: re-judging `word-aligned-not-down`".
+    all 153 are scored here — on `results/w8b-arms-run_align.json`, the `w8a` arms rows re-summarised on the
+    newer harness (0 model seconds) so the `scored` group its 86 accuracy rules read exists at all. On the
+    committed `w8a-r2-arms-run_align.json` those 86 ERROR for want of it, which is fail-loud, not a reading.
+    LOG.md, "W8b: re-judging `word-aligned-not-down`".
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
@@ -5387,7 +5387,7 @@ def test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved() -> No
         "no-song-gains-truth",
         "no-song-gains-jit",
     }, sorted(r.gate.name for r in verdicts if r.status != "PASS")
-    # The accuracy half does not merely pass, it IMPROVES — which is the owner's open question about reading
+    # The accuracy half does not merely pass, it IMPROVES — which is the open question about reading
     # `word_aligned` as a ratchet, now priced on the metric the wave scores: 97.07 -> 97.27 over the 28.
     scored = arms.modes["truth"][lib.SCORED]
     assert (scored["pm500"], scored["band"]) == (97.27, 41)
@@ -5405,7 +5405,7 @@ def test_the_twenty_eight_song_line_sync_gates_read_the_rung_they_were_written_o
     The rung is where the exclusion is most legible, and the pair that says so is pinned here. In `truth` the
     rung publishes the served sheet verbatim, so over the 28 songs that score it reads ±500 100.00 % with
     `band` 0; over all 32 it reads 94.16 % with `band` 100, and those 100 lines are bad-guy's 65 and numb's 35
-    moved by ONE constant each. A later wave that deletes either rule has deleted the W8b argument.
+    moved by ONE constant each. A later change that deletes either rule has deleted the argument.
     """
     rules = gates.parse_gates((GATES_DIR / "w8b-lines.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 93, "every rule in the file is scored here, so a new one has to be measured"
@@ -5437,10 +5437,10 @@ def test_the_twenty_eight_song_line_sync_gates_read_the_rung_they_were_written_o
 
 def test_the_twenty_eight_song_baselines_are_w8as_own_default_rows_re_summarised() -> None:
     """`results/w8b-base-{run_align,time_text,lines-run_align}.json` are `_runs/w8a-def-*`'s own rows put back
-    through the W8b harness — 0 model seconds, so the only keys gained are the `scored` group's.
+    through the newer harness — 0 model seconds, so the only keys gained are the `scored` group's.
 
-    They exist because a `base.MODE.scored.X` rule cannot read a group that did not exist when W8a swept, and
-    the claim that has to hold is that nothing ELSE moved: the `all` column must reproduce the committed W8a
+    They exist because a `base.MODE.scored.X` rule cannot read a group that did not exist when `w8a` swept, so
+    the claim that has to hold is that nothing ELSE moved: the `all` column must reproduce the committed `w8a`
     row metric for metric, pooled and per song.
     """
     results = SCRIPTS.parent / "results"
@@ -5473,10 +5473,10 @@ def test_the_w8b_arms_floors_are_read_on_the_first_live_rows_that_carry_the_onse
     """`gates/w8b-arms.yaml`'s own open question: its `word_published_*` floors were derived off recorded runs
     re-read, so the first SWEEP whose rows carry the onsets is the first that can read them directly.
 
-    W8b's corpus sweep is that sweep. Its DEFAULT must read 77/77 against the matching level's own W8b row by
+    The `w8b` corpus sweep is that sweep. Its DEFAULT must read 77/77 against the matching level's own row by
     construction — the floors ARE the default's numbers — so a delta here is the thing to look at. Section 4
-    reads the BASELINE's published onsets, so against the pre-W8b bases its eight rules ERROR: no row recorded
-    before W8b carries the family, and an unreadable rule may not be called clear.
+    reads the BASELINE's published onsets, so against the `w8a` bases its eight rules ERROR: no row recorded
+    before that sweep carries the family, and an unreadable rule may not be called clear.
     """
     rules = gates.parse_gates((GATES_DIR / "w8b-arms.yaml").read_text(encoding="utf-8"))
     results = SCRIPTS.parent / "results"
@@ -5503,7 +5503,7 @@ def test_the_w8b_arms_floors_are_read_on_the_first_live_rows_that_carry_the_onse
             for mode in ("headers", "drop50")
             for metric in ("pm100", "pm250", "pm300", "aae")
         }
-        # ... and the family really is there on the run side, which is what a pre-W8b row ERRORs for want of.
+        # ... and the family really is there on the run side, which is what a `w8a` row ERRORs for want of.
         assert jamendo_words(row)["published300_pct"] is not None
         absent = jamendo_words(baseline).get("published300_pct")
         assert absent is None, f"{baseline} predates the family, by design"
@@ -5545,8 +5545,8 @@ def test_a_summary_whose_frozen_pool_is_not_its_per_song_pool_is_an_error() -> N
 
     If a frozen pooled `cases` disagrees with the entries it was supposedly pooled over, every number read
     under that address is between numbers nobody can reconcile. It used to be reachable only through
-    `_same_pool`, i.e. only for an address carrying `base.` — so the absolute floors, which are most of a wave
-    file and the only rules a run with no baseline has, were never checked (review r2-correctness-3).
+    `_same_pool`, i.e. only for an address carrying `base.` — so the absolute floors, which are most of a gate
+    file and the only rules a run with no baseline has, were never checked.
     """
     document = json.loads(
         (SCRIPTS.parent / "results" / "w8b-base-run_align.json").read_text(encoding="utf-8")
@@ -5590,7 +5590,7 @@ def test_every_results_file_that_excluded_a_song_says_so_in_its_meta() -> None:
 
 
 def test_the_summary_records_the_unit_rule_that_actually_ran() -> None:
-    """Review r2-spec-11: `align_config` records the ARM NAMES, and `mms-roman` switches the bundle to MMS_FA
+    """`align_config` records the ARM NAMES, and `mms-roman` switches the bundle to MMS_FA
     on the name alone while the romanised targets it pairs with need an optional backend — so two runs whose
     decodes read different spellings were byte-identical in metadata. `meta["units"]` is the RESOLVED
     `units.Rules.name`, and it has no `lib.RUN_DEFAULTS` entry, so an older row stays silent instead of
@@ -5601,7 +5601,7 @@ def test_the_summary_records_the_unit_rule_that_actually_ran() -> None:
     assert "units" in gates.COMPARED_META
     assert "units" not in lib.RUN_DEFAULTS, "a row written before the stamp must not read as `plain`"
     assert units.rules_for("en", frozenset()).name == "plain"
-    # `UNROUTED` here and not an empty set: since W10 zh's own routed row romanises, so the whole point of
+    # `UNROUTED` here and not an empty set: zh's own routed row romanises, so the whole point of
     # the stamp is that `units` and `units,roman` are two different decodes (XA-21).
     unrouted = frozenset({units.UNROUTED})
     assert units.rules_for("zh", unrouted | {"nonlatin-units"}).name == "units"
@@ -5620,7 +5620,7 @@ def test_the_summary_records_the_unit_rule_that_actually_ran() -> None:
 
 
 def test_every_shipped_stage2_route_is_the_measured_WINNER_on_the_recorded_cells() -> None:
-    """W10's table is a MEASUREMENT and not a preference, so the suite reads the ten committed `w8r1-*`
+    """The stage-2 table is a MEASUREMENT and not a preference, so the suite reads the ten committed `w8r1-*`
     `generate` cells and re-picks the winner: a route edited to a losing arm has to fail here.
 
     `syllable_pco300` on the AMLL truth's own spans is the number each row was chosen on (LOG.md, "W10: the
@@ -5658,7 +5658,7 @@ def test_every_shipped_stage2_route_is_the_measured_WINNER_on_the_recorded_cells
 def test_the_parity_check_reports_a_missing_fixture_rather_than_crashing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Review r2-correctness-7: the second fixture's rewrite dropped `--check`'s `is_file()` guard, so on a
+    """The second fixture's rewrite once dropped `--check`'s `is_file()` guard, so on a
     tree where either file has not been generated the run died with a `FileNotFoundError` traceback instead
     of the actionable line — and an exit code a CI leg reads cannot tell a crash from a stale fixture."""
     tv_parity: Any = _load("tv_parity")

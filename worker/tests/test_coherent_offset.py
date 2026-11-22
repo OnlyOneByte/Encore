@@ -39,7 +39,7 @@ class _Start:
 
 def _reading(*, offset_sec: float, spread_sec: float, together: float, near: float = 0.0) -> rc.AsClaimed:
     """An `AsClaimed` for the rule's own tests. Every field is spelled: none of them defaults, a constructor
-    that forgot one having been able to hand `off_sheet` a perfectly coherent reading (review r2-spec-14)."""
+    that forgot one having been able to hand `off_sheet` a perfectly coherent reading."""
     return rc.AsClaimed(
         near=near,
         pairs=12,
@@ -67,7 +67,7 @@ def test_a_sheet_a_second_early_publishes_every_line_high_that_far_from_its_clai
     """THE SHEET MOVED, and the grade must not punish the document for it. We publish where the song is SUNG,
     so the document stays `high` even though every line sits `EARLY_BY` from the claim a viewer's sheet
     carries: the envelope reads those same claims as displaced, which is the second witness refusing to
-    convict us. What W8a changed is that the trail now NAMES the distance."""
+    convict us. What changed is that the trail now NAMES the distance."""
     got = _early_sheet(tmp_path, monkeypatch)
     for line, (text, start, _end) in zip(got.lines, SPARSE, strict=True):
         assert line["text"] == text
@@ -88,8 +88,8 @@ def test_a_sheet_a_second_early_publishes_every_line_high_that_far_from_its_clai
 def test_the_distance_the_grade_could_not_see_is_the_one_as_claimed_reads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`reconcile.as_claimed` removes no offset, so it reads the error a room would see — and W8a is where the
-    global engine started calling it. Before, only the LINE_SYNC rung did (`_agreement_of`), which is why a
+    """`reconcile.as_claimed` removes no offset, so it reads the error a room would see — and the global
+    engine calls it now. Before, only the LINE_SYNC rung did (`_agreement_of`), which is why a
     document 0.86 s off its sheet could publish `high` with no number anywhere naming 0.86."""
     calls: list[int] = []
     original = rc.as_claimed
@@ -134,7 +134,7 @@ def test_off_sheet_needs_both_witnesses_and_the_envelope_is_the_one_that_decides
 
 
 def test_half_a_document_shifted_and_half_exactly_on_its_claim_is_not_one_displacement() -> None:
-    """Review r2-correctness-2: the MAD is robust, so it reads 0.00 on a SPLIT population and the coherence
+    """The MAD is robust, so it reads 0.00 on a SPLIT population and the coherence
     conjunct passed on documents whose lines are nearly half correct — a demotion that grades every line `low`
     and turns off the room's word wipe. `MIN_COHERENT_SHARE` is the share conjunct the rule was missing.
 
@@ -162,7 +162,7 @@ def test_half_a_document_shifted_and_half_exactly_on_its_claim_is_not_one_displa
 
 
 def test_a_lag_that_is_the_claim_clocks_own_map_is_not_a_second_witness() -> None:
-    """Review r2-spec-7: `as_claimed` reads the PUBLISHED document against the sheet AS SERVED, so when the
+    """`as_claimed` reads the PUBLISHED document against the sheet AS SERVED, so when the
     claim clock has already mapped that sheet by the same amount, the first witness is restating a decision
     this pipeline made rather than witnessing anything — the conjunction is then a ONE-witness rule, the
     envelope's. The conviction stands (the envelope is the witness that decides) and the record says which.
@@ -213,7 +213,7 @@ def test_a_decode_coherently_late_on_a_sheet_the_audio_confirms_publishes_low(
     assert "OFF ITS SHEET" in why and "every line graded low" in why
     # ON THIS FIXTURE THE CLAIMS ARE NOT A SECOND WITNESS, and the record says so: the sheet is right, so the
     # claim clock maps it onto our LATE decode and the published document then sits exactly the map's own
-    # +0.83 s from the sheet as served. The envelope is what convicts (review r2-spec-7).
+    # +0.83 s from the sheet as served. The envelope is what convicts.
     assert "this lag IS the claim clock's own map" in why
     assert "claims mapped onto our clock by" in why
 

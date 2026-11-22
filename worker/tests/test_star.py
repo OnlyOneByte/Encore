@@ -169,7 +169,7 @@ def test_the_starred_matrix_names_the_column_and_keeps_every_other_name() -> Non
     assert star_of(object()) is None, "a matrix that names no specials has no star to emit"
     assert STAR in excluded_of(starred), "a text can never target the star: it owns no character"
     # `separator_of`'s SECOND reason, which `ml.starred` cannot produce and which is refused here rather
-    # than trusted upstream (W7c review r1-correctness-6): a star named ON the blank is no star.
+    # than trusted upstream: a star named ON the blank is no star.
     named_on_blank = ml.Emissions(
         log_probs=starred.log_probs,
         frame_sec=starred.frame_sec,
@@ -187,7 +187,7 @@ def test_the_domain_and_the_adapter_name_the_same_column() -> None:
 
     AND WHY IT IS NOT `*`: `specials` is keyed by vocabulary ENTRY and `char_ids` looks up single CHARACTERS,
     so a bundle whose vocabulary held `*` would have the star's name collide with a character's — and that
-    character would then be dropped from every word that contains it, which is review M9's defect wearing
+    character would then be dropped from every word that contains it, which is the blank-id defect wearing
     another hat. A multi-character name cannot collide, and the second half of this test is that proof.
     """
     from encore_worker.domain.lyrics import generate as module
@@ -204,7 +204,7 @@ def test_the_domain_and_the_adapter_name_the_same_column() -> None:
 
 
 def test_a_vocabulary_that_SHIPS_a_star_still_gets_the_arms_own_priced_column() -> None:
-    """MMS_FA's vocabulary names a `*` of its own (review r1-tests-16), and it is NOT this arm's star: the
+    """MMS_FA's vocabulary names a `*` of its own, and it is NOT this arm's star: the
     model's column carries a price nobody here fitted, while `_star_why` and `viterbi.star_penalty` both
     quote `STAR_PENALTY_NATS`. So `specials_of` names it `OWN_STAR_NAME` — excluded from every target, so a
     lyric's literal `*` cannot aim at it — and the arm appends and prices its own column as always.
@@ -286,7 +286,7 @@ def test_an_empty_matrix_leaves_the_arm_inert_rather_than_fatal() -> None:
 
 
 def test_starring_a_starred_matrix_keeps_the_one_column_it_was_priced_with() -> None:
-    """`starred` is IDEMPOTENT, and the clause that makes it so had no reader (review r2-tests-19).
+    """`starred` is IDEMPOTENT, and the clause that makes it so had no reader.
 
     Two call sites star a matrix today and neither can hand one back (`starred` never mutates its input), so
     the property is the function's rather than the step's: a second pass must not append a second column, or
@@ -352,7 +352,7 @@ def test_one_star_before_every_line_including_the_first() -> None:
 def test_a_line_with_no_alignable_character_gets_no_star_of_its_own() -> None:
     """A decorative row (`♪`, an emoji line) and a line the never-sung rule blanked to `""` contribute no
     character, so they get no star: a second absorbing token in the same gap is a token the path can hide in
-    twice, and the review asks for one per LINE that is decoded."""
+    twice, and the design asks for one per LINE that is decoded."""
     starred = ml.starred(emissions(sung_matrix(SUNG, VOCAB, DURATION)))
     for filler in ("", "♪", "   "):
         tap = Recording()
@@ -402,7 +402,7 @@ def test_the_onset_lead_is_not_clamped_at_a_star_span() -> None:
 
     `_lead_starts` pulls every char's start back by `ONSET_LEAD_SEC` and clamps it at the PREVIOUS SPAN's end,
     which is what keeps chars from overlapping. A star left in the label stream owns a span, so the clamp
-    becomes the star's end and the first character of every line loses its lead — the review names that clamp
+    becomes the star's end and the first character of every line loses its lead — that clamp is named
     as the likely cause of one song's ±250 drop, and it is 30 ms, so nothing but this would show it.
     """
     blank, first, second = 0, 5, 6
@@ -431,7 +431,7 @@ def test_the_span_check_counts_the_stars_and_says_so() -> None:
         generate(LINES, starred, decoder=extra, syllabifier=ONE_SYLLABLE)
 
 
-# ── what it does to a timing: review D3's drag, in the smallest form that shows it ──────────────────────
+# ── what it does to a timing: the intro drag (D3), in the smallest form that shows it ───────────────────
 
 
 def test_a_star_absorbs_audio_the_text_does_not_mention() -> None:
@@ -501,10 +501,10 @@ def test_a_lower_penalty_absorbs_more_and_the_fitted_one_still_holds_the_intro()
 def test_the_shipped_penalty_is_the_one_the_corpus_fitted() -> None:
     """P is a MEASURED choice nothing hermetic can discriminate, so it is pinned as a literal.
 
-    The re-fit put the optimum at 0.1-0.3, BELOW the review's [1, 4] band, buying `drop50` gross 82 -> 11 at
+    The re-fit put the optimum at 0.1-0.3, BELOW the proposed [1, 4] band, buying `drop50` gross 82 -> 11 at
     ±500/text 75.72 -> 86.03 on the 32-song pool. Every other test here reads the constant symbolically and
-    the fixture's cliff sits between 1 and 2 nats, so a revert to W7's 1.0 left the suite green (review W9
-    r1-tests-12). LOG.md, "W9: the star re-fitted out of sample" and its fixture-ladder table.
+    the fixture's cliff sits between 1 and 2 nats, so a revert to the old 1.0 left the suite green.
+    LOG.md, "W9: the star re-fitted out of sample" and its fixture-ladder table.
     """
     assert ml.STAR_PENALTY_NATS == 0.3
 
@@ -643,7 +643,7 @@ def test_the_step_decodes_with_the_star_only_under_the_arm(
     assert f"star: one per line, id {STAR} = frame max − {ml.STAR_PENALTY_NATS:g} nats" in armed_note
     assert [line["text"] for line in armed_lines] == [line["text"] for line in plain_lines]
     # The text's first line is sung at 2.6 s and the DEFAULT publishes it at 0.37 — dragged 2.2 s back into
-    # the intro, which is the gross line review D3 counts. The arm publishes it at its own onset less the
+    # the intro, which is the gross line the intro drag counts. The arm publishes it at its own onset less the
     # measured lead (2.6 − `ONSET_LEAD_SEC`), and the line the drag never reached does not move by a frame.
     assert [round(float(line["start"]), 2) for line in plain_lines] == [0.37, 4.97]
     assert [round(float(line["start"]), 2) for line in armed_lines] == [2.57, 4.99], (
@@ -714,8 +714,8 @@ class Decodes:
 def test_the_re_decode_after_a_never_sung_drop_keeps_the_arm_and_no_repair_window_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The two decode sites a three-line fixture cannot reach, on the ladder's own fixtures (the shape W4b
-    review r2 found `linesep` had left uncovered at both): the re-decode after a never-sung drop PUBLISHES, so
+    """The two decode sites a three-line fixture cannot reach, on the ladder's own fixtures (the shape
+    `linesep` had once left uncovered at both): the re-decode after a never-sung drop PUBLISHES, so
     it owns the arm, while every repair window is handed the UNSTARRED matrix on purpose."""
     from encore_worker.steps import align_steps
     from tests.ctc_fixture import misheard

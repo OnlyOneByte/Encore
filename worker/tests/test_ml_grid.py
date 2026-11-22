@@ -1,4 +1,4 @@
-"""The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache (6a/M9/M10).
+"""The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache.
 
 A stand-in model makes every assertion exact and fast; `test_ml_contract.py` holds the real pass.
 The clock bugs these pin: LOG.md, "The clock was wrong twice over"; why each fixture length was
@@ -34,7 +34,7 @@ TORCHAUDIO_DIC = {ch: i for i, ch in enumerate("-|etaoinshrdlucmwfgypbvkjxqz'")}
 
 
 def test_a_frame_is_exactly_twenty_milliseconds() -> None:
-    """`frame_sec` is the model's hop, not a ratio read off a matrix: 320 samples at 16 kHz (review 6a)."""
+    """`frame_sec` is the model's hop, not a ratio read off a matrix: 320 samples at 16 kHz."""
     assert ml.FRAME_SEC == 0.02
     assert ml.FRAME_SEC == HOP / RATE
     assert (FIELD, HOP) == (400, 320), "wav2vec2's receptive field and hop; the grid is built on them"
@@ -47,7 +47,7 @@ def test_a_frame_is_exactly_twenty_milliseconds() -> None:
 def test_the_grid_covers_every_hop_of_the_audio_exactly_once(seconds: float) -> None:
     """One frame per 320 samples, INCLUDING the final partial one, and each stamped at `k * FRAME_SEC`.
 
-    The two defects this pins, both measured by the review: the old pass broke out of its loop on a final
+    The two defects this pins, both measured: the old pass broke out of its loop on a final
     sliver under 0.1 s (up to five frames of the song simply absent, while `duration / frames` still counted
     their seconds — 50-60 ms of drift after 2:30), and it never laid its chunks on one grid at all.
     """
@@ -91,7 +91,7 @@ def test_every_pass_is_long_enough_for_the_frames_it_keeps_and_reads_no_further(
 def test_an_interior_pass_pads_when_its_right_context_reaches_the_end_of_the_audio(
     total: int, padded: set[int]
 ) -> None:
-    """The case the test above asserted away (W4 review r1): a NON-FINAL pass that needs padding.
+    """The case the test above asserted away: a NON-FINAL pass that needs padding.
 
     The lengths the parametrised sweep uses (0.02, 1.5, 30.0, 45.5, 90.0, 194.3 s) all miss it, so
     "an interior pass never needs padding" passed for six lengths and would have failed on the first song
@@ -107,7 +107,7 @@ def test_an_interior_pass_pads_when_its_right_context_reaches_the_end_of_the_aud
 
 
 def test_a_sliver_shorter_than_the_receptive_field_is_padded_not_dropped() -> None:
-    """The review's `evidence-8`: 24000 samples is 75 whole hops, and the 75th frame needs 80 samples the
+    """24000 samples is 75 whole hops, and the 75th frame needs 80 samples the
     file does not have. The old pass dropped it (and any tail under 0.1 s outright)."""
     passes = ml._frame_passes(24000)
     assert len(passes) == 1 and passes[0].keep == 75
@@ -140,14 +140,14 @@ def _fed_ratio(seconds: float) -> float:
     return sum(p.samples for p in ml._frame_passes(total)) / total
 
 
-# ── the blank the vocabulary names (review M9) ────────────────────────────────────────────────────
+# ── the blank the vocabulary names ────────────────────────────────────────────────────────────────
 
 
 def test_the_blank_is_read_from_the_vocabulary_and_is_not_always_zero() -> None:
-    """whisperx's own rule (`alignment.py`), on the vocabularies the review dumped from the Hub.
+    """whisperx's own rule (`alignment.py`), on vocabularies dumped from the Hub.
 
-    23 of whisperx's 36 HF align models put their pad somewhere other than 0; these are the three the
-    review measured, plus a torchaudio bundle, whose blank is its label 0 and which is why a hard-coded 0
+    23 of whisperx's 36 HF align models put their pad somewhere other than 0; these are the three
+    measured, plus a torchaudio bundle, whose blank is its label 0 and which is why a hard-coded 0
     survived for as long as the language was always `en`.
     """
     assert ml.blank_id_of(TORCHAUDIO_DIC) == 0
@@ -158,8 +158,8 @@ def test_the_blank_is_read_from_the_vocabulary_and_is_not_always_zero() -> None:
 
 
 def test_the_specials_are_named_so_a_later_filter_has_a_list_to_read() -> None:
-    """`blank_id` is the one this wave acts on; `|` is named because it is a CHARACTER a lyric can contain
-    and review 6c (disputed) is the reader that would act on it."""
+    """`blank_id` is the one the decode acts on; `|` is named because it is a CHARACTER a lyric can contain
+    and the line-separator arm is the reader that would act on it."""
     assert ml.specials_of(TORCHAUDIO_DIC) == {"|": 1, "-": 0}
     assert ml.specials_of({"<pad>": 0, "<s>": 1, "</s>": 2, "<unk>": 3, "|": 4, "a": 5}) == {
         "<pad>": 0,
@@ -180,7 +180,7 @@ class _LocalModel:
 
     That is what makes the comparison EXACT: such a model cannot tell which pass computed a frame, so a
     chunked pass and a single whole-file pass must produce identical frames, and any difference is the
-    stitching arithmetic review 6a replaced.
+    stitching arithmetic the grid replaced.
     """
 
     def __init__(self) -> None:
@@ -206,7 +206,7 @@ class _LocalModel:
 class _Rigged(ml.WhisperXAligner):
     """`emissions()` with a known model and no Hub, so the grid is all that is under test.
 
-    The LOADED model is `_local`, deliberately not the inherited `_model` — which since W4b 6b holds the
+    The LOADED model is `_local`, deliberately not the inherited `_model` — which now holds the
     English bundle's NAME (`ALIGN_MODELS_BY_DEVICE`, `ENCORE_ALIGN_MODEL`) rather than a loaded object."""
 
     def __init__(self, model: _LocalModel, jobs: int = 1, bundle: str = "local-test-model") -> None:
@@ -245,7 +245,7 @@ def _audio(tmp_path: Path, seconds: float) -> tuple[Path, Any]:
 def test_a_word_at_a_chunk_boundary_lands_where_a_single_pass_puts_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seconds: float
 ) -> None:
-    """The chunk-boundary continuity test W0 recorded as missing.
+    """The chunk-boundary continuity test that was once missing.
 
     `34.0` and `61.3` straddle the 30 s and 60 s boundaries; `29.6` and `1.5` end inside a chunk on a
     sliver. Every frame of the chunked matrix must EQUAL the single-pass matrix's frame of the same index, so
@@ -309,13 +309,13 @@ def test_a_model_whose_stride_is_not_the_grids_fails_loudly(
             _Rigged(model).emissions(str(path), "en")
 
 
-# ── the bounded, content-keyed cache (review M10) ─────────────────────────────────────────────────
+# ── the bounded, content-keyed cache ──────────────────────────────────────────────────────────────
 
 
 def test_a_replaced_stem_is_a_cache_miss_not_a_stale_matrix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REVIEW M10's measured case: `artifacts/local.py` publishes a stems upgrade by `os.replace` over the
+    """The cache's measured case: `artifacts/local.py` publishes a stems upgrade by `os.replace` over the
     SAME vocals key, so a path-keyed matrix outlived the audio it was computed from and a later re-pick
     aligned the new stem's text against the old stem's frames."""
     import os
@@ -378,7 +378,7 @@ def test_two_bundles_over_one_audio_file_do_not_share_one_matrix(
 def test_the_matrix_cache_is_bounded_and_separate_from_the_model_weights(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The other half of M10: the matrices used to live in `_MODELS`, which must never evict because
+    """The other half of the cache: the matrices used to live in `_MODELS`, which must never evict because
     reloading multi-GB weights is why this worker is a resident process — so every song a box ever aligned
     stayed resident. Least-recently-used goes first, and the model dict is left alone."""
     import soundfile as sf
@@ -490,7 +490,7 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
         "device": "cpu",
         "jobs": 3,
         "model": adapters_ml.default_align_model("cpu"),
-        # W10: the per-language stage-2 table, resolved at the composition root. zh and ko route to
+        # The per-language stage-2 table, resolved at the composition root. zh and ko route to
         # MMS_FA where this box can romanise them; ja stays on whisperx's own, MMS losing it by 11 points
         # (docs/arch/04-alignment.md §9.2).
         "nonlatin_routes": entry.nonlatin_routes_for(Config(concurrency=3)),

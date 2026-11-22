@@ -40,13 +40,13 @@ displacement: Any = _load("truth_displacement")
 
 HOP = 0.02
 
-#: The four songs the owner's W8b decision takes out of accuracy scoring, and on which ground.
+#: The four songs the owner's decision takes out of accuracy scoring, and on which ground.
 DISPLACED = ("bad-guy", "believer", "tfr-chosen")
 UNUSABLE = "numb"
 #: numb's: its truth leads its audio, and its stem is never quiet at a line start for the arbiter to read it.
 UNUSABLE_GROUND = "continuous-vocal"
 
-#: Songs the shipped `corpus-truth.json` measures: the English 32, plus W8's 7 non-Latin ones, which are
+#: Songs the shipped `corpus-truth.json` measures: the English 32, plus the 7 non-Latin ones, which are
 #: their own corpus (`lib.NONLATIN_CORPUS`) and never pool with them.
 MEASURED_SONGS = 32 + 7
 
@@ -115,7 +115,7 @@ def test_a_start_at_the_tail_of_a_sung_phrase_is_not_in_silence() -> None:
 
     Every other fixture here is binary 0/1 with multi-second blocks, so no probe window is ever partially
     loud and `window.min()` would pass them all — while calling a start sitting inside singing with one quiet
-    frame "silent" and inflating both `silent_starts` and the median (review r2-tests-16).
+    frame "silent" and inflating both `silent_starts` and the median.
     """
     frames = graded_envelope([(10.0, 14.0, 0.8)])
     quiet = int(10.1 / HOP)
@@ -130,7 +130,7 @@ def test_a_breath_before_the_singing_is_not_the_onset_the_delay_is_measured_to()
     """`singing_after`'s HOLD: a transient over `SINGING_LEVEL` that falls back is not where singing resumes.
 
     numb's measured shape, and the conjunct no 0/1 fixture can see — without the hold this start reads +0.4 s
-    off a single loud frame instead of the +1.0 s to the phrase (review r2-tests-16).
+    off a single loud frame instead of the +1.0 s to the phrase.
     """
     frames = graded_envelope([(10.4, 10.42, 0.5), (11.0, 14.0, 0.8)])
     assert displacement.starts_in_silence(frames, 10.0, HOP)
@@ -177,7 +177,7 @@ def test_a_lag_the_worker_would_not_use_cannot_be_the_second_witness() -> None:
     """The second conjunct is a READING, so it carries a quality bar: `lib.MIN_LAG_CORRELATION`.
 
     Without one, a lag that landed past the limit by noise satisfied "an independent second witness" — the
-    phrase the rule is sold on (review r2-spec-8). bad-guy's +780 ms sits at r 0.19, under the bar the worker
+    phrase the rule is sold on. bad-guy's +780 ms sits at r 0.19, under the bar the worker
     itself refuses to offer a lag as a clock candidate at, so bad-guy is displaced on the OTHER branch.
     """
     assert quality().lag_corroborates
@@ -285,7 +285,7 @@ def test_an_unusable_ground_its_own_numbers_refuse_is_not_an_exclusion(tmp_path:
 
     It used to be read verbatim with no numeric precondition at all, and `truth_displacement.py` copied it
     onto every fresh reading — so re-anchoring numb's sheet would have left the exclusion standing on a
-    measurement that no longer said anything (review r2-correctness-1). Each conjunct is pinned separately.
+    measurement that no longer said anything. Each conjunct is pinned separately.
     """
     path = tmp_path / "corpus-truth.json"
     held = {
@@ -444,7 +444,7 @@ def test_re_measuring_the_unusable_song_keeps_a_ground_its_numbers_still_support
 
     The block used to copy `unusable` / `note` onto any fresh reading unconditionally, and no test failed when
     it was deleted — so numb silently returning to accuracy scoring, or silently staying out of it after a
-    re-anchor, were both invisible (review r2-tests-12 and r2-correctness-1).
+    re-anchor, were both invisible.
     """
     out = tmp_path / "corpus-truth.json"
     out.write_bytes(lib.CORPUS_TRUTH.read_bytes())
@@ -461,7 +461,7 @@ def test_re_measuring_the_unusable_song_keeps_a_ground_its_numbers_still_support
     assert (kept["unusable"], kept["note"]) == (UNUSABLE_GROUND, note), "the ground and its prose survive"
     assert sorted(lib.accuracy_exclusions(out)) == sorted([*DISPLACED, UNUSABLE])
 
-    # ... and the re-anchor the next wave contemplates: the lag is gone, so the ground goes with it.
+    # ... and the re-anchor a later change contemplates: the lag is gone, so the ground goes with it.
     _measures(monkeypatch, UNUSABLE, numbs(10.0))
     assert displacement.main(["--songs", UNUSABLE, "--out", str(out)]) == 0
     assert "DROPPED" in capsys.readouterr().out, "loudly, on the operator's terminal"
@@ -490,9 +490,9 @@ def test_a_committed_results_file_records_the_reason_its_own_sweep_read() -> Non
     """The reason string in `results/` is a RECORD of what the harness said then, and the live corpus file is
     the only source of truth — so what must hold across the two is the SONG SET and the GROUND, not the prose.
 
-    The W8b rows were published before the note that opens numb's entry was re-ordered, and before `exclusion`
-    stopped copying that note into every row at all; nothing noticed, because nothing compared them (review
-    r2-tests-15). A results file is never rewritten to match today's wording: it would stop being its run's
+    The recorded rows were published before the note that opens numb's entry was re-ordered, and before
+    `exclusion` stopped copying that note into every row at all; nothing noticed, because nothing compared
+    them. A results file is never rewritten to match today's wording: it would stop being its run's
     own output. What is forbidden is a file whose pool or whose grounds are no longer the corpus file's.
     """
     live = lib.accuracy_exclusions()
@@ -544,8 +544,8 @@ def test_numbs_displacement_is_not_established_by_the_rule_and_the_record_says_w
     lag, decode = entry.note.index("+620 ms"), entry.note.index("+690 ms")
     assert lag < decode, "the independent reading leads; the aligner's own residual corroborates it"
     assert "residual" in entry.note[decode : decode + 200], "and is labelled as the aligner's own"
-    # The superlative that used to stand here was false under its own definition of the set (review
-    # r2-spec-10): Kinematic_-_Peyote reads 0.824 on a sheet nothing says is displaced.
+    # The superlative that used to stand here was false under its own definition of the set:
+    # Kinematic_-_Peyote reads 0.824 on a sheet nothing says is displaced.
     assert "highest of the band songs" not in entry.note
     assert "0.40" in entry.note, "what r 0.702 actually clears: the worker's own activity.MIN_CORRELATION"
     higher = {s: q.correlation for s, q in lib.load_corpus_truth().items() if q.correlation > 0.702}
@@ -620,7 +620,7 @@ def test_a_corpus_song_nothing_measured_stops_the_sweep_instead_of_scoring(
     """`discover()` never defaults to "this song scores" — not for an absent file, and not per song either.
 
     A 33rd song added to the corpus used to pool into a label that says 28 of 32 with nothing recording the
-    decision, which is the hole `_no_corpus_truth` exists to close one level up (review r2-spec-11).
+    decision, which is the hole `_no_corpus_truth` exists to close one level up.
     """
     corpus = tmp_path / "corpus-truth.json"
     monkeypatch.setattr(lib, "CORPUS_TRUTH", corpus)

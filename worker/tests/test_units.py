@@ -1,4 +1,4 @@
-"""Script-aware units (W8 stage 1) and the romanised target sequence (stage 2), hermetic.
+"""Script-aware units (stage 1) and the romanised target sequence (stage 2), hermetic.
 
 Four properties carry this module: the units CONCATENATE to the text, a Latin text is untouched by every
 arm, the unit arm changes how spans are GROUPED and not which targets are decoded, and a romanised or
@@ -25,7 +25,7 @@ JA_KANA = "ひらがなのれんしゅう"
 KO = "바다 하늘 구름들"
 EN = "the quick brown fox isn't jumping"
 
-#: A Traditional line whose characters the simplified-only zh-cn vocabulary does not hold — the review's
+#: A Traditional line whose characters the simplified-only zh-cn vocabulary does not hold — the measured
 #: 69%-covered case, which `zh-simplify` exists for.
 TRADITIONAL = "學習愛情與時間"
 
@@ -57,7 +57,7 @@ def han_dictionary(texts: Sequence[str]) -> dict[str, int]:
 def test_words_are_the_scripts_own(language_code: str, text: str, expected: list[str]) -> None:
     """One word per hanzi; a Latin RUN inside a Chinese line stays one word; Korean keeps its spaces.
 
-    Korean is the one deviation from the review's "one word per Hangul block": the TV joins Hangul words
+    Korean is the one deviation from "one word per Hangul block": the TV joins Hangul words
     with a space (docs/arch/04-alignment.md §11.2), so per-block words would publish `오 빤` where the
     sheet wrote `오빤`.
     """
@@ -237,7 +237,7 @@ def test_a_kanji_token_reads_as_a_WORD_and_so_no_mora_owns_its_letters() -> None
 
 @pytest.mark.skipif(not (cutlet_installed and fugashi_installed), reason="the ja extras are not installed")
 def test_no_japanese_syllable_is_published_zero_width_at_its_words_end() -> None:
-    """The defect `WHOLE_WORD` exists for (review r1-tests-15): with every target tagged grapheme 0, the
+    """The defect `WHOLE_WORD` exists for: with every target tagged grapheme 0, the
     first mora absorbed the whole token and every later one was published zero-width at the token's END —
     511 of this corpus's 1229 ja truth morae. The word is still timed either way.
     """
@@ -268,7 +268,7 @@ def test_the_target_romaniser_strips_tones_and_the_display_one_keeps_them() -> N
 
 
 def test_a_word_whose_targets_are_only_PARTLY_attributable_publishes_no_syllables() -> None:
-    """`WHOLE_WORD`'s rule is `all`, which is what makes the guard load-bearing (review r2-tests-15).
+    """`WHOLE_WORD`'s rule is `all`, which is what makes the guard load-bearing.
 
     A `Rules.chars` answering a MIXED list — one fragment read on its own, the rest only as the whole word —
     would otherwise publish one real span and a zero-width tail at the word's end, which is the defect
@@ -298,7 +298,7 @@ def test_a_word_whose_targets_are_only_PARTLY_attributable_publishes_no_syllable
         assert len(word.syllables) == expected, "a target that names no grapheme publishes no syllable"
 
 
-# ── the per-language stage-2 table (W10) ──────────────────────────────────────────────────────────
+# ── the per-language stage-2 table ────────────────────────────────────────────────────────────────
 
 
 def test_every_routed_row_is_keyed_by_its_own_language_and_names_its_bundle() -> None:
@@ -356,7 +356,7 @@ def test_an_operators_named_arm_still_reaches_a_language_no_row_names() -> None:
 
 def test_the_unrouted_control_stands_every_row_down() -> None:
     """The control that puts the whole lane back on whisperx's tables and the whitespace rule — the
-    configuration every row recorded before W10 was measured on, so a re-read of one is reproducible."""
+    configuration every row recorded before the table was measured on, so a re-read of one is reproducible."""
     control = frozenset({units.UNROUTED})
     for code in units.ROUTED:
         assert units.route(code, control) is None
@@ -389,10 +389,10 @@ def test_the_bundle_follows_the_resolved_arm_and_not_the_asked_one() -> None:
 
 
 def test_every_arm_name_this_module_spells_is_a_declared_experiment() -> None:
-    """W6 review r2-tests-15's defect, one wave over: every test and bench caller of the table builds
+    """A defect already seen on another knob: every test and bench caller of the table builds
     `Config(align_experiments=...)` DIRECTLY, so a name missing from `host.config.ALIGN_EXPERIMENTS` left
     the suite green while `ENCORE_ALIGN_EXPERIMENTS=nonlatin-unrouted` — the command docs/arch/04-alignment.md
-    §9.2 prescribes for reproducing a pre-W10 row — made the worker refuse to START. An off switch has to be
+    §9.2 prescribes for reproducing an older row — made the worker refuse to START. An off switch has to be
     settable from the environment to be one, and `nonlatin-unrouted` was not until this test existed."""
     from encore_worker.host.config import ALIGN_EXPERIMENTS, Config
 

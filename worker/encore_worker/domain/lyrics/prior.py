@@ -1,6 +1,6 @@
 """Claim priors as decode INPUTS: an onset bonus, and the mix fused in where the stem is mute.
 
-The review's roadmap item 14. The claims act as Huang 2022's boundary detector: each line's first
+The claims act as Huang 2022's boundary detector: each line's first
 character gets a Gaussian bonus centred
 on its claimed onset and truncated to zero beyond `ONSET_REACH_SEC`, so a claim can tip an ambiguous
 placement but can never reach across the song. `fused` is the second half — inside a claim window where the
@@ -18,12 +18,12 @@ from typing import Any
 import numpy as np
 
 #: Nats added at the claimed onset frame itself — the bonus's peak, and so the cap on what a claim is worth.
-#: FITTED over 0-20 in W10; 8.0 is the pool's optimum and this value is inside the safe region, not on it
+#: FITTED over 0-20; 8.0 is the pool's optimum and this value is inside the safe region, not on it
 #: (LOG.md, "W10: fitting the claim prior's peak").
 ONSET_BONUS_NATS = 4.0
 
 #: The Gaussian's width in seconds. Wider than the ±300 ms the claims are scored at, because what the prior
-#: is for is a line the decode put SECONDS away. Still UNFITTED: W10 swept the peak only.
+#: is for is a line the decode put SECONDS away. Still UNFITTED: only the peak was swept.
 ONSET_SIGMA_SEC = 0.6
 
 #: Where the bonus is truncated to zero. The cap in "capped Gaussian": past it a claim is no evidence at all,

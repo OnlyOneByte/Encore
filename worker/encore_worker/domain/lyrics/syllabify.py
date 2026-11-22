@@ -192,7 +192,7 @@ def _force_count(pieces: list[str], count: int) -> list[str]:
 def _edges(word: str) -> tuple[str, str, str]:
     """`(head, core, tail)`: the leading and trailing NON-LETTER runs, and the letters between them.
 
-    This is review L3's first bug. `str.strip()` removes whitespace alone, so `everything,` reached CMUdict
+    `str.strip()` removes whitespace alone, so `everything,` reached CMUdict
     with its comma and missed; `baby,` the same. The head and tail are re-attached to the outer fragments by
     `syllables`, so the concatenation invariant survives — and an all-punctuation token has an empty core,
     which the caller returns whole.
@@ -238,7 +238,7 @@ def syllables(word: str, language: str = "en") -> list[str]:
     if not core:
         return [word] if word else []
 
-    # INTERNAL HYPHENS SPLIT FIRST (review L3): `la-la-la` is three sung syllables, and handing the whole
+    # INTERNAL HYPHENS SPLIT FIRST: `la-la-la` is three sung syllables, and handing the whole
     # token to a hyphenation dictionary produced `la-l|a-l|a` — fragments straddling the separator. Each
     # run of hyphens is re-attached to the fragment BEFORE it, so the concatenation invariant holds.
     pieces: list[str] = []

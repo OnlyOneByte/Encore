@@ -36,7 +36,7 @@ def _load(name: str) -> ModuleType:
 lib: Any = _load("e2e_lib")
 prov: Any = _load("word_provenance")
 
-#: The four words W8b measured moving FURTHER from truth as they were re-labelled interpolated, at `jit`
+#: The four words measured moving FURTHER from truth as they were re-labelled interpolated, at `jit`
 #: (`band-reopen` on, `_runs/w8a-def-ra` against `_runs/w8ar2-arms-ra`): |published − truth| in ms, before
 #: and after. Every one of them starts inside ±100 and lands outside ±300.
 MEASURED_WORSE = (
@@ -159,7 +159,7 @@ def pair(
 def test_a_word_that_keeps_its_start_and_changes_only_its_label_is_bookkeeping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The case the owner's W8b decision asked about: `aligned` falls, nothing moves.
+    """The case the owner's decision asked about: `aligned` falls, nothing moves.
 
     The published start is the only thing truth can judge, so the verdict is `equal` and the run passes — a
     rule that rejected this would be refusing a change on its accounting rather than on its accuracy."""
@@ -174,7 +174,7 @@ def test_a_word_that_keeps_its_start_and_changes_only_its_label_is_bookkeeping(
 def test_a_word_that_buys_its_new_label_with_a_start_further_from_truth_is_not(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W8b's measured `jit` shape: 28 ms from truth as an aligned word, 301 ms as an interpolated one.
+    """The measured `jit` shape: 28 ms from truth as an aligned word, 301 ms as an interpolated one.
 
     `word_aligned` alone cannot tell this from the test above — both read one word fewer aligned."""
     found = pair(
@@ -253,7 +253,7 @@ def test_the_truth_pairing_comes_from_the_row_not_from_the_text(tmp_path: Path) 
 
 
 def test_a_header_label_does_not_shift_the_word_pairing(tmp_path: Path) -> None:
-    """A published line may carry a label its truth line does not (review M11), so the truth words are its
+    """A published line may carry a label its truth line does not, so the truth words are its
     LAST ones — read off the text, which also proves the pairing instead of assuming it."""
     song = song_of((("hold on", 10.0),))
     labelled = [("CHORUS:", 9.8, -0.4), ("hold", 10.0, -0.4), ("on", 10.5, -0.4)]
@@ -360,10 +360,10 @@ def test_a_mode_the_run_never_measured_is_refused_not_read_as_clean(
 def test_two_runs_that_measured_different_jobs_are_refused_before_a_word_is_priced(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The instrument the W8b decision rests on read `rows.jsonl` and `media/` and never opened `run.json`.
+    """The instrument the decision rests on read `rows.jsonl` and `media/` and never opened `run.json`.
 
     So `w8a-def-tt` against `w8a-def-ra` — a `time_text` run paired with a `run_align` one — printed
-    "TOTAL better 0 equal 0 worse 0" and exited 0, which reads as "the arm moved nothing" (r2-tests-17).
+    "TOTAL better 0 equal 0 worse 0" and exited 0, which reads as "the arm moved nothing".
     `e2e_gates.py`'s rule for the same comparison is explicit: an ERROR, not a warning.
     """
     song = song_of((("hold on", 10.0),))

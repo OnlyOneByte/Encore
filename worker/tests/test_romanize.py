@@ -1,4 +1,4 @@
-"""Display-only romanisation (W8 stage 0): a second script BESIDE the line, never instead of it.
+"""Display-only romanisation (non-Latin stage 0): a second script BESIDE the line, never instead of it.
 
 Two halves. The RULE — which languages have a backend, when a line gets a romanisation at all, and that
 nothing raises — runs with a lambda, so it holds on a box that never installed the `romanize` extra. The
@@ -107,7 +107,7 @@ def test_a_backend_that_raises_costs_that_line_its_romanisation_and_nothing_else
 def test_a_script_no_language_can_be_named_for_is_routed_by_the_SCRIPT(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Review r2-correctness-2: `language.detect` answers `en` for Thai, Bengali, Armenian and ten other
+    """`language.detect` answers `en` for Thai, Bengali, Armenian and ten other
     scripts `SCRIPT_LANGUAGES` cannot name — a FALLBACK, not a script decision — and `en` has no backend, so
     those lines reached the TV unreadable though uroman's universal tables read them. The router is the
     text's own script where its language has no backend (docs/arch/04-alignment.md §11.2).
@@ -174,7 +174,7 @@ def test_uroman_covers_the_scripts_no_dedicated_backend_does() -> None:
 
 def test_a_shipped_backend_leaves_a_latin_line_alone() -> None:
     """The gate is `needs_romanization`, but the backends agree with it, which is what makes a mixed sheet
-    safe if a later wave moves that gate."""
+    safe if a later change moves that gate."""
     if find_spec("pypinyin") is None:
         pytest.skip("pypinyin is not installed: the `romanize` extra is optional by design")
     assert romanize.romanization_of("oh my friend", romanize.build_romanizer("zh")) is None
