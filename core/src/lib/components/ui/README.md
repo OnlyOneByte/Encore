@@ -2,9 +2,9 @@
 
 shadcn-svelte components land **here**, as real files in `src/`. That is the whole reason
 shadcn-svelte was chosen over a headless dependency: copy-in keeps component
-CSS somewhere the source-scanning design guards can still read and edit it. A headless library moves
-that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet cap and a
-`content: '✕'` all become **invisible rather than illegal**.
+CSS in the tree, where a reviewer, a unit test that reads source and Tailwind's single `@source` (§3) can all
+reach it. A headless library moves that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh`
+sheet cap and a `content: '✕'` are out of reach of all three.
 
 **The shadcn migration filled this directory**, and every component in it is wired to a real call site.
 `Label` is reached through `Field.Label` rather than directly; it is the only indirect one.
@@ -167,17 +167,15 @@ This is the one deviation **not** recorded per file, because it is identical in 
 2. Strip every motion utility (§4) and check `var()` references resolve — a name that exists only in
    the `@theme` bridge mints a utility but emits **no** custom property, so reading it as
    `var(--color-popover)` paints nothing. Check each `var()` by hand.
-3. Give it Encore's appearance where the registry's differs, and record **why** in an `ENCORE
-DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
-   makes an `--overwrite` reviewable. Every component here carries one in that exact form bar one; `button/` is
-   the odd one out, using `DEVIATIONS FROM REGISTRY OUTPUT` inside a `<script module>` block because it
-   predates the convention. Its content is the most thorough here — only the marker differs, so a grep for
-   the mandated header misses it.
+3. Give it Encore's appearance where the registry's differs, and record **why** in a comment at the top
+   of the file, naming the test that enforces each item where one does. Those comments are what make an
+   `--overwrite` reviewable. They are free-form prose (`input/input.svelte` opens with one); `button/` keeps its
+   list in a comment inside `<script module>`.
 4. Watch §2 when you write the CSS.
-5. If it replaces something guarded, the guard **follows what it watches** — re-anchor it in the same
-   change, or retire it on the record with its successors named (the retired list at the top of
-   `tests/playwright/world/selectors.ts` is the surviving example of that form). A guard whose premise a change ends must not be left passing
-   vacuously.
+5. If it replaces something a test pins, the test **follows what it watches** — re-point it in the same
+   change, or retire it with its successor named (the retired-ids list at the top of
+   `tests/playwright/world/selectors.ts` is the example of that form). A test whose premise a change ends
+   must not be left passing vacuously.
 6. Look at it. The four worst defects of the migration were all correct in source and wrong on screen, and every one
    was found by comparing before/after screenshots — the `shot` Playwright project is the capture
    script, and it runs against either tree.

@@ -255,9 +255,8 @@
 	   (an alias that sets no font-size), and that comment. No tally is printed here any more — the one that was went
 	   stale twice, once silently — and tests/unit/lib/type-ladder.test.ts asserts instead that every rung on this
 	   ladder is read by at least one rule and that nothing spells a rung this block does not declare.
-	   THE TOP OF THE LADDER ENDS 24 → 41.6px AND THAT GAP STAYS OPEN — which is HALF of the design review's
-	   type-scale finding left standing, so docs/UI-DESIGN-REVIEW.md carries finding 3 as PARTIAL rather than as
-	   fixed, and tests/unit/lib/type-ladder.test.ts re-derives the rung values, the ratios and the retirement this
+	   THE TOP OF THE LADDER ENDS 24 → 41.6px AND THAT GAP STAYS OPEN, by ruling: docs/UI-DESIGN.md §3 records
+	   why, and tests/unit/lib/type-ladder.test.ts re-derives the rung values, the ratios and the retirement this
 	   block quotes. A 2rem rung between them was tried and REMOVED, because nothing asked for it:
 	   `--ph-text-3xl`'s 2.6rem is spelled by exactly one rule in the whole app (/stats' `.primary .n`) and it is a
 	   DISPLAY size, not the next step of a reading ladder — the jump from /stats' secondary tiles at 2xl to its one

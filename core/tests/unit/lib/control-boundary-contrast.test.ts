@@ -11,7 +11,7 @@ import { cn } from '$lib/utils';
  * featureless slabs. The obvious fix — brighten `--line` — is the WRONG one, because `--line` is the decorative
  * edge of every card, list row, table head, tab strip, chip, spinner and skeleton in the app and 1.4.11 exempts a
  * purely decorative boundary, so raising it would brighten the whole app to fix six borders. Hence `--control-line`,
- * and hence assertion 2 below, which forbids the wrong fix.
+ * and hence assertion 2 below, which forbids the wrong fix. The rule this file holds is docs/UI-DESIGN.md §1.
  *
  * THE ONE COUNT IN THIS FILE is `var(--line)`'s file count, and it is asserted EXACTLY rather than printed in prose.
  * This header and `docs/FRONTEND.md` each used to carry it as a sentence, the two disagreed with each other and with
@@ -205,7 +205,7 @@ const BOUNDARIES: { file: string; why: string; needle?: string }[] = [
 	{ file: 'src/lib/components/ui/native-select/native-select.svelte', why: '.encore-field, fill --card2' },
 	// The wrapper IS the field's boundary: `.findbox input` is `border: 0`.
 	{ file: 'src/lib/ui/FindField.svelte', why: '.findbox, fill --card' },
-	// The review's headline symptom, and NOT reachable through any form primitive: the boxes are
+	// The join screen's room-code boxes, NOT reachable through any form primitive: the boxes are
 	// `class="segment card"` and take app.css's `.card` hairline unless `.segment` overrides it.
 	{ file: 'src/lib/components/CodeEntry.svelte', why: '.segment room-code box, fill --card' },
 	{ file: 'src/routes/settings/+page.svelte', why: "input[type='color'].colour" },
@@ -284,7 +284,7 @@ test('the vendored checkbox is the only documented exception, and still measures
 	expect(contrastRatio(token('line'), token('card'))).toBeCloseTo(1.23, 2);
 });
 
-/** The third boundary the review named, and the one that took a RING rather than a repaint. It is worth its own
+/** The one boundary that took a RING rather than a repaint (docs/UI-DESIGN.md §1). It is worth its own
  *  test because the tempting fix is to brighten --track-bg, which would repaint Bars, TvProgress, SongRow and /tv
  *  for one control — the same shortcut the --line assertion above forbids. */
 test('the slider rail identifies the control, and a rail FILL could not have done it', () => {
@@ -316,7 +316,7 @@ test('the slider rail identifies the control, and a rail FILL could not have don
 });
 
 test('--line-strong bounds nothing but INERT controls, which 1.4.11 exempts by name', () => {
-	// The review flagged --line-strong (1.57:1 on --card) "where it bounds a control". Both such sites are
+	// --line-strong (1.57:1 on --card) is under 3:1, so it may not bound a LIVE control. Both of its sites are
 	// disabled states — the dashed `keycap` and the slider thumb's `data-disabled:` — and 1.4.11's exception list
 	// starts with "inactive user interface components". If a LIVE control reaches for it, that reasoning is gone.
 	expect(contrastRatio(token('line-strong'), token('card'))).toBeLessThan(NON_TEXT);

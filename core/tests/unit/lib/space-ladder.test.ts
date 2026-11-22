@@ -62,7 +62,7 @@ test('the ladder is nine rungs, in order, and no adjacent pair is closer than 1.
 	/* KEPT AS AN EXACT SET, and it cannot cry wolf: every figure in this test is read from `app.css`'s own
 	   declarations, so no component can red it — only an edit to the ladder itself, which is a design ruling that
 	   should stop the build. NAMING the pairs rather than counting them is what proves the clause `app.css` and
-	   `docs/UI-DESIGN-REVIEW.md` both state; a bare `toHaveLength(2)` said nothing about WHICH two. */
+	   `docs/UI-DESIGN.md` §2 both state; a bare `toHaveLength(2)` said nothing about WHICH two. */
 	const named = rungs.slice(1).map((r, i) => [`${rungs[i]!.name}->${r.name}`, r.px / rungs[i]!.px] as const);
 	expect(
 		named

@@ -195,7 +195,7 @@ be read on this box" apart from "the filter rejected every entry", and `catalogu
 the suite's eight call-through sites where the catalogue comes back empty. Measured on this project's Mac
 with the socket open and `/tmp` cold, the first probe took **901.7 s** — it fetches upstream's model metadata
 — against **0.0 s** for the second, so the answer is a `functools.cache`d per-process environment fact rather
-than a question asked eight times (review W9 r2-spec-10; `tests/test_zoo.py` pins the one construction).
+than a question asked eight times (`tests/test_zoo.py` pins the one construction).
 
 A catalogue entry therefore falls into one of **three** role cases, and the middle one is why the role
 measurement exists at all. **Declared** — the metadata names a vocals side and a backing side, still verified
@@ -941,8 +941,9 @@ every guarded call runs inside `asyncio.to_thread`, so the contention is between
 WHY it exists, in a few lines; measurement narratives, threshold provenance, rejected alternatives, failure
 accounts, per-song numbers and the history of the wave that produced them belong in a document, with the code
 pointing at it by path. A measured NUMBER may be moved but never deleted — if it leaves a docstring it lands
-in a document, and `_tools/verify_numbers.py --strict --durable` re-reads a frozen manifest of every numeric
-token the prose used to carry and fails on a `LOST` row.
+in a document. During the cleanup that was checked by a lossless scan over a frozen manifest of every numeric
+token the prose carried (`_tools/verify_numbers.py`, `_tools/prose_scan.py`); those were working-tree tools
+and are not committed, so nothing in this repository runs that check today.
 
 **Why bounds per KIND of prose.** W7b measured the package at 48% prose (3 685 comment lines and 7 577
 docstring lines against 12 252 of code) and moved ~3 800 lines out, under one bound: "no prose block over 40
@@ -968,8 +969,7 @@ three legitimate paragraphs, so W7c replaced it with one number per kind, in
 | 10. consecutive comment overlap | 0.6 Jaccard on content words | `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' `#:` block verbatim: three index claims that were false of its own tuple, and the arms' real semantics deleted. Set in the gap the tree measures — the one real pair **0.889**, the next **0.436** over **773** adjacent disjoint pairs — so a pasted block fails and two comments about related constants do not (review r2-correctness-1). |
 
 **Where the package's own ratio was read.** Rule 8's row quotes **0.82** for the `w7c-start` snapshot, measured
-with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code = 0.8173;
-`_tools/prose_scan.py`'s different convention reads 0.801 on the same tree). The figure the row first carried,
+with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code = 0.8173). The figure the row first carried,
 **0.745**, is the same measure taken MID-WAVE — after the first pass over the largest blocks had already landed
 — so it was never the pre-wave baseline it was quoted as (review r1-tests-11). For the same reason the 1.21 is
 `w7b-start`'s, which this measure reproduces exactly, which is how the method was checked.
@@ -978,14 +978,14 @@ with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code
 docstrings nor `#` continuation nor a bare blank line splits an essay into passing halves — which an
 adjacency-only rule allowed, and a blank line every 30 lines defeated.
 
-**Which roots the rules bind on, and the LOSSLESS gate with them.** All five shape rules, the block rule and
+**Which roots the rules bind on.** All five shape rules, the block rule and
 the comment-overlap rule read **four** roots: the package
 `worker/encore_worker`, the worker's own tests, and BOTH committed bench harnesses —
 `docs/benchmarks/forced-alignment/scripts` and `docs/benchmarks/stem-separation/scripts`. W7b swept the package
 only; W7c extended the per-kind rules outwards, which cost 239 edits across 68 test modules and 12
 forced-alignment scripts, plus 4 in the three stem-separation scripts (three module docstrings of 24, 23 and 23
 lines and one 12-line def docstring, all of whose narrative the stem-separation README already carried — the
-first pass left that root out of `ROOTS` silently, which is review r1-correctness-2). The ratio rules stay the
+first pass left that root out of `ROOTS` silently). The ratio rules stay the
 package's, with each other root held to an aggregate instead: a test file is many small functions each
 honestly carrying two lines of WHAT, and a gate script is a measurement argument with a `main()` attached, so
 a per-module 0.55 there would delete short docstrings that are exactly the right length. The roots are a claim
@@ -993,58 +993,13 @@ about coverage, so `test_the_shape_rules_say_where` and `test_every_root_has_mod
 tuple, the per-root module floors and that no two roots share a label (both harness directories are called
 `scripts`, and one label for two roots would merge their worst prose), and `test_the_shape_rules_say_where`
 also holds the root COUNT this module's own prose spells, rule 2's docstring having gone on saying three for a
-whole wave after the fourth arrived (review r2-correctness-6).
+whole wave after the fourth arrived.
 
-The LOSSLESS gate must bind on the same four, and did not: `_tools/prose_scan.py`'s `ROOTS` and
-`_tools/verify_numbers.py`'s `CODE_GLOBS` both omitted the stem-separation harness, so the ~50 docstring lines
-the sweep deleted there were never scanned into the manifest and "0 LOST" said nothing about them (review
-r2-spec-8, r2-tests-14). Both now list all four, and W7c re-froze the manifest from the `w7c-start` TREE over
-them: **4 139 → 4 179 numbers, 2 889 → 2 922 strict-substantive rows** (the fourth root contributing 40 and 33
-respectively, over 3 files and 30 blocks), verified **0 LOST** — 2 611 code, 311 doc, under Python 3.12.
-`verify_numbers.main` now asserts the manifest's own `roots` equals `prose_scan.ROOTS` and that `CODE_GLOBS`
-can read every one of them, so the two scopes cannot drift apart again silently.
-
-**THOSE TWO PAIRS ARE W7c's HISTORY, NOT THE LIVE MANIFEST'S** (review W9 r2-correctness-5). The
-pre-widening pair is the preserved `$ENCORE_BENCH_ROOT/_prose/numbers.three-roots.w7c-start.json`, which still
-names its own tree (`frozen_from: "shadow tag w7c-start (2026-10-02 15:58:51 -0500), all three roots,
-STRICT"`); the four-root file the arrow points at has since been superseded twice.
-
-**THE LIVE MANIFEST IS W10's, AND IT NAMES ITS TREE.** The 2026-10-05 freeze — **4 081** numbers, **2 894**
-strict-substantive rows — was run before `prose_scan.py` required `--frozen-from`, so it reported
-`frozen_from: "UNRECORDED — this manifest cannot say which tree it speaks for"` and the gate's baseline spoke
-for a tree nobody had written down. W10 re-froze from the `w10-start` TREE:
-`_prose/numbers.json` now holds **4 565** numbers and **3 196** strict-substantive rows over **175** files in
-all four roots and reports `frozen_from: "shadow tag w10-start (2026-10-16 20:23:10 -0500), all four roots,
-STRICT"`, verified **0 LOST** under Python 3.12 — 2 979 code, 206 doc, 11 fixture. (The one row that first
-came back `LOST` was real and pre-existing: `domain/lyrics/prior.py`'s `Huang 2022` citation had no durable
-home outside the gitignored review, and it is now in [`04-alignment.md`](04-alignment.md) §3.2 with both
-arxiv ids.) The superseded freeze is preserved beside it as `_prose/numbers.unrecorded-2026-10-05.json`, so
-the 4 081 / 2 894 pair this paragraph quotes is still readable where it was measured.
-
-**A FIXTURE'S OWN NUMBERS ARE TERMINAL, and the gate now says so (W9).** Widening the scan to `worker/tests`
-left a contradiction behind it. W7b ruled that a fixture's numbers belong BESIDE the fixture and kept the
-worker's tests out of the lossless gate's strict scope on that basis; W7c put them in without revisiting the
-ruling and gave the 29 rows that first surfaced doc homes here and in [`04-alignment.md`](04-alignment.md)
-§17 — relocating what W7b had called terminal. That did not hold: the gate then reported eleven more `LOST`
-rows as the tests changed, every one of them a number still standing, in the prose of
-`tests/test_align_provenance.py` (nine, at its `_late_opening` and `_SAME_BATCH_CLAIMS` fixtures),
-`tests/test_coherent_offset.py` (one) and `tests/test_prose_shape.py` (one). W9 resolves it in W7b's
-direction: the tests stay in scope for every shape rule and for the scan, and prose in a
-`verify_numbers.TERMINAL_PROSE_ROOTS` root is itself a durable home, reported as `fixture`. What `--durable`
-refuses is prose the cleanup is RELOCATING out of the package into `docs/`, which is why package prose is
-still not a home; a line like "line [4] is heard … by its own window and … by the global pass" describes the
-three lines of setup under it, is committed, and has no document it could move to that would not make the
-fixture unreadable. (The eleven magnitudes are deliberately NOT quoted here: a doc home would be the one
-thing the ruling says they do not need, and quoting them would make the count below stale on the day it
-shipped.) The reading on the shipped tree, Python 3.12, against W10's `w10-start` manifest: **3 196**
-strict-substantive rows, **0 LOST**, 11 of them terminal fixture prose (W9 read 2 894 rows and the same 11
-against the 2026-10-05 manifest). The `code` / `doc` split of the rest is NOT quoted, because one doc edit moves
-a row across it and the gate checks magnitudes rather than homes, so it cannot catch the drift: it read
-2 695 / 188 when this paragraph was written and 2 696 / 187 two doc edits later (review W9 r1-tests-17). Run
-the gate for the live split. It is not a blanket pass, which was checked on a throwaway tree: deleting the
-number from the test's prose turns the row `LOST` again, and a number in package prose stays `LOST`.
-`TERMINAL_PROSE_ROOTS` is also asserted to be a subset of `prose_scan.ROOTS`, so a typo in it grants nothing
-rather than silently excusing a root.
+**A fixture's own numbers are terminal.** The lossless scan (not committed, see above) treated prose in
+`worker/tests` as a durable home of its own: a number in a test's prose describes the setup under it and has
+no document it could move to without making the fixture unreadable, while package prose was not a home and
+had to move to `docs/`. That was not a blanket pass, which was checked on a throwaway tree: deleting the number
+from the test's prose turned the row `LOST` again, and a number in package prose stayed `LOST`.
 
 **What a test docstring keeps.** The claim it pins, and the WHY that makes the claim worth pinning — commonly
 the mutation that used to survive, named in one clause. What it does not keep is a re-derivation of a
@@ -1059,25 +1014,25 @@ blocks above. `TIGHTEST` names the module or layer sitting closest to each bound
 claim goes stale, so the next wave moves a paragraph instead of raising a number. The MEASURE itself is held
 too: `test_the_measure_still_sees_prose` floors what `_prose_lines` and `_longest_block` return and pins the
 bridging rule on a synthetic module, because zeroing the measure used to leave all 24 tests green — rules 5 to
-9 all read it, and `TIGHTEST`'s own check passes on a tie at zero (review r1-spec-8).
+9 all read it, and `TIGHTEST`'s own check passes on a tie at zero.
 
 **What a grant can reach.** Rules 1-4 are keyed `"<label>::<qualname>"` and rule 5 by `"<label>::<block>"`, a
 block spanning whatever docstrings and comment runs touch it and so having no qualname of its own. Rule 5 read
 `EXCEPTIONS` not at all until W7c's review: the hatch could sanction a 9-line def docstring and not a 19-line
-one, i.e. not the length it exists for, and nobody could learn that except by mutating the tree (review
-r2-tests-13). Rules 3 and 4 still have no route — a comment run has no stable name, so shorten it or make it a
+one, i.e. not the length it exists for, and nobody could learn that except by mutating the tree.
+Rules 3 and 4 still have no route — a comment run has no stable name, so shorten it or make it a
 docstring and argue there — and `test_every_named_exception_is_still_needed` deletes any grant, block or
 docstring, whose target has come back inside its bound.
 
 **A quoted ratio is a CEILING, not a pin.** `MEASURED_ROOT_RATIO` shipped as an equality at ±0.005, and the
 stem-separation root had **0.9 lines** of headroom: deleting three docstring lines from it failed the suite,
-which is the 2026-10-01 directive's own remedy breaking the ratchet that enforces it (review r2-tests-12). The
+which is the 2026-10-01 directive's own remedy breaking the ratchet that enforces it. The
 rule is now one-sided — a reading that rounds ABOVE the quote fails at once, since that direction claims less
 prose than the root carries, and a reading below it costs a re-quote only past `QUOTE_STALE_ABOVE` = **0.05**.
 A retracted figure is held too: `RETRACTED_RATIOS` names each one and
 `test_a_retracted_ratio_is_never_republished_as_a_reading` fails a paragraph of this document or of the
 measurement README that quotes one outside a retraction, which is how **0.745** came to be published here as
-withdrawn and in the README as a reading, in the same wave (review r2-correctness-2).
+withdrawn and in the README as a reading, in the same wave.
 
 **What the layers measured, before and after.** At the directive the orchestration layer `steps/` read **1.80**
 prose lines per line of code and **0.78** after W7b; `domain/` and `adapters/` read **1.02** and **0.89** before
@@ -1091,18 +1046,18 @@ above the bound a layer at 0.78 would fail).
 `docs/` path the code cites, every `path §N`, every cited README section title and every `XA-`/`XW-` invariant
 id, and fails a citation that leads to a gitignored working document — because a pointer to nothing loses
 exactly what the cleanup moved. Its roots are the package, both bench harnesses and `worker/tests`: until W7c
-only the invariant-id rule read the tests, so the pointers the sweep left in test prose were unchecked
-(review r1-correctness-5). That population, read off the shipped tree as the rules read it and as OCCURRENCES
+only the invariant-id rule read the tests, so the pointers the sweep left in test prose were unchecked.
+That population, read off the shipped tree as the rules read it and as OCCURRENCES
 — the denominator the first figure never stated — is **72** `docs/` paths over **19** distinct, **26**
 `path §N` and **8** README titles; it is a FLOOR in `MIN_TEST_POINTERS`, so widening the roots cannot be undone
-quietly. The 57 and 11 this paragraph first carried reproduce on no tree and under no reading (review
-r2-correctness-5). The invariant-id rule runs both ways now: every cited id must be a row (so a deleted row
+quietly. The 57 and 11 this paragraph first carried reproduce on no tree and under no reading.
+The invariant-id rule runs both ways now: every cited id must be a row (so a deleted row
 breaks the suite) and every DECLARED row must be cited from code, which 9 of the 14 `XW` rows were not —
 `XW-12`'s only citation was `test_docs_pointers.py`'s own `#:` example, so the module that holds it never named
 it. W7c put each id at the site its "Where held" column names, `UNCITED_INVARIANTS` is EMPTY, and a citation
-from the declaring module does not count (review r2-tests-15). The floor moved with the population too:
+from the declaring module does not count. The floor moved with the population too:
 **143** citations over all **31** ids, so `MIN_INVARIANT_CITATIONS` is **110** rather than the 50 it was left at
-while the wave tripled the count (review r2-correctness-4). **One open item, named rather than
+while the wave tripled the count. **One open item, named rather than
 silent.** The ANCHOR rule — every `§N` in prose must sit near a committed document path, or it means the
 gitignored review — still skips `worker/tests`, which carries **29** bare `review §N` marks across 14 modules
 (W7c re-pointed 7 of 36 at the committed section they meant). `UNANCHORED_IN_TESTS` ratchets that count

@@ -5,7 +5,7 @@ import { at } from '$test';
 /*
  * guard: `/library`'s head is a GRID CELL from --bp-lg up, and costs nothing below it.
  *
- * The design review's F5 ("desktop is a stretched phone") was answered once by capping the filter field at
+ * "Desktop is a stretched phone" was answered once by capping the filter field at
  * `--measure-prose`. That bounded the field and RELOCATED the non-composition: measured in headless Chromium at
  * 1440x900 on this tree's catalog, the capped field painted 560px inside a 1016px column, so 456px of the column
  * trailed it empty while the count and the `Sort & filter` disclosure stacked beneath it in their own full-width

@@ -291,7 +291,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 				atRest.stripPresent && atRest.transportButtons === 0,
 				'CLAIM 3 an IDLE room keeps the strip (one dock height) but shows NO transport: ' +
 					`strip present=${atRest.stripPresent}, ${atRest.transportButtons} ${SEL.npTransport} on a freshly joined ` +
-					"room with nothing playing and nothing queued — a transport here is the design review's dead play button"
+					'room with nothing playing and nothing queued — a transport here is a play button that does nothing'
 			)
 			.toBe(true);
 		// THE PAIR IS EXACT, and it is the half that says the value was WRITTEN by the layout's measurement rather

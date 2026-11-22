@@ -45,7 +45,7 @@ at the front is skipped without losing its fairness position (the **held-slot ru
 | ------- | ------------------------------------ | -------------------------------------------------------------- |
 | Runtime | **Bun 1.3.14**                       | native WS pub/sub, `bun:sqlite`, `Bun.spawn`, one core process |
 | UI      | **SvelteKit + Svelte 5 runes**, PWA  | small bundle, fine-grained updates, phone-first                |
-| Adapter | `svelte-adapter-bun`                 | SvelteKit handler and WS hub served by `server.ts`             |
+| Adapter | `svelte-adapter-bun`                 | SvelteKit handler and WS hub served by `core/server.ts`        |
 | DB      | **Drizzle + bun:sqlite**, WAL        | durable index and party state without another service          |
 | Worker  | **Python**                           | isolates the multi-GB ML stack from core                       |
 | Media   | yt-dlp + ffmpeg                      | source resolution, decode, encode, probing                     |
@@ -57,12 +57,16 @@ Bun's primitives map directly to it.
 Repository shape:
 
 ```
-src/lib/contract/  realtime contract + pure shared reducers, imported by browser AND server
-src/               SvelteKit surfaces, the authoritative backend under src/lib/server/
-server.ts          Bun.serve entry: the SvelteKit handler and the WS hub in ONE process
-worker/            dial-home Python worker + separator/WhisperX processors
-tests/             guards, unit tests, and the browser e2e drivers
-docs/              this file, LAYOUT, SERVER, FRONTEND, GUARDS, E2E, plus arch/ and deploy/
+core/                       the Bun + SvelteKit app
+  src/lib/contract/         realtime contract + pure shared reducers, imported by browser AND server
+  src/                      SvelteKit surfaces, the authoritative backend under src/lib/server/
+  server.ts                 Bun.serve entry: the SvelteKit handler and the WS hub in ONE process
+  drizzle/                  SQLite migrations
+  tests/                    unit/ (bun test) and playwright/ (browser e2e)
+worker/                     Python worker: encore_worker/ package, tests/, pyproject.toml
+docker/                     core and worker Dockerfiles, compose files (base, cuda, intel), .env.example
+docs/                       this file, LAYOUT, SERVER, FRONTEND, TESTS, E2E, plus arch/, benchmarks/, deploy/
+dev.sh                      local dev runner: core + worker natively, no Docker
 ```
 
 ## 3. Authority and realtime
@@ -105,20 +109,20 @@ The mechanism is intentionally small:
 6. Revision gap or reconnect requests `queue:sync`; pending operations rebase and resend
    idempotently.
 
-`src/lib/contract/queue/rotation.ts` is imported by both sides. Never fork its logic. Validate every
+`core/src/lib/contract/queue/rotation.ts` is imported by both sides. Never fork its logic. Validate every
 client field before it reaches state/SQLite — one missing `singerId` once killed the whole server.
 
 ### Where the client's copy of that truth lives
 
 The phone's half of the loop above is owned by ONE object rather than by a route.
-`src/lib/stores/room.ts` holds `RoomLink` and the `room` singleton: the `/api/me` probe, the
+`core/src/lib/stores/room.ts` holds `RoomLink` and the `room` singleton: the `/api/me` probe, the
 `QueueStore`, the `WsClient`, and every field the room broadcasts into — playback, singers, the media
 catalog, effective settings, the away set, live process statuses, and the saved library. Surfaces
 **subscribe and mirror** the fields they render.
 
-All of it used to be CONSTRUCTED in `src/routes/+page.svelte`'s `onMount`, which made a route the owner
+All of it used to be CONSTRUCTED in `core/src/routes/+page.svelte`'s `onMount`, which made a route the owner
 of app-wide truth, and that had one consequence which finally forced the move: a component mounted in
-`src/routes/+layout.svelte` could not read the playback state, because the only thing that knew it was a
+`core/src/routes/+layout.svelte` could not read the playback state, because the only thing that knew it was a
 sibling route component. Persistent chrome was therefore impossible rather than merely awkward, and the
 socket is simply not a property of a route — one phone joins one room once.
 
@@ -127,7 +131,7 @@ Three properties of the owner are deliberate:
 - **It is a plain class with an explicit `subscribe`, not a rune-backed `.svelte.ts` store.** A
   module-level `$state` singleton is shared across SSR requests on the server, which is a cross-request
   leak waiting to happen; plain fields that only ever move in the browser cannot leak that way.
-  `src/lib/stores/queue.ts` beside it already established subscribe-and-mirror and is tested that way,
+  `core/src/lib/stores/queue.ts` beside it already established subscribe-and-mirror and is tested that way,
   so a second idiom in one directory is a thing every reader learns twice. And mirroring per component
   means the strip does not re-render on a library merge it does not read.
 - **The socket lives for the DOCUMENT, not the route.** `connect()` is idempotent and browser-only, and
@@ -135,7 +139,7 @@ Three properties of the owner are deliberate:
   `close()`
   exists for a test; the document closing takes the socket with it. A guest who has not joined settles
   with no socket at all.
-- **The root layout gates connecting on a not-a-phone list.** `src/routes/+layout.svelte` is the ROOT
+- **The root layout gates connecting on a not-a-phone list.** `core/src/routes/+layout.svelte` is the ROOT
   layout, so it wraps the television: an ungated `room.connect()` would open a second `role=phone`
   socket on `/tv` — which already holds its own `role=tv` one — and register the television as a singer
   present in the room. The list is deliberately the same four exemptions the phone-route walk already
@@ -154,7 +158,7 @@ replaces the catalog and wipes the very row the scar exists to survive a reload.
 
 Chrome first, because it is what the ownership above bought.
 
-`src/lib/ui/NowPlayingStrip.svelte` and `src/lib/ui/TabBar.svelte` are mounted together by the layout, inside
+`core/src/lib/ui/NowPlayingStrip.svelte` and `core/src/lib/ui/TabBar.svelte` are mounted together by the layout, inside
 one fixed `.dock` wrapper, as the bottom-most chrome of every joined phone surface. The strip carries who is
 singing, the song, and the transport; the tab bar carries the three tabs. `position: fixed` lives on the
 wrapper rather than on either component, because `/components` renders them standalone to show every state and
@@ -176,7 +180,7 @@ the gap.
 The live controls — ±key with the vocal range beneath it, the guiding-track level, and the door to lyrics
 re-selection — sit on the **Queue tab's now-playing card**, above the queue list. They act on what is PLAYING,
 and the playing song is not in the queued list, so putting them below the list would separate a control from
-its subject by the whole scroll height of a party's queue. `src/lib/components/GuidingTrack.svelte` wraps a
+its subject by the whole scroll height of a party's queue. `core/src/lib/components/GuidingTrack.svelte` wraps a
 slider that reads `offsetWidth` and must not mount hidden; a route that renders its content unconditionally
 satisfies that without the portal-on-open dance a sheet needed.
 
@@ -191,17 +195,11 @@ The routes then divide by the question each answers:
 
 Three of those are reversals worth recording rather than quietly dropping.
 
-**The now-playing SHEET is gone, and it is the largest reversal in this file.** A persistent band pulled up
-into a vaul drawer holding the live controls — 1073 lines across `NowPlayingBand`, `NowPlayingDrawer` and
-`sheet-snap`, plus `vaul-svelte` and `bits-ui` as a 201.72 kB raw / 57.97 kB gzip chunk the root layout went to
-real lengths to defer and then warm. The reason it went is a PRODUCT fact rather than a budget: Encore's
-now-playing surface is the TELEVISION, so the phone never needed one. A phone that is a remote and a queue
-needs a line of text and three buttons, and the sheet's whole apparatus — a constant snap 0 because the array
-cannot be replaced under a live pointer, a lazy watch written through `null` on every re-seat, pointer-capture
-workarounds so a drag does not fire a click, drag exclusion, a hand-rolled debounced resize re-seat — existed
-to make a third-party sheet behave. The owner reported it expanding on its own and covering the page; that
-class of defect was structural to the arrangement, not a bug in it. Its controls moved to `/queue`, which is a
-change of PLACE and not of content.
+**There is no now-playing sheet on the phone.** The reason is a PRODUCT fact rather than a budget: Encore's
+now-playing surface is the TELEVISION. A phone that is a remote and a queue needs a line of text and three
+buttons, which is what `NowPlayingStrip.svelte` is; a draggable sheet over the page would need snap points,
+pointer-capture and resize handling to stay out of the way of the content beneath it. The live controls sit
+on `/queue`'s now-playing card instead.
 
 **The hero is gone.** Home used to open with a card for a song someone else is singing, which spent the
 top third of the screen on the one thing a guest cannot act on, pushed the rotation down the page, and —
@@ -251,7 +249,7 @@ pruned on apply and hydrate. A not-ready file entry is skipped by `isEntryReady`
 `rotationSeq`, so processing never burns a singer's turn.
 
 WHICH ordering is a room setting (`RoomSettings.queueOrder`), and the registry is
-`src/lib/contract/queue/queue-order.ts` (built with `makeRegistry`, like every other flat registry): fair
+`core/src/lib/contract/queue/queue-order.ts` (built with `makeRegistry`, like every other flat registry): fair
 rotation (the default and the pre-setting behaviour),
 first-come-first-served, a stable shuffle, and whoever-sang-longest-ago. Adding one is a registry
 entry plus one pure function — as long as it needs nothing but the queued entries and `Ordering`.
@@ -359,7 +357,7 @@ shown. `prefers-reduced-motion: reduce` draws one still frame and stops.
 
 ### Colour tiers
 
-Two OKLCH tiers, both generated by `hueToHex` in `src/lib/contract/presentation/colors.ts`, and the split is a
+Two OKLCH tiers, both generated by `hueToHex` in `core/src/lib/contract/presentation/colors.ts`, and the split is a
 legibility bound rather than taste:
 
 | tier   | L / C       | used for                                                                                                     |
@@ -376,8 +374,8 @@ Raising either tier's lightness regresses the lyrics. Tests assert the bound (wh
 active pink clears 3:1, on all 24 wheel stops) rather than any literal hex.
 
 **The stage tier no longer bounds the room's own colour**. The room used to store a hue angle
-and every stage went through `stageHueToHex`, which made the tier an inescapable legibility bound. The
-owner retired that bound and moved the job it was doing onto the thing it protected: the lyric reel
+and every stage went through `stageHueToHex`, which made the tier an inescapable legibility bound. That
+bound is gone, and the job it was doing moved onto the thing it protected: the lyric reel
 paints its own `-webkit-text-stroke` outline, which holds on any field _and_ over a music video,
 which a bound on the stage colour could never reach. So `RoomSettings.tvBackgroundColor` is a real hex
 rendered verbatim — a room may pick white — while the tier still governs every colour nobody chose by
@@ -400,7 +398,7 @@ player: nothing plays unprocessed, so there is nothing to embed. If up-next chan
 for the new entry. Skip is a synthetic `ended`. Switching the room's **Song intro** off gives a pure hard-cut; default is
 the short singer-reveal moment.
 
-Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.
+Implementation: `core/src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.
 
 ## 6. Media identity and storage
 
@@ -543,9 +541,10 @@ not titles, name files. `safeMediaPath` performs containment per root.
   with the instrumental is also what makes the two decode to a sample-exact common start.
 - The **guide mix** is both stems in ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals), split apart
   in WebAudio on the TV. It exists so the guiding track shares the instrumental's playhead and cannot
-  drift; two media elements are two clocks and cannot be sample-locked from script. Written only when the
-  two stems measure aligned, because one playhead makes the alignment permanent. `ENCORE_GUIDE_MIX=0`
-  turns it off. It roughly DOUBLES a song's derived stem bytes, which is the cost of the guarantee.
+  drift; two media elements are two clocks and cannot be sample-locked from script. Written whenever the
+  separation produced a vocals stem, and best-effort: a failed guide-mix encode publishes the stems alone
+  (`worker/encore_worker/steps/separate_steps.py`). It roughly DOUBLES a song's derived stem bytes, which is
+  the cost of the guarantee.
 - Demucs emits 44.1 kHz; removing explicit `-ar 44100` is hygiene, not a sample-rate change.
 - Stereo is the source ceiling; a 5.1.2 receiver upmixes it.
 - `ENCORE_MEDIA_MAX_GB` is an optional soft cap; eviction is derived-only, true-LRU.
@@ -618,7 +617,7 @@ kept the job `assigned` and the song sat at 0%, which reads like a hung download
 assignment.
 
 The worker's stems path is orchestration, not numeric computation: it builds argv, spawns tools, and
-parses progress. This is why separator engines can change behind the existing `Processor` protocol.
+parses progress. This is why separator engines can change behind the `Separator` protocol (`worker/encore_worker/adapters/ports.py`).
 
 ### Where audio comes from: the fetcher axis
 
@@ -636,7 +635,7 @@ first-class fetcher rather than an absence: "already here" is exactly the case t
 can separate it need not be the same machine. That is what makes a credentialed fetcher droppable later
 without touching dispatch; `local` carries no capability because there is nothing to route.
 
-The registry in `src/lib/contract/process/fetchers.ts` whitelists what is possible so a stored setting can be
+The registry in `core/src/lib/contract/process/fetchers.ts` whitelists what is possible so a stored setting can be
 validated and a picker rendered from one source; the _choice_ is a setting, not a per-request argument.
 
 A `fetch` finishes by **identifying** what it downloaded (see §6 Metadata provenance). Annotation is a
@@ -659,9 +658,9 @@ Separation is selected along three independent axes:
 
 | Axis        | Chosen by  | Meaning                                                           |
 | ----------- | ---------- | ----------------------------------------------------------------- |
-| **engine**  | the room   | which algorithm family — `demucs`, `roformer`, `ensemble`         |
+| **engine**  | the room   | which algorithm family — `demucs`, `roformer`, `audiosep`         |
 | **model**   | the room   | which checkpoint within that engine, from a fixed whitelist       |
-| **backend** | the worker | how that engine executes on this box — `torch`, `mlx`, `openvino` |
+| **backend** | the worker | how that engine executes on this box — `torch`, `mlx`             |
 
 Engine and model are audible choices and live in room settings, broadcast to every client. Backend is
 a property of the hardware a worker happens to run on and is never user-visible: the same `demucs`
@@ -672,21 +671,18 @@ token, so a heterogeneous fleet works without the core knowing anything about ha
 demucs/torch worker advertises exactly `stems`, which keeps single-capability workers unchanged;
 other combinations extend the token per **engine** (`stems:roformer`). The backend the engine
 runs through is deliberately absent from the token — it is a property of the box, not a routing
-choice, per the rule above — so an MLX worker still advertises `stems`, not `stems:mlx`.
+choice, per the rule above — so an MLX worker running demucs still advertises `stems`, not `stems:mlx`.
+(`stems:melband-mlx` is a different MODEL in `worker/encore_worker/adapters/registry.py`, not the demucs
+backend.)
 
-Backend selection is probed, never assumed. Auto-selection picks the fastest genuinely available
-option and falls back to torch/CPU, which works everywhere. An **explicitly configured** backend or
-device that is unavailable **raises at worker startup** rather than silently downgrading — a
-misconfigured accelerator should be loud, not merely slow.
+Backend selection lives in `worker/encore_worker/host/hardware.py` (`resolve_backend`). Unset, it picks
+`mlx` on Apple Silicon when `demucs_mlx` is importable and `torch` otherwise. `ENCORE_SEPARATOR_BACKEND`
+always wins when set, and a value outside `torch`/`mlx` raises at startup (`host/config.py`).
 
-Intel Arc is a torch **device** (`xpu`), not a separate backend: the pipeline is unchanged and only the
-dependency and device differ. `docker/compose.intel.yaml` is that deployment, and it needs
-no custom image — PyTorch ships native `torch.xpu` upstream and the `xpu` wheel index carries the exact
-versions already pinned, so the ordinary Dockerfile plus an index swap is enough. (An IPEX-based
-`Dockerfile.intel` used to sit beside it and has been deleted; `backends.py` still imports IPEX before
-torch when present, so that path is belt-and-braces rather than a required image.) OpenVINO is
-registered as a known backend but reports unavailable — Intel publishes IR weights with STFT/iSTFT
-stripped for a C++ pipeline, so supporting it is a port rather than a dependency.
+The device is a separate choice from the backend: `ENCORE_DEVICE` wins when set, otherwise the probed
+accelerator (`cuda` or `mps`) or `cpu`, resolved once in `worker/encore_worker/__main__.py` (`device_for`)
+so separation, alignment and diarization share it. `docker/compose.intel.yaml` targets an Intel Arc GPU as
+the torch device `xpu`; it is parked, and blocked on there being no `xpu` extra in `worker/pyproject.toml`.
 
 ### What the worker measures, and what it is told
 
@@ -698,29 +694,25 @@ Core-side, because these are persisted onto `Media.separator` and feed the never
 chose their own, two boxes would publish inconsistent instrumentals and quality ranking would mean
 nothing.
 
-Worker-side, because they change throughput and not output, and only the worker can see them: device,
-backend, thread counts, `-j`. All of these are **probed, not configured** — accelerator via
-`torch.accelerator` plus a per-device usability check (presence in the wheel is not usability on the
-box), usable cores as the tightest of `cpu_count`, scheduler affinity and the cgroup quota, memory from
-`/proc/meminfo` and the cgroup ceiling. The alignment device is derived from the same resolution as
-separation, mapped through `whisperx_device_for` because CTranslate2 has only cuda and cpu backends, so
-an Intel or Apple box separates on its accelerator and still aligns on the CPU.
+Worker-side, because they change throughput and not output, and only the worker can see them: device and
+backend (see above). The accelerator is **probed, not assumed** (`hardware.probe()`): `cuda` or `mps` only
+when torch is importable and reports it available. The transcriber's device goes through
+`transcriber_device` in `worker/encore_worker/adapters/ml.py` because CTranslate2 accepts only `cpu` and
+`cuda`, so an Apple box separates on its accelerator and still transcribes on the CPU.
 
-**Capabilities are proven too** (`capabilities.py`). Each token is backed by a probe — `yt-dlp` on PATH
-or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, the
-audio-separator engine → `stems:audiosep`,
-whisperx → `align` — and the evidence is logged either way. `stems:ensemble` is kept in the
-vocabulary so configuration and routing can name it, but it is **never advertised** until an
-engine backs it (none does yet), mirroring the OPENVINO backend one domain over — a
-both-engines box does not claim it. `ENCORE_WORKER_CAPABILITIES`
-narrows that set and can never extend it: a box claiming work it cannot do is what left songs at 0%
-forever, which is indistinguishable from a hung worker.
+**Capabilities are proven too** (`hardware.capabilities()`). Each token is backed by a probe — `yt-dlp` on
+PATH → `fetch:ytdlp`, `whisperx` importable → `align`, `pyannote.audio` → `diarize`, and, only when ffmpeg is
+on PATH, demucs (or `demucs_mlx` under the `mlx` backend) → `stems`, the `bs-roformer-infer` CLI →
+`stems:roformer`, `mlx_audio` → `stems:melband-mlx`, `audio_separator` → `stems:audiosep`. The resolved set
+is printed at startup. A box claiming work it cannot do is what leaves songs at 0% forever, which is
+indistinguishable from a hung worker. The gates are tabulated in
+[`arch/05-worker.md` §9.1](arch/05-worker.md#91-what-each-capability-gate-is-proving).
 
-The one thing the worker reports **up** is hardware: `worker:hello` carries an optional `runtime`
-(accelerator, device name, usable cores, memory, VRAM, torch version, whether a cgroup limit applies),
-stored on the `WorkerSession`. Before this the core made every cost-bearing decision against a static
-reference box — `estimateProcessSeconds` takes a `hardwareFactor` nothing supplied. The field is additive,
-so a worker that omits it is treated exactly as it was before.
+The worker also reports hardware **up**: `worker:hello` carries an optional diagnostic `host` (`WorkerHost`
+in `core/src/lib/contract/core/events.ts`: platform, accelerator, device name, torch version, and more),
+kept on the worker's registry entry (`core/src/lib/server/jobs/registry.ts`) and summarised in the hub's
+join log line. The worker also sends `backend` and `device`, which core neither types nor stores. Every
+`host` field is optional, so a probe failure omits it rather than failing the handshake.
 
 Symmetrically, the core now says when it cannot place work: a queued job whose capability no connected
 worker advertises is logged by name via `hasCapableWorker`, and flagged `unservable` on `media:status`
@@ -792,188 +784,11 @@ known-good artifact.
 
 ### 7.1 What each action actually runs
 
-> [!WARNING]
-> **STALE — this subsection and the generated tables below it describe the DELETED `worker/`.** `PlanRunner`,
-> `plan_for`, `STAGE_PLANS` and the `src.docgen` generator went with it, so nothing regenerates these tables
-> and no test guards them any more.
->
-> The replacement is not a plan list: `worker/encore_worker/workflows/` holds one async function per
-> action (`align`, `stems`, `fetch`), registered with DBOS so each step is checkpointed and a retry resumes
-> rather than restarts. There is no plan table to generate because there is no plan data structure — the
-> control flow is the code. Rewrite this section against `workflows/` before trusting anything below.
-
-Every action was one flat plan of steps over a typed per-job context, executed by a single `PlanRunner`.
-Divergence was resolved by `plan_for` **before** the first step ran, so there was no mid-plan branching —
-the rationale is in [Why plan-selection, not a state machine](#why-plan-selection-not-a-state-machine) below.
-
-<!-- BEGIN generated:worker-pipeline -->
-
-<!-- WAS generated by `python -m src.docgen --write` from the deleted worker/src/plans.py. Neither the
-     generator nor its source exists now, and no test asserts this matches anything. Frozen as a record of
-     the old pipeline. -->
-
-Each action the core dispatches runs one flat plan of steps over a typed per-job context. The
-coarse `Stage` values are what the phone's progress bar reads; the step names are what
-`/metrics` times individually.
-
-**`fetch`** — stages: downloading
-
-| # | step | stage | reads | writes |
-|---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2 | `annotate` | downloading | `audio.duration_sec`, `audio.youtube_credit`, `job` | `out` |
-| 3 | `publish-original` | downloading | `audio.path` | `out` |
-
-**`stems`** — stages: downloading → separating
-
-| # | step | stage | reads | writes |
-|---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
-| 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
-| 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
-| 5 | `key-and-range` | separating | `job`, `stems.raw` | `stems.song_profile` |
-| 6 | `publish-stems` | separating | `job`, `runner`, `stems`, `stems.raw` | `out`, `stems.published` |
-
-**`stems-upgrade`** — stages: downloading → separating
-
-| # | step | stage | reads | writes |
-|---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
-| 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
-| 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
-| 5 | `key-and-range` | separating | `job`, `stems.raw` | `stems.song_profile` |
-| 6 | `publish-stems` | separating | `job`, `runner`, `stems`, `stems.raw` | `out`, `stems.published` |
-
-**`align`** — stages: downloading → aligning
-
-| # | step | stage | reads | writes |
-|---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2 | `fetch-captions:authored` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.authored_cues` |
-| 3 | `fetch-captions:machine` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.machine_cues` |
-| 4 | `acquire-texts` | aligning | `audio.duration_sec`, `audio.path`, `audio.vocals_path`, `job`, `lyrics.authored_cues`, `lyrics.machine_cues` | `lyrics.texts` |
-| 5 | `presplit-texts` | aligning | `lyrics.texts` | `lyrics.texts` |
-| 6 | `grade-and-select` | aligning | `audio.duration_sec`, `lyrics.texts` | `lyrics.baselines`, `lyrics.selection`, `lyrics.texts` |
-| 7 | `time-texts` | aligning | `audio.path`, `audio.vocals_path`, `engines`, `job`, `lyrics.baselines`, `lyrics.selection`, `lyrics.texts` | `out` |
-| 8 | `diarize` | aligning | `audio.vocals_path`, `job`, `out` | `out` |
-| 9 | `publish-lyrics` | aligning | `engines`, `job`, `out` | `out` |
-
-```mermaid
-flowchart LR
-  subgraph fetch[fetch]
-    direction LR
-    fetch_0["acquire-audio"]
-    fetch_1["annotate"]
-    fetch_2["publish-original"]
-    fetch_0 --> fetch_1
-    fetch_1 --> fetch_2
-  end
-  subgraph stems[stems]
-    direction LR
-    stems_0["acquire-audio"]
-    stems_1["decode-to-wav"]
-    stems_2["separate"]
-    stems_3["probe-silence"]
-    stems_4["key-and-range"]
-    stems_5["publish-stems"]
-    stems_0 --> stems_1
-    stems_1 --> stems_2
-    stems_2 --> stems_3
-    stems_3 --> stems_4
-    stems_4 --> stems_5
-  end
-  subgraph stems_upgrade[stems-upgrade]
-    direction LR
-    stems_upgrade_0["acquire-audio"]
-    stems_upgrade_1["decode-to-wav"]
-    stems_upgrade_2["separate"]
-    stems_upgrade_3["probe-silence"]
-    stems_upgrade_4["key-and-range"]
-    stems_upgrade_5["publish-stems"]
-    stems_upgrade_0 --> stems_upgrade_1
-    stems_upgrade_1 --> stems_upgrade_2
-    stems_upgrade_2 --> stems_upgrade_3
-    stems_upgrade_3 --> stems_upgrade_4
-    stems_upgrade_4 --> stems_upgrade_5
-  end
-  subgraph align[align]
-    direction LR
-    align_0["acquire-audio"]
-    align_1["fetch-captions:authored"]
-    align_2["fetch-captions:machine"]
-    align_3["acquire-texts"]
-    align_4["presplit-texts"]
-    align_5["grade-and-select"]
-    align_6["time-texts"]
-    align_7["diarize"]
-    align_8["publish-lyrics"]
-    align_0 --> align_1
-    align_1 --> align_2
-    align_2 --> align_3
-    align_3 --> align_4
-    align_4 --> align_5
-    align_5 --> align_6
-    align_6 --> align_7
-    align_7 --> align_8
-  end
-```
-
-<!-- END generated:worker-pipeline -->
-
-#### Why plan-selection, not a state machine
-
-The worker never branches mid-plan, and that is a stronger claim than "the worker is simple": **every
-divergence found in this codebase resolves before the first step runs.** Three things get called
-"branching" and each needs a different mechanism:
-
-- **Conditional skip / conditional write.** "Skip the download when the source is declared local";
-  "withhold the vocals artifact when the stem is digital silence". Handled by `Step.applies(ctx)` and by
-  a step choosing what it writes — the sequence is unchanged, one entry is inert. Declared guards, so
-  they appear in the generated table and the log rather than as an `if` buried mid-method.
-- **Early termination.** An instrumental with no words: `acquire-texts` returns `StepResult(STOP,
-reason=…)` and the runner completes with what the context holds. One exit, always "finish" — a
-  short-circuit, not a transition table, and the reason string keeps it out of the silent-failure class.
-- **Genuine divergence** — a different _sequence_ of work. This is what a state machine is for, so the
-  question is whether it occurs. Separator engine, `stems` vs `stems-upgrade`, lead-vs-backing split,
-  a future scoring tier: each is known from job params, room settings or the resolved engine **before**
-  step 1, so it is **plan selection** (`plan_for`), not branching. The retry cases — silent stem, an
-  unavailable format, LRCLIB becoming reachable — belong to the **core**, because the core owns the
-  `job_attempts` ledger and `/metrics/<mediaId>` audits every attempt; a worker-internal retry loop
-  would report one process where three engines were tried.
-
-The decision stays deliberately reversible: the runner iterates through one seam (`Plan.first()` /
-`Plan.after(step, result, ctx)`), so a future `GraphPlan` implementing `after()` as a transition table
-would leave steps, the context, the reads/writes declarations, the enforcement tests and the doc
-generator identical. **Revisit trigger:** the first divergence that cannot be resolved by `plan_for`
-before the first step runs — one where a step's outcome selects genuinely different downstream work
-within the same job and moving it to the core would be wrong rather than merely inconvenient.
-`validate_plan` growing a special case is the smell that this has happened.
-
-#### Enforcement — the part that makes it stick
-
-The codebase's characteristic failure mode is abstractions that exist and are silently bypassed
-(`fetch.py`'s "one place" that three callers ignored; a `STAGE_PLANS` table that declared two stages for
-an eight-step action; ~10 mechanisms built, unit-tested, and never wired to the path that needs them).
-So every mechanism carries a test that fails when someone routes around it, in `worker/tests/`:
-
-- **plans are well-formed** — no step reads a context key no earlier step writes (`test_worker_layers`).
-- **no undeclared writes** — in test mode the runner asserts a step touched only its declared keys.
-- **one runner** — the only `process()` implementations are `PlanRunner`, `StubProcessor` and the
-  routers; a new hand-rolled processor fails the suite (`test_worker_layers`).
-- **`STAGE_PLANS` agrees with the plans** — the table is hand-written (it sits below the plans in the
-  import graph, so computing it there would be a cycle), and E4 asserts it matches what each plan
-  actually emits, so the parallel table cannot drift.
-- **the doc is generated** — this section's tables come from `python -m src.docgen`, and a test fails if
-  the committed region drifts.
-- **acquisition has one caller path** — no module outside `acquisition/` imports the lower-level
-  fetchers (`test_worker_layers`).
-- **layering** — no domain package (`lyrics/`, `separation/`, `acquisition/`, `metadata/`) imports from
-  `steps/`, `runtime/` or `dial_home` (`test_worker_layers`, `test_worker_packages`).
-- **one publish shape per artifact kind** — `PublishStems` is the sole writer of the `stems`/`songProfile`
-  artifact dict, so the two engines cannot disagree about its shape (the near-miss that motivated it: the
-  worker published `songProfile` as a sibling of `stems` while the core read it nested).
+`stems` / `stems-upgrade` and `align` are DBOS workflows (`worker/encore_worker/workflows/durable.py`); only
+align's steps are checkpoints, so an align retry resumes at its step while a stems retry separates again.
+`fetch` runs directly, one download whose
+retry is cheaper than its bookkeeping. The worker's layers, steps and invariants are
+documented in [`arch/05-worker.md`](arch/05-worker.md).
 
 ## 8. Lyrics
 
