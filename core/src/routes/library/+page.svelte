@@ -616,6 +616,16 @@
 
 	/* FLEX COLUMN, not grid + place-items: the vendored `Empty.Header` is `display: contents`, so its children become
 	   direct children of this box and grid would split the min-height between them. See `.idle` on `/`. */
+	.lib-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-md);
+		min-height: 40vh;
+		padding: var(--space-2xl) var(--space-md);
+		text-align: center;
+	}
 	/* Both wordings stacked in one cell: the box is the taller one's height whichever shows, or while neither does. */
 	.promise {
 		display: grid;
@@ -626,16 +636,6 @@
 	}
 	.promise > .shown {
 		visibility: visible;
-	}
-	.lib-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-md);
-		min-height: 40vh;
-		padding: var(--space-2xl) var(--space-md);
-		text-align: center;
 	}
 	/* The void is only right when nothing follows the state; a filtered-to-nothing list still has chips above it. */
 	.lib-empty.tight {
