@@ -106,6 +106,7 @@ export class RoomLink {
 	pendingKind = new Map<string, 'add' | 'move'>();
 
 	#ws: WsClient | undefined;
+	#unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string, kind: 'error' | 'info') => void>();
 	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
@@ -258,7 +259,7 @@ export class RoomLink {
 		this.#state = 'live';
 		this.#ws.open();
 		// A socket that never comes up (a proxy that blocks it) still gets the cue, just not on a normal handshake.
-		setTimeout(() => {
+		this.#unreachableTimer = setTimeout(() => {
 			if (this.#state !== 'live' || this.connected || this.offline) return;
 			this.offline = true;
 			this.#emit();
@@ -367,6 +368,7 @@ export class RoomLink {
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
 	close(): void {
 		this.#state = 'closed';
+		clearTimeout(this.#unreachableTimer);
 		this.#ws?.close();
 		this.#ws = undefined;
 	}

@@ -619,7 +619,9 @@
 		   beat after the first `queue:sync` on a hard load (a reload, a tab the phone discarded). A card that turns up
 		   then came WITH the page, not with a song starting, and easing it in held the list where "your card comes to
 		   you" read it as already in reach. A reconnect clears `playbackSynced` until its own hello lands, so a song that
-		   changed while the phone was away is a fresh baseline too, not a leave and then a first song. */
+		   changed while the phone was away is a fresh baseline too, not a leave and then a first song. So is a room that
+		   emptied while the phone was away: the card goes in one jump, the same as on main. That is on purpose, not a
+		   missed ease. */
 		if (!queueSynced || !playbackSynced || settleFor === undefined || !below || belowTopWas === undefined) {
 			settleFor = queueSynced && playbackSynced ? id : undefined;
 			return;
