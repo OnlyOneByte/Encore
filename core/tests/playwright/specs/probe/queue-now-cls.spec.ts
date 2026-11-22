@@ -158,3 +158,57 @@ for (const width of [390, 320]) {
 		});
 	}
 }
+
+// A CARD THE PAGE WAS TOLD ABOUT LATE CAME WITH THE PAGE. Both `hello` bursts send `queue:sync` and then
+// `playback:state`, and the page renders in between. On a reload the card turns up in the second frame; on a
+// reconnect after the song changed while the phone was away, the old song is gone from the queue in the first frame
+// and the new one names the card in the second. Neither is a song starting, so neither eases nor fades: on main both
+// are a plain swap.
+test('390px: a reload during a song, and a reconnect after the song changed, are a cut', async ({ world }) => {
+	const worker = await startFakeWorker(world);
+	const maya = await world.openPhone('Maya');
+	const theo = await world.openPhone('Theo');
+	await theo.setViewportSize({ width: 390, height: 844 });
+	try {
+		await readySong(world, maya, 'caroline');
+		await readySong(world, maya, 'believin');
+	} finally {
+		await worker.stop();
+	}
+	// Every frame from page load: did the card ever carry `.arrive`, did the content under it ever ease?
+	await theo.addInitScript(() => {
+		const w = window as unknown as { __moved: { arrive: boolean; settle: boolean } };
+		w.__moved = { arrive: false, settle: false };
+		new MutationObserver(() => {
+			if (document.querySelector('main > .now.arrive')) w.__moved.arrive = true;
+			if (document.querySelector('main [data-settle]')) w.__moved.settle = true;
+		}).observe(document, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			attributeFilter: ['class', 'data-settle']
+		});
+	});
+	const moved = () => theo.evaluate(() => (window as unknown as { __moved: object }).__moved);
+	await openQueue(theo);
+	await queueReady(maya, 'caroline');
+	await queueReady(maya, 'believin');
+	await expect(theo.locator(SEL.queueNowCard)).toContainText(/caroline/i, { timeout: 10_000 });
+
+	await theo.reload();
+	await expect(theo.locator(SEL.queueNowCard)).toContainText(/caroline/i, { timeout: 10_000 });
+	await theo.waitForTimeout(1_000);
+	expect.soft(await moved(), 'the card moved on a reload').toEqual({ arrive: false, settle: false });
+
+	await theo.evaluate(
+		() => void ((window as unknown as { __moved: object }).__moved = { arrive: false, settle: false })
+	);
+	await theo.context().setOffline(true);
+	await expect(theo.locator(SEL.npStripOffline)).toContainText('Reconnecting…', { timeout: 15_000 });
+	await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+	await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 10_000 });
+	await theo.context().setOffline(false);
+	await expect(theo.locator(SEL.queueNowCard)).toContainText(/believin/i, { timeout: 15_000 });
+	await theo.waitForTimeout(1_000);
+	expect.soft(await moved(), 'the card moved on a reconnect').toEqual({ arrive: false, settle: false });
+});

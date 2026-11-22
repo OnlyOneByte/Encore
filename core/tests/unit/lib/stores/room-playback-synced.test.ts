@@ -5,9 +5,9 @@ import type { PlaybackState, ServerEvent } from '$lib/contract';
 /*
  * `playbackSynced` tells "nothing is playing" from "not told yet". /queue arms its card arrival on it: on a hard load
  * `hello` answers `queue:sync` and then `playback:state`, and a card read in between came WITH the page, not with a
- * song starting. Like `queue.synced` it never goes back to false: a reconnect's hello replaces the state, it does
- * not un-know it. A Leave needs no reset either: joining again reloads the page (`JoinLanding`), so a new link
- * starts at false.
+ * song starting. A reconnect's hello is the same burst, and the song may have changed while the phone was away, so
+ * each socket open clears it again. A Leave needs no reset: joining again reloads the page (`JoinLanding`), so a new
+ * link starts at false.
  *
  * Real connect path against a real Bun WebSocket server that sends what `hello` sends; only `fetch` is stood in.
  */
@@ -100,15 +100,19 @@ test('an idle room counts: a playback:state with nothing playing still sets it',
 	expect(link.playback.currentEntryId).toBeNull();
 });
 
-test('a reconnect keeps it, and the new hello replaces the state', async () => {
+test("a reconnect clears it until that hello's playback:state, past its queue:sync", async () => {
 	const { link, send, drop, until } = await joined();
+	send(sync);
 	send({ type: 'playback:state', state: playing('e1'), rev: 1 });
 	await until(() => link.playbackSynced, 'the first playback:state');
 	await drop();
-	// Between the reconnect and its hello the phone still knows the last state, not the default.
-	expect(link.playbackSynced).toBe(true);
+	// The song may have changed while the phone was away: the last state is kept, but it is not the room's now.
+	expect(link.playbackSynced).toBe(false);
 	expect(link.playback.currentEntryId).toBe('e1');
+	send({ ...sync, rev: 2 });
+	await until(() => link.queue?.rev === 2, "the reconnect's queue:sync");
+	expect(link.playbackSynced).toBe(false);
 	send({ type: 'playback:state', state: playing('e2'), rev: 2 });
-	await until(() => link.playback.currentEntryId === 'e2', 'the reconnect hello');
-	expect(link.playbackSynced).toBe(true);
+	await until(() => link.playbackSynced, "the reconnect's playback:state");
+	expect(link.playback.currentEntryId).toBe('e2');
 });

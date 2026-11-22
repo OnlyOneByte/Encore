@@ -63,9 +63,9 @@ export class RoomLink {
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
 	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
-	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". Never goes back
-	 *  to false, like `queue.synced`: a reconnect's hello replaces the state, and joining again after a Leave reloads
-	 *  the page, so a new link starts here. */
+	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". False again
+	 *  from each socket open until that hello's `playback:state`: in between, `entries` can already be the new list
+	 *  while `playback` is still the old one. Joining again after a Leave reloads the page, so a new link starts here. */
 	playbackSynced = false;
 	playback: PlaybackState = {
 		currentEntryId: null,
@@ -232,6 +232,9 @@ export class RoomLink {
 				// to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
 				if (c && this.#wasConnected) void this.#recheckMe();
 				if (c) this.#wasConnected = true;
+				// The socket says it is open BEFORE it sends `hello`, so the reply's `queue:sync` and `playback:state` both land
+				// after this: a reader sees one resync, not a song that left and then a first song.
+				if (c) this.playbackSynced = false;
 				this.connected = c;
 				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
 				this.offline = !c;
