@@ -413,9 +413,9 @@ describe('join origin', () => {
 
 	it('a junk write keeps the declared address instead of reverting to auto-detection', () => {
 		// Reverting puts `localhost` back in the QR, which is what this setting exists to fix.
-		const declared = { ...DEFAULT_GLOBAL_SETTINGS, joinOrigin: 'http://10.69.1.169:3000' };
-		expect(normalizeGlobalSettings({ joinOrigin: 'nonsense' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
-		expect(normalizeGlobalSettings({ asrModel: 'base' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
+		const declared = { ...DEFAULT_GLOBAL_SETTINGS, joinOrigin: 'http://192.168.1.20:3000' };
+		expect(normalizeGlobalSettings({ joinOrigin: 'nonsense' }, declared).joinOrigin).toBe('http://192.168.1.20:3000');
+		expect(normalizeGlobalSettings({ asrModel: 'base' }, declared).joinOrigin).toBe('http://192.168.1.20:3000');
 		expect(normalizeGlobalSettings({ joinOrigin: '' }, declared).joinOrigin).toBe('');
 	});
 });

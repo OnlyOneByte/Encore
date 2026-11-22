@@ -6,7 +6,7 @@ import { joinAddressLabel } from '$lib/tv/join-address';
 describe('joinAddressLabel', () => {
 	test('drops the scheme, the room query and the bare trailing slash', () => {
 		// The real shape from routes/tv/+page.server.ts: `${origin}/?room=${code}`.
-		expect(joinAddressLabel('http://10.20.36.198:3500/?room=9DJECR')).toBe('10.20.36.198:3500');
+		expect(joinAddressLabel('http://192.168.1.20:3500/?room=9DJECR')).toBe('192.168.1.20:3500');
 	});
 
 	/*
@@ -38,7 +38,7 @@ describe('joinAddressLabel', () => {
 	/* Idempotent, because the value it is handed may already have been through here — the badge used to
 	   re-derive from an already-shortened string, which is how the two spellings diverged. */
 	test('running it on its own output changes nothing', () => {
-		const once = joinAddressLabel('http://10.20.36.198:3500/?room=9DJECR');
+		const once = joinAddressLabel('http://192.168.1.20:3500/?room=9DJECR');
 		expect(joinAddressLabel(once)).toBe(once);
 	});
 });

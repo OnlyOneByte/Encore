@@ -24,12 +24,12 @@ it('isUnreachableJoinOrigin: flags a single-label bare hostname a phone cannot r
 
 it('isUnreachableJoinOrigin: treats a routable LAN IP as reachable', () => {
 	expect(isUnreachableJoinOrigin('http://192.168.1.20:3000')).toBe(false);
-	expect(isUnreachableJoinOrigin('http://10.69.1.169:3000/join')).toBe(false);
+	expect(isUnreachableJoinOrigin('http://10.0.0.5:3000/join')).toBe(false);
 });
 
 it('isUnreachableJoinOrigin: treats a real dotted host as reachable', () => {
 	expect(isUnreachableJoinOrigin('https://party.example.com')).toBe(false);
-	expect(isUnreachableJoinOrigin('https://angryang-encore.v.tunnels.lab.aws.dev')).toBe(false);
+	expect(isUnreachableJoinOrigin('https://encore.example.test')).toBe(false);
 });
 
 it('isUnreachableJoinOrigin: a routable IPv6 literal is reachable (only ::1 is loopback)', () => {

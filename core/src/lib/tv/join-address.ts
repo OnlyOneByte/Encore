@@ -10,7 +10,7 @@ export const UNREACHABLE_JOIN = 'Phones can’t open this address';
 export const UNREACHABLE_JOIN_FIX = `Fix it in Settings -> ${SETTINGS_SCOPES.server.label}`;
 
 /**
- * `http://10.20.36.198:3500/?room=9DJECR` -> `10.20.36.198:3500`. A REAL path is PRESERVED, because a deployment under a
+ * `http://192.168.1.20:3500/?room=9DJECR` -> `192.168.1.20:3500`. A REAL path is PRESERVED, because a deployment under a
  * sub-path has to show it, so only a slash with nothing behind it is trimmed: a bare trailing slash at 44px on a
  * ten-foot screen reads as a path that got cut off.
  */
