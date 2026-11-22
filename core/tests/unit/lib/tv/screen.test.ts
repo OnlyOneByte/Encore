@@ -11,7 +11,9 @@ import {
 	processStep,
 	PROCESS_STEPS
 } from '$lib/tv/screen';
-import type { QueueEntry } from '$lib/contract';
+import * as screen from '$lib/tv/screen';
+import { overallProcessPct } from '$lib/process-progress';
+import type { MediaStatus, QueueEntry } from '$lib/contract';
 import { at } from '$test';
 
 const entry = (id: string, singerId = 's1'): QueueEntry =>
@@ -107,14 +109,14 @@ describe('lyricsAdvancing', () => {
 
 describe('lobbyRoster', () => {
 	const dir = new Map([
-		['a', { id: 'a', displayName: 'Angelo', color: '#7c5cff' }],
+		['a', { id: 'a', displayName: 'Dana', color: '#7c5cff' }],
 		['m', { id: 'm', displayName: 'Maya', color: '#ff5cae' }],
 		['d', { id: 'd', displayName: 'Devon', color: '#33d6a6' }]
 	]);
 
 	it('lists singers who are here, in arrival order, with their colors', () => {
 		const { shown, overflow } = lobbyRoster(['a', 'm', 'd'], [], dir);
-		expect(shown.map((s) => s.displayName)).toStrictEqual(['Angelo', 'Maya', 'Devon']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Dana', 'Maya', 'Devon']);
 		expect(shown[0].color).toBe('#7c5cff');
 		expect(shown.every((s) => s.state === 'here')).toBe(true);
 		expect(overflow).toBe(0);
@@ -124,14 +126,14 @@ describe('lobbyRoster', () => {
 		// A locked phone must not erase its owner from the roster.
 		const { shown } = lobbyRoster(['a'], ['m'], dir);
 		expect(shown.map((s) => [s.displayName, s.state])).toEqual([
-			['Angelo', 'here'],
+			['Dana', 'here'],
 			['Maya', 'away']
 		]);
 	});
 
 	it('puts here before away, so the cap sheds the unreachable first', () => {
 		const { shown, overflow } = lobbyRoster(['d'], ['a', 'm'], dir, 2);
-		expect(shown.map((s) => s.displayName)).toStrictEqual(['Devon', 'Angelo']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Devon', 'Dana']);
 		expect(overflow).toBe(1); // Maya, who could not have taken a turn anyway
 	});
 
@@ -152,7 +154,7 @@ describe('lobbyRoster', () => {
 	it('skips an id we have no name for yet rather than rendering a nameless chip', () => {
 		// membership can arrive before the queue:sync singer directory does
 		const { shown, overflow } = lobbyRoster(['a', 'unknown-id'], ['also-unknown'], dir);
-		expect(shown.map((s) => s.displayName)).toStrictEqual(['Angelo']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Dana']);
 		expect(overflow).toBe(0);
 	});
 });
@@ -211,7 +213,6 @@ describe('processStep', () => {
 			const step = processStep(s);
 			expect(step.index, `${s} maps to a valid step index`).toBeGreaterThanOrEqual(0);
 			expect(step.index, `${s} maps to a valid step index`).toBeLessThan(PROCESS_STEPS.length);
-			expect(step.fraction).toMatch(/^\d+%$/); // a CSS percentage the bar can consume
 		}
 	});
 
@@ -228,6 +229,44 @@ describe('processStep', () => {
 		for (const s of ['failed', 'canceled', undefined] as const) {
 			expect(processStep(s).index).toBe(0);
 		}
+	});
+});
+
+// F4: the waiting takeover drew `processStep('separating')`'s fixed 62% whatever the song's real progress.
+describe('waitingProgress', () => {
+	const { waitingProgress } = screen;
+
+	it("is the phone's own overall figure off the LIVE status, so the wall and the phone agree", () => {
+		expect(typeof waitingProgress).toBe('function');
+		for (const [status, pct] of [
+			['queued', 0],
+			['separating', 10],
+			['separating', 80],
+			['aligning', 50]
+		] as [MediaStatus, number][]) {
+			expect(waitingProgress({ status, pct })).toEqual({
+				index: processStep(status).index,
+				pct: overallProcessPct(status, pct)
+			});
+		}
+		// Two real figures in one stage are two bars, not one representative one.
+		expect(waitingProgress({ status: 'separating', pct: 10 })!.pct).toBeLessThan(
+			waitingProgress({ status: 'separating', pct: 80 })!.pct
+		);
+	});
+
+	it('draws nothing with no live status, or off the line, rather than invent a figure', () => {
+		expect(waitingProgress(undefined)).toBeNull();
+		expect(waitingProgress({ status: 'failed', pct: 40 })).toBeNull();
+		expect(waitingProgress({ status: 'canceled', pct: 40 })).toBeNull();
+	});
+
+	it("the TV page passes the song's liveStatus, never a literal stage", () => {
+		const page = readFileSync(join(import.meta.dir, '../../../../src/routes/tv/+page.svelte'), 'utf8');
+		expect(page).not.toMatch(/processStep\(\s*['"]/);
+		expect(page).toMatch(/waitingProgress\(current \? liveStatus\.get\(current\.mediaId\) : undefined\)/);
+		// The figure is only real while every `media:status` lands in that map.
+		expect(page).toMatch(/liveStatus = new Map\(liveStatus\)\.set\(e\.mediaId, e\);/);
 	});
 });
 

@@ -1879,9 +1879,9 @@ a wash blanks the room's chosen backdrop for every song change, which is the exa
 background layer's visibility band exists to avoid, undone one layer up — and it would hide the join block
 that must stay visible through it. "Next up" is untrue for the first song of the evening, so the label reads
 "Now singing" until `openedOnce`. The processing takeover's words come from `processStageLabel`, the one
-guest-facing process vocabulary shared with the phone, and the TV holds only a COARSE "processing" state, so
-it feeds the total `processStep` mapping a representative mid-process value rather than inventing the
-per-media tracking it was purpose-built not to hold.
+guest-facing process vocabulary shared with the phone. Its bar and current step are the song's `liveStatus`
+through `waitingProgress`, the phone's own `overallProcessPct` figure, and with no live status held for the song
+it draws neither: a fixed "representative" bar contradicted the phone's real %.
 
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with

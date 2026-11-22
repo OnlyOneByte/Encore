@@ -1,5 +1,6 @@
 import type { MediaStatus, QueueEntry } from '$lib/contract';
 import { OVERDUE_LABEL } from '$lib/phrasing/process-phrasing';
+import { overallProcessPct } from '$lib/process-progress';
 import type { TvState } from './gapless';
 
 /**
@@ -139,22 +140,30 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 export const PROCESS_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
 
 /** TOTAL over every status — exactly one step is current, so the takeover can never render with none marked. */
-export function processStep(status: MediaStatus | undefined): {
-	index: number;
-	fraction: string;
-} {
+export function processStep(status: MediaStatus | undefined): { index: number } {
 	switch (status) {
 		case 'downloading':
 		case 'queued':
-			return { index: 0, fraction: '20%' };
+			return { index: 0 };
 		case 'separating':
-			return { index: 1, fraction: '62%' };
+			return { index: 1 };
 		case 'aligning':
-			return { index: 2, fraction: '90%' };
 		case 'ready':
-			return { index: 2, fraction: '100%' };
+			return { index: 2 };
 		default:
 			// failed / canceled / undefined — off the happy line; floor at the first step.
-			return { index: 0, fraction: '20%' };
+			return { index: 0 };
 	}
+}
+
+/**
+ * The waiting takeover's bar and current step, read off the song's LIVE status with the phone's own overall figure
+ * (`overallProcessPct`), so the wall and the phone show one number. `null` — no bar and no step marked — when the TV
+ * holds no live status for the song or the process is off the line: no figure beats an invented one.
+ */
+export function waitingProgress(
+	live: { status: MediaStatus; pct: number } | undefined
+): { index: number; pct: number } | null {
+	if (!live || live.status === 'failed' || live.status === 'canceled') return null;
+	return { index: processStep(live.status).index, pct: overallProcessPct(live.status, live.pct) };
 }

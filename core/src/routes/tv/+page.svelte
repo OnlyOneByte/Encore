@@ -32,7 +32,7 @@
 		statusOverdue,
 		isUnreachableJoinOrigin,
 		lyricsAdvancing,
-		processStep,
+		waitingProgress,
 		PROCESS_STEPS
 	} from '$lib/tv/screen';
 	import { joinAddressLabel } from '$lib/tv/join-address';
@@ -960,21 +960,22 @@
 		</div>
 	{:else if transient === 'waiting'}
 		<!-- A WAIT, not a failure: a bounded 3-step progress makes it read as finite, in words from
-		     process-phrasing (the ONE guest-facing vocabulary, shared with the phone). THE TV HOLDS ONLY A COARSE
-		     "processing" state, so it feeds the total mapping a representative mid-process step rather than
-		     inventing the per-media tracking it was purpose-built not to hold. -->
+		     process-phrasing (the ONE guest-facing vocabulary, shared with the phone). The bar and the step are the
+		     song's `liveStatus`, the phone's own figure; with none held for it, neither is drawn. -->
 		{@const processMedia = mediaOf(current)}
-		{@const proc = processStep('separating')}
+		{@const proc = waitingProgress(current ? liveStatus.get(current.mediaId) : undefined)}
 		<div class="interstitial takeover state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
 			<div class="up-label">{processStageLabel('queued')}</div>
 			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
-			<div class="process-bar"><i style="width: {proc.fraction}"></i></div>
-			<div class="process-steps">
-				{#each PROCESS_STEPS as label, i (label)}
-					<span class={{ 'step-current': i === proc.index, 'step-done': i < proc.index }}>{label}</span>
-				{/each}
-			</div>
+			{#if proc}
+				<div class="process-bar"><i style="width: {proc.pct}%"></i></div>
+				<div class="process-steps">
+					{#each PROCESS_STEPS as label, i (label)}
+						<span class={{ 'step-current': i === proc.index, 'step-done': i < proc.index }}>{label}</span>
+					{/each}
+				</div>
+			{/if}
 		</div>
 	{:else if transient === 'loading' && stageEntry}
 		<!--
