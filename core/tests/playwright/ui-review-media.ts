@@ -12,7 +12,9 @@
 //       object stops being reachable. Dry-run unless --apply; the push is pinned to the commit it read.
 //
 // Both work in a THROWAWAY clone of origin under the OS temp dir, removed at the end, so the clone you run them
-// from never fetches the branch: an opt-out clone (docs/UI-CHECKLIST.md) stays opted out.
+// from never fetches the branch: an opt-out clone (docs/UI-CHECKLIST.md) stays opted out. That clone has no
+// local config, so every commit in it carries the user.name/user.email of the clone you run them from, and
+// only a GitHub noreply email is accepted: the branch is public.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -35,6 +37,24 @@ const segment = (what: string, value: string) => {
 	if (!SEGMENT.test(value)) throw new Refused(`${what} "${value}" must be one plain name (letters, digits, . _ -)`);
 	return value;
 };
+
+/** `-c` flags that make a scratch-clone commit carry this clone's identity, not the machine's global one. */
+function identity(): string[] {
+	const read = (key: string) => {
+		try {
+			return git(['config', key]);
+		} catch {
+			return '';
+		}
+	};
+	const [name, email] = [read('user.name'), read('user.email')];
+	if (!name || !/@users\.noreply\.github\.com$/.test(email))
+		throw new Refused(
+			`commits here are public, so they need a GitHub noreply identity, but this clone's is ` +
+				`"${name} <${email}>": set user.name and user.email (the users.noreply.github.com one) in this clone`
+		);
+	return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
+}
 
 /** The remote tip, read without downloading anything. Null when the branch does not exist yet. */
 function remoteTip(url: string): string | null {
@@ -122,6 +142,7 @@ function publish(args: string[], url: string) {
 			const size = statSync(path).size;
 			if (size > MAX_FILE_BYTES) throw new Refused(overCap(`${row}/${file}`, size));
 		}
+	const who = identity();
 
 	const tipBytes = inScratchClone(url, { bare: false, depth: 1 }, (clone) => {
 		for (const row of picked) {
@@ -131,7 +152,7 @@ function publish(args: string[], url: string) {
 			for (const file of [gif, strip, 'metrics.json']) cpSync(join(out, row, file), join(dest, file));
 		}
 		git(['add', '--all'], clone);
-		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone);
+		git([...who, 'commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone);
 		push(['origin', `HEAD:refs/heads/${BRANCH}`], clone);
 		return git(['ls-tree', '-r', '-l', '--full-tree', 'HEAD'], clone)
 			.split('\n')
@@ -175,6 +196,7 @@ function parseKeep(args: string[]): { keep: string[]; keepNone: boolean; apply: 
 function prune(args: string[], url: string) {
 	const { keep, keepNone, apply } = parseKeep(args);
 	if (!remoteTip(url)) throw new Refused(`origin has no ${BRANCH} branch; nothing to prune`);
+	const who = identity();
 	inScratchClone(url, { bare: true }, (clone) => {
 		const ref = `refs/heads/${BRANCH}`;
 		const tip = git(['rev-parse', ref], clone);
@@ -196,7 +218,10 @@ function prune(args: string[], url: string) {
 
 		const tree = git(['mktree'], clone, kept.map((e) => e + '\n').join(''));
 		const label = keepDirs.join(' ') || 'nothing';
-		const root = git(['commit-tree', tree, '-m', `media: re-rooted from ${tip.slice(0, 8)}, kept ${label}`], clone);
+		const root = git(
+			[...who, 'commit-tree', tree, '-m', `media: re-rooted from ${tip.slice(0, 8)}, kept ${label}`],
+			clone
+		);
 		// Pinned to the tip just read, so a publish that landed in between is refused rather than overwritten.
 		push([`--force-with-lease=${ref}:${tip}`, 'origin', `${root}:${ref}`], clone);
 		const after = Number(git(['rev-list', '--objects', '--disk-usage', root], clone));
