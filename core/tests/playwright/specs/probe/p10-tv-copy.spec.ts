@@ -195,6 +195,48 @@ test('a second /tv is a muted copy that sends no telemetry, and "Make this the T
 	}
 });
 
+// Proposal 19: while no screen is the TV, a copy says so, instead of pointing the room at a screen that is gone.
+test('the TV drops mid-song: every copy says "The TV is reconnecting..." and goes back when the TV returns', async ({
+	browser,
+	world
+}) => {
+	test.setTimeout(120_000);
+	const worker = await startFakeWorker(world, { seconds: 30 });
+	try {
+		const tv = await openScreen(browser, world, 1920, 1080, { real: true });
+		const phone = await world.openPhone('Ana');
+		await readySong(world, phone, 'caroline');
+		const copies = [
+			await openScreen(browser, world, 1920, 1080),
+			await openScreen(browser, world, 390, 844),
+			await openScreen(browser, world, 320, 568)
+		];
+		for (const s of [tv, ...copies]) await tap(s);
+		await queueReady(phone, 'caroline');
+		await expect(copies[0]!.page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		for (const c of copies) await expect(c.page.locator(CHIP)).toContainText('Another screen is the TV');
+
+		await tv.page.context().close();
+		for (const c of copies) {
+			await expect(c.page.locator(CHIP)).toContainText('The TV is reconnecting...', { timeout: 1_000 });
+			await expect(c.page.locator('p.vh[role="status"]')).toHaveText('The TV is reconnecting...');
+			// Same chip, same button: "Make this the TV" stays the remedy.
+			await expect(c.page.getByRole('button', CLAIM)).toBeVisible();
+			await shot(c.page, `tv-offline-copy${c.page.viewportSize()!.width}`);
+		}
+
+		// The TV reloads with its cookie: it is the TV again, and every copy says so.
+		const back = await openScreen(browser, world, 1920, 1080, { real: true });
+		await expect(back.page.locator(CHIP)).toHaveCount(0);
+		for (const c of copies) {
+			await expect(c.page.locator(CHIP)).toContainText('Another screen is the TV', { timeout: 5_000 });
+			await expect(c.page.locator('p.vh[role="status"]')).toHaveText('Another screen is the TV');
+		}
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('both player slots are muted on a copy: the one playing and the one pre-warming the next song', async ({
 	browser,
 	world

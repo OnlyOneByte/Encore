@@ -12,7 +12,7 @@ import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
-import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
 import type { RealtimeReport } from '../../world/motion-realtime';
@@ -33,7 +33,10 @@ const CUTS = new Set([
 	'phone-reorder-held-320',
 	'phone-cheers-return',
 	'phone-dock-idle',
-	'tv-copy-claim'
+	'tv-copy-claim',
+	'tv-copy-offline',
+	'tv-copy-offline-390',
+	'tv-copy-offline-320'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -58,7 +61,10 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS],
 	'phone-reorder-held-390': HELD_LIBRARY,
 	'phone-reorder-held-320': HELD_LIBRARY,
-	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK]
+	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK]
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -431,7 +437,61 @@ function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): Mot
 	};
 }
 
+/** A copy mid-song as the room's TV drops (proposal 19): its chip's line turns from "Another screen is the TV" to
+ *  "The TV is reconnecting...", as a CUT, in the same chip and place. Each run seats a fresh real TV (its cookie, so it
+ *  is the holder again inside the grace) and opens a fresh copy at this size; the trigger closes the real TV's tab. */
+function tvCopyOffline(width: number, height: number): Make {
+	return (browser, world, cleanup) => {
+		let phone: Page | undefined;
+		let tv: BrowserContext | undefined;
+		return {
+			name: width === 1920 ? 'tv-copy-offline' : `tv-copy-offline-${width}`,
+			what: `${width === 1920 ? 'TV' : 'Phone'} ${width}x${height}, a copy mid-song: the room's TV tab closes and the chip's line turns to "The TV is reconnecting...", as a CUT. Same chip, same button`,
+			stepMs: 33,
+			scale: width === 1920 ? 0.5 : 1,
+			columns: 5,
+			startTimeoutMs: 1_500,
+			open: async (opts) => {
+				if (!phone) {
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await readySong(world, phone, 'long');
+				}
+				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'long');
+				await expect(phone.locator(SEL.npStripTitle)).toContainText(/long/i, { timeout: 30_000 });
+				const seat = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+				cleanup(() => seat.close());
+				tv = seat;
+				await tv.addCookies([world.tvCookie]);
+				const real = await tv.newPage();
+				await real.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await expect(real.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+				const ctx = await browser.newContext({ ...opts, viewport: { width, height }, baseURL: world.baseURL });
+				cleanup(() => ctx.close());
+				const page = await ctx.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await expect(page.locator('.copy-chip')).toContainText('Another screen is the TV', { timeout: 15_000 });
+				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await tv!.close();
+				await expect(page.locator('.copy-chip')).toContainText('The TV is reconnecting...');
+			},
+			subject: '.copy-chip',
+			only: '.copy-chip, .copy-chip *',
+			observe: (page) =>
+				page.evaluate(() => ({ chip: document.querySelector('.copy-chip')?.textContent?.trim() ?? null }))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'tv-copy-offline': tvCopyOffline(1920, 1080),
+	'tv-copy-offline-390': tvCopyOffline(390, 844),
+	'tv-copy-offline-320': tvCopyOffline(320, 568),
 	'phone-queue-card-arrive': queueCard('arrive'),
 	'phone-queue-card-leave': queueCard('leave'),
 	'phone-dock-your-song-390': dockYourSong(390),

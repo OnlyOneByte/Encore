@@ -83,8 +83,10 @@ const tvSeats = new TvSeats({
 const tvSockets = new Map<number, import('bun').ServerWebSocket<SocketData>>();
 let nextTvKey = 0;
 function announceSeat(notices: SeatNotice[]): void {
-	for (const n of notices)
-		tvSockets.get(n.key)?.send(JSON.stringify({ type: 'tv:seat', mine: n.mine } satisfies ServerEvent));
+	for (const n of notices) {
+		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline } satisfies ServerEvent;
+		tvSockets.get(n.key)?.send(JSON.stringify(e));
+	}
 }
 
 // Guarded so WS still boots pre-build.

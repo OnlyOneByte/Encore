@@ -24,7 +24,7 @@
 	import { WsClient } from '$lib/ws/client';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import TvCopyChip from '$lib/tv/TvCopyChip.svelte';
+	import TvCopyChip, { copyLine } from '$lib/tv/TvCopyChip.svelte';
 	import {
 		tvScreen,
 		lobbyRoster,
@@ -64,6 +64,8 @@
 	// nor move the playhead, and it offers "Make this the TV". Silent while null too, so a copy never blips on load.
 	let seatMine = $state<boolean | null>(null);
 	const isCopy = $derived(seatMine === false);
+	// Whether the seat's screen is live (`tv:seat`'s `tvOnline`), so a copy never points at a TV that is gone.
+	let tvOnline = $state(true);
 	// The page's ONE live region for the seat, mounted empty with the page, so only its text changes and it is heard.
 	let seatAnnounce = $state('');
 	const SEAT_ANNOUNCE_MS = 4000;
@@ -335,14 +337,15 @@
 		if (e.type === 'room:reacted') reactions?.add(e);
 		if (e.type === 'tv:seat') {
 			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
-			// "another screen" when this screen becomes a copy (on load too, since the region was mounted empty).
-			// Cleared once read, so the next change is a change the region announces again, however soon it comes.
-			if (e.mine !== seatMine && (e.mine ? seatMine === false : true)) {
-				seatAnnounce = e.mine ? 'This screen is now the TV' : 'Another screen is the TV';
+			// the copy's line when this screen becomes a copy (on load too, since the region was mounted empty) or when the
+			// TV drops or comes back. Cleared once read, so the next change is announced again, however soon it comes.
+			if (e.mine ? seatMine === false : seatMine !== false || e.tvOnline !== tvOnline) {
+				seatAnnounce = e.mine ? 'This screen is now the TV' : copyLine(e.tvOnline);
 				clearTimeout(seatAnnounceTimer);
 				seatAnnounceTimer = setTimeout(() => (seatAnnounce = ''), SEAT_ANNOUNCE_MS);
 			}
 			seatMine = e.mine;
+			tvOnline = e.tvOnline;
 			// A claim at a song boundary: this screen's song ended while it was a copy (so it sent nothing), and the old TV
 			// heard `mine:false` before its own `ended`. Nobody has told the server, which would sit on the finished song.
 			// Say it now; if the old TV's `ended` got there first, the server drops this one by its entry stamp.
@@ -1085,7 +1088,7 @@
 	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
 	     it floats in the corner the join QR has on the real TV; in attract (nobody here yet), in attract's free band. -->
 	{#snippet copyChip()}
-		<TvCopyChip onclaim={() => ws?.send({ type: 'tv:claim' })} />
+		<TvCopyChip tvOnline={tvOnline} onclaim={() => ws?.send({ type: 'tv:claim' })} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
 		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]} bind:this={copySlotEl}>{@render copyChip()}</div>
