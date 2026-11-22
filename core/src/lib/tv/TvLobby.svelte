@@ -67,9 +67,8 @@
 			: (stuck?.headline ?? 'Waiting for someone to pick a song…')
 	);
 
-	// The line under the headline, in `screen.ts` so a unit test can read every wording of it. A stuck turn's way out
-	// replaces the "pick a song" prompt, but never the line for a song being made.
-	const sub = $derived(!processing && stuck ? stuck.next : lobbyLine(count, processing, overdue));
+	// The line under the headline, in `screen.ts` so a unit test can read every wording of it.
+	const sub = $derived(lobbyLine(count, processing, overdue, stuck?.next));
 </script>
 
 <!--

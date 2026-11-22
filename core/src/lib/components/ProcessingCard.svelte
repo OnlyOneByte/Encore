@@ -40,6 +40,10 @@
 		/** Seconds until the song is ready, from core's history of this box (`server/jobs/eta.ts`). Absent when
 		 * there is none to base it on, and then the card says no time at all. */
 		etaSec?: number;
+		/** The ROOM's maker verdict (`waitingTurns(…).noMaker`), the one the TV and the strips read. A stalled card says
+		 * it can't be made only when no maker is here; with one, it reads as the failed card does, so a phone that missed
+		 * the failure (asleep, or joined later) says what the phones that heard it say. */
+		noMaker?: boolean;
 		// A processing song is still a QUEUE ENTRY, so it gets the same controls a ready row does — a minutes-long
 		// process is a long time to be stuck on a mis-tap. All absent outside the rotation, where there is no slot.
 		onremove?: () => void;
@@ -75,6 +79,7 @@
 		status,
 		pct = 0,
 		etaSec,
+		noMaker = false,
 		onremove,
 		onretry,
 		reorderable = false,
@@ -89,10 +94,13 @@
 
 	/* THREE KINDS, THREE LINES, and the kind decides — never the status. The pct is shown separately in the stage
 	   row below, so the line itself omits it. `stalled` has no `MediaStatus` to describe BY DEFINITION (that is
-	   what makes it stalled), so its words are a sibling export from the same phrasing module. */
+	   what makes it stalled), so its words are a sibling export from the same phrasing module — and only while the
+	   room has no maker; with one, a Try again will work, so the card must not deny it (ruling 38). */
 	const stageLabel = $derived(
 		kind === 'stalled'
-			? STALLED_TURN_LABEL
+			? noMaker
+				? STALLED_TURN_LABEL
+				: processStageLabel('failed')
 			: kind === 'failed'
 				? processStageLabel('failed')
 				: processStageLabel(status ?? 'queued')

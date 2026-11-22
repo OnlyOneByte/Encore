@@ -42,8 +42,9 @@ test('the TV lobby counts only turns being made, and is handed the stuck line', 
 	expect(tv).toContain('const stuck = $derived(stuckTurnsLines(waiting, singerName));');
 	// The live statuses the fold reads: without them a no-maker turn classifies as cooking off the catalog.
 	expect(tv).toContain('(id) => liveStatus.get(id)');
-	// The count that called every unplayable turn "processing".
-	expect(tv).not.toMatch(/return !m \|\| !isPlayable\(m\);/);
+	// The count that called every unplayable turn "processing": `pending` is kept only for #978's overdue question.
+	expect(tv).not.toContain('pendingCount={pendingCount}');
+	expect(tv).not.toContain('pending.length');
 });
 
 test('the TV adopts the first queue patch after a boot', () => {
@@ -53,7 +54,8 @@ test('the TV adopts the first queue patch after a boot', () => {
 
 test('the lobby prints the stuck line in place of "this takes a minute"', () => {
 	expect(lobby).toContain("stuck?.headline ?? 'Waiting for someone to pick a song…'");
-	expect(lobby).toContain('if (stuck) return stuck.next;');
+	// Worded by `lobbyLine` (screen.test.ts reads every wording); the lobby hands it the stuck turn's way out.
+	expect(lobby).toContain('lobbyLine(count, processing, overdue, stuck?.next)');
 });
 
 test('the strip is worded by the same fold, and prints it where it wraps', () => {
@@ -69,6 +71,11 @@ test('a TV that loads inside the window seeds the verdict the room already heard
 	expect(tv).toContain("fetch('/api/library')");
 	expect(tv).toContain('liveStatus = seedLiveStatus(liveStatus, j.processing ?? [], j.noMakerFailed ?? [], {');
 	expect(tv).toContain('void seedFromLibrary();');
+	// A read a later re-connect overtook neither seeds nor clears the later read's heard-set (reconnect-heard.test.ts
+	// drives the phone's twin of this through a real socket).
+	expect(tv).toContain('const superseded = () => reconnect && heardSinceReconnect !== heard;');
+	expect(tv).toContain('if (j && !superseded())');
+	expect(tv).toContain('if (reconnect && !superseded()) heardSinceReconnect = null;');
 	// And every queue sync drops the statuses of songs the room no longer holds (reconnect-seed.test.ts).
 	expect(tv).toContain('liveStatus = pruneLiveStatus(liveStatus, e.entries);');
 });

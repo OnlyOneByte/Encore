@@ -485,6 +485,7 @@
 	/>
 	<ProcessingCard
 		kind="stalled"
+		noMaker
 		seq={7}
 		title="Wonderwall"
 		singerName="Jo"

@@ -304,8 +304,12 @@
 	/* The waiting line, in the name's weight. It WRAPS, to two lines at most: it can be a whole sentence with two ways
 	   out in it ("Your song didn't work. Try again or pick another."), and on Sing and Library it is the singer's only
 	   notice, so an ellipsis cut the remedy off at 390 and both at 320. Two lines of this size and leading fit inside
-	   the strip's one tap floor, so the dock does not grow. */
+	   the strip's one tap floor, so the dock does not grow.
+	   IT RUNS ON OVER THE CHEER KEY'S SLOT, which is empty here: this line shows only with no song, when nobody can be
+	   cheered and the key is hidden and inert in place. Without that width the sentence took three lines at 320. The
+	   negative margin widens the line's box and moves nothing else, so the dock keeps its shape across the handoff. */
 	.status {
+		margin-inline-end: calc(-1 * (var(--tap) + var(--space-2xs)));
 		min-width: 4ch;
 		overflow: hidden;
 		display: -webkit-box;

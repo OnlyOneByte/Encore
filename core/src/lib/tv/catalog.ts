@@ -101,7 +101,10 @@ export function seedLiveStatus(
 }
 
 /** The lobby's live statuses for the songs the room still holds: a queue sync drops the rest, so the map is "what the
- *  room was told about its own turns", not every song ever heard of. Unchanged (same object) when nothing goes. */
+ *  room was told about its own turns", not every song ever heard of. Unchanged (same object) when nothing goes.
+ *  shortcut: a one-shot `unservable` heard for a song whose queue add has not reached `entries` yet (the Sing tab's
+ *  /api/process beating its socket add by a few ms) is pruned by a sync built in that gap, and the lobby says "Making
+ *  karaoke" until the 120 s TTL. Upgrade to keeping `unservable` entries for one sync if a lobby ever shows it. */
 export function pruneLiveStatus(
 	live: Map<string, LiveStatus>,
 	entries: readonly { mediaId: string }[]

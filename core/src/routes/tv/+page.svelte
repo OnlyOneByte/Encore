@@ -411,20 +411,25 @@
 	// What the room was already told before this TV loaded — above all `unservable`, which the server says once.
 	// Best effort: without it the lobby is as before, and the next live status corrects it.
 	// On a RE-connect the snapshot replaces what was held from before the drop, except what a frame has said since.
-	const seedFromLibrary = (reconnect = false) =>
-		fetch('/api/library')
+	// A read that a later re-connect overtook (a flapping socket) neither seeds nor clears: the later read owns the set,
+	// as on the phone (RoomLink.refreshLibrary).
+	const seedFromLibrary = (reconnect = false) => {
+		const heard = heardSinceReconnect;
+		const superseded = () => reconnect && heardSinceReconnect !== heard;
+		return fetch('/api/library')
 			.then((r) => (r.ok ? r.json() : null))
 			.then((j) => {
-				if (j)
+				if (j && !superseded())
 					liveStatus = seedLiveStatus(liveStatus, j.processing ?? [], j.noMakerFailed ?? [], {
 						reconnect,
-						heard: heardSinceReconnect ?? undefined
+						heard: heard ?? undefined
 					});
 			})
 			.catch(() => {})
 			.finally(() => {
-				if (reconnect) heardSinceReconnect = null;
+				if (reconnect && !superseded()) heardSinceReconnect = null;
 			});
+	};
 	let wasConnected = false;
 	// Plain, not $state: only the seed reads it. The songs a frame has spoken for since the socket came back.
 	let heardSinceReconnect: Set<string> | null = null;

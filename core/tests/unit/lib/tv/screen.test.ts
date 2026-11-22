@@ -252,6 +252,14 @@ describe('the lobby line, and an overdue song', () => {
 		}
 	});
 
+	it('names a stuck turn\'s way out in place of "pick a song", but never over a song being made', () => {
+		const next = 'Theo, try again or pick another on your phone';
+		expect(lobbyLine(2, false, false, next)).toBe(next);
+		expect(lobbyLine(0, false, true, next)).toBe(next);
+		expect(lobbyLine(2, true, false, next)).toBe('2 in the room · making the karaoke, this takes a minute');
+		expect(lobbyLine(2, false, false, null)).toBe('2 in the room · search on your phone and pick a song');
+	});
+
 	it('calls the lobby overdue only while a song still being made is one of the overdue ones', () => {
 		const making = [entry('a'), entry('b')];
 		expect(lobbyOverdue(making, new Set(['m-b']))).toBe(true);
@@ -277,9 +285,10 @@ describe('the lobby line, and an overdue song', () => {
 		expect(route).toMatch(/if \(e\.type === 'media:status'\) noteOverdue\(e\.mediaId, statusOverdue\(e\)\);/);
 		expect(route).toMatch(/if \(isOverdue\) overdueMedia\.add\(mediaId\);\s*else overdueMedia\.delete\(mediaId\);/);
 		expect(route).toMatch(/const pending = \$derived\(\s*entries\.filter\(\(e\) => \{[^}]*!isPlayable\(m\);\s*\}\)/);
-		expect(route).toMatch(/const pendingCount = \$derived\(pending\.length\);/);
+		// The lobby's COUNT is the fold's `making`; `pending` (every unplayable turn) only scopes the overdue question.
+		expect(route).toMatch(/pendingCount=\{waiting\.making\}/);
 		expect(route).toMatch(/const overdue = \$derived\(lobbyOverdue\(pending, overdueMedia\)\);/);
 		expect(route).toMatch(/<TvLobby[^>]*\boverdue=\{overdue\}/);
-		expect(lobby).toMatch(/lobbyLine\(count, processing, overdue\)/);
+		expect(lobby).toMatch(/lobbyLine\(count, processing, overdue, stuck\?\.next\)/);
 	});
 });

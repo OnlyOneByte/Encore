@@ -258,6 +258,14 @@ test('past the TTL, a maker joining ends "no maker" on every screen, live and af
 		await Promise.all([maya.reload(), theo.reload(), tv.reload()]);
 		await allAgree('a reload brought "no maker" back');
 		await shoot('maker-joined', { tv, 'maya-queue': maya, 'theo-home': theo });
+		// A phone that never heard the failure (joined late: no live status, no scar) reads the card the room reads,
+		// not "can't make this one" beside a strip and a TV that say a Try again will work (ruling 38).
+		const ana = await world.openPhone('Ana');
+		await openQueue(ana);
+		const anaCard = ana.locator(SEL.processing).first();
+		await expect(anaCard).toContainText("Couldn't make karaoke", { timeout: AGREE_MS });
+		await expect(anaCard).not.toContainText("Can't make this one right now");
+		await shoot('maker-joined-late', { 'ana-queue': ana });
 		// The maker LEAVES: live screens say "no maker" again with no reload, as a reload would.
 		await worker.stop();
 		stopped = true;

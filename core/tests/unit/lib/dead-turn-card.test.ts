@@ -93,3 +93,13 @@ test('the store carries `unservable` through to the card kind', () => {
 	// The four-field destructure that dropped it, which is the shape that drew a live bar for a dead job.
 	expect(roomStore).not.toContain('const { mediaId, status, pct, etaSec } = e;');
 });
+
+test("the stalled card's line follows the ROOM's maker verdict, the one the TV and the strips read (ruling 38)", () => {
+	// With a maker here, a phone that missed the failure says what the phones that heard it say.
+	expect(card).toMatch(
+		/kind === 'stalled'\s*\?\s*noMaker\s*\?\s*STALLED_TURN_LABEL\s*:\s*processStageLabel\('failed'\)/
+	);
+	// The verdict is the same fold the TV lobby and the strip word their lines from, over the same queued turns.
+	expect(queuePage).toMatch(/const noMaker = \$derived\(\s*waitingTurns\(\s*queued,/);
+	expect(queuePage).toContain('noMaker={noMaker}');
+});
