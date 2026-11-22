@@ -1,7 +1,7 @@
 // Real, decodable audio EMITTED rather than encoded, because the box a run lands on may have a decode-only
 // ffmpeg and there is no guarantee of flac/sox/lame. A RIFF header is 44 documented bytes and s16le samples
 // are integers, so this needs nothing installed, and `wav: 'audio/wav'` is already in the media route's
-// content-type map. Ported from tests/e2e/wav.mjs.
+// content-type map.
 
 export interface ToneOptions {
 	seconds?: number;

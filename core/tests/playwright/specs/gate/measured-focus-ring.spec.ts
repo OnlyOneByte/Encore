@@ -1,6 +1,6 @@
 /*
  * CLAIM 4: the focus indicator's FORM, on a genuinely `:focus-visible` element, measured on the PAINT rather
- * than read out of a stylesheet. Ported from tests/e2e/gates/measured-design.mjs.
+ * than read out of a stylesheet.
  *
  * ONE TEST: the two surfaces feed one verdict, and the non-vacuity floor counts the elements both of them
  * actually drove into focus. An element that could not be put into `:focus-visible` is UNMEASURED, never

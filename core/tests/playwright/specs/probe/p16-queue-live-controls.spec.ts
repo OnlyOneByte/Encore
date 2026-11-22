@@ -3,26 +3,15 @@
 // rather than by an ancestor's opacity.
 //
 // Plus the gesture, the part no source scan can reach: a real pointer drag on the SLIDER moves the guiding track.
-// That is the only coverage of the throttle-and-trailing-send /queue carries verbatim from the deleted sheet.
+// That is the only coverage of /queue's throttle-and-trailing-send.
 //
-// RENAMED FROM p16-hero-live-controls, AND THE SUBJECT MOVED TWICE. The old filename kept `hero` to stay paired
-// with a guard that no longer exists; the old SUBJECT was a multi-snap now-playing sheet, which is also deleted.
-// The controls are now a card at the top of /queue, so "open" is a ROUTE rather than a height, and four of the old
-// header's claims went with the component:
-//   · "THE SHEET IS MOUNTED AT ALL TIMES", snap 0, `atBandSnap`, `raised` — there is no sheet and no snap array.
-//   · `data-vaul-no-drag` on `.np-fit` and `.tp` — there is no drag surface for a slider to fight.
-//   · The expand button and the body-below-the-fold — the card is simply visible on the route it lives on.
-//   · The handle — nothing can be dragged away, so nothing has to come back.
-// TWO TESTS WERE DELETED RATHER THAN RETARGETED for exactly that reason ("the controls start away…" and "a pointer
-// drag on the handle puts the sheet away…"): their whole subject was snap geometry.
+// The controls are a card at the top of /queue, so "open" is a ROUTE rather than a height; there is no sheet,
+// no snap array and no drag surface for a slider to fight.
 //
-// TWO AFFORDANCES WENT WITH THE SHEET AND ARE NOT TESTED ANYWHERE NOW, which is worth stating rather than leaving
-// as four deleted assertions. Measured on /queue: `.more-slot a` resolves 0 — the "More about this song" door is
-// gone, so `/song/[mediaId]` is reachable only from a song row. And `.tools-note` resolves 0 — the sentence naming
-// what still works for a song with no isolated vocals ("…no isolated vocals…") exists nowhere in the app, so the
-// degraded arm below can only claim the control's own state, not the explanation beside it.
-//
-// Ported from tests/e2e/probes/p16-hero-live-controls.mjs.
+// TWO AFFORDANCES ARE NOT TESTED ANYWHERE. Measured on /queue: `.more-slot a` resolves 0 — there is no
+// "More about this song" door, so `/song/[mediaId]` is reachable only from a song row. And `.tools-note`
+// resolves 0 — the sentence naming what still works for a song with no isolated vocals exists nowhere in the
+// app, so the degraded arm below can only claim the control's own state, not the explanation beside it.
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';

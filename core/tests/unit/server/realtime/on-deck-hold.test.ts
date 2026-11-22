@@ -1,4 +1,4 @@
-// Proposal 14: a reorder never silently steals On deck. While a song plays, the room's next playable entry is held
+// A reorder never silently steals On deck. While a song plays, the room's next playable entry is held
 // against everyone but its owner (hub.ts `entryOpRefusal`, rotation.ts `heldOnDeck`/`stealsHeld`).
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, validateCommand, type HubDeps } from '$lib/server/realtime/hub';

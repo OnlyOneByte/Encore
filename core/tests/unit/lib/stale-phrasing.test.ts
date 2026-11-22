@@ -4,8 +4,8 @@ import { staleNotice } from '$lib/phrasing/stale-phrasing';
 /*
  * What the phone says when the server drops one of its commands as stale: every command, on this phone's own turn or
  * someone else's, and in a room gone idle. A skip or restart inside the strip's settle window arrives while the strip
- * ALREADY shows the new song, so "That song already ended." read as wrong there (review of #982). Key and guide are
- * changed on a card that still showed the old song, where it is true, and so it is once nothing is playing (#985).
+ * ALREADY shows the new song, so "That song already ended." read as wrong there. Key and guide are
+ * changed on a card that still showed the old song, where it is true, and so it is once nothing is playing.
  */
 
 const NB = '\u00a0';

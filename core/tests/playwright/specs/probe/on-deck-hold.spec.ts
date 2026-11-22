@@ -1,9 +1,9 @@
-// A REORDER NEVER SILENTLY STEALS ON DECK (proposal 14), in a real room: a TV and three phones. Maya is singing. The
+// A REORDER NEVER SILENTLY STEALS ON DECK, in a real room: a TV and three phones. Maya is singing. The
 // queue is Theo `believin`, Ana `prayer`, Ana `brightside`. Theo opens his On deck card and sets -1. Then Maya drags
 // Ana's `brightside` from 3rd toward the top.
 //
-// Before this change the drop landed 1st: Theo's card vanished with no word on any phone, Ana's second song went
-// ahead of his first, and the TV's "UP NEXT" flipped to Ana (evidence/p14, main 171a3340). Now the drop stops at 2nd,
+// A drop that landed 1st would make Theo's card vanish with no word on any phone, put Ana's second song ahead of
+// his first, and flip the TV's "UP NEXT" to Ana. The drop stops at 2nd,
 // Maya's phone says why, and Theo's card, his -1 and the TV's "UP NEXT Theo" never move.
 import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';

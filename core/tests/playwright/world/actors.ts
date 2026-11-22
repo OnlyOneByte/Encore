@@ -1,11 +1,9 @@
 // The phone's post-join steps, in ONE place, so a move of the phone's information architecture costs this
 // file and nothing else. Selectors come from the contract — see docs/E2E.md#shared-helpers.
 //
-// Ported from tests/e2e/lib/phone.mjs. The old driver had no auto-waiting, so each helper was a sequence of
-// `waitFor('<js expression string>')` calls with a hand-rolled 250ms "already there?" probe in front. Here a
-// locator waits for itself and returns immediately when the thing is already present, so the probes are gone
-// and every step names the selector it is waiting on in its own failure. What is NOT gone is the ordering and
-// the geometry: those encode how the phone actually behaves.
+// A locator waits for itself and returns immediately when the thing is already present, so no helper needs an
+// "already there?" probe, and every step names the selector it is waiting on in its own failure. The ordering
+// and the geometry are deliberate: those encode how the phone actually behaves.
 import { expect, type Locator, type Page } from '@playwright/test';
 import { SEL } from './selectors';
 import type { World } from './fixtures';
@@ -104,8 +102,7 @@ export async function returnHomeFromBrowse(page: Page, { timeout = DEFAULT_TIMEO
 }
 
 /**
- * "Am I joined yet?" — a PREDICATE over a locator, where the old driver returned a JS expression string for it
- * to poll inside one `evaluate`. A predicate rather than an assertion because the callers that need it are
+ * "Am I joined yet?" — a PREDICATE over a locator. A predicate rather than an assertion because the callers that need it are
  * watching a condition COME BACK (a reconnect, a reload) and want to poll it themselves:
  *
  *     await expect.poll(() => isJoined(phone), { timeout: 20_000 }).toBe(true);

@@ -7,13 +7,13 @@
 // writes the SAME tone for every library track, so `WORKER_INSTRUMENTAL_HZ` — not the library file's own
 // frequencies — is what an FFT off the stage must show.
 //
-// CRITICAL = silence or a wedged decoder; HIGH = wrong pitch (>3%) or label/state disagreement. The old probe
-// exited 1 on ANY non-environment finding regardless of severity, so every one of them is an expect here.
+// CRITICAL = silence or a wedged decoder; HIGH = wrong pitch (>3%) or label/state disagreement. Every
+// non-environment finding fails the run regardless of severity, so every one of them is an expect here.
 //
 // See docs/E2E.md#proving-audio.
 //
-// Ported from tests/e2e/probes/p3-key-shift.mjs. Two changes of MECHANISM, no change of claim:
-//   · the ± keycaps and Restart are driven with REAL Playwright clicks where the old probe used
+// Two choices of MECHANISM:
+//   · the ± keycaps and Restart are driven with REAL Playwright clicks, never
 //     `evaluate(() => btn.click())`. A synthetic click grants no user activation, and this page's whole
 //     subject is an AudioContext that needs one (docs/E2E.md#gestures).
 //   · the TV takes ONE real tap before any shift, for the same reason. It builds nothing — TvPlayer's gesture
@@ -328,8 +328,8 @@ test('at +2 the pitch survives a pause and resume', async ({ world }) => {
 		const before = await measureAtShift(phone, tv, 2);
 
 		// The strip's filled button is the app's ONLY play/pause, and it is in the dock — so it is reachable from
-		// /queue, where `shiftTo` has just left this phone, without navigating back. The old probe clicked
-		// `[aria-label="play/pause"]`, a label nothing carries any more (world/selectors.ts).
+		// /queue, where `shiftTo` has just left this phone, without navigating back. Not
+		// `[aria-label="play/pause"]`, a label nothing carries (world/selectors.ts).
 		await phone.locator(SEL.npPlayPause).click();
 		await phone.waitForTimeout(700);
 		const paused = await awaitMaster(tv);
@@ -355,8 +355,7 @@ test('at +2 the pitch survives a pause and resume', async ({ world }) => {
 });
 
 test('a song change resets the shift and the fresh song still decodes', async ({ world }) => {
-	// TWO tracks, because the advance needs somewhere to go. The old probe degraded this to an environment
-	// limit when the fixture library held only one processable song; world/seed.ts always seeds four.
+	// TWO tracks, because the advance needs somewhere to go; world/seed.ts always seeds four.
 	const { worker, phone, tv } = await stage(world, [TRACKS.caroline, TRACKS.believin]);
 	try {
 		expect((await shiftTo(phone, 2)).value).toBe(2);
@@ -389,10 +388,6 @@ test('a song change resets the shift and the fresh song still decodes', async ({
 	}
 });
 
-// NOT PORTED — and it is no longer the environment limit it was. The old probe recorded
-// "the 'sounding key' line renders when a real songProfile is present" as an ENV finding, because the old fake
-// worker published a legacy-shape songProfile that `setSongProfile` discarded (keyTonic came back null), so
-// `keySounding` was null and `.key-head` never rendered. world/workers.ts now publishes a CORRECT profile
-// (keyTonic 9, keyMode minor, a MIDI range), so the line IS reachable and the claim is measurable for the
-// first time. Asserting it would be a NEW claim rather than a ported one, so it is left here as the next
-// thing to add, not silently folded into the tests above.
+// NOT ASSERTED YET: "the 'sounding key' line renders when a real songProfile is present". world/workers.ts
+// publishes a CORRECT profile (keyTonic 9, keyMode minor, a MIDI range), so `.key-head` IS reachable and the
+// claim is measurable. It is left here as the next thing to add, not silently folded into the tests above.

@@ -7,7 +7,7 @@ test('each entry is decided once, ever', () => {
 	expect(firstTimeFor('e-other')).toBe(true);
 });
 
-// 320x568 as proposal 13 measured it: header bottom 70, dock top 475, the heads-up card at 514.
+// 320x568 as measured on the real layout: header bottom 70, dock top 475, the heads-up card at 514.
 const at320 = { cardTop: 514, controlBottom: 627, headerBottom: 70, dockTop: 475, scrollY: 0, gap: 8 };
 
 test('a card whose first control is under the dock scrolls to just below the header', () => {

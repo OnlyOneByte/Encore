@@ -4,23 +4,19 @@
 //
 // WHY A WORKER RUNS. /admin lists `/api/library`.library, which is `listReady()` — songs with stems on disk.
 // A raw library file is not in it, so without a worker the page renders its "No processed songs" empty state
-// and the row this probe clicks does not exist. The old probe ran against a shared server somebody had
-// already processed songs on; a core per test has to earn its own row.
+// and the row this probe clicks does not exist; a core per test has to earn its own row.
 //
-// Ported from tests/e2e/probes/admin-delete.mjs, which was a SCREENSHOT tool: two `for (…) await sleep(100)`
-// count-polls and two frames. Those polls never failed — a list that stayed empty was photographed empty and
-// the tool printed "captured list" — so its only real assertion was implicit, in `page.click(SEL.adminDelete)`
-// throwing when there was no button to click. Both halves are assertions here. The frames survive as
-// ATTACHMENTS: evidence for a reader, never a pass condition.
+// The list and the armed confirm are both assertions, not screenshots: a list that stayed empty must fail,
+// never be photographed empty. The frames are ATTACHMENTS: evidence for a reader, never a pass condition.
 //
-// IT STOPS AT ARMED. The old probe never pressed `Yes, delete`, so neither does this: committing the delete
-// is a claim about /api/delete-media that this probe never made.
+// IT STOPS AT ARMED. It never presses `Yes, delete`: committing the delete
+// is a claim about /api/delete-media that this probe does not make.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page } from '@playwright/test';
 
-/** The old probe's frame size. It only ever mattered to the screenshots, and it still only matters to them. */
+/** The frame size. It only matters to the screenshots. */
 const OPERATOR_VIEWPORT = { width: 900, height: 1100 };
 
 interface SongRow {
@@ -61,7 +57,7 @@ test('the admin list offers a Delete that arms a confirm', async ({ world, page 
 		const phone = await world.openPhone('Admin-Probe');
 		const song = await processToReady(phone, 'caroline');
 
-		// ANONYMOUS, as the old probe was: /admin carries no join gate and an operator arrives with no session.
+		// ANONYMOUS: /admin carries no join gate and an operator arrives with no session.
 		await page.setViewportSize(OPERATOR_VIEWPORT);
 		await page.goto('/admin');
 

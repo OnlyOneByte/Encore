@@ -11,16 +11,13 @@
 // (docs/E2E.md#autoplay) — so the arms are launched here rather than declared per file, which Playwright only
 // allows at file scope.
 //
-// ═══ THE OLD PROBE ASSERTED NOTHING, AND ITS ARMS MEASURED NOTHING ═══
-// tests/e2e/probes/tv-audiocontext-resume.mjs has no `check()` at all: it printed both arms and then a VERDICT
-// chosen from the three hypotheses above. Worse, it asked for the shift over a bare
-// `new WebSocket('ws://…/ws?role=phone')` opened from Node — with no session cookie. server.ts gates
+// ═══ THE SHIFT MUST COME FROM A JOINED PHONE ═══
+// A bare `new WebSocket('ws://…/ws?role=phone')` opened from Node carries no session cookie. server.ts gates
 // `player:command` on `can({ singerId }, 'player:control')`, and capabilities.ts's `can` is
-// `Boolean(actor?.singerId)`, so that frame was DROPPED. Both arms therefore observed a TV at keyShift 0, where
-// the shifter deliberately builds no graph at all — which guarantees hypothesis 2 and would have printed the
-// wrong verdict every time.
+// `Boolean(actor?.singerId)`, so that frame is DROPPED. Both arms would then observe a TV at keyShift 0, where
+// the shifter deliberately builds no graph at all — which guarantees hypothesis 2 every time.
 //
-// So this port sends the shift the way a phone really does, from a socket opened inside the joined phone's own
+// So this probe sends the shift the way a phone really does, from a socket opened inside the joined phone's own
 // page, and turns each arm's verdict branch into an expect:
 //   · GESTURELESS asserts the two things that are true on EITHER branch: a context IS constructed (hypothesis 2
 //     excluded), and the element is captured ONLY INTO A RUNNING CONTEXT. That second one is the invariant
@@ -96,7 +93,7 @@ test('gestureless — a +2 shift builds a graph, and captures the element only i
 		).toBe(0);
 
 		await sendPlayerCommand(phone, { cmd: 'key', semitones: 2 });
-		// PRECONDITION, and the one the old probe silently failed: if the command never reached authoritative
+		// PRECONDITION, and the one that is easy to fail silently: if the command never reached authoritative
 		// state, every reading below is of an unshifted TV.
 		await expect
 			.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift, {

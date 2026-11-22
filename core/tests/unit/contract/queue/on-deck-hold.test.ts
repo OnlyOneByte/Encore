@@ -1,4 +1,4 @@
-// Proposal 14: the shared On deck hold rule (`heldEntryId`) and the add clamp in `insertEntry`, which make an add land
+// The shared On deck hold rule (`heldEntryId`) and the add clamp in `insertEntry`, which make an add land
 // behind the held entry under EVERY queue order. Each `raw` assertion pins that the policy alone WOULD have put the new
 // song in front, so the clamp, not the fixture, is what keeps it behind.
 import { test, expect } from 'bun:test';

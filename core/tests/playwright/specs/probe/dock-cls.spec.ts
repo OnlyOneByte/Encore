@@ -1,7 +1,7 @@
-// THE DOCK NEVER MOVES (proposal 13). Theo is the phone watched, on /queue, and every transition comes from another
-// phone, so nothing Theo sees is exempt as recent input. Before, the dock had three heights — tabs alone (48),
-// strip + tabs (93) and the reaction row on top (164) — and four of these transitions moved its top edge 45 to 116 px
-// on every phone in the room (CLS 0.0163 to 0.2433 at 320, evidence/p13). Now it is strip + tabs in every state, so
+// THE DOCK NEVER MOVES. Theo is the phone watched, on /queue, and every transition comes from another
+// phone, so nothing Theo sees is exempt as recent input. A dock with three heights — tabs alone (48),
+// strip + tabs (93) and the reaction row on top (164) — moves its top edge 45 to 116 px across four of these
+// transitions on every phone in the room (CLS 0.0163 to 0.2433 at 320). It is strip + tabs in every state, so
 // across each one there must be NO layout-shift entry sourced from the dock or anything in it, and the dock's box
 // must be identical. The page's own shifts (the /queue list as the Now card comes and goes) are not this claim.
 import { test, expect } from '../../world/fixtures';

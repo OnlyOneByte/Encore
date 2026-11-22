@@ -1,4 +1,4 @@
-// CROSS-LANGUAGE CONTRACT (review M3, M15): the worker's align completion, as core reads it. The fixture beside this
+// CROSS-LANGUAGE CONTRACT: the worker's align completion, as core reads it. The fixture beside this
 // test is WRITTEN BY THE WORKER (worker/tests/test_core_contract.py) from its real `run_align`, its real frame builder
 // and its real `diarize` step, and it records what the worker MEANT: which candidate it chose, which texts are claims,
 // which singer each line belongs to. This test feeds each frame through the same `validateWorkerMessage` →
@@ -121,7 +121,7 @@ test("every frame: core shows the worker's choice, stores every candidate, and r
 	}
 });
 
-test('a line-synced sheet is shown over the word attempt its ladder rejected (review M3)', () => {
+test('a line-synced sheet is shown over the word attempt its ladder rejected', () => {
 	const m = media();
 	complete(m, frame('line-sync-after-a-rejected-word-attempt').frame);
 	const line = stored(m, 'derived/lyrics/m1-lrclib-line-sync-line.json');
@@ -139,7 +139,7 @@ test('within one report the selectable flag decides, not list order or a shared 
 	expect(pickBestLyrics([...reported].reverse())?.ref).toBe(intent.chosen!);
 });
 
-test('a machine-caption word doc is not authoritative: "Auto captions", below a line-synced sheet (review M3)', () => {
+test('a machine-caption word doc is not authoritative: "Auto captions", below a line-synced sheet', () => {
 	const m = media();
 	complete(m, frame('line-sync-after-a-rejected-word-attempt').frame);
 	complete(m, frame('machine-captions-word-doc').frame); // a later job, a worse text
@@ -179,7 +179,7 @@ test('a pointer to a file a later job rewrote with a reject is cleared, not show
 	expect(other.lyricsRef).toBe('derived/lyrics/m1-good.json');
 });
 
-test('a text the ladder refused withdraws the candidate an earlier job stored for it (review W1 r2)', () => {
+test('a text the ladder refused withdraws the candidate an earlier job stored for it', () => {
 	// The earlier job published the sheet as a word doc: authoritative + word, rank 5. The re-align's gate refused
 	// the same words, which writes nothing, so without the withdrawal the stored entry kept its rank and was shown
 	// over the transcript this job chose (rank 3).
@@ -221,8 +221,8 @@ test('a pasted pin is a claim: "Your lyrics", authoritative, and the one candida
 	expect(m.lyricsRef).toBe(intent.chosen!);
 });
 
-test("a person's re-pick is sent as their claim, whatever the text's tier (W3: the old worker's pin)", () => {
-	// W1 sent a re-timed machine track `low` (its tier), so the words a person had just chosen still read as
+test("a person's re-pick is sent as their claim, whatever the text's tier (the old worker's pin)", () => {
+	// The old worker sent a re-timed machine track `low` (its tier), so the words a person had just chosen still read as
 	// "Auto captions", not verified. A pin's words are `high` now; the source still says what the text is.
 	const machine = frame('a-re-picked-machine-caption');
 	const m = media({ lyricsOverrideRef: machine.intent.chosen! });
@@ -248,13 +248,13 @@ test("a person's re-pick is sent as their claim, whatever the text's tier (W3: t
 	expect(isAuthoritativeText(heard)).toBe(false);
 });
 
-test('a doubt-band word doc is no claim, and loses to a vouched line-timed rival (W3 r1)', () => {
+test('a doubt-band word doc is no claim, and loses to a vouched line-timed rival', () => {
 	// The worker published it, but its lexical lift says nothing vouches for the WORDS. Sent as the timing
 	// grade alone (`timingConfidence: medium`) it read authoritative + word = rank 5, tied with a fully vouched
 	// word doc and above a CORRECT line-timed sheet — this band's grade is `medium`, and `lyricsRank` read
-	// `timingConfidence` nowhere before W6 and demotes only on a `low` one since, so neither version of that
+	// `timingConfidence` nowhere at first and demotes only on a `low` one now, so neither version of that
 	// ranking could have carried the doubt.
-	// The doubt rides on `vouched`, not `textConfidence`: that field is the text's PROVENANCE (W3 r2).
+	// The doubt rides on `vouched`, not `textConfidence`: that field is the text's PROVENANCE.
 	const m = media();
 	complete(m, frame('line-sync-after-a-rejected-word-attempt').frame); // an earlier job's vouched sheet
 	complete(m, frame('a-doubt-band-word-document').frame);
@@ -270,7 +270,7 @@ test('a doubt-band word doc is no claim, and loses to a vouched line-timed rival
 	expect(m.lyricsRef).toBe('derived/lyrics/m1-lrclib-line-sync-line.json'); // authoritative + line = 4
 });
 
-test('a doubted caption track is still labelled "Captions", not "Auto captions" (W3 r2)', () => {
+test('a doubted caption track is still labelled "Captions", not "Auto captions"', () => {
 	// The mislabelling the `vouched` field exists to avoid: `textConfidence: low` is how core knows a caption
 	// track is MACHINE-generated, so sending the words' doubt there told the room an uploader's hand-authored
 	// track was auto-generated — false about where the text came from, which is not what the gate measured.
@@ -289,7 +289,7 @@ test('a doubted caption track is still labelled "Captions", not "Auto captions" 
 	expect(lyricsSourceLabel({ ...authored, textConfidence: 'low' })).toBe('Auto captions');
 });
 
-test('a pin the lexical gate refused still shows, but not as a claim (W3 r1)', () => {
+test('a pin the lexical gate refused still shows, but not as a claim', () => {
 	// A person chose the words, so the worker publishes them and core's override keeps showing them — what it
 	// must NOT do is read them as verified: the pin's usual `high` would make unmeasured words authoritative.
 	const { frame: f, intent } = frame('a-pin-the-lexical-gate-refused');
@@ -306,7 +306,7 @@ test('a pin the lexical gate refused still shows, but not as a claim (W3 r1)', (
 	expect(m.lyricsRef).toBe(intent.chosen!); // the override is above the ranking, as always
 });
 
-test("a duet's parts reach the TV line for line, and an over-segmented solo stays one colour (review M15)", () => {
+test("a duet's parts reach the TV line for line, and an over-segmented solo stays one colour", () => {
 	for (const { name, doc, parts } of fixture.documents) {
 		const parsed = parseLyricsDoc(doc);
 		expect(parsed, name).not.toBeNull();

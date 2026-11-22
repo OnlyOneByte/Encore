@@ -1,6 +1,5 @@
-// Every hook a Playwright selector names must still exist somewhere in the app source. The guard that used to
-// verify this (tests/guards/hygiene/contract.test.ts) is gone, and without one a moved hook makes a spec time
-// out against a page that is fine — the shape TL-03 found in two probes. This checks EXISTENCE, not that the
+// Every hook a Playwright selector names must still exist somewhere in the app source. Without a check, a
+// moved hook makes a spec time out against a page that is fine. This checks EXISTENCE, not that the
 // selector resolves on the right surface: that is still the spec's job.
 //
 // shortcut: hooks are matched as text anywhere in `src/`, so a name reused elsewhere passes. Upgrade to a

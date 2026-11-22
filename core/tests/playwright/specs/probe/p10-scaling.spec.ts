@@ -7,20 +7,17 @@
  *   5. `.app-shell` width vs viewport at 1024/1280/1440/2400 (a capped grid leaving a void).
  *   6. Contrast from COMPUTED colours against WCAG AA (4.5:1; 3:1 for large text).
  *
- * WHAT THE OLD PROBE WAS. tests/e2e/probes/p10-scaling.mjs is a CAPTURE driver: it contains ZERO `check()` calls
- * and "exits 0 whatever it saw, so its OUTPUT is the verdict". Every number below was computed there and written
- * to findings.json for a human. Three of its measurements carry a threshold that is objective and already
- * written down — the type scale must GROW with the panel (the header's own question), nothing may be clipped past
+ * WHAT IS ASSERTED. Three of the measurements carry a threshold that is objective and already
+ * written down — the type scale must GROW with the panel (item 1's own question), nothing may be clipped past
  * the right edge, and `docs/E2E.md` states the probe proves "measured contrast clears WCAG AA on real computed
- * colours" — so those become assertions here. The two that carry no verdict anywhere are the 44px touch floor
- * (`tests/e2e/gates/measured-design-register.mjs` holds a QUARANTINE of controls that already measure under it,
+ * colours" — so those are assertions here. The two that carry no verdict anywhere are the 44px touch floor
+ * (`measured-design-register.ts` holds a QUARANTINE of controls that already measure under it,
  * so a bare "none under 44px" would be a claim this repo has not made) and the capped-shell void (no threshold
  * exists for how much empty surface is too much). Both are still MEASURED, and attached to the report, because a
- * measurement nobody reads is how the capture driver's value was lost — but neither is asserted, because
- * inventing a threshold is exactly the silent rewrite this port must not do.
+ * measurement nobody reads is a measurement lost — but neither is asserted, because
+ * inventing a threshold would be a silent new claim.
  *
- * Item 7 of the old header — "Overscan: anything important inside the 5% region a real television crops" — is
- * NOT implemented in the probe body at all. It is not invented here either.
+ * Overscan — "anything important inside the 5% region a real television crops" — is NOT measured.
  */
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
@@ -29,7 +26,7 @@ import { openBrowseFromHome } from '../../world/actors';
 import type { Page, TestInfo } from '@playwright/test';
 
 /** deviceScaleFactor stays 1 (the project default): the downscale is the VIEWPORT itself, so a measured px is a
- *  real px. Every size and its reason is carried over from the old probe. */
+ *  real px. Every size carries its reason. */
 const TV_SIZES = [
 	{ label: '720p', w: 1280, h: 720 }, // the smallest panel the product ships onto — the type floor's own case
 	{ label: '1080p', w: 1920, h: 1080 }, // the reference the vh-relative scale is tuned at
@@ -47,8 +44,8 @@ const REMOTE_SIZES = [
 	{ label: '2400w', w: 2400, h: 1200 }
 ];
 
-/** The TV type ladder, every token the old probe resolved. `--tv-safe-*` are lengths rather than type, and are
- *  here for the same reason they were there: the safe area is what the type has to live inside. */
+/** The TV type ladder, every token resolved. `--tv-safe-*` are lengths rather than type, and are
+ *  here because the safe area is what the type has to live inside. */
 const TV_TOKENS = [
 	'--tv-lyric',
 	'--tv-eyebrow',
@@ -114,7 +111,7 @@ function contrastRatio(fg: string, bg: string): number | null {
 	const [hi, lo] = relLum(a) >= relLum(b) ? [relLum(a), relLum(b)] : [relLum(b), relLum(a)];
 	return (hi + 0.05) / (lo + 0.05);
 }
-/** The verdict half, out of the page: the same rule the old probe applied to its captured colours. */
+/** The verdict half, out of the page: the WCAG AA rule applied to the captured colours. */
 function gradeContrast(pairs: Record<string, ColourReading>): Record<string, ContrastReading> {
 	const out: Record<string, ContrastReading> = {};
 	for (const [sel, info] of Object.entries(pairs)) {
@@ -144,9 +141,9 @@ function failedAA(report: Record<string, ContrastReading>): string[] {
  * foreground over a transparent parent is measured against whatever actually paints behind it, which is the
  * whole point of measuring rather than reading declarations.
  *
- * The literal descendant selectors are carried over from the old probe verbatim. They have no entry in the
- * selector contract, and inventing one from a spec would put a hook outside the contract; they are the SEL gaps
- * this port reports rather than papers over.
+ * The targets are literal descendant selectors. They have no entry in the
+ * selector contract, and inventing one from a spec would put a hook outside the contract; they are SEL gaps
+ * left visible rather than papered over.
  */
 async function readColours(page: Page, targets: [string, string][]): Promise<Record<string, ColourReading>> {
 	return page.evaluate((targets) => {

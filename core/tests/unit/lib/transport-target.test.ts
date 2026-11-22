@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { NO_TARGET, SETTLE_MS, observeShown, transportTarget } from '$lib/transport-target';
 
-// 974-M2: two real taps 40-80 ms apart took two songs, because the second phone had already redrawn to the next song.
+// Two real taps 40-80 ms apart took two songs, because the second phone had already redrawn to the next song.
 
 test('a tap just after the strip moved on names the song that was there, so the server drops it', () => {
 	let t = observeShown(NO_TARGET, 'maya', 0);

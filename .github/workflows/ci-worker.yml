@@ -1,5 +1,5 @@
-# The worker's checks on every PR that can change their result (proposal 06). Split from
-# ci.yml so a core-only or docs-only change spends no minutes here; ml.yml still runs every test.
+# The worker's checks on every PR that can change their result. Split from
+# ci.yml so a core-only or docs-only change does not run them; ml.yml still runs every test.
 #
 # Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
 #

@@ -1,4 +1,4 @@
-// YOUR CARD COMES TO YOU (proposal 13, 2/2), at 320x568 where no dock height is enough: the Now card alone reaches
+// YOUR CARD COMES TO YOU, at 320x568 where no dock height is enough: the Now card alone reaches
 // y 506, so Theo's On deck heads-up card starts at 514, under the dock's top edge (475), and his failed card's × is
 // off screen. When either needs him, /queue scrolls that card up once so its first control lies between the sticky
 // header's bottom and the dock's top. A touch in the 3 s before means the guest is driving: no scroll.
@@ -134,7 +134,7 @@ test('320x568: opening Queue by its tab while you are up next brings the card up
 });
 
 test('320x568: a reload during your heads-up brings the card up (the phone woke from sleep)', async ({ world }) => {
-	// A hard load: since #996 the page mounts after SvelteKit's first navigation has finished, so `afterNavigate`
+	// A hard load: the page mounts after SvelteKit's first navigation has finished, so `afterNavigate`
 	// never fires for it. A browser that discarded the tab while the phone slept does exactly this.
 	const { worker, theo } = await theoOnDeck(world);
 	try {
@@ -156,7 +156,7 @@ test('320x568: a reload during your heads-up brings the card up (the phone woke 
 test('320x568: a hold animating the card as it turns heads-up is waited out, so the card still lands right', async ({
 	world
 }) => {
-	// The shape of #1002's settle: something holds the card away from its layout position with a transform, in the
+	// The shape of a settle animation: something holds the card away from its layout position with a transform, in the
 	// frame it turns heads-up. A rect read during the hold is off by the hold (here 200 px up), and the card would
 	// then land 200 px wrong or not move at all. The hold starts a second before the heads-up, from the Now card's
 	// own countdown, so the test does not race the page's observer.

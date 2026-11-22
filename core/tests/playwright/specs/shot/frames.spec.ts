@@ -1,17 +1,12 @@
-// THE FRAME TABLE. One spec in place of five screenshot tools — tests/e2e/shot.mjs, shot-settings.mjs,
-// shot-metrics.mjs, shoot.mjs and capture.mjs, 1,109 lines between them.
+// THE FRAME TABLE. The `world` fixture boots a seeded core per test, so all that is left is a table, and a
+// frame is `{ name, viewport, setup }`.
 //
-// Those five differed on exactly two axes: who owns the server, and which frames. The first is gone — the
-// `world` fixture boots a seeded core per test — so all that is left is a table, and a frame is
-// `{ name, viewport, setup }`.
+// A FRAME IS DRIVEN INTO ITS STATE, never photographed as it loads. That is a rule about waits: every `setup`
+// below ends on a condition — an `aria-selected` that only flips once a panel has swapped, a row count, a
+// notice appearing — and never on a duration.
 //
-// A FRAME IS DRIVEN INTO ITS STATE, never photographed as it loads. That is the whole point capture.mjs was
-// making, and it survives as a rule about waits: every `setup` below ends on a condition — an `aria-selected`
-// that only flips once a panel has swapped, a row count, a notice appearing — and never on a duration. The
-// old tree's `sleep(800)`s existed because its driver had no auto-waiting; none of them came across.
-//
-// EVIDENCE, NOT ASSERTIONS. shoot.mjs's own header: "deliberately in no gate list, because a screenshot
-// cannot fail a build", which is also why the `shot` project carries `retries: 0` — a retry would silently
+// EVIDENCE, NOT ASSERTIONS. Deliberately in no gate list, because a screenshot cannot fail a build, which is
+// also why the `shot` project carries `retries: 0` — a retry would silently
 // overwrite a frame somebody is looking at. So every frame is written into `testInfo.outputDir` and attached
 // to the report for a human or an agent to read. Exactly ONE frame also holds a pixel baseline; see
 // `baseline` below for the one case where that is a real regression assertion rather than decoration.
@@ -25,10 +20,9 @@
 // WHAT IS NOT HERE: every frame that needs a song to actually be sounding — the lyrics reel, the TV progress
 // and background variants, the key shift, the per-song audit. Those need stems on disk and a granted autoplay
 // policy; `world` seeds a raw library with no worker, and playwright.config.ts refuses the autoplay grant on
-// purpose ("a television grants no gesture"). capture.mjs skipped them too whenever MEDIA_DIR was not a
-// processed volume. They are dropped rather than skipped: this repo ruled a permanently-skipped test is
-// indistinguishable from rot, so a frame that cannot be produced is absent and named in the port's notes,
-// not present and yellow.
+// purpose ("a television grants no gesture"). They are dropped rather than skipped: this repo ruled a
+// permanently-skipped test is indistinguishable from rot, so a frame that cannot be produced is absent and
+// named here, not present and yellow.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { openQueue } from '../../world/actors';
@@ -59,7 +53,7 @@ interface Frame {
 	surface: Surface;
 	/** Omitted on `tv`: 1920x1080 is load-bearing there and `world.openTv()` already sets it. */
 	viewport?: Viewport;
-	/** The whole scrolling column rather than the fold. Replaces shoot.mjs's tall-viewport trick on the
+	/** The whole scrolling column rather than the fold, not a tall viewport on the
 	 *  phone: a phone laid out at 1500px tall is not a phone, so the viewport stays 844 and the CAPTURE
 	 *  grows instead of the layout. */
 	fullPage?: boolean;
@@ -69,24 +63,23 @@ interface Frame {
 	setup(page: Page, world: World): Promise<void>;
 }
 
-/** A 390x844 phone. shot.mjs's own default size, and `world.openPhone`'s. */
+/** A 390x844 phone, `world.openPhone`'s default size. */
 const PHONE: Viewport = { width: 390, height: 844 };
-/** shot-settings.mjs's size, kept with its reason: settings is ten cards over three scope routes, and 430x1500
+/** The settings size, and its reason: settings is ten cards over three scope routes, and 430x1500
  *  at DPR 1 is what fits the LONGEST of them whole while staying inside the 2000px an agent can read back. */
 const SETTINGS: Viewport = { width: 430, height: 1500 };
 /** /metrics is an operator page with a 900px measure, so it is shot at desktop width; 1400 tall keeps the
- *  other axis under 2000. shot-metrics.mjs exposed these as SHOT_W/SHOT_H; the narrowing is now its own
- *  frame (`metrics-narrow`) rather than an env var nobody reading the frames can see. */
+ *  other axis under 2000. The narrowing is its own frame (`metrics-narrow`) rather than an env var nobody
+ *  reading the frames can see. */
 const METRICS_DESKTOP: Viewport = { width: 1000, height: 1400 };
-/** The case the metrics tables' horizontal scroll exists for — shot-metrics.mjs's `SHOT_W` override. */
+/** The case the metrics tables' horizontal scroll exists for. */
 const METRICS_NARROW: Viewport = { width: 390, height: 1400 };
 
 // ── the moves a frame is reached by ───────────────────────────────────────────────────────────────────────
 
 /**
  * Open a settings SCOPE, which is a navigation now that the three are three routes — and wait on a control inside
- * the scope, not on the URL, because a route that has answered is not yet a panel that has rendered. The old form
- * clicked a tablist trigger and waited on `aria-selected`; there is no tablist to click.
+ * the scope, not on the URL, because a route that has answered is not yet a panel that has rendered.
  */
 async function scope(page: Page, path: string, ready: string): Promise<void> {
 	await page.goto(path);
@@ -115,7 +108,7 @@ async function choose(page: Page, id: string, value: string): Promise<void> {
 }
 
 /**
- * Scroll by PROPORTION, which is how shot-metrics.mjs framed its three frames: they want top / middle /
+ * Scroll by PROPORTION, which is how the three metrics frames are framed: they want top / middle /
  * bottom of a long page, not a named element, and a proportion cannot rot when a card moves. The wait is on
  * the scroll having LANDED, so this is a condition and not a sleep.
  */
@@ -132,7 +125,7 @@ async function scrollToFraction(page: Page, fraction: number): Promise<void> {
 }
 
 /**
- * Size the viewport to the page's own content — capture.mjs's `fitViewport`, kept for the same reason: a
+ * Size the viewport to the page's own content, because a
  * fixed tall viewport turns a 660px page into a frame two thirds black, which reads as a rendering bug
  * rather than a small library. Capped at 2000px, past which the tooling that reviews these frames cannot
  * read them back.
@@ -149,8 +142,8 @@ async function fitToContent(page: Page, { min = 600, max = 2000, pad = 40 } = {}
 }
 
 /**
- * Answer /api/metrics, and ONLY that path, from the fixture. shot-metrics.mjs did this with an initScript
- * that replaced `window.fetch`; `page.route` is the same interception one layer down, and it cannot be
+ * Answer /api/metrics, and ONLY that path, from the fixture. `page.route` rather than an initScript that
+ * replaces `window.fetch`: the same interception one layer down, and it cannot be
  * defeated by the page holding its own reference to fetch.
  */
 async function stubMetrics(page: Page): Promise<void> {
@@ -266,7 +259,7 @@ const FRAMES: Frame[] = [
 			// The world binds core to 127.0.0.1 and no party address is set, so the advertised join address is a
 			// loopback one: the TV correctly refuses to paint a QR whose every scan would fail. This is the
 			// commonest first-run failure (a loopback bind, a WSL2 NAT, a proxy forwarding no X-Forwarded-*) and
-			// it is the DEFAULT here, which is why capture.mjs's separate `tv-join-unreachable` frame is this one.
+			// it is the DEFAULT here, which is why this frame doubles as the join-unreachable one.
 			await expect(page.locator(SEL.attract)).toBeVisible();
 			await expect(page.locator(SEL.badQrTitle)).toBeVisible();
 		}
@@ -356,7 +349,7 @@ const FRAMES: Frame[] = [
 			// Collapsible owns `aria-expanded`, so the trigger reports the panel's state. NOT `#advanced-body`:
 			// the panel is authored as `<Card.Content id="advanced-body" {...props}>` and bits-ui's own generated
 			// id arrives in that spread, so the explicit one is overwritten and that selector resolves against
-			// nothing. capture.mjs never noticed because it slept instead of waiting.
+			// nothing — which a sleep instead of a wait would never notice.
 			await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 			// The panel opens below the fold, behind the docked now-playing row, so the frame has to scroll to it.
 			await reveal(page, SEL.setting('enqueue-upgrade'));
@@ -371,8 +364,8 @@ const FRAMES: Frame[] = [
 			// TWO SCOPES, in order, because the cause and the effect live on different ones: machine timing decides
 			// whether per-word timings EXIST, the room only decides how they are drawn. Each hop is a real
 			// navigation now, and the room scope re-reads the settings object on arrival, which is why the warning
-			// below is on screen rather than one frame behind. capture.mjs put the deployment back afterwards
-			// because thirty later frames shared its server; a core per test makes that restore dead code.
+			// below is on screen rather than one frame behind. Nothing
+			// puts the deployment back afterwards: a core per test means no later frame shares it.
 			await scope(page, SCOPE.server.path, SCOPE.server.ready);
 			await choose(page, 'sync-mode', 'lines');
 			await scope(page, SCOPE.room.path, SCOPE.room.ready);
@@ -392,7 +385,7 @@ const FRAMES: Frame[] = [
 		// is exactly what a pixel baseline protects. Playwright suffixes the snapshot with the platform, and
 		// it has to: the same fixture rasterises its glyphs differently on macOS and Linux (about 2 % of
 		// pixels, all text). So each OS carries its own PNG; the Linux one is shot in the pinned
-		// mcr.microsoft.com/playwright:v1.56.1 image on aarch64; x86_64 is unverified until CI (proposal 06)
+		// mcr.microsoft.com/playwright:v1.56.1 image on aarch64; x86_64 is unverified until CI
 		// runs it, and may need its own re-base. A bumped Chromium fails once and is re-based by hand,
 		// which is louder and more honest than a tolerance wide enough to hide a changed heading.
 		baseline: true,

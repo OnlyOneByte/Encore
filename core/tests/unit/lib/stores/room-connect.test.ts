@@ -332,7 +332,7 @@ class CountingTarget extends EventTarget {
 }
 
 test('a long outage holds at most one wake listener each, and none once closed', async () => {
-	// From the round-3 review's probe: a retry sleep that forgot to remove its listener left one per retry.
+	// A retry sleep that forgot to remove its listener left one per retry.
 	const win = new CountingTarget();
 	const doc = Object.assign(new CountingTarget(), { visibilityState: 'visible' });
 	stub('window', win);

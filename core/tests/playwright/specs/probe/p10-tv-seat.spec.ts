@@ -1,5 +1,5 @@
-// Proposal 10's probe, flipped. On main a /ws?role=tv socket with no cookie was told the current entry id, forged
-// that song's `ended` (the singer lost their turn) and a `positionSec: 180` (every fresh phone was handed it). With
+// P10, the seat half. A /ws?role=tv socket with no cookie must not be told the current entry id, nor forge
+// that song's `ended` (the singer would lose their turn) or a `positionSec: 180` (every fresh phone would be handed it). With
 // the real TV holding the room's seat, neither a cookieless "TV" nor a second screen with a cookie moves the room.
 // A live core plus the fake stems worker, because a turn only exists once a song is ready to sing.
 import { test, expect } from '@playwright/test';
@@ -236,7 +236,7 @@ async function tvOn(c: Core, cookie: string) {
 }
 const cookieOf = (c: string) => `encore_tv=${c.repeat(32)}`;
 
-// The review of #990 (r3): after a restart with a saved seat, a copy connects and NOTHING ELSE happens. Only the 60 s
+// After a restart with a saved seat, a copy connects and NOTHING ELSE happens. Only the 60 s
 // sweep that connect booked can promote it. The fake-clock unit test pins the same booking; this is the live proof.
 test('restart, the saved TV never returns, one copy connects: the copy is promoted after 60 s', async () => {
 	test.setTimeout(150_000);

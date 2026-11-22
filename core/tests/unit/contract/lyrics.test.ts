@@ -143,7 +143,7 @@ test('nothing showable → null (honest "no lyrics", not a blank overlay)', () =
 	expect(pickBestLyrics([])).toBeNull();
 });
 
-test('an attempt its worker REJECTED is never auto-selected, however it would rank (review M3)', () => {
+test('an attempt its worker REJECTED is never auto-selected, however it would rank', () => {
 	// The ladder retried it or moved past it; as a peer, authoritative + word beat the line doc it published.
 	const rejected = cand('lrclib', 'word', { selectable: false });
 	const published = cand('lrclib', 'line', { selectable: true });
@@ -156,7 +156,7 @@ test('an attempt its worker REJECTED is never auto-selected, however it would ra
 });
 
 test('at equal rank, higher timing confidence wins; else newer', () => {
-	// `medium` rather than `low` on the loser: since W6 a `low` grade drops a word document to the LINE
+	// `medium` rather than `low` on the loser: a `low` grade drops a word document to the LINE
 	// rank, so the two would no longer be at equal rank and this test would stop exercising the tiebreak.
 	const lo = cand('lrclib', 'word', { timingConfidence: 'medium', createdAt: 100 });
 	const hi = cand('lrclib', 'word', { timingConfidence: 'high', createdAt: 1 });
@@ -231,9 +231,8 @@ test('agreement is count- and position-aware (repeats and reorders cost the scor
 	expect(SEQUENCE_WEIGHT).toBe(0.5);
 });
 
-test('agreement matches the shared cross-language corpus (parity with the Python mirror)', () => {
-	// worker/tests/test_lyrics_agreement.py asserts this SAME table, so drift on either side reds one of the two
-	// suites; the expectations are integer [num, den] pairs worked out BY HAND, not by running this code.
+test('agreement matches the shared cross-language corpus', () => {
+	// The expectations are integer [num, den] pairs worked out BY HAND, not by running this code.
 	for (const c of AGREEMENT_PARITY_CORPUS) {
 		const got = agreement(c.candidate, c.baseline);
 		if (c.coverage === null || c.fidelity === null || c.sequence === null) {
@@ -297,7 +296,7 @@ test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);
 });
 
-// A WRONG-TEXT gate's verdict on the WORDS, sent by the worker only to withhold (W3 review r2). Its own
+// A WRONG-TEXT gate's verdict on the WORDS, sent by the worker only to withhold. Its own
 // field because `textConfidence` already answers a different question — where the text came from — and
 // `lyricsSourceLabel` reads `captions` + `low` as "Auto captions", so carrying the doubt there mislabelled
 // an uploader's hand-authored track as machine-generated.
@@ -323,12 +322,12 @@ test('parse: an absent vouched stays absent, an unreadable one fails safe to fal
 	expect(kept!.vouched).toBe(true);
 });
 
-// ── W6: the timing grade reaches the RANKING, not just the tiebreak (worker review §3.7) ─────────
+// ── The timing grade reaches the RANKING, not just the tiebreak ─────────
 
 test('a word document whose timings are graded low ranks as line timing', () => {
 	// The per-line grades aggregate into `timingConfidence`; a `low` one means nothing vouches for where
 	// the words are, which is line timing with extra decoration. The TV makes the same call row by row.
-	// THIS 5 -> 4 IS REACHABLE ONLY FOR A ROW STORED BEFORE `vouched` EXISTED (W6 review r1-spec-17): the
+	// THIS 5 -> 4 IS REACHABLE ONLY FOR A ROW STORED BEFORE `vouched` EXISTED: the
 	// current worker sends a document-level `low` only for a pin its wrong-text gate would have refused, and
 	// sends `vouched: false` with it. Those rows are still ranked across jobs, which is why the case stays.
 	const doubted = cand('lrclib', 'word', { timingConfidence: 'low' });
@@ -344,7 +343,7 @@ test('a word document whose timings are graded low ranks as line timing', () => 
 });
 
 test('the transition this worker actually writes is 3 -> 2: an unvouched pin', () => {
-	// W6 review r1-spec-17. `align_steps` writes `confidence: 'low'` on a whole document in ONE case — a
+	// `align_steps` writes `confidence: 'low'` on a whole document in ONE case — a
 	// `pinnedText` whose lift the wrong-text gate would have refused — and that same branch sets
 	// `vouched: false`, which `isAuthoritativeText` reads. So for anything the current worker emits the two
 	// legs move together and the pair lands on the unauthoritative rungs: 3 for its words, 2 once the timing

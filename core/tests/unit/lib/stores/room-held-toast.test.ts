@@ -5,7 +5,7 @@ import { AuthoritativeState } from '$lib/server/state/store';
 import { EMPTY_SONG_PROFILE, type Media, type PublicSinger, type QueueEntry, type ServerEvent } from '$lib/contract';
 
 /*
- * Proposal 14: two phones raced and the server held someone else's On deck. The guest hears the queue tab's own
+ * Two phones raced and the server held someone else's On deck. The guest hears the queue tab's own
  * sentence as an INFO toast, never the raw "Couldn't do that: on deck is held: …". The real `connect()` path with
  * the browser globals stubbed, and the refusal minted by the real hub, so the parsed wording is the one it sends.
  */

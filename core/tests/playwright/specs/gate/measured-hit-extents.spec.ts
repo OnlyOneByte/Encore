@@ -1,7 +1,6 @@
 /*
  * CLAIM 1 and CLAIM 2, measured on a resolved layout: every operable control's real HIT EXTENT against the
- * `--tap` token, and every text-entry field's COMPUTED font size. Ported from
- * tests/e2e/gates/measured-design.mjs.
+ * `--tap` token, and every text-entry field's COMPUTED font size.
  *
  * ONE TEST, SIX ARMS, because they ride ONE SWEEP: 3 viewports x 7 surfaces, and the tallies the non-vacuity
  * floors read are the same pass's. Splitting them would triple the drive and still measure the same layout.

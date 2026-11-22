@@ -1,4 +1,4 @@
-# What is too slow for every push (proposal 06, sweeps/tooling.md §5): the whole Playwright suite with a RANDOM
+# What is too slow for every push: the whole Playwright suite with a RANDOM
 # fuzz seed. Runs on main once a night when main has moved since the last successful run, or by hand. The
 # worker's ML suite is ml.yml.
 #
@@ -21,7 +21,7 @@ env:
   BUN_VERSION: 1.3.14
 
 jobs:
-  # A quiet day costs one billed minute: nothing runs when main is still at the commit the last successful
+  # A quiet day costs one runner minute: nothing runs when main is still at the commit the last successful
   # run of this workflow tested. Running it by hand always runs.
   moved:
     name: main moved?

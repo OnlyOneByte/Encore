@@ -2,10 +2,9 @@
 // inherits the room default, 0 is explicitly off, n is a per-song override clamped to [0,1]), the reset to null
 // on every song boundary, and the level the TV actually applies.
 //
-// ═══ READ THIS BEFORE COMPARING WITH tests/e2e/probes/p2-guiding-track.mjs ═══
-// THE MECHANISM THE OLD PROBE MEASURED HAS BEEN DELETED ON PURPOSE. It asserted on a SECOND <audio> element
-// carrying `…-vocals.wav` at `.volume = 0.15` beside a master at 1, held in time by a governor in
-// src/lib/tv/guide-sync.ts. That file is gone, and src/lib/contract/lyrics/guide-level.ts now says why in the
+// ═══ THERE IS NO SECOND <audio> ELEMENT TO MEASURE ═══
+// A guide carried on a SECOND <audio> element beside the master, held in time by a governor, was removed
+// on purpose. src/lib/contract/lyrics/guide-level.ts says why in the
 // type itself:
 //
 //     THERE IS DELIBERATELY NO TWO-ELEMENT PATH: two elements can only be held together by comparing reported
@@ -23,13 +22,12 @@
 //           element's `.volume` became gain[0] and gain[1] of the split graph; "the guide element mounted with a
 //           vocals src" became "the master holds the 4-channel MIX", which `masterSrcPlan` commits ONLY once the
 //           split graph has confirmed a running context — so the src IS the evidence the graph routed.
-//   [DROPPED] unportable, with the reason. Nothing is quietly weakened: the dropped ones are listed at the foot
-//           of this file and in the port's report.
+//   [DROPPED] not asserted, with the reason. Nothing is quietly weakened: the dropped ones are listed at the foot
+//           of this file.
 //
-// It reads element and graph state, never audio: docs/E2E.md#proving-audio. Only CRITICAL failed the old probe's
-// run; its HIGH/MEDIUM findings are asserted here too, because every one of them has a stated threshold and the
-// old probe's own reason for softening them ("sync numbers go flaky under load") applied to the governor
-// measurements that this port drops.
+// It reads element and graph state, never audio: docs/E2E.md#proving-audio. HIGH/MEDIUM findings are asserted
+// as well as CRITICAL, because every one of them has a stated threshold; the reason to soften them ("sync
+// numbers go flaky under load") applied only to the governor measurements, which are gone.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
@@ -114,8 +112,8 @@ async function setGuideLevel(phone: Page, baseURL: string, level: number | null)
 		.toBe(level);
 }
 
-/** The old probe's own tolerances, which exist because a GainNode's value is a FLOAT32: 0.3 reads back as
- *  0.30000001192092896. `< 0.001` is what it used for a per-song level and `< 0.02` for the room default. */
+/** The tolerances exist because a GainNode's value is a FLOAT32: 0.3 reads back as
+ *  0.30000001192092896. `< 0.001` is used for a per-song level and `< 0.02` for the room default. */
 function expectGain(actual: number | null, expected: number, tol: number, detail: string): void {
 	expect(actual, detail).not.toBeNull();
 	expect(Math.abs((actual ?? NaN) - expected), `${detail} (expected ${expected} ± ${tol})`).toBeLessThan(tol);
@@ -129,7 +127,7 @@ async function guideGains(
 	return { master: state?.gainValues[0] ?? null, guide: state?.gainValues[1] ?? null, state };
 }
 
-/** Poll the guide gain to a value, within the float32 tolerance the old probe used for it. */
+/** Poll the guide gain to a value, within the float32 tolerance used for it. */
 async function awaitGuideGain(
 	tv: Page,
 	expected: number,
@@ -204,8 +202,8 @@ test('[MOVED] a per-song level of 0.15 puts the guide under the instrumental, bo
 		expectGain(master, 1, 0.001, `master gain, gains=${JSON.stringify(state?.gainValues)}`);
 		// STRICTLY LOWER: a guide as loud as the instrumental is the defect this number exists to catch.
 		expect(guide! < master!, `guide=${guide} master=${master} — the guide must be quieter than the master`).toBe(true);
-		// A MEASUREMENT INTERVAL, not a workaround: "the mix is decoding" is a rate, and the old probe's own
-		// window was 2.5s.
+		// A MEASUREMENT INTERVAL, not a workaround: "the mix is decoding" is a rate, read over a
+		// 2.5s window.
 		await tv.waitForTimeout(2500);
 		const after = await awaitMaster(tv);
 		expect(
@@ -360,8 +358,8 @@ test('[MOVED] a guide at the digital floor still offers the control and still pl
 		await awaitMixSrc(tv, media);
 
 		// The phone still OFFERS the control, on /queue's now-playing card. `.gt.disabled` is the anchor the
-		// component's own source names for this state; the old probe read the range input's `disabled` property,
-		// which bits-ui no longer exposes as one.
+		// component's own source names for this state; the range input's `disabled` property is not usable,
+		// because bits-ui does not expose it as one.
 		await openQueue(phone);
 		await expect(phone.locator(SEL.guidingTrackRoot)).toBeAttached();
 		await expect(
@@ -384,23 +382,15 @@ test('[MOVED] a guide at the digital floor still offers the control and still pl
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// [DROPPED] — every finding of the old probe that is NOT above, and why.
+// [DROPPED] — claims deliberately NOT asserted, and why.
 //
 // 1. "sync: max drift < 0.30s (GUIDE_RESEEK_SEC)" and "sync: avg drift stays inside a reasonable band
-//    (< 0.15s)" — UNPORTABLE, and by design. Both measured `vocals.currentTime - master.currentTime` across
-//    eight samples, governed by src/lib/tv/guide-sync.ts. There is now ONE element and ONE playhead, so the
-//    quantity is identically zero and the governor does not exist; guide-level.ts's GuidePath type forbids the
-//    two-decoder path outright. Asserting "drift < 0.3" against a single playhead would be a test that cannot
-//    fail, which is worse than no test.
-// 2. "level 0.15: no Web Audio graph on the naked (unshifted) path — WebAudio gain not needed" — the old
-//    finding was `record('MEDIUM', …, true)`: a hardcoded pass that measured nothing. It is also FALSE now, in
-//    the direction that matters: a guide-mix song builds its graph EAGERLY at mount, because the guide does not
-//    exist until the splitter runs (guide-mix-src.ts#wantsEagerGraph).
-// 3. "vocalsRef absent: unmeasured (environment limit; fake worker always publishes vocals artifact)" — also a
-//    hardcoded pass, and also no longer a limit: world/workers.ts has `noVocals` and publishes NO guide mix by
-//    default, so the DISABLED arm of the control is reachable for the first time. Asserting it would be a new
-//    claim rather than a ported one, so it is named here as the next thing to add.
-// 4. The old probe OWNED ITS PORT and refused to run if anything was already listening, because dispatch had to
-//    stay deterministic across an audible→silent worker swap. The world fixture gives every test its own core on
-//    an OS-assigned port and its own media dir, and `startFakeWorker` takes the fault as a typed option — so the
-//    swap is a second `stage()` call rather than a process kill, and the refusal has nothing left to protect.
+//    (< 0.15s)" — by design. Both would measure `vocals.currentTime - master.currentTime`, but there is ONE
+//    element and ONE playhead, so the quantity is identically zero and no governor exists; guide-level.ts's
+//    GuidePath type forbids the two-decoder path outright. Asserting "drift < 0.3" against a single playhead
+//    would be a test that cannot fail, which is worse than no test.
+// 2. "no Web Audio graph on the naked (unshifted) path" — FALSE, in the direction that matters: a guide-mix
+//    song builds its graph EAGERLY at mount, because the guide does not exist until the splitter runs
+//    (guide-mix-src.ts#wantsEagerGraph).
+// 3. "vocalsRef absent" — world/workers.ts has `noVocals` and publishes NO guide mix by default, so the
+//    DISABLED arm of the control is reachable. It is named here as the next thing to add.

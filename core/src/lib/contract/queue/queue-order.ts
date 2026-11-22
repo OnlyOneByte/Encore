@@ -19,7 +19,7 @@ export interface Ordering {
 	 *  rolled seed puts the same song at a different index on every device. */
 	shuffleSeed?: string;
 	/** The entry the On deck hold protects (`heldEntryId`), or absent. A new entry lands no higher than just after it,
-	 *  under every policy, so an add cannot take On deck either (proposal 14). */
+	 *  under every policy, so an add cannot take On deck either. */
 	heldId?: string | null;
 }
 
