@@ -92,6 +92,19 @@ test('an author.email injected through GIT_CONFIG_COUNT does not reach the commi
 	publishesAsOwner(src);
 });
 
+test('a commit rewritten after the env pin (a global post-commit hook) is refused before the push', () => {
+	const src = source('OnlyOneByte', NOREPLY);
+	// The one route past the env pin: a hook that amends the author once the commit exists.
+	const hooks = join(root, 'hooks');
+	mkdirSync(hooks);
+	const hook = `#!/bin/sh\n[ -n "$AMENDED" ] && exit 0\nAMENDED=1 GIT_AUTHOR_EMAIL=${WORK} git commit -q --amend --no-edit --reset-author\n`;
+	writeFileSync(join(hooks, 'post-commit'), hook, { mode: 0o755 });
+	appendFileSync(globalConfig, `[core]\n\thooksPath = ${hooks}\n`);
+	const r = run(src, 'publish', '7', 'row');
+	expect([r.status, r.stderr]).toEqual([1, expect.stringContaining('not pushed')]);
+	expect(git(['branch', '--list'], bare())).toBe('');
+});
+
 test('a clone with no local user.name publishes nothing, even when the global config has one', () => {
 	publishesNothing(source(null, NOREPLY));
 });
