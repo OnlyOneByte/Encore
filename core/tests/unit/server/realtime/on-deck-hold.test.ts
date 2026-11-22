@@ -5,6 +5,8 @@ import { handleQueueCommand, validateCommand, type HubDeps } from '$lib/server/r
 import { AuthoritativeState } from '$lib/server/state/store';
 import { handlePlayerCommand } from '$lib/server/realtime/player';
 import { heldOnDeck } from '$lib/server/rotation';
+import { removableOnLeave } from '$lib/server/singers/leave';
+import type { EncoreApp } from '$lib/server/app';
 import { EMPTY_SONG_PROFILE, type ClientCommand, type Media, type QueueEntry, type QueueOp } from '$lib/contract';
 
 const media = (id: string, ready = true): Media => ({
@@ -147,9 +149,8 @@ test('away, Theo`s own Not yet still moves it: an owner op, never refused by the
 
 test('away, leaving the room ends it: the leave removes his queued songs, so On deck passes on', () => {
 	const { state, deps } = room({ away: ['theo'] });
-	// What `doLeave` does with a leaver's queue: every entry of theirs that is not playing is removed.
-	for (const e of state.entries.filter((x) => x.singerId === 'theo' && x.status === 'queued'))
-		state.applyQueueOp({ op: 'remove', id: e.id });
+	// `doLeave`'s own selection of what a leave removes, applied the way it applies it.
+	for (const e of removableOnLeave({ state } as EncoreApp, 'theo')) state.applyQueueOp({ op: 'remove', id: e.id });
 	expect(heldOnDeck(state.entries as QueueEntry[], deps.mediaById, {}, ['theo'])?.id).toBe('prayer');
 });
 

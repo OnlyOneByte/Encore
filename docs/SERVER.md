@@ -391,8 +391,8 @@ broadcasts never wait on a DB read. The reconciliation model is in `docs/ARCHITE
     through `Ordering.heldId`, which the hub supplies and the phone predicts from the same rule;
   - its owner keeps every move. Not held in an idle room or for the current singer's own back-to-back song (no card
     shows). It STAYS while its singer's phone is locked or away (the owner's ruling, `HOLD_LIFTS_WHILE_AWAY = false`)
-    and cannot stall the room: it ends when that turn starts (and can be skipped then), on its owner's Not yet, and
-    when they leave (`doLeave` removes their queued songs).
+    and cannot stall the room: it ends when that turn starts (and can be skipped then), on its owner's Not yet, on a
+    host remove (`remove` is never held), and when they leave (`doLeave` removes their queued songs).
   Changing the room's queue order mid-song re-places only future adds, never existing rows, so it cannot reorder
   past the hold; a later "re-sort on change" would have to respect it.
 - **`can()` gates only CROSS-ACTOR operations.** Removing or reordering your own entry needs no capability;
