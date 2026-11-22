@@ -86,7 +86,6 @@ LAYERS = (
     "encore_worker/adapters",
     "encore_worker/artifacts",
     "encore_worker/domain",
-    "encore_worker/domain/analysis",
     "encore_worker/domain/audio",
     "encore_worker/domain/lyrics",
     "encore_worker/host",

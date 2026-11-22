@@ -52,7 +52,7 @@ export function workPerAudioSec(runs: readonly FinishedRun[]): number | null {
 export const ETA_OVERDUE = -1;
 
 /** The minute an overrun may say "under a minute" for: no longer, or the room watches the claim fail. */
-export const OVERDUE_GRACE_SEC = 60;
+const OVERDUE_GRACE_SEC = 60;
 
 /** When a step whose estimate is `expectedSec` becomes OVERDUE: one minute past it, however long the step. */
 export function overdueAfterSec(expectedSec: number): number {

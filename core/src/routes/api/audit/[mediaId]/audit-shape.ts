@@ -56,7 +56,7 @@ export function groupProcesses(attempts: JobAttempt[]) {
 }
 
 /** One word for how a process went, chosen so a partial failure never reads as success. */
-export function processOutcome(list: JobAttempt[]): 'running' | 'ready' | 'failed' | 'canceled' {
+function processOutcome(list: JobAttempt[]): 'running' | 'ready' | 'failed' | 'canceled' {
 	if (list.some((a) => a.outcome === null)) return 'running';
 	if (list.some((a) => a.outcome === 'failed')) return 'failed';
 	if (list.some((a) => a.outcome === 'canceled')) return 'canceled';

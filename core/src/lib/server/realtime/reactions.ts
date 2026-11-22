@@ -6,7 +6,7 @@ import { isReactionKind, type ReactionKind, type ServerEvent } from '../../contr
 
 /** Three taps land at once; after that, one per second. Enough to cheer a high note, too slow to wallpaper the TV. */
 export const REACTION_BURST = 3;
-export const REACTION_REFILL_PER_SEC = 1;
+const REACTION_REFILL_PER_SEC = 1;
 
 /**
  * A token bucket per singer. `now` is injected so a test drives the clock rather than sleeping on it.

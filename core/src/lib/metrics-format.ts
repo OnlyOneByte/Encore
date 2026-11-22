@@ -114,7 +114,7 @@ export function localStamp(ms: number, timeZone?: string): string {
 
 /** A run or an attempt outcome, in words. Anything unrecognised falls through to `running`, which is what an
  *  in-flight row genuinely is — never a blank cell. */
-export const OUTCOME_LABELS: Record<string, string> = {
+const OUTCOME_LABELS: Record<string, string> = {
 	ready: 'done',
 	failed: 'failed',
 	abandoned: 'gave up, retried',
@@ -126,11 +126,11 @@ export const outcomeLabel = (outcome: string | null): string =>
 
 /** ONE tone table for a run and for an attempt, which carry the same outcome vocabulary. Anything else — running,
  *  canceled, not yet reported — is in-flight, so it reads as a caution rather than a verdict. */
-export const OUTCOME_TONES: Record<string, 'ok' | 'bad' | 'warn'> = { ready: 'ok', failed: 'bad', abandoned: 'bad' };
+const OUTCOME_TONES: Record<string, 'ok' | 'bad' | 'warn'> = { ready: 'ok', failed: 'bad', abandoned: 'bad' };
 export const outcomeTone = (outcome: string | null): 'ok' | 'bad' | 'warn' => OUTCOME_TONES[outcome ?? ''] ?? 'warn';
 
 /** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
-export const FACT_LABELS: Record<string, string> = {
+const FACT_LABELS: Record<string, string> = {
 	engine: 'separator',
 	model: 'model',
 	backend: 'runtime',
@@ -149,7 +149,7 @@ export function modelFacts(models: Record<string, string | null>): [string, stri
 
 /** The distinction worth keeping: `agreement` means a baseline voted, so a wrong pick there is a metric problem;
  *  `metadata` means none could and cheap ordering stood, which a better metric does not fix. */
-export const DECIDED_LABELS: Record<string, string> = {
+const DECIDED_LABELS: Record<string, string> = {
 	agreement: 'a baseline judged it',
 	metadata: 'no baseline could judge — chosen on metadata'
 };
@@ -159,7 +159,7 @@ export const decidedLabel = (d: string): string => DECIDED_LABELS[d] ?? d;
 export const score = (n: number | null): string => (n === null ? '—' : n.toFixed(2));
 
 /** `host` is an OPEN BAG, so an unexpected or absent key is skipped rather than thrown on. */
-export const HOST_LABELS: Record<string, string> = {
+const HOST_LABELS: Record<string, string> = {
 	accelerator: 'accelerator',
 	deviceName: 'device',
 	cpuCount: 'cpus',

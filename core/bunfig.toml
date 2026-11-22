@@ -1,9 +1,3 @@
-# The gate is `bun run test`, package.json's `test` script, which passes `--conditions=svelte`. Nothing
-# installed needs that flag any more: every dependency declaring a `svelte` export condition also declares a
-# `default` or `import` one, and a bare `bun test` passes the same suite. Dropping it is the dead-code
-# cleanup's job. It could not live here anyway: `conditions` under [test] and at top level were both
-# measured as ignored by bun 1.3.14.
-#
 # There is no `[test] preload` any more: the component-mount harness (happy-dom + a Svelte compile hook +
 # SvelteKit `$app/*` stubs) was deleted along with the 13 tests that used it. Component behaviour is the
 # Chromium rung's job now — see docs/E2E.md.

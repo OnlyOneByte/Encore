@@ -170,7 +170,7 @@ export async function readMediaLog(page: Page): Promise<MediaEvent[]> {
  * carries its own PAUSED <audio> at currentTime 0 and a looser query reads the stage as silent. Falls back to
  * any instrumental-bearing element so a caller can still report the state instead of crashing.
  */
-export function pickMaster(sample: StageSample): MediaRow | null {
+function pickMaster(sample: StageSample): MediaRow | null {
 	const visible = sample.elems.filter((e) => e.slotVisible === true);
 	return (
 		visible.find((e) => e.src.includes('instrumental')) ??

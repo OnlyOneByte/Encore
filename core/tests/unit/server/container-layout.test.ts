@@ -67,7 +67,6 @@ const CONTAINER_OWNED: Record<'core' | 'worker', string[]> = {
 		'ENCORE_YTDLP_BIN',
 		'ENCORE_MLX_BIN',
 		'ENCORE_WORKER_VERSION',
-		'ENCORE_KEEP_RAW_CAPTIONS', // parsed but never consumed
 		'HOME', // the zoo dir's fallback base, set by the image
 		'XDG_CACHE_HOME'
 	]

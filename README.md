@@ -353,14 +353,14 @@ bash dev.sh       # run core + a NATIVE worker locally — `--help` lists the fl
                   # Metal: see docs/deploy/README.md for why a containerised worker cannot.
 
 cd core           # every bun command below runs from core/
-bun run test      # unit/integration tests (bun test, with the flags the suite needs)
+bun run test      # unit/integration tests (a plain bun test)
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # app, server entry and the test tree
 bun run lint      # eslint; `bun run format:check` is prettier
 bun run gates     # the full eight-leg release gate (test, worker pytest, worker ruff+mypy, types, lint, format,
                   # build, gate:measured). The last leg needs a Chromium.
 bun run deadcode  # knip; a clean run is ZERO findings
-bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flow|probe|shot` for one project)
+bun run pw        # the whole Chromium suite — needs a built app (`gate:measured`, `pw:flow|probe|shot` for one project)
 bun run ui:review # motion frames + GIFs for a UI change, checked against docs/UI-CHECKLIST.md
 
 # Worker — uv owns the env; `uv run` syncs it before it runs anything:

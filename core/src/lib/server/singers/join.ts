@@ -83,7 +83,7 @@ export function assertNameFree(app: EncoreApp, roomId: string, name: string, exc
 }
 
 /** Whether this singer still holds a turn — the thing that keeps their grace clock unstarted. */
-export function hasPendingSongs(app: EncoreApp, singerId: string): boolean {
+function hasPendingSongs(app: EncoreApp, singerId: string): boolean {
 	return app.state.entries.some((e) => e.singerId === singerId && (e.status === 'queued' || e.status === 'playing'));
 }
 

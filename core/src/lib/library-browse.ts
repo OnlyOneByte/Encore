@@ -111,7 +111,7 @@ export function libraryArtist(m: Media): string | undefined {
  * generous on purpose — the cost of an extra row on screen is nothing, and the cost of hiding a song you own is the
  * whole point of the page.
  */
-export function matchesQuery(haystack: string, terms: string[]): boolean {
+function matchesQuery(haystack: string, terms: string[]): boolean {
 	return terms.every((t) => haystack.includes(t));
 }
 

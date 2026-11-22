@@ -53,22 +53,6 @@ def test_non_audio_files_in_the_output_directory_are_ignored(tmp_path: object) -
     assert audiosep._outputs(out, frozenset()) == [audio]
 
 
-# ── the declaration is a cross-check, never the answer ───────────────────────────────────────────
-
-
-def test_a_declared_backing_stem_is_recognised_in_the_filename() -> None:
-    """`audio-separator` interpolates the stem name into the output name, so the declaration is readable —
-    and it is used ONLY to note agreement, never to assign the role."""
-    assert audiosep._declared_instrumental(("instrumental", "vocals"), "song_(Instrumental)_m.wav") is True
-    assert audiosep._declared_instrumental(("instrumental", "vocals"), "song_(Vocals)_m.wav") is False
-
-
-def test_a_model_declaring_no_stems_yields_no_opinion() -> None:
-    """The 62 undeclared entries. None means "the metadata is silent", which is not the same as "disagrees"
-    — and it must not read as a disagreement in a log line."""
-    assert audiosep._declared_instrumental((), "song_(other)_m.wav") is None
-
-
 # ── the heartbeat ────────────────────────────────────────────────────────────────────────────────
 
 

@@ -130,9 +130,6 @@ class Config:
     #: FLAC compression level: the size/CPU knee, and decode-cheap, which is what a browser starting playback
     #: in a room pays for.
     flac_level: int = 8
-    #: Retain the raw caption track under `derived/` for diagnosing the parser. Evidence for a specific
-    #: investigation, not something every room needs on disk.
-    keep_raw_captions: bool = False
     #: No outbound internet. Skips the lyrics provider rather than paying its timeout per song; captions and
     #: ASR still work, so an offline room still gets lyrics from what it can hear.
     offline: bool = False
@@ -211,7 +208,6 @@ class Config:
             # worker started against an older core, which announces nothing, still publishes something.
             publish_stem_format=text("ENCORE_PUBLISH_STEM_FORMAT", "flac").lstrip(".").lower(),
             flac_level=_positive_int(src, "ENCORE_FLAC_LEVEL", 8),
-            keep_raw_captions=_flag(src, "ENCORE_KEEP_RAW_CAPTIONS"),
             offline=_flag(src, "ENCORE_OFFLINE"),
             lrcmux_url=text("ENCORE_LRCMUX_URL", "https://api.lrcmux.dev"),
             lrclib_url=text("ENCORE_LRCLIB_URL", "https://lrclib.net/api/get"),

@@ -183,11 +183,11 @@ def test_reads_the_environment() -> None:
             "ENCORE_WORKER_CONCURRENCY": "3",
             "ENCORE_SEPARATOR_BACKEND": "mlx",
             "ENCORE_ASR_MODEL": "large-v3",
-            "ENCORE_KEEP_RAW_CAPTIONS": "true",
+            "ENCORE_OFFLINE": "true",
         }
     )
     assert (cfg.core_url, cfg.worker_id, cfg.concurrency) == ("ws://core.test/worker", "w9", 3)
-    assert (cfg.backend, cfg.asr_model, cfg.keep_raw_captions) == ("mlx", "large-v3", True)
+    assert (cfg.backend, cfg.asr_model, cfg.offline) == ("mlx", "large-v3", True)
 
 
 def test_an_unknown_backend_is_refused_at_the_boundary() -> None:
@@ -349,7 +349,7 @@ def test_a_bad_concurrency_is_refused(raw: str) -> None:
 )
 def test_flags_read_what_an_operator_actually_types(raw: str, expected: bool) -> None:
     """`bool("0")` and `bool("false")` are both True, which is the opposite of what was meant."""
-    assert Config.from_env({"ENCORE_KEEP_RAW_CAPTIONS": raw}).keep_raw_captions is expected
+    assert Config.from_env({"ENCORE_OFFLINE": raw}).offline is expected
 
 
 def test_whitespace_only_values_fall_back_to_the_default() -> None:
