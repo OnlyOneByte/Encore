@@ -533,6 +533,17 @@
 		.ball.bounce {
 			animation: bounce 0.5s ease-in-out infinite alternate;
 		}
+		/* The reel ARRIVES rather than cuts in, whenever it mounts: on /tv that is a song coming on, and after a handoff
+		   card only once the card has faded out, so the card's words and the song's never share a frame. Opacity only.
+		   `--motion-fast`: the first line has to be readable within ~100 ms of when it was with no fade at all. */
+		.lyrics {
+			animation: lyrics-arrive var(--motion-fast) ease-out both;
+		}
+	}
+	@keyframes lyrics-arrive {
+		from {
+			opacity: 0;
+		}
 	}
 	@keyframes bounce {
 		from {

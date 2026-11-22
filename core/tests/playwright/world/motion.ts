@@ -512,8 +512,8 @@ function spread<T>(frames: T[], n: number): T[] {
 }
 
 /** Is `s.subject` on screen inside `area` (viewport px, as a screenshot `clip` is; the viewport when absent), with
- *  a non-zero area of it left after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
- *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
+ *  a non-zero area of it left after clipping? Its box is cut by every ancestor that clips it (`overflow` other than
+ *  `visible`, or `contain: paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
  *  opacity, so a fade-in's first frame counts; `opaque` also needs its effective opacity (the product up the
  *  ancestor chain) above 0, and is what a run's last frame must have. */
 function subjectState(

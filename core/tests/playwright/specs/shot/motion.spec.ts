@@ -18,6 +18,7 @@ import { captureMotion, type MotionScenario } from '../../world/motion';
 import type { RealtimeReport } from '../../world/motion-realtime';
 import { burst, putRoom, stage } from '../../world/reactions';
 import { DEMO_LIBRARY } from '../../world/seed';
+import { sendPlayerCommand } from '../probe/audio-probe-support';
 import { join } from 'node:path';
 import { SETTLE_MS } from '$lib/transport-target';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
@@ -28,7 +29,6 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
 const CUTS = new Set([
-	'tv-song-intro',
 	'phone-reorder-held-390',
 	'phone-reorder-held-320',
 	'phone-cheers-return',
@@ -894,63 +894,10 @@ const SCENARIOS: Record<string, Make> = {
 			only: '.copy-chip, .copy-chip *'
 		};
 	},
-	/** The TV's "Now singing" card at a change of singer, which since #974 is every change, not only the first
-	 *  song. Ana sings caroline on this TV with Maya next; Ana's skip hands the room to Maya and the card takes over
-	 *  the screen for the intro hold. Each run drains the room and starts Ana's song again, past her own card. */
-	'tv-song-intro': (browser, world, cleanup) => {
-		let ana: Page | undefined;
-		let maya: Page | undefined;
-		return {
-			name: 'tv-song-intro',
-			what: 'TV 1920x1080: the "Now singing" card for Maya as Ana skips to her, the handoff on every change of singer: a CUT, in and out, for the card itself. Behind it, whatever fades is listed under live.others',
-			stepMs: 33,
-			scale: 0.5,
-			columns: 5,
-			startTimeoutMs: 1_500,
-			open: async (opts) => {
-				if (!ana || !maya) {
-					// 36 s stems, so Ana's song is still on at the trigger however slowly the TV page opens.
-					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
-					cleanup(() => worker.stop());
-					ana = await world.openPhone('Ana');
-					maya = await world.openPhone('Maya');
-					await readySong(world, ana, 'caroline');
-					await readySong(world, ana, 'believin');
-				}
-				// This row is the suite's critical path (~45 s, `liveMs` ~25 s): each of its 5 opens drains the room
-				// (SETTLE_MS waits) and then waits out Ana's own "Now singing" card. The 36 s stems are not the cost;
-				// shortening them lets Ana's song end before the trigger under load.
-				await drain(ana);
-				const ctx = await browser.newContext({
-					...opts,
-					viewport: { width: 1920, height: 1080 },
-					baseURL: world.baseURL
-				});
-				await ctx.addCookies([world.tvCookie]);
-				const page = await ctx.newPage();
-				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-				await expect(page.locator(SEL.lobby)).toBeVisible();
-				await queueReady(ana, 'caroline');
-				await queueReady(maya, 'believin');
-				// Ana's own card comes and goes: the run opens on her song, with Maya next.
-				await expect(page.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
-				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
-				await page.evaluate(() => document.fonts.ready.then(() => true));
-				return page;
-			},
-			trigger: async (page) => {
-				await ana!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-				await expect(page.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
-			},
-			only: '.state-next, .state-next *',
-			subject: '.state-next',
-			// The card's intro hold is a wall-clock timeout (`interstitialTimer`, tv/+page.svelte): it would take the
-			// CUT's after frame away.
-			holdTimers: true,
-			observe: (page) =>
-				page.evaluate(() => ({ introText: document.querySelector('.state-next')?.textContent?.trim() ?? null }))
-		};
-	},
+	'tv-song-intro': tvHandoff('in'),
+	'tv-song-outro': tvHandoff('out'),
+	'tv-lyrics-arrive': tvHandoff('arrive'),
+	'tv-song-singer-change': tvHandoff('change'),
 
 	/** The TV's reaction lane while two fans burst at the largest lyric scale: a stream of discs released 650 ms
 	 *  apart up the right edge. A row about TIMING, so it also records in real time: once at 6× CPU, and once with
@@ -1015,6 +962,168 @@ const SCENARIOS: Record<string, Make> = {
 		};
 	}
 };
+
+/** The TV's "Now singing" card at a change of singer, which since #974 is every change, not only the first song.
+ *  Ana sings caroline on this TV with Maya next (and Theo after, for `change`); Ana's skip hands the room to Maya
+ *  and the card takes over the screen for the intro hold. Each run drains the room and starts Ana's song again, past
+ *  her own card.
+ *  - `in`: the card fading in as Ana skips, its lines rising into place.
+ *  - `out`: the hold ending: the card fades out, starting --motion-base + --motion-fast before the hold ends.
+ *  - `arrive`: the same moment, for the reel: once the card has gone the lyrics fade in, up when the song starts.
+ *  - `change`: the room moves on to Theo while Maya's card is still coming up: only the lines rise again, and the
+ *    layer (the scrim) never dips. */
+function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
+	return (browser, world, cleanup) => {
+		let ana: Page | undefined;
+		let maya: Page | undefined;
+		let theo: Page | undefined;
+		/** `change`: the entry Ana's probe socket named before her skip, so the trigger can wait for it to move on. */
+		let anaEntry: string | null = null;
+		const name = {
+			in: 'tv-song-intro',
+			out: 'tv-song-outro',
+			arrive: 'tv-lyrics-arrive',
+			change: 'tv-song-singer-change'
+		}[phase];
+		// `out` and `arrive` open the same way: Maya's card up at full.
+		const exit = phase === 'out' || phase === 'arrive';
+		const what = {
+			in: 'TV 1920x1080: the "Now singing" card for Maya as Ana skips to her, the handoff on every change of singer: the layer fades in and the lines rise one --tv-space-4xl into place (--motion-slow, ease-out)',
+			out: 'TV 1920x1080: the hold ending: Maya’s card fades out (--motion-base, ease, the player slots’ crossfade), starting --motion-base + --motion-fast before the hold ends so it has gone when her song starts; the words do not move',
+			arrive:
+				'TV 1920x1080: once Maya’s card has gone, her lyrics fade in (lyrics-arrive, --motion-fast, ease-out, opacity only) in the hold’s last moment, so card text never draws over lyric text and the first line is readable when the song starts, as on main',
+			change:
+				'TV 1920x1080: the room moves on to Theo while Maya’s card is coming up: only the new lines rise in (--motion-slow); the layer’s opacity never drops (observed.layerOpacity)'
+		}[phase];
+		const layerOpacity = (page: Page) =>
+			page.evaluate(() => {
+				const el = document.querySelector('.takeover-layer');
+				return el ? Number(getComputedStyle(el).opacity) : null;
+			});
+		return {
+			name,
+			what,
+			stepMs: exit ? 16 : 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 1_500,
+			open: async (opts) => {
+				if (!ana || !maya || !theo) {
+					// 36 s stems, so Ana's song is still on at the trigger however slowly the TV page opens. Real-length
+					// lyric lines: with one word a line nothing can meet the card, so overlap 0 would mean nothing.
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds, longLyricLines: true });
+					cleanup(() => worker.stop());
+					ana = await world.openPhone('Ana');
+					maya = await world.openPhone('Maya');
+					theo = await world.openPhone('Theo');
+					await readySong(world, ana, 'caroline');
+					await readySong(world, ana, 'believin');
+				}
+				// These rows are the suite's critical path (~45 s each, `liveMs` ~25 s): each of their 5 opens drains the
+				// room (SETTLE_MS waits) and then waits out Ana's own "Now singing" card. The 36 s stems are not the cost;
+				// shortening them lets Ana's song end before the trigger under load.
+				await drain(ana);
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 1920, height: 1080 },
+					baseURL: world.baseURL
+				});
+				await ctx.addCookies([world.tvCookie]);
+				const page = await ctx.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await expect(page.locator(SEL.lobby)).toBeVisible();
+				await queueReady(ana, 'caroline');
+				await queueReady(maya, 'believin');
+				if (phase === 'change') await queueReady(theo, 'caroline');
+				// Ana's own card comes and goes: the run opens on her song, with Maya next.
+				await expect(page.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 30_000 });
+				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				if (phase === 'in') return page;
+				// The skip's socket opens now, so the `change` skip lands inside Maya's fade-in rather than after it.
+				if (phase === 'change') {
+					await sendPlayerCommand(ana, { cmd: 'play' });
+					anaEntry = await ana.evaluate(() => (window as unknown as { probeCurrent?: string }).probeCurrent ?? null);
+				}
+				await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await expect(page.locator(SEL.stateNext)).toContainText('Maya', { timeout: 30_000 });
+				// The exit's `before` frame is the card at full, not one still fading in: the name is in the page from the
+				// card's first frame.
+				if (exit) await expect.poll(() => layerOpacity(page)).toBe(1);
+				return page;
+			},
+			trigger: async (page) => {
+				if (phase === 'in') {
+					await ana!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+					await expect(page.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 30_000 });
+				} else if (phase === 'out') {
+					// The hold's own clock is the trigger, as on a night: its exit lead drops the layer's `shown`.
+					await expect(page.locator(SEL.takeoverShown)).toHaveCount(0, { timeout: 15_000 });
+				} else if (phase === 'arrive') {
+					// The same clock, then the reel mounting once the card has gone.
+					await expect(page.locator(SEL.takeoverShown)).toHaveCount(0, { timeout: 15_000 });
+					await page.locator(SEL.lyrics).waitFor({ state: 'attached', timeout: 10_000 });
+				} else {
+					// Names Maya's entry, the one the server says is current: no phone strip and no settle window. The probe
+					// socket follows the server's `playback:state`, so under load it can still name Ana's song for a moment:
+					// wait until it has moved on, or the skip is dropped as stale.
+					await ana!.waitForFunction(
+						(was) => {
+							const now = (window as unknown as { probeCurrent?: string | null }).probeCurrent;
+							return !!now && now !== was;
+						},
+						anaEntry,
+						{ polling: 'raf', timeout: 10_000 }
+					);
+					await sendPlayerCommand(ana!, { cmd: 'skip' });
+					await expect(page.locator(SEL.stateNext)).toContainText('Theo', { timeout: 30_000 });
+				}
+			},
+			// `arrive` catches only the reel, so the card's exit runs live and the reel can mount: a caught (paused) exit
+			// fade never ends, and the reel waits for it. One seek row cannot hold both: its caught set is fixed when
+			// the trigger resolves.
+			only: phase === 'arrive' ? SEL.lyrics : '.takeover-layer, .state-next, .state-next *',
+			// The exit's subject is the stage: the card ends at opacity 0 by design, and the lyrics come in only after it.
+			subject: phase === 'out' ? SEL.tvRoot : phase === 'arrive' ? SEL.lyrics : '.state-next',
+			// The card's intro hold is a wall-clock timeout (`interstitialTimer`, tv/+page.svelte): it would take the
+			// card away between seeked frames. The exit's trigger is the hold's exit LEAD, --motion-base + --motion-fast
+			// before the hold ends, so `out` holds it too. `arrive` catches the reel alone: the card's exit
+			// runs live there, and the reel comes up once it has finished.
+			holdTimers: phase !== 'arrive',
+			// The card's lines against the corner card and the current line's words: they must never meet, nor two
+			// cards' lines (a doubled card). Words, not `.row`: a row is a full-width block whose text is centred, so its
+			// box meets the left-aligned card on every exit frame though no glyph does. shortcut: the other rows have
+			// no text-tight box, so only the sung line is checked; give rows an inline wrapper if that ever matters.
+			// The late run blocks the card's first frame, which the seek run cannot show. The probe
+			// (tv-handoff-motion) checks every lyric row's text per frame; this pass checks the sung line's words.
+			// EXCEPTION to UI checklist item 11 (blank 0), this row only, ruled in #1018's review by its CAUSE, not a
+			// count: on `tv-song-singer-change`, blank frames are accepted only while the scrim is up and before Theo's
+			// re-rise starts, with that delay (`firstFrameMs`) ≤ 200 ms at 6×. In the late run, blank frames inside the
+			// tool's injected 400 ms stall are accepted if the scrim is up and Theo's rise starts within 100 ms of the
+			// stall ending (`firstFrameMs` ≤ 500). Anything else blank is a fail. That is the
+			// swap: Maya's lines unmount and Theo's mount at `card-rise`'s from-opacity 0, with the scrim up the whole time
+			// (the probe pins that the layer never dips). Getting it to 0 would mean a doubled card or a rise that does
+			// not start from 0. If a real TV shows it as a blink, give the rise a non-zero from-opacity.
+			// `arrive` has none: the outro row's real-time window already runs through the reel's arrival.
+			realtime:
+				phase === 'arrive'
+					? undefined
+					: {
+							each: '.state-next .up-label, .state-next .up-name, .state-next .up-song',
+							avoid: '.corner, .lyrics .word',
+							lateFirstFrameMs: 400,
+							// The exit's trigger waits out the rest of the hold, which a 6× throttle stretches past a second.
+							...(phase === 'out' ? { windowMs: 3_000 } : {})
+						},
+			observe: async (page) => ({
+				cardText: await page.evaluate(() => document.querySelector('.state-next')?.textContent?.trim() ?? null),
+				layerShown: (await page.locator(SEL.takeoverShown).count()) > 0,
+				layerOpacity: await layerOpacity(page),
+				lyrics: (await page.locator(SEL.lyrics).count()) > 0
+			})
+		};
+	};
+}
 
 for (const [name, make] of Object.entries(SCENARIOS)) {
 	// An anonymous describe per row, so a row's `test.use` reaches its own test and no other.

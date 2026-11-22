@@ -319,15 +319,55 @@
 	/** Hold on the intro card, then let the song start. 0 = the intro is switched off; hard-cut. */
 	function holdSongIntro() {
 		clearTimeout(interstitialTimer);
+		clearTimeout(exitLeadTimer);
+		cardLeaving = false;
+		cardGone = false;
+		exitLeadAt = null;
 		if (songIntroMs === 0) {
 			ctl.onInterstitialDone(); // pure gapless hard-cut
 			tvState = ctl.state;
 			return;
 		}
+		// The card's exit fade STARTS ahead of the hold's end, by its own `--motion-base` plus the reel's `--motion-fast`
+		// arrival: the card has gone, and the reel is up, by the time the song starts, so the first line is readable
+		// when it was when the card cut and nobody loses it. The extra `--motion-fast` is slack too: a lead timer or a
+		// `transitionend` a frame late on a busy TV still lands before the song. Only when the hold's end starts the song
+		// (over a slot still loading the card stays up), and not under reduced motion, where there is no fade and the
+		// card cuts at the hold's end as before.
+		// A SHORT hold gets no lead: the card must first finish its `--motion-slow` fade-in and then stay fully readable
+		// for READABLE_BEAT_MS, or a 500 ms intro never shows at all. It exits at the hold's end instead, as the cut did.
+		const leadMs = prefersReducedMotion ? 0 : cssTimeMs('--motion-base') + cssTimeMs('--motion-fast');
+		const roomToLead = songIntroMs - leadMs >= cssTimeMs('--motion-slow') + READABLE_BEAT_MS;
+		exitLeadAt = leadMs > 0 && roomToLead ? Date.now() + songIntroMs - leadMs : null;
+		if (exitLeadAt !== null) exitLeadTimer = setTimeout(leadExitIfDue, songIntroMs - leadMs);
 		interstitialTimer = setTimeout(() => {
+			exitLeadAt = null;
 			ctl.onInterstitialDone();
 			tvState = ctl.state;
 		}, songIntroMs);
+	}
+	/** How long a handoff card stays fully readable, at least, before a led exit. shortcut: a fixed beat, not a token
+	 *  (it is a reading time, not a motion); make it a setting if hosts ask for a different one. */
+	const READABLE_BEAT_MS = 600;
+	let exitLeadTimer: ReturnType<typeof setTimeout> | undefined;
+	/** When the current hold's exit lead is due (`Date.now()` ms); null with none. */
+	let exitLeadAt: number | null = null;
+	/** Start the led exit once it is due AND the hold's end would start the song. Run by the lead timer, and again when
+	 *  the visible slot becomes ready: a skip's card goes up over a slot still loading, which is often ready only
+	 *  after the lead was due. A fade that starts late just finishes a moment into the song; nothing cuts it.
+	 *  Reduced motion is guarded by `layerShown`, which keeps the card up even when it switches on after the lead. */
+	function leadExitIfDue() {
+		if (exitLeadAt !== null && ctl.introEndsInSong && Date.now() >= exitLeadAt) cardLeaving = true;
+	}
+	/** The intro card is fading out ahead of its hold's end; see `holdSongIntro`. */
+	let cardLeaving = $state(false);
+	/** ...and that fade has finished, so the reel may come up for the hold's last moment (it does not advance yet). */
+	let cardGone = $state(false);
+	/** A `<time>` custom property of :root (`0.25s`, `250ms`) in ms; 0 when it is not set. */
+	function cssTimeMs(name: string): number {
+		const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+		const n = parseFloat(v);
+		return Number.isFinite(n) ? (v.endsWith('ms') ? n : n * 1000) : 0;
 	}
 
 	// Mounted only on the stage branch, so between songs this is undefined and a late reaction is simply dropped.
@@ -676,14 +716,71 @@
 		if (tvState === 'loading' && stageEntry && !resuming) return 'loading';
 		return null;
 	});
-	// The overlay is live only while a song is actually on screen. Not under the loading card either: `screen` says
-	// `playing` there, so the lyrics showed beside the card and then vanished when the hold began.
-	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial' && transient !== 'loading');
+	// The card the takeover layer holds. It OUTLIVES `transient` by the exit fade, so the room watches the words it was
+	// reading fade into the song rather than an empty scrim, and is dropped once that fade ends (`ontransitionend`), so
+	// the next takeover mounts fresh and an alert announces again. With no fade running on the layer (reduced motion, or a
+	// takeover gone before it ever painted) there is nothing to wait for, and no `transitionend` would come.
+	// `skipNotice` clears with its takeover, so the notice's words are held the same way.
+	// SSR-safe: matchMedia does not exist during load. Defaults to full motion; corrected on mount. Declared here, above
+	// the takeover layer's derived state that reads it.
+	let prefersReducedMotion = $state(false);
+	let heldKind = $state<typeof transient>(null);
+	let heldNotice = $state('');
+	let takeoverLayer = $state<HTMLDivElement>();
+	// The "no fade running" read waits a microtask: `transient` can clear from inside a child's effect (TvPlayer's
+	// `onready` ends a missed-preload card), and in that flush this effect runs BEFORE the layer's class drops `shown`,
+	// so the exit transition does not exist yet and the card would unmount on its fade's first frame.
+	const dropHeldUnlessFading = () => {
+		if (!transient && takeoverLayer?.getAnimations().length === 0) heldKind = null;
+		if (heldKind === null) cardLeaving = cardGone = false;
+	};
+	$effect(() => {
+		if (transient) heldKind = transient;
+		else queueMicrotask(dropHeldUnlessFading);
+		// The early exit belongs to the intro card's hold alone: a notice over it cancels it. Its END does not, until the
+		// held card is dropped: `cardGone` keeps the reel up across the hold's end, or it would unmount for one flush
+		// and replay its arrival.
+		if (transient && transient !== 'next') cardLeaving = cardGone = false;
+	});
+	$effect(() => {
+		if (skipNotice) heldNotice = skipNotice;
+	});
+	// The overlay is live only while a song is actually on screen, and not while a card is still fading out over it:
+	// a real lyric line is as wide as the card's, so the two would draw text on text for the whole exit. The reel
+	// comes in once the card has gone (LyricsOverlay fades it in): for an intro card whose exit was led ahead of its
+	// hold (`cardGone`) that is the hold's last `--motion-fast`, so the line is up when the song starts (the reel does
+	// not advance until it plays); otherwise just after the card's fade. Not under the missed-preload card either
+	// (#999's rule): `screen` says `playing` there.
+	const lyricsActive = $derived(
+		screen === 'playing' &&
+			(tvState !== 'interstitial' || (cardGone && !prefersReducedMotion)) &&
+			transient !== 'loading' &&
+			!(heldKind !== null && !transient && !cardGone)
+	);
+	const cardKind = $derived(transient ?? heldKind);
+	// Up, unless the intro card is already fading out ahead of its hold's end (`cardLeaving`).
+	// Reduced motion switched on mid-lead puts the card back until the hold's end, where it cuts out as on main.
+	const layerShown = $derived(!!transient && !(cardLeaving && !prefersReducedMotion && transient === 'next'));
+	// "Now singing" and the missed-preload card are ONE card: the same words for the same entry, so `next` -> `loading`
+	// changes nothing on screen. `loading` is the MISSED-PRELOAD path, held until the visible player reports ready (a
+	// song IS coming), and names `stageEntry`, the entry the visible player is loading toward. Either way "Up next" only
+	// in the beat before the server confirms the swap; the entry that IS current is "Now singing".
+	const handoff = $derived.by(() => {
+		const entry = cardKind === 'next' ? introEntry : cardKind === 'loading' ? stageEntry : null;
+		return entry ? { entry, label: entry.id !== current?.id ? UP_NEXT : NOW_SINGING } : null;
+	});
+	// What the card SAYS. A change of words while the layer is up re-mounts the lines, so only they rise in again and
+	// the scrim stays; the same words in another state are the same key, so nothing moves.
+	const cardWords = $derived(
+		handoff
+			? `${handoff.label}|${handoff.entry.id}`
+			: cardKind === 'error'
+				? `error|${skipNotice || heldNotice}`
+				: cardKind
+	);
 	// Seeded from the room code, so a room's phrase rotation is deterministic.
 	// See docs/FRONTEND.md#the-attract-and-lobby-idles.
 	const phraseSeed = $derived(seedFromString(data.roomCode || 'encore-attract'));
-	// SSR-safe: matchMedia does not exist during load. Defaults to full motion; corrected on mount.
-	let prefersReducedMotion = $state(false);
 	let attractPhrase = $state<string>(ATTRACT_PHRASES[0]);
 
 	onMount(() => {
@@ -750,6 +847,7 @@
 			ctl.onVisibleReady();
 			tvState = ctl.state;
 			onFirstSongReady();
+			leadExitIfDue();
 			playbackFailedReason = null;
 		}}
 		onprewarmed={() => {
@@ -791,6 +889,7 @@
 			ctl.onVisibleReady();
 			tvState = ctl.state;
 			onFirstSongReady();
+			leadExitIfDue();
 			playbackFailedReason = null;
 		}}
 		onprewarmed={() => {
@@ -937,65 +1036,66 @@
 		{/if}
 	{/if}
 
-	<!-- Transient states, ONE at a time. See docs/FRONTEND.md#the-full-screen-takeovers. -->
-	{#if transient === 'next' && introEntry}
-		{@const m = mediaOf(introEntry)}
-		{@const d = songDisplay(m)}
-		<div class="interstitial takeover state-next">
-			<!-- "Up next" only in the beat before the server confirms the swap; the entry that IS current is "Now singing". -->
-			<div class="up-label">{introEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
-			<div class="up-name hero-name">{singerName(introEntry.singerId)}</div>
-			<div class="up-song">
-				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
-			</div>
-		</div>
-	{:else if transient === 'error'}
-		<!-- Names what is GOING and what REPLACES it in one breath, so the room never wonders whose turn it is. -->
-		<div class="interstitial takeover state-error" role="alert">
-			<div class="state-mark"><Icon name="warning" /></div>
-			<div class="up-label">Skipped</div>
-			<div class="up-song">{skipNotice}</div>
-			{#if upNext && upNext.id !== current?.id}
-				<div class="up-replaces">
-					{UP_NEXT} - {singerName(upNext.singerId)} - {songDisplay(mediaOf(upNext)).title}
+	<!-- Transient states, ONE at a time, in ONE layer that stays mounted so it can fade out as well as in. See
+		docs/FRONTEND.md#the-full-screen-takeovers. -->
+	<div
+		class={['takeover-layer', { shown: layerShown }]}
+		aria-hidden={!layerShown}
+		bind:this={takeoverLayer}
+		ontransitionend={(e) => {
+			// Not on `transitioncancel`: Chromium fires it on every mid-flight reversal of the fade-in, while the reversed
+			// fade is still running. A fade that never ran is the deferred no-fade check's.
+			if (e.target !== e.currentTarget) return;
+			if (!transient) heldKind = null;
+			else if (cardLeaving && !layerShown) cardGone = true;
+		}}
+	>
+		{#key cardWords}
+			{#if handoff}
+				{@const d = songDisplay(mediaOf(handoff.entry))}
+				<div class="interstitial takeover state-next">
+					<div class="up-label">{handoff.label}</div>
+					<div class="up-name hero-name">{singerName(handoff.entry.singerId)}</div>
+					<div class="up-song">
+						{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
+					</div>
+				</div>
+			{:else if cardKind === 'error'}
+				<!-- Names what is GOING and what REPLACES it in one breath, so the room never wonders whose turn it is. -->
+				<div class="interstitial takeover state-error" role="alert">
+					<div class="state-mark"><Icon name="warning" /></div>
+					<div class="up-label">Skipped</div>
+					<div class="up-song">{skipNotice || heldNotice}</div>
+					{#if upNext && upNext.id !== current?.id}
+						<div class="up-replaces">
+							{UP_NEXT} - {singerName(upNext.singerId)} - {songDisplay(mediaOf(upNext)).title}
+						</div>
+					{/if}
+				</div>
+			{:else if cardKind === 'waiting'}
+				<!-- A WAIT, not a failure: a bounded 3-step progress makes it read as finite, in words from
+				     process-phrasing (the ONE guest-facing vocabulary, shared with the phone). The bar and the step are the
+				     song's `liveStatus`, the phone's own figure; with none held for it, neither is drawn. -->
+				{@const processMedia = mediaOf(current)}
+				{@const proc = waitingProgress(current ? liveStatus.get(current.mediaId) : undefined)}
+				<div class="interstitial takeover state-waiting">
+					<div class="state-mark"><Icon name="flame" /></div>
+					<div class="up-label">{processStageLabelAscii('queued')}</div>
+					<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
+					<!-- Always laid out, hidden with no figure, so the centred title holds still when a status arrives or goes. -->
+					<div class={{ 'process-slot': true, unknown: !proc }} aria-hidden={proc ? undefined : 'true'}>
+						<div class="process-bar"><i style="width: {proc?.pct ?? 0}%"></i></div>
+						<div class="process-steps">
+							{#each PROCESS_STEPS as label, i (label)}
+								<span class={{ 'step-current': i === proc?.index, 'step-done': !!proc && i < proc.index }}>{label}</span
+								>
+							{/each}
+						</div>
+					</div>
 				</div>
 			{/if}
-		</div>
-	{:else if transient === 'waiting'}
-		<!-- A WAIT, not a failure: a bounded 3-step progress makes it read as finite, in words from
-		     process-phrasing (the ONE guest-facing vocabulary, shared with the phone). The bar and the step are the
-		     song's `liveStatus`, the phone's own figure; with none held for it, neither is drawn. -->
-		{@const processMedia = mediaOf(current)}
-		{@const proc = waitingProgress(current ? liveStatus.get(current.mediaId) : undefined)}
-		<div class="interstitial takeover state-waiting">
-			<div class="state-mark"><Icon name="flame" /></div>
-			<div class="up-label">{processStageLabelAscii('queued')}</div>
-			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
-			<!-- Always laid out, hidden with no figure, so the centred title holds still when a status arrives or goes. -->
-			<div class={{ 'process-slot': true, unknown: !proc }} aria-hidden={proc ? undefined : 'true'}>
-				<div class="process-bar"><i style="width: {proc?.pct ?? 0}%"></i></div>
-				<div class="process-steps">
-					{#each PROCESS_STEPS as label, i (label)}
-						<span class={{ 'step-current': i === proc?.index, 'step-done': !!proc && i < proc.index }}>{label}</span>
-					{/each}
-				</div>
-			</div>
-		</div>
-	{:else if transient === 'loading' && stageEntry}
-		<!--
-			The MISSED-PRELOAD path, held until the visible player reports ready — affirmative, a song IS coming. It
-			announces `stageEntry`, the entry the visible player is loading toward, with the "Up next" label until the
-			server confirms it, the same rule as the card above.
-		-->
-		{@const d = songDisplay(mediaOf(stageEntry))}
-		<div class="interstitial takeover state-next">
-			<div class="up-label">{stageEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
-			<div class="up-name hero-name">{singerName(stageEntry.singerId)}</div>
-			<div class="up-song">
-				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
-			</div>
-		</div>
-	{/if}
+		{/key}
+	</div>
 
 	<!--
 		THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed, in the same slot as during playback: a song change is
@@ -1396,6 +1496,39 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 32vw;
+	}
+	/* Mounted for the whole stage, so it can fade OUT: invisible and inert until a takeover is up. Only opacity and
+	   transform move, and only for `no-preference`; under reduce the card cuts in and out. The exit is the player
+	   slots' crossfade (TvPlayer, `--motion-base` ease), so the card leaves as the song arrives. */
+	.takeover-layer {
+		position: absolute;
+		inset: 0;
+		z-index: var(--z-tv-interstitial);
+		opacity: 0;
+		pointer-events: none;
+	}
+	.takeover-layer.shown {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.takeover-layer {
+			transition: opacity var(--motion-base) ease;
+		}
+		.takeover-layer.shown {
+			transition: opacity var(--motion-slow) ease-out;
+		}
+		/* The lines, not the scrim: a change of words re-mounts them (`{#key cardWords}`), so they rise in again
+		   while the layer stays up. */
+		.takeover-layer.shown .interstitial > * {
+			animation: card-rise var(--motion-slow) ease-out both;
+		}
+	}
+	@keyframes card-rise {
+		from {
+			opacity: 0;
+			transform: translateY(var(--tv-space-4xl));
+		}
 	}
 	.interstitial {
 		position: absolute;

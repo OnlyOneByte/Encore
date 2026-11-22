@@ -1885,6 +1885,17 @@ guest-facing process vocabulary shared with the phone. Its bar and current step 
 through `waitingProgress`, the phone's own `overallProcessPct` figure, and with no live status held for the song
 it draws neither: a fixed "representative" bar contradicted the phone's real %.
 
+The takeovers share ONE `.takeover-layer` that stays mounted, so a card can fade out as well as in (an `{#if}`
+unmount cannot animate, and `transition:` is banned): it fades in over `--motion-slow` while the lines rise one
+`--tv-space-4xl`, fades out over `--motion-base` `ease` with the player slots' crossfade, and a change of words while
+it is up re-rises only the lines. The lyric reel stays unmounted until the card has gone, then fades in over
+`--motion-fast` (`lyrics-arrive`): a real lyric line is as wide as the card's, so the two never share a frame. So the
+first line is up when the song starts, the intro card's exit starts `--motion-base` + `--motion-fast` before its hold
+ends (when the hold's end would start the song; over a still-loading slot the card stays), and the reel comes up in the
+hold's last moment without advancing. A hold too short to fit the fade-in, a 600 ms readable beat and the lead
+(the room allows 500 ms) is not led: its card leaves at the hold's end. Under `prefers-reduced-motion: reduce` both cut
+at the hold's end.
+
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
 `paint-order: stroke fill`. A shadow tuned against

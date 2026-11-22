@@ -144,6 +144,11 @@ export class GaplessController {
 		return this.state;
 	}
 
+	/** The intro card is up and its hold ending would start the song, not hold on a slot that is still loading. */
+	get introEndsInSong(): boolean {
+		return this.#state === 'interstitial' && !this.#introOverLoad;
+	}
+
 	/** Interstitial timer elapsed → playing. */
 	onInterstitialDone(): void {
 		if (this.#state === 'interstitial') this.#state = this.#introOverLoad ? 'loading' : 'playing';

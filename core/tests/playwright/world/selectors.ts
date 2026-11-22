@@ -260,6 +260,9 @@ export const SEL = {
 	nowSong: '.ls-song',
 	nowName: '.ls-name',
 	stateNext: '.state-next',
+	/** The takeover layer while a card is UP. A card stays mounted under the layer for its exit fade, so `.state-*`
+	 *  alone also matches a card on its way out. */
+	takeoverShown: '.takeover-layer.shown',
 	stateError: '.state-error',
 	stateWaiting: '.state-waiting',
 	/** "Is the stage in any non-playing state?" in one query — a comma union. */
