@@ -42,7 +42,7 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - MEDIA_STORE=local
+      - MEDIA_STORE=${MEDIA_STORE:-local}
       # The address the TV's join QR advertises. UNSET = derived from the request, right for phones and
       # tunnels. Set it (e.g. http://192.168.1.20:3000) where /tv's own host cannot reach its public
       # address — notably WSL2, where the QR would otherwise tell every phone to connect to itself.
@@ -56,6 +56,34 @@ services:
       # Shared secret on role=worker upgrades. Passed to BOTH services from docker/.env: compose's .env only
       # feeds `${}` substitution, so a key not listed here never reaches the container.
       - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
+      # Passed through when set, and left unset otherwise. A value exported in the shell that runs compose
+      # WINS over docker/.env and is forwarded too (an AWS_* key on a dev box, say). Core-only: the Spotify
+      # and S3/AWS credentials never reach the worker. In-container paths are pinned above, not here.
+      # core/tests/unit/server/container-layout.test.ts fails when core reads a setting this list misses,
+      # or when this list names one core never reads.
+      - ENCORE_MEDIA_MAX_GB
+      - ENCORE_SONG_INTRO_MS
+      - INTERSTITIAL_MS
+      - ENCORE_LYRICS_BACKFILL
+      - ENCORE_VOCALS_BACKFILL
+      - ENCORE_EPHEMERAL
+      - ENCORE_PUBLISH_STEM_FORMAT
+      - SPOTIFY_CLIENT_ID
+      - SPOTIFY_CLIENT_SECRET
+      - S3_ENDPOINT
+      - S3_BUCKET
+      - S3_REGION
+      - S3_PREFIX
+      # Bun.S3Client reads these itself (object-store.ts passes only bucket, endpoint and region).
+      # AWS_SESSION_TOKEN is what temporary credentials (STS, SSO, an assumed role) need.
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION
+      - AWS_ENDPOINT
+      - S3_ACCESS_KEY_ID
+      - S3_SECRET_ACCESS_KEY
+      - S3_SESSION_TOKEN
     volumes:
       # Host paths are overridable from docker/.env so the volumes can move without editing this file.
       # `../` because relative paths resolve against the PROJECT DIRECTORY, which is docker/ — see note 3
@@ -87,20 +115,27 @@ services:
       # Appended by the worker as `&token=`; must match core's (see the core service).
       - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
       - ENCORE_WORKER_ID=${ENCORE_WORKER_ID:-worker-1}
-      # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator, cores
-      # and installed engines at startup, so a wrong guess here is worse than no value. Note that
-      # ENCORE_WORKER_CAPABILITIES can only NARROW what host/capabilities.py can prove.
-      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
+      # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator and
+      # installed engines at startup (host/hardware.py), so a wrong guess here is worse than no value. The
+      # full list of worker variables is in the README's Configuration section.
       - ENCORE_DEVICE=${ENCORE_DEVICE:-}
       - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
       - ENCORE_ASR_MODEL=${ENCORE_ASR_MODEL:-base}
-      # The SCRATCH container a separator writes. NOT the published format — core announces that at
-      # handshake, because core owns the storage layout.
-      - ENCORE_STEM_FORMAT=${ENCORE_STEM_FORMAT:-}
       - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
       - ENCORE_OFFLINE=${ENCORE_OFFLINE:-}
       - ENCORE_LRCMUX_URL=${ENCORE_LRCMUX_URL:-}
       - ENCORE_HTTPS_PROXY=${ENCORE_HTTPS_PROXY:-}
+      # Passed through when set, and left unset otherwise; a value exported in the shell wins over
+      # docker/.env. In-container paths and binaries stay the image's (worker.Dockerfile). The same test as
+      # core's guards this list in both directions.
+      - ENCORE_SEPARATOR_BACKEND
+      - ENCORE_PUBLISH_STEM_FORMAT
+      - ENCORE_LRCLIB_URL
+      - ENCORE_ALIGN_MODEL
+      - ENCORE_ALIGN_EXPERIMENTS
+      - ENCORE_ANNOTATE
+      - ENCORE_KEEPALIVE_SEC
+      - ENCORE_JOB_CEILING_SEC
     volumes:
       # The SAME host path core mounts, or core serves a ref to a file this worker never wrote. The refs
       # themselves are computed by artifacts/keys.py, mirrored from core's paths.ts.
