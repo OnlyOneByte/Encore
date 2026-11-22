@@ -185,6 +185,9 @@ export class TvSeats {
 		const s = this.#rooms.get(roomId);
 		const me = s?.sockets.find((x) => x.key === key);
 		if (!s || !me?.tvId) return [];
+		// A claim by the socket that already holds the seat moves nothing, so it books nothing: a client looping on
+		// "Make this the TV" must not pile up timers.
+		if (s.holderSocket === key) return [];
 		this.#book();
 		return this.#diff(s, () => {
 			this.#setHolder(roomId, s, me.tvId!);
