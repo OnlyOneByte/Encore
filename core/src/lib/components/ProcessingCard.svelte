@@ -92,18 +92,14 @@
 		shift = 0
 	}: Props = $props();
 
-	/* THREE KINDS, THREE LINES, and the kind decides — never the status. The pct is shown separately in the stage
-	   row below, so the line itself omits it. `stalled` has no `MediaStatus` to describe BY DEFINITION (that is
-	   what makes it stalled), so its words are a sibling export from the same phrasing module — and only while the
-	   room has no maker; with one, a Try again will work, so the card must not deny it (ruling 38). */
+	/* A DEAD CARD'S LINE FOLLOWS THE ROOM, never its kind (ruling 38). `failed` (a process ran and died) and
+	   `stalled` (nothing is making it) are the same stuck turn to a guest: with no maker here it can't be made, so
+	   both say STALLED_TURN_LABEL, as the strip and the TV do; with one, a Try again will work, so both say the
+	   failed card's line. A phone that missed the failure, and one that heard it, then read the same. The pct is
+	   shown separately in the stage row below, so the line itself omits it. */
+	const dead = $derived(kind === 'stalled' || kind === 'failed');
 	const stageLabel = $derived(
-		kind === 'stalled'
-			? noMaker
-				? STALLED_TURN_LABEL
-				: processStageLabel('failed')
-			: kind === 'failed'
-				? processStageLabel('failed')
-				: processStageLabel(status ?? 'queued')
+		dead ? (noMaker ? STALLED_TURN_LABEL : processStageLabel('failed')) : processStageLabel(status ?? 'queued')
 	);
 	// One expression for both unconfirmed states, so a pending reorder cannot re-borrow the add path's word.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
@@ -126,9 +122,12 @@
 	   bar or a sparkle — a bar near 0 reads as slow rather than stopped — and they differ in what they are entitled
 	   to claim, which is why they are two kinds and not one: see the --danger/--warn note in the styles below.
 	   A RETRY LIVES HERE NOW, on the stalled kind only (`onretry`), alongside SongRow's — which is reachable only
-	   from a search result, so recovering a stranded turn meant finding the song again first. */
-	const failed = $derived(kind === 'failed');
-	const stalled = $derived(kind === 'stalled');
+	   from a search result, so recovering a stranded turn meant finding the song again first.
+	   THE LOOK FOLLOWS THE WORDS, so one line never wears two tones on two phones: the danger look goes with
+	   "Couldn't make karaoke" (a maker is here and a Try again will work), the warn look with "Can't make this one
+	   right now" (no maker). */
+	const failed = $derived(dead && !noMaker);
+	const stalled = $derived(dead && noMaker);
 	const inFlight = $derived(kind === 'processing');
 	// `pct` is the worker's PER-STEP 0-100; the bar must show OVERALL completion, or every step reaching 100% fills
 	// the whole bar while later milestones have not started. Rounded only for the readout.
@@ -308,13 +307,12 @@
 	.stage.bad {
 		color: var(--danger-ink);
 	}
-	/* A STALLED TURN TAKES THE WARN FAMILY, NOT THE DANGER ONE, and docs/FRONTEND.md's token rule is what decides it
-	   rather than taste: --danger means a failure that WILL NOT self-heal, --warn one that may. This card cannot
-	   tell apart a turn whose process half genuinely never landed (permanent) and the one-round-trip window on
-	   another guest's phone between the add and the `media:status` that follows it (transient) — so it is not
-	   entitled to the stronger claim, and reusing `.proc.failed` would assert a permanence the client cannot know.
-	   --danger on this surface is earned only by the live `failed` event. The ink needs no rule at all: `.stage` is
-	   already --warn, which is the honest colour here, so only the border is stated.
+	/* A NO-MAKER DEAD CARD TAKES THE WARN FAMILY, NOT THE DANGER ONE, and docs/FRONTEND.md's token rule is what
+	   decides it rather than taste: --danger means a failure that WILL NOT self-heal, --warn one that may. With no
+	   maker here the turn heals by itself when one connects, so it is --warn whatever its kind; with a maker, the
+	   turn stays dead until somebody taps Try again, so every dead card takes `.proc.failed`, and a phone that missed
+	   the failure wears the same tone as one that heard it. The ink needs no rule at all: `.stage` is already --warn,
+	   so only the border is stated.
 	   SAME SPECIFICITY GAME AS `.proc.failed`: two classes, so it wins over `.pending`'s one-class border
 	   deliberately, and an unconfirmed stalled card keeps the pending SURFACE under a warn edge. */
 	.proc.stalled {

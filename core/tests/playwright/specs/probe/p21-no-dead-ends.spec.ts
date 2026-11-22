@@ -202,8 +202,14 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	await Promise.all([theo.reload(), tv.reload()]);
 	await agree('a reload after the TTL lost the no-maker cause');
 
-	// 2. Try again opens a NEW unservable window; then everyone reloads — Maya on top of her 30-minute scar.
+	// The dead card, untapped (the TTL left it `failed`), says what the strip says: no maker, so it can't be made
+	// (ruling 38). "Couldn't make karaoke" here sat beside a strip and a TV saying nobody can make it.
 	await openQueue(maya);
+	const card = maya.locator(SEL.processing).first();
+	await expect(card).toContainText("Can't make this one right now", { timeout: AGREE_MS });
+	await expect(card).not.toContainText("Couldn't make karaoke");
+
+	// 2. Try again opens a NEW unservable window; then everyone reloads — Maya on top of her 30-minute scar.
 	const again = await awaitStatus(world.baseURL, (f) => f.unservable === true);
 	try {
 		await maya.locator(`${SEL.processing} [data-testid="card-retry"]`).click();
@@ -213,6 +219,11 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	}
 	await Promise.all([maya.reload(), theo.reload(), tv.reload()]);
 	await agree('a reload inside the post-TTL window brought back a stale screen');
+	// Tapped, and reloaded on top of the scar: the same words.
+	await openQueue(maya);
+	await expect(maya.locator(SEL.processing).first()).toContainText("Can't make this one right now", {
+		timeout: AGREE_MS
+	});
 	// Theo's Sing tab, searching the dead song: the group heading over it must not claim it is being made.
 	await openBrowseFromHome(theo);
 	await theo.locator(SEL.search).fill('sweet caroline');
@@ -278,8 +289,8 @@ test('past the TTL, a maker joining ends "no maker" on every screen, live and af
 				tv: "Can't make new karaoke right now",
 				mayaStrip: "Can't make new karaoke right now",
 				theoStrip: "Can't make new karaoke right now",
-				// The card is the song's own record, as after the TTL: it died, and the strips say why nothing follows.
-				mayaCard: expect.stringContaining("Couldn't make karaoke")
+				// The card follows the room, as the strips do (ruling 38): with the maker gone, nobody can make it.
+				mayaCard: expect.stringContaining("Can't make this one right now")
 			});
 		await shoot('maker-left', { tv, 'maya-queue': maya, 'theo-home': theo });
 	} finally {

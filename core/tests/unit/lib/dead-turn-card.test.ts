@@ -94,11 +94,16 @@ test('the store carries `unservable` through to the card kind', () => {
 	expect(roomStore).not.toContain('const { mediaId, status, pct, etaSec } = e;');
 });
 
-test("the stalled card's line follows the ROOM's maker verdict, the one the TV and the strips read (ruling 38)", () => {
-	// With a maker here, a phone that missed the failure says what the phones that heard it say.
-	expect(card).toMatch(
-		/kind === 'stalled'\s*\?\s*noMaker\s*\?\s*STALLED_TURN_LABEL\s*:\s*processStageLabel\('failed'\)/
-	);
+test("a dead card's line AND look follow the ROOM's maker verdict, whatever its kind (ruling 38)", () => {
+	// Failed and stalled alike: a phone that missed the failure says what the phones that heard it say, and with no
+	// maker every dead card says what the strip and the TV say.
+	expect(card).toContain("const dead = $derived(kind === 'stalled' || kind === 'failed');");
+	expect(card).toMatch(/dead\s*\?\s*\(noMaker\s*\?\s*STALLED_TURN_LABEL\s*:\s*processStageLabel\('failed'\)\)/);
+	// Same words, same tone: the danger look goes with "Couldn't make karaoke", the warn look with the stalled line.
+	expect(card).toContain('const failed = $derived(dead && !noMaker);');
+	expect(card).toContain('const stalled = $derived(dead && noMaker);');
+	// The split this replaced: a failed card that ignored the verdict.
+	expect(card).not.toMatch(/kind === 'failed'\s*\?\s*processStageLabel\('failed'\)/);
 	// The verdict is the same fold the TV lobby and the strip word their lines from, over the same queued turns.
 	expect(queuePage).toMatch(/const noMaker = \$derived\(\s*waitingTurns\(\s*queued,/);
 	expect(queuePage).toContain('noMaker={noMaker}');
