@@ -88,8 +88,8 @@ async def align(job: JobRef) -> AlignOutcome:
 
 
 async def stems(job: JobRef) -> StemsOutcome:
-    """As `align`, for separation, which earns durability the most: a crash after a 45-minute pass resumes
-    at publication instead of separating again."""
+    """As `align`, for separation. It records no steps, so a crash or a requeue separates again from the
+    start (docs/arch/05-worker.md §8)."""
     if _stems_flow is None:
         assert _stems_steps_for is not None, "register() must run before any job"
         return await run_stems(job, _stems_steps_for(job))

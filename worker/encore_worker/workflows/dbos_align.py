@@ -1,9 +1,9 @@
 """The DBOS wrapper: `run_align`'s steps, made durable.
 
 No decisions — every method delegates to `AlignStepsImpl` and exists only to carry a `@DBOS.step`
-decorator, which is what keeps the behaviour importable with no DBOS launched. Only ACQUISITION is retried:
-a model step has the search's better answer than a retry, and a refused `publish` means another worker owns
-the job. See docs/arch/05-worker.md §8.
+decorator, which is what keeps the behaviour importable with no DBOS launched. Only two steps are retried,
+both network reads: acquisition (3 attempts) and the provider fetch (2). A model step has the search's better
+answer than a retry, and a refused `publish` means another worker owns the job. See docs/arch/05-worker.md §8.
 """
 
 from __future__ import annotations

@@ -217,12 +217,11 @@ class Progress:
 
 @dataclass(frozen=True, slots=True)
 class State:
-    """Where the state machine IS, and why it moved — the frame the old protocol had no room for.
+    """Where the state machine IS, and why it moved.
 
     Distinct from `Progress` on purpose. A stage and a percentage cannot express "re-aligning, attempt
-    2, knob vocals->mix, because coverage was 0.42". That explanation previously went to stdout via
-    `ctx.note()`, and the old worker's own comment records that the process log rotates. Putting it on
-    the wire is what makes "why did this job publish these lyrics" answerable weeks later.
+    2, knob vocals->mix, because coverage was 0.42". The process log rotates, so putting that explanation
+    on the wire is what makes "why did this job publish these lyrics" answerable weeks later.
     """
 
     TYPE: ClassVar[str] = STATE

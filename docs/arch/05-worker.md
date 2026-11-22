@@ -40,10 +40,9 @@ records; bytes stay on disk.
 
 ### 1.1 The align step is seven modules, not one
 
-`steps/align_steps.py` reached **3 696 lines** — the longest module in the repo, and the PLAN's
-longest-standing structural debt. W7b declined to split it and W7c recorded why: ~14 module-level privates
-were imported BY NAME from 4 test modules and 6 bench scripts, so the split was an API break that a
-no-behaviour-change wave could not take. W10 took it, as a **pure move**: `align_steps.py` keeps `Adapters`,
+`steps/align_steps.py` reached **3 696 lines**, the longest module in the repo. Splitting it was an API
+break, because ~14 module-level privates were imported BY NAME from 4 test modules and 6 bench scripts, so it
+was split as a **pure move** with those imports re-pointed: `align_steps.py` keeps `Adapters`,
 `Reporter`, `AlignStepsImpl` and `now_ms` (**2 530** lines, the engines and the repair ladder still inside
 `_time_text_global`), and the module-level helpers went to six siblings by what they are —
 
@@ -58,10 +57,12 @@ no-behaviour-change wave could not take. W10 took it, as a **pure move**: `align
 
 **The proof it was a pure move.** All **80** top-level definitions are AST-identical modulo docstrings
 (two docstrings lost a narrative paragraph each, both now in [`04-alignment.md`](04-alignment.md) §5.3 and
-§7); 78 of the 80 are identical including their docstrings. End to end, `_runs/w10-split-smoke`
-(`--level run_align --songs hello,Avercage --modes truth`) republishes both documents and both onset series
-digest-identical to `_runs/w8s0-english-smoke` — `hello` `4851b178858ce19f` / `75391ffb463bfe9d`,
-`Avercage_-_Embers` `005ddbf71545685a` / `1171b22563741216`.
+§7); 78 of the 80 are identical including their docstrings. End to end, a `run_align` smoke on two songs
+(`--songs hello,Avercage --modes truth`) republished both documents and both onset series digest-identical
+to the run before the split — `hello` `4851b178858ce19f` / `75391ffb463bfe9d`, `Avercage_-_Embers`
+`005ddbf71545685a` / `1171b22563741216`; the run is in
+[`../benchmarks/forced-alignment/LOG.md`](../benchmarks/forced-alignment/LOG.md), "W10: the step split, and
+the byte-identity smoke that proves it".
 
 **Three names stay patched on `align_steps`, not on their owner.** `_NEVER_SUNG_RATE`, `_clamped` and
 `_skipped_lines` are read by `AlignStepsImpl` out of its OWN module globals, so
@@ -212,9 +213,9 @@ not a feature.
 
 The stems flow is deliberately linear — decode, separate, check, publish. Separation has no fallback
 ladder and no parameter worth retrying: an engine either produces stems or it does not, and a second pass
-with a different setting produces a different-sounding backing track rather than a better-timed one. What
-it still gains from durability is that a crash after separation but before publication resumes at
-publication instead of re-running a 45-minute pass.
+with a different setting produces a different-sounding backing track rather than a better-timed one. The
+flow runs as a DBOS workflow but records no steps, so a crash or a requeue separates again from the start,
+even after a 45-minute pass (§8.1).
 
 The one real decision is the **silence probe**. A separator that emits a digitally silent instrumental has
 "succeeded" by every other measure — the files exist, the exit code was zero — and the room hears nothing.
@@ -945,34 +946,33 @@ in a document. During the cleanup that was checked by a lossless scan over a fro
 token the prose carried (`_tools/verify_numbers.py`, `_tools/prose_scan.py`); those were working-tree tools
 and are not committed, so nothing in this repository runs that check today.
 
-**Why bounds per KIND of prose.** W7b measured the package at 48% prose (3 685 comment lines and 7 577
-docstring lines against 12 252 of code) and moved ~3 800 lines out, under one bound: "no prose block over 40
-lines". That bound was satisfied by **144** blocks of 12 lines or more — counted by kind over the `w7c-start`
-snapshot of `worker/encore_worker` with the ratchet's own helpers: 130 docstrings, 8 own-line `#` runs and 6
-`#:` runs, or **145** under rule 5's bridged definition, the largest a **40-line** module docstring in
-`domain/lyrics/parts.py`. (The wave brief said 101; no threshold or kind filter reproduces that figure, and
-the measurement is what this row records.) A single block bound cannot see the difference between an essay and
-three legitimate paragraphs, so W7c replaced it with one number per kind, in
+**Why bounds per KIND of prose.** The first sweep measured the package at 48% prose (3 685 comment lines and
+7 577 docstring lines against 12 252 of code) and moved ~3 800 lines out, under one bound: "no prose block over
+40 lines". That bound was satisfied by **144** blocks of 12 lines or more — counted by kind over the snapshot
+of `worker/encore_worker` the per-kind rules were set on, with the ratchet's own helpers: 130 docstrings, 8
+own-line `#` runs and 6 `#:` runs, or **145** under rule 5's bridged definition, the largest a **40-line**
+module docstring in `domain/lyrics/parts.py`. A single block bound cannot see the difference between an essay
+and three legitimate paragraphs, so it was replaced with one number per kind, in
 `worker/tests/test_prose_shape.py`:
 
 | rule | bound | what sat on it when it was set |
 | ---- | ----- | ----------------------------- |
 | 1. MODULE docstring | 12 lines | `domain/lyrics/parts.py` held 40 — a mechanism, two anchored rules, a measured refusal, an interpolation policy and an order invariant, all of which is [`04-alignment.md`](04-alignment.md) §8 and §12 now. |
-| 2. def / method / class docstring | 8 lines | `steps/align_steps.py` held a 125-line one (`_time_line_sync`) before W7b and a 22-line one after. |
+| 2. def / method / class docstring | 8 lines | `steps/align_steps.py` held a 125-line one (`_time_line_sync`) before the first sweep and a 22-line one after. |
 | 3. own-line `#` comment run | 6 lines | `host/config.py` held 261 lines of `ALIGN_EXPERIMENTS` commentary. `#` continuation was the cheapest way to keep an essay, so it has a bound of its own. |
 | 4. `#:` attribute comment | 3 lines | A calibrated constant carries its value, its unit and a pointer — never its derivation, which is a measurement. |
 | 5. bridged prose BLOCK | 18 lines | Exactly what rules 1 and 3 allow back to back, i.e. the worst legal combination: a BACKSTOP that catches a THIRD paragraph, not a bound anything sits on (the worst block measured 13). |
 | 6. per-module prose/code | 0.55 at >= 100 code lines | The package's worst module is `domain/lyrics/policy.py`. Below 100 lines of code the ratio measures a module's INTERFACE — a Protocol or a table of constants is one line of code per declaration — so rules 1-5 and 7 carry those. |
 | 7. per-layer prose/code | 0.55 | Read over all 11 package directories RECURSIVELY: a top-level-only list left `domain/audio` above the bound and invisible behind `domain/`'s average. The worst layer is `artifacts/`. |
-| 8. package prose/code | 0.52 | Below the layer bound on purpose: every layer sitting at its own bound would be a different package from this one. 1.21 before W7b, **0.82** at the `w7c-start` snapshot, **0.49** after. |
-| 9. root aggregates | tests 0.33, forced-alignment harness 0.28, stem-separation harness 0.30 | Measured on the shipped tree: `worker/tests` **0.32** (0.3114 at the `w7c-start` snapshot; W8a's own tests moved it to 0.3158, inside the 0.33 bound), `docs/benchmarks/forced-alignment/scripts` **0.26**, `docs/benchmarks/stem-separation/scripts` **0.22** (and the package **0.49**). Each quote is held by `test_the_quoted_root_ratios_still_measure_what_they_say`, because the two figures this row first carried (0.3124 and 0.2580) were already stale when they shipped. |
-| 10. consecutive comment overlap | 0.6 Jaccard on content words | `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' `#:` block verbatim: three index claims that were false of its own tuple, and the arms' real semantics deleted. Set in the gap the tree measures — the one real pair **0.889**, the next **0.436** over **773** adjacent disjoint pairs — so a pasted block fails and two comments about related constants do not (review r2-correctness-1). |
+| 8. package prose/code | 0.52 | Below the layer bound on purpose: every layer sitting at its own bound would be a different package from this one. 1.21 before the first sweep, **0.82** at the snapshot the per-kind rules were set on, **0.49** after. |
+| 9. root aggregates | tests 0.33, forced-alignment harness 0.28, stem-separation harness 0.30 | Measured on the shipped tree: `worker/tests` **0.32** (0.3114 at the snapshot the rules were set on; later tests moved it to 0.3158, inside the 0.33 bound), `docs/benchmarks/forced-alignment/scripts` **0.26**, `docs/benchmarks/stem-separation/scripts` **0.22** (and the package **0.49**). Each quote is held by `test_the_quoted_root_ratios_still_measure_what_they_say`, because the two figures this row first carried (0.3124 and 0.2580) were already stale when they shipped. |
+| 10. consecutive comment overlap | 0.6 Jaccard on content words | `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' `#:` block verbatim: three index claims that were false of its own tuple, and the arms' real semantics deleted. Set in the gap the tree measures — the one real pair **0.889**, the next **0.436** over **773** adjacent disjoint pairs — so a pasted block fails and two comments about related constants do not. |
 
-**Where the package's own ratio was read.** Rule 8's row quotes **0.82** for the `w7c-start` snapshot, measured
-with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code = 0.8173). The figure the row first carried,
-**0.745**, is the same measure taken MID-WAVE — after the first pass over the largest blocks had already landed
-— so it was never the pre-wave baseline it was quoted as (review r1-tests-11). For the same reason the 1.21 is
-`w7b-start`'s, which this measure reproduces exactly, which is how the method was checked.
+**Where the package's own ratio was read.** Rule 8's row quotes **0.82** for the snapshot the per-kind rules
+were set on, measured with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code =
+0.8173). The figure the row first carried, **0.745**, is the same measure taken mid-cleanup — after the first
+pass over the largest blocks had already landed — so it was never the baseline it was quoted as. The 1.21 is
+the tree before the first sweep, which this measure reproduces exactly, which is how the method was checked.
 
 **Blocks are BRIDGED across blank lines.** A block ends only at a line of code, so neither two touching
 docstrings nor `#` continuation nor a bare blank line splits an essay into passing halves — which an
@@ -981,19 +981,17 @@ adjacency-only rule allowed, and a blank line every 30 lines defeated.
 **Which roots the rules bind on.** All five shape rules, the block rule and
 the comment-overlap rule read **four** roots: the package
 `worker/encore_worker`, the worker's own tests, and BOTH committed bench harnesses —
-`docs/benchmarks/forced-alignment/scripts` and `docs/benchmarks/stem-separation/scripts`. W7b swept the package
-only; W7c extended the per-kind rules outwards, which cost 239 edits across 68 test modules and 12
-forced-alignment scripts, plus 4 in the three stem-separation scripts (three module docstrings of 24, 23 and 23
-lines and one 12-line def docstring, all of whose narrative the stem-separation README already carried — the
-first pass left that root out of `ROOTS` silently). The ratio rules stay the
+`docs/benchmarks/forced-alignment/scripts` and `docs/benchmarks/stem-separation/scripts`. The first sweep
+covered the package only; extending the per-kind rules outwards cost 239 edits across 68 test modules and 12
+forced-alignment scripts, plus 4 in the three stem-separation scripts. The ratio rules stay the
 package's, with each other root held to an aggregate instead: a test file is many small functions each
 honestly carrying two lines of WHAT, and a gate script is a measurement argument with a `main()` attached, so
 a per-module 0.55 there would delete short docstrings that are exactly the right length. The roots are a claim
 about coverage, so `test_the_shape_rules_say_where` and `test_every_root_has_modules_to_measure` assert the
 tuple, the per-root module floors and that no two roots share a label (both harness directories are called
 `scripts`, and one label for two roots would merge their worst prose), and `test_the_shape_rules_say_where`
-also holds the root COUNT this module's own prose spells, rule 2's docstring having gone on saying three for a
-whole wave after the fourth arrived.
+also holds the root COUNT this module's own prose spells, because rule 2's docstring once went on saying three
+after the fourth arrived.
 
 **A fixture's own numbers are terminal.** The lossless scan (not committed, see above) treated prose in
 `worker/tests` as a durable home of its own: a number in a test's prose describes the setup under it and has
@@ -1007,18 +1005,18 @@ measurement, a re-argued review finding, or a narrative of the wave that produce
 measurement README or to a design document. A harness script's docstring keeps the COMMAND LINES that run it,
 which is why its module bound holds two or three of them plus one paragraph and a pointer.
 
-**EXCEPTIONS is empty, and that is the finished state.** W7c cleared 271 package violations and 243 in the
-other three roots without granting one. An exception is a judgement about a particular docstring; raising a
+**EXCEPTIONS is empty, and that is the finished state.** The per-kind pass cleared 271 package violations and
+243 in the other three roots without granting one. An exception is a judgement about a particular docstring; raising a
 bound is a judgement about every docstring in the tree, which is how the 40-line bound came to allow the 144
 blocks above. `TIGHTEST` names the module or layer sitting closest to each bound and a test fails when that
-claim goes stale, so the next wave moves a paragraph instead of raising a number. The MEASURE itself is held
+claim goes stale, so the next edit moves a paragraph instead of raising a number. The MEASURE itself is held
 too: `test_the_measure_still_sees_prose` floors what `_prose_lines` and `_longest_block` return and pins the
 bridging rule on a synthetic module, because zeroing the measure used to leave all 24 tests green — rules 5 to
 9 all read it, and `TIGHTEST`'s own check passes on a tie at zero.
 
 **What a grant can reach.** Rules 1-4 are keyed `"<label>::<qualname>"` and rule 5 by `"<label>::<block>"`, a
-block spanning whatever docstrings and comment runs touch it and so having no qualname of its own. Rule 5 read
-`EXCEPTIONS` not at all until W7c's review: the hatch could sanction a 9-line def docstring and not a 19-line
+block spanning whatever docstrings and comment runs touch it and so having no qualname of its own. Rule 5 once
+read `EXCEPTIONS` not at all: the hatch could sanction a 9-line def docstring and not a 19-line
 one, i.e. not the length it exists for, and nobody could learn that except by mutating the tree.
 Rules 3 and 4 still have no route — a comment run has no stable name, so shorten it or make it a
 docstring and argue there — and `test_every_named_exception_is_still_needed` deletes any grant, block or
@@ -1032,21 +1030,20 @@ prose than the root carries, and a reading below it costs a re-quote only past `
 A retracted figure is held too: `RETRACTED_RATIOS` names each one and
 `test_a_retracted_ratio_is_never_republished_as_a_reading` fails a paragraph of this document or of the
 measurement README that quotes one outside a retraction, which is how **0.745** came to be published here as
-withdrawn and in the README as a reading, in the same wave.
+withdrawn and in the README as a reading at the same time.
 
 **What the layers measured, before and after.** At the directive the orchestration layer `steps/` read **1.80**
-prose lines per line of code and **0.78** after W7b; `domain/` and `adapters/` read **1.02** and **0.89** before
-W7b's third task and **0.92** and **0.84** after it. On the shipped tree they read **0.48**, **0.51** and **0.49** (`_layer_ratio`,
+prose lines per line of code and **0.78** after the first sweep; `domain/` and `adapters/` read **1.02** and
+**0.89** before its third task and **0.92** and **0.84** after it. On the shipped tree they read **0.48**, **0.51** and **0.49** (`_layer_ratio`,
 recursive), and the worst layer of all is `artifacts/` at **0.545** — the only one anywhere near rule 7's 0.55,
-which is why `TIGHTEST["layer"]` names it. The W7b-era figures are history, kept labelled: a number quoted as
-today's reading has to be re-measured, which is the defect review r1-tests-12 found in this paragraph (0.78 is
-above the bound a layer at 0.78 would fail).
+which is why `TIGHTEST["layer"]` names it. The first-sweep figures are history, kept labelled: a number quoted
+as today's reading has to be re-measured (0.78 is above the bound a layer at 0.78 would fail).
 
 **The pointers are checked too, over the same roots.** `worker/tests/test_docs_pointers.py` resolves every
 `docs/` path the code cites, every `path §N`, every cited README section title and every `XA-`/`XW-` invariant
 id, and fails a citation that leads to a gitignored working document — because a pointer to nothing loses
-exactly what the cleanup moved. Its roots are the package, both bench harnesses and `worker/tests`: until W7c
-only the invariant-id rule read the tests, so the pointers the sweep left in test prose were unchecked.
+exactly what the cleanup moved. Its roots are the package, both bench harnesses and `worker/tests`: at first
+only the invariant-id rule read the tests, so the pointers the sweep left in test prose went unchecked.
 That population, read off the shipped tree as the rules read it and as OCCURRENCES
 — the denominator the first figure never stated — is **72** `docs/` paths over **19** distinct, **26**
 `path §N` and **8** README titles; it is a FLOOR in `MIN_TEST_POINTERS`, so widening the roots cannot be undone
@@ -1054,13 +1051,13 @@ quietly. The 57 and 11 this paragraph first carried reproduce on no tree and und
 The invariant-id rule runs both ways now: every cited id must be a row (so a deleted row
 breaks the suite) and every DECLARED row must be cited from code, which 9 of the 14 `XW` rows were not —
 `XW-12`'s only citation was `test_docs_pointers.py`'s own `#:` example, so the module that holds it never named
-it. W7c put each id at the site its "Where held" column names, `UNCITED_INVARIANTS` is EMPTY, and a citation
+it. Each id now sits at the site its "Where held" column names, `UNCITED_INVARIANTS` is EMPTY, and a citation
 from the declaring module does not count. The floor moved with the population too:
 **143** citations over all **31** ids, so `MIN_INVARIANT_CITATIONS` is **110** rather than the 50 it was left at
-while the wave tripled the count. **One open item, named rather than
+while the count tripled. **One open item, named rather than
 silent.** The ANCHOR rule — every `§N` in prose must sit near a committed document path, or it means the
 gitignored review — still skips `worker/tests`, which carries **29** bare `review §N` marks across 14 modules
-(W7c re-pointed 7 of 36 at the committed section they meant). `UNANCHORED_IN_TESTS` ratchets that count
+(7 of the original 36 were re-pointed at the committed section they meant). `UNANCHORED_IN_TESTS` ratchets that count
 downwards, a new one fails the suite, and reaching zero fails it too, with the instruction to delete the
 exclusion.
 
@@ -1097,8 +1094,8 @@ the wav2vec2 aligner), so `-m 'not ml'` gives the fast suite.
 
 **Why the bench harness has unit tests of its own** (`tests/test_lang_gate.py`, `tests/test_pool_gate.py`,
 `tests/test_bench_e2e.py`). `lang_gate.py` was **651 lines with no test at all**, referenced only from
-docstrings and loaded by nothing, while carrying the decisive numbers of W7: the 59-song fr/de/es reading that
-ships `lang-route-mix` default-off, the `--folds` census that licenses the NFKD fold as a byte-level no-op on
-every row under `results/`, and review M9's live blank proof. A defect in `score`'s truth pairing, in
+docstrings and loaded by nothing, while carrying the decisive numbers of the language work: the 59-song fr/de/es
+reading that ships `lang-route-mix` default-off, the `--folds` census that licenses the NFKD fold as a
+byte-level no-op on every row under `results/`, and the live blank proof. A defect in `score`'s truth pairing, in
 `pooled`'s arithmetic or in `fold_census`' alphabet would move those verdicts silently — and one of them
 (`pooled`'s AAE) was in fact live. A harness that grades the project needs the same gates as the project.
