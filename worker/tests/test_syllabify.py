@@ -93,7 +93,7 @@ def test_naive_tier_never_returns_empty_pieces_either() -> None:
         assert pieces and all(pieces) and "".join(pieces) == word
 
 
-# ── review L3: edge punctuation, internal hyphens, and the Moby tier ─────────────────────────────
+# ── edge punctuation, internal hyphens, and the Moby tier ────────────────────────────────────────
 
 moby_installed = bool(syllabify._moby())
 needs_moby = pytest.mark.skipif(not moby_installed, reason="the shipped Moby data did not load")
@@ -103,7 +103,7 @@ needs_moby = pytest.mark.skipif(not moby_installed, reason="the shipped Moby dat
 @pytest.mark.parametrize(
     ("word", "count"),
     [
-        # The four words review L3 names. Each was looked up WITH its punctuation, so CMUdict missed it and
+        # The four measured words. Each was looked up WITH its punctuation, so CMUdict missed it and
         # pyphen declined to split: `everything,` came out as ONE syllable and `baby,` as one.
         ("everything,", 3),
         ("baby,", 2),
@@ -123,7 +123,7 @@ def test_edge_punctuation_no_longer_bypasses_the_dictionary(word: str, count: in
 @pytest.mark.parametrize(
     ("word", "pieces"),
     [
-        # The vocable L3 names: it used to come out `la-l|a-l|a`, with fragments straddling the hyphen.
+        # The measured vocable: it used to come out `la-l|a-l|a`, with fragments straddling the hyphen.
         ("la-la-la", ["la-", "la-", "la"]),
         ("oh-oh-oh", ["oh-", "oh-", "oh"]),
         ("na--na", ["na--", "na"]),
@@ -139,7 +139,7 @@ def test_internal_hyphens_split_and_the_separator_rides_the_fragment_before_it(
 @pytest.mark.parametrize(
     ("word", "pieces"),
     [
-        # The two splits review L3 names as wrong, plus the two whose COUNT pyphen also lost.
+        # The two splits measured as wrong, plus the two whose COUNT pyphen also lost.
         ("about", ["a", "bout"]),
         ("maybe", ["may", "be"]),
         ("baby", ["ba", "by"]),
@@ -148,7 +148,7 @@ def test_internal_hyphens_split_and_the_separator_rides_the_fragment_before_it(
 )
 def test_the_moby_tier_splits_where_pyphen_abstains(word: str, pieces: list[str]) -> None:
     """pyphen returns these words UNSPLIT — 44.8% of the corpus's multi-syllable occurrences, reproduced
-    exactly off the review's figure — and `_force_count` then bisected them against CMUdict's count, which
+    exactly off the measured figure — and `_force_count` then bisected them against CMUdict's count, which
     puts the boundary at the middle of the string (`everything` -> `ever|yth|ing`)."""
     assert syllables(word) == pieces
     assert syllabify._pyphen_split(word, "en", unsplit_abstains=True) is None, (
@@ -174,7 +174,7 @@ def test_an_unsplit_pyphen_answer_is_an_abstention_not_a_result() -> None:
     assert syllabify._pyphen_split("a", "en", unsplit_abstains=True) is None
 
 
-# ── W5 review r1-correctness-6: an abstention needs a tier that can be corrected ──────────────────
+# ── an abstention needs a tier that can be corrected ──────────────────────────────────────────────
 
 needs_pyphen_fr = pytest.mark.skipif(
     syllabify._pyphen_dic("fr") is None, reason="pyphen (or its fr dictionary) not installed"
@@ -203,10 +203,10 @@ def test_english_still_falls_through_to_the_grouper_and_its_counter(english: str
 
 
 def test_an_english_token_no_counter_knows_keeps_the_groupers_answer() -> None:
-    """W5 review r2-tests-15, pinned as the DECISION it is. The abstention is justified by a tier that can
+    """Pinned as the DECISION it is. The abstention is justified by a tier that can
     correct an over-split, and for a token CMUdict has never heard of that tier is not there — so this answer
     is the vowel grouper's, uncorrected. Kept because the corpus says so: of the 37 occurrences where the
-    pre-W5 single fragment and today's answer differ, 14 are long repeated-vowel vocalise tokens really sung
+    old single fragment and today's answer differ, 14 are long repeated-vowel vocalise tokens really sung
     as 4-5 syllables and only 3 ask for an impossible count (`_split_core` carries the measurement). A
     repeated-syllable vocalise stands in for them here: one fragment would be one ball bounce for a token
     sung three times over."""
@@ -216,7 +216,7 @@ def test_an_english_token_no_counter_knows_keeps_the_groupers_answer() -> None:
     assert syllables("nanana") == ["nan", "an", "a"], "so the grouper's three bounces stand"
 
 
-# ── W5 review r1-tests-21: a damaged data file degrades, as the packaging contract says ────────────
+# ── a damaged data file degrades, as the packaging contract says ──────────────────────────────────
 
 
 @pytest.mark.parametrize(

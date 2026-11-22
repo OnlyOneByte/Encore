@@ -253,10 +253,10 @@ def test_an_out_of_memory_message_names_the_remedy() -> None:
     assert "smaller" in str(err) and "memory" in str(err)
 
 
-# ── review M12: YouTube's ROLLING auto-caption shape ──────────────────────────────────────────────
+# ── YouTube's ROLLING auto-caption shape ──────────────────────────────────────────────────────────
 
-#: The first 29 lines of dQw4w9WgXcQ's real `--write-auto-subs` track, verbatim (the review's own case,
-#: re-fetched for this wave). Every feature M12 names is in it: a lone-SPACE placeholder line, a 10 ms
+#: The first 29 lines of dQw4w9WgXcQ's real `--write-auto-subs` track, verbatim (re-fetched for these
+#: tests). Every feature of the shape is in it: a lone-SPACE placeholder line, a 10 ms
 #: roll-up marker cue, the carried-over first line of each rolling cue, `[Music]`, and inline word onsets.
 ROLLING = """WEBVTT
 Kind: captions
@@ -287,8 +287,8 @@ love.<00:00:22.800><c> You</c><00:00:23.039><c> know</c><00:00:23.279><c> the</c
 def test_the_lone_space_placeholder_no_longer_eats_the_first_cue() -> None:
     """Rule 1. The cue separator is an EMPTY line; YouTube writes a lone SPACE as the roll-up's empty half,
     and a parser splitting on `line.strip() == ""` cut every such cue in two — the half with the timestamp
-    had no body, the half with the body had no timestamp, and both were dropped. That is why the review
-    measured "the first cue is lost"."""
+    had no body, the half with the body had no timestamp, and both were dropped. That is why the first
+    cue was measured lost."""
     cues = parse_vtt(ROLLING)
     assert cues, "the track must parse at all"
     assert cues[0]["start"] == 18.8, "the 0.32 s cue is `[Music]`, dropped as an ASR marker, not as a bug"
@@ -308,7 +308,7 @@ def test_a_ten_millisecond_roll_up_marker_is_not_a_cue() -> None:
 
 def test_the_cue_floor_sits_in_the_empty_band_rather_than_on_a_frame_count() -> None:
     """The `#:` comment derived `MIN_CUE_SEC` as "two decoder frames at the 20 ms hop", which is 0.04 s: the
-    value is 2.5 frames and only the measured band justifies it (W7c review r2-spec-11)."""
+    value is 2.5 frames and only the measured band justifies it."""
     from encore_worker.adapters import ml
 
     assert ml.FRAME_SEC == 0.02, "the hop the comment's arithmetic is read at"
@@ -326,7 +326,7 @@ def test_only_the_new_line_of_a_rolling_cue_survives() -> None:
 
 
 def test_a_repeated_line_across_two_authored_cues_is_not_read_as_a_roll_up_carry() -> None:
-    """W5 review r1-correctness-2. Rule 3 used to fire on TEXT IDENTITY alone, and a line repeated across a
+    """Rule 3 used to fire on TEXT IDENTITY alone, and a line repeated across a
     cue boundary — a chorus line that ends one cue and opens the next — is ordinary in song captions. On a
     plain authored track (no inline tags, cues merely ABUTTING) the repeat was deleted from the served text,
     so the TV never showed it while it was being sung. The cue must look like a roll-up first: a tag of its
@@ -342,7 +342,7 @@ def test_a_repeated_line_across_two_authored_cues_is_not_read_as_a_roll_up_carry
 def test_an_overlapping_cue_is_evidence_of_a_roll_up_even_with_no_tags() -> None:
     """The other half of the same test: a rolling track's cues OVERLAP, which an authored track's never do,
     so a tagless roll-up still loses its carry. It overlaps on EVERY cue, which is why `_ROLLING_OVERLAPS`
-    can ask for two of them (W5 review r2-correctness-3) without costing a real roll-up anything."""
+    can ask for two of them without costing a real roll-up anything."""
     rolling = (
         "WEBVTT\n\n"
         "00:00:01.000 --> 00:00:04.000\naaa bbb ccc\n\n"
@@ -353,7 +353,7 @@ def test_an_overlapping_cue_is_evidence_of_a_roll_up_even_with_no_tags() -> None
 
 
 def test_one_overlapping_pair_does_not_arm_the_carry_rule_for_a_whole_track() -> None:
-    """W5 review r2-correctness-3. `span[0] < previous_end` was proof on its own and `parse_vtt` latched it
+    """`span[0] < previous_end` was proof on its own and `parse_vtt` latched it
     for the rest of the track, so ONE overlapping pair — two simultaneous speakers, a backing-vocal overlay,
     stacked karaoke subtitles, all of which real authored/SDH tracks write — armed rule 3 over every later
     cue, and a line repeated across a later cue boundary was DELETED. No inline tag anywhere here, so the
@@ -397,7 +397,7 @@ def test_the_roll_up_evidence_is_the_tracks_and_not_each_cues() -> None:
 
 
 def test_a_partially_tagged_cue_publishes_no_zero_width_word() -> None:
-    """W5 review r1-tests-19. The docstring claimed such a cue was refused whole; it was not — every
+    """The docstring claimed such a cue was refused whole; it was not — every
     untagged token took the PREVIOUS word's onset, so a cue with one tag published three zero-width spans,
     and the TV lights a word while `start <= pos < end`, which a zero-width span never satisfies. A run of
     tokens sharing one onset is apportioned across the room to the next onset instead."""
@@ -414,9 +414,9 @@ def test_a_partially_tagged_cue_publishes_no_zero_width_word() -> None:
 
 def test_inline_timestamps_become_word_claims() -> None:
     """Rule 4. They are the only per-word timing a rolling track carries, and `clean_line` strips them —
-    the review measured 239 of them thrown away on this track. They are CARRIED, not declared: the caption
-    path's `TextRef` stays `TIMING_LINE` on purpose (W5 review r2-correctness-6, and `fetch_captions` says
-    why), so this asserts the payload and nothing about the text's sync level."""
+    239 of them were measured thrown away on this track. They are CARRIED, not declared: the caption
+    path's `TextRef` stays `TIMING_LINE` on purpose (`fetch_captions` says why), so this asserts the
+    payload and nothing about the text's sync level."""
     first = parse_vtt(ROLLING)[0]
     words = first["words"]
     assert isinstance(words, tuple)
@@ -530,7 +530,7 @@ def test_a_child_that_finishes_in_time_is_untouched() -> None:
 
 
 def test_a_child_that_goes_quiet_is_killed_as_stalled_long_before_its_deadline() -> None:
-    """The review's (a): the deadline is an hour, so only a SILENCE can turn a hang into a failure in about
+    """The deadline is an hour, so only a SILENCE can turn a hang into a failure in about
     a minute. Stalled is not retryable, so the job is not given two more hung hours."""
     started = time.monotonic()
     with pytest.raises(cli.Stalled, match="stalled: no output for 1s") as stalled:

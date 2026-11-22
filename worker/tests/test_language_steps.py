@@ -1,7 +1,7 @@
-"""The language reaches the MODEL (review M8 / §3 item 9, W7), through the real steps.
+"""The language reaches the MODEL (review §3 item 9), through the real steps.
 
-`tests/test_language.py` pins the decision; this pins the PLUMBING, which is the half review M8 actually
-found: the decision existed in `steps.api.language_of` all along and nothing ever gave it a value, so every
+`tests/test_language.py` pins the decision; this pins the PLUMBING, which is the half that was actually
+broken: the decision existed in `steps.api.language_of` all along and nothing ever gave it a value, so every
 job aligned as `en`. Each test here is one of the four places that value now comes from, plus the two places
 it is consumed.
 
@@ -28,7 +28,7 @@ from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.api import language_of
 from encore_worker.steps.records import TIMING_LINE, AudioRef, JobRef, TextRef, TimeRequest
 
-#: A Korean sheet: the script that routes whatever anyone declared, and review M8's own s12 shape.
+#: A Korean sheet: the script that routes whatever anyone declared, and the s12 shape.
 KOREAN = ("사랑해 사랑해 사랑해", "나는 바람이야 바람", "다시 춤을 추는 너를 봐")
 #: A French sheet: Latin script, so it must NOT move off the measured default bundle.
 FRENCH = ("je suis le vent qui souffle", "dans la nuit tu me vois", "danser encore une fois")
@@ -143,7 +143,7 @@ def job(tmp: Path, **params: object) -> JobRef:
 def audio(tmp: Path, *, stem: bool = True) -> AudioRef:
     """The job's audio. `stem=False` is a STEMLESS song — separation refused to publish, or there is no vocals
     file — where `align_target` resolves to the mix from the first attempt and `Knob.ALIGN_ON_MIX` is never
-    offered (`policy`), which is the case W7 review r2-correctness-2 is about."""
+    offered (`policy`), which is the case the resolved-target routing is about."""
     return AudioRef(
         path=str(tmp / "mix.mp3"),
         duration_sec=120.0,
@@ -192,7 +192,7 @@ async def test_every_provider_sheet_gets_its_own_language(tmp_path: Path) -> Non
 
 
 async def test_whispers_detected_language_is_carried_rather_than_discarded(tmp_path: Path) -> None:
-    """Review M8's own words. `ports.Transcribed.language` exists for exactly this line; before W7 the step
+    """`ports.Transcribed.language` exists for exactly this line; before routing, the step
     wrote `job.param_str("language")` here, i.e. almost always None."""
     steps, _out = impl(tmp_path, transcriber=Heard(FRENCH, "fr"))
     got = await steps.transcribe(job(tmp_path), audio(tmp_path), on_vocals=False)
@@ -227,7 +227,7 @@ async def test_the_job_param_is_still_an_override_for_a_latin_sheet(tmp_path: Pa
 
 
 async def test_a_stored_pins_own_language_wins_over_re_detecting_it(tmp_path: Path) -> None:
-    """The fourth acquiring step, and the one precedence nothing pinned (W7 review r2-tests-17): mutating
+    """The fourth acquiring step, and the one precedence nothing pinned: mutating
     `fetch_pinned_text`'s `stored_language or self._detect(...)` to the detection alone killed no test.
 
     It matters because the two can DISAGREE on the same bytes: the candidate being re-timed was published by
@@ -257,7 +257,7 @@ async def test_a_stored_pins_own_language_wins_over_re_detecting_it(tmp_path: Pa
 async def test_a_paste_has_no_stored_language_so_it_is_detected(tmp_path: Path) -> None:
     """The other half of the same line, which is why the fallback is there at all: a PASTE is bytes a person
     just typed, with no document behind it — `_stored_lines` is never called — so the script decides. Pasting
-    a Hangul sheet into an English room is review M8's own s12 shape."""
+    a Hangul sheet into an English room is the s12 shape."""
     steps, _out = impl(tmp_path)
     got = await steps.fetch_pinned_text(job(tmp_path, pinnedText="\n".join(KOREAN)))
     assert got is not None and got.language == "ko"
@@ -278,7 +278,7 @@ async def test_latin_script_asks_the_emitter_for_the_default_bundles_language(tm
 
 
 async def test_a_non_latin_script_really_reaches_its_own_bundle(tmp_path: Path) -> None:
-    """Which is what arms review M9: `whisperx.load_align_model(language_code='ko')` is an HF checkpoint whose
+    """Which arms the blank-id bug: `whisperx.load_align_model(language_code='ko')` is an HF checkpoint whose
     `[PAD]` is at 1204, and the hard-coded blank was dormant only while this never happened."""
     aligner = RecordingAligner()
     steps, out = impl(tmp_path, aligner=aligner)
@@ -304,8 +304,8 @@ async def test_the_arm_does_not_move_the_stem(tmp_path: Path) -> None:
 
 
 async def test_a_stemless_song_is_routed_because_the_mix_is_what_it_decodes(tmp_path: Path) -> None:
-    """W7 review r2-correctness-2: the flag is a fact about the RESOLVED TARGET, not about the knob.
-    `req.on_mix` is `Knob.ALIGN_ON_MIX in knobs`, and since W1's H2 the GLOBAL engine is offered only
+    """The flag is a fact about the RESOLVED TARGET, not about the knob.
+    `req.on_mix` is `Knob.ALIGN_ON_MIX in knobs`, and since H2 the GLOBAL engine is offered only
     `Knob.LINE_SYNC` — so with the shipped aligner that knob is never set in production, while a stemless
     song's FIRST attempt already decodes the mix. Asking the knob made `lang-route-mix` inert on the only
     production path that globally decodes the mix: the arm was set, the mix was being timed, and the step
@@ -333,7 +333,7 @@ async def test_the_windowed_engine_reads_the_resolved_target_too(tmp_path: Path)
     """The second consumer of the bundle language, fixed at the same seam (`AudioRef.targets_mix`) so the two
     engines cannot disagree about which file they are on.
 
-    Under `h3-ungated-words` because W8 closed this engine's ROUTED word document too (a bundle with no
+    Under `h3-ungated-words` because this engine's ROUTED word document is closed too (a bundle with no
     calibration row has no wrong-text gate, and this engine reads no matrix to measure one on): the arm is
     what still lets a routed bundle time words, so it is what can still show which language it asked for.
     """
@@ -364,7 +364,7 @@ async def test_the_windowed_engine_routes_the_same_way(tmp_path: Path) -> None:
     """It is reached only by an aligner that cannot produce emissions at all, and where it may time words it
     must not be the one path that hands whisperx a language the policy did not choose.
 
-    W8 is why the routed half needs the control arm: this engine measures no lift on any bundle, so a routed
+    So the routed half needs the control arm: this engine measures no lift on any bundle, so a routed
     one declines rather than publishing words (`tests/test_nonlatin_lane.py`), and the bundle CHOICE is then
     only observable with the arm on. The Latin default, which is what this test was written to pin, is
     unmoved.
@@ -388,7 +388,7 @@ async def test_the_windowed_engine_routes_the_same_way(tmp_path: Path) -> None:
 
 def test_the_published_document_carries_the_texts_language_and_not_the_bundles() -> None:
     """Core reads `language` off the document (`contract/lyrics/lyrics.ts`), so a German sheet timed by the
-    English bundle must still publish as German — which is also what W8's CJK line joining will read."""
+    English bundle must still publish as German — which is also what CJK line joining will read."""
     from encore_worker.steps.align_lines import _line_doc, _word_doc
 
     assert _word_doc(({"text": "a", "start": 0.0, "end": 1.0, "words": ()},), "de")["language"] == "de"
@@ -400,7 +400,7 @@ def test_the_published_document_carries_the_texts_language_and_not_the_bundles()
 
 class Uncalibrated:
     """`Emissions`' duck type naming a bundle `lexical.CALIBRATED` has no row for — every per-language model
-    whisperx tables, which is what W7 makes reachable."""
+    whisperx tables, which language routing makes reachable."""
 
     model = "VOXPOPULI_ASR_BASE_10K_DE"
     dictionary: Mapping[str, int] = {"-": 0, "a": 1}
@@ -411,11 +411,11 @@ class Uncalibrated:
 
 
 def test_a_routed_bundle_is_not_judged_by_another_bundles_thresholds() -> None:
-    """The review's high-severity W3 finding, which W7 is the wave that could re-introduce: an uncalibrated
+    """The cross-model threshold borrow, which language routing could re-introduce: an uncalibrated
     matrix answers None, so nothing in nats per letter is read off it, and the sentence on the trail names the
     bundle. The rung's SHARE survives (a fraction of lines within a tolerance in seconds) and the placement
-    margin does not (a sum of log-probabilities) — `lexical`'s own asymmetry, re-asserted on the bundles W7
-    makes reachable rather than on a hypothetical."""
+    margin does not (a sum of log-probabilities) — `lexical`'s own asymmetry, re-asserted on the bundles
+    routing makes reachable rather than on a hypothetical."""
     from encore_worker.domain.lyrics import lexical
 
     matrix = Uncalibrated()
@@ -427,7 +427,7 @@ def test_a_routed_bundle_is_not_judged_by_another_bundles_thresholds() -> None:
 
 
 async def test_a_transcript_with_no_words_still_reports_the_language_it_heard(tmp_path: Path) -> None:
-    """W7 review r1-correctness-5's second half. `ports.Transcribed.language` is reported on an EMPTY
+    """The heard language's second half. `ports.Transcribed.language` is reported on an EMPTY
     transcript too (whisper detects before it decodes a word), and `ml`'s comment said the language "still
     travels" — but the step returns None there, so it was dropped at the one line that could read it. There is
     no text to carry it, so it goes on the trail: an operator seeing an instrumental-sounding stem heard as
@@ -488,7 +488,7 @@ async def test_a_routed_bundle_times_no_words_because_no_gate_can_read_them(tmp_
 async def test_an_operator_naming_an_uncalibrated_bundle_still_fails_before_any_job(
     tmp_path: Path,
 ) -> None:
-    """The LOUD half, unchanged by W7 and re-asserted because W7 is what makes uncalibrated bundles ordinary:
+    """The LOUD half, unchanged and re-asserted because routing makes uncalibrated bundles ordinary:
     a bundle an operator TYPED is refused at the composition root, where a bundle a LANGUAGE chose is merely
     ungated. The distinction is the whole of `__main__.align_model_for`."""
     from encore_worker.__main__ import align_model_for

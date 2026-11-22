@@ -93,7 +93,7 @@ def test_an_absent_extra_yields_an_empty_catalogue_rather_than_an_import_error()
 def test_the_upstream_listing_is_probed_once_per_process(monkeypatch: pytest.MonkeyPatch) -> None:
     """`catalogue_or_skip` asks it on every call where the catalogue is empty — 8 call-through sites in this
     suite — and the probe builds a `Separator`, which is exactly what `zoo.catalogue` is cached to pay once
-    (docs/arch/05-worker.md §2.3; review W9 r2-spec-10).
+    (docs/arch/05-worker.md §2.3).
 
     The probe is faked here rather than run: a cold one is minutes of wall clock.
     """
@@ -133,7 +133,7 @@ def test_a_catalogue_that_was_read_and_is_empty_fails_where_an_unreadable_one_sk
 
     THE POSITIVE HALF TURNS A SKIP INTO A FAILURE. Called bare, a reversion to the blanket skip this helper
     replaced raises `skip.Exception` out of the test body and pytest reports the GUARD as skipped — green,
-    and reporting the regression as an environment fact (review W9 r1-tests-13)."""
+    and reporting the regression as an environment fact."""
     monkeypatch.setattr(zoo, "catalogue", lambda: ())
     monkeypatch.setattr(zoo_fixture, "upstream_listing_is_readable", lambda: True)
     try:

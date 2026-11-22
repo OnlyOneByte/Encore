@@ -1,10 +1,10 @@
-"""The global engine's lexical gate (W3, H3): the lift decides a word document's text.
+"""The global engine's lexical gate (H3): the lift decides a word document's text.
 
 Through the real `time_text` on the CTC fixture, with the emission matrix and the wavs the envelope reads
 built SEPARATELY so a test can make the two gates disagree. Words the stem does not sing are REFUSED before
 anything is repaired, although the envelope gate — which scores our own forced decode, pulled onto the
 voiced frames whatever the words — passes them. On a stem the lift REPLACES the envelope gate wherever it
-measured the text, and since W4 on the mix too (`h3-mix-envelope` and `h3-mix-floor` are the controls); the
+measured the text, and on the mix too (`h3-mix-envelope` and `h3-mix-floor` are the controls); the
 doubt band publishes every line `low` and the words UNVOUCHED; a cognate translation is not caught; the
 exemptions keep the envelope gate; a pin is never judged a wrong text. The fixture scores letters, so its
 lifts dwarf a real model's (+15 here, +0.36..+4.3 on the bench's stems): what these pin is the wiring.
@@ -90,7 +90,7 @@ def silent_wav(path: Path, duration: float) -> str:
 
 @dataclass(frozen=True)
 class NamedEmissions:
-    """A matrix that NAMES the bundle it came from, as `ml.Emissions` does (W3 review r2's model guard)."""
+    """A matrix that NAMES the bundle it came from, as `ml.Emissions` does (the model guard)."""
 
     log_probs: Any
     frame_sec: float
@@ -140,7 +140,7 @@ def attempt(
     target's matrix always sings it; its wav does when `envelope_hears`. `stem=False` aligns on the mix.
     `named_model` makes the matrices name a bundle (the model guard); `read_audio` collects every path
     `load_audio_mono_16k` is asked for, in order, so a test can see what a refusal did NOT pay for;
-    `language` is the TEXT's, which with `stem=False` is what `lang-route-mix` reads (W7 r2-spec-8)."""
+    `language` is the TEXT's, which with `stem=False` is what `lang-route-mix` reads."""
     from encore_worker.adapters import ml
 
     monkeypatch.setattr(ml, "forced_align_decoder", decoder)
@@ -223,7 +223,7 @@ def test_words_the_stem_does_not_sing_are_refused_before_anything_is_repaired(
 def test_a_refused_text_pays_for_no_audio_decode_and_no_publishing_decode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2, the cost half. The gate needs the matrix and the text only, yet it used to be read after
+    """The cost half. The gate needs the matrix and the text only, yet it used to be read after
     `generate`'s decode, after an ffmpeg decode of the WHOLE target and after an envelope pass over the whole
     signal — so every wrong text (now the normal refusal: 640/640 in the sweep) paid for all three before
     being refused, three times over on a song with three wrong candidates. Read first, it pays for the
@@ -250,7 +250,7 @@ def test_a_right_text_the_envelope_gate_refuses_publishes_on_a_stem(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The envelope reads nothing where the matrix sings (on the bench: rap-god drop20, never-be-alone
-    credit and 6 drop50 sheets, right texts the envelope refused at W1). On a stem the lift decided."""
+    credit and 6 drop50 sheets, right texts the envelope refused). On a stem the lift decided."""
     run = attempt(tmp_path, monkeypatch, envelope_hears=False)
     assert isinstance(run.got, TimedDoc), run.got
     assert "not gating: the lift is" in run.verdict
@@ -263,7 +263,7 @@ def test_a_right_text_the_envelope_gate_refuses_publishes_on_a_stem(
 def test_on_the_mix_the_lift_replaces_the_envelope_gate_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4 review r1's flip, in one case: a text the envelope gate refuses and the lift vouches for PUBLISHES
+    """The mix flip, in one case: a text the envelope gate refuses and the lift vouches for PUBLISHES
     on the mix, exactly as on a stem.
 
     The flip is the stemless bench mode's (`e2e.py --no-stem`, 32 songs x 4 claim modes + 2 wrong donors):
@@ -279,7 +279,7 @@ def test_on_the_mix_the_lift_replaces_the_envelope_gate_by_default(
 def test_the_mix_envelope_control_arm_makes_the_envelope_gate_the_verdict_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`h3-mix-envelope` is W3's default kept as the A/B control for the flip, not a failed arm."""
+    """`h3-mix-envelope` is the old default kept as the A/B control for the flip, not a failed arm."""
     run = attempt(
         tmp_path, monkeypatch, stem=False, envelope_hears=False, experiments=frozenset({"h3-mix-envelope"})
     )
@@ -292,7 +292,7 @@ def test_on_the_mix_words_under_the_floor_are_refused_by_default(
 ) -> None:
     """The other half of the flip: a sub-floor lift on the mix is a REFUSAL now, as it is on a stem.
 
-    W3 published it as the doubt band because the cost lands where nothing follows a refusal (NextText, and
+    It was the doubt band once, because the cost lands where nothing follows a refusal (NextText, and
     the LINE_SYNC rung declines a stemless song) and the floor refuses 7 of the corpus's 32 truth texts. The
     measured alternative refuses 10 of them AND admits 27 of 64 wrong texts, so the doubt band is the control
     arm's behaviour now (`lexical.BANDS`, MIX).
@@ -306,7 +306,7 @@ def test_on_the_mix_words_under_the_floor_are_refused_by_default(
 def test_the_mix_envelope_control_arm_publishes_the_same_words_as_a_doubt_band(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3's behaviour, now reachable only through the control: every line `low`, the document `medium`, and
+    """The old behaviour, now reachable only through the control: every line `low`, the document `medium`, and
     core told the words are not vouched for (`textConfidence` low)."""
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=frozenset({"h3-mix-envelope"}))
     assert isinstance(run.got, TimedDoc), run.got
@@ -319,7 +319,7 @@ def test_the_mix_envelope_control_arm_publishes_the_same_words_as_a_doubt_band(
 
 
 def test_the_mix_floor_arm_keeps_both_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`h3-mix-floor` is W3's FIRST shipping: the floor refuses AND the envelope gate still does, so it pays
+    """`h3-mix-floor` is the FIRST mix gate: the floor refuses AND the envelope gate still does, so it pays
     both costs (54 of the stemless mode's 128 right texts published, against the default's 91)."""
     unsung = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=frozenset({"h3-mix-floor"}))
     assert isinstance(unsung.got, Refused), unsung.got
@@ -340,7 +340,7 @@ def test_the_mix_floor_arm_keeps_both_gates(tmp_path: Path, monkeypatch: pytest.
 def test_both_mix_arms_together_mean_both_gates_not_the_envelope_one_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4 review r2 (correctness-7): `h3-mix-envelope` used to win outright, so a run with BOTH names set
+    """`h3-mix-envelope` used to win outright, so a run with BOTH names set
     measured the ENVELOPE-GATE-ONLY configuration and recorded both names beside it — a third configuration
     published under the stricter one's name, which is exactly the mislabelling `Config.ALIGN_EXPERIMENTS`
     refuses unknown names to prevent.
@@ -386,8 +386,8 @@ def test_on_a_stem_words_under_the_floor_are_still_refused_with_no_arm(
 def test_on_the_mix_the_sung_words_pass_and_the_envelope_fit_is_only_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The trail still carries the envelope fit on the mix — it says "not gating: the lift is" (W4 review
-    r1), the same sentence a stem gets, because a fit that decides nothing is still evidence to read."""
+    """The trail still carries the envelope fit on the mix — it says "not gating: the lift is",
+    the same sentence a stem gets, because a fit that decides nothing is still evidence to read."""
     run = attempt(tmp_path, monkeypatch, stem=False)
     assert isinstance(run.got, TimedDoc), run.got
     assert "lexical lift +" in run.verdict and "not gating: the lift is" in run.verdict
@@ -428,7 +428,7 @@ def test_the_stems_doubt_band_withholds_the_words_standing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """On a STEM the doubt band is doubt about the WORDS: `vouched=False`, which core sends as
-    `textConfidence` low, so a document a gate passed outranks it (W3 r1). The band holds 2 right texts of
+    `textConfidence` low, so a document a gate passed outranks it. The band holds 2 right texts of
     the corpus's 448 and no wrong one, which is what makes the demotion affordable there."""
     wide = lexical.Bands(
         model="test",
@@ -448,7 +448,7 @@ def test_the_stems_doubt_band_withholds_the_words_standing(
 def test_the_mix_doubt_band_grades_without_stripping_the_words_standing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2, the mix's half of the same band. `mix_ok_from` 0.6 was fitted to how AUDIBLE the words
+    """The mix's half of the same band. `mix_ok_from` 0.6 was fitted to how AUDIBLE the words
     are, not to whether they are the right ones, and it holds 104 of the corpus's 192 right mix texts (15 of
     its 32 TRUTH texts). Sent as `vouched=False` it would tell core `textConfidence` low for most correct
     sheets of every stemless song — `isAuthoritativeText` false, `lyricsRank` 3, so any authoritative LINE
@@ -481,7 +481,7 @@ def test_the_sung_words_are_vouched_for(tmp_path: Path, monkeypatch: pytest.Monk
 def test_a_cognate_translation_publishes_a_word_document_with_high_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """THE GATE'S KNOWN HOLE, on the path where it costs most (W3 review r1). A translation whose words keep
+    """THE GATE'S KNOWN HOLE, on the path where it costs most. A translation whose words keep
     the sung ones' letters in order lifts like a right text (`test_lexical`: German +1.98 on this fixture,
     French -0.12, the sung words +15.2), and no band separates it. Through the GLOBAL engine that is a WORD
     document graded normally — `high` lines, word-level highlighting — where the same text through the
@@ -503,7 +503,7 @@ def test_a_text_under_the_letter_minimum_keeps_the_envelope_gate(
     """Two sung lines (25 letters): too few orders for the contrast to mean anything. Where the envelope
     hears the singing it publishes, saying no lexical check ran; where it hears nothing it refuses.
 
-    AND IT PUBLISHES UNVOUCHED (W3 review r2). The envelope gate is the only one that read it, and the
+    AND IT PUBLISHES UNVOUCHED. The envelope gate is the only one that read it, and the
     envelope gate is not a wrong-text gate: it passed 152/320 bench wrong texts and 280/320 same-video wrong
     words. A stub sheet, a chorus-only lyric or a hook-only caption track is the reachable shape (~8 words),
     so `vouched=True` here would have handed core a claim no wrong-text gate ever looked at."""
@@ -543,7 +543,7 @@ def test_a_matrix_from_a_model_with_no_calibration_row_times_no_words(
     """A matrix from a model with no calibration row times no words.
 
     The thresholds are ONE bundle's calibration each and the emission model is chosen per LANGUAGE, so a
-    German sheet must not be judged on a number `lift_gate.py` never measured — and until W7 that meant the
+    German sheet must not be judged on a number `lift_gate.py` never measured — and once that meant the
     ENVELOPE GATE kept the verdict, which H3 measured letting 189 of 380 wrong texts publish because it
     scores our own decode, so the wrong text used to PASS here. Now the attempt DECLINES (not `Refused`:
     nothing measured the text, so `policy.decide` rule 1 may still reach the LINE_SYNC rung), the reason
@@ -584,10 +584,10 @@ def test_a_matrix_from_a_model_with_no_calibration_row_times_no_words(
 def test_an_uncalibrated_bundle_still_times_a_transcript_and_a_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The two exemptions W7 review r1-correctness-1 keeps, and why each is not the finding's lane.
+    """The two exemptions the uncalibrated-bundle decline keeps, and why neither is a wrong-text lane.
 
     The ASR tier's words were heard on THIS audio, so they can be misheard but never another song's — it
-    keeps the envelope gate it always had (W3 review r2) and stays vouched. A PIN is a person's choice, so it
+    keeps the envelope gate it always had and stays vouched. A PIN is a person's choice, so it
     publishes rather than declining, but every line is graded `low` and the document is unvouched, exactly as
     a pin the lift WOULD have refused."""
     heard = attempt(tmp_path, monkeypatch, tier=Tier.ASR, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
@@ -610,9 +610,9 @@ def test_an_uncalibrated_bundle_still_times_a_transcript_and_a_pin(
 def test_the_lang_route_mix_arm_cannot_measure_itself_without_the_ungated_control(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W7 review r2-spec-8, as the shape an operator reproducing the German mix gain actually meets: a
+    """The shape an operator reproducing the German mix gain actually meets: a
     STEMLESS Latin song under `lang-route-mix` is timed by a routed bundle, a routed bundle has no
-    `lexical.CALIBRATED` row, and since r1-correctness-1 such a matrix DECLINES a word document. So the arm
+    `lexical.CALIBRATED` row, and such a matrix DECLINES a word document. So the arm
     alone publishes no word timings at all and the measurement it exists for needs `h3-ungated-words` beside
     it — which is now what `host.config.ALIGN_EXPERIMENTS` and `language.model_language` both say.
 
@@ -647,7 +647,7 @@ def test_the_lang_route_mix_arm_cannot_measure_itself_without_the_ungated_contro
 def test_a_second_calibrated_model_is_judged_by_its_own_row(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b: the point of a table is that two models can be gated at once, each on its own numbers. The fixture
+    """The point of a table is that two models can be gated at once, each on its own numbers. The fixture
     scores letters, so its unsung text lifts about 0 and its sung text +15: a row whose floor is 20 refuses
     BOTH, and the shipped row refuses only the unsung one — so a matrix naming the second model must be
     refused on a text the first publishes, with the second row's own floor in the reason."""
@@ -662,7 +662,7 @@ def test_a_second_calibrated_model_is_judged_by_its_own_row(
 
 def raising_after(calls: int, error: Exception) -> Decode:
     """The fixture's decoder, raising `error` from call `calls + 1` on. THE LIFT'S DECODES ARE FIRST since
-    W3 review r2 moved the gate ahead of `generate`: call 1 is the text's own path, 2-4 its shuffles."""
+    the gate runs ahead of `generate`: call 1 is the text's own path, 2-4 its shuffles."""
     seen = [0]
 
     def decode(log_probs: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
@@ -693,7 +693,7 @@ def test_a_lexical_check_whose_decode_raised_leaves_the_envelope_gate_and_says_s
 ) -> None:
     """An untimed text (no repair decodes): the lift's contrast raises a plain error, so the envelope gate
     decides, and the verdict note carries the `no lexical check: it raised` the bench scores as an ERROR row
-    (`e2e.FAULT_LEXICAL`). NOTHING VOUCHES for such a text either (W3 review r2): the words were not read."""
+    (`e2e.FAULT_LEXICAL`). NOTHING VOUCHES for such a text either: the words were not read."""
     run = attempt(tmp_path, monkeypatch, timed=False, decoder=raising_on(2, ValueError("refused targets")))
     assert isinstance(run.got, TimedDoc), run.got
     assert "no lexical check: it raised ValueError: refused targets" in run.verdict
@@ -704,7 +704,7 @@ def test_a_lexical_check_whose_decode_raised_leaves_the_envelope_gate_and_says_s
 def test_an_infra_fault_in_the_lexical_check_fails_the_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The kernel gone mid-attempt is the machinery, not this text (review M7): raised, never a decline."""
+    """The kernel gone mid-attempt is the machinery, not this text: raised, never a decline."""
     with pytest.raises(InfraFault, match="kernel gone"):
         attempt(tmp_path, monkeypatch, timed=False, decoder=raising_after(1, InfraFault("kernel gone")))
 
@@ -717,7 +717,7 @@ def test_a_pin_the_lexical_gate_would_refuse_publishes_every_line_low(
 ) -> None:
     """A person chose these words, so they are not judged a wrong text (as the envelope gate treats a pin):
     published, every line `low`, the document `low`, and the reason on the trail once. `vouched` is False all
-    the same — a person's choice is not a measurement, so core must not read the words as a claim (W3 r1)."""
+    the same — a person's choice is not a measurement, so core must not read the words as a claim."""
     pasted: dict[str, object] = {"pinnedText": "\n".join(UNSUNG)}
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, timed=False, params=pasted)
     assert isinstance(run.got, TimedDoc), run.got

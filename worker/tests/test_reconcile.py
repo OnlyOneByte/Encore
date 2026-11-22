@@ -4,7 +4,7 @@ The classes matter because each drives a DIFFERENT stage-4 action: AGREE/OFFSET/
 wholesale, STRUCTURAL boosts some lines and cuts others, UNRELATED confers nothing and sends the caller to
 envelope arbitration. A misclassification is not a wrong label — it is the wrong action.
 
-The last section is review M4's statistics, run as tests over SEEDED random series, because that is the form
+The last section is the finding's statistics, run as tests over SEEDED random series, because that is the form
 the finding took: not "this case is wrong" but "1993 of 2000 random 3-pair series come out STRUCTURAL". A
 taxonomy is only as good as its behaviour on noise, and noise is cheap to draw.
 """
@@ -70,8 +70,8 @@ def test_a_tempo_beyond_the_band_is_graded_coarse_rather_than_fitted() -> None:
     """|scale - 1| past `MAX_SCALE_DRIFT` is dropped, not clamped (`theil_sen`), so a sheet 5% out is no
     longer DRIFT: with scale 1 its residuals ramp 0.6 -> 2.0 s and it reads as what it is to a caller — one
     performance, loosely aligned, nothing to repair. Two masters differ by 2-5%; a bigger ratio is far more
-    often a wrong pairing, and W2 lets `claimmap` and the verdict share the one band so a sheet this module
-    calls a drift is a sheet that module would move (review M4, §3.11)."""
+    often a wrong pairing, and `claimmap` and the verdict share the one band so a sheet this module
+    calls a drift is a sheet that module would move (review §3.11)."""
     got = rc.reconcile(OURS, claims(OURS, scale=1.05))
     assert got.verdict == rc.COARSE
     assert got.corroborates and got.scale == 1.0
@@ -188,7 +188,7 @@ def test_coarse_disputes_only_the_grossly_displaced_line() -> None:
     """COARSE grades the jitter but the CALLER still repairs grossly-displaced lines (Avercage: 6 lines
     seconds off inside an otherwise loosely-timed sheet). `disputed` is what it repairs, and on a sheet this
     loose the band opens to the phrase tolerance `COARSE_TOLERANCE_SEC` — a FIXED 1.0 s, which is exactly the
-    rule the caller applied by hand before W2, moved into `Reconciliation.disputed`. NOT derived from the
+    rule the caller once applied by hand, moved into `Reconciliation.disputed`. NOT derived from the
     sheet's own spread: that version was built (4 robust sigmas) and reverted for costing Kinematic 3 of 14
     lines within ±500 ms, and `reconcile`'s WHAT THE SPREAD IS NOT paragraph keeps the reason."""
     # A smooth spread of jitter (no cluster a fitted offset can rescue): only a few land within the fine
@@ -209,7 +209,7 @@ SMOOTH_JITTER = [-0.8, -0.57, -0.34, -0.11, 0.12, 0.35, 0.58, 0.81]
 
 
 def test_agrees_reproduces_every_line_judgement_on_the_verdicts_fitted_clock() -> None:
-    """`Reconciliation.agrees` is what grading asks of a REPAIRED line (review H4): would it still
+    """`Reconciliation.agrees` is what grading asks of a REPAIRED line: would it still
     corroborate on the blind verdict's clock? It must be the very test `reconcile` judged each line by —
     under an offset, a drift, a structural split and a coarse sheet — or grading and the verdict disagree."""
     split = claims(OURS)
@@ -232,7 +232,7 @@ def test_agrees_reproduces_every_line_judgement_on_the_verdicts_fitted_clock() -
 
 
 def test_agrees_moves_with_the_line_not_the_claim() -> None:
-    """The H4 exhibit in miniature: claims 2.5 s late, the verdict an OFFSET that corroborates every line.
+    """The exhibit in miniature: claims 2.5 s late, the verdict an OFFSET that corroborates every line.
     A repair that parks a line at the claim minus the 1 s pad no longer sits where the two witnesses
     agreed it is sung, so it no longer agrees; one within tolerance of its blind position still does."""
     theirs = claims(OURS, offset=-2.5)
@@ -251,7 +251,7 @@ def test_a_verdict_that_confers_nothing_agrees_with_nothing() -> None:
     assert not none.agrees(OURS[0].start, OURS[0].start)
 
 
-# ── as claimed: the LINE_SYNC rung's timing witness (W3) ─────────────────────────────────────────
+# ── as claimed: the LINE_SYNC rung's timing witness ──────────────────────────────────────────────
 
 
 def test_as_claimed_reads_an_offset_as_the_error_it_publishes() -> None:
@@ -264,7 +264,7 @@ def test_as_claimed_reads_an_offset_as_the_error_it_publishes() -> None:
     close = rc.as_claimed(OURS, claims(OURS, offset=0.4))
     assert close is not None and close.near == 1.0, "within the coarse tolerance (1 s): the same place"
     # EVERY FIELD SPELLED, none of them defaulted: `spread_sec` and `together` are what `off_sheet` gates on,
-    # so a constructor that may omit either can hand it "these lines moved perfectly together" (r2-spec-14).
+    # so a constructor that may omit either can hand it "these lines moved perfectly together".
     assert rc.as_claimed(OURS, claims(OURS, offset=0.4), tolerance_sec=0.25) == rc.AsClaimed(
         near=0.0,
         pairs=len(OURS),
@@ -285,7 +285,7 @@ def test_as_claimed_pairs_by_line_index_and_abstains_under_three_pairs() -> None
     assert rc.as_claimed([], {0: 1.0}) is None
 
 
-# ── review M4: the statistics the finding was made of, as tests over seeded noise ─────────────────
+# ── the statistics the finding was made of, as tests over seeded noise ────────────────────────────
 
 
 def noise(rng: random.Random, pairs: int, span: float = 200.0) -> tuple[list[L], dict[int, float]]:
@@ -298,7 +298,7 @@ def noise(rng: random.Random, pairs: int, span: float = 200.0) -> tuple[list[L],
 
 
 def test_random_series_are_unrelated_not_structural() -> None:
-    """THE M4 HEADLINE: 1993 of 2000 random 3-pair series used to come out STRUCTURAL — two endpoints always
+    """THE HEADLINE: 1993 of 2000 random 3-pair series used to come out STRUCTURAL — two endpoints always
     fit an unbounded span ratio — and the caller then re-decoded lines inside claim windows on that verdict.
 
     Measured on this tree, 2000 seeded draws per width: 3 and 4 pairs 2000/2000 `TOO_FEW_PAIRS` with 0 lines
@@ -320,7 +320,7 @@ def test_random_series_are_unrelated_not_structural() -> None:
 
 
 def test_an_offset_sheet_with_jitter_is_an_offset_and_disputes_nothing() -> None:
-    """The second M4 statistic, and the one with teeth: a +/-1.5 s LRC with 150 ms jitter read STRUCTURAL
+    """The second statistic, and the one with teeth: a +/-1.5 s LRC with 150 ms jitter read STRUCTURAL
     about 98% of the time, so the caller's R2 re-decoded every line the jitter pushed past 250 ms — the
     repair Numb measured as harmful (MAD 312 -> 563 ms). Measured on this tree over 2000 seeded 40-line
     draws: 1463 OFFSET, 535 COARSE, 2 DRIFT, NO STRUCTURAL, and 0 disputed lines out of 80 000 against
@@ -343,8 +343,8 @@ def test_an_offset_sheet_with_jitter_is_an_offset_and_disputes_nothing() -> None
 
 
 def test_a_two_percent_tempo_sheet_flags_no_line_gross() -> None:
-    """Review's repro s9, kept as its script wrote it (seed 3, 50 lines 4 s apart, +/-0.55 s of loose
-    timing on our side). The caller's pre-W2 gross test read the RAW residual against the fitted offset, so
+    """Repro s9, kept as its script wrote it (seed 3, 50 lines 4 s apart, +/-0.55 s of loose
+    timing on our side). The caller's old gross test read the RAW residual against the fitted offset, so
     a tempo sheet's linear ramp made 38/50 lines look grossly displaced and R2 re-decoded them all. With the
     scale fitted and the residual taken against the MODEL, `disputed` is empty at 1.02 and at 1.0417, while
     the old formula on this tree would flag 37 and 46."""
@@ -374,7 +374,7 @@ def test_the_fitted_scale_is_bounded_and_the_model_residual_carries_it() -> None
 
 def test_a_fitted_verdict_needs_five_pairs() -> None:
     """Four pairs, three agreeing and one 8 s out: the shape of a variant section, and not enough evidence
-    to call it one (M4 asked for >= 5 pairs before STRUCTURAL or COARSE).
+    to call it one (the finding asked for >= 5 pairs before STRUCTURAL or COARSE).
 
     And the fallthrough is an ABSTENTION, not UNRELATED, which this case used to read while its docstring
     called that "a measurement". UNRELATED is the ONE verdict that arms R1, which re-decodes every claimed
@@ -397,7 +397,7 @@ def test_a_fitted_verdict_needs_five_pairs() -> None:
 def test_the_inlier_share_alone_decides_a_fitted_verdict() -> None:
     """Why there is no MAD band in the AGREE / OFFSET / DRIFT test, as a property.
 
-    M4 asked for ">= 90% inliers AND a small MAD" and reconcile shipped a conjunction whose second half can
+    The ask was ">= 90% inliers AND a small MAD" and reconcile shipped a conjunction whose second half can
     never be False when the first is True: the model is centred on `median(ours - scale x claimed)`, so
     `median(residual) == 0` identically and `spread_sec == median(|residual|)`, and once nine residuals in
     ten are inside `AGREE_TOLERANCE_SEC` their median absolute value cannot exceed it. The conjunct was dead
@@ -430,7 +430,7 @@ def test_a_stray_stamp_in_a_tight_sheet_is_disputed_not_a_verdict() -> None:
     """One misbound line in twenty (F2's shape: a repeated chorus the decode bound to the wrong occurrence).
     The sheet keeps its OFFSET verdict — one stray in twenty is not a variant section — while the stray is
     both uncorroborated AND disputed, which is what sends the caller to re-decode it inside its claim
-    window. Before W2 the same input was STRUCTURAL: the label changed, the action did not."""
+    window. Before the shared band the same input was STRUCTURAL: the label changed, the action did not."""
     ours = series(*[10.0 + 4.0 * i for i in range(20)])
     theirs = claims(ours, offset=1.4)
     theirs[11] -= 5.0

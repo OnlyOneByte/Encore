@@ -1,4 +1,4 @@
-"""The align step is six modules plus the step itself (W10): what that split has to keep true.
+"""The align step is six modules plus the step itself: what that split has to keep true.
 
 The split was a pure move — `_tools/ast_identity.py` proves the bodies — but two properties are not
 statements about bodies and nothing else checks them: a monkeypatch only reaches code that reads the name

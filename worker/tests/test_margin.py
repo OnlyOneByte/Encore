@@ -243,7 +243,7 @@ def test_the_margin_floor_is_required_and_comes_off_the_bundles_own_row() -> Non
         ("WAV2VEC2_ASR_BASE_960H", "en"): 10.0,
         ("HUBERT_ASR_LARGE", "en"): 10.0,
         # Measured on none of these three bundles' trellises, so the rule abstains instead of borrowing (each
-        # row's own comment). The two non-Latin rows W10 fitted are nats on an unread scale too.
+        # row's own comment). The two fitted non-Latin rows are nats on an unread scale too.
         ("HUBERT_ASR_XLARGE", "en"): None,
         ("MMS_FA", "zh"): None,
         ("jonatasgrosman/wav2vec2-large-xlsr-53-japanese", "ja"): None,

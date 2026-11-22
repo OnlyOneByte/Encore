@@ -39,7 +39,7 @@ CREDIT = "thanks for watching everyone"
 
 
 def run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arm: str = "") -> Outcome:
-    """One `time_text` over the review's s5-s7 song plus the unsung credit, with claims for all of it."""
+    """One `time_text` over the s5-s7 song plus the unsung credit, with claims for all of it."""
     from encore_worker.steps import align_steps
 
     # As `test_align_provenance.any_tempo`: the never-sung tempo signal is calibrated on real songs, and a
@@ -145,7 +145,7 @@ def test_no_published_onset_moves_when_the_ends_are_held(
     ]
     assert all(delta >= 0.0 for delta in moved), "an end went backwards"
     assert all(delta <= MAX_EXTENSION_SEC for delta in moved)
-    # Non-vacuity, and the phrase-final ends the review measures are the ones that must have moved: the
+    # Non-vacuity, and the phrase-final ends measured early are the ones that must have moved: the
     # synthetic decode already fills 70% of each interior char's slot, so only about half its ends have
     # anywhere to go, while every line's LAST word stops short of the tone that is still sounding.
     assert sum(1 for delta in moved if delta > 0.0) >= len(held.lines)
@@ -211,7 +211,7 @@ def test_the_ends_reach_the_end_of_the_singing_and_no_further(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """What the room sees. Each of this song's phrases is a 2-3 s tone with silence after it, so every
-    line's last word should now be lit to the end of its own phrase — the phrase-final ends the review
+    line's last word should now be lit to the end of its own phrase — the phrase-final ends that
     measured a median 107 ms early — and NOT into the silence beyond it."""
     got = run(tmp_path, monkeypatch)
     for line, (_text, _start, sung_until) in zip(got.lines, UNIQUE, strict=True):

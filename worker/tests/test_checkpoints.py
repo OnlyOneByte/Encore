@@ -1,8 +1,8 @@
-"""A checkpoint written before a record gained a field must still replay (review W1 r2).
+"""A checkpoint written before a record gained a field must still replay.
 
 DBOS pickles every step's record, and a frozen slotted dataclass restores its state POSITIONALLY: a field
 appended after the checkpoint was written was left unset, and the first read of it raised
-`AttributeError`. W1 appended `TimingReport.engine` / `lines` / `refused`, `TimedDoc.tier` and
+`AttributeError`. One release appended `TimingReport.engine` / `lines` / `refused`, `TimedDoc.tier` and
 `AlignOutcome.sync_mode`, so a job in flight at the upgrade — and every fork of an old failed job, which
 copies its checkpoints — failed on them, requeue after requeue.
 
@@ -132,8 +132,8 @@ def test_a_current_checkpoint_round_trips_unchanged() -> None:
 
 
 async def test_a_pre_m13_provider_checkpoint_replays_as_a_list() -> None:
-    """W5 review r1-correctness-3, and the same rule one layer out: a STEP's return SHAPE is checkpointed
-    too. `fetch_provider_lyrics` returned `TextRef | None` before M13 and returns `list[TextRef]` now, so a
+    """The same rule one layer out: a STEP's return SHAPE is checkpointed
+    too. `fetch_provider_lyrics` used to return `TextRef | None` and returns `list[TextRef]` now, so a
     workflow resumed or forked across the upgrade replays the recorded value instead of calling the impl —
     and `_acquire_texts` splats it, where `*TextRef(...)` and `*None` both raise `TypeError` in the workflow
     BODY: past the step's retries, where nothing declines it, requeue after requeue. Normalised in the DBOS

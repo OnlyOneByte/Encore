@@ -1,4 +1,4 @@
-"""The align completion core reads, written from the worker and parsed by core (M3, M15).
+"""The align completion core reads, written from the worker and parsed by core.
 
 A CROSS-LANGUAGE CONTRACT in both directions: `build()` drives the REAL `run_align` and the REAL `diarize`
 step and records the `job:complete` frames and lyric documents they produce together with what the worker
@@ -81,7 +81,7 @@ class _Doubted(_Stored):
     """`_Stored`, with the lexical DOUBT band's verdict on every document it times: published, the grade
     `medium`, and the WORDS unvouched (`align_steps._time_text_global` sets both together; nothing here
     decodes, so the band is scripted). Also the shape of a pin the gate would have refused — `pin-unvouched`,
-    whose grade is `low` — since both reach core as `vouched: false` (`TimedDoc.vouched`, W3 r1-r2)."""
+    whose grade is `low` — since both reach core as `vouched: false` (`TimedDoc.vouched`)."""
 
     async def time_text(self, req: TimeRequest) -> TimedDoc | Refused | None:
         got = await super().time_text(req)
@@ -296,10 +296,10 @@ def _intent(
     candidates' words are CLAIMS (core's `isAuthoritativeText`) rather than measurements of the audio, and
     which earlier jobs' candidates it WITHDREW (`superseded_candidates`: all of them claims here).
 
-    A claim is a CANDIDATE-tier text, or a PIN of anything but a transcript: a person vouched for the words
-    (W3), and a transcript is this recording's audio heard back, which neither worker ever counted as a
+    A claim is a CANDIDATE-tier text, or a PIN of anything but a transcript: a person vouched for the words,
+    and a transcript is this recording's audio heard back, which neither worker ever counted as a
     claim (the old worker's `is_authoritative_text`, f04a2d0e^ `lyrics/grading.py`, is core's rule) — UNLESS
-    a wrong-text gate doubted the words (`TimedDoc.vouched`, W3 r1), which no tier and no pin overrides."""
+    a wrong-text gate doubted the words (`TimedDoc.vouched`), which no tier and no pin overrides."""
     return {
         "chosen": outcome.published.ref if outcome.published else None,
         "authoritative": sorted(
@@ -391,7 +391,7 @@ async def test_every_report_selects_exactly_the_published_document() -> None:
 
 
 async def test_text_confidence_is_the_texts_tier_and_the_grade_is_timing_confidence() -> None:
-    """Review M3 on the wire: the machine track's words are `low` however well it timed, and a line-synced
+    """On the wire: the machine track's words are `low` however well it timed, and a line-synced
     sheet's words are `high` though its timing grade is `low`."""
     fixture = await build()
     machine = _candidates(_frame(fixture, "machine-captions-word-doc"))
@@ -414,8 +414,8 @@ async def test_text_confidence_is_the_texts_tier_and_the_grade_is_timing_confide
 
 
 async def test_a_pin_is_sent_as_high_text_confidence_whatever_its_tier() -> None:
-    """W3 (the orchestrator's decision after W1): a person's re-pick is `high` words, as the old worker sent
-    every pin; W1 sent the stored text's tier, `low` for a machine track or a transcript. Only the words'
+    """A person's re-pick is `high` words, as the old worker sent every pin;
+    an earlier version sent the stored text's tier, `low` for a machine track or a transcript. Only the words'
     standing moves: the timing grade is still the grade, and the source still says what the text is."""
     fixture = await build()
     machine = _candidates(_frame(fixture, "a-re-picked-machine-caption"))
@@ -429,10 +429,10 @@ async def test_a_pin_is_sent_as_high_text_confidence_whatever_its_tier() -> None
 
 
 async def test_a_document_no_wrong_text_gate_vouches_for_is_sent_on_its_own_axis() -> None:
-    """W3 review r1, narrowed by r2. The lexical doubt band and an unvouched pin publish, so core must be told
+    """The lexical doubt band and an unvouched pin publish, so core must be told
     the WORDS are not vouched for — and on a field of their own, `vouched: false`, which
     `isAuthoritativeText` reads. The timing grade could not say it: this band's grade is `medium`, and
-    `timingConfidence` was a tie-break alone when this was written (since W6 `lyricsRank` reads it, but only a
+    `timingConfidence` was a tie-break alone when this was written (`lyricsRank` now reads it, but only a
     `low` one), so the doubted document tied with a fully vouched one at rank 5 and was shown either way.
     `textConfidence` could not either: it carries PROVENANCE, and core reads `captions` + `low` as "Auto
     captions", so the doubt turned an uploader's hand-authored track into a machine-generated one on screen.
@@ -485,7 +485,7 @@ async def test_one_created_at_per_report() -> None:
 
 
 async def test_a_refused_text_withdraws_the_candidate_an_earlier_job_stored_for_it() -> None:
-    """Review W1 r2 (M3's rest), on the wire: the earlier job's word doc for the refused sheet is reported
+    """On the wire: the earlier job's word doc for the refused sheet is reported
     `selectable: false`, with its text's standing and its own timing, beside this job's choice."""
     fixture = await build()
     entry = next(
@@ -573,7 +573,7 @@ def test_every_tier_has_the_text_confidence_core_expects() -> None:
 
 
 async def test_a_duet_reaches_the_tv_as_parts_and_a_solo_does_not() -> None:
-    """Review M15 through the real `diarize` step: the document on disk carries `part`, lettered by first
+    """Through the real `diarize` step: the document on disk carries `part`, lettered by first
     appearance, and never the diarizer's `speaker`; an over-segmented solo is left one colour."""
     fixture = await build()
     by_name = {d["name"]: d for d in fixture["documents"]}

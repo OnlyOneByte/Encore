@@ -232,7 +232,7 @@ async def test_the_asr_fallback_runs_end_to_end_through_dbos(dbos_instance: obje
 async def test_a_pinned_paste_publishes_under_the_manual_key_through_dbos(
     dbos_instance: object, tmp_path: Path
 ) -> None:
-    """Review H5 through real checkpointing: `fetch_pinned_text` is a registered step, the attempt goes to
+    """Through real checkpointing: `fetch_pinned_text` is a registered step, the attempt goes to
     job scratch, and `publish` places it at the pinned ref. No provider is asked: the pin is the pool."""
     from dbos import DBOS
 
@@ -543,7 +543,7 @@ def durable_with(dbos_instance: object, tmp_path: Path, aligner: CountingAligner
 async def test_a_machinery_fault_fails_the_workflow_and_survives_its_checkpoint(
     dbos_instance: object, tmp_path: Path, retryable: bool
 ) -> None:
-    """Review M7 through REAL DBOS: `time_text`'s `InfraFault` fails the workflow (not a no-lyrics
+    """Through REAL DBOS: `time_text`'s `InfraFault` fails the workflow (not a no-lyrics
     completion), and the error DBOS records, read back on the requeue, is the same class with the same
     `retryable`, so the transport sends the flag the adapter meant. A retryable flag lost in the pickle
     would retry a deterministic fault; a class lost would send it as a generic retryable error."""
@@ -574,7 +574,7 @@ async def test_a_machinery_fault_fails_the_workflow_and_survives_its_checkpoint(
 async def test_a_requeued_job_re_runs_the_step_its_retryable_fault_failed(
     dbos_instance: object, tmp_path: Path
 ) -> None:
-    """Review W1 r1 (M7 under DBOS). The core requeues a retryable failure under the SAME job id, and DBOS
+    """A machinery fault under DBOS. The core requeues a retryable failure under the SAME job id, and DBOS
     answered a start under an ERROR workflow's id with the recorded exception: no step re-ran (measured: 1
     `time_text` across 3 requeues), so a transient fault burned `maxAttempts` in instant replays and failed
     the job terminally with its cause gone. The requeue now runs a FORK of the failed workflow from the
@@ -628,7 +628,7 @@ def counting_acquire(impl: AlignStepsImpl) -> list[int]:
 async def test_a_permanent_acquisition_fault_is_not_retried_and_fails_the_job_as_permanent(
     dbos_instance: object, tmp_path: Path
 ) -> None:
-    """Review W1 r2. `acquire_audio` is the one step DBOS retries (3 attempts), and it raised `_Permanent`
+    """`acquire_audio` is the one step DBOS retries (3 attempts), and it raised `_Permanent`
     for a local source that is not a file. DBOS retried it anyway, with backoff, then raised
     `DBOSMaxStepRetriesExceeded`, which has no `retryable`: the transport sent the job as RETRYABLE, core
     requeued it, and each requeue's fork (`durable._run_id`) ran the step three more times until
@@ -719,7 +719,7 @@ async def test_a_box_without_dbos_still_runs_the_flow(tmp_path: Path) -> None:
     assert outcome.published is not None
 
 
-# ── a cancel reaches the run DBOS executes (proposal 05; the #975 round-2 review's probe) ────────────
+# ── a cancel reaches the run DBOS executes ────────────────────────────────────────────────────────────
 
 
 class FailingThenHangingSteps:

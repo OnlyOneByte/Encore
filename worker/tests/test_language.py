@@ -1,8 +1,8 @@
-"""The language is an INPUT now (M8, W7): script, detector, routing, and the NFKD fold.
+"""The language is an INPUT now: script, detector, routing, and the NFKD fold.
 
-The four halves of M8 fail in different directions, so each has its own block. `script_of` /
+The four halves fail in different directions, so each has its own block. `script_of` /
 `script_histogram` / `dominant_of` are the PRIMARY signal, from the stdlib's Unicode database; a script read
-wrongly routes a song to a bundle whose vocabulary maps none of its characters (M8's s12: a Japanese sheet,
+wrongly routes a song to a bundle whose vocabulary maps none of its characters (repro s12: a Japanese sheet,
 0 alignable characters, `no lyrics`). `detect` is the ORDER the three signals are trusted in — a non-Latin
 script outranks whisper and the job's declared language, Latin script falls back to English, that being the
 configuration every row under `docs/benchmarks/forced-alignment/results/` was measured on. `model_language`
@@ -53,7 +53,7 @@ def test_every_writing_system_is_read_off_the_characters_own_unicode_name(
     character: str, script: str
 ) -> None:
     """One `str.split` over the UCD name, not a range table — so a Unicode release cannot silently add a
-    script this reads as "not a letter", which is the quiet half of review M8."""
+    script this reads as "not a letter", which is the quiet half of the defect."""
     assert lang.script_of(character) == script
 
 
@@ -68,7 +68,7 @@ def test_nothing_that_is_not_a_letter_has_a_script(character: str) -> None:
 @pytest.mark.parametrize(
     ("character", "script"),
     [
-        # W7 review r1-spec-11: the UCD names a styled or letterlike character after its STYLING, so reading
+        # The UCD names a styled or letterlike character after its STYLING, so reading
         # the name without folding first invented a script for 983 alpha codepoints of Unicode 15.0.
         ("\U0001d400", lang.LATIN),  # MATHEMATICAL BOLD CAPITAL A, one of that block's 936
         ("\U0001d4ae", lang.LATIN),  # MATHEMATICAL SCRIPT CAPITAL S
@@ -85,7 +85,7 @@ def test_nothing_that_is_not_a_letter_has_a_script(character: str) -> None:
 def test_a_styled_or_letterlike_character_reports_its_base_letters_script(
     character: str, script: str
 ) -> None:
-    """W7 review r1-spec-11. A sheet pasted in Unicode mathematical bold — a common fan-transcription shape —
+    """A sheet pasted in Unicode mathematical bold — a common fan-transcription shape —
     was 100% "Mathematical" script, which `detect` then took the NON-Latin branch for: the Latin detector was
     never consulted and `source` read `default` on a text whose every letter is Latin."""
     assert lang.script_of(character) == script
@@ -114,10 +114,10 @@ def test_a_text_with_no_letter_has_no_script_at_all() -> None:
 
 
 def test_detect_builds_the_sheets_histogram_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    """W7 review r1-tests-14. `detect` needed the counts (for the empty check and for `counts[KANA]`) AND the
+    """`detect` needed the counts (for the empty check and for `counts[KANA]`) AND the
     dominant script, and the `dominant_script(texts)` convenience recomputed the identical histogram — a
     second full pass with one `unicodedata.name` lookup per character of the sheet, paid once per acquired
-    text. `dominant_of` takes the counts already in hand, and the convenience is gone (r2-tests-19): it had no
+    text. `dominant_of` takes the counts already in hand, and the convenience is gone: it had no
     production caller left, so it kept a 16-line rule alive one call site away from where the rule lives."""
     seen: list[list[str]] = []
     real = lang.script_histogram
@@ -144,7 +144,7 @@ def test_a_tie_breaks_on_the_script_name_so_two_replays_load_one_bundle() -> Non
 
 
 def test_a_non_latin_script_outranks_both_whisper_and_the_job() -> None:
-    """The asymmetry review M8 asks for: the script is a FACT about characters that must be in the model's
+    """The asymmetry routing needs: the script is a FACT about characters that must be in the model's
     vocabulary, where whisper's language is an acoustic guess and the job's is a room-wide default."""
     got = lang.detect(["사랑해 사랑해", "나는 바람"], declared="en", heard="en")
     assert (got.language, got.script, got.source) == ("ko", lang.HANGUL, "script")
@@ -168,7 +168,7 @@ def test_an_ambiguous_script_takes_the_measured_signal_over_the_tuples_first_ent
 
 
 def test_an_ambiguous_scripts_own_exclusive_letters_decide_it_when_no_signal_does() -> None:
-    """W7 review r1-correctness-5: `heard` reaches `detect` from `transcribe` ALONE and the ASR tier is the
+    """`heard` reaches `detect` from `transcribe` ALONE and the ASR tier is the
     last rung, so on the paths that acquire a Cyrillic or Arabic sheet — captions, every provider, a paste —
     both signals are None and `candidates[0]` decided every case that mattered. A Ukrainian LRCLIB sheet was
     therefore always timed by the `ru` bundle, and a Persian one by the `ar` bundle, whose vocabulary has no
@@ -205,7 +205,7 @@ def _cyrillic(texts: list[str]) -> int:
 
 
 def test_two_markers_in_a_long_sheet_are_a_quotation_rather_than_an_alphabet() -> None:
-    """W7 review r2-correctness-3: `_MIN_MARKERS` alone is an ABSOLUTE count, so two exclusive letters decided
+    """`_MIN_MARKERS` alone is an ABSOLUTE count, so two exclusive letters decided
     a sheet of ANY length — one quoted title or one bilingual line re-routed a 475-letter Russian sheet to the
     `uk` bundle, whose vocabulary differs from `ru`'s in both directions (every Russian-only letter would then
     drop out of the targets, `generate.char_ids`). The evidence has to be a SHARE, which is what this module's
@@ -252,7 +252,7 @@ def test_a_script_no_bundle_exists_for_says_so_rather_than_claiming_a_language()
 
 
 def test_latin_script_asks_what_was_heard_then_the_detector_then_what_was_declared() -> None:
-    """W7 review r1-correctness-4 INVERTED the first two. The detector used to win outright, which put a guess
+    """The first two are INVERTED. The detector used to win outright, which put a guess
     from the GLYPHS above a measurement of the AUDIO — and on the only path that has a `heard` signal
     (`transcribe`) those glyphs are whisper's own output, so lingua was overruling the acoustic model with a
     guess at that model's transcript. `SCRIPT_LANGUAGES` had argued the same asymmetry for Cyrillic and Arabic
@@ -310,7 +310,7 @@ def test_the_detected_sentence_names_the_signal_that_won() -> None:
 def test_latin_script_stays_on_the_default_bundle_by_default_on_either_target(
     code: str, on_mix: bool
 ) -> None:
-    """THE ONE RULE THAT PROTECTS EVERY PUBLISHED NUMBER. The review measured fr/de/es stems at 91.8% of words
+    """THE ONE RULE THAT PROTECTS EVERY PUBLISHED NUMBER. fr/de/es stems measured at 91.8% of words
     within ±300 ms under the English model — the same as English Jamendo's 91.1% — and routed bundles winning
     only on the MIX. Routing by default would take Latin songs away from the bundle that was measured."""
     assert lang.model_language(code, on_mix=on_mix) == lang.ENGLISH
@@ -389,7 +389,7 @@ def test_the_filter_is_byte_identical_on_a_text_whose_letters_the_vocabulary_has
 
 
 def test_an_accented_letter_is_folded_rather_than_dropped() -> None:
-    """Review M8's own words: "accents are silently skipped". `cafés` decoded as `cafs`, so every later
+    """The defect's own words: "accents are silently skipped". `cafés` decoded as `cafs`, so every later
     character of the word was timed on the frames of the one before it."""
     assert [token for _index, token in char_ids("cafés", EN, {0})] == [
         EN["c"], EN["a"], EN["f"], EN["e"], EN["s"],
@@ -420,12 +420,12 @@ def test_a_character_no_fold_reaches_is_still_dropped() -> None:
 
 @pytest.mark.parametrize("symbol", ["™", "№", "℠", "℅", "℃", "㎒", "Ⅻ", "₨", "½"])
 def test_a_non_letter_is_dropped_rather_than_folded_into_phantom_letters(symbol: str) -> None:
-    """W7 review r2-correctness-1 / r2-spec-7: the fold is a LETTER's. NFKD decomposes 953 non-letter
+    """The fold is a LETTER's. NFKD decomposes 953 non-letter
     codepoints of Unicode 15.0 onto letters (`™` -> `TM`, `№` -> `No`, `℅` -> `c/o`, `₨` -> `Rs`), so an
     unguarded fold made every one of them a character target the singer never sings — and `clean_segments`
     keeps the rows that carry such a symbol BESIDE words (a credit's `™`, a `℗` line), where the forced path
     then has to spend frames on the phantom letters and the neighbouring word's span moves. Dropped before
-    W7, dropped now."""
+    the fold, dropped now."""
     assert char_ids(symbol, EN, {0}) == []
 
 
@@ -472,7 +472,7 @@ def test_the_lift_is_measured_on_the_targets_the_decode_publishes() -> None:
 
 def test_the_english_code_is_the_one_the_adapter_overrides_its_bundle_for() -> None:
     """`domain/` may not import `adapters/`, so the string is spelled twice; a disagreement would leave the
-    English bundle override dormant exactly as review M8 left it."""
+    English bundle override dormant exactly as it once was."""
     from encore_worker.adapters.ml import ENGLISH
 
     assert lang.ENGLISH == ENGLISH

@@ -39,7 +39,7 @@ class _Source(StrEnum):
     MIX = "mix"
     #: The claim's own span, adopted because no window decode heard the line.
     ADOPTED = "adopted"
-    #: The primed re-decode of the review's roadmap item 14: one global Viterbi in which the clock-mapped
+    #: The primed re-decode: one global Viterbi in which the clock-mapped
     #: claims are a BONUS at each line's first state. A claim chose nothing, but it tipped the path.
     PRIMED = "primed"
 
@@ -129,10 +129,10 @@ def _bundle_why(emissions: object) -> str:
 
 
 def _units_why(rules: units.Rules, language_code: str, asked: Collection[str] = ()) -> str:
-    """One trail sentence naming the W8 unit arms this attempt decoded under, and on which language.
+    """One trail sentence naming the unit arms this attempt decoded under, and on which language.
 
     `asked` is the experiments set, so an arm whose backend this box lacks is reported as NOT APPLIED rather
-    than read off a name that silently omits it (review r2-spec-11).
+    than read off a name that silently omits it.
     """
     unhonoured = sorted(units.unhonoured(language_code, asked))
     return (
@@ -188,7 +188,7 @@ def _built_why(graph: Graph) -> str:
 
 
 def _graph_why(notes: Sequence[str], *, vendored: bool) -> str:
-    """The trail's clause for W9's decode arms: what the graph did, or what the fusion did (XA-18).
+    """The trail's clause for the decode arms: what the graph did, or what the fusion did (XA-18).
 
     `vendored` names the DECODER, which `claim-fusion` alone does not change — it changes the evidence —
     so the clause has to say which of the two the reader is looking at. Under the bare `vendored` control

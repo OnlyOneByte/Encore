@@ -169,7 +169,7 @@ def test_the_word_list_is_cleaned_IN_LOCKSTEP_with_the_line() -> None:
 
 
 def test_the_section_label_leaves_the_word_list_with_the_line() -> None:
-    """W5 review r1-correctness-7. R2 strips the label off the TEXT; `clean_line` has no label rule, so the
+    """R2 strips the label off the TEXT; `clean_line` has no label rule, so the
     word rows kept it — three words on screen over a four-word stream, offset by one, with the ball's first
     row spelling a word the published line does not contain. The exact state this module calls worse than
     not cleaning at all."""
