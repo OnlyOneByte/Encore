@@ -58,6 +58,31 @@ async function shoot(label: string, pages: Record<string, Page>): Promise<void> 
 	for (const [name, page] of Object.entries(pages)) await page.screenshot({ path: join(dir, `${label}-${name}.png`) });
 }
 
+/** The first dead card's TONE as drawn: its border and its line's ink, each matched against the colour the token
+ *  pair resolves to on this page. `danger` with a maker ("Couldn't make karaoke"), `warn` with none (ruling 38).
+ *  Anything else comes back as the raw colours, so a failure says what was painted. */
+async function cardTone(p: Page): Promise<string> {
+	return p
+		.locator(SEL.processing)
+		.first()
+		.evaluate((card) => {
+			const resolve = (prop: 'borderTopColor' | 'color', token: string) => {
+				const probe = document.createElement('div');
+				probe.style.cssText = `border:1px solid var(${token});color:var(${token})`;
+				document.body.append(probe);
+				const c = getComputedStyle(probe)[prop];
+				probe.remove();
+				return c;
+			};
+			const border = getComputedStyle(card).borderTopColor;
+			const ink = getComputedStyle(card.querySelector('.stage') as HTMLElement).color;
+			if (border === resolve('borderTopColor', '--danger-line') && ink === resolve('color', '--danger-ink'))
+				return 'danger';
+			if (border === resolve('borderTopColor', '--warn-line') && ink === resolve('color', '--warn')) return 'warn';
+			return `border ${border}, ink ${ink}`;
+		});
+}
+
 /** The three screens a guest can look at, read together so a failure prints all of them. */
 async function screens(tv: Page, maya: Page, theo: Page) {
 	const text = async (p: Page, sel: string) =>
@@ -208,6 +233,8 @@ test('past the TTL, a reload and a Try-again-then-reload still say "no maker" on
 	const card = maya.locator(SEL.processing).first();
 	await expect(card).toContainText("Can't make this one right now", { timeout: AGREE_MS });
 	await expect(card).not.toContainText("Couldn't make karaoke");
+	// And the tone follows the words: the warn look, never the danger one, with no maker.
+	await expect.poll(() => cardTone(maya), { timeout: AGREE_MS }).toBe('warn');
 
 	// 2. Try again opens a NEW unservable window; then everyone reloads — Maya on top of her 30-minute scar.
 	const again = await awaitStatus(world.baseURL, (f) => f.unservable === true);
@@ -276,6 +303,9 @@ test('past the TTL, a maker joining ends "no maker" on every screen, live and af
 		const anaCard = ana.locator(SEL.processing).first();
 		await expect(anaCard).toContainText("Couldn't make karaoke", { timeout: AGREE_MS });
 		await expect(anaCard).not.toContainText("Can't make this one right now");
+		// Same words, same tone: the late phone's card is the danger look the phone that heard the failure wears.
+		await expect.poll(() => cardTone(ana), { timeout: AGREE_MS }).toBe('danger');
+		await expect.poll(() => cardTone(maya), { timeout: AGREE_MS }).toBe('danger');
 		await shoot('maker-joined-late', { 'ana-queue': ana });
 		// The maker LEAVES: live screens say "no maker" again with no reload, as a reload would.
 		await worker.stop();
@@ -292,6 +322,7 @@ test('past the TTL, a maker joining ends "no maker" on every screen, live and af
 				// The card follows the room, as the strips do (ruling 38): with the maker gone, nobody can make it.
 				mayaCard: expect.stringContaining("Can't make this one right now")
 			});
+		await expect.poll(() => cardTone(maya), { timeout: AGREE_MS }).toBe('warn');
 		await shoot('maker-left', { tv, 'maya-queue': maya, 'theo-home': theo });
 	} finally {
 		if (!stopped) await worker.stop();

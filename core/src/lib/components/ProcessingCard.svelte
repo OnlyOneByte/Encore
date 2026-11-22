@@ -309,9 +309,10 @@
 	}
 	/* A NO-MAKER DEAD CARD TAKES THE WARN FAMILY, NOT THE DANGER ONE, and docs/FRONTEND.md's token rule is what
 	   decides it rather than taste: --danger means a failure that WILL NOT self-heal, --warn one that may. With no
-	   maker here the turn heals by itself when one connects, so it is --warn whatever its kind; with a maker, the
-	   turn stays dead until somebody taps Try again, so every dead card takes `.proc.failed`, and a phone that missed
-	   the failure wears the same tone as one that heard it. The ink needs no rule at all: `.stage` is already --warn,
+	   maker here the CAUSE can clear by itself (a maker connects), so the card is --warn whatever its kind; the turn
+	   itself still needs a Try again, and when a maker joins the card turns to "Couldn't make karaoke" and waits for
+	   that tap. With a maker, nothing will clear on its own, so every dead card takes `.proc.failed`, and a phone that
+	   missed the failure wears the same tone as one that heard it. The ink needs no rule at all: `.stage` is already --warn,
 	   so only the border is stated.
 	   SAME SPECIFICITY GAME AS `.proc.failed`: two classes, so it wins over `.pending`'s one-class border
 	   deliberately, and an unconfirmed stalled card keeps the pending SURFACE under a warn edge. */

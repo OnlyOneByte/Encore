@@ -76,9 +76,11 @@ export function queueCardKind(
 	   NO AGE GATE, NO FIRST-SEEN MAP, NO CONSTANT, and the token rule is what settles that rather than taste. This
 	   arm cannot tell a turn whose process half never landed (permanent) from the one-round-trip window on ANOTHER
 	   guest's phone between the `queue:patch` carrying the add and the `media:status` the subsequent /api/process
-	   POST produces (transient) — so it is not entitled to --danger, and a --warn card saying no karaoke is being
-	   made for this turn is TRUE in both: during the window it is true and resolves in a moment, for a dead turn it
-	   is true forever. The flash is the truth arriving early, not a prediction that can be wrong. (The TAPPING
+	   POST produces (transient).
+	   shortcut: with a maker present the card follows the room's verdict (ruling 38) and says "Couldn't make
+	   karaoke" in the danger look, so during that window another guest's fresh pick can flash it for one frame before
+	   "Making karaoke…". Telling the window from a dead turn needs the server's word (or an age gate, below), which is
+	   a design call; upgrade if the flash is seen off a LAN. (The TAPPING
 	   phone sees no flash at all: `processAndQueue` runs the queue step then the process step, and the process step
 	   sets a live `queued` status BEFORE it awaits, so that phone holds one in the same tick as the add.)
 	   A CLIENT-SIDE age gate would also be a new lie rather than a guard: `addedAt` is a SERVER stamp, and
