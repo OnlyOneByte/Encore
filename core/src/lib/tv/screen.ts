@@ -81,11 +81,11 @@ export function lobbyOverdue(making: readonly QueueEntry[], overdueIds: Readonly
 export function lobbyLine(count: number, processing: boolean, overdue: boolean, stuckNext?: string | null): string {
 	if (processing) {
 		const wait = overdue ? OVERDUE_LABEL.toLowerCase() : 'this takes a minute';
-		return count > 0 ? `${count} in the room · making the karaoke, ${wait}` : `Making the karaoke — ${wait}`;
+		return count > 0 ? `${count} in the room - making the karaoke, ${wait}` : `Making the karaoke - ${wait}`;
 	}
 	if (stuckNext) return stuckNext;
 	return count > 0
-		? `${count} in the room · search on your phone and pick a song`
+		? `${count} in the room - search on your phone and pick a song`
 		: 'Scan to join, then search on your phone and pick a song';
 }
 

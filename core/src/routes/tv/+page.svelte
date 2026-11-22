@@ -37,7 +37,7 @@
 	} from '$lib/tv/screen';
 	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
-	import { processStageLabel, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
+	import { processStageLabelAscii, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 	import { waitingTurns } from '$lib/readiness';
 	import {
@@ -260,7 +260,7 @@
 	function onVisibleError(endedId: string | null) {
 		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
 		// several bad files in a row would otherwise just flash black across the room.
-		flashSkipNotice('That song won’t play');
+		flashSkipNotice("That song won't play");
 		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
 		onVisibleEnded(endedId);
 	}
@@ -403,7 +403,7 @@
 			const stuck = processIsTerminal(e);
 			if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
 				const who = singerName(current.singerId);
-				flashSkipNotice(`Couldn't make the karaoke for ${who}'s song — skipping`);
+				flashSkipNotice(`Couldn't make the karaoke for ${who}'s song - skipping`);
 				onVisibleEnded();
 			}
 		}
@@ -891,7 +891,7 @@
 			<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
 			<span class="ls-song"
 				>{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="ls-artist"
-						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
+						>{'\u00a0- '}{nowPlayingDisplay.artist}</span
 					>{/if}</span
 			>
 			<!-- No key NAME and no lyric SOURCE: the room cannot act on either. The singer reads both on the phone, and
@@ -943,7 +943,7 @@
 			<div class="up-label">{introEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
 			<div class="up-name hero-name">{singerName(introEntry.singerId)}</div>
 			<div class="up-song">
-				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
+				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
 			</div>
 		</div>
 	{:else if transient === 'error'}
@@ -954,7 +954,7 @@
 			<div class="up-song">{skipNotice}</div>
 			{#if upNext && upNext.id !== current?.id}
 				<div class="up-replaces">
-					{UP_NEXT} — {singerName(upNext.singerId)} · {songDisplay(mediaOf(upNext)).title}
+					{UP_NEXT} - {singerName(upNext.singerId)} - {songDisplay(mediaOf(upNext)).title}
 				</div>
 			{/if}
 		</div>
@@ -966,7 +966,7 @@
 		{@const proc = waitingProgress(current ? liveStatus.get(current.mediaId) : undefined)}
 		<div class="interstitial takeover state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
-			<div class="up-label">{processStageLabel('queued')}</div>
+			<div class="up-label">{processStageLabelAscii('queued')}</div>
 			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
 			<!-- Always laid out, hidden with no figure, so the centred title holds still when a status arrives or goes. -->
 			<div class={{ 'process-slot': true, unknown: !proc }} aria-hidden={proc ? undefined : 'true'}>
@@ -989,7 +989,7 @@
 			<div class="up-label">{stageEntry.id !== current?.id ? UP_NEXT : NOW_SINGING}</div>
 			<div class="up-name hero-name">{singerName(stageEntry.singerId)}</div>
 			<div class="up-song">
-				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
+				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
 			</div>
 		</div>
 	{/if}

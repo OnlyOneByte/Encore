@@ -251,8 +251,7 @@
 							{#each l.words as w, wi (wi)}
 								<span class={['word', { done: cuePos >= w.end, active: wi === ballWord }]}>
 									{#if wi === ballWord && ball !== 'off'}<span class="ball {ball}" aria-hidden="true"
-											>{ball === 'underline' ? '' : '●'}</span
-										>{/if}{w.word}
+										></span>{/if}{w.word}
 									<!--
 										The inter-word gap HAS to stay a mustache. Compiled, this each body emits `</span> ` with
 										`{' '}` and `</span>` with a bare literal space, because Svelte trims whitespace at the end of a
@@ -285,7 +284,7 @@
 	-->
 	<div class="lyrics no-lyrics" role="status" aria-live="polite" style={typeStyle}>
 		<span class="nl-head">No lyrics for this one</span>
-		<span class="nl-sub">The song still plays — sing from memory</span>
+		<span class="nl-sub">The song still plays - sing from memory</span>
 	</div>
 {/if}
 
@@ -493,10 +492,15 @@
 		color: var(--accent2);
 	}
 	/* Dot variants sit ABOVE the word, which is what makes the loose line-height above load-bearing. `steady` is
-	   the same dot as `bounce` with no animation — not a separate glyph, only the movement differs. */
+	   the same dot as `bounce` with no animation — not a separate glyph, only the movement differs. DRAWN, not a `●`:
+	   the TV draws no sign outside ASCII (stage-words.test.ts). The box is where the old glyph's ink sat. */
 	.ball.bounce,
 	.ball.steady {
-		top: -0.85em;
+		top: 0.55em;
+		width: 0.94em;
+		height: 0.94em;
+		border-radius: 50%;
+		background: var(--accent2);
 		transform: translateX(-50%);
 		font-size: 0.5em;
 	}

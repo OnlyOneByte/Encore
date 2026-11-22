@@ -258,20 +258,20 @@
 				// Recoverable by a gesture, so latch rather than treat as final. Announced only from the slot on screen.
 				if (!autoplayBlocked) {
 					autoplayBlocked = true;
-					console.warn('[tv] autoplay was blocked (NotAllowedError) — waiting for a tap to start the music');
+					console.warn('[tv] autoplay was blocked (NotAllowedError) - waiting for a tap to start the music');
 					if (active && visible) onautoplayblocked?.();
 				}
 			} else if (master && master.paused) {
 				// A rejection that LEAVES THE ELEMENT PAUSED is not terminal — the room believes it is playing — so arm the SAME
 				// gesture recovery; by then the element is holding its src.
-				console.warn(`[tv] the instrumental was interrupted (${name}) — arming a tap to restart the music`);
+				console.warn(`[tv] the instrumental was interrupted (${name}) - arming a tap to restart the music`);
 				if (!autoplayBlocked) {
 					autoplayBlocked = true;
 					if (active && visible) onautoplayblocked?.();
 				}
 			} else {
 				// Still advancing, so a genuine interruption a later pass plays through. The room is not stuck.
-				console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
+				console.warn(`[tv] the instrumental refused to start (${name}) - the room will be silent`);
 				if (active && visible) onplaybackfailed?.(name);
 			}
 		}
@@ -488,7 +488,7 @@
 		// `plan.mixed` is the src's own claim. Asserting it against the graph turns a disagreement into a loud
 		// failure instead of a room full of full-volume vocals.
 		if (plan.mixed && !(masterGraph?.isSplit && masterGraph.isRouted)) {
-			console.error('[tv] refusing a 4-channel src with no split graph — this would downmix the vocals');
+			console.error('[tv] refusing a 4-channel src with no split graph - this would downmix the vocals');
 			return `/media/${playbackRef(m)}`;
 		}
 		return plan.ref ? `/media/${plan.ref}` : '';

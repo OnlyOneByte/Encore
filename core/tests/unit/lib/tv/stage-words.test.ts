@@ -3,12 +3,17 @@ import { readdirSync } from 'node:fs';
 import { at, read } from '$test';
 import { formatClock, formatRemaining, formatRemainingAscii } from '$lib/clock';
 import type { MediaStatus } from '$lib/contract';
-import { processStageLabel } from '$lib/phrasing/process-phrasing';
+import {
+	OVERDUE_LABEL,
+	processStageLabel,
+	processStageLabelAscii,
+	stuckTurnsLines
+} from '$lib/phrasing/process-phrasing';
 import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 import { keyShiftLabel } from '$lib/song-facts';
 import { UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX } from '$lib/tv/join-address';
 import { ATTRACT_PHRASES } from '$lib/tv/phrases';
-import { PROCESS_STEPS } from '$lib/tv/screen';
+import { lobbyLine, PROCESS_STEPS } from '$lib/tv/screen';
 
 /*
  * guard: THE STAGE IS FOR THE ROOM (proposal 09). The TV shows the singer, the song, who's next and how to join.
@@ -25,9 +30,10 @@ function strip(source: string): string {
 
 const tvFiles = [
 	'src/routes/tv/+page.svelte',
-	...readdirSync(at('src/lib/tv'))
+	// Recursive, so a component in a subfolder of `lib/tv` is read too.
+	...readdirSync(at('src/lib/tv'), { recursive: true, encoding: 'utf8' })
 		.filter((f) => /\.(svelte|ts)$/.test(f))
-		.map((f) => `src/lib/tv/${f}`)
+		.map((f) => `src/lib/tv/${f.replaceAll('\\', '/')}`)
 ];
 const tv = tvFiles.map((f) => ({ f, text: strip(read(f)) }));
 
@@ -65,23 +71,25 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
 	for (const { f, text } of tv)
 		for (const cls of ['ah-sub', 'ph-sub', 'ls-source']) expect(text, `${f}: ${cls}`).not.toContain(cls);
 	const page = tv.find((t) => t.f === 'src/routes/tv/+page.svelte')!.text;
-	expect(page).toContain("flashSkipNotice('That song won’t play')");
+	expect(page).toContain(`flashSkipNotice("That song won't play")`);
 	expect(page.match(/flashSkipNotice\(/g)?.length, 'one definition + the two skip notices').toBe(3);
 });
 
 /*
- * THE TV STAYS ASCII FOR SIGNS (song-facts.ts's header): a typographic minus, arrow or accidental is a codepoint a
- * smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. `’`, `—`, `·`, `…` and `●` are
- * allowed — main's TV has always shipped them — and NOTHING ELSE outside ASCII is: a list of banned blocks missed
- * the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or a CSS escape (`"\2192"`) is
- * the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV source as text, and the strings
- * the TV imports from outside `lib/tv` as the values they really render.
+ * THE TV IS PLAIN ASCII (song-facts.ts's header): a typographic minus, arrow, dash, middot, ellipsis or curly
+ * apostrophe is a codepoint a smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. So
+ * NOTHING outside printable ASCII is drawn: a separator is ` - `, an ellipsis `...`, the apostrophe `'`, and a dot
+ * (the lyric ball, the badge's live mark) is drawn in CSS. An allowlist of safe glyphs grew one glyph at a time, and
+ * a list of banned blocks missed the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or
+ * a CSS escape (`"\2192"`) is the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV
+ * source as text, and the strings the TV imports from outside `lib/tv` as the values they really render. A COMPUTED
+ * codepoint (`String.fromCharCode(0xb7)`, `String.raw`) is not caught by either: keep TV copy literal.
  *
- * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0· '`, and an
+ * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0- '`, and an
  * NBSP is a space with no glyph to tofu. Only the escape, because a literal NBSP cannot be told from a space in
  * review.
  */
-const NOT_TV_SAFE = /[^\t -~’—·…●]|&#?[a-z0-9]+;/iu;
+const NOT_TV_SAFE = /[^\t -~]|&#?[a-z0-9]+;/i;
 const ESCAPE = /\\u(?!00a0|\{0*a0\})(?:\{[0-9a-f]+\}|[0-9a-f]{4})|\\x[89a-f][0-9a-f]/i;
 // A CSS escape is `\` plus 1-6 hex digits; one above U+007F draws a non-ASCII glyph from a `content:` string.
 const CSS_ESCAPE = /\\([0-9a-f]{1,6})/gi;
@@ -112,6 +120,19 @@ test('no TV style block spells a non-ASCII glyph as a CSS escape', () => {
 	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('<style>');
 });
 
+// The badge's live mark is a CSS dot (no `●` in its text): an empty `::before`, square, round and filled.
+test('the join badge draws its live dot, not a glyph', () => {
+	const badge = tv.find((t) => t.f === 'src/lib/tv/JoinBadge.svelte')!.text;
+	expect(badge).toContain('<div class="n">{onlineCount} ');
+	const dot = badge.match(/\.n::before\s*\{([^}]*)\}/)?.[1] ?? '';
+	const prop = (p: string) => dot.match(new RegExp(`(?:^|[;\\s])${p}:\\s*([^;]+);`))?.[1]!.trim();
+	expect(prop('content')).toBe("''");
+	expect(prop('width')).toBeDefined();
+	expect(prop('width')).toBe(prop('height'));
+	expect(prop('border-radius')).toBe('50%');
+	expect(prop('background')).toBe('currentColor');
+});
+
 const STATUSES = Object.keys({
 	queued: 1,
 	downloading: 1,
@@ -125,7 +146,28 @@ const STATUSES = Object.keys({
 test('every TV string built outside the TV sources is ASCII for signs too', () => {
 	const rendered: string[] = [UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX, NOW_SINGING, UP_NEXT];
 	rendered.push(...PROCESS_STEPS, ...ATTRACT_PHRASES);
-	for (const status of STATUSES) rendered.push(processStageLabel(status), processStageLabel(status, { pct: 40 }));
+	for (const status of STATUSES)
+		rendered.push(processStageLabelAscii(status), processStageLabelAscii(status, { pct: 40 }));
+	// The lobby's headline and next line for a stuck turn (TvLobby, the page), every branch: no maker, my own turn,
+	// one named singer, several. And the lobby line over its arms, which carries OVERDUE_LABEL and `next`.
+	const name = (id: string) => (id === 'a' ? 'Theo' : 'Maya');
+	for (const w of [
+		{ making: 0, stuckSingerIds: ['a'], noMaker: true },
+		{ making: 0, stuckSingerIds: ['a'], noMaker: false },
+		{ making: 0, stuckSingerIds: ['a', 'b'], noMaker: false }
+	]) {
+		for (const me of [null, 'a']) {
+			const lines = stuckTurnsLines(w, name, me);
+			rendered.push(lines!.headline, lines!.next);
+			for (const [processing, overdue] of [
+				[true, false],
+				[true, true],
+				[false, false]
+			])
+				for (const count of [0, 2]) rendered.push(lobbyLine(count, processing!, overdue!, lines!.next));
+		}
+	}
+	rendered.push(OVERDUE_LABEL, lobbyLine(0, false, false, null));
 	for (let s = -12; s <= 12; s++) rendered.push(keyShiftLabel(s) ?? '');
 	// The progress clocks: elapsed, and time left from a fresh song to the last second, past an hour too.
 	for (const [at, of] of [
@@ -144,6 +186,11 @@ test('every TV string built outside the TV sources is ASCII for signs too', () =
 	// The TV reaches the phone's form nowhere: TvProgress draws time left through the ASCII form only.
 	for (const { f, text } of tv) expect(text, f).not.toMatch(/\bformatRemaining\b/);
 	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('formatRemainingAscii(');
+	// The same for the stage line: the phone's `Making karaoke…`, the TV's `Making karaoke...`.
+	expect(processStageLabel('queued')).toBe('Making karaoke…');
+	expect(processStageLabelAscii('queued')).toBe('Making karaoke...');
+	for (const { f, text } of tv) expect(text, f).not.toMatch(/\bprocessStageLabel\b/);
+	expect(tv.find((t) => t.f === 'src/lib/tv/TvLobby.svelte')!.text).toContain('processStageLabelAscii(');
 });
 
 test('the room and machine settings speak guest words, and state the scope once, in the header', () => {

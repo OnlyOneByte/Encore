@@ -53,7 +53,7 @@ test('the TV adopts the first queue patch after a boot', () => {
 });
 
 test('the lobby prints the stuck line in place of "this takes a minute"', () => {
-	expect(lobby).toContain("stuck?.headline ?? 'Waiting for someone to pick a song…'");
+	expect(lobby).toContain("stuck?.headline ?? 'Waiting for someone to pick a song...'");
 	// Worded by `lobbyLine` (screen.test.ts reads every wording); the lobby hands it the stuck turn's way out.
 	expect(lobby).toContain('lobbyLine(count, processing, overdue, stuck?.next)');
 });

@@ -3,7 +3,7 @@ import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 
 /** The host's notice for an address no phone can open (`isUnreachableJoinOrigin`). The TV's empty-room screens and
  *  /settings/server say this same line, so the two cannot drift. */
-export const UNREACHABLE_JOIN = 'Phones can’t open this address';
+export const UNREACHABLE_JOIN = "Phones can't open this address";
 /** The TV's remedy line. Settings omits it: the field that fixes it is right there. An ASCII `->`, never a
  *  typographic arrow: a smart-TV browser may have no glyph for it (see `song-facts.ts`). The page name is the
  *  scope's own label, so renaming the page cannot leave the TV pointing at a name that no longer exists. */

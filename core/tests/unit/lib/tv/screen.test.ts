@@ -278,19 +278,19 @@ describe('waitingProgress', () => {
 // "Taking longer than usual", and the lobby may no longer promise "this takes a minute" (proposal 05).
 describe('the lobby line, and an overdue song', () => {
 	it('promises a minute while the song is on time', () => {
-		expect(lobbyLine(3, true, false)).toBe('3 in the room · making the karaoke, this takes a minute');
-		expect(lobbyLine(0, true, false)).toBe('Making the karaoke — this takes a minute');
+		expect(lobbyLine(3, true, false)).toBe('3 in the room - making the karaoke, this takes a minute');
+		expect(lobbyLine(0, true, false)).toBe('Making the karaoke - this takes a minute');
 	});
 
 	it('says it is taking longer than usual once the song is overdue, and no longer promises a minute', () => {
-		expect(lobbyLine(3, true, true)).toBe('3 in the room · making the karaoke, taking longer than usual');
-		expect(lobbyLine(0, true, true)).toBe('Making the karaoke — taking longer than usual');
+		expect(lobbyLine(3, true, true)).toBe('3 in the room - making the karaoke, taking longer than usual');
+		expect(lobbyLine(0, true, true)).toBe('Making the karaoke - taking longer than usual');
 		expect(lobbyLine(3, true, true)).not.toContain('a minute');
 	});
 
 	it('asks for a song when nothing is being made, overdue or not', () => {
 		for (const overdue of [false, true]) {
-			expect(lobbyLine(2, false, overdue)).toBe('2 in the room · search on your phone and pick a song');
+			expect(lobbyLine(2, false, overdue)).toBe('2 in the room - search on your phone and pick a song');
 			expect(lobbyLine(0, false, overdue)).toBe('Scan to join, then search on your phone and pick a song');
 		}
 	});
@@ -299,8 +299,8 @@ describe('the lobby line, and an overdue song', () => {
 		const next = 'Theo, try again or pick another on your phone';
 		expect(lobbyLine(2, false, false, next)).toBe(next);
 		expect(lobbyLine(0, false, true, next)).toBe(next);
-		expect(lobbyLine(2, true, false, next)).toBe('2 in the room · making the karaoke, this takes a minute');
-		expect(lobbyLine(2, false, false, null)).toBe('2 in the room · search on your phone and pick a song');
+		expect(lobbyLine(2, true, false, next)).toBe('2 in the room - making the karaoke, this takes a minute');
+		expect(lobbyLine(2, false, false, null)).toBe('2 in the room - search on your phone and pick a song');
 	});
 
 	it('calls the lobby overdue only while a song still being made is one of the overdue ones', () => {
