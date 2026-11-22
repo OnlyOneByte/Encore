@@ -56,6 +56,8 @@
 	/** Mirrored beside `libraryLoaded` because this page needs both: loaded says the fetch RETURNED, failed says it
 	 *  DIED. Without the second, one dropped request renders "No karaoke tracks yet" over a full library. */
 	let libraryFailed = $state(false);
+	let noMaker = $state(false);
+	let queueSynced = $state(false);
 	/* Left un-raw deliberately, and it is not an oversight: Svelte proxies plain objects and arrays, never class
 	   instances, so there is no proxy here to avoid. */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -72,6 +74,9 @@
 			libraryFailed = room.libraryFailed;
 			entries = room.entries;
 			store = room.queue;
+			// The same verdict the Sing tab reads: with no maker, the empty state must not promise one.
+			noMaker = room.noMaker;
+			queueSynced = room.queue?.synced ?? false;
 		};
 		sync();
 		const stopMirror = room.subscribe(sync);
@@ -335,7 +340,17 @@
 					<div class="lib-empty">
 						<Empty.Header>
 							<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet</Empty.Title>
-							<Empty.Description>Find a song on the Sing tab and we'll make the karaoke track.</Empty.Description>
+							<!-- NEITHER LINE UNTIL THE VERDICT IS KNOWN (the first queue sync, which `noMaker` folds over), and both
+									in one grid cell so the box is always the taller one's height: the promise printed, then turned into
+									"Can't make…" a moment later, and the block moved (p22-phone-connection, as on `/`). -->
+							<Empty.Description>
+								<span class="promise">
+									<span class:shown={queueSynced && !noMaker}
+										>Find a song on the Sing tab and we'll make the karaoke track.</span
+									>
+									<span class:shown={queueSynced && noMaker}>Can't make new karaoke right now.</span>
+								</span>
+							</Empty.Description>
 						</Empty.Header>
 						<Button variant="secondary" size="tap" href="/">
 							<Icon name="search" /> Find a song
@@ -610,6 +625,17 @@
 		min-height: 40vh;
 		padding: var(--space-2xl) var(--space-md);
 		text-align: center;
+	}
+	/* Both wordings stacked in one cell: the box is the taller one's height whichever shows, or while neither does. */
+	.promise {
+		display: grid;
+	}
+	.promise > span {
+		grid-area: 1 / 1;
+		visibility: hidden;
+	}
+	.promise > .shown {
+		visibility: visible;
 	}
 	/* The void is only right when nothing follows the state; a filtered-to-nothing list still has chips above it. */
 	.lib-empty.tight {

@@ -64,6 +64,16 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
  *  sends as many as the first one did. */
 const BUCKET_REFILL_MS = 3_200;
+/** Rows that boot their core with extra env: a 3 s unservable TTL, so each run taps a song the TTL just killed. */
+const CORE_ENV: Record<string, Record<string, string>> = {
+	'phone-stalled-retry-after-ttl': { ENCORE_UNSERVABLE_TTL_MS: '3000' }
+};
+/** What a hold row's page read at each sample (`HOLD_SAMPLES`). */
+const HELD_LINE = { at250: 'Trying again…', at1000: 'Trying again…', settled: "Can't make this one right now" };
+const HELD: Record<string, typeof HELD_LINE> = {
+	'phone-stalled-retry': HELD_LINE,
+	'phone-stalled-retry-after-ttl': HELD_LINE
+};
 
 let joins = 0;
 
@@ -355,6 +365,72 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 	};
 }
 
+/** The line at +250 ms, +1 s (inside the 1.5 s hold) and +2.2 s (settled), read by the page itself so the capture's
+ *  own pacing cannot move them. The spec asserts all three (`HELD`). */
+const HOLD_SAMPLES = { at250: 250, at1000: 1000, settled: 2200 };
+
+function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): MotionScenario {
+	let maya: Page | undefined;
+	// Before the tap: no worker, so the dead card follows the room's verdict either side of the TTL (ruling 38), and a
+	// Try again that changes nothing ends on the words it started from.
+	const before = "Can't make this one right now";
+	return {
+		name: afterTtl ? 'phone-stalled-retry-after-ttl' : 'phone-stalled-retry',
+		what: `Phone 390x844, no worker${afterTtl ? ', after the TTL' : ''}: Try again on a dead card — the line pops to "Trying again…" (pop, --motion-base), holds 1.5 s, then the stalled line`,
+		stepMs: 16,
+		scale: 1,
+		columns: 6,
+		only: '.qrow.proc .progress, .qrow.proc .progress *',
+		// The card's line: present in every frame, whatever it says.
+		subject: '.qrow.proc .stage',
+		filmMs: HOLD_SAMPLES.settled + 200,
+		open: async (opts) => {
+			if (!maya) {
+				maya = await world.openPhone(`Motion${++joins}`);
+				const track = await world.awaitDemoTrack();
+				await maya.locator(SEL.searchSource).first().selectOption('local');
+				await maya.locator(SEL.search).fill(track.title);
+				await maya.locator(SEL.songRow).first().locator(SEL.singAction).click();
+			}
+			const page = await asSinger(browser, world, opts, maya);
+			// AFTER THE TTL MEANS AFTER IT: wait for the server to call the song dead for want of a maker, with no job in
+			// flight. A run that opened inside the previous run's 3 s window tapped a job the TTL then killed mid-hold, and
+			// that verdict rightly cut the hold short.
+			if (afterTtl)
+				await expect
+					.poll(
+						async () => {
+							const lib = await (await page.request.get(`${world.baseURL}/api/library`)).json();
+							return (lib.noMakerFailed?.length ?? 0) > 0 && !(lib.processing?.length ?? 0);
+						},
+						{ timeout: 20_000, message: 'the TTL never killed the job' }
+					)
+					.toBe(true);
+			await page.goto('/');
+			await openQueue(page);
+			await expect(page.locator(SEL.processing).first()).toContainText(before, { timeout: 20_000 });
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: async (page) => {
+			await page.evaluate((samples) => {
+				const w = window as unknown as { __held: Record<string, string | null> };
+				const read = () => document.querySelector('.qrow.proc .stage')?.textContent?.trim() ?? null;
+				w.__held = {};
+				for (const [k, ms] of Object.entries(samples)) setTimeout(() => (w.__held[k] = read()), ms);
+			}, HOLD_SAMPLES);
+			await page.locator(`${SEL.processing} [data-testid="card-retry"]`).first().click();
+			await expect(page.locator(SEL.processing).first()).toContainText('Trying again…');
+		},
+		observe: async (page) => {
+			await page.waitForFunction(() => 'settled' in (window as unknown as { __held: object }).__held, null, {
+				timeout: 10_000
+			});
+			return page.evaluate(() => ({ ...(window as unknown as { __held: Record<string, string | null> }).__held }));
+		}
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
 	'phone-queue-card-arrive': queueCard('arrive'),
 	'phone-queue-card-leave': queueCard('leave'),
@@ -529,6 +605,17 @@ const SCENARIOS: Record<string, Make> = {
 			return box ? { x: box.x, y: box.y + box.height * 0.2, width: box.width, height: box.height * 0.6 } : undefined;
 		}
 	}),
+
+	/** Try again on a card no worker can make: the server answers "still unservable" within a frame, so without an
+	 *  acknowledgement nothing on the card moved and the tap read as dead. The line pops to "Trying again…"
+	 *  (`pop` at --motion-base) and HOLDS a flat 1.5 s, then the card shows the room's latest word (stalled).
+	 *  ONE singer and ONE turn for every run: once the song is cooking its Sing row has no sing action, so each run
+	 *  reopens /queue as that singer and waits for the hold from the previous run's tap to lapse. */
+	'phone-stalled-retry': (browser, world) => stalledRetryRow(browser, world, false),
+
+	/** The same tap AFTER the TTL killed the job: a NEW job, whose first frame is a stage the server synthesised. Round
+	 *  5's hold ended on it at ~100 ms. The core's TTL is shortened (`CORE_ENV`) so every run taps a freshly dead song. */
+	'phone-stalled-retry-after-ttl': (browser, world) => stalledRetryRow(browser, world, true),
 
 	/** The leave confirm opening: bits-ui AlertDialog, encore-alert-in (scale .96→1 + fade) over encore-scrim-in. */
 	'phone-leave-dialog': (browser, world) => ({
@@ -874,6 +961,7 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 	test.describe(() => {
 		// The tuple form: Playwright reads any array whose second item is an object as `[value, options]`.
 		if (LIBRARY[name]) test.use({ demoLibrary: [LIBRARY[name], { scope: 'test' }] });
+		if (CORE_ENV[name]) test.use({ coreEnv: CORE_ENV[name] });
 		test(`motion ${name}`, async ({ browser, world }, testInfo) => {
 			test.setTimeout(180_000);
 			const cleanups: (() => Promise<unknown>)[] = [];
@@ -914,6 +1002,13 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 					// A stall at the mount that did not make a first frame late did not hold the thread.
 					if (r.stall!.at === 'mount')
 						expect(r.firstFrameMs.worst, `${name} ${run}: no first frame was late`).toBeGreaterThanOrEqual(r.stall!.ms);
+				}
+				// The hold is the motion's whole point: "Trying again…" well after the pop and still at +1 s, then the room's
+				// latest word. Live and under reduce. A filmstrip of the ack reverting at 112 ms used to pass this row.
+				if (HELD[name]) {
+					const m = result.metrics as { live: { observed: unknown }; reducedMotion: { observed: unknown } };
+					expect(m.live.observed, `${name}: the hold (live)`).toMatchObject(HELD[name]);
+					expect(m.reducedMotion.observed, `${name}: the hold (reduced)`).toMatchObject(HELD[name]);
 				}
 			} finally {
 				for (const fn of cleanups) await fn();

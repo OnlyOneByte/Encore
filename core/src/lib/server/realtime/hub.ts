@@ -87,7 +87,9 @@ type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status' 
 const ENTRY_OP_GATE = {
 	remove: { capability: 'queue:remove-any', refusal: 'not allowed to remove this entry' },
 	move: { capability: 'queue:reorder-any', refusal: 'not allowed to reorder this entry' },
-	'move-to-index': { capability: 'queue:reorder-any', refusal: 'not allowed to reorder this entry' }
+	'move-to-index': { capability: 'queue:reorder-any', refusal: 'not allowed to reorder this entry' },
+	// Swapping someone's song takes their pick away exactly as a remove does, so it asks for the same thing.
+	'replace-media': { capability: 'queue:remove-any', refusal: 'not allowed to change this entry' }
 } as const satisfies Record<EntryMutatingOp, { capability: Capability; refusal: string }>;
 
 /**
@@ -106,11 +108,22 @@ function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: Hub
 	const target = deps.state.entries.find((e) => e.id === op.id);
 	if (!target) return `unknown entry: ${op.id}`;
 	if (op.op === 'move-to-index' && !Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
+	if (op.op === 'replace-media') {
+		if (!deps.mediaById.has(op.mediaId)) return `unknown media: ${op.mediaId}`;
+		// `applyOp` would no-op anyway; refused so the phone's optimistic copy is rolled back rather than kept.
+		if (target.status !== 'queued') return 'only a waiting turn can change song';
+		// REQUIRED and range-checked like a preset: absent would read as "keep the dead song's key" on apply.
+		if (op.keyShift === undefined) return 'missing keyShift';
+		const prefs = entryPrefsRefusal({ keyShift: op.keyShift });
+		if (prefs) return prefs;
+	}
 	if (target.singerId !== deps.actorSingerId) {
 		const gate = ENTRY_OP_GATE[op.op];
 		if (!can({ singerId: deps.actorSingerId }, gate.capability)) return gate.refusal;
 	}
-	if (op.op === 'remove') return null;
+	// A replace moves no turn, as a remove does not, so the On deck hold (a guard on reorders) does not judge it:
+	// Pick another keeps the singer's spot. The dead song it replaces was never On deck, since only a playable one is.
+	if (op.op === 'remove' || op.op === 'replace-media') return null;
 	const ordering = orderingOf(deps);
 	const entries = deps.state.entries as QueueEntry[];
 	const held = heldOnDeck(entries, deps.mediaById, ordering, deps.listAway?.() ?? []);
@@ -163,6 +176,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 		case 'remove':
 		case 'move':
 		case 'move-to-index':
+		case 'replace-media':
 			return entryOpRefusal(op, deps);
 		case 'set-entry-prefs':
 		case 'not-yet':
@@ -211,8 +225,9 @@ export function handleQueueCommand(
 
 	// Captured BEFORE applying: afterwards it is gone from state, and cancellation needs to know which
 	// media just lost a claim.
+	// A replace takes the OLD song's claim away just as a remove does.
 	const removedMediaId =
-		cmd.op.op === 'remove'
+		cmd.op.op === 'remove' || cmd.op.op === 'replace-media'
 			? (deps.state.entries.find((e) => e.id === (cmd.op as { id: string }).id)?.mediaId ?? null)
 			: null;
 
@@ -237,9 +252,10 @@ export function handleQueueCommand(
 	// AFTER applying, so the hook sees the post-remove queue and can decide whether to cancel.
 	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);
 
-	// AFTER applying, so `entries` carries the new row; only on `add`, so move/remove/status never
-	// re-prioritize a process.
+	// AFTER applying, so `entries` carries the new row; only on `add` and `replace-media` (a new song in a turn), so
+	// move/remove/status never re-prioritize a process.
 	if (cmd.op.op === 'add') deps.onEntryAdded?.(cmd.op.entry.mediaId, entries);
+	if (cmd.op.op === 'replace-media') deps.onEntryAdded?.(cmd.op.mediaId, entries);
 
 	// ONE broadcast: pruned, reseq'd entries plus referenced media inline, so clients adopt server
 	// rotationSeq without a second full queue:sync per mutation.

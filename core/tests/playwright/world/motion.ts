@@ -90,6 +90,9 @@ export interface MotionScenario {
 	 *  in the window is still listed under `others`, which is how an unrelated fade gets noticed rather than
 	 *  silently becoming the subject. */
 	only?: string;
+	/** Real time to keep filming after the trigger, past the animation's own end: for a row whose subject is a timed
+	 *  state (a 1.5 s hold), so the live run's `observe` and the reduced burst both see it END. */
+	filmMs?: number;
 	/** Scenario-specific facts read after each run (e.g. "did the phrase change"), kept in metrics.json. */
 	observe?(page: Page): Promise<unknown>;
 	/** ONE literal that is a deliberate exception: `match` is the exact `tokens.problems` line it waives (e.g.
@@ -502,6 +505,12 @@ async function waitForCatch(page: Page, timeout: number): Promise<boolean> {
 		.catch(() => false);
 }
 
+/** `n` frames evenly spread over `frames`, first and last included. */
+function spread<T>(frames: T[], n: number): T[] {
+	const k = Math.min(n, frames.length);
+	return Array.from({ length: k }, (_, i) => frames[Math.round((i * (frames.length - 1)) / Math.max(1, k - 1))]);
+}
+
 /** Is `s.subject` on screen inside `area` (viewport px, as a screenshot `clip` is; the viewport when absent), with
  *  a non-zero area of it left after clipping? Its box is cut by every ancestor that clips it (`overflow` other than `visible`, or `contain:
  *  paint`, on its containing-block chain) and by an `inset()` `clip-path` on it or any ancestor. `shown` ignores
@@ -667,7 +676,7 @@ async function liveRun(page: Page, s: MotionScenario): Promise<LiveReport> {
 	const animations = caught ? await page.evaluate(describeCaught, 'caught') : [];
 	const end = animations.length ? Math.max(...animations.map((a) => a.endTimeMs)) : 0;
 	// Run past the end by a vsync-generous margin so the settle frame is counted too.
-	await page.waitForTimeout(Math.max(0, end + 150 - (Date.now() - t0)));
+	await page.waitForTimeout(Math.max(0, Math.max(end + 150, s.filmMs ?? 0) - (Date.now() - t0)));
 	const raw = await page.evaluate(() => {
 		const m = (
 			window as unknown as {
@@ -957,7 +966,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		withPage({ reducedMotion: 'reduce' }, async (page) => {
 			const clip = s.stripClip ? await s.stripClip(page) : s.gifClip ? await s.gifClip(page) : undefined;
 			return {
-				...(await reducedRun(page, s, clip, Math.max(300, motionEnd + 200))),
+				...(await reducedRun(page, s, clip, Math.max(300, motionEnd + 200, s.filmMs ?? 0))),
 				observed: await s.observe?.(page)
 			};
 		})
@@ -969,7 +978,9 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 				browser,
 				`${s.name} — prefers-reduced-motion: reduce, real-time burst`,
 				`${reduced.animations.length} animation(s) started under reduce · labels are wall-clock ms after the trigger`,
-				reduced.frames.slice(0, cols * 2),
+				// A `filmMs` row films a timed state to its END, so its strip spreads the burst over the whole window;
+				// otherwise the opening frames, where the motion is.
+				s.filmMs ? spread(reduced.frames, cols * 3) : reduced.frames.slice(0, cols * 2),
 				cols
 			)
 		)

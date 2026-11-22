@@ -81,3 +81,6 @@ export function stuckTurnsLines(
 	}
 	return { headline: "Those songs didn't work", next: 'Try again or pick another on your phone' };
 }
+
+/** The moment after a guest taps Try again on a card nothing is making, before the server's answer lands. */
+export const RETRYING_LABEL = 'Trying again…';

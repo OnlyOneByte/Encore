@@ -352,6 +352,20 @@ test('moveToIndex emits move-to-index and pulls the entry to the global index th
 	expect(store.pendingKindById.get('b1')).toBe('move'); // shown as a pending reorder, not an add
 });
 
+test('replaceMedia swaps the song this frame and shows the row as a pending add', () => {
+	const { store, sent } = makeStore();
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 1,
+		entries: [{ id: 'a1', mediaId: 'dead', singerId: 'me', status: 'queued', rotationSeq: 0, addedAt: 1 }]
+	});
+	store.replaceMedia('a1', 'fresh', 2);
+	expect(sent.at(-1)!.op).toEqual({ op: 'replace-media', id: 'a1', mediaId: 'fresh', keyShift: 2 });
+	expect(store.entries[0]).toMatchObject({ id: 'a1', mediaId: 'fresh' });
+	// A new song in the turn is waiting on the server to take it, exactly as an add is.
+	expect(store.pendingKindById.get('a1')).toBe('add');
+});
+
 // The optimistic reducer must predict with the ROOM's algorithm, not with fair rotation: a prediction
 // under the wrong algorithm renders the row in the wrong place and snaps when the patch arrives, which
 // is the flicker `applyAndReseq` is shared between phone and server to prevent.

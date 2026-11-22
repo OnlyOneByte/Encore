@@ -85,6 +85,8 @@ export class QueueStore {
 		for (const p of this.#pending.values()) {
 			// Ops are issued in order, so a later op's kind is the one the row is currently waiting on.
 			if (p.op.op === 'add') kinds.set(p.op.entry.id, 'add');
+			// A new song in the turn is an add to the guest: the row is waiting on the server to take it.
+			else if (p.op.op === 'replace-media') kinds.set(p.op.id, 'add');
 			else if (p.op.op === 'move' || p.op.op === 'move-to-index') kinds.set(p.op.id, 'move');
 		}
 		return kinds;
@@ -130,6 +132,10 @@ export class QueueStore {
 	 * indexes the caller's OWN picks. The same optimistic reducer, so the server commits the identical order. */
 	moveToIndex(id: string, toIdx: number): void {
 		this.#optimistic({ op: 'move-to-index', id, toIdx });
+	}
+	/** "Pick another, keep your spot": the same turn, another song, in `keyShift` — the NEW song's remembered key. */
+	replaceMedia(id: string, mediaId: string, keyShift: number): void {
+		this.#optimistic({ op: 'replace-media', id, mediaId, keyShift });
 	}
 
 	/** The on-deck card's key and guide for one of MY entries. Absolute, like the `key` command. */

@@ -246,13 +246,26 @@
 	/* THE ONE SINK FOR THE LINK'S ERROR CHANNEL. The link drops a message nobody listens for, so a sink per route left
 	   every route without one (all of /settings) silent. The layout outlives every navigation, as the link does.
 	   It registers on /tv, /admin and /metrics too, deliberately: the link never connects there (`NOT_PHONE`), so
-	   nothing reaches it. */
-	// `info` is a refusal that is nobody's mistake: someone else's On deck kept its turn (proposal 14).
+	   nothing reaches it.
+	   A DEAD SONG'S NOTICE (it carries an `id`) is its card's own words, so /queue, where the card says them, shows
+	   none, and arriving there takes one down: at 390 the toast sat over that card's Try again and Pick another. */
+	// Plain, not $state: only the arrival effect reads it, and it must not re-run that effect.
+	let failureNotices: string[] = [];
 	onMount(() =>
-		room.onError((message, kind) =>
-			kind === 'info' ? toast.info(message, { duration: 4000 }) : toast.error(message, { duration: 4000 })
-		)
+		room.onError((message, kind, id) => {
+			// `info` is a refusal that is nobody's mistake: someone else's On deck kept its turn (proposal 14).
+			if (kind === 'info') return void toast.info(message, { duration: 4000 });
+			if (!id) return void toast.error(message, { duration: 4000 });
+			if (page.url.pathname === '/queue') return;
+			if (!failureNotices.includes(id)) failureNotices.push(id);
+			toast.error(message, { duration: 4000, id });
+		})
 	);
+	$effect(() => {
+		if (page.url.pathname !== '/queue') return;
+		for (const id of failureNotices) toast.dismiss(id);
+		failureNotices = [];
+	});
 
 	/* THE TRANSPORT'S DROPPED-COMMAND NOTICE, and the argument for it, because a toast per tap needs one.
 	   `room.command` reports whether the frame reached the wire; false means the socket was absent or not OPEN, so

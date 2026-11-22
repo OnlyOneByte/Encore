@@ -2,6 +2,10 @@
 // a dead end: a turn with no process is never ready, so the rotation holds it and skips it on every pass; a process
 // with no turn fills the library and gives the singer nothing. The held-slot rule exists for this pairing.
 
+/** `/?replace=<entryId>`: the Sing tab in "pick another" mode, where the queue step swaps that turn's song instead of
+ * adding a turn, so a singer whose song could not be made keeps their spot. */
+export const REPLACE_PARAM = 'replace';
+
 export interface ProcessAndQueueSteps<T> {
 	/** Add the turn. Runs FIRST — see the ordering note below. */
 	queue: () => T;

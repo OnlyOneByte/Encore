@@ -119,6 +119,22 @@ export function waitingTurns(
 	return out;
 }
 
+/** TRY AGAIN'S HOLD on a dead card, one status at a time: `null` once the server has given a VERDICT since the tap
+ *  (`failed` or `ready`), else the status the hold now waits past. Otherwise the 1.5 s timeout ends it.
+ *  - A stage never ends it. The server SYNTHESISES one for a new job before any worker has it (a queued stems job
+ *    floors at `separating`), so a stage proves nothing; ending on it dropped "Trying again…" at ~100 ms exactly
+ *    after the TTL, when the tap needs answering most.
+ *  - `queued`, the phone's own optimistic mark, resets the baseline: a failed card's own `failed` is not a verdict,
+ *    a fresh `failed` after the request is. */
+export function retryHoldAfter(
+	heldOver: MediaStatus | undefined,
+	status: MediaStatus | undefined
+): MediaStatus | undefined | null {
+	if (status === 'queued') return 'queued';
+	if ((status === 'failed' || status === 'ready') && status !== heldOver) return null;
+	return heldOver;
+}
+
 /** Whether offering "make karaoke" makes sense: only for a song neither done nor in flight, AND whose audio can
  * actually be acquired. A FAILED song qualifies. IT MUST TAKE THE MEDIA, not just its readiness: a metadata-only hit
  * that can never be processed reads as un-acquired exactly like a fresh upload, and offering Sing there takes the

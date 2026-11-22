@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import type { ServerWebSocket } from 'bun';
-import { RoomLink } from '$lib/stores/room';
+import { RoomLink, failureNoticeId } from '$lib/stores/room';
 import type { Media } from '$lib/contract';
 import { PROCESS_SCARS_KEY } from '$lib/stores/process-scars';
 
@@ -162,6 +162,16 @@ test('a live status after a scar is kept when a later library seed arrives', asy
 
 	link.seedMediaStatus([{ media: { ...settled('x'), stemStatus: 'queued' }, status: 'queued', pct: 0 }]);
 	expect(link.mediaStatus.get('x')).toMatchObject({ status: 'separating', pct: 40 });
+});
+
+test("the requester's failure notice carries the id Pick another dismisses it by", async () => {
+	const { link, send } = await connected();
+	link.mergeMedia([settled('x')]);
+	const ids: (string | undefined)[] = [];
+	link.onError((_message, _kind, id) => ids.push(id));
+	send({ type: 'media:status', mediaId: 'x', status: 'failed', pct: 0, requestedBy: 's1' });
+	await until(() => ids.length === 1);
+	expect(ids).toEqual([failureNoticeId('x')]);
 });
 
 test('a restated failure redraws the row but tells the singer nothing a second time', async () => {

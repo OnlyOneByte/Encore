@@ -12,8 +12,11 @@
 	export const buttonVariants = tv({
 		/* `no-underline text-inherit` are on the BASE because a Button may render as an anchor and Preflight is off, so
 		   the UA's `a:link` style is never reset — every anchor-shaped button would paint underlined in the browser's link
-		   colour. `tailwind-merge` keeps a variant's own colour over these. */
-		base: "min-h-tap rounded-md border border-transparent bg-clip-padding text-[length:var(--ph-text-md)] font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		   colour. `tailwind-merge` keeps a variant's own colour over these.
+		   A DISABLED LINK LOOKS DISABLED: `disabled:` matches only a real <button>, and a link Button is disabled by
+		   dropping its href and setting `aria-disabled` (below), so it kept full ink beside a dimmed Try again and ignored
+		   the tap. Scoped to `a`, because a <button> may carry `aria-disabled` while staying live (the reorder grip). */
+		base: "min-h-tap rounded-md border border-transparent bg-clip-padding text-[length:var(--ph-text-md)] font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&:is(a)[aria-disabled=true]]:pointer-events-none [&:is(a)[aria-disabled=true]]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				/* THE ONE QUEUEING ACTION, on every SongRow. It used to be two variants — this accent fill for "make karaoke",
