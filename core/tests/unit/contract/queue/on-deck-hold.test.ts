@@ -24,10 +24,13 @@ test('the held entry is the next playable one while someone ELSE sings', () => {
 	expect(heldEntryId({ id: 'theo-1', singerId: 'theo' }, 'maya', never)).toBe('theo-1');
 });
 
-test('nothing is held in an idle room, with nothing next, or while its singer is away', () => {
+test('nothing is held in an idle room or with nothing next', () => {
 	expect(heldEntryId({ id: 'theo-1', singerId: 'theo' }, undefined, never)).toBeNull();
 	expect(heldEntryId(null, 'maya', never)).toBeNull();
-	expect(heldEntryId({ id: 'theo-1', singerId: 'theo' }, 'maya', (id) => id === 'theo')).toBeNull();
+});
+
+test('the owner`s ruling: the hold STAYS while its singer`s phone is away (locked or pocketed)', () => {
+	expect(heldEntryId({ id: 'theo-1', singerId: 'theo' }, 'maya', (id) => id === 'theo')).toBe('theo-1');
 });
 
 test('back to back: the singer`s own next song while they sing shows no card, so it is not held', () => {

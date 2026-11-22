@@ -117,7 +117,9 @@ test('someone else`s drag stops under the On deck row, says why, and Theo`s card
 	}
 });
 
-test('the hold lifts while the On deck singer is away: the same drag lands first', async ({ world }) => {
+test('the hold stays while the On deck singer`s phone is away (the owner`s ruling): the same drag stops at 2nd', async ({
+	world
+}) => {
 	test.setTimeout(4 * 60_000);
 	const worker = await startFakeWorker(world, { seconds: SECS });
 	try {
@@ -137,11 +139,12 @@ test('the hold lifts while the On deck singer is away: the same drag lands first
 		await theo.context().close();
 		const theoRow = maya.locator(SEL.queueRow, { hasText: 'believin' });
 		await expect(theoRow).toContainText(/away/i, { timeout: 60_000 });
-		await expect(theoRow.locator(SEL.queueGrip)).toHaveCount(1);
+		// Still pinned: no handle for Maya, and the drag stops under Theo with the same one line.
+		await expect(theoRow.locator(SEL.queueGrip)).toHaveCount(0);
 
 		await dragUp(maya, 'brightside', 'believin');
-		await expect.poll(() => order(ana)).toEqual(['brightside', 'believin', 'prayer']);
-		await expect(maya.locator('.reorder-note')).toHaveCount(0);
+		await expect.poll(() => order(ana)).toEqual(['believin', 'brightside', 'prayer']);
+		await expect(maya.locator('.reorder-note')).toHaveText('Theo’s on deck. Ana goes right after.');
 	} finally {
 		await worker.stop().catch(() => {});
 	}

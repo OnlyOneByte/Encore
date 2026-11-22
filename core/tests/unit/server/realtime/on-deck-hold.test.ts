@@ -3,6 +3,10 @@
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, validateCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
+import { handlePlayerCommand } from '$lib/server/realtime/player';
+import { heldOnDeck } from '$lib/server/rotation';
+import { removableOnLeave } from '$lib/server/singers/leave';
+import type { EncoreApp } from '$lib/server/app';
 import { EMPTY_SONG_PROFILE, type ClientCommand, type Media, type QueueEntry, type QueueOp } from '$lib/contract';
 
 const media = (id: string, ready = true): Media => ({
@@ -99,9 +103,55 @@ test('the same drag with nothing playing passes: an idle room holds nothing', ()
 	expect(validateCommand(cmd({ op: 'move-to-index', id: 'brightside', toIdx: 0 }), deps)).toBeNull();
 });
 
-test('the same drag while Theo is away passes: a guest who left must not stall the room', () => {
+// The owner's ruling: the hold STAYS while Theo's phone is locked or away. Every way it must still end is pinned below
+// WITH Theo away, so none of them leans on an away lift.
+test('the same drag while Theo`s phone is away is refused: the hold stays', () => {
 	const { deps } = room({ away: ['theo'] });
-	expect(validateCommand(cmd({ op: 'move-to-index', id: 'brightside', toIdx: 0 }), deps)).toBeNull();
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'brightside', toIdx: 0 }), deps)).toBe(
+		'on deck is held: believin'
+	);
+});
+
+/** `room()` with Maya's song really on: playback names it, so a skip has a song to skip. */
+function singing(opts: Parameters<typeof room>[0]) {
+	const r = room(opts);
+	r.state.hydrate(r.state.entries as QueueEntry[], {
+		...r.state.playback,
+		currentEntryId: 'caroline',
+		isPlaying: true
+	});
+	return r;
+}
+
+test('away, the hold still ends when Theo`s turn starts: nothing of his is held while he sings', () => {
+	const { state, deps } = singing({ away: ['theo'] });
+	handlePlayerCommand({ cmd: 'skip', entryId: 'caroline' }, deps);
+	expect(state.entries.find((e) => e.id === 'believin')?.status).toBe('playing');
+	expect(heldOnDeck(state.entries as QueueEntry[], deps.mediaById, {}, ['theo'])?.id).toBe('prayer');
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'brightside', toIdx: 0 }), deps)).toBe(
+		'on deck is held: prayer'
+	);
+});
+
+test('away, the host can still skip Theo once his turn starts', () => {
+	const { state, deps } = singing({ away: ['theo'] });
+	handlePlayerCommand({ cmd: 'skip', entryId: 'caroline' }, deps);
+	handlePlayerCommand({ cmd: 'skip', entryId: 'believin' }, deps);
+	expect(state.playback.currentEntryId).toBe('prayer');
+});
+
+test('away, Theo`s own Not yet still moves it: an owner op, never refused by the hold', () => {
+	const { state, deps } = room({ actor: 'theo', away: ['theo'] });
+	handleQueueCommand(cmd({ op: 'not-yet', id: 'believin', toIdx: 1 }), deps);
+	expect(queuedIds(state)).toEqual(['prayer', 'believin', 'brightside']);
+	expect(heldOnDeck(state.entries as QueueEntry[], deps.mediaById, {}, ['theo'])?.id).toBe('prayer');
+});
+
+test('away, leaving the room ends it: the leave removes his queued songs, so On deck passes on', () => {
+	const { state, deps } = room({ away: ['theo'] });
+	// `doLeave`'s own selection of what a leave removes, applied the way it applies it.
+	for (const e of removableOnLeave({ state } as EncoreApp, 'theo')) state.applyQueueOp({ op: 'remove', id: e.id });
+	expect(heldOnDeck(state.entries as QueueEntry[], deps.mediaById, {}, ['theo'])?.id).toBe('prayer');
 });
 
 test('a cooking song in front of the held one is skipped by the hold, and may move behind it', () => {
