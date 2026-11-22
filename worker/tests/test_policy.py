@@ -8,7 +8,7 @@ The arm that matters most is `test_accepts_when_no_knob_applies`: a policy that 
 imperfection produces songs with no lyrics, which is the defect this rewrite exists to fix.
 
 `ok()` builds a WINDOWED report, the engine that reads every knob, so the ladder's arms are exercised as
-written; the global engine's narrower reading (review H2) has its own section below.
+written; the global engine's narrower reading has its own section below.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def test_zero_words_is_not_usable() -> None:
 
 
 def test_a_gate_refusal_is_terminal_for_the_text_even_with_line_timings() -> None:
-    """THE wrong-text hazard W0 measured: 168 of 320 bench wrong texts were refused by the envelope gate
+    """THE measured wrong-text hazard: 168 of 320 bench wrong texts were refused by the envelope gate
     and then retried LINE_SYNC, which publishes the same words on their own clock. Refusal ends the text."""
     refused = TimingReport(engine=Engine.GLOBAL, refused="envelope gate refused: blind r=0.12 @ +3.10s")
     verdict = decide(refused, FULL)
@@ -141,11 +141,11 @@ def test_a_refused_report_is_never_usable() -> None:
     assert not TimingReport(words=200, coverage=1.0, refused="x").usable
 
 
-# ── line sync (review M1) ────────────────────────────────────────────────────────────────────────
+# ── line sync ────────────────────────────────────────────────────────────────────────────────────
 
 
 def test_a_line_synced_document_is_judged_on_its_lines_and_commits() -> None:
-    """M1: judged on words, a line document (which has none) was `usable=False` by construction, so the
+    """Judged on words, a line document (which has none) was `usable=False` by construction, so the
     LINE_SYNC knob could never commit and every out-of-order doc dropped its whole text."""
     report = lined()
     assert report.usable
@@ -167,7 +167,7 @@ def test_backwards_lines_are_not_usable() -> None:
 
 
 def test_a_failed_line_sync_does_not_claim_the_text_has_no_line_timings() -> None:
-    """The message W0 flagged: after LINE_SYNC failed, NextText said the text 'carries no line timings'
+    """A misleading message: after LINE_SYNC failed, NextText said the text 'carries no line timings'
     — when it has them and they were just tried."""
     after = FULL.with_tried(Knob.LINE_SYNC)
     for report in (TimingReport(words=0, coverage=0.0), lined(out_of_order=3), lined(lines=0)):
@@ -179,11 +179,11 @@ def test_a_failed_line_sync_does_not_claim_the_text_has_no_line_timings() -> Non
     assert decide(TimingReport(), after).why.startswith("the line-sync attempt produced no document")
 
 
-# ── engine-aware knobs (review H2) ───────────────────────────────────────────────────────────────
+# ── engine-aware knobs ───────────────────────────────────────────────────────────────────────────
 
 
 def test_the_global_engine_is_never_offered_align_on_mix() -> None:
-    """H2: under the global decode, thin coverage is a long instrumental outro far more often than an
+    """Under the global decode, thin coverage is a long instrumental outro far more often than an
     inaudible stem, and R4 already asks the mix per stem-silent line. Coverage stays telemetry."""
     thin = ok(coverage=0.4, engine=Engine.GLOBAL)
     verdict = decide(thin, FULL)
@@ -219,11 +219,11 @@ def test_the_global_engine_still_degrades_incoherent_order_to_line_sync() -> Non
     )
 
 
-# ── the cross-kind comparison (W4): claims nothing relates to these timings ───────────────────────
+# ── the cross-kind comparison: claims nothing relates to these timings ────────────────────────────
 
 
 def test_a_word_document_nothing_relates_to_its_claims_asks_the_text_s_own_timings() -> None:
-    """W4: `reconcile` fitted no map between our timings and the sheet's, so both witnesses cannot be
+    """`reconcile` fitted no map between our timings and the sheet's, so both witnesses cannot be
     right and ours is the one with no second opinion behind it. Measured: those documents carry 84% of the
     corpus's gross lines at `run_align`."""
     verdict = decide(ok(engine=Engine.GLOBAL, claims_related=False), FULL)
@@ -254,7 +254,7 @@ def test_an_unrelated_sheet_is_not_asked_before_a_knob_that_could_repair_the_wor
 
 
 def test_a_refusal_stays_terminal_even_where_the_claims_are_unrelated() -> None:
-    """W1's rule outranks the new one: a gate that measured these words not to be this audio's ends the
+    """The refusal rule outranks the new one: a gate that measured these words not to be this audio's ends the
     TEXT, and line sync would publish the same words on their own clock past no gate at all."""
     refused = ok(refused="lexical gate refused: lexical lift +0.03", claims_related=False)
     assert isinstance(decide(refused, FULL), NextText)
@@ -299,7 +299,7 @@ def test_offers_needs_the_engine_to_read_the_knob() -> None:
         (Knob.DROP_WINDOWS, ok(overshoot_sec=40.0), ok(overshoot_sec=10.0), True),
         (Knob.DROP_WINDOWS, ok(overshoot_sec=40.0), ok(overshoot_sec=40.0), False),
         (Knob.LINE_SYNC, ok(out_of_order=0), lined(), False),  # word timing with a defect beats none
-        # ACROSS KINDS (W4): the line document wins only where nothing related the words to the claims...
+        # ACROSS KINDS: the line document wins only where nothing related the words to the claims...
         (Knob.LINE_SYNC, ok(claims_related=False), lined(), True),
         (Knob.LINE_SYNC, ok(claims_related=True), lined(), False),
         # ... and only if it times as many lines (a sheet stamped on 3 lines of 20 is a downgrade).
@@ -473,7 +473,7 @@ def test_asr_is_mandatory_before_concluding_no_lyrics() -> None:
     assert not asr_is_mandatory([])
 
 
-# ── review M13: corroboration breaks the tie inside a tier ────────────────────────────────────────
+# ── corroboration breaks the tie inside a tier ────────────────────────────────────────────────────
 
 
 def test_a_corroborated_candidate_is_tried_before_an_uncorroborated_one() -> None:
@@ -515,11 +515,11 @@ def test_an_sdh_caption_track_of_the_same_song_still_corroborates_it() -> None:
 
 
 def test_an_agreeing_sdh_track_is_therefore_still_tried_first() -> None:
-    """THE LIMIT OF THIS SIGNAL, pinned here so the test above is not read as the fix for M13's measured
+    """THE LIMIT OF THIS SIGNAL, pinned here so the test above is not read as the fix for the measured
     case. `_acquire_texts` fetches the authored captions BEFORE the providers, so arrival order puts the
     SDH track at index 0; corroboration only demotes a text NOTHING in the pool agrees with, and on Hello
     the SDH track and a clean sheet of the same song agree (measured on the corpus: True for both). So the
-    tie falls back to arrival order and the SDH text still goes first on exactly the song the review
+    tie falls back to arrival order and the SDH text still goes first on exactly the song that was
     measured. Separating two texts that BOTH look right needs the audio — the LIFT ranking `order_pool`'s
     docstring says is not built."""
     sdh = ["♪ I'VE BECOME SO NUMB ♪", "♪ I CAN'T FEEL YOU THERE ♪", "♪ BECOME SO TIRED, SO MUCH MORE AWARE ♪"]
@@ -547,7 +547,7 @@ def test_a_pool_of_one_is_uncorroborated_by_definition() -> None:
     assert corroboration([[], []], ["lrclib", "captions:authored"]) == [False, False]
 
 
-# ── W5 review r1-correctness-4 / r1-spec-12: an INDEPENDENT witness, not just another pool entry ──
+# ── an INDEPENDENT witness, not just another pool entry ──────────────────────────────────────────
 
 #: A sheet of some other song, as a metadata mismatch returns it. Synthetic words: what matters is the
 #: OVERLAP between the three texts, not what any of them says.
@@ -577,7 +577,7 @@ def test_the_uploads_own_captions_therefore_keep_their_place() -> None:
 
 def test_a_provider_sheet_is_still_corroborated_by_a_caption_track() -> None:
     """The signal is not removed, only required to be independent: one provider sheet and one track of this
-    video agreeing is exactly the evidence M13 asked for."""
+    video agreeing is exactly the evidence the ranking needs."""
     assert corroboration([OTHER_SONG, OTHER_SONG_AGAIN], ["lrclib", "captions:authored"]) == [True, True]
 
 
@@ -611,7 +611,7 @@ def test_the_section_this_module_cites_still_holds_the_ladder_it_cites_it_for() 
     """docs/arch/04-alignment.md §3 is cited eight times from `policy.py`, so what that section's OWN body
     carries is load-bearing.
 
-    W7c review r1-tests-14: a `### 3.1` heading went in BEFORE the body rather than after it, which left the
+    A `### 3.1` heading once went in BEFORE the body rather than after it, which left the
     severity table, both easy-to-get-backwards rules, best-so-far and the cross-kind guard sitting inside a
     subsection titled after the emission pass — a reader following the pointer found an engine table and a
     knob rule.

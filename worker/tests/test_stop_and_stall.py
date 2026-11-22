@@ -64,7 +64,7 @@ def _real_run(c: Client, monkeypatch: pytest.MonkeyPatch, step: object, config: 
 async def test_a_cancel_kills_the_childs_group_and_holds_the_slot_until_it_is_gone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The review's live probe, kept: `_stop` must cancel the token, wait for the children, and find the token
+    """A live probe, kept: `_stop` must cancel the token, wait for the children, and find the token
     `_run` left for it. Each of those, removed, frees the slot while a child still runs."""
     pidfile = tmp_path / "pids"
     # A child and two grandchildren in its group, one of which ignores SIGTERM.

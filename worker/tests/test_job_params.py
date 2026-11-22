@@ -1,6 +1,6 @@
-"""What an align job ASKS FOR is honoured: a person's re-pick, the sync mode, the ASR model (H5).
+"""What an align job ASKS FOR is honoured: a person's re-pick, the sync mode, the ASR model.
 
-Before H5 the worker read none of `pinnedRef`, `pinnedText`, `asrModel` or `syncMode`: a paste through
+The worker used to read none of `pinnedRef`, `pinnedText`, `asrModel` or `syncMode`: a paste through
 `/api/lyrics-reselect` was silently replaced by the automatic search, nothing wrote the manual key core had
 already pinned (`derived/lyrics/{id}-manual-word.json`), and a room's ASR model and sync mode changed
 nothing. Four levels, because the fix spans four: the pure param reads (`steps.api`) — what counts as a pin,
@@ -123,9 +123,9 @@ def test_a_re_picked_candidate_keeps_the_label_and_tier_it_was_written_under(
     ref: str, label: str, tier: Tier
 ) -> None:
     """`_write`'s ref shape read back: the label drives core's `textSource`, the tier what the text is
-    inside the job. A machine track under EITHER worker's key stays MACHINE (review r1: the old
-    `captions-auto` key read back as a CANDIDATE), though the frame now sends ANY pin's `textConfidence`
-    `high` (W3; `test_a_re_picked_machine_caption_goes_out_as_the_persons_claim`)."""
+    inside the job. A machine track under EITHER worker's key stays MACHINE (the old
+    `captions-auto` key once read back as a CANDIDATE), though the frame now sends ANY pin's `textConfidence`
+    `high` (`test_a_re_picked_machine_caption_goes_out_as_the_persons_claim`)."""
     from encore_worker.steps.align_text import _pinned_label
     from encore_worker.steps.records import tier_of_label
 
@@ -143,7 +143,7 @@ def pinned_search(*pool: Candidate) -> Search:
 
 def test_a_refused_pin_gives_up_without_transcribing() -> None:
     """ "GiveUp only after ASR" is about concluding a song has NO WORDS. A pin concludes nothing about the
-    song: an automatic answer in place of the person's text is the H5 bug."""
+    song: an automatic answer in place of the person's text is the bug."""
     search = pinned_search(Candidate(tier=Tier.CANDIDATE, label="manual"))
     first = search.begin()
     assert isinstance(first, Try) and "pinned" in first.why
@@ -194,7 +194,7 @@ def test_line_only_still_runs_the_asr_fallback_after_a_refusal() -> None:
 
 
 async def test_a_paste_is_the_only_text_and_publishes_under_the_pinned_ref() -> None:
-    """The headline H5 failure: the paste used to be ignored and the providers searched instead."""
+    """The headline failure: the paste used to be ignored and the providers searched instead."""
     fake = Fake(provider=lrc(), authored=lrc("captions:authored"), pinned=pasted_text(), reports=[CLEAN])
     outcome = await run_align(job(pinnedRef=MANUAL, pinnedText=PASTE), fake)
 
@@ -275,7 +275,7 @@ async def test_lines_mode_does_not_apply_to_a_pin() -> None:
 
 
 async def test_lines_mode_on_a_song_with_no_stem_aligns_and_says_why() -> None:
-    """Review W1 r1. The line-sync rung's sheet gate reads a sheet's claimed spans against the singing; on
+    """The line-sync rung's sheet gate reads a sheet's claimed spans against the singing; on
     the MIX the band fills every silence (39/416 right texts pass, 3/320 wrong: measured), so `lines` on a
     stemless song refused nearly every correct sheet for a transcript or no lyrics. It is aligned as forced
     there, under the forced path's own wrong-text gate, and the facts say what ran."""
@@ -424,7 +424,7 @@ def starts_near_truth(lines: list[dict[str, Any]], phrases: Sequence[Phrase], wi
 def test_a_paste_is_decoded_blind_and_written_to_the_manual_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """THE H5 fix end to end: the paste is the only text, decoded blind on the stem's emissions (the global
+    """THE fix end to end: the paste is the only text, decoded blind on the stem's emissions (the global
     engine, every gate), and the accepted document lands at the ref core pinned, and nowhere else."""
     rig = Rig(tmp_path, monkeypatch)
     outcome, spy = rig.run(pinnedRef=MANUAL, pinnedText=PASTE)
@@ -469,9 +469,9 @@ def test_a_stored_candidate_is_re_timed_in_place_keeping_its_provenance(
 def test_a_re_picked_machine_caption_goes_out_as_the_persons_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, source: str, tier: Tier
 ) -> None:
-    """W3 (the orchestrator's decision after W1: the old worker's pin). Through the real steps and the real
+    """The old worker's pin. Through the real steps and the real
     frame builder: a re-picked machine caption or transcript is re-timed AT ITS TIER (the record says what
-    the text is) and sent to core as `high` words, where W1 sent the tier's `low`."""
+    the text is) and sent to core as `high` words, where an earlier version sent the tier's `low`."""
     from encore_worker.__main__ import _align_completion
 
     rig = Rig(tmp_path, monkeypatch)
@@ -493,13 +493,13 @@ def test_a_re_picked_machine_caption_goes_out_as_the_persons_claim(
 def test_a_pin_the_lexical_gate_refused_is_published_but_never_sent_as_a_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r1, the H3 threat through the real steps: a person pastes words the stem does not sing (here
+    """The wrong-paste threat through the real steps: a person pastes words the stem does not sing (here
     a French text on a matrix singing `UNIQUE` — the same shape as re-picking YouTube's machine-translated
     `en` track). The gate does not refuse a pin — a person chose it — so it publishes, every line `low` and
     the document `low`. What must NOT happen is core reading it as a verified claim: a pin's `textConfidence`
     is `high`, and before this the worker's own measurement survived only in `timingConfidence`, which core's
     ranking never reads, so `isAuthoritativeText` was true and the label dropped its "not verified" mark.
-    The verdict rides on `vouched`, and `textConfidence` keeps saying who chose the words (W3 review r2)."""
+    The verdict rides on `vouched`, and `textConfidence` keeps saying who chose the words."""
     from encore_worker.__main__ import _align_completion
     from tests.test_lexical import FRENCH
 
@@ -522,7 +522,7 @@ def test_a_pin_the_lexical_gate_refused_is_published_but_never_sent_as_a_claim(
 def test_a_re_pick_re_times_the_whole_text_even_when_the_stored_document_lost_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review W1 r1. The global engine's document holds only the lines it TIMED (a never-sung drop, a row
+    """The global engine's document holds only the lines it TIMED (a never-sung drop, a row
     with no alignable character), and a re-pick re-times the stored document's words: the lost lines were
     lost from the person's chosen candidate for good. `_write` now records the whole text when lines went
     missing (`sourceLines`), and the re-pick reads it: here the stored candidate had timed 6 of 8 lines,
@@ -564,8 +564,8 @@ def test_a_document_that_lost_lines_records_its_whole_text_and_one_that_kept_the
 def test_a_paste_the_wrong_text_gate_would_refuse_still_publishes_graded_low(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A PERSON chose this text, so it is not judged a wrong text (the old worker never graded a pin, review
-    W1 r1). Over a stem that sings nothing, the wrong-text gate — on a stem the lexical lift since W3 —
+    """A PERSON chose this text, so it is not judged a wrong text (the old worker never graded a pin).
+    Over a stem that sings nothing, the wrong-text gate — on a stem the lexical lift —
     would refuse it: it used to publish NOTHING, and core went on showing the candidate the person had just
     replaced, the reason only on the trail. Now it publishes at the pinned ref, every line `low` and the
     document `low`, and still nothing else is searched for."""
@@ -637,8 +637,8 @@ def test_a_lost_lease_leaves_the_pinned_document_as_it_was(
 def test_lines_mode_publishes_the_captions_own_line_timings_with_no_word_decode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One emission pass on the stem, for the rung's checks — the words are sung (the lexical lift, review W1
-    r2) where the claims put them (the text's blind decode, W3) — and the captions' own lines published: no
+    """One emission pass on the stem, for the rung's checks — the words are sung (the lexical lift)
+    where the claims put them (the text's blind decode) — and the captions' own lines published: no
     word timing is kept."""
     rig = Rig(tmp_path, monkeypatch)
     outcome, spy = rig.run(syncMode="lines")
@@ -654,7 +654,7 @@ def test_lines_mode_publishes_the_captions_own_line_timings_with_no_word_decode(
 def test_lines_mode_publishes_sung_captions_whose_envelope_the_sheet_gate_cannot_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 through the whole job. The sheet-span gate refused 107 of 320 right texts under `syncMode=lines`
+    """Through the whole job. The sheet-span gate refused 107 of 320 right texts under `syncMode=lines`
     (truth 4/32), reading only the stem's activity envelope. Here that envelope is silent while the
     emission matrix sings every caption where it is claimed: the text's own blind decode is the timing
     witness, and the captions publish at attempt 1 on their own lines."""
@@ -685,7 +685,7 @@ TRANSLATED = [
 def test_lines_mode_refuses_a_same_video_translation_the_sheet_gate_passes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review W1 r2. A caption track of THIS video has timings that describe this audio whatever its words
+    """A caption track of THIS video has timings that describe this audio whatever its words
     say, so the sheet-span gate passes an uploader's translation, or YouTube's machine-translated track —
     and the rung published it. The lexical check reads the words on the stem's matrix, refuses the text,
     and the ladder moves on (here to the transcript, which line-syncs on its own spans)."""
@@ -740,7 +740,7 @@ def test_lines_mode_with_no_stem_aligns_the_captions_on_the_mix(
 def test_lines_mode_fails_the_job_on_audio_the_machinery_cannot_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review M7 under `syncMode=lines`, where the sheet gate is the ONLY reader of the audio: a file ffmpeg
+    """Under `syncMode=lines`, where the sheet gate is the ONLY reader of the audio: a file ffmpeg
     will not decode is the machinery's fault, not the text's. It used to come back as the gate's "not
     measured" None for every text alike (3 declines), and the ladder ran on into whisper and a published
     transcript, or "no lyrics", for a song nothing had measured. Now it fails the job, retryable."""

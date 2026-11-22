@@ -22,19 +22,19 @@ from encore_worker.domain.lyrics.search import (
 
 CLEAN = TimingReport(words=200, coverage=1.0, duration_sec=200.0)
 INCOHERENT = TimingReport(words=200, coverage=1.0, duration_sec=200.0, out_of_order=5)
-#: WINDOWED, the engine that reads ALIGN_ON_MIX: the global one accepts thin coverage (review H2).
+#: WINDOWED, the engine that reads ALIGN_ON_MIX: the global one accepts thin coverage.
 THIN = TimingReport(words=50, coverage=0.3, duration_sec=200.0, engine=Engine.WINDOWED)
 NOTHING = TimingReport(words=0, coverage=0.0)
-#: What a LINE_SYNC attempt measures when it commits: lines, no words (review M1).
+#: What a LINE_SYNC attempt measures when it commits: lines, no words.
 LINE_SYNCED = TimingReport(coverage=0.9, duration_sec=200.0, engine=Engine.LINE_SYNC, lines=30)
 REFUSED = TimingReport(duration_sec=200.0, refused="envelope gate refused: blind r=0.11 @ +4.20s")
-#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's own claims (W4):
+#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's own claims:
 #: 30 lines, so the line document above times as many. The one shape where the claims get a turn against a
 #: document that could have published.
 UNRELATED_WORDS = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=30, claims_related=False)
 #: The same document, corroborated by its claims: nothing to compare, and its words are the extra evidence.
 RELATED_WORDS = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=30, claims_related=True)
-#: The LINE_SYNC rung's own gate turning the SHEET down (W3): its decode does not hear the lines where the
+#: The LINE_SYNC rung's own gate turning the SHEET down: its decode does not hear the lines where the
 #: sheet claims them. Not a verdict on the words — the word document passed the same lexical gate.
 LINE_REFUSED = TimingReport(
     duration_sec=200.0,
@@ -119,7 +119,7 @@ def test_no_vocals_stem_means_align_on_mix_is_never_offered() -> None:
 
 
 def test_thin_coverage_on_the_global_engine_commits_the_first_attempt() -> None:
-    """H2: no mix re-decode can replace a global stem document — it is committed as it stands."""
+    """No mix re-decode can replace a global stem document — it is committed as it stands."""
     search = Search(pool=[lrc()])
     first = search.begin()
     assert isinstance(first, Try) and first.serial == 1
@@ -127,11 +127,11 @@ def test_thin_coverage_on_the_global_engine_commits_the_first_attempt() -> None:
     assert isinstance(step, Commit) and (step.index, step.serial) == (first.index, 1)
 
 
-# ── line sync commits (review M1) ────────────────────────────────────────────────────────────────
+# ── line sync commits ────────────────────────────────────────────────────────────────────────────
 
 
 def test_line_sync_commits() -> None:
-    """THE M1 test at Search level: an incoherent word document degrades to LINE_SYNC, and the line
+    """THE line-sync test at Search level: an incoherent word document degrades to LINE_SYNC, and the line
     document that attempt produced is COMMITTED — it used to measure `usable=False` (no words), so the
     search moved on and every out-of-order document dropped its whole text."""
     search = Search(pool=[lrc(), asr()])
@@ -155,11 +155,11 @@ def test_a_line_sync_that_produced_nothing_moves_on_with_an_honest_reason() -> N
     assert isinstance(reason, str) and "carries no line timings" not in reason
 
 
-# ── the cross-kind comparison (W4, carried out of W2) ────────────────────────────────────────────
+# ── the cross-kind comparison ────────────────────────────────────────────────────────────────────
 
 
 def test_a_line_document_replaces_a_word_document_nothing_related_to_its_claims() -> None:
-    """The direction W2 left open: a word document and the line document of the SAME text used to publish
+    """The direction left open: a word document and the line document of the SAME text used to publish
     by arrival order, and the word document always arrived first. Now the rung is spent on the one defect
     measured against a second opinion rather than against the audio (`claims_related` False), and the line
     document — which IS those claims — replaces it by surviving its own gate."""
@@ -189,7 +189,7 @@ def test_a_word_document_its_claims_relate_never_asks_the_rung() -> None:
 
 def test_a_line_document_its_own_gate_refuses_goes_back_to_the_words_not_to_the_next_text() -> None:
     """A line refusal is a verdict on the SHEET'S CLOCK, not on the text: the word document it retried
-    already passed the same lexical gate on the same matrix. So best-so-far keeps the words (W1's terminal
+    already passed the same lexical gate on the same matrix. So best-so-far keeps the words (the terminal
     refusal rule is about the gate that refused the TEXT, and `decide` ends those before the rung)."""
     search = Search(pool=[lrc(), asr()])
     search.begin()
@@ -218,7 +218,7 @@ def test_a_half_stamped_sheet_does_not_replace_the_words_it_could_not_time() -> 
 
 def test_a_refused_text_moves_on_without_line_sync() -> None:
     """The wrong-text hole: a gate refusal used to read as NOTHING_TIMED, and a timed text then retried
-    LINE_SYNC — which, once M1 lets it commit, would publish the refused words."""
+    LINE_SYNC — which, now that it may commit, would publish the refused words."""
     search = Search(pool=[lrc(), asr()])
     search.begin()
     step = search.record(REFUSED)
@@ -231,7 +231,7 @@ def test_a_refused_text_moves_on_without_line_sync() -> None:
 
 
 def test_a_worse_retry_recommits_the_attempt_it_retried() -> None:
-    """H2's other half: the last attempt no longer wins by default. A mix retry covering LESS than the
+    """The other half: the last attempt no longer wins by default. A mix retry covering LESS than the
     stem attempt it retried loses to it, and the Commit names the stem attempt's serial."""
     search = Search(pool=[lrc()])
     search.begin()
@@ -270,7 +270,7 @@ MISPLACED_AND_THIN = TimingReport(
 
 
 def test_a_retry_that_does_not_improve_goes_back_and_tries_the_next_knob_from_the_kept_attempt() -> None:
-    """Best-so-far must not END the ladder (review W1 r1). The RESHIFT retry leaves the residual where it
+    """Best-so-far must not END the ladder. The RESHIFT retry leaves the residual where it
     was, so it loses to attempt 1 — and attempt 1 still has thin coverage, which the mix may fix. That
     retry is offered FROM attempt 1: the lost RESHIFT is spent (never re-offered) but not applied, so the
     mix attempt changes one thing relative to the attempt it must beat. It used to commit attempt 1 at
@@ -397,7 +397,7 @@ def test_asr_is_requested_at_most_once() -> None:
 
 
 def test_the_on_demand_asr_text_is_the_last_one_tried_and_nothing_is_tried_twice() -> None:
-    """Review s11: `extend` re-sorted the pool by tier, which put the ASR text BEFORE the machine captions
+    """Repro s11: `extend` re-sorted the pool by tier, which put the ASR text BEFORE the machine captions
     it ran after; when it declined, the cursor walked onto both machine attempts again. Every Try below
     reports nothing, the worst case, so each text spends its line-sync rung and moves on exactly once."""
     pool = [

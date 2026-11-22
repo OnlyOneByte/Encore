@@ -152,7 +152,7 @@ def test_builders_return_none_rather_than_raising_when_ml_is_absent() -> None:
     assert build_aligner(device="cpu") is None
 
 
-# ── typed machinery faults (review M7) ───────────────────────────────────────────────────────────
+# ── typed machinery faults ───────────────────────────────────────────────────────────────────────
 
 
 def fake_whisperx(
@@ -256,8 +256,8 @@ def test_a_ctc_kernel_that_is_gone_is_a_non_retryable_machinery_fault(
 
 
 def test_an_untimed_search_segment_declines_the_attempt_not_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Review W1 r2. The windowed aligner's contract check (every search segment needs a start) raised
-    `ModelUnavailable` — since M7 a non-retryable `InfraFault`, which fails the JOB. The shape is THIS text's
+    """The windowed aligner's contract check (every search segment needs a start) raised
+    `ModelUnavailable` — now a non-retryable `InfraFault`, which fails the JOB. The shape is THIS text's
     (`place.spread_over` leaves an untimed text as it is when the probe could not read a duration), so it
     must be what `_time_text_windowed` declines: a plain error, raised before any model is touched."""
     from encore_worker.adapters.ml import WhisperXAligner
@@ -295,16 +295,16 @@ def test_a_machinery_failure_is_typed_by_its_own_message(failed: Exception, kind
     assert type(failed).__name__ in str(fault) and str(failed) in str(fault)
 
 
-# ── the English bundle, per device and per operator (review §3 item 6b; W4b) ──────────────────────
+# ── the English bundle, per device and per operator (review §3 item 6b) ───────────────────────────
 
 
 def test_the_english_bundle_is_a_function_of_the_device() -> None:
-    """HuBERT-Large on EVERY device since W5's flip, because the exception table is still empty.
+    """HuBERT-Large on EVERY device since the flip, because the exception table is still empty.
 
     A pure function over a device string, like `transcriber_device`: the candidate bundles differ by three
     times in weights (1.2 vs 3.8 GB) and in seconds per song (4.3-8.6 vs 11.8-24 on MPS), so the shape has
     to admit a per-device answer even while today's answer is one name. `ALIGN_MODELS_BY_DEVICE` is EMPTY by
-    measurement rather than laziness: W5's flip is a BUNDLE result (32 songs x 16 modes at both bench
+    measurement rather than laziness: the flip is a BUNDLE result (32 songs x 16 modes at both bench
     levels) and nothing in it is a fact about MPS. HuBERT-XLarge is the entry the table must not grow,
     nobody having run it on CUDA."""
     from encore_worker.adapters.ml import ALIGN_MODELS_BY_DEVICE, DEFAULT_ALIGN_MODEL, default_align_model
@@ -318,10 +318,10 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
     )
 
     # AND THE CALIBRATION RECORD MAY NOT CONTRADICT THIS TABLE. `lexical` once said XL was "CUDA's default
-    # (`ml.ALIGN_MODELS_BY_DEVICE`...)" for a wave that had already reverted the flip, citing the now EMPTY
+    # (`ml.ALIGN_MODELS_BY_DEVICE`...)" after the flip had already been reverted, citing the now EMPTY
     # table as its evidence — so a CUDA operator concluded their box shipped XL on a mix wrong-text margin of
     # 0.0021. An empty table means nothing there may call any bundle a device's default. Read off the module
-    # SOURCE and not `__doc__`, because since W7b the record is the `CALIBRATED` table and its `#:` block
+    # SOURCE and not `__doc__`, because the record is now the `CALIBRATED` table and its `#:` block
     # rather than an essay in the docstring, and `#:` comments carry no `__doc__`.
     from encore_worker.domain.lyrics import language, lexical
 
@@ -334,8 +334,8 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
         "search over the whole module would pass on any incidental occurrence of the name"
     )
 
-    # AND THE XL PARAGRAPH MAY NOT READ AS A MEASUREMENT (W5's flip spec; W4b review r2 correctness-3 is the
-    # same defect one bundle over). W7c moved that paragraph into the DESIGN DOCUMENT the table now cites, so
+    # AND THE XL PARAGRAPH MAY NOT READ AS A MEASUREMENT (the flip's spec; the same defect once stood one
+    # bundle over). That paragraph lives in the DESIGN DOCUMENT the table now cites, so
     # the pair is checked where it lives: the code must still point at docs/arch/04-alignment.md §3.1, and
     # that section must still call XL a projection. Reading the code alone would pass on a pointer to a
     # section that had lost the caveat.
@@ -343,7 +343,7 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
 
     source = Path(inspect.getsourcefile(ml) or "").read_text(encoding="utf-8")
     # The slice is the `#:` RUN IMMEDIATELY ABOVE the assignment, walked back to, not the whole file before
-    # it (W7c review r1-correctness-3): the module docstring cites docs/arch/04-alignment.md §3.1 too, so a
+    # it: the module docstring cites docs/arch/04-alignment.md §3.1 too, so a
     # prefix window stayed true with this block deleted and the pointer it pins could be dropped silently.
     lines = source.splitlines()
     assignment = next(n for n, line in enumerate(lines) if line.startswith("ALIGN_MODELS_BY_DEVICE"))
@@ -372,8 +372,8 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
 def test_a_named_bundle_is_loaded_for_english_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """The knob names an ENGLISH bundle (HuBERT is LibriSpeech-trained), so it must not be pushed onto the
     XLSR fine-tune whisperx tables for German — that would align German text against an English vocabulary
-    and name the matrix a model that never saw the song. Dormant until W7 gives the language a value, wired
-    now so W7 cannot detonate it."""
+    and name the matrix a model that never saw the song. Dormant until routing gives the language a value,
+    wired now so routing cannot detonate it."""
     from encore_worker.adapters.ml import WhisperXAligner
 
     calls: list[object] = []
@@ -466,8 +466,8 @@ def test_the_composition_root_refuses_a_model_nothing_calibrated() -> None:
     assert "recalibrate with scripts/lift_gate.py" in str(raised.value), "the fix, not just the refusal"
     assert default_align_model("cpu") in str(raised.value), "and what leaving it unset would have loaded"
 
-    # AND THE REFUSAL IS REACHABLE FROM THE ENVIRONMENT, not only from a `Config` a test built (W5, which owed
-    # a proof that the knob and the check meet). The brief asked for the check at `Config.from_env` time; it
+    # AND THE REFUSAL IS REACHABLE FROM THE ENVIRONMENT, not only from a `Config` a test built (a proof
+    # that the knob and the check meet). The brief asked for the check at `Config.from_env` time; it
     # cannot live there — `host/` may not import `domain/` (`tests/test_layers.py`) — so what holds is that
     # the string a person exports survives parsing and reaches this refusal unchanged, which is the same
     # guarantee one layer out. Both spellings of the default are accepted, since `is_calibrated` is a lookup.
@@ -482,7 +482,7 @@ def test_the_composition_root_refuses_a_model_nothing_calibrated() -> None:
         "an unset knob is this device's default, not a refusal"
     )
 
-    # AND THE RESOLVED BUNDLE IS ON THE BOX'S RECORD (W4b review r1): nothing named it — not the startup
+    # AND THE RESOLVED BUNDLE IS ON THE BOX'S RECORD: nothing named it — not the startup
     # banner, not a job's evidence note — so a box whose `ENCORE_ALIGN_MODEL` was set could not be told from
     # one whose was not. `main` prints it beside ffmpeg's version, for the same reason. Read off the SOURCE
     # because the banner is three prints into a coroutine that probes hardware and starts DBOS, and the

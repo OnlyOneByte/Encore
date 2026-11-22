@@ -94,7 +94,7 @@ def test_the_registry_records_why_the_passthrough_was_removed() -> None:
     checkpoints will find this model again — it is fast, MIT, and its preset geometry verifies — and needs to
     know that none of those facts predicted whether it works.
 
-    W7c moved the MEASUREMENT into the benchmark document the comment cites, so both halves are checked: the
+    The MEASUREMENT lives in the benchmark document the comment cites, so both halves are checked: the
     registry still says PASSTHROUGH and still names the document, and that document still carries the rms
     figure. Asserting only the code would let a pointer survive the number it points at.
     """

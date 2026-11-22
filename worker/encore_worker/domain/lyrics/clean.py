@@ -102,7 +102,7 @@ def clean_indexed(
         text = cleaned_texts[index]
         if not text or index in dropped:
             continue
-        # A `CHORUS:` prefix loses the LABEL and keeps the line (review M11): the section's first line is
+        # A `CHORUS:` prefix loses the LABEL and keeps the line: the section's first line is
         # a real lyric, and Numb's authored captions label 17 of its 35 lines that way.
         labelled, text = text, without_section_label(text)
         if not text:  # pragma: no cover - the prefix pattern requires a non-space after the colon

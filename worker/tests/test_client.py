@@ -612,7 +612,7 @@ async def test_keepalive_emits_once_per_tick_with_time_injected() -> None:
 
 
 async def test_keepalive_repeats_the_steps_last_real_figure() -> None:
-    """The review's #978 must-fix 1: it sent pct=0 every 10 s between the real rises, so core saw
+    """The keepalive used to send pct=0 every 10 s between the real rises, so core saw
     [10, 0, 20, 0, …] and the phone bar ran back to the stage floor each time."""
     sock = FakeSocket()
     c = client(sock)
@@ -1015,7 +1015,7 @@ def test_every_action_has_a_keepalive_stage() -> None:
 
 
 async def test_a_step_reporter_called_from_dbos_s_loop_runs_on_the_clients() -> None:
-    """DBOS runs a workflow IT resumes (recovery at launch; the fork a requeued failure runs, review W1 r1)
+    """DBOS runs a workflow IT resumes (recovery at launch; the fork a requeued failure runs)
     on its own background loop, in another thread. The socket, the ownership event and every future the
     client awaits belong to the loop it serves on, so a step's report must be handed across: awaited from
     the other loop, a send failed silently and a stale-standing ownership check raised."""

@@ -126,8 +126,7 @@ def test_a_huge_star_penalty_reproduces_the_plain_decode() -> None:
 
 
 #: A song whose first character lands on FRAME 0 — the one place the superset property used to fail, target
-#: position 0 always being a star and trellis state 1 therefore being it (`_Arcs.entry`; review W9
-#: r1-correctness-3).
+#: position 0 always being a star and trellis state 1 therefore being it (`_Arcs.entry`).
 FROM_FRAME_ZERO = (("come and fly away", 0.0, 2.0), ("carry me home", 2.5, 4.0))
 
 
@@ -178,7 +177,7 @@ def one_frame_each(columns: list[int], width: int, hit: float = 0.99) -> np.ndar
 def test_a_star_bypass_between_identical_boundary_letters_keeps_the_blank_between_them() -> None:
     """The star's SECOND bypass (character before -> character after) is an illegal CTC transition where the
     two characters are the same label, and `_compile`'s `ids[position - 1] != ids[position + 1]` is the one
-    line that withholds it. Relaxing that to `if position:` left 93 tests green (review W9 r2-tests-13).
+    line that withholds it. Relaxing that to `if position:` left 93 tests green.
 
     Here the first line ends on the letter the second begins with, and the matrix holds exactly the frames
     the legal path needs: with the arc withheld the decode is that path, and with it granted the two
@@ -296,7 +295,7 @@ def test_a_skip_that_is_not_a_run_of_these_targets_is_refused() -> None:
 def test_a_backpointer_naming_an_arc_the_graph_never_compiled_is_refused() -> None:
     """A backpointer at or above `_FIRST_ARC_CODE` is only written where arcs exist, so the traceback can
     never meet one without them — and the fallback it used to carry (keep the state, call the tag -1) would
-    turn that broken invariant into a silently wrong path rather than a refusal (review W9 r2-tests-16).
+    turn that broken invariant into a silently wrong path rather than a refusal.
 
     Read through `_traceback` because that is the only way to forge the state `align` cannot produce.
     """

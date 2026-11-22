@@ -1,4 +1,4 @@
-"""Ad-libs and echo tails: `domain/lyrics/parts.py` and the `adlibs` arm (review §3.13, PLAN W5).
+"""Ad-libs and echo tails: `domain/lyrics/parts.py` and the `adlibs` arm (review §3.13).
 
 THE PROPERTY EVERY TEST HERE IS A FACE OF: the arm changes WHAT THE DECODE IS ASKED TO ALIGN and nothing
 about what is published. Every word of the served text comes back, in its own line, in order, with no span
@@ -270,7 +270,7 @@ def test_a_host_whose_lead_text_the_decode_dropped_is_dropped_too() -> None:
 
 
 def test_an_echo_whose_host_was_not_published_is_dropped_with_it() -> None:
-    """W5 review r1-correctness-5. An R2 echo is exempt from the never-sung rule but its HOST is not, and an
+    """An R2 echo is exempt from the never-sung rule but its HOST is not, and an
     R1/plain host can also be dropped by `generate` for carrying no alignable character. With the anchor
     gone the echo was restored at the document FLOOR (0.0, since nothing had been emitted yet) with
     `score=0.0` — a published line parked across the whole lead-in, and a zero on a log-probability scale is
@@ -289,7 +289,7 @@ def test_an_aside_is_not_held_out_of_a_line_the_matrix_cannot_align_without_it()
     A letter the dictionary lacks is dropped by `generate` exactly as a `♪` is, so a line whose lead words
     are all out-of-vocabulary passed the letter test, `generate` emitted nothing for the index and
     `restored` published nothing: the arm LOST a line the default path publishes. With the matrix in hand
-    the test is `generate.alignable_chars`. The lead is HANGUL since W7, and the substitution is the point:
+    the test is `generate.alignable_chars`. The lead is HANGUL now, and the substitution is the point:
     `ñññ` is NFKD-folded to `nnn` and aligns now, so an accented lead is no longer unalignable on a Latin
     vocabulary — a script the vocabulary has no column for is what "out of vocabulary" still means."""
     texts = ["aaa bbb", "가나다 (ccc ddd)", "eee fff"]
@@ -304,7 +304,7 @@ def test_an_aside_is_not_held_out_of_a_line_the_matrix_cannot_align_without_it()
 
 
 def test_an_accented_lead_is_alignable_because_the_filter_folds_it() -> None:
-    """The other half of the fixture above, as its own test (W7, review §3 item 9).
+    """The other half of the fixture above, as its own test (review §3 item 9).
 
     `ñññ` has no column in a 26-letter Latin vocabulary and used to be dropped, so `parts.split` read the
     line as "nothing left to align" and kept its aside. Since the target filter folds NFKD, `ñññ` IS `nnn` to
@@ -325,7 +325,7 @@ def test_unmeasured_lines_reads_the_document_not_a_set_kept_beside_it() -> None:
 
 
 def test_a_claim_adopted_line_is_unmeasured_too_arm_or_no_arm() -> None:
-    """W5 review r2-spec-13. The docstring said "every R2 echo, and nothing else today" and the call site said
+    """The docstring said "every R2 echo, and nothing else today" and the call site said
     "empty without the arm": both were false on the DEFAULT path, because `generate.adopted_line` gives every
     word `OOV_CONFIDENCE` provenance — the claim's span copied, not heard — which is this predicate exactly.
     Pinned so the sentence and the set stay in step; no behaviour rides on it (the adopted branch of
@@ -336,7 +336,7 @@ def test_a_claim_adopted_line_is_unmeasured_too_arm_or_no_arm() -> None:
 
 
 def test_a_reopened_line_is_still_measured_where_an_adopted_one_is_not() -> None:
-    """W8a's remedy for a decode that opened past its claim: only the opening boundary moves.
+    """The remedy for a decode that opened past its claim: only the opening boundary moves.
 
     The contrast is the whole reason `reopened_line` exists beside `adopted_line`. An adopted span is
     unmeasured, and the bench counts its words as interpolated — `w7-jamendo-word-aligned-not-down` would
@@ -359,7 +359,7 @@ def test_a_reopened_line_is_still_measured_where_an_adopted_one_is_not() -> None
 
 
 def test_a_line_with_no_other_aligned_word_is_not_re_opened_at_all() -> None:
-    """Review r2-spec-12 / r2-tests-16: the re-opening marks the FIRST word `CUE_OPENED`, so on a one-word cue
+    """The re-opening marks the FIRST word `CUE_OPENED`, so on a one-word cue
     it removes the line's last aligned word and `unmeasured_lines` reports it — `align_steps.line_confidence`
     then grades that line `low` and the TV shows it with no word wipe, which is the opposite of the property
     the rule exists for. A one-word re-opening is an adoption with a kept end; `adopted_line` is that.
@@ -507,7 +507,7 @@ def test_the_arm_publishes_every_served_word_in_order(
 
 #: A served line whose LEAD words are outside the matrix's vocabulary while its parenthetical is inside it,
 #: sung in the gap after the song's last lead line. Mutating the step's `parts.split(line_texts,
-#: emissions=emissions)` back to `parts.split(line_texts)` left the whole suite green. HANGUL since W7.
+#: emissions=emissions)` back to `parts.split(line_texts)` left the whole suite green. HANGUL now.
 OOV_LEAD = "가나다 (yeah yeah)"
 OOV_PHRASE = ("yeah yeah", 23.0, 24.0)
 
@@ -515,7 +515,7 @@ OOV_PHRASE = ("yeah yeah", 23.0, 24.0)
 def test_the_arm_still_publishes_a_line_whose_lead_the_matrix_cannot_align(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The half of r1-tests-20 that lived only in `parts`' own test: the step must hand `split` the MATRIX.
+    """The half of the coverage that lived only in `parts`' own test: the step must hand `split` the MATRIX.
     Held out on the letter test alone, this line's lead is `ñññ` — nothing `generate` can target — so
     `generate` emits no line for the index and `restored` publishes nothing: the arm LOSES a line the default
     path publishes. With the matrix, R1 refuses to hold the aside out and the whole line is a target."""
@@ -531,7 +531,7 @@ def test_the_arm_still_publishes_a_line_whose_lead_the_matrix_cannot_align(
 
 
 def test_a_line_no_decode_placed_is_graded_low(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """W6's TV consumer then renders it line-level with no word wipe. A demotion only."""
+    """The TV consumer then renders it line-level with no word wipe. A demotion only."""
     doc = _published(_rig(tmp_path, monkeypatch, arm=True))
     grades = {line["text"]: line["confidence"] for line in doc["lines"]}
     assert grades["fly away"] == "low"
@@ -559,7 +559,7 @@ def test_without_the_arm_the_adlib_words_are_decoded_and_nothing_says_ad_libs(
     assert "ad-libs:" not in notes
 
 
-# ── the unit rule reaches R1's own question (review r2-correctness-5) ─────────────────────────────────
+# ── the unit rule reaches R1's own question ───────────────────────────────────────────────────────────
 
 
 def test_a_dense_script_line_is_split_and_restored_on_the_units_own_words() -> None:

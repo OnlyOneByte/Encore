@@ -59,7 +59,7 @@ FILESYSTEM_IMPORTS = frozenset({"importlib.resources", "pathlib", "wave", "os", 
 
 #: Every THIRD-PARTY package `domain/` imports -> what it reads off disk the first time it is used, `""` for
 #: one that reads nothing. `FILESYSTEM_IMPORTS` sees stdlib spellings only, so a backend that opens a
-#: packaged table is invisible to it (XA-15; review r2-tests-16).
+#: packaged table is invisible to it (XA-15).
 DOMAIN_BACKENDS: dict[str, str] = {
     "numpy": "",
     "pyloudnorm": "",
@@ -227,7 +227,7 @@ def _third_party_imports(tree: ast.Module) -> set[str]:
 def test_every_third_party_backend_in_domain_declares_what_it_reads() -> None:
     """XA-15's filesystem clause, through the door a stdlib spelling cannot be: `romanize` and `units` load
     a MeCab dictionary, uroman's tables and OpenCC's tables through PACKAGES, so the guard above saw neither
-    module (review r2-tests-16). Every third-party import in `domain/` says what it reads, and a module
+    module. Every third-party import in `domain/` says what it reads, and a module
     that builds a file-backed one is named with its data.
     """
     file_backed = {name for name, reads in DOMAIN_BACKENDS.items() if reads}

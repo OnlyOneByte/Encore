@@ -2,10 +2,10 @@
 
 PURE AND HERMETIC by construction — `claimmap` takes two mappings of seconds and one number, so a case
 here is a series, not a song. The step-level wiring (which consumers read the mapped claims, what reaches
-the trail) is pinned in `test_align_provenance.py`; the corpus numbers are the wave's bench row.
+the trail) is pinned in `test_align_provenance.py`; the corpus numbers are the bench's row.
 
-THE ASYMMETRY EVERY CASE IS WRITTEN AGAINST (review H1, §3.2): refusing a good map costs the raw clock the
-worker had before W2, while applying a bad one moves a sheet that was already right. So the refusals below
+THE ASYMMETRY EVERY CASE IS WRITTEN AGAINST (review §3.2): refusing a good map costs the raw clock the
+worker had without it, while applying a bad one moves a sheet that was already right. So the refusals below
 — too few pairs, a scattered sheet, a misordered one, a tempo out of band, a gain under the margin — carry
 as much weight as the fixes.
 """
@@ -73,7 +73,7 @@ def test_an_offset_with_jitter_is_still_mapped() -> None:
 
     Lines outside the tolerance simply do not vote. The winner here is the SLOPE candidate, on a hairline
     0.05% it reads out of the noise, which is `reconcile`'s own rule — adopt the scale only if it explains
-    strictly more lines — kept so one wave cannot make the map and the verdict disagree about a drift.
+    strictly more lines — kept so one change cannot make the map and the verdict disagree about a drift.
     `reconcile.MAX_SCALE_DRIFT` bounds such a fit at 5%, where it either wins the vote or loses it."""
     given = jittered(claims(offset=1.5), 0.3, seed=7)
     got = cm.consensus(OURS, given)
@@ -85,9 +85,9 @@ def test_an_offset_with_jitter_is_still_mapped() -> None:
 
 
 def test_two_wild_stamps_do_not_move_the_fit() -> None:
-    """The estimator is a MEDIAN, and that is load-bearing (W2 review r1). A 40-line sheet 1.5 s late with two
-    stamps 60 s wrong is the ordinary LRC defect (`parse_lrc`'s stacked timestamps, a trailing credit cue,
-    review L4): the median offset is +1.50 and explains 38 of the 40 lines, while the MEAN of the same
+    """The estimator is a MEDIAN, and that is load-bearing. A 40-line sheet 1.5 s late with two
+    stamps 60 s wrong is the ordinary LRC defect (`parse_lrc`'s stacked timestamps, a trailing credit cue):
+    the median offset is +1.50 and explains 38 of the 40 lines, while the MEAN of the same
     residuals is +4.50 and explains none of them — so a mean would lose the vote and leave the sheet 1.5 s
     late, which is repro s8, the defect this module exists for. Without this case the swap passes the suite.
     """
@@ -131,7 +131,7 @@ def test_a_partial_sheet_maps_every_claim_from_the_lines_it_covers() -> None:
 
 
 def test_the_envelope_lag_wins_a_tie_with_the_decode_median() -> None:
-    """The preference order, which is the review's objection answered: where the audio's own measurement
+    """The preference order: where the audio's own measurement
     and the fit against our decode explain the same lines, the one that does not read our decode applies."""
     late = claims(offset=1.5)
     got = cm.consensus(OURS, late, envelope_lag=1.5)
@@ -207,7 +207,7 @@ def test_a_misordered_sheet_is_refused() -> None:
 def test_a_tempo_further_out_than_the_band_is_dropped() -> None:
     """|scale - 1| beyond `reconcile.MAX_SCALE_DRIFT` is a wrong pairing, not a faster master: the slope
     candidate is dropped (leaving the median, which cannot explain a drift) rather than clamped onto the
-    boundary. The estimator is `reconcile.theil_sen` — ONE implementation, shared with the verdict (M4)."""
+    boundary. The estimator is `reconcile.theil_sen` — ONE implementation, shared with the verdict."""
     assert rc.theil_sen([(t, 1.3 * t) for t in (10.0, 40.0, 70.0, 100.0, 130.0)]) is None
     got = cm.consensus(OURS, claims(scale=1.3))
     assert not got.applied, got.why
@@ -253,13 +253,13 @@ def test_the_best_of_several_poor_candidates_is_not_a_clock() -> None:
 
 
 def test_a_bimodal_decode_is_mapped_by_its_mode_where_the_median_lands_in_the_gap() -> None:
-    """W4 review r1's regression, as the vote sees it: `never-be-alone` off3's own 44 differences.
+    """The exact-clock regression, as the vote sees it: `never-be-alone` off3's own 44 differences.
 
     THE SHAPE, measured (the module docstring's WHY THE MODE): a song whose lines repeat, so the global decode
     smears 20 of them 4-9 s away, three lines land absurdly late, and 17 sit exactly on the sheet's +3 s
     displacement. The MEDIAN of that lands at -3.73 s — in the gap between the two modes — and explains 4 of
     44, under `MIN_INLIER_SHARE`, so the vote abstained and every window repair after it worked 3 s off the
-    singing (44 gross lines, where W4-start's clock had 0). The densest window reads -3.07 s and explains 17.
+    singing (44 gross lines, where the earlier clock had 0). The densest window reads -3.07 s and explains 17.
     """
     deltas = [
         -8.87, -8.63, -8.43, -8.01, -7.59, -7.49, -7.43, -6.75, -6.71, -6.67, -6.65, -6.61, -6.57, -6.47,
@@ -312,7 +312,7 @@ def test_a_two_line_cluster_on_a_short_sheet_is_not_a_mode(monkeypatch: pytest.M
 
 
 def test_the_share_of_the_margin_binds_from_sixty_pairs() -> None:
-    """The other half of `MIN_GAIN_SHARE`'s comment, measured (W2 review r1): `int(0.05 x pairs)` passes the
+    """The other half of `MIN_GAIN_SHARE`'s comment, measured: `int(0.05 x pairs)` passes the
     2-line floor at exactly 60 pairs, and 311 of the corpus's 1056 committed cases are that big.
 
     ONE SERIES, TWO LENGTHS. Two lines sit 0.44 s out and the rest exactly on our clock, with an envelope lag
@@ -473,7 +473,7 @@ def test_the_piecewise_budget_is_a_ceiling_a_sheet_can_actually_reach(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The other half: a sheet whose steps the recursion CAN cut reaches exactly `MAX_PIECES` legs and stops
-    there, and the budget is what stops it (W2 review r2 — nothing pinned the constant's value).
+    there, and the budget is what stops it (nothing else pins the constant's value).
 
     Four steps 4.0 s apart at lines 11/22/33, so each half of the recursion has a cut worth making: 4 legs
     and 44 of 45 lines explained. Raising the budget to 8 changes nothing — the sheet has four legs and no

@@ -234,11 +234,11 @@ def test_the_provider_can_be_turned_off() -> None:
     assert build_provider(enabled=True) is not None
 
 
-# ── review L4: the four things parse_lrc got wrong ────────────────────────────────────────────────
+# ── the four things parse_lrc got wrong ───────────────────────────────────────────────────────────
 
 
 def test_a_timestamp_only_line_ends_the_line_before_it() -> None:
-    """L4's measured defect. A bare stamp is how a sheet writes "vocals stop here" before an instrumental
+    """The measured defect. A bare stamp is how a sheet writes "vocals stop here" before an instrumental
     break; skipping it ran the previous line's interpolated end to the next SUNG line — one claim window
     ran 14-40 s across a break and R1's claim-envelope correlation fell from 0.87 to 0.27."""
     cues = parse_lrc("[00:12.00] last line of the verse\n[00:14.00]\n[00:40.00] after the break\n")
@@ -274,12 +274,12 @@ def test_a2_word_tags_become_word_claims_rather_than_text() -> None:
     assert isinstance(words, tuple)
     assert [(w["word"], w["start"]) for w in words] == [("aaa", 90.5), ("bbb", 91.0), ("ccc", 91.8)]
     # The LAST word is closed by the LINE's end — the next event's start — exactly as the line is, because
-    # `measure` reads a missing end as equal to the start and that is a zero-width window (W5 r1-spec-16).
+    # `measure` reads a missing end as equal to the start and that is a zero-width window.
     assert [w.get("end") for w in words] == [91.0, 91.8, 95.0]
 
 
 def test_the_trailing_end_tag_of_an_a2_line_closes_its_last_word() -> None:
-    """THE STANDARD ENHANCED-LRC SHAPE (W5 review r1-spec-16): a line ends with a final stamp that marks
+    """THE STANDARD ENHANCED-LRC SHAPE: a line ends with a final stamp that marks
     the last word's END. The run after it holds no token, and dropping that run threw the stamp away, so
     every A2 line's last word claim was a zero-width window — while `cli._inline_words` closes its last
     word at the cue end for exactly this reason."""
@@ -307,8 +307,8 @@ def test_a_line_with_no_word_tags_claims_no_word_timing() -> None:
 
 
 def test_a_tag_that_times_a_run_of_words_publishes_no_zero_width_claim() -> None:
-    """W5 review r2-correctness-5 / r2-spec-8, and the identical defect round 1 fixed in the sibling parser
-    (`cli._inline_words`, r1-tests-19). Every token after the first in a tagged run was given the PREVIOUS
+    """The identical defect was fixed earlier in the sibling parser
+    (`cli._inline_words`). Every token after the first in a tagged run was given the PREVIOUS
     token's start and ended where the next began, so all but the last read `start == end` — and the TV lights
     a word while `start <= pos < end`, which a zero-width span never satisfies. The run is apportioned across
     the room to the next onset by character count instead. The untagged HEAD run is the same shape, opening at
@@ -328,7 +328,7 @@ def test_a_tag_that_times_a_run_of_words_publishes_no_zero_width_claim() -> None
 
 
 def test_a_stacked_lines_word_claims_belong_to_its_first_stamp_only() -> None:
-    """W5 review r2-tests-18. `<mm:ss.xx>` is an ABSOLUTE time, so reading the tags once per stamp gave the
+    """`<mm:ss.xx>` is an ABSOLUTE time, so reading the tags once per stamp gave the
     65 s occurrence of a stacked line the 10 s occurrence's word claims verbatim — word times 55 s before
     their own line's start, which is the non-monotone claim stream the sort exists to prevent. The repeat
     stays LINE-timed: nobody timed those words."""
@@ -376,7 +376,7 @@ def test_an_unparseable_offset_is_ignored_rather_than_fatal() -> None:
     assert parse_lrc("[offset:later]\n[00:10.00] a\n")[0]["start"] == 10.0
 
 
-# ── review L5: an LRCLIB duration miss is retried without the duration ────────────────────────────
+# ── an LRCLIB duration miss is retried without the duration ───────────────────────────────────────
 
 
 class ScriptedOpener:
@@ -411,7 +411,7 @@ def missing() -> urllib.error.HTTPError:
 
 
 def test_a_duration_miss_is_retried_without_the_duration() -> None:
-    """Review L5. LRCLIB matches within ±2 s and the duration this worker measures is the UPLOAD's: a music
+    """LRCLIB matches within ±2 s and the duration this worker measures is the UPLOAD's: a music
     video with an intro, an outro or a spoken skit is minutes longer than the track, so the qualified
     lookup 404s and a perfectly good human sheet is one request away."""
     api, opener = scripted(missing(), json.dumps({"syncedLyrics": SYNCED}))

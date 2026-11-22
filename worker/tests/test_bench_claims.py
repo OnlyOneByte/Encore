@@ -1,6 +1,6 @@
 """`bench.py`, every mode through its real CLI: `--global --claims` now runs the SHIPPED `time_text`.
 
-WHY (review L7). `--global --claims` crashed with NameError `merged_pre` before printing its last row,
+WHY. `--global --claims` crashed with NameError `merged_pre` before printing its last row,
 and what it did print came from a hand reimplementation of R2 and adoption, not the shipped ladder.
 Nothing ran the script, so nothing noticed. This drives `main()` exactly as the command line does, over
 a synthetic song. The aligner is a fake whose emissions sing the song, and the decoder is the suite's
@@ -170,7 +170,7 @@ def test_offset_claims_are_diagnosed_on_the_trail_and_move_nothing(song: Path) -
     """The shipped design, measured through the bench: a +1 s sheet grades lines and names its offset,
     but the published starts are the decode's, identical to the truth-claims run's.
 
-    WHICH NUMBER NAMES THE OFFSET changed in W2 (review H1): the claim clock maps the sheet onto our clock
+    WHICH NUMBER NAMES THE OFFSET changed with the claim clock, which maps the sheet onto our clock
     before the first reconcile, so the VERDICT's own offset is what is left afterwards (`agree`, -0.04 s of
     onset lead) and the sheet's 1 s is the MAP's. Both are on the same trail line. What did not change is
     the half this test exists for: the claims still move no timing.

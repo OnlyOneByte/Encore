@@ -175,7 +175,7 @@ def test_no_turns_at_all_returns_the_document_unchanged() -> None:
 
 
 def test_a_duet_gets_an_abstract_part_per_line() -> None:
-    """Review M15: the TV reads `part`, never `speaker`, so this is the field that reaches a screen. The
+    """The TV reads `part`, never `speaker`, so this is the field that reaches a screen. The
     diarizer's own strings stay off the wire: parts are lettered by FIRST APPEARANCE."""
     doc = {
         "language": "en",

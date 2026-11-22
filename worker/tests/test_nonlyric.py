@@ -111,7 +111,7 @@ def test_what_is_not_a_header(line: str) -> None:
 
 
 def test_the_label_prefix_is_stripped_and_the_lyric_kept() -> None:
-    """Review M11's measured case: Numb's authored captions label 17 of 35 lines `CHORUS: `, which became
+    """The measured case: Numb's authored captions label 17 of 35 lines `CHORUS: `, which became
     17 fake words with onsets up to ~2.5 s early (bias-corrected ±250 ms 34.3% against 65.7% cleaned)."""
     assert without_section_label("CHORUS: I've become so numb") == "I've become so numb"
     assert without_section_label("CHORUS:  Become so tired") == "Become so tired"
@@ -142,7 +142,7 @@ def test_only_one_prefix_is_stripped() -> None:
 
 
 def noted(lines: list[str]) -> bool:
-    """`noted_track` with the parallel cleaned population it reads the convention off (r1-correctness-1)."""
+    """`noted_track` with the parallel cleaned population it reads the convention off."""
     return noted_track(lines, [clean.clean_line(line) for line in lines])
 
 
@@ -168,7 +168,7 @@ def test_a_track_that_does_not_mark_its_lyrics_is_not_one(lines: list[str]) -> N
     assert not noted(lines)
 
 
-# ── W5 review r1-correctness-1: the convention is read off the lines that have WORDS ──────────────
+# ── the convention is read off the lines that have WORDS ──────────────────────────────────────────
 
 #: The LRC/caption shape that stamps its intro and each instrumental break with bare notes and writes its
 #: lyrics plain. Three sung lines, five decorations — a very common provider-sheet convention.
@@ -202,7 +202,7 @@ def test_removing_a_wordless_noted_line_does_not_unmake_a_noted_track() -> None:
 
 
 def test_r3_can_be_left_out_for_a_text_a_person_typed() -> None:
-    """`author_marking=False` (r1-correctness-8): the pin path's paste keeps its unmarked lines, and the
+    """`author_marking=False`: the pin path's paste keeps its unmarked lines, and the
     ANCHORED rules still apply to it. Nine noted lines of eleven worded ones (0.818) so the track is over
     `NOTED_SHARE` and R3 really is the rule being switched off here."""
     raw = ["[Chorus]", *[f"♪ sung line {n} ♪" for n in range(9)], "a spoken aside"]
@@ -214,17 +214,17 @@ def test_r3_can_be_left_out_for_a_text_a_person_typed() -> None:
 def test_the_floor_sits_at_the_bottom_of_the_measured_population() -> None:
     """24 of the 32 bench songs note 0.000 of their lines and 8 note 0.8514–1.0000, so the floor has a whole
     empty band to sit in — and it sits at the BOTTOM of the population rather than in the middle of the band
-    (W5 review r2-correctness-1 + r2-spec-7, the two tests below). Tightening it past 0.8514 stops the rule
+    (the two tests below). Tightening it past 0.8514 stops the rule
     firing on hello (63/74) and the denominator artefact comes back; loosening it below 0.8 re-admits the
     partially-marked shapes, where the rule deletes real sung lines."""
     assert 0.8 <= nonlyric.NOTED_SHARE < 0.8514
 
 
-# ── W5 review r2-correctness-1 + r2-spec-7: the shapes that live in the unmeasured 0.5–0.85 region ─────
+# ── the shapes that live in the unmeasured 0.5–0.85 region ──────────────────────────────────────────────
 
 
 def test_a_track_that_marks_only_its_hook_keeps_its_unmarked_verses() -> None:
-    """r2-correctness-1's reproduction: an author who wraps the 11 hook lines in notes and writes the 9
+    """The hook-only reproduction: an author who wraps the 11 hook lines in notes and writes the 9
     verse lines plain. 11/20 = 0.550 — over the old 0.5 floor, so R3 fired and `clean_segments` returned 11
     segments for a 20-line text, every one of the 9 real sung verse lines gone with no per-line anchor."""
     raw = [*[f"♪ hook line {n} ♪" for n in range(11)], *[f"verse line {n}" for n in range(9)]]
@@ -235,7 +235,7 @@ def test_a_track_that_marks_only_its_hook_keeps_its_unmarked_verses() -> None:
 
 
 def test_a_note_bracketing_a_passage_keeps_the_middle_lines() -> None:
-    """r2-spec-7's reproduction: the SDH convention of one note OPENING a sung passage and one CLOSING it,
+    """The bracketing reproduction: the SDH convention of one note OPENING a sung passage and one CLOSING it,
     middles bare — 4 passages x 3 lines, 8 noted of 12 = 0.667, and R3 dropped the 4 middle lines (12
     served in, 8 out). The loss is text-side, so no acoustic rule can put those lines back."""
     raw = [line for group in range(4) for line in (f"♪ open {group}", f"middle {group}", f"close {group} ♪")]
@@ -246,7 +246,7 @@ def test_a_note_bracketing_a_passage_keeps_the_middle_lines() -> None:
 
 
 def test_a_noted_tracks_own_section_labels_do_not_dilute_its_marking() -> None:
-    """Found while raising the floor (W5 review r2-correctness-1): a `[Chorus]` label is not a sung line and
+    """Found while raising the floor: a `[Chorus]` label is not a sung line and
     carries no note, so counting it in R3's population made a LABELLED sheet read as less marked than the same
     sheet without labels. Measured on the bench's `headers` mode, which injects one label per section: hello's
     share fell 0.8514 -> 0.7500, bohemian-rhapsody's 0.8784 -> 0.7927, feel-my-heart's 0.8649 -> 0.7111 — the
@@ -364,7 +364,7 @@ def test_an_auto_caption_track_loses_its_music_markers_with_no_note_convention_t
 
 
 def test_the_kept_index_is_published_rather_than_reconstructible() -> None:
-    """`clean_indexed` exists because W5's rules are not all per-line: `noted_track` reads the whole track,
+    """`clean_indexed` exists because the rules are not all per-line: `noted_track` reads the whole track,
     so a caller re-deriving the kept set with `clean_line` alone (which the bench's `served_claims` did)
     would disagree with what the adapters serve."""
     segments = [

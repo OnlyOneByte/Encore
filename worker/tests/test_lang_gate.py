@@ -1,8 +1,8 @@
 """The LANGUAGE gate (`docs/benchmarks/forced-alignment/scripts/lang_gate.py`).
 
 It has unit tests for the reason `pool_gate.py` and the E2E harness beside it do: it carries decisive
-numbers of W7 — the 59-song fr/de/es reading that ships `lang-route-mix` DEFAULT-OFF, the `--folds` census
-that licenses the NFKD fold as a byte-level no-op on every row under `results/`, and M9's live blank proof —
+numbers — the 59-song fr/de/es reading that ships `lang-route-mix` DEFAULT-OFF, the `--folds` census
+that licenses the NFKD fold as a byte-level no-op on every row under `results/`, and the live blank proof —
 so a defect in `score`'s truth pairing, in `pooled`'s arithmetic or in `fold_census`' alphabet would move
 those verdicts silently, and one of them (`pooled`'s AAE) was in fact live.
 
@@ -101,7 +101,7 @@ def test_every_rate_is_recomputed_from_the_sums() -> None:
 
 
 def test_the_pooled_aae_is_over_the_words_and_the_mean_of_means_keeps_its_own_name() -> None:
-    """W7 review r2-tests-14: the only absolute error this emitted was `statistics.fmean` over the per-song
+    """The only absolute error this emitted was `statistics.fmean` over the per-song
     means, printed under a bare `AAE=` in the POOLED block and quoted as a pooled figure in
     `domain.lyrics.language.model_language` and in the README. On the committed 59-song sweep the two differ
     by a quarter of their value (186.0 ms per word against 235.8 per song, routed 388.7 against 540.0). Both
@@ -137,7 +137,7 @@ def test_the_committed_sweep_reproduces_both_statistics() -> None:
 
 
 def test_an_ascii_corpus_gains_nothing_which_is_what_licenses_every_recorded_row() -> None:
-    """The gate on the whole W7 fold: the English corpus's cleaned truth holds no non-ASCII letter, so the
+    """The gate on the whole NFKD fold: the English corpus's cleaned truth holds no non-ASCII letter, so the
     new target filter returns what the three inlined copies returned and no number under `results/` moves."""
     got = lang_gate.fold_census(["don't stop", "aaa bbb ccc"])
     assert got["now_aligned"] == {} and got["now_aligned_total"] == 0
@@ -153,7 +153,7 @@ def test_an_accented_corpus_is_the_population_the_fix_exists_for() -> None:
 
 
 def test_the_census_counts_letters_only_which_is_exactly_what_the_filter_folds() -> None:
-    """W7 review r2-spec-7: a census of LETTERS certified a fold that also reached the 953 non-letter
+    """A census of LETTERS certified a fold that also reached the 953 non-letter
     codepoints NFKD decomposes onto letters, so `™` became two character targets with nothing measuring it.
     `generate.char_ids` now folds letters alone; this is the clause that keeps the two in step."""
     from encore_worker.domain.lyrics.generate import char_ids
@@ -165,12 +165,12 @@ def test_the_census_counts_letters_only_which_is_exactly_what_the_filter_folds()
     assert char_ids("№", vocabulary, {0}) == []
 
 
-# ── review M9's live arms ─────────────────────────────────────────────────────────────────────────────
+# ── the blank's live arms ─────────────────────────────────────────────────────────────────────────────
 
 
 def test_the_unaware_arm_drops_both_fields_so_all_five_readers_fall_back() -> None:
-    """`blank = 0` was hard-coded in FIVE places that have to agree, and this arm is pre-W4 code running on a
-    post-W7 tree: dropping the two FIELDS moves all five at once through the `getattr` defaults the shipped
+    """`blank = 0` was hard-coded in FIVE places that have to agree, and this arm is old code running on a
+    new tree: dropping the two FIELDS moves all five at once through the `getattr` defaults the shipped
     readers still carry. Forcing only the kernel's integer is the `kernel` arm, which RAISES — which is what a
     half-threaded blank looks like and why the five had to move together."""
     import numpy as np

@@ -32,7 +32,7 @@ class FakeEmissions:
 
 
 #: `generate.Decoder`'s shape, as the fakes implement it — `blank` included, so a fake cannot pass a
-#: test that exists to prove the caller reads the matrix's blank column (review M9).
+#: test that exists to prove the caller reads the matrix's blank column.
 Decode = Decoder
 
 
@@ -260,8 +260,8 @@ def test_a_failing_window_decode_keeps_the_original() -> None:
 
 
 def test_a_raising_window_decode_is_reported_while_the_other_runs_still_repair() -> None:
-    """Kept originals, but COUNTED: a swallowed exception looked exactly like a repair nobody needed
-    (review L8). A window that is merely too tight is a skip, not a fault, and is not reported."""
+    """Kept originals, but COUNTED: a swallowed exception looked exactly like a repair nobody needed.
+    A window that is merely too tight is a skip, not a fault, and is not reported."""
     from encore_worker.domain.lyrics.generate import regenerate
 
     doc = gen(["fly away", "come home", "stay"])
@@ -313,7 +313,7 @@ def test_lead_never_produces_a_negative_or_inverted_span() -> None:
     assert all(s <= e for s, e, _sc in led2)
 
 
-# ── `trimmed`: the one geometric operation W6's bounded clamp needs (`align_geometry._pulled_end`) ──
+# ── `trimmed`: the one geometric operation the bounded clamp needs (`align_geometry._pulled_end`) ──
 
 
 def a_line(*words: tuple[str, float, float], start: float, end: float) -> Line:
@@ -333,7 +333,7 @@ def test_trimmed_keeps_every_onset_before_the_boundary_and_re_fits_only_the_tail
     """The property `remapped` does not have, and the reason `trimmed` exists beside it: the onsets the
     decode measured before the new end were measurements and survive, so a trimmed neighbour costs the word
     metrics nothing where it was right (20 Jamendo songs at truth: word ±100 83.52 against an affine
-    re-fit's 83.12 and the W4 row's 83.25; see the docstring for the rest)."""
+    re-fit's 83.12 and the prior row's 83.25; see the docstring for the rest)."""
     from encore_worker.domain.lyrics.generate import remapped, trimmed
 
     line = a_line(("a", 1.0, 2.0), ("b", 2.0, 3.0), ("c", 3.0, 5.0), start=1.0, end=5.0)
@@ -383,7 +383,7 @@ def test_trimmed_refuses_a_line_no_word_of_which_starts_before_the_boundary() ->
 
 
 def test_trimmed_walks_the_anchor_back_rather_than_collapsing_the_tail_into_a_millisecond() -> None:
-    """W6 review r2-spec-9. The boundary a hair past a word start is the shape: with 19.999 as the anchor the
+    """The boundary a hair past a word start is the shape: with 19.999 as the anchor the
     three words after it were published at 19.99920 / 19.99945 / 19.99980, four words inside 0.8 ms — none of
     them liftable by the TV (`start <= pos < end`) and none within a decoder frame of a measurement. The
     anchor walks back to the last word whose tail can hold one frame per word still to be placed, which here

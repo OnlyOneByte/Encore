@@ -1,8 +1,8 @@
 """The MULTI-PROVIDER POOL gate (`docs/benchmarks/forced-alignment/scripts/pool_gate.py`).
 
-It has unit tests like the E2E harness beside it, because this script is what finally MEASURES M13 (the
-candidate tier ordered by corroboration rather than arrival order) and L5 (the LRCLIB duration retry), both
-of which shipped in W5 on unit tests alone, `e2e.py`'s ports serving one text per case. A defect in the pool
+It has unit tests like the E2E harness beside it, because this script is what finally MEASURES the
+candidate tier ordered by corroboration rather than arrival order and the LRCLIB duration retry, both
+of which shipped on unit tests alone, `e2e.py`'s ports serving one text per case. A defect in the pool
 it builds would move that verdict silently — a pool whose texts all read as one witness, a "wrong" sheet
 that accidentally contains the song, an SDH variant whose damage text hygiene removes — so the pool's SHAPE
 is pinned here, pure, and the arms are driven through the real workflow.
@@ -92,7 +92,7 @@ def test_the_sdh_track_notates_nothing_because_the_corpus_truth_is_already_a_cap
 
 def test_the_sdh_track_mishears_one_word_in_a_few_lines_and_no_more() -> None:
     """A transcript of a recording, not a copy of a sheet — but SPARSELY, or the track stops agreeing with
-    the clean sheet and the pool stops being review M13's own case (an SDH track OF THIS SONG)."""
+    the clean sheet and the pool stops being the measured case (an SDH track OF THIS SONG)."""
     long_song = song_of(
         [(f"line number {index} of this longer sheet", float(index), index + 0.9) for index in range(20)],
         slug="s",
@@ -123,8 +123,8 @@ def test_the_machine_track_is_the_same_words_lowercased_and_unpunctuated() -> No
 
 
 def test_the_lrc_body_round_trips_through_the_real_parser_at_the_claims_centisecond() -> None:
-    """The clean sheet is served as a real `syncedLyrics` payload, so `parse_response` -> `parse_lrc` (review
-    L4) is on the path — which is also why the recorded claims are `quantised`: an LRC carries centiseconds,
+    """The clean sheet is served as a real `syncedLyrics` payload, so `parse_response` -> `parse_lrc`
+    is on the path — which is also why the recorded claims are `quantised`: an LRC carries centiseconds,
     and the row must say what the step was handed."""
     from encore_worker.adapters.lrclib import parse_response
 
@@ -162,8 +162,8 @@ def test_a_pool_arrives_in_the_order_production_acquires_it() -> None:
 
 def test_the_pool_shapes_are_the_two_states_the_ranking_can_be_in() -> None:
     """The whole measurement rests on this, and it is pure: in `sdh` the authored track AGREES with the
-    clean sheet, so corroboration cannot demote it and the ranked order equals the arrival order (review
-    M13's own honest gap, `policy.order_pool`'s docstring); in `wrong-track` it agrees with nothing while
+    clean sheet, so corroboration cannot demote it and the ranked order equals the arrival order (the
+    ranking's own honest gap, `policy.order_pool`'s docstring); in `wrong-track` it agrees with nothing while
     the machine track backs the sheet, so the sheet is tried FIRST where arrival order tried it third."""
     songs = corpus_of(Path("/nonexistent.wav"), Path("/nonexistent.wav"))
 
@@ -188,7 +188,7 @@ def test_the_pool_shapes_are_the_two_states_the_ranking_can_be_in() -> None:
     assert witness_of(pool_gate.MACHINE) != witness_of(pool_gate.LRCLIB), "the third witness does the work"
 
 
-# ── review L5: the sheet is in the pool only because the duration miss was retried ───────────────────
+# ── the sheet is in the pool only because the duration miss was retried ──────────────────────────────
 
 
 def test_the_duration_qualified_lookup_404s_and_the_retry_answers() -> None:
@@ -214,7 +214,7 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
     """The pool driver over the E2E harness's synthetic song, with the lexical gate TAKEN OUT.
 
     `spread_decodes` disables `lexical.lift` because the spreading decoder's scores are flat, so every
-    text's lift reads 0 and the W3 gate would refuse the song's own words. That makes these rigs a test of
+    text's lift reads 0 and the lift gate would refuse the song's own words. That makes these rigs a test of
     the HARNESS and of the ORDER — with the gate out, a wrong text is not refused, which is exactly how the
     control below gets to publish one. The gate itself is measured on the corpus, where it is in place.
     """
@@ -248,7 +248,7 @@ def test_the_clean_pool_publishes_the_sheet_the_l5_retry_produced(rig: tuple[Any
 def test_the_sdh_pool_serves_four_texts_and_the_ranking_leaves_the_sdh_track_first(
     rig: tuple[Any, Any],
 ) -> None:
-    """Review M13's measured case, end to end: the SDH track AGREES with the clean sheet, so it is tried
+    """The measured case, end to end: the SDH track AGREES with the clean sheet, so it is tried
     first in both arms and the ranking's reach is the two sheets behind it."""
     driver, song = rig
     ranked = driver.run_pool(song, "sdh", "ranked")
@@ -291,7 +291,7 @@ def test_the_wrong_track_pool_is_where_the_ranking_changes_the_published_text(ri
 def test_the_pre_tie_arm_separates_m13s_two_halves(rig: tuple[Any, Any]) -> None:
     """`pre-tie` keeps `fetch_provider_lyrics`' whole list — so the clean sheet IS in the pool — and
     neutralises only the corroboration tie-break. The acquisition is therefore the shipped one and the WALK
-    is arrival order, which is what lets a run say which half of M13 paid for a change."""
+    is arrival order, which is what lets a run say which half of the ranking paid for a change."""
     driver, song = rig
     ranked = driver.run_pool(song, "wrong-track", "ranked")
     pre = driver.run_pool(song, "wrong-track", "pre-tie")
@@ -305,7 +305,7 @@ def test_the_pre_tie_arm_separates_m13s_two_halves(rig: tuple[Any, Any]) -> None
 
 
 def test_the_no_l5_arm_has_no_clean_sheet_at_all(rig: tuple[Any, Any]) -> None:
-    """Review L5 as the bench sees it: without the retry the song falls through with a good human sheet one
+    """As the bench sees it: without the retry the song falls through with a good human sheet one
     request away — here, to the wrong-song sheet the rig's missing gate lets publish."""
     driver, song = rig
     row = driver.run_pool(song, "sdh", "no-l5")

@@ -37,7 +37,7 @@ from tests.test_client import FakeSocket, Session, assign, client
 
 JOB = JobRef(job_id="j1", media_id="m1", media_dir="/media/m1", source_uri="https://x.test/v")
 
-#: The retry ladder's defects are WINDOWED reports: the global engine reads only LINE_SYNC (review H2).
+#: The retry ladder's defects are WINDOWED reports: the global engine reads only LINE_SYNC.
 WINDOWED = Engine.WINDOWED
 CLEAN = TimingReport(words=200, coverage=1.0, duration_sec=200.0)
 THIN = TimingReport(words=40, coverage=0.25, duration_sec=200.0, engine=WINDOWED)
@@ -92,7 +92,7 @@ class Fake:
         pinned: TextRef | None = None,
     ) -> None:
         self._authored = authored
-        #: EVERY provider's sheet (review M13). `provider=` is the one-sheet shorthand the existing cases
+        #: EVERY provider's sheet. `provider=` is the one-sheet shorthand the existing cases
         #: use; `providers=` is how a case puts two in the pool.
         self._providers = list(providers) if providers is not None else ([provider] if provider else [])
         self._machine = machine
@@ -103,7 +103,7 @@ class Fake:
         self._publish_raises = publish_raises
         #: `time_text` call number (from 1) -> the exception that call raises: a machinery fault mid-job.
         self._faults = dict(faults or {})
-        #: What `fetch_pinned_text` serves a pinned job (review H5); None = the pin could not be read.
+        #: What `fetch_pinned_text` serves a pinned job; None = the pin could not be read.
         self._pinned = pinned
         self.calls: list[str] = []
         self.timed: list[TimeRequest] = []
@@ -111,7 +111,7 @@ class Fake:
         #: Each note's `why`, parallel to `notes`.
         self.whys: list[str] = []
         self.published: TimedDoc | None = None
-        #: What `publish` was asked to place in the store: every document the job wrote (review W1 r1).
+        #: What `publish` was asked to place in the store: every document the job wrote.
         self.placed: list[TimedDoc] = []
         self.publish_count = 0
 
@@ -250,11 +250,11 @@ async def test_no_vocals_stem_never_offers_the_mix_knob() -> None:
     assert all(Knob.ALIGN_ON_MIX not in req.knobs for req in fake.timed)
 
 
-# ── engine-aware policy + best-so-far (review H2) ────────────────────────────────────────────────
+# ── engine-aware policy + best-so-far ────────────────────────────────────────────────────────────
 
 
 async def test_thin_global_coverage_publishes_the_stem_document_with_no_mix_retry() -> None:
-    """H2 as a workflow: a long instrumental outro (coverage 71% on Kinematic, 0 gross) used to spend a
+    """As a workflow: a long instrumental outro (coverage 71% on Kinematic, 0 gross) used to spend a
     mix re-decode that either replaced the stem document (Pure_Mids 0 -> 13 gross) or, refused, dropped
     the song to NO LYRICS. The global engine reads no mix knob, so the stem document publishes."""
     thin_global = TimingReport(words=150, coverage=0.71, duration_sec=200.0)
@@ -290,11 +290,11 @@ async def test_a_retry_that_produced_nothing_publishes_the_attempt_it_retried() 
     assert not any(c.startswith("transcribe") for c in fake.calls)
 
 
-# ── line sync commits, and never after a refusal (review M1 + the W0 hazard) ──────────────────────
+# ── line sync commits, and never after a refusal ──────────────────────────────────────────────────
 
 
 async def test_an_incoherent_document_line_syncs_and_the_line_document_publishes() -> None:
-    """M1 end to end: the LINE_SYNC attempt's line-timed document is committed, not dropped for the
+    """End to end: the LINE_SYNC attempt's line-timed document is committed, not dropped for the
     next text (which, with none left, was ASR and then NO LYRICS)."""
     fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[INCOHERENT, LINE_SYNCED])
     outcome = await run_align(JOB, fake)
@@ -315,14 +315,14 @@ async def test_a_refused_text_is_never_line_synced() -> None:
     assert outcome.candidates == (outcome.published,), "a refusal writes no document"
 
 
-# ── the cross-kind comparison (W4): a usable word document against the sheet's own timings ────────
+# ── the cross-kind comparison: a usable word document against the sheet's own timings ────────
 
 
-#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's OWN claims (W4):
+#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's OWN claims:
 #: `policy.decide` rule 6's one shape, and the only route to the LINE_SYNC rung from a document that could
 #: have published. 12 lines, so `LINE_SYNCED` above times as many.
 UNRELATED = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=12, claims_related=False)
-#: The LINE_SYNC rung's own gate refusing the SHEET (W3): its blind decode does not hear the lines where the
+#: The LINE_SYNC rung's own gate refusing the SHEET: its blind decode does not hear the lines where the
 #: sheet claims them. Not a verdict on the words — the word document passed the same lexical gate.
 LINE_REFUSED = TimingReport(
     duration_sec=200.0,
@@ -333,10 +333,10 @@ LINE_REFUSED = TimingReport(
 
 
 async def test_a_word_document_nothing_related_to_its_claims_publishes_the_sheets_own_timings() -> None:
-    """W4 end to end: the word document is USABLE — it would have published on arrival order — and the
+    """End to end: the word document is USABLE — it would have published on arrival order — and the
     sheet's line timings replace it because `reconcile` could relate nothing between the two witnesses and
     the line document survived its own gate. The 18 song-modes this fires on at `run_align` hold ALL 299 of
-    their gross lines (PLAN W4 (b))."""
+    their gross lines."""
     fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[UNRELATED, LINE_SYNCED])
     outcome = await run_align(JOB, fake)
     assert [req.force_line_sync for req in fake.timed] == [False, True]
@@ -474,7 +474,7 @@ def machine(label: str = "captions:machine") -> TextRef:
     )
 
 
-# ── a machinery fault fails the job instead of walking the ladder (review M7) ─────────────────────
+# ── a machinery fault fails the job instead of walking the ladder ─────────────────────────────────
 
 
 async def test_a_machinery_fault_fails_the_job_instead_of_ending_in_no_lyrics() -> None:
@@ -546,7 +546,7 @@ async def test_a_machinery_fault_reaches_the_wire_as_a_retryable_failure() -> No
 
 
 async def test_the_machine_track_is_tried_once_even_after_asr_declines() -> None:
-    """Review s11: the on-demand ASR text was SORTED into the walk ahead of the machine captions it ran
+    """The on-demand ASR text was SORTED into the walk ahead of the machine captions it ran
     after, so when it declined the cursor walked onto them again: both machine attempts twice."""
     fake = Fake(
         authored=lrc("captions:authored"),
@@ -619,8 +619,8 @@ async def test_a_reshift_receives_the_previous_attempts_line_starts() -> None:
 
 
 async def test_a_retry_after_a_lost_one_extends_and_re_places_against_the_kept_attempt() -> None:
-    """Best-so-far goes BACK to the attempt a retry lost to, and the next knob starts from it (review W1
-    r1): DROP_WINDOWS leaves the overshoot as it was, so RESHIFT runs next — WITH the windows (the lost
+    """Best-so-far goes BACK to the attempt a retry lost to, and the next knob starts from it:
+    DROP_WINDOWS leaves the overshoot as it was, so RESHIFT runs next — WITH the windows (the lost
     knob is not applied), on attempt 1's knob set, and re-placed against attempt 1's line starts, not the
     losing retry's. That RESHIFT fixes it, and is what publishes."""
 
@@ -692,8 +692,8 @@ async def test_a_superseded_attempt_is_still_reported() -> None:
 
 
 async def test_a_job_that_lost_its_lease_placed_nothing_and_reports_nothing() -> None:
-    """Attempts are staged in job scratch and `publish` places them only after the ownership check (review
-    W1 r1), so a job that is no longer ours put nothing in the store: there is nothing for core to name,
+    """Attempts are staged in job scratch and `publish` places them only after the ownership check,
+    so a job that is no longer ours put nothing in the store: there is nothing for core to name,
     and the scratch goes with the job. (It used to report the files it had written straight into the
     store, which an `InfraFault` before `publish` could not do at all.)"""
     steps = Fake(provider=lrc(), reports=[CLEAN], publish_raises=NotOurJob("gone"))
@@ -718,7 +718,7 @@ async def test_publish_is_asked_to_place_every_attempt_and_reports_their_store_r
 
 
 async def test_a_machinery_fault_mid_ladder_places_nothing() -> None:
-    """Review W1 r1's scenario: text 1's attempt wrote a document and was retried away; text 2's attempt hit
+    """The scenario: text 1's attempt wrote a document and was retried away; text 2's attempt hit
     a transient fault. The job fails, and `publish` — the only thing that puts an attempt in the store —
     never ran, so the store holds nothing the failed job wrote."""
     fault = InfraFault("decoding the stem through ffmpeg failed (RuntimeError: Broken pipe)")
@@ -731,7 +731,7 @@ async def test_a_machinery_fault_mid_ladder_places_nothing() -> None:
 
 
 async def test_the_texts_a_gate_refused_ride_on_the_outcome() -> None:
-    """Review W1 r2 (M3). A refused attempt writes nothing, so without naming the refused TEXTS the frame
+    """A refused attempt writes nothing, so without naming the refused TEXTS the frame
     could not withdraw a candidate an earlier job stored for the same words (`superseded_candidates`).
     One entry per label, whichever rung refused it; none from a lost lease."""
     authored = lrc("captions:authored")
@@ -750,7 +750,7 @@ async def test_the_texts_a_gate_refused_ride_on_the_outcome() -> None:
     assert (await run_align(JOB, lost)).refused == ()
 
 
-# ── review M13: every provider is a candidate, and corroboration orders the tier ───────────────────
+# ── every provider is a candidate, and corroboration orders the tier ───────────────────────────────
 
 
 def sheet(label: str, *lines: str) -> TextRef:
@@ -797,11 +797,11 @@ async def test_the_corroborated_text_is_tried_first_even_when_it_arrived_last() 
 
 
 async def test_two_provider_sheets_agreeing_are_one_witness_and_promote_neither() -> None:
-    """W5 review r1-correctness-4 / r1-spec-12. `fetch_provider_lyrics` asks every provider the SAME
+    """`fetch_provider_lyrics` asks every provider the SAME
     artist/track and LRCLIB is one of lrcmux's own upstreams, so two sheets that agree can be ONE answer
     reached twice — a metadata mismatch returns two copies of the wrong song's sheet. Counted as two
-    witnesses, that pair was tried ahead of the upload's own caption track, the one text in the pool that
-    can only be about this recording. Arrival order instead, which is what it was before M13."""
+    witnesses, that pair was tried ahead of the upload's own caption track, the one text in the pool that can
+    only be about this recording. Arrival order instead, as it was before corroboration ordered the tier."""
     fake = Fake(
         authored=sheet("captions:authored", *HELLO),
         providers=[sheet("lrcmux:KuGou", *NUMB), sheet("lrclib", *NUMB[:2])],

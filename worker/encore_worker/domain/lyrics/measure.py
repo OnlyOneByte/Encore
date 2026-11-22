@@ -179,7 +179,7 @@ def backwards_lines(doc: Doc) -> tuple[int, ...]:
     `out_of_order` that `measure` reports for a word document; a position is the line's place among the
     document's lines. `out_of_order` alone says the highlight will jump, not where, and `decide` acts on
     it by dropping the whole text to line sync — so the steps put these positions on the trail, which is
-    what points an operator at the line (review M2: every inversion it measured was one repaired line).
+    what points an operator at the line (every inversion measured so far was one repaired line).
     """
     out: list[int] = []
     previous: float | None = None

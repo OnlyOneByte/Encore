@@ -42,8 +42,9 @@ ENV UV_LINK_MODE=copy \
 	UV_PROJECT_ENVIRONMENT=/usr/local
 #
 # `romanize` + `nonlatin` are the non-Latin lane's 49 MB (47 of it unidic-lite's MeCab dictionary), in the
-# image since W10: without them `build_romanizer` answers None, no CJK line gains its second script, and the
-# per-language stage-2 table cannot route zh or ko to MMS_FA at all (docs/arch/04-alignment.md §9.2).
+# image because romanization requires them: without them `build_romanizer` answers None, no CJK line gains
+# its second script, and the per-language stage-2 table cannot route zh or ko to MMS_FA at all
+# (docs/arch/04-alignment.md §9.2).
 RUN --mount=type=cache,target=/root/.cache/uv \
 	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg --extra audiosep --extra romanize --extra nonlatin
 

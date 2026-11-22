@@ -1,10 +1,10 @@
-"""CTC's blank is the MATRIX's, not a literal 0 (M9), end to end over the whole decode chain.
+"""CTC's blank is the MATRIX's, not a literal 0, end to end over the whole decode chain.
 
 `blank = 0` was hard-coded in five places that have to agree — the kernel call, the target filter,
 `_char_spans`' run grouping and its flushing sentinel, `regenerate`'s alignable count and the mix witness's
 non-blank mass — and the defect is DORMANT while the language is `en`, torchaudio's bundles putting their
 blank at label 0. 23 of whisperx's 36 HF align models put their pad elsewhere (Danish `<pad>`=32 with `u` at
-0, Norwegian Bokmal `[PAD]`=38 with `|` at 0, Korean `[PAD]`=1204), and W7 turns the language on. It is
+0, Norwegian Bokmal `[PAD]`=38 with `|` at 0, Korean `[PAD]`=1204), and routing turns the language on. It is
 tested without another model's weights by PERMUTING the fixture's matrix so the blank leaves column 0 and a
 letter enters it: the same evidence under another vocabulary, so a blank-aware chain returns a
 BYTE-IDENTICAL document and the old chain cannot. Measured on Danish: onsets within ±250 ms 90.5% -> 73.2%,
@@ -53,8 +53,8 @@ class Emitted:
 
 @dataclass(frozen=True)
 class Unaware:
-    """The same matrix through a reader that does NOT say which column is blank — every pre-W4 fake, and
-    the shipped chain before review M9's fix."""
+    """The same matrix through a reader that does NOT say which column is blank — every older fake, and
+    the shipped chain before the blank-column fix."""
 
     log_probs: Any
     frame_sec: float
@@ -120,7 +120,7 @@ def test_char_spans_groups_runs_and_flushes_the_last_one_against_the_matrixs_bla
 def test_moving_the_blank_changes_nothing_when_the_matrix_says_where_it_is(
     evidence: tuple[Emitted, Emitted, Unaware],
 ) -> None:
-    """The whole of M9's fix, as one equality: the same evidence under another vocabulary must publish the
+    """The whole of the fix, as one equality: the same evidence under another vocabulary must publish the
     same document. It exercises the kernel's `blank=`, the target filter, `_char_spans`' runs AND its
     flushing sentinel at once — each of those was a literal 0."""
     plain, aware, _unaware = evidence
@@ -132,7 +132,7 @@ def test_moving_the_blank_changes_nothing_when_the_matrix_says_where_it_is(
 def test_the_old_chain_drops_the_letter_at_zero_and_mistimes_the_rest(
     evidence: tuple[Emitted, Emitted, Unaware],
 ) -> None:
-    """NON-VACUITY, and the review's measured failure. Reading blank as 0 on such a vocabulary does two
+    """NON-VACUITY, and the measured failure. Reading blank as 0 on such a vocabulary does two
     things at once: every `a` is filtered out of the targets as if it were the blank (so its word is timed
     from its other letters, or interpolated when it has none), and the kernel charges the TRUE blank's
     frames as a letter, which drags the path."""
@@ -172,7 +172,7 @@ def test_the_alignable_count_is_the_matrixs_blank_and_one_literal_for_two_floors
 ) -> None:
     """`generate.alignable_chars`, the count under `regenerate`'s window floor AND `align_steps.needs`.
 
-    TWO COPIES OF IT SURVIVED being reverted to a literal 0 under mutation (W4 review r1), which is why it is
+    TWO COPIES OF IT SURVIVED being reverted to a literal 0 under mutation, which is why it is
     one function now. The count itself is invisible on a vocabulary whose blank IS 0 and invisible in a
     DOCUMENT even when it is wrong, because it only ever gates a floor and undercounting makes the floor
     LOOSER — so this asserts the number, and the case below asserts the floor it feeds.
@@ -189,7 +189,7 @@ def test_the_alignable_count_is_the_matrixs_blank_and_one_literal_for_two_floors
 def test_a_repair_window_is_refused_by_the_floor_the_matrixs_blank_implies(
     evidence: tuple[Emitted, Emitted, Unaware],
 ) -> None:
-    """THE CONSEQUENCE of the count above, and the case the M9 fix had no test for.
+    """THE CONSEQUENCE of the count above, and the case the blank fix had no test for.
 
     `regenerate` refuses a window holding fewer than two emission frames per alignable character — anything
     tighter is a forced smear, not a fit. Here the window is 38 frames: over the unaware reader's floor for
@@ -240,12 +240,12 @@ def test_the_mix_witness_reads_the_blank_column_it_is_told_about(
     assert _speech_mass(Emitted([[0.0]], 0.02, {}, blank_id=7), 0.0, 1.0) is None, "a column it lacks"
 
 
-# ── the OTHER non-character columns: `Emissions.specials` (W4b, review M9's second half) ─────────────────
+# ── the OTHER non-character columns: `Emissions.specials` ──────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class Specialled:
-    """A matrix that names its non-character columns, as `ml.Emissions` does since W4 (`specials_of`)."""
+    """A matrix that names its non-character columns, as `ml.Emissions` does (`specials_of`)."""
 
     log_probs: Any
     frame_sec: float
@@ -330,7 +330,7 @@ def test_a_pipe_in_a_lyric_is_not_a_target_when_the_matrix_names_it(
 def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
     pipes: tuple[Specialled, Emitted],
 ) -> None:
-    """One filter, three readers (W4b): `lexical.letters_of` must count the pipe out or the lift would be a
+    """One filter, three readers: `lexical.letters_of` must count the pipe out or the lift would be a
     different text's score per letter, and `regenerate`'s slice must CARRY the specials or a repaired line
     would be forced through a longer target sequence than the line it is repairing."""
     from encore_worker.domain.lyrics.generate import excluded_of
@@ -364,7 +364,7 @@ def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
     ], "the repaired line's sung words are the same: the slice carried the specials"
 
 
-# ── the REAL vocabularies W7 made reachable ──────────────────────────────────────────────────────
+# ── the REAL vocabularies language routing made reachable ────────────────────────────────────────
 
 #: Three real whisperx HF alignment vocabularies, read off the model files themselves; only the non-character
 #: columns and `id 0` are copied, the weights being 1.2-3.6 GB each. `nn` is the WORST SHAPE OF THE 23 — id 0
@@ -372,7 +372,7 @@ def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
 REAL_VOCABULARIES = {
     # NbAiLab/nb-wav2vec2-1b-nynorsk (whisperx `nn`)
     "nn": ({"|": 0, "a": 1, "z": 26, "å": 27, "æ": 28, "ø": 29, "[UNK]": 30, "[PAD]": 31}, 31),
-    # saattrupdan/wav2vec2-xls-r-300m-ftspeech (whisperx `da`) — the review's measured case
+    # saattrupdan/wav2vec2-xls-r-300m-ftspeech (whisperx `da`) — the measured case
     "da": ({"u": 0, "|": 4, "a": 5, "<unk>": 31, "<pad>": 32}, 32),
     # kresnik/wav2vec2-large-xlsr-korean (whisperx `ko`) — the widest vocabulary whisperx tables
     "ko": ({"볍": 0, "|": 1, "<unk>": 1203, "[PAD]": 1204}, 1204),
@@ -381,9 +381,9 @@ REAL_VOCABULARIES = {
 
 @pytest.mark.parametrize("code", sorted(REAL_VOCABULARIES))
 def test_the_adapter_finds_the_blank_of_a_real_non_english_vocabulary(code: str) -> None:
-    """`blank_id_of` on the vocabularies W7 actually makes reachable, not on a permutation of an English one.
+    """`blank_id_of` on the vocabularies routing makes reachable, not on a permutation of an English one.
 
-    Named by REVIEW M9 and now routable: `language.model_language` sends a non-Latin script to
+    Now routable: `language.model_language` sends a non-Latin script to
     `whisperx.load_align_model(language_code=...)`, so `ko`'s pad at 1204 is a live configuration rather
     than a table entry. The `da` and `nn` rows are Latin-script and reachable only through the
     `lang-route-mix` arm or a job that declares the language — which is why the arm's docstring points here.

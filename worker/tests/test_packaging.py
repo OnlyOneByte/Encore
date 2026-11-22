@@ -204,7 +204,7 @@ def test_there_is_a_timeout(config: dict[str, Any]) -> None:
     assert config["tool"]["pytest"]["ini_options"]["timeout"] > 0
 
 
-# ── shipped package data (review L3's Moby tier) ──────────────────────────────────────────────────
+# ── shipped package data (the Moby tier) ──────────────────────────────────────────────────────────
 
 MOBY = Path(__file__).parent.parent / "encore_worker" / "domain" / "lyrics" / "data" / "mhyph.xz"
 

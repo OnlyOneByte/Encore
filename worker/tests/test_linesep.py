@@ -1,6 +1,6 @@
-"""6c's LINE SEPARATOR: `|` in the CTC targets at line boundaries only (D1, the `linesep` arm).
+"""The LINE SEPARATOR: `|` in the CTC targets at line boundaries only (the `linesep` arm).
 
-A file of its own, like `test_blank_id.py` for M9, because the separator is one token and four places that
+A file of its own, like `test_blank_id.py`, because the separator is one token and four places that
 have to agree: the target list (between lines, never inside one, never at an edge, one boundary per gap
 however many decorative rows sit in it), the relabel of its frames to blank before `_char_spans`, the
 span-count invariant that check turns into `spans == targets - separators`, and `regenerate`'s window floor,
@@ -8,7 +8,7 @@ which is a floor on TARGETS and so grows with them. Three fail LOUDLY when wrong
 by admitting a smear, which is the one the blank-id work already learned to test directly.
 
 It is DISPUTED and ships off, so what is pinned here is BEHAVIOUR rather than a gain: that the arm does what
-6c describes, that it is inert where the vocabulary has no separator, and that with it off nothing moves.
+it says, that it is inert where the vocabulary has no separator, and that with it off nothing moves.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ REPEAT_SUNG = ((REPEAT[0], 0.4, 2.2), (REPEAT[1], 2.6, 4.4))
 REPEAT_DURATION = 5.0
 
 #: Three lines with a `|` SUNG between them — the only fixture where the model hears what the arm asks about,
-#: and so the only one that can show the arm moving a timing for the reason review D1 gives.
+#: and so the only one that can show the arm moving a timing for the reason it exists.
 LINES = ("a candle in a paper cup", "and all the ash it carries", "away from what we are")
 BOUNDARY = 0.2  # seconds of separator between two lines
 SEPARATED = (
@@ -184,7 +184,7 @@ def test_a_separator_that_is_the_blank_column_makes_the_arm_inert_rather_than_fa
 
 
 def test_the_trail_says_which_of_the_two_inert_cases_happened() -> None:
-    """W4b review r1. `host.config.ALIGN_EXPERIMENTS` states it as this arm's contract — "INERT, not fatal, on
+    """`host.config.ALIGN_EXPERIMENTS` states it as this arm's contract — "INERT, not fatal, on
     a vocabulary that names no separator or maps it to the blank column, and the trail note says which of the
     two happened" — and both folded into one message, so an operator on a bundle whose `|` IS its blank column
     (the ONLY reason the arm is inert rather than fatal) read "this vocabulary names none" and had no way to
@@ -229,7 +229,7 @@ def test_the_arm_off_is_the_target_list_it_always_was() -> None:
 
 
 def test_one_separator_per_boundary_and_never_at_an_edge() -> None:
-    """Review 6c's own words: BETWEEN lines. So the target list neither starts nor ends with a separator, and
+    """The arm's own words: BETWEEN lines. So the target list neither starts nor ends with a separator, and
     two lines of a three-line text are separated twice, not four times."""
     matrix = named(sung_matrix(SEPARATED, VOCAB, DURATION))
     tap = Recording()
@@ -343,7 +343,7 @@ def test_the_separator_keeps_the_next_lines_onset_out_of_the_boundary() -> None:
 
 def test_a_repair_window_decodes_with_the_separator_the_global_pass_used() -> None:
     """A window re-decoded without it would put the repaired line on a different token stream from the lines
-    around it. `_SlicedEmissions` already carries `specials` (W4b), so the slice can see the column."""
+    around it. `_SlicedEmissions` already carries `specials`, so the slice can see the column."""
     matrix = named(sung_matrix(SEPARATED, VOCAB, DURATION))
     run = tuple(
         Line(text=text, start=start, end=end, words=(), score=0.0, index=i)
@@ -536,10 +536,10 @@ class Decodes:
 def test_every_repair_window_is_decoded_under_the_arm_and_none_with_it_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b REVIEW R2, tests-17: `test_the_step_decodes_with_the_separator_only_under_the_arm` claims to cover
+    """`test_the_step_decodes_with_the_separator_only_under_the_arm` claims to cover
     every decode that publishes a timing, but only the BLIND one was exercised — its three-line fixture has no
     claims to repair, so hard-coding `separate_lines=False` at the repair call site left the whole suite
-    green. The ladder's own M5 fixture puts R1 on all six lines, so every repair window is one of these calls.
+    green. The ladder's own fixture puts R1 on all six lines, so every repair window is one of these calls.
 
     The unit half (`test_a_repair_window_decodes_with_the_separator_the_global_pass_used`) proves the
     separator reaches the TARGETS of a window; what was missing is that the STEP asks for it.
@@ -576,7 +576,7 @@ def test_every_repair_window_is_decoded_under_the_arm_and_none_with_it_off(
 def test_the_re_decode_after_a_never_sung_drop_keeps_the_arm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b REVIEW R2, tests-17, the second uncovered site. The never-sung rule drops a line and re-decodes the
+    """The second uncovered site. The never-sung rule drops a line and re-decodes the
     rest over the matrix already in hand; that document is what publishes, so its decode owns the arm too, and
     `separate_lines=False` there also left the suite green. The fixture is the ladder's own credit case: an
     uploader's line the stem holds only a faint trace of, claimed over the outro."""

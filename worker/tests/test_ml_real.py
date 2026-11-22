@@ -86,7 +86,7 @@ def test_it_transcribes_words_that_were_actually_spoken(spoken: Spoken) -> None:
 
     spoken_in = transcriber.transcribe(spoken.path, language="en")
     assert spoken_in, "the transcriber heard nothing at all"
-    # THE LANGUAGE IS HALF THE RETURN VALUE SINCE W7 (review M8): it was read off whisper's result dict and
+    # THE LANGUAGE IS HALF THE RETURN VALUE: it was read off whisper's result dict and
     # discarded, and this real-model test is the only place the echo can be proved rather than faked.
     assert spoken_in.language == "en", f"asked for en, whisper reported {spoken_in.language!r}"
 

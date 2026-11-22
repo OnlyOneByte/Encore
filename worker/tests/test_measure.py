@@ -115,7 +115,7 @@ def test_an_overlap_is_not_counted_as_a_gap() -> None:
     assert report.long_gaps == ()
 
 
-# ── measure: a line-synced document (review M1) ──────────────────────────────────────────────────
+# ── measure: a line-synced document ──────────────────────────────────────────────────────────────
 
 
 def lines_doc(*spans: tuple[float, float | None]) -> dict[str, object]:
@@ -127,7 +127,7 @@ def lines_doc(*spans: tuple[float, float | None]) -> dict[str, object]:
 
 
 def test_a_line_document_is_measured_on_its_lines() -> None:
-    """No words, so measured on words it read as nothing timed and could never commit (review M1)."""
+    """No words, so measured on words it read as nothing timed and could never commit."""
     report = measure(
         lines_doc((1.0, 3.0), (4.0, 6.0), (7.0, 9.5)), duration_sec=10.0, engine=Engine.LINE_SYNC
     )

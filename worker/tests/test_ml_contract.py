@@ -2,7 +2,7 @@
 
 Every alignment test injects a fake decoder over fake emissions, so nothing called
 `adapters.ml.forced_align_decoder` or `WhisperXAligner.emissions` and nothing checked that the fakes behave
-like them (L8). THE KERNEL is checked on synthetic log-probs — the output shape, each target exactly once in
+like them. THE KERNEL is checked on synthetic log-probs — the output shape, each target exactly once in
 order, blank = 0 between a doubled letter, per-frame scores that are the matrix's own, the refusals
 `generate` and `regenerate` are built around — and the fake the suite decodes with is then checked FRAME FOR
 FRAME against it. THE EMISSION PASS runs only when the default English checkpoint is already cached (marked
@@ -140,7 +140,7 @@ def test_the_kernel_refuses_a_blank_target_and_a_window_too_short() -> None:
 
 
 def test_the_kernels_refusals_are_this_text_failing_not_the_machinery() -> None:
-    """Review M7's line, on the real kernel: a blank among the targets or more targets than frames is one
+    """The fault line, on the real kernel: a blank among the targets or more targets than frames is one
     attempt declining (the step's `decode failed`), never the `InfraFault` that fails the job."""
     from encore_worker.adapters.ports import InfraFault
 
@@ -175,7 +175,7 @@ def test_a_forward_pass_that_raises_is_a_typed_machinery_fault(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: Exception, kind: str, retryable: bool
 ) -> None:
     """The emission pass reads no text, so its forward pass raising is the device or the model: typed, so
-    `time_text` fails the job instead of declining every attempt of every text over it (review M7). Real
+    `time_text` fails the job instead of declining every attempt of every text over it. Real
     torch and the real `emissions`; only whisperx's loaders are faked, so nothing is downloaded."""
     import sys
     import types
@@ -317,7 +317,7 @@ def test_emissions_on_a_short_tone_are_a_log_softmax_matrix_with_blank_at_zero(
     em = aligner.emissions(str(tone), "en")
     matrix = em.log_probs.numpy()
     samples = int(rate * seconds)
-    # EVERY hop gets a frame, the final partial one included (review 6a): 24000 samples is 75 whole hops,
+    # EVERY hop gets a frame, the final partial one included: 24000 samples is 75 whole hops,
     # and the 75th frame's 400-sample field is padded rather than dropped. The old pass emitted 74.
     assert matrix.shape == (-(-samples // 320), len(em.dictionary)), "the exact 320-sample grid"
     assert matrix.shape[0] == (samples - 400) // 320 + 2, "the sliver frame the old pass dropped"
@@ -359,7 +359,7 @@ def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on(
     named = default_align_model("cpu")
     assert align_model_name("en", named) == named, "a configured bundle is what English loads"
     assert align_model_name("de", named) == align_model_name("de"), "and never what another language loads"
-    # THE NAME DESCRIBES THE LOAD, for every language `_bundle_of` answers (review r1-spec-12): an
+    # THE NAME DESCRIBES THE LOAD, for every language `_bundle_of` answers: an
     # undetected language loads the configured bundle, so reporting `default:` would hand a calibrated
     # matrix an unknown row and decline the words it is allowed to publish.
     from encore_worker.adapters.ml import MMS_ALIGN_MODEL, WhisperXAligner

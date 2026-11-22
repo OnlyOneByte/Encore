@@ -239,7 +239,7 @@ def test_an_unknown_alignment_experiment_is_refused() -> None:
 
 
 def test_the_alignment_model_is_unset_unless_named() -> None:
-    """W4b 6b: `ENCORE_ALIGN_MODEL` names the ENGLISH bundle, and UNSET means "this device's default" rather
+    """`ENCORE_ALIGN_MODEL` names the ENGLISH bundle, and UNSET means "this device's default" rather
     than any particular model — the device is probed, not configured, so only `__main__.align_model_for` can
     resolve it. An empty or blank value is unset, not a request to load "".
 
@@ -256,7 +256,7 @@ def test_the_alignment_model_is_unset_unless_named() -> None:
 #: spelling them a second time (docs/arch/04-alignment.md §9.1).
 ARM_READERS = ("domain/lyrics/units.py", "__main__.py")
 
-#: The align step itself, as ONE source: W10 moved its module-level helpers into siblings, so an arm named
+#: The align step itself, as ONE source: its module-level helpers live in siblings, so an arm named
 #: in one of them is still named by the step (docs/arch/05-worker.md §1.1).
 STEP_GLOB = "steps/align_*.py"
 
@@ -265,7 +265,7 @@ def test_every_declared_arm_is_read_by_the_step() -> None:
     """The other half of the typo guard, and the one the config cannot catch: an arm the CONFIG accepts and
     NOTHING reads is measured as the default path under the arm's name, and a whole bench run says "no
     change" for the most honest-looking reason there is. Every name in `ALIGN_EXPERIMENTS` must therefore
-    appear as a literal in the step or in one of `ARM_READERS` (W2; source text, not an import, because
+    appear as a literal in the step or in one of `ARM_READERS` (source text, not an import, because
     reading them is a branch deep inside `_time_text_global` that no unit call can enumerate)."""
     from pathlib import Path
 
@@ -290,10 +290,10 @@ _COUNTED = {"four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "
 
 
 def test_the_index_in_config_agrees_with_the_table_it_points_at() -> None:
-    """W10 FINAL REVIEW. `ALIGN_EXPERIMENTS`' own comment is the INDEX into the arms table — it says how many
+    """`ALIGN_EXPERIMENTS`' own comment is the INDEX into the arms table — it says how many
     of the names are controls over a default-ON feature — and it had drifted: it read "five" against six rows
-    and W10 bumped it to "six" against seven, so the number has never been the table's. A count nobody checks
-    is a count a reader trusts, and the arms are the one place this build says "default-off" out loud.
+    and an edit bumped it to "six" against seven, so the number has never been the table's. A count nobody
+    checks is a count a reader trusts, and the arms are the one place this build says "default-off" out loud.
 
     Held as a pair: every declared arm has a row, and the spelled-out number is the table's `**control**`
     count (docs/arch/04-alignment.md §14).

@@ -102,7 +102,7 @@ async def test_a_requeue_after_a_cancelled_run_forks_it(fake: FakeDbos) -> None:
 
 
 async def test_a_requeue_after_an_abandoned_publication_forks_it(fake: FakeDbos) -> None:
-    """The #968 review's open High: a run that lost ownership at publication finished SUCCESS, and a requeue
+    """The burn: a run that lost ownership at publication finished SUCCESS, and a requeue
     onto this box replayed that refusal until the attempts ran out."""
     fake.runs["j1"] = ("SUCCESS", _abandoned())
     assert await durable._run_id("j1") == "j1~requeue-1"
@@ -129,7 +129,7 @@ async def test_cancel_leaves_a_settled_run_alone(fake: FakeDbos) -> None:
 
 
 async def test_a_requeue_after_an_abandoned_align_forks_it(fake: FakeDbos) -> None:
-    """The same burn as stems', for align (#968 marks its lost publication `abandoned`). Align's publish is a
+    """The same burn as stems', for align (which marks its lost publication `abandoned`). Align's publish is a
     recorded step, so the fork resumes there."""
     fake.runs["j1"] = (
         "SUCCESS",
@@ -163,7 +163,7 @@ class HangingSteps:
 async def test_a_run_dbos_executes_on_its_own_loop_still_carries_the_jobs_token(
     fake: FakeDbos, monkeypatch: pytest.MonkeyPatch, flow: str
 ) -> None:
-    """The review's #975 must-fix 3. A fork or a recovered run executes on DBOS's loop, whose context never
+    """A fork or a recovered run executes on DBOS's loop, whose context never
     saw `_run` set the token, so a cancel stopped the DBOS row and left the child running. Each workflow body
     binds the job's token itself (`steps.cancel.bind_cancel_token`), with no registration wiring to forget."""
     for name in ("_align_flow", "_stems_flow", "_align_steps_for", "_stems_steps_for"):

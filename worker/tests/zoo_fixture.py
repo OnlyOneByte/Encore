@@ -32,7 +32,7 @@ def upstream_listing_is_readable() -> bool:
     Asked separately because `catalogue()` answers with `()` whether the listing was unreachable or our
     filter rejected every entry in it, and only the first of those is an environment fact. CACHED for
     `zoo.catalogue`'s own reason — it builds a `Separator`, which probes torch, ONNX and the accelerator —
-    and a per-process environment fact is what it answers (review W9 r2-spec-10).
+    and a per-process environment fact is what it answers.
     """
     try:
         from audio_separator.separator import Separator  # noqa: PLC0415 - an extra, absent by default

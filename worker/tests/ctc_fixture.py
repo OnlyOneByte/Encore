@@ -35,7 +35,7 @@ FILL = 0.7
 Matrix = npt.NDArray[np.float32]
 
 #: `generate.Decoder`'s shape, IMPORTED rather than restated, so a fake cannot drift from the contract.
-#: `blank` is part of it (review M9): a fake that ignored the matrix's blank column would pass the very
+#: `blank` is part of it: a fake that ignored the matrix's blank column would pass the very
 #: tests that exist to prove the caller reads it.
 Decode = Decoder
 

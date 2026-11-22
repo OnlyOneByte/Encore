@@ -169,11 +169,11 @@ def test_the_evidence_travels_with_the_verdict() -> None:
     assert fit.correlation >= activity.MIN_CORRELATION
 
 
-# ── bounded-lag correlation (review L6) ──────────────────────────────────────────────────────────
+# ── bounded-lag correlation ──────────────────────────────────────────────────────────────────────
 
 
 def full_window(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.ndarray, int]:
-    """The pre-W4 arithmetic: the whole `N + M - 1` correlation, then the +-`reach` slice of it."""
+    """The old arithmetic: the whole `N + M - 1` correlation, then the +-`reach` slice of it."""
     correlation = np.correlate(a, b, mode="full")
     centre = len(b) - 1
     lo, hi = max(0, centre - reach), min(len(correlation), centre + reach + 1)
@@ -182,7 +182,7 @@ def full_window(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.ndarray, i
 
 def test_the_bounded_correlation_returns_the_same_lags_the_full_one_did() -> None:
     """The +-400-lag window used to cost a whole `N x M` correlation (7.65 s on a 60-minute envelope on this
-    box; the review measured 9.1 s). This computes only the lags that are read.
+    box; 9.1 s on another). This computes only the lags that are read.
 
     A WORK REDUCTION, NOT AN APPROXIMATION: the same window, the same first lag, and values that agree to
     the last bits a longer dot product's blocking can move (worst 1.4e-14 here). What must not move is the
