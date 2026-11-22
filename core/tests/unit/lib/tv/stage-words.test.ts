@@ -3,7 +3,7 @@ import { readdirSync } from 'node:fs';
 import { at, read } from '$test';
 import { formatClock, formatRemaining, formatRemainingAscii } from '$lib/clock';
 import type { MediaStatus } from '$lib/contract';
-import { processStageLabel } from '$lib/phrasing/process-phrasing';
+import { processStageLabel, processStageLabelAscii } from '$lib/phrasing/process-phrasing';
 import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 import { keyShiftLabel } from '$lib/song-facts';
 import { UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX } from '$lib/tv/join-address';
@@ -65,23 +65,24 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
 	for (const { f, text } of tv)
 		for (const cls of ['ah-sub', 'ph-sub', 'ls-source']) expect(text, `${f}: ${cls}`).not.toContain(cls);
 	const page = tv.find((t) => t.f === 'src/routes/tv/+page.svelte')!.text;
-	expect(page).toContain("flashSkipNotice('That song won’t play')");
+	expect(page).toContain(`flashSkipNotice("That song won't play")`);
 	expect(page.match(/flashSkipNotice\(/g)?.length, 'one definition + the two skip notices').toBe(3);
 });
 
 /*
- * THE TV STAYS ASCII FOR SIGNS (song-facts.ts's header): a typographic minus, arrow or accidental is a codepoint a
- * smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. `’`, `—`, `·`, `…` and `●` are
- * allowed — main's TV has always shipped them — and NOTHING ELSE outside ASCII is: a list of banned blocks missed
- * the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or a CSS escape (`"\2192"`) is
+ * THE TV IS PLAIN ASCII (song-facts.ts's header): a typographic minus, arrow, dash, middot, ellipsis or curly
+ * apostrophe is a codepoint a smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. So
+ * NOTHING outside printable ASCII is drawn: a separator is ` - `, an ellipsis `...`, the apostrophe `'`, and a dot
+ * (the lyric ball, the badge's live mark) is drawn in CSS. An allowlist of safe glyphs grew one glyph at a time, and
+ * a list of banned blocks missed the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or a CSS escape (`"\2192"`) is
  * the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV source as text, and the strings
  * the TV imports from outside `lib/tv` as the values they really render.
  *
- * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0· '`, and an
+ * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0- '`, and an
  * NBSP is a space with no glyph to tofu. Only the escape, because a literal NBSP cannot be told from a space in
  * review.
  */
-const NOT_TV_SAFE = /[^\t -~’—·…●]|&#?[a-z0-9]+;/iu;
+const NOT_TV_SAFE = /[^\t -~]|&#?[a-z0-9]+;/i;
 const ESCAPE = /\\u(?!00a0|\{0*a0\})(?:\{[0-9a-f]+\}|[0-9a-f]{4})|\\x[89a-f][0-9a-f]/i;
 // A CSS escape is `\` plus 1-6 hex digits; one above U+007F draws a non-ASCII glyph from a `content:` string.
 const CSS_ESCAPE = /\\([0-9a-f]{1,6})/gi;
@@ -125,7 +126,8 @@ const STATUSES = Object.keys({
 test('every TV string built outside the TV sources is ASCII for signs too', () => {
 	const rendered: string[] = [UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX, NOW_SINGING, UP_NEXT];
 	rendered.push(...PROCESS_STEPS, ...ATTRACT_PHRASES);
-	for (const status of STATUSES) rendered.push(processStageLabel(status), processStageLabel(status, { pct: 40 }));
+	for (const status of STATUSES)
+		rendered.push(processStageLabelAscii(status), processStageLabelAscii(status, { pct: 40 }));
 	for (let s = -12; s <= 12; s++) rendered.push(keyShiftLabel(s) ?? '');
 	// The progress clocks: elapsed, and time left from a fresh song to the last second, past an hour too.
 	for (const [at, of] of [
@@ -144,6 +146,11 @@ test('every TV string built outside the TV sources is ASCII for signs too', () =
 	// The TV reaches the phone's form nowhere: TvProgress draws time left through the ASCII form only.
 	for (const { f, text } of tv) expect(text, f).not.toMatch(/\bformatRemaining\b/);
 	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('formatRemainingAscii(');
+	// The same for the stage line: the phone's `Making karaoke…`, the TV's `Making karaoke...`.
+	expect(processStageLabel('queued')).toBe('Making karaoke…');
+	expect(processStageLabelAscii('queued')).toBe('Making karaoke...');
+	for (const { f, text } of tv) expect(text, f).not.toMatch(/\bprocessStageLabel\b/);
+	expect(tv.find((t) => t.f === 'src/lib/tv/TvLobby.svelte')!.text).toContain('processStageLabelAscii(');
 });
 
 test('the room and machine settings speak guest words, and state the scope once, in the header', () => {

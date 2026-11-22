@@ -3,7 +3,7 @@
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { lobbyLine, type RosterMember } from './screen';
-	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { processStageLabelAscii } from '$lib/phrasing/process-phrasing';
 	import { joinAddressLabel } from './join-address';
 
 	interface Props {
@@ -62,9 +62,9 @@
 	const headline = $derived(
 		processing
 			? pendingCount === 1
-				? processStageLabel('queued')
-				: `${processStageLabel('queued')} · ${pendingCount} in line`
-			: (stuck?.headline ?? 'Waiting for someone to pick a song…')
+				? processStageLabelAscii('queued')
+				: `${processStageLabelAscii('queued')} - ${pendingCount} in line`
+			: (stuck?.headline ?? 'Waiting for someone to pick a song...')
 	);
 
 	// The line under the headline, in `screen.ts` so a unit test can read every wording of it.

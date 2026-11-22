@@ -1864,8 +1864,8 @@ code that will not resolve; that is accepted, because the address is only unrout
 party address, which in practice means a laptop showing this to itself. The `.badqr` family names are kept
 deliberately even though nothing about it is a card any more: they are how the e2e contract, the party flow
 and the scaling probe recognise the state. The notice is HERO-ONLY — attract and the lobby, the empty room where
-the host is setting up — and reads "Phones can’t open this address" / "Fix it in Settings -> This machine" (ASCII `->`: the TV draws no typographic
-arrow or minus, see `song-facts.ts`). The
+the host is setting up — and reads "Phones can't open this address" / "Fix it in Settings -> This machine" (ASCII `->` and `'`: the TV draws
+nothing outside plain ASCII, see `song-facts.ts` and `stage-words.test.ts`). The
 corner card on the stage and over the takeovers never shows it: the room is watching, and nobody fixes an
 address from the sofa. `/settings/server`'s Joining card says the same first line, from the same constant in
 `src/lib/tv/join-address.ts`, when the address in effect fails `isUnreachableJoinOrigin`.

@@ -7,7 +7,7 @@
  * /tv.
  *
  * TWO FORMS ON PURPOSE, and they must not be merged. The phone uses typographic punctuation (a real minus sign and a
- * middot); the TV uses ASCII `+`/`-` with a Latin-1 middot, because a typographic accidental or arrow is a codepoint
+ * middot); the TV uses plain ASCII throughout, `+`/`-`, because a typographic accidental, arrow or dash is a codepoint
  * whose glyph a smart-TV browser may simply not have — there, a missing glyph is a tofu box in the middle of the one
  * line telling a singer what key they are hearing.
  *

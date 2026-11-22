@@ -64,7 +64,7 @@
 				<div class="c">code <b>{roomCode}</b></div>
 			{/if}
 			{#if onlineCount > 0}
-				<div class="n">● {onlineCount} {onlineCount === 1 ? 'singer' : 'singers'} in</div>
+				<div class="n">{onlineCount} {onlineCount === 1 ? 'singer' : 'singers'} in</div>
 			{/if}
 		</div>
 	</div>
@@ -173,6 +173,18 @@
 		color: var(--ok);
 		margin-top: 5px;
 		font-weight: 600;
+	}
+	/* The live dot is DRAWN, not a `●`: the TV draws no sign outside ASCII (stage-words.test.ts). Sized and set where
+	   the glyph's ink sat, with the glyph's trailing space as its margin. */
+	.n::before {
+		content: '';
+		display: inline-block;
+		width: 0.9em;
+		height: 0.9em;
+		border-radius: 50%;
+		background: currentColor;
+		vertical-align: -0.09em;
+		margin-right: 0.36em;
 	}
 
 	/* `text-wrap: balance` rather than a width cap: a cap in `ch` froze the old card two words wide, and one in vmin is

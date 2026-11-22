@@ -17,6 +17,11 @@ export function processStageLabel(status: MediaStatus, opts: { pct?: number } = 
 	return `Making karaoke…${pct}`;
 }
 
+/** The TV's form of the same words: plain ASCII, so `...` for the ellipsis (stage-words.test.ts, song-facts.ts). */
+export function processStageLabelAscii(status: MediaStatus, opts: { pct?: number } = {}): string {
+	return processStageLabel(status, opts).replace('…', '...');
+}
+
 /** The readout when the song is well past its estimate: one honest sentence instead of a time, and no figure. */
 export const OVERDUE_LABEL = 'Taking longer than usual';
 
