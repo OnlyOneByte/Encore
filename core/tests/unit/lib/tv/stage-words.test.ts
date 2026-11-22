@@ -3,12 +3,17 @@ import { readdirSync } from 'node:fs';
 import { at, read } from '$test';
 import { formatClock, formatRemaining, formatRemainingAscii } from '$lib/clock';
 import type { MediaStatus } from '$lib/contract';
-import { processStageLabel, processStageLabelAscii } from '$lib/phrasing/process-phrasing';
+import {
+	OVERDUE_LABEL,
+	processStageLabel,
+	processStageLabelAscii,
+	stuckTurnsLines
+} from '$lib/phrasing/process-phrasing';
 import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 import { keyShiftLabel } from '$lib/song-facts';
 import { UNREACHABLE_JOIN, UNREACHABLE_JOIN_FIX } from '$lib/tv/join-address';
 import { ATTRACT_PHRASES } from '$lib/tv/phrases';
-import { PROCESS_STEPS } from '$lib/tv/screen';
+import { lobbyLine, PROCESS_STEPS } from '$lib/tv/screen';
 
 /*
  * guard: THE STAGE IS FOR THE ROOM (proposal 09). The TV shows the singer, the song, who's next and how to join.
@@ -25,9 +30,10 @@ function strip(source: string): string {
 
 const tvFiles = [
 	'src/routes/tv/+page.svelte',
-	...readdirSync(at('src/lib/tv'))
+	// Recursive, so a component in a subfolder of `lib/tv` is read too.
+	...readdirSync(at('src/lib/tv'), { recursive: true, encoding: 'utf8' })
 		.filter((f) => /\.(svelte|ts)$/.test(f))
-		.map((f) => `src/lib/tv/${f}`)
+		.map((f) => `src/lib/tv/${f.replaceAll('\\', '/')}`)
 ];
 const tv = tvFiles.map((f) => ({ f, text: strip(read(f)) }));
 
@@ -74,9 +80,10 @@ test('the deleted notice lines stay deleted, whatever they would say', () => {
  * apostrophe is a codepoint a smart-TV browser's system fonts may not carry, and a missing glyph is a tofu box. So
  * NOTHING outside printable ASCII is drawn: a separator is ` - `, an ellipsis `...`, the apostrophe `'`, and a dot
  * (the lyric ball, the badge's live mark) is drawn in CSS. An allowlist of safe glyphs grew one glyph at a time, and
- * a list of banned blocks missed the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or a CSS escape (`"\2192"`) is
- * the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV source as text, and the strings
- * the TV imports from outside `lib/tv` as the values they really render.
+ * a list of banned blocks missed the next block over (`➜`). An HTML entity (`&rarr;`), a JS `\u` or `\x` escape, or
+ * a CSS escape (`"\2192"`) is the same codepoint spelled in ASCII, so it is refused too. Held two ways: every TV
+ * source as text, and the strings the TV imports from outside `lib/tv` as the values they really render. A COMPUTED
+ * codepoint (`String.fromCharCode(0xb7)`, `String.raw`) is not caught by either: keep TV copy literal.
  *
  * The one escape allowed is `\u00a0`: the lower third and Up next join title and artist with `'\u00a0- '`, and an
  * NBSP is a space with no glyph to tofu. Only the escape, because a literal NBSP cannot be told from a space in
@@ -113,6 +120,19 @@ test('no TV style block spells a non-ASCII glyph as a CSS escape', () => {
 	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('<style>');
 });
 
+// The badge's live mark is a CSS dot (no `●` in its text): an empty `::before`, square, round and filled.
+test('the join badge draws its live dot, not a glyph', () => {
+	const badge = tv.find((t) => t.f === 'src/lib/tv/JoinBadge.svelte')!.text;
+	expect(badge).toContain('<div class="n">{onlineCount} ');
+	const dot = badge.match(/\.n::before\s*\{([^}]*)\}/)?.[1] ?? '';
+	const prop = (p: string) => dot.match(new RegExp(`(?:^|[;\\s])${p}:\\s*([^;]+);`))?.[1]!.trim();
+	expect(prop('content')).toBe("''");
+	expect(prop('width')).toBeDefined();
+	expect(prop('width')).toBe(prop('height'));
+	expect(prop('border-radius')).toBe('50%');
+	expect(prop('background')).toBe('currentColor');
+});
+
 const STATUSES = Object.keys({
 	queued: 1,
 	downloading: 1,
@@ -128,6 +148,26 @@ test('every TV string built outside the TV sources is ASCII for signs too', () =
 	rendered.push(...PROCESS_STEPS, ...ATTRACT_PHRASES);
 	for (const status of STATUSES)
 		rendered.push(processStageLabelAscii(status), processStageLabelAscii(status, { pct: 40 }));
+	// The lobby's headline and next line for a stuck turn (TvLobby, the page), every branch: no maker, my own turn,
+	// one named singer, several. And the lobby line over its arms, which carries OVERDUE_LABEL and `next`.
+	const name = (id: string) => (id === 'a' ? 'Theo' : 'Maya');
+	for (const w of [
+		{ making: 0, stuckSingerIds: ['a'], noMaker: true },
+		{ making: 0, stuckSingerIds: ['a'], noMaker: false },
+		{ making: 0, stuckSingerIds: ['a', 'b'], noMaker: false }
+	]) {
+		for (const me of [null, 'a']) {
+			const lines = stuckTurnsLines(w, name, me);
+			rendered.push(lines!.headline, lines!.next);
+			for (const [processing, overdue] of [
+				[true, false],
+				[true, true],
+				[false, false]
+			])
+				for (const count of [0, 2]) rendered.push(lobbyLine(count, processing!, overdue!, lines!.next));
+		}
+	}
+	rendered.push(OVERDUE_LABEL, lobbyLine(0, false, false, null));
 	for (let s = -12; s <= 12; s++) rendered.push(keyShiftLabel(s) ?? '');
 	// The progress clocks: elapsed, and time left from a fresh song to the last second, past an hour too.
 	for (const [at, of] of [

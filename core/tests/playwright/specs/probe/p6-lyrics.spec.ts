@@ -139,6 +139,9 @@ interface OverlayClasses {
 	ballPresent: boolean;
 	/** A dot marker is DRAWN, since the TV draws no `●` (stage-words.test.ts): a square box, round and filled. */
 	ballDrawn: boolean;
+	/** Where the marker sits on its word: `dx` its centre off the word's centre in px, `cy` and `bottom` its centre
+	 *  and bottom below the word box's top, in the word's em. */
+	ballPlace: { dx: number; cy: number; bottom: number } | null;
 	fontFamily: string | null;
 	textTransform: string | null;
 	unverified: boolean;
@@ -153,7 +156,19 @@ async function readClasses(tv: Page): Promise<OverlayClasses | null> {
 			const b = document.querySelector(ball);
 			const bs = b ? getComputedStyle(b) : null;
 			const bw = Math.round(parseFloat(bs?.width ?? ''));
+			const word = b?.parentElement;
+			const place = () => {
+				const r = b!.getBoundingClientRect();
+				const wr = word!.getBoundingClientRect();
+				const em = parseFloat(getComputedStyle(word!).fontSize);
+				return {
+					dx: r.x + r.width / 2 - (wr.x + wr.width / 2),
+					cy: (r.y + r.height / 2 - wr.y) / em,
+					bottom: (r.bottom - wr.y) / em
+				};
+			};
 			return {
+				ballPlace: b && word ? place() : null,
 				ballDrawn:
 					!!bs &&
 					bw > 8 &&
@@ -439,13 +454,20 @@ test('lyrics-ball (bounce / steady / underline / off) applies live to the marker
 		await expect.poll(ballClass, { message: 'lyrics-ball=steady did not reach the marker' }).toBe('steady');
 		// Read in the same frame as the class, and kept: between words there is no marker at all.
 		let drawn: boolean | null = null;
+		const seen: { place: OverlayClasses['ballPlace'] } = { place: null };
 		await expect
 			.poll(async () => {
 				const c = await readClasses(stage.tv);
-				if (c?.ballClass === 'steady') drawn = c.ballDrawn;
+				if (c?.ballClass === 'steady') [drawn, seen.place] = [c.ballDrawn, c.ballPlace];
 				return drawn;
 			})
 			.toBe(true);
+		// WHERE THE OLD `●` INKED, in the word's em: its centre 0.51 and its bottom 0.745 below the word box's top
+		// (the glyph at `top: -0.85em`, measured in this container's font), and centred on the word.
+		const at = seen.place!;
+		expect(Math.abs(at.dx), `the ball is off the word's centre: ${JSON.stringify(at)}`).toBeLessThanOrEqual(1);
+		expect(at.cy, `the ball's centre moved: ${JSON.stringify(at)}`).toBeCloseTo(0.51, 1);
+		expect(at.bottom, `the ball's bottom moved: ${JSON.stringify(at)}`).toBeCloseTo(0.745, 1);
 		await putRoom(stage.phone, { lyricsBall: 'underline' });
 		await expect.poll(ballClass, { message: 'lyrics-ball=underline did not reach the marker' }).toBe('underline');
 		await putRoom(stage.phone, { lyricsBall: 'off' });
