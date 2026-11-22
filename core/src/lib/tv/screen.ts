@@ -159,11 +159,12 @@ export function processStep(status: MediaStatus | undefined): { index: number } 
 /**
  * The waiting takeover's bar and current step, read off the song's LIVE status with the phone's own overall figure
  * (`overallProcessPct`), so the wall and the phone show one number. `null` — no bar and no step marked — when the TV
- * holds no live status for the song or the process is off the line: no figure beats an invented one.
+ * holds no live status for the song, the process is off the line, or the server has said nobody can run it
+ * (`unservable`, the phone's stalled card, which draws no bar either): no figure beats an invented one.
  */
 export function waitingProgress(
-	live: { status: MediaStatus; pct: number } | undefined
+	live: { status: MediaStatus; pct: number; unservable?: boolean } | undefined
 ): { index: number; pct: number } | null {
-	if (!live || live.status === 'failed' || live.status === 'canceled') return null;
+	if (!live || live.unservable || live.status === 'failed' || live.status === 'canceled') return null;
 	return { index: processStep(live.status).index, pct: overallProcessPct(live.status, live.pct) };
 }

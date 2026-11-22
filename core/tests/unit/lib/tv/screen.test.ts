@@ -9,9 +9,9 @@ import {
 	statusOverdue,
 	lyricsAdvancing,
 	processStep,
+	waitingProgress,
 	PROCESS_STEPS
 } from '$lib/tv/screen';
-import * as screen from '$lib/tv/screen';
 import { overallProcessPct } from '$lib/process-progress';
 import type { MediaStatus, QueueEntry } from '$lib/contract';
 import { at } from '$test';
@@ -234,15 +234,14 @@ describe('processStep', () => {
 
 // F4: the waiting takeover drew `processStep('separating')`'s fixed 62% whatever the song's real progress.
 describe('waitingProgress', () => {
-	const { waitingProgress } = screen;
-
 	it("is the phone's own overall figure off the LIVE status, so the wall and the phone agree", () => {
-		expect(typeof waitingProgress).toBe('function');
 		for (const [status, pct] of [
 			['queued', 0],
+			['downloading', 50],
 			['separating', 10],
 			['separating', 80],
-			['aligning', 50]
+			['aligning', 50],
+			['ready', 100]
 		] as [MediaStatus, number][]) {
 			expect(waitingProgress({ status, pct })).toEqual({
 				index: processStep(status).index,
@@ -259,12 +258,17 @@ describe('waitingProgress', () => {
 		expect(waitingProgress(undefined)).toBeNull();
 		expect(waitingProgress({ status: 'failed', pct: 40 })).toBeNull();
 		expect(waitingProgress({ status: 'canceled', pct: 40 })).toBeNull();
+		// The phone's stalled card: a status the server has said nobody can run draws no bar.
+		expect(waitingProgress({ status: 'queued', pct: 0, unservable: true })).toBeNull();
 	});
 
 	it("the TV page passes the song's liveStatus, never a literal stage", () => {
 		const page = readFileSync(join(import.meta.dir, '../../../../src/routes/tv/+page.svelte'), 'utf8');
 		expect(page).not.toMatch(/processStep\(\s*['"]/);
 		expect(page).toMatch(/waitingProgress\(current \? liveStatus\.get\(current\.mediaId\) : undefined\)/);
+		// The bar draws that figure, and the slot hides whenever there is none.
+		expect(page).toMatch(/<div class="process-bar"><i style="width: \{proc\?\.pct \?\? 0\}%"><\/i><\/div>/);
+		expect(page).toMatch(/class=\{\{ 'process-slot': true, unknown: !proc \}\}/);
 		// The figure is only real while every `media:status` lands in that map.
 		expect(page).toMatch(/liveStatus = new Map\(liveStatus\)\.set\(e\.mediaId, e\);/);
 	});

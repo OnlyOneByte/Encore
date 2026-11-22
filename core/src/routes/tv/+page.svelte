@@ -968,14 +968,15 @@
 			<div class="state-mark"><Icon name="flame" /></div>
 			<div class="up-label">{processStageLabel('queued')}</div>
 			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
-			{#if proc}
-				<div class="process-bar"><i style="width: {proc.pct}%"></i></div>
+			<!-- Always laid out, hidden with no figure, so the centred title holds still when a status arrives or goes. -->
+			<div class={{ 'process-slot': true, unknown: !proc }} aria-hidden={proc ? undefined : 'true'}>
+				<div class="process-bar"><i style="width: {proc?.pct ?? 0}%"></i></div>
 				<div class="process-steps">
 					{#each PROCESS_STEPS as label, i (label)}
-						<span class={{ 'step-current': i === proc.index, 'step-done': i < proc.index }}>{label}</span>
+						<span class={{ 'step-current': i === proc?.index, 'step-done': !!proc && i < proc.index }}>{label}</span>
 					{/each}
 				</div>
-			{/if}
+			</div>
 		</div>
 	{:else if transient === 'loading' && stageEntry}
 		<!--
@@ -1497,6 +1498,13 @@
 		font-weight: 900;
 		line-height: 1.04;
 		margin-top: 1vh;
+	}
+	/* `contents`, so the bar and steps stay the takeover's own flex items; `visibility` inherits into both. */
+	.process-slot {
+		display: contents;
+	}
+	.process-slot.unknown {
+		visibility: hidden;
 	}
 	.process-bar {
 		width: var(--tv-process-bar-w);
