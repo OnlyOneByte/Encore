@@ -658,7 +658,7 @@ echo
 
 if [ "$CORE_ONLY" != 1 ]; then
 	say "starting worker"
-		# PATH must carry the venv bin: the worker shells out to demucs / yt-dlp BY NAME and capabilities.py
+		# PATH must carry the venv bin: the worker shells out to demucs / yt-dlp BY NAME and host/hardware.py
 		# proves a capability with shutil.which(), so an importable-but-not-on-PATH tool reports differently.
 		# `exec` is load-bearing — it replaces the subshell with python, so $! is python's own pid; without
 		# it cleanup kills a shell that has already forked and the worker survives.

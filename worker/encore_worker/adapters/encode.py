@@ -110,9 +110,9 @@ def encode_guide_mix_argv(
 def copy_argv(source: str, out_path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """Remux without re-encoding — for a scratch stem that is ALREADY in the published format.
 
-    `-c:a copy` so a box configured with `ENCORE_STEM_FORMAT=flac` (scratch already FLAC) does not pay a
-    second lossless encode, and more importantly does not resample: re-encoding FLAC to FLAC is lossless
-    but pointless, and every extra pass is another chance to change a sample rate.
+    `-c:a copy` so a separator that already wrote FLAC scratch stems does not pay a second lossless encode,
+    and more importantly does not resample: re-encoding FLAC to FLAC is lossless but pointless, and every
+    extra pass is another chance to change a sample rate.
     """
     return ffmpeg_argv(ffmpeg_bin, source, ["-c:a", "copy", "-f", "flac"], out_path)
 

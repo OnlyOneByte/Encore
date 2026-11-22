@@ -8,7 +8,7 @@
 FROM python:3.12-slim-bookworm AS runtime
 WORKDIR /app/worker
 
-# ffmpeg is NOT optional here: `host/capabilities.py` refuses to advertise `stems` without it, because
+# ffmpeg is NOT optional here: `host/hardware.py` refuses to advertise `stems` without it, because
 # publication encodes stems to FLAC and the guide mix is an ffmpeg filter graph. A box without it would
 # connect, advertise nothing, and look broken.
 #

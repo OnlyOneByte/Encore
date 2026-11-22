@@ -119,8 +119,8 @@ class Config:
     zoo_model_dir: str = ""
     keepalive_sec: float = KEEPALIVE_SEC
     job_ceiling_sec: float = JOB_CEILING_SEC
-    #: The container published stems are written in — CORE'S DECISION, announced at handshake. Not
-    #: `ENCORE_STEM_FORMAT`, which is the SCRATCH container a separator writes (docs/arch/05-worker.md §2.5).
+    #: The container published stems are written in — CORE'S DECISION, announced at handshake. Not the
+    #: SCRATCH container a separator writes, which no setting controls (docs/arch/05-worker.md §2.5).
     publish_stem_format: str = "flac"
     #: FLAC compression level: the size/CPU knee, and decode-cheap, which is what a browser starting playback
     #: in a room pays for.
