@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 133
@@ -118,7 +118,7 @@
     ]
    }
   ],
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-def-ra/rows.jsonl"
+  "rows_full": "<bench-root>/_runs/w8a-def-ra/rows.jsonl"
  },
  "summary": {
   "truth": {

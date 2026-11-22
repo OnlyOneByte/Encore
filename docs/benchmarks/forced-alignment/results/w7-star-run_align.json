@@ -68,7 +68,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 37
@@ -105,7 +105,7 @@
   },
   "asr": "off",
   "sync_mode": "forced",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-star-run_align/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-star-run_align/rows.jsonl",
   "baseline": "W7 3.10 / D3 star phase A, THE E2E AXIS — the run 3.10's reject-if is written over, and IT REJECTS (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, ENCORE_ALIGN_EXPERIMENTS=star, P = 1.0 nats): --level run_align, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, asr off, syncMode forced. Arm-OFF base on the SAME tree: results/w7-run_align.json. VERDICT: gates/w7-star.yaml 32/36 REJECT. The reject-if trips on its own clause — count(youtube.song.gross_up + youtube.song.missing_up) = 14, which is never-be-alone losing ONE line to \"missing\" in 11 of the 16 modes (truth, jit, off05, off15, off3, offm1, tempo098, tempo102, drop20, blind, headers: missing 1 -> 2 of its 47 truth lines) plus tfr-mayday drop20 (+1 missing), shape-of-you blind (+1 gross) and tfr-chosen blind (gross 8 -> 10, missing 5 -> 3: it published two lines it used to skip and both are wrong). never-be-alone is the review's OWN objection to the star, reproducing at the claims path. Under TRUTH claims a song loses a line (truth-no-song-loses-lines 1), which PLAN-alignment-v3 forbids outright. It also costs the Jamendo word row the PLAN pins: +-100 85.46 -> 84.94, +-250 96.58 -> 96.20, +-300 97.16 -> 96.81, AAE 71.1 -> 74.1 ms, MedAE 37.5 -> 37.9, word end +-100 80.34 -> 80.21, worst song -4.26 pt at +-300 (HILA_-_Give_Me_the_Same 98.98 -> 94.72); gates/w7-truth.yaml 15/18, gates/w7-words.yaml 15/25, gates/w7.yaml 42/45 (442 of 1088 published documents change) — but gates/w7-wrongtext.yaml 10/10, and 10/10 again in --sync-mode lines (results/w7-star-lines-wrongtext.json, 0 of 640). WHAT IT BUYS, measured, because the arm is not worthless: pooled gross across all modes 142 -> 98, drop50 gross 82 -> 44 and +-500/text 75.72 -> 81.90 with missing 55 -> 28, drop20 +-500 90.31 -> 90.82, blind gross 61 -> 54 and +-500/text 79.20 -> 80.17, jit +-500 87.17 -> 88.36, drop50 Jamendo AAE 711.6 -> 456.7 ms, and under truth claims it publishes MORE words (5583 aligned of 5693 against 5378) so the COVERAGE metrics rise - word_pco300 91.78 -> 94.94, highlight 81.40 -> 82.18 - while precision over the words that did publish falls; and the wrong-text verdict is BYTE-identical (wrongtext 0/320 and refused 320/320 on both sides, as designed — the gates read the unstarred matrix). So the trade is REAL and it is the wrong way round for a default: it buys partial-sheet lines with full-sheet word onsets. STAYS DEFAULT-OFF as ENCORE_ALIGN_EXPERIMENTS=star.",
   "gates": [
    {

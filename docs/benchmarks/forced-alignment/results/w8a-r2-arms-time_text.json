@@ -69,7 +69,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 155
@@ -104,7 +104,7 @@
    "credit": 52.1,
    "wrongtext+ownclock": 159.5
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8ar2-arms-tt/rows.jsonl",
   "baseline": "W8a ROUND 2 RE-PRICE, BOTH BAND ARMS ON (ENCORE_ALIGN_EXPERIMENTS=band-reopen,band-off-sheet) at --level time_text, after the round-2 review (bench runner, 2026-10-04, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, code 35d1360e6d5b3a5c; 1078 s, 60 matrices READ from disk, 0 computed - the run_align companion paid them). REPLACES results/w8a-arms-time_text.json. Compared against results/w8a-base-time_text.json (W7's own rows, this harness). gates/w8a.yaml 151/154 - REJECT on the same three rules as run_align, with the same numbers (word-aligned-not-down-truth 5378 -> 5373, -jit 5102 -> 5096, demotion-removes-only-bad-high-offm1 23 <= 0). gates/w8a-fix.yaml 93/94, gates/w8a-r1-reopen.yaml 121/125. CHANGED CASES 20 of 1088, a strict SUBSET of round 1's 42 with 0 new: 19 onsets moved (band-reopen), 1 grade-only. THE DEMOTION ARM MAKES ONLY ITS FALSE POSITIVE AT THIS LEVEL: never-be-alone offm1 high 23 -> 0 (0 of them bad) is the whole of band-off-sheet's effect here - bad-guy off05, its one true positive at run_align, is NOT demoted at time_text, which is why high-held-off05 passes here and fails there. Kinematic_-_Peyote 71.43 -> 92.86 at truth is again the only song that moves; the four displaced songs are untouched and the 15 perfect songs hold. band 158 -> 155 truth, 156 -> 153 extraverse, 157 -> 155 credit, 172 -> 170 headers, 230 -> 228 jit, 133 -> 131 drop20. gross unchanged in every mode. Jamendo words at truth +-100 85.46 -> 85.54, +-300 97.16 -> 97.23, AAE 71.1 -> 70.6 ms, highlight 81.40 -> 81.50. README: 'W8a round 2: the two arms re-priced on the full corpus'.",
   "gates": [
    {

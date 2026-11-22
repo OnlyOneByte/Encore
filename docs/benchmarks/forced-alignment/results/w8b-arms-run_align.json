@@ -17,7 +17,7 @@
   "asr": "off",
   "sync_mode": "forced",
   "detector": "off",
-  "rows": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-ra/rows.jsonl",
+  "rows": "<bench-root>/_runs/w8ar2-arms-ra/rows.jsonl",
   "row_codes": [
    "35d1360e6d5b3a5c"
   ],
@@ -27,8 +27,8 @@
    "bad-guy": "truth leads its audio by 834 ms (median over 27 of 79 line starts landing in stem silence, twice every bar of the rule); its envelope lag of +780 ms reads r 0.19, under the 0.25 a lag needs to corroborate",
    "tfr-chosen": "truth leads its audio by 540 ms (median over 11 of 37 line starts landing in stem silence), corroborated by an envelope lag of +460 ms at r 0.61"
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-ra/rows.jsonl",
-  "resummarised_from": "/Volumes/workplace/personal/encore-align-bench/_runs/w8ar2-arms-ra",
+  "rows_full": "<bench-root>/_runs/w8ar2-arms-ra/rows.jsonl",
+  "resummarised_from": "<bench-root>/_runs/w8ar2-arms-ra",
   "note": "W8a's BOTH-ARMS-ON rows (_runs/w8ar2-arms-ra, code 35d1360e6d5b3a5c) re-summarised on the W8b harness, 0 model seconds, so gates/w8b.yaml can be read whole on a tree whose documents moved. The committed results/w8a-r2-arms-run_align.json keeps its bytes."
  },
  "summary": {

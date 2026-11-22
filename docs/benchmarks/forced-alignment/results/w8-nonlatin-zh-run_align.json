@@ -27,7 +27,7 @@
    "amll-zh-zaijian"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "8b455acff4b268174cfdc64fb7090c32ee2dd7f3",
    "dirty_files": 116
@@ -50,7 +50,7 @@
   "asr": "off",
   "sync_mode": "forced",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8-nonlatin-zh/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8-nonlatin-zh/rows.jsonl",
   "gates": [
    {
     "file": "gates/w8-nonlatin.yaml",

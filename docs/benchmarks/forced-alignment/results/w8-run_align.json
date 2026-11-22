@@ -70,7 +70,7 @@
    "bad-guy": "truth leads its audio by 834 ms (median over 27 of 79 line starts landing in stem silence, twice every bar of the rule); its envelope lag of +780 ms reads r 0.19, under the 0.25 a lag needs to corroborate",
    "tfr-chosen": "truth leads its audio by 540 ms (median over 11 of 37 line starts landing in stem silence), corroborated by an envelope lag of +460 ms at r 0.61"
   },
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
    "dirty_files": 48
@@ -108,7 +108,7 @@
   "sync_mode": "forced",
   "detector": "off",
   "romanize": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8-ra/rows.jsonl",
   "gates": [
    {
     "file": "gates/w8.yaml",

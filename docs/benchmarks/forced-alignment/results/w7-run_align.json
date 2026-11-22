@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 26
@@ -100,7 +100,7 @@
   },
   "asr": "off",
   "sync_mode": "forced",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-ra/rows.jsonl",
   "baseline": "W7 CONTROL at --level run_align on the shipped default, and THE ROW LATER WAVES SHOULD COMPARE AGAINST (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, emitter 1a2fd6852bd30243): HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, asr off, syncMode forced, NO experiments. The whole job — acquisition, Search, policy.decide (with M13's ranking and L5's retry live), retimes, ASR fallback, publish. EVERY mode reproduces results/w5r2-run_align.json exactly: truth gross 0, +-500 90.45 over 1707 scored lines, +-500/text 87.73 over the 1760 the texts asked for, 32 of 32 zero-gross songs, Jamendo words +-100 85.46 / +-300 97.16 / AAE 71.1 ms over 5378 aligned of 5693 in text, highlight 81.40% of 2432.77 sung seconds; wrongtext 0/320 and wrongtext+ownclock 0/320. 0 of 32 songs changed its published document's bytes in any mode. gates/w7.yaml 45/45, gates/w7-truth.yaml 18/18, gates/w7-words.yaml 25/25, gates/w7-wrongtext.yaml 10/10. Also the arm-OFF base for gates/w7-star.yaml (results/w7-star-run_align.json).",
   "gates": [
    {

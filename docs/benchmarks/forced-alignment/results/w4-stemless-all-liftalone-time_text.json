@@ -68,7 +68,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "a6e0488e839a96653646dfcbc2913090d13d2173",
    "dirty_files": 41

@@ -47,7 +47,7 @@
    "tfr-flyaway",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 141
@@ -81,7 +81,7 @@
   "asr": "off",
   "sync_mode": "forced",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-r1-reopen-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8a-r1-reopen-ra/rows.jsonl",
   "baseline": "W8a ROUND 1: the band-reopen ARM ALONE (ENCORE_ALIGN_EXPERIMENTS=band-reopen) at --level run_align, re-read WITH the review's opening_is_free guard, over the 14 songs x 13 modes that hold every move the arm makes (bench runner, 2026-10-03, HuBERT-Large, 182 cases, seed 0, --tfr-audio youtube, mps, asr off, syncMode forced). NOT A CORPUS ROW; its base is results/w8a-r1-ctl-run_align.json, measured identical to the recorded default. THE READING: the guard REFUSES 20 of the 56 line moves the unguarded arm made (results/w8a-arms-run_align.json) and keeps 36; 22 cases differ from the default where 35 did; +-500 reach +15 lines with NONE lost (was +16 / -1), band -15, gross 0 in every mode. The arm's two rejecting rules now PASS: no-song-loses-jit min_song_delta 0 (was -2.17) and word-pm300-not-down-jit 93.85 >= 93.74. The guard's price: tfr-chosen [26] at off05 (+1 line) is refused too. gates/w8a-r1-reopen.yaml 125/125. gates/w8a-fix.yaml 71/88 and gates/w8a.yaml 116/154 on this subset: 12 and 20 ERRORs are the modes the subset omits, the perfect-songs-held-* and absolute word/highlight FAILs are 14-song subset artefacts (the CONTROL fails the same four), and word-aligned-not-down-* is red by construction because the review also made a re-opened first word generate.CUE_OPENED. STILL DEFAULT-OFF: a full 32-song sweep is owed before any flip. README, \"W8a round 1: the band-reopen arm, re-read with the free-time guard\".",
   "gates": [
    {

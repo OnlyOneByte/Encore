@@ -70,7 +70,7 @@
    "bad-guy": "truth leads its audio by 834 ms (median over 27 of 79 line starts landing in stem silence; envelope lag +780 ms)",
    "tfr-chosen": "truth leads its audio by 540 ms (median over 11 of 37 line starts landing in stem silence; envelope lag +460 ms)"
   },
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "ede7d3423925e034024d9dab83e3273e64227ade",
    "dirty_files": 52
@@ -107,7 +107,7 @@
   "asr": "off",
   "sync_mode": "lines",
   "detector": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8b-lines/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8b-lines/rows.jsonl",
   "baseline": "W8b SHIPPED DEFAULT at --level run_align --sync-mode lines, AND THE 28-SONG BASELINE AT THAT RUNG (bench runner, 2026-10-05, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, NO experiments; 904 s, emissions {disk 32, memory 1024}, 0 MATRICES COMPUTED). BYTE-IDENTICAL TO W8a's DEFAULT: all 1088 cases match results/w8a-lines-run_align.cases.jsonl on every one of 40780 shared cells - 0 differ. At this rung the document IS the served sheet, so in truth mode the served claims ARE the scoring truth. BOTH WAYS. 32 songs at truth: +-500 94.16 over 1712 lines, band 100, bias 0.0 at MAD 0.0, high 0 by construction. THE 28 THAT SCORE: +-500 100.00 over 1506 lines, BAND 0 - the rung publishes the truth verbatim and the scoring agrees. All 100 of the 32-song band lines are bad-guy's 65 and numb's 35, each moved by ONE constant (+720.0 and +620.0 ms at MAD 0.0). AND THE MIRROR: off05 publishes a sheet 0.5 s late and +-500 scores 99.87 on the 28, with 16 of the 28 songs past 250 ms of median residual at MAD 0. wrongtext 0/320 and wrongtext+ownclock 0/320. README, \"W8b: the corpus's own truth, measured, and the 28 songs that score\" and \"W8b: the sweep, read both ways\".",
   "gates": [
    {

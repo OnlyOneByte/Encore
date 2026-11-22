@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "97a011587178bfc2230e40ebb0f2930c2562fb6a",
    "dirty_files": 28
@@ -100,7 +100,7 @@
   },
   "asr": "off",
   "sync_mode": "lines",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w7-lines/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w7-lines/rows.jsonl",
   "baseline": "W7 CONTROL at --level run_align --sync-mode lines on the shipped default (bench runner, 2026-10-01, code fd9a5a6ddb641cd3, emitter 1a2fd6852bd30243): HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, asr off. Every text's only attempt is the gated LINE_SYNC rung, so this is the rung's own wrong-text floor: wrongtext 0/320 + wrongtext+ownclock 0/320 = 0 of 640, with W7's language routing and M13's provider ranking live. EVERY mode reproduces results/w5r2-lines-run_align.json exactly (truth +-500 94.16 over 1712 scored of 1760 asked for, 48 missing, gross 0 in every mode, drop50 10 refused, blind 32 refused by design — no claims, so no rung). 0 of 32 songs changed its published document's bytes. gates/w7.yaml 45/45, gates/w7-wrongtext.yaml 10/10; the Jamendo word block stands down here because a lines document carries LINE timings only (word_aligned 0 of 5693) and lives in gates/w7-words.yaml.",
   "gates": [
    {

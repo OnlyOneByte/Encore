@@ -47,7 +47,7 @@
    "tfr-flyaway",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "0ab442b5364f96c45b2f1defef7546c1a6a1d89f",
    "dirty_files": 140
@@ -79,7 +79,7 @@
    "tempo098": 24.9,
    "tempo102": 26.2
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-r1-reopen-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8a-r1-reopen-tt/rows.jsonl",
   "baseline": "W8a ROUND 1: the band-reopen ARM ALONE at --level time_text, re-read WITH the opening_is_free guard, same 14 songs x 13 modes, 182 cases. NOT A CORPUS ROW; base results/w8a-r1-ctl-time_text.json. THE READING: the guard refuses 51 of the 75 line moves the unguarded arm made here and keeps 24; 15 cases differ from the default where 41 did; +-500 reach +14 lines, none lost, band -14, gross 0 in every mode. Same two rejecting rules PASS with the same numbers. gates/w8a-r1-reopen.yaml 125/125. README, \"W8a round 1: the band-reopen arm, re-read with the free-time guard\".",
   "gates": [
    {

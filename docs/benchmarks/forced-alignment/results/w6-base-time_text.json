@@ -64,7 +64,7 @@
    "tfr-mayday",
    "tfr-chosen"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "1c81d89ffb3810174750b0206529517c28ee3e07",
    "dirty_files": 25
@@ -98,7 +98,7 @@
    "credit": 51.5,
    "wrongtext+ownclock": 155.9
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w6r2-base-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w6r2-base-tt/rows.jsonl",
   "gates": [
    {
     "file": "gates/w6.yaml",

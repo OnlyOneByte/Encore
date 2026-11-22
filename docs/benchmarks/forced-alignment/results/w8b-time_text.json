@@ -70,7 +70,7 @@
    "bad-guy": "truth leads its audio by 834 ms (median over 27 of 79 line starts landing in stem silence; envelope lag +780 ms)",
    "tfr-chosen": "truth leads its audio by 540 ms (median over 11 of 37 line starts landing in stem silence; envelope lag +460 ms)"
   },
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "ede7d3423925e034024d9dab83e3273e64227ade",
    "dirty_files": 52
@@ -104,7 +104,7 @@
    "credit": 52.9,
    "wrongtext+ownclock": 172.5
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8b-tt/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8b-tt/rows.jsonl",
   "baseline": "W8b SHIPPED DEFAULT at --level time_text, AND THE 28-SONG ACCURACY BASELINE LATER WAVES SHOULD COMPARE AGAINST (bench runner, 2026-10-05, HuBERT-Large, 32 songs x 16 modes, 1088 cases, seed 0, wrong_k 10, --tfr-audio youtube, mps, syncMode forced, NO experiments; 1068 s, emissions {disk 63, memory 1222}, 0 MATRICES COMPUTED). BYTE-IDENTICAL TO W8a's DEFAULT: all 1088 cases match results/w8a-time_text.cases.jsonl on every one of 31920 shared cells - 0 differ - and the only new per-case fields are accuracy_excluded, words.published and words.published_pm100. W8b changed NO file under worker/encore_worker. BOTH WAYS. 32 songs at truth: +-500 90.89 over 1735 scored lines, gross 0, band 158, high 1396, high_bad 82. THE 28 THAT SCORE (corpus-truth.json excludes bad-guy, believer, numb and tfr-chosen on a measured truth displacement): +-500 97.12 over 1526 lines, gross 0, band 44, high 1260, HIGH_BAD 0. Jamendo is unaffected and reads the same in jamendo, scored and all: words 5378/5693, +-100 85.46, +-300 97.16, AAE 71.1 ms, PCO@.3 91.76, highlight 81.40. wrongtext 0/320 and wrongtext+ownclock 0/320. Both band arms stay DEFAULT-OFF (W8b re-judged word-aligned-not-down and it stands: gates/w8b-arms.yaml). README, \"W8b: the corpus's own truth, measured, and the 28 songs that score\" and \"W8b: the sweep, read both ways\".",
   "gates": [
    {

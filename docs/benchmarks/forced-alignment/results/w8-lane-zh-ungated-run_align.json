@@ -31,7 +31,7 @@
    "amll-zh-zaijian"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "29e5ddda61b561678186b78e8458c5c7f58a00e8",
    "dirty_files": 50
@@ -55,7 +55,7 @@
   "sync_mode": "forced",
   "detector": "off",
   "romanize": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8-nl-zh-ungated/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w8-nl-zh-ungated/rows.jsonl",
   "baseline": "THE PRE-W8 LANE, as a control: ENCORE_ALIGN_EXPERIMENTS=h3-ungated-words restores the ungated word document a routed bundle published before stage 0's lexical.may_time_words rule. gates/w8-lane.yaml REJECTS this row, which is what makes that file a measurement rather than a tautology.",
   "gates": [
    {

@@ -33,7 +33,7 @@
    "believer",
    "bad-guy"
   ],
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "fd98f0c166bbfc87408d276f63f8a073cd4a8a05",
    "dirty_files": 57

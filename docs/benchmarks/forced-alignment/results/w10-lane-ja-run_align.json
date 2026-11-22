@@ -25,7 +25,7 @@
    "amll-ja-yoru-ni-kakeru"
   ],
   "accuracy_excluded": {},
-  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "bench_root": "<bench-root>",
   "git": {
    "head": "6a35abf25b5ef65a74d5df7f6d283b66bb177509",
    "dirty_files": 95
@@ -50,7 +50,7 @@
   "sync_mode": "forced",
   "detector": "off",
   "romanize": "off",
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w10-nl-ja-ra/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w10-nl-ja-ra/rows.jsonl",
   "gates": [
    {
     "file": "gates/w10.yaml",

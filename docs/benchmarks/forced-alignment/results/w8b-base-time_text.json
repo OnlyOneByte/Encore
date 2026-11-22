@@ -9,7 +9,7 @@
   "target": "stem",
   "align_config": {},
   "code": "8706b41851c0b851",
-  "rows": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-def-tt/rows.jsonl",
+  "rows": "<bench-root>/_runs/w8a-def-tt/rows.jsonl",
   "row_codes": [
    "8706b41851c0b851"
   ],
@@ -19,8 +19,8 @@
    "numb": "continuous-vocal: its truth leads its audio by +690 ms (the forced rung's own blind decode, MAD 140 ms over all 35 lines; cue ENDS +720 ms) and by +620 ms (envelope lag, r 0.702, the highest of the band songs), but the silence arbiter reads 1 of 35 starts because the stem is never quiet at one - the median stem level at a numb truth start is 0.546 of the track's loud level against the 0.10 silence bar. Re-anchored by the measured +690 ms the three levels read 71.43% / 94.29% / 100.00% ±500 against 54.29% / 20.00% / 0.00% as shipped, so the level spread that once stood here was the truth's displacement sitting astride the 500 ms threshold plus 17 CHORUS: tokens the raw-claims level aligns",
    "tfr-chosen": "truth leads its audio by 540 ms (median over 11 of 37 line starts landing in stem silence; envelope lag +460 ms)"
   },
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-def-tt/rows.jsonl",
-  "resummarised_from": "/Volumes/workplace/personal/encore-align-bench/_runs/w8a-def-tt",
+  "rows_full": "<bench-root>/_runs/w8a-def-tt/rows.jsonl",
+  "resummarised_from": "<bench-root>/_runs/w8a-def-tt",
   "baseline": "W8a's SHIPPED DEFAULT rows re-summarised on the W8b harness (0 model seconds) so the 28-song `scored` group exists on a W8a-basis comparison base; the committed results/w8a-* rows keep their bytes. README, \"W8b: the corpus's own truth, measured, and the 28 songs that score\"."
  },
  "summary": {

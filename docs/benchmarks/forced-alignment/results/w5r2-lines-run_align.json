@@ -11,13 +11,13 @@
   "target": "stem",
   "tfr_audio": "youtube",
   "wrong_k": 10,
-  "rows": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-lines-all/rows.jsonl",
+  "rows": "<bench-root>/_runs/w5r2-lines-all/rows.jsonl",
   "row_codes": [
    "e2c1027b6cc491a2"
   ],
   "merged_from": [
-   "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-lines-rest",
-   "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-lines"
+   "<bench-root>/_runs/w5r2-lines-rest",
+   "<bench-root>/_runs/w5r2-lines"
   ],
   "modes": [
    "truth",
@@ -37,7 +37,7 @@
    "credit",
    "wrongtext+ownclock"
   ],
-  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w5r2-lines-all/rows.jsonl",
+  "rows_full": "<bench-root>/_runs/w5r2-lines-all/rows.jsonl",
   "baseline": "ROUND-2 RE-BENCH of results/w5-lines-run_align.json (bench runner, 2026-10-01, code e2c1027b6cc491a2). Same corpus and setup as results/w5r2-run_align.json with syncMode=lines, so every text's only attempt is the gated LINE_SYNC rung. All 1088 cases re-measured; 1079 reproduce results/w5-lines-run_align.cases.jsonl in every compared field including both digests, 8 differ in served_lines alone and ONE moves a metric (hello extraverse, scored 63 -> 74, still a line-sync document with gross 0 and text pm500 100.00).",
   "gates": [
    {
