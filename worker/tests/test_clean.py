@@ -5,7 +5,7 @@ corpora, and the rules that got deleted were deleted because they destroyed real
 `must_not_change` tests below are not padding — each one is a counterexample that killed a proposed
 rule, and re-adding that rule turns the test red.
 
-Real-audio evidence lives in the caption corpora (`/tmp/encore-align-bench`, not committed); these tests
+Real-audio evidence lives in the caption corpora (`$ENCORE_BENCH_ROOT`, not committed); these tests
 are hermetic and pin the behaviour those corpora measured.
 """
 

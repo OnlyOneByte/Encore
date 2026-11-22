@@ -3,7 +3,7 @@
 TEXT-SIDE ONLY, which makes it a pure function testable from a truth table. Four tiers, best evidence first —
 CMUdict's COUNT, Moby, pyphen, vowel groups — every one returning contiguous fragments that concatenate to
 exactly the input word. The ladder, the Moby packaging and the two bugs in how a token REACHED it:
-`docs/arch/04-alignment.md` §8; README, "Syllables: the tokens the hyphen rule reaches".
+`docs/arch/04-alignment.md` §8; LOG.md, "Syllables: the tokens the hyphen rule reaches".
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def _pyphen_split(word: str, language: str, *, unsplit_abstains: bool) -> list[s
     AN UNSPLIT ANSWER IS AN ABSTENTION WHERE A LATER TIER CAN BE CORRECTED, and a RESULT where it cannot:
     off English there is no count source to undo an over-split, so a language with no counter keeps pyphen's
     single fragment. THE FLAG IS THE LANGUAGE'S AND NOT THE TOKEN'S, which `_split_core`'s comment measures.
-    A MANGLED answer abstains too (docs/arch/04-alignment.md §8; README, "Syllables").
+    A MANGLED answer abstains too (docs/arch/04-alignment.md §8; LOG.md, "Syllables").
     """
     dic = _pyphen_dic(language)
     if dic is None:
@@ -214,7 +214,7 @@ def _split_core(core: str, language: str) -> list[str]:
     # `unsplit_abstains=english`: only English has a tier after this one that can correct an over-split, and
     # for an English token CMUdict does not know, that tier is not there either. MEASURED BEFORE LEAVING IT AS
     # IT IS — making the abstention conditional on a count existing would hand back more real ball bounces
-    # than false ones on the only population anybody has measured (README, "Syllables: the tokens the hyphen
+    # than false ones on the only population anybody has measured (LOG.md, "Syllables: the tokens the hyphen
     # rule reaches"); `test_syllabify` pins today's answer.
     pieces = (
         (_moby_split(core) if english else None)

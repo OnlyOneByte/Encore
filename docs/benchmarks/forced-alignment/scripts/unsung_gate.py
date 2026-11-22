@@ -8,7 +8,7 @@
 It runs the shipped two-round drop loop under each candidate floor and scores what survives against truth,
 which is the only way to see the rule's real cost: a dropped line is one the metrics no longer see, a spared
 one is a line the decode may have put seconds away. BLIND deliberately, and on a STEM by default, which is the
-target every committed row was measured on. What it prints, and why `--target mix` is the open case: README,
+target every committed row was measured on. What it prints, and why `--target mix` is the open case: LOG.md,
 "The harness scripts" and "The never-sung rule: the two lines no floor can separate".
 """
 

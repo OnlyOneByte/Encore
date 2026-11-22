@@ -42,7 +42,7 @@ def _clamped(
     Returns `(clamped, reverted, pulled)` — the refusals (the arm only) and `{index: seconds of overrun
     removed}` for each preceding line whose END the default pulled back, both being decisions no metric on
     the report can show. DEFAULT is `_clamped_v2`, which never refuses; `ordered` IS THE `m2-order-clamp` ARM
-    (XA-07). README, "The order-clamp arm's own table", has what the arm bought and the gates it failed.
+    (XA-07). LOG.md, "The order-clamp arm's own table", has what the arm bought and the gates it failed.
     """
     from encore_worker.domain.lyrics.generate import Generated  # noqa: PLC0415
 
@@ -84,7 +84,7 @@ def _clamped_v2(
     `(clamped, {index: seconds of overrun removed})`, the second half naming every PRECEDING line whose end
     this pulled back — a published timing changed on a line the ladder did not repair. It never refuses, so a
     repair landing past its successor still publishes backwards word starts (XA-07;
-    docs/arch/04-alignment.md §4; README, "The fix: resolve the overlap at the neighbour's END").
+    docs/arch/04-alignment.md §4; LOG.md, "The fix: resolve the overlap at the neighbour's END").
     """
     from encore_worker.domain.lyrics.generate import Generated, remapped  # noqa: PLC0415
 
@@ -118,7 +118,7 @@ def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None
     The one end `_clamped_v2` moves, and the START never moves with it, so a PULLED LINE'S PROVENANCE AND
     GRADE DO NOT MOVE either — the trail owes the pull itself instead (`_pulls_why`). TWO REFUSALS, NEITHER A
     NEW THRESHOLD: one decoder frame per letter, and `trimmed`'s own None. `frame_sec` goes through to
-    `trimmed` because the letter rule measures the WHOLE line (docs/arch/04-alignment.md §4; README, "The
+    `trimmed` because the letter rule measures the WHOLE line (docs/arch/04-alignment.md §4; LOG.md, "The
     anchor walk").
     """
     from encore_worker.domain.lyrics.generate import trimmed  # noqa: PLC0415

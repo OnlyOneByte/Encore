@@ -94,7 +94,7 @@
 #   share 0.3-0.8, and it has to, because a map lands a WRONG sheet on our decode too (same-video agreement max
 #   0.49 -> 0.51, one of 320 now clearing the timing half alone). NOT recovered and reported as such:
 #   never-be-alone in 12 of 13 modes (agreement 0.38-0.49 mapped, `near_fit` <= 0.45 — no offset can reach 0.5)
-#   and the 17 drop50 half-sheets. See README, "The rung's own claim clock".
+#   and the 17 drop50 half-sheets. See LOG.md, "The rung's own claim clock".
 #
 # RATCHETED TO W2'S ROW (2026-09-28, the W2 bench runner, as the W2 EXPECTATION paragraph above asked:
 # "the bench runner ratchets them up once the corpus run confirms these numbers"). The corpus run confirmed

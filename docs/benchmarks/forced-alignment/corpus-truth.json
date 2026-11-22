@@ -1,5 +1,5 @@
 {
- "doc": "docs/benchmarks/forced-alignment/README.md",
+ "doc": "docs/benchmarks/forced-alignment/LOG.md",
  "method": "silent-start-onset+envelope-lag",
  "limits": {
   "displacement_ms": 250.0,

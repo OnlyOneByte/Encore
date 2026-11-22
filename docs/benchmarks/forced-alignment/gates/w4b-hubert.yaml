@@ -70,7 +70,7 @@
 # rung is where HuBERT-L is unambiguously better, and wrong texts stay 0/640.
 #
 # ALREADY MEASURED, NOT BY THIS FILE (W4b hubert, 2026-09-30; the calibration is the wave's own gate and is
-# recorded in `lexical.CALIBRATED`'s docstring + README "The English bundle is a setting"): on a stem the
+# recorded in `lexical.CALIBRATED`'s docstring + LOG.md "The English bundle is a setting"): on a stem the
 # wrong-text populations separate by +0.5466 against the base model's +0.0720, so `refuse_below` 0.45 clears
 # every one of the 640 wrong texts by +0.2306 while refusing 0 of 192 right ones; on the mix the floor stays
 # 0.15 and refuses 10 of 192 right texts against 54 (the base bundle's row of record, `results/w4-lift-mix.json`

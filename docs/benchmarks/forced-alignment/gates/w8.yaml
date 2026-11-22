@@ -1,5 +1,5 @@
 # W8's WAVE GATE: the NON-LATIN LANE IS A CAPABILITY, AND IT COSTS ENGLISH NOTHING. Read on the two forced
-# levels against `results/w9-r1-*.json`, the W9 close. Narrative and every number: README, "W8: the
+# levels against `results/w9-r1-*.json`, the W9 close. Narrative and every number: LOG.md, "W8: the
 # non-Latin lane, priced on the corpus".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \

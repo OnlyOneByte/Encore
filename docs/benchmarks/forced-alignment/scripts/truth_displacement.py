@@ -6,7 +6,7 @@ first singing after a claimed start that lands in stem SILENCE, the whole sheet'
 lag, and the stem's own median level at a truth start — which says whether the first reading could see
 anything here at all. None of them touches a `truth-lines.json`.
 
-Method, thresholds, the per-song numbers and the controls that set the limits: README, "W8b: the corpus's own
+Method, thresholds, the per-song numbers and the controls that set the limits: LOG.md, "W8b: the corpus's own
 truth, measured, and the 28 songs that score".
 """
 
@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 import e2e_lib as lib  # noqa: E402
 
 #: Mean envelope over `PROBE_SEC` from a claimed start, below which that start sits in SILENCE. The level and
-#: the window are the README's third arbiter ("Stem energy at the instant each line claims").
+#: the window are LOG.md's third arbiter ("Stem energy at the instant each line claims").
 SILENT_LEVEL, PROBE_SEC = 0.10, 0.25
 
 #: Singing resumes at the first frame reaching `SINGING_LEVEL` that holds above `SILENT_LEVEL` for

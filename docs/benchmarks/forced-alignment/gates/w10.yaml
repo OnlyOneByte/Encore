@@ -2,7 +2,7 @@
 # default since W10. This REPLACES `gates/w8-lane.yaml` §1 and `gates/w8-nonlatin.yaml` §1 on the shipped
 # default: those two encode the pre-W10 rule ("the lane publishes LINES, never WORDS") as a MUST, and W10's
 # first two calibration rows — `("MMS_FA", "zh")` and `("jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
-# "ja")` — make it false for zh and ja by design. Narrative and every number: README, "W10: the close-out
+# "ja")` — make it false for zh and ja by design. Narrative and every number: LOG.md, "W10: the close-out
 # sweep, and the lane at the rung a room sees".
 #
 #   cd worker && for L in zh ja ko; do .venv/bin/python \
@@ -82,7 +82,7 @@ truth-no-song-ends-in-no-lyrics: truth.no_lyrics == 0
 # `lines-not-lost` is set by ja's 89.66 — the floor-setter, and the ONLY language the calibration rows moved
 # off +-500 100.00 (zh 100.00 -> 98.98, ko unmoved). 85.0 is 4.66 points of stated head-room, chosen for the
 # same reason W10 restated the ko floor to 72.0: a floor that passes by equality is not a floor. The W8
-# reading of this lane was 340 lines at 100.00 with band 0, and it is kept in README rather than here.
+# reading of this lane was 340 lines at 100.00 with band 0, and it is kept in LOG.md rather than here.
 no-gross-line-anywhere: truth.gross == 0
 lines-not-lost: truth.pm500 >= 85.0
 lines-within-a-second: truth.pm1000 >= 98.0
@@ -135,6 +135,6 @@ lane-does-not-mix-rungs-within-a-language: truth.published * truth.line_sync == 
 # THE WORD-GRANULARITY READING IS NOT GATED AND CANNOT BE: the published tokens are script units or
 # romanised syllables and the AMLL truth's are original-script words, so 265 of zh's 288 and 95 of ja's 95
 # truth words are `mismatched` — no pairing exists. zh's word +-100 of 64.71 is 11 of 17 paired words, not
-# 288. Syllables are the lane's only gradeable sub-line unit; README says so at length.
+# 288. Syllables are the lane's only gradeable sub-line unit; LOG.md says so at length.
 syllables-account-for-every-truth-span: truth.syllable_aligned + truth.syllable_interpolated + truth.syllable_unpaired + truth.syllable_unpublished == truth.syllable_in_text
 syllables-have-a-truth: truth.syllable_in_text >= 400

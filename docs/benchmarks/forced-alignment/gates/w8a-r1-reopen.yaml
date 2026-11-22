@@ -6,7 +6,7 @@
 # `host.config.ALIGN_EXPERIMENTS`, so asking the knob for it now exits before any model work ("names
 # 'band-reopen', which is not an alignment experiment"). The replay is the same comparison read from the
 # other side: UNSET for the arm cell, `ENCORE_ALIGN_EXPERIMENTS=band-late-kept` for the base. The owner
-# decision and its price: PLAN 2026-10-09 and README, "W9: `band-reopen` flipped default-on".
+# decision and its price: PLAN 2026-10-09 and LOG.md, "W9: `band-reopen` flipped default-on".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --model HUBERT_ASR_LARGE --tag w8a-r1-reopen-ra \
@@ -32,7 +32,7 @@
 # (`_review-scratch/w8a-r1-reopen/strict_identity.py`), so the recorded corpus rows stand and the base below
 # is the default path.
 #
-# MEASURED, at `run_align` (README, "W8a round 1: the `band-reopen` arm, re-read with the free-time guard"):
+# MEASURED, at `run_align` (LOG.md, "W8a round 1: the `band-reopen` arm, re-read with the free-time guard"):
 # the guard REFUSES 20 of the 56 line moves the unguarded arm made and keeps 36; the arm's ±500 reach is
 # +15 lines and NO line lost (it was +16 / −1), `band` −15 (unchanged), `gross` 0 in every mode. The leak
 # that rejected the arm is GONE — `Explosive_Ear_Candy_-_Like_The_Sun` [15] at `jit` is refused, so the song
@@ -152,7 +152,7 @@ word-accounting-whole-extraverse: extraverse.jamendo.word_aligned + extraverse.j
 word-accounting-whole-headers: headers.jamendo.word_aligned + headers.jamendo.word_interpolated == base.headers.jamendo.word_aligned + base.headers.jamendo.word_interpolated
 word-accounting-whole-credit: credit.jamendo.word_aligned + credit.jamendo.word_interpolated == base.credit.jamendo.word_aligned + base.credit.jamendo.word_interpolated
 # And the fall is ONE WORD PER RE-OPENED LINE and not a word more. The bounds are the measured Jamendo
-# re-openings in each mode (truth 4, jit 6, drop20 4, extraverse 4, headers 4, credit 3; README, "W8a round 1:
+# re-openings in each mode (truth 4, jit 6, drop20 4, extraverse 4, headers 4, credit 3; LOG.md, "W8a round 1:
 # the `band-reopen` arm, re-read with the free-time guard"), so a second word leaving a line's measurement —
 # the failure `adopted_line` would have been — fails here.
 word-aligned-down-at-most-reopenings-truth: truth.jamendo.word_aligned >= base.truth.jamendo.word_aligned - 4

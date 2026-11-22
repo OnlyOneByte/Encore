@@ -3,7 +3,7 @@
 Hermetic — both "runs" are rows and documents written to tmp, so no audio, no model and no bench corpus is
 read. The point under test is that a provenance change is priced against TRUTH rather than counted: the same
 start under a new label is bookkeeping, a worse start is a regression, and an unreadable pair is refused
-instead of guessed around. The measurement it was written for is in README, "W8b: re-judging
+instead of guessed around. The measurement it was written for is in LOG.md, "W8b: re-judging
 `word-aligned-not-down`".
 """
 

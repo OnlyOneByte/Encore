@@ -6,7 +6,7 @@
 # DEFAULT-ON, so "both band arms off" now means `band-off-sheet` off and the re-opening ON; the stand-down
 # control is `ENCORE_ALIGN_EXPERIMENTS=band-late-kept`. Setting the retired name exits before any model work.
 # This file's identity claim is W8a's and is read against W7's rows, which is why it is kept as it was
-# (README, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
+# (LOG.md, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --modes all,wrongtext+ownclock --tag w8a-def-ra \
@@ -29,9 +29,9 @@
 # and the `high` rules in §4 to be ERRORs — use `gates/w8a-lines.yaml` for that rung instead, which is
 # written for it.
 #
-# MEASURED, the two arms' price if a later wave flips them on (README, "W8a: what the corpus said about the
+# MEASURED, the two arms' price if a later wave flips them on (LOG.md, "W8a: what the corpus said about the
 # two band components"):
-#   `band-reopen`  WITH the review's `opening_is_free` guard (README, "W8a round 1: the `band-reopen` arm,
+#   `band-reopen`  WITH the review's `opening_is_free` guard (LOG.md, "W8a round 1: the `band-reopen` arm,
 #                  re-read with the free-time guard"): 36 line moves of the 56 it made unguarded, +15 lines at
 #                  +-500 and NONE lost, `band` -15, `gross` 0 everywhere, and 4 re-opened first words leaving
 #                  `word_aligned` for `word_interpolated` at `truth`. Unguarded it was +16 / -1, the -1 being

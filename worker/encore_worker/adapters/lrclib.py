@@ -80,7 +80,7 @@ class LrclibClient:
         """Synced lyrics for this song, or empty when LRCLIB does not have it.
 
         `duration` is sent when known, and A DURATION MISS IS RETRIED WITHOUT IT — once, and only on a 404.
-        The trade is deliberate and asymmetric: docs/arch/05-worker.md §6.2, priced in README, "W7: the
+        The trade is deliberate and asymmetric: docs/arch/05-worker.md §6.2, priced in LOG.md, "W7: the
         provider pool is real now".
         """
         body = self._get(build_url(self._base, artist=artist, track=track, duration_sec=duration_sec))

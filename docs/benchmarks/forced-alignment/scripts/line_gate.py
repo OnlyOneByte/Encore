@@ -9,7 +9,7 @@ these TIMINGS describe this audio. This prices six candidate rules over the same
 the published documents' accuracy, and wrong texts passed — with the documents built by the shipped functions
 and the decode read from the bench's emission cache. The six rules, what W1's gate cost, what "placed" means
 since the rung's claim-clock vote, and why `--corpus nonlatin --language zh` fits that lane's share off its
-own songs: README, "The LINE_SYNC rung's gate" and "W10: the first non-Latin calibration rows".
+own songs: LOG.md, "The LINE_SYNC rung's gate" and "W10: the first non-Latin calibration rows".
 """
 
 from __future__ import annotations

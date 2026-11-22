@@ -9,7 +9,7 @@ run through the SHIPPED functions over every case `--level run_align --modes all
 SERVED as the run_align ports serve them, in two shapes: `caption` (each line with its own end) and `lrc`
 (each line ending at the next line's start, what production line-syncs most). Per shape it prints how many
 wrong and right texts pass, the truth row and the old literal gate; `--target mix` gates each song's MIX.
-README, "Why `syncMode=lines` needs a vocals stem, as the populations", has every measured row.
+LOG.md, "Why `syncMode=lines` needs a vocals stem, as the populations", has every measured row.
 """
 
 from __future__ import annotations

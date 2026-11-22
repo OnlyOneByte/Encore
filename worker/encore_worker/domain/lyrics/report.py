@@ -87,7 +87,7 @@ class TimingReport:
     refused: str | None = None
     #: Did `reconcile` RELATE this document's timings to the text's OWN claimed line starts? False is
     #: `reconcile.UNRELATED` and nothing else; None is "the question was not answered"
-    #: (docs/arch/04-alignment.md §3; README, "`claims_related`").
+    #: (docs/arch/04-alignment.md §3; LOG.md, "`claims_related`").
     claims_related: bool | None = None
 
     def __setstate__(self, state: Sequence[object]) -> None:

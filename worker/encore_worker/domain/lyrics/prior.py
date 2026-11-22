@@ -7,7 +7,7 @@ placement but can never reach across the song. `fused` is the second half — in
 STEM's envelope hears nothing, the MIX's frames are the only evidence there is.
 
 Both are default-off arms (`host.config.ALIGN_EXPERIMENTS`). The shape, the control arm and the numbers:
-docs/arch/04-alignment.md §3.2 and §14; README, "W9: a vendored decoder, and the three arms it unblocks".
+docs/arch/04-alignment.md §3.2 and §14; LOG.md, "W9: a vendored decoder, and the three arms it unblocks".
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import numpy as np
 
 #: Nats added at the claimed onset frame itself — the bonus's peak, and so the cap on what a claim is worth.
 #: FITTED over 0-20 in W10; 8.0 is the pool's optimum and this value is inside the safe region, not on it
-#: (README, "W10: fitting the claim prior's peak").
+#: (LOG.md, "W10: fitting the claim prior's peak").
 ONSET_BONUS_NATS = 4.0
 
 #: The Gaussian's width in seconds. Wider than the ±300 ms the claims are scored at, because what the prior

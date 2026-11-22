@@ -5,7 +5,7 @@ characters somewhere, and the damage lands on everything AFTER it. Two anchored 
 of the lead's target sequence and time them inside their host line afterwards, as labelled interpolations.
 
 Both rules, the measured refusal behind the echo rule's "alone" clause, the interpolation policy and why
-there is no second decode inside the gap: `docs/arch/04-alignment.md` §8, §12 (XA-08) and §13. README,
+there is no second decode inside the gap: `docs/arch/04-alignment.md` §8, §12 (XA-08) and §13. LOG.md,
 "W5: ad-libs (§3.13) — BUILT, MEASURED ON THE CORPUS, AND IT DOES NOT GENERALISE", holds the reach and the
 A/B that failed the arm's bar.
 """

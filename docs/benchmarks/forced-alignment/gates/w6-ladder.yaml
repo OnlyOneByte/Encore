@@ -1,7 +1,7 @@
 # W6 — the repair clamp's BOUNDED LEFT FLOOR, and W4b's HuBERT-Large flip re-tried on top of it.
 # Written 2026-09-30 by the wave's bound-and-flip owner; the corpus sweep is the bench runner's.
 #
-# WHAT CHANGED (one site, `align_steps._clamped_v2` + the new `generate.trimmed`; README "The clamp's left
+# WHAT CHANGED (one site, `align_steps._clamped_v2` + the new `generate.trimmed`; LOG.md "The clamp's left
 # floor was the bug, not the ladder" carries the whole account). The clamp's left floor used to be
 # `low = max(line.start, previous_published_end)` — which is the BLIND DECODE's own boundary, i.e. the reading
 # the repair existed to correct — so on the lines the ladder repaired because the decode ran the previous line
@@ -152,4 +152,4 @@ flip-no-youtube-song-gains-gross-truth: count(truth.youtube.song.gross_up) == 0
 # (3) WHAT NO GATE HERE CAN SEE, and the bench runner should read by hand off the rows: out-of-order word
 #     starts (the property the floor exists for; no metric carries it — the offline re-scoring read 1 -> 0)
 #     and the 4 documents `m6-window-spare` would add if it were flipped (all `Pure_Mids`, +4 lines in the
-#     ±500 band, 0 cost — priced in README and deliberately NOT swept together with this change).
+#     ±500 band, 0 cost — priced in LOG.md and deliberately NOT swept together with this change).

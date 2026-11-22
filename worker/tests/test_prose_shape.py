@@ -34,7 +34,7 @@ MAX_DEF_DOCSTRING = 8
 MAX_COMMENT_RUN = 6
 
 #: Lines a `#:` attribute comment may use: what the value means, its unit, and a pointer. NOT its derivation —
-#: that is a measurement, and measurements live in docs/benchmarks/forced-alignment/README.md.
+#: that is a measurement, and measurements live in docs/benchmarks/forced-alignment/LOG.md.
 MAX_ATTRIBUTE_COMMENT = 3
 
 #: Lines a bridged prose BLOCK may use: EXACTLY what rules 1 and 3 allow back to back, the worst legal
@@ -140,9 +140,13 @@ RETRACTED_RATIOS = {
 #: What marks a paragraph as retracting rather than republishing: any of these words near the figure.
 _RETRACTION = ("retract", "stale", "mid-wave", "was never", "already", "before the wave")
 
-#: Where a root ratio is quoted outside the code, repo-relative. Both are read by the test above, since the
-#: defect was the README re-publishing what the design document had already withdrawn.
-RATIO_DOCS = ("docs/arch/05-worker.md", "docs/benchmarks/forced-alignment/README.md")
+#: Where a root ratio is quoted outside the code, repo-relative. All are read by the test above, since the
+#: defect was the measurement log re-publishing what the design document had already withdrawn.
+RATIO_DOCS = (
+    "docs/arch/05-worker.md",
+    "docs/benchmarks/forced-alignment/LOG.md",
+    "docs/benchmarks/forced-alignment/README.md",
+)
 
 #: The smallest honest population per root, for `test_every_root_has_modules_to_measure`: a glob that silently
 #: matched nothing would make every rule below vacuously green, and one floor cannot serve both a 68-module
@@ -498,7 +502,7 @@ def test_an_attribute_comment_gives_the_unit_and_a_pointer_not_a_derivation(work
     assert not over, (
         f"these `#:` attribute comments exceed {MAX_ATTRIBUTE_COMMENT} lines: {over}. A calibrated constant "
         "carries its value, its unit and a pointer; its derivation is a measurement and lives in "
-        "docs/benchmarks/forced-alignment/README.md."
+        "docs/benchmarks/forced-alignment/LOG.md."
     )
 
 

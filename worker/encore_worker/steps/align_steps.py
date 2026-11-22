@@ -223,7 +223,7 @@ class AlignStepsImpl:
         One object per attempt, read by the decode, the repair, the lift and the margin alike, so no two of
         them can group one text differently (docs/arch/04-alignment.md §9.1, §14). OFF THE EVENT LOOP for
         `_romanizer`'s reason: under `mms-roman` this builds uroman or cutlet, which costs seconds on first
-        use (README, "W8 stages 1-2").
+        use (LOG.md, "W8 stages 1-2").
         """
         return await asyncio.to_thread(units.rules_for, language_code, self._cfg.align_experiments)
 
@@ -233,7 +233,7 @@ class AlignStepsImpl:
         Asked per published document rather than held, the factory caching the built backend; a box with no
         backend answers None and the document is the one it always was (XA-19). `script` routes the scripts
         no language can be named for (docs/arch/04-alignment.md §11.2). OFF THE EVENT LOOP because the first
-        build costs seconds (README, "W8 stage 0"), which would stall every other job on this worker.
+        build costs seconds (LOG.md, "W8 stage 0"), which would stall every other job on this worker.
         """
         if self._a.romanizer is None:
             return None
@@ -929,7 +929,7 @@ class AlignStepsImpl:
             else None
         )
         # A SUB-FLOOR LIFT IS A VERDICT ON EITHER TARGET, the mix included, the envelope gate it replaced
-        # there losing MORE right texts AND admitting wrong ones (README, "The stemless mode").
+        # there losing MORE right texts AND admitting wrong ones (LOG.md, "The stemless mode").
         # `h3-mix-floor` WINS WHEN BOTH ARM NAMES ARE SET, being the superset of `h3-mix-envelope`'s one
         # gate, so the pair measures what the stricter name promises.
         mix_both_gates = not on_stem and "h3-mix-floor" in self._cfg.align_experiments
@@ -1002,7 +1002,7 @@ class AlignStepsImpl:
         doubted = lift_band is lexical.Band.DOUBT or (lift_band is lexical.Band.REFUSE and not refuses)
         # THE WORDS' AXIS IS NARROWER THAN THE GRADING ONE ON THE MIX, where `mix_ok_from` was fitted to how
         # AUDIBLE the words are and holds most correct sheets, so the FLOOR is the words' verdict there. An
-        # UNMEASURED text is not vouched for either (XA-14; docs/arch/04-alignment.md §5.1; README, "The
+        # UNMEASURED text is not vouched for either (XA-14; docs/arch/04-alignment.md §5.1; LOG.md, "The
         # stemless mode").
         words_doubted = lift_band is lexical.Band.REFUSE or (on_stem and lift_band is lexical.Band.DOUBT)
         words_measured = lifted is not None or req.text.tier is Tier.ASR
@@ -1123,7 +1123,7 @@ class AlignStepsImpl:
         # ── never-sung drop + re-decode (docs/arch/04-alignment.md §4) ──
         # A line that is NOT in the audio does worse than fail: it consumes its neighbours' frames. Three
         # signals, ALL required. Two default-off arms SPARE a candidate instead of binning it, never at its
-        # claim's own span, and an unclaimed line keeps the three-signal rule either way (README, "What
+        # claim's own span, and an unclaimed line keeps the three-signal rule either way (LOG.md, "What
         # brings a SPARED line back").
         experiments = self._cfg.align_experiments
         # THE LEAD TEXTS, not the served ones (identity without the `adlibs` arm): the re-decode after a drop
@@ -1328,11 +1328,11 @@ class AlignStepsImpl:
             else rc.Reconciliation(verdict=rc.NO_CLAIMS, why="text arrived untimed")
         )
         # `l1-blind-median` (default-off): the adoption test's reference is the BLIND decode's median rather
-        # than the series as repaired so far (README, "The L1 arms").
+        # than the series as repaired so far (LOG.md, "The L1 arms").
         blind_median = median(line.score for line in blind_decode.lines)
         #: Seconds a DECODED end sits from its cue's own end, over the lines whose OPENINGS the blind decode
         #: agrees with (XA-03); None under `rc.MIN_FITTED_PAIRS` of them, which is what a displaced sheet has.
-        #: The scale `skipped_opening` reads an end against: README, "W8a: the late half of the band".
+        #: The scale `skipped_opening` reads an end against: LOG.md, "W8a: the late half of the band".
         agreeing_end_gaps = [
             line.end - claim_windows[line.index][1]
             for line in blind_decode.lines
@@ -1412,7 +1412,7 @@ class AlignStepsImpl:
             THE END ONLY, only where the claim span cannot HOLD the line, and only where the blind decode
             STARTS inside the padded claim span — a window being an anchor, and a wider one anchoring less.
             And NEVER PAST THE NEXT CLAIM'S ONSET, nor past the sheet's own `typical_slot` for the last cue.
-            Both caps and their exhibits: README, "The repair window's two caps, priced".
+            Both caps and their exhibits: LOG.md, "The repair window's two caps, priced".
             """
             start, end = claim_windows[line.index]
             blind = blind_spans.get(line.index)
@@ -1497,7 +1497,7 @@ class AlignStepsImpl:
 
             ONE-SIDED; it needs the envelope's ABSOLUTION, not the absence of its conviction; the move is
             capped at `_REOPEN_MAX_SEC`; and it may only re-open into free time. Each guard, the rejected
-            witnesses and the per-song reach: README, "W8a: the late half of the band, and the end that
+            witnesses and the per-song reach: LOG.md, "W8a: the late half of the band, and the end that
             witnesses it"; docs/arch/04-alignment.md §4 has the truth table."""
             if end_bias is None or not sheet_settled or index not in claim_ends_given:
                 return False
@@ -1640,7 +1640,7 @@ class AlignStepsImpl:
         def mix_kept(index: int) -> bool:
             """`l1-mix-kept`: is this a line R4 timed on the MIX, which R1 / R2 then leave alone? Their decode
             is the stem's, where R4 found nothing to hear. Default: they may re-decode it. The exhibit is in
-            docs/benchmarks/forced-alignment/README.md, "The adoption guard's exhibit"."""
+            docs/benchmarks/forced-alignment/LOG.md, "The adoption guard's exhibit"."""
             return "l1-mix-kept" in experiments and provenance.get(index) == _Source.MIX
 
         # REPAIR ORDER: evidence-first, then reconcile-driven (docs/arch/04-alignment.md §4). R3 and R4 need
@@ -2035,7 +2035,7 @@ class AlignStepsImpl:
         # THREE TIERS, timings measured ON this audio having to fit at zero lag, and EITHER FIT PASSES. ON A
         # STEM THE LEXICAL LIFT REPLACES IT wherever it measured the text; NOT FOR A PIN, which a person
         # already answered for — such a pin PUBLISHES, every line `low` (docs/arch/04-alignment.md §5.2;
-        # README, "The envelope gate's three tiers").
+        # LOG.md, "The envelope gate's three tiers").
         if (
             envelope_gates
             and unvouched is None
@@ -2106,7 +2106,7 @@ class AlignStepsImpl:
         )
         # READ ALWAYS, DEMOTES ONLY BEHIND `band-off-sheet` (default off): the corpus sweep measured one FALSE
         # POSITIVE this conjunction cannot tell from its true one, so the reading goes on the trail and the
-        # grade does not move. Which song, which mode and the price of flipping it on: README, "W8a: what the
+        # grade does not move. Which song, which mode and the price of flipping it on: LOG.md, "W8a: what the
         # corpus said about the two band components"; docs/arch/04-alignment.md §14.
         off_sheet = sheet_coherent if "band-off-sheet" in experiments else None
 
@@ -2219,7 +2219,7 @@ class AlignStepsImpl:
         # NO residual is fed to `measure`: reconcile's fitted offset describes THE CLAIM, so a residual would
         # let `decide` offer RESHIFT, a knob this engine never used. `claims_related` IS fed, and off THE LAST
         # RECONCILE, NOT THE BLIND ONE — the opposite choice from grading's, this asking whether the document
-        # ABOUT TO PUBLISH tells the sheet's story. UNRELATED alone (README, "`claims_related`").
+        # ABOUT TO PUBLISH tells the sheet's story. UNRELATED alone (LOG.md, "`claims_related`").
         report = measure.measure(
             doc,
             duration_sec=req.audio.duration_sec,
@@ -2366,7 +2366,7 @@ class AlignStepsImpl:
 
         TWO REFERENCES, in order: the audio's own VOCAL ACTIVITY, independent of any alignment and so usable
         on a FIRST attempt, and the PREVIOUS ALIGNMENT's line starts on a reshift, which catches a per-line
-        drift one global offset cannot (README, "The fix, and what it measured").
+        drift one global offset cannot (LOG.md, "The fix, and what it measured").
         """
         fit = None
         if req.text.has_own_timings:

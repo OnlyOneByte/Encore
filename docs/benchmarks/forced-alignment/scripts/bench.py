@@ -9,7 +9,7 @@ is — a SWEEP, because whisperx crops the audio to each segment's provisional s
 of the aligner AND the windows it was handed. Three conditions: `shifted` (truth plus a known offset, the
 sweep), `exact` (truth unchanged, the STABILITY control a recovery-only benchmark cannot see) and `blind`
 (no timings, spread evenly). `exact` scores a do-nothing aligner perfectly, so it is a control and the sweep
-is the headline. README, "The harness scripts", has the two regimes' measured rows.
+is the headline. LOG.md, "The harness scripts", has the two regimes' measured rows.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 Four properties carry this module: the units CONCATENATE to the text, a Latin text is untouched by every
 arm, the unit arm changes how spans are GROUPED and not which targets are decoded, and a romanised or
 t2s-folded target still names the GRAPHEME it came from (XA-20). The numbers are in
-docs/benchmarks/forced-alignment/README.md, "W8 stages 1-2".
+docs/benchmarks/forced-alignment/LOG.md, "W8 stages 1-2".
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from encore_worker.domain.lyrics.generate import char_targets, generate
 from tests.test_generate import FakeEmissions, evenly, scripted_decoder
 
 #: SYNTHETIC lines, never a sheet's: the corpus is commercial music and no lyric text is committed to this
-#: tree (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
+#: tree (docs/benchmarks/forced-alignment/LOG.md, "Why no fixture holds a lyric").
 ZH = "山水风云雨雪"
 JA = "山の上に雲が流れる"
 #: An ALL-KANA line, whose tokens read mora by mora where `JA`'s kanji token does not.

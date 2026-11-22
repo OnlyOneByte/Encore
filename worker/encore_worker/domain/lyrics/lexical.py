@@ -3,7 +3,7 @@
 A self-normalised goodness-of-pronunciation: the text's forced-path log-probability against the same text with
 its WORDS SHUFFLED, per letter. Every threshold here is an EMISSION SCALE's (XA-06), the shuffles are seeded
 from the text and the decoder is injected. The recipe and the hole it does not cover:
-`docs/arch/04-alignment.md` §5.1, §5.3, §5.4; README, "The lexical calibration rows, exhibit by exhibit".
+`docs/arch/04-alignment.md` §5.1, §5.3, §5.4; LOG.md, "The lexical calibration rows, exhibit by exhibit".
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ class Bands:
     refuse_below: float
     #: On a stem: from `refuse_below` up to it, DOUBT; from it, OK.
     ok_from: float
-    #: On the mix: under it, REFUSE — DOUBT only under `h3-mix-envelope` (README, "The stemless mode").
+    #: On the mix: under it, REFUSE — DOUBT only under `h3-mix-envelope` (LOG.md, "The stemless mode").
     mix_floor: float
     #: From `mix_floor` up to it, DOUBT; from it, OK. A GRADING threshold, never the words' standing.
     mix_ok_from: float
@@ -156,7 +156,7 @@ class Bands:
     line_sync_min_agreement: float
 
     #: The PLACEMENT-MARGIN floor in nats, None where the rule ABSTAINS. Here because it is a raw SUM of
-    #: log-probabilities (docs/arch/04-alignment.md §6; README, "The confidence rule").
+    #: log-probabilities (docs/arch/04-alignment.md §6; LOG.md, "The confidence rule").
     margin_floor_nats: float | None
 
     #: The BUNDLE's language, the other half of this row's key: MMS_FA serves zh and ko, and their lifts
@@ -169,7 +169,7 @@ Key = tuple[str, str]
 
 
 #: EVERY CALIBRATED (MODEL, LANGUAGE): the ONE source of truth for every emission-scale threshold here, and
-#: a pair absent from it is not gated (XA-06, XA-21). README, "Per-model calibration" and "W10: the first
+#: a pair absent from it is not gated (XA-06, XA-21). LOG.md, "Per-model calibration" and "W10: the first
 #: non-Latin calibration rows".
 CALIBRATED: dict[Key, Bands] = {
     ("WAV2VEC2_ASR_BASE_960H", ENGLISH): Bands(
@@ -233,7 +233,7 @@ BANDS = CALIBRATED[("WAV2VEC2_ASR_BASE_960H", ENGLISH)]
 
 #: THE LINE_SYNC RUNG'S SHARE FOR A MATRIX WITH NO ROW, and the ONE threshold a missing calibration does not
 #: switch off, being a count of lines. The three ENGLISH rows each fit it; the two non-Latin rows TAKE it
-#: (README, "`line_sync_min_agreement` is 0.5, and the sweep says why"; docs/arch/04-alignment.md §5.4).
+#: (LOG.md, "`line_sync_min_agreement` is 0.5, and the sweep says why"; docs/arch/04-alignment.md §5.4).
 LINE_SYNC_SHARE_UNCALIBRATED = 0.5
 
 

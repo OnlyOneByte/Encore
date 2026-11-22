@@ -8,7 +8,7 @@ dropping words out of its denominator, so telling bookkeeping from a regression 
 recorded run directories (`rows.jsonl` + `media/` + `run.json`) are all this needs, so it costs no model
 time. Exits 1 when a published start moved further from truth (`--allow-worse` budgets some), 2 when a pair
 cannot be read — including two runs whose own `run.json` says they measured different jobs.
-README, "W8b: re-judging `word-aligned-not-down`".
+LOG.md, "W8b: re-judging `word-aligned-not-down`".
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ THE GATE, NOT A DEMO: every later alignment wave is accepted or rejected on thes
 production path rather than a reimplementation of it. Two harness-only seams change nothing the shipped code
 computes: `BenchAligner` caches `emissions()` and records every exception as an ERROR row, and
 `capture_generated` records which input line each published line is. A full `--modes all` sweep is tens of
-minutes: run it detached, `--resume` an interrupted `--out`, never two at once. README, "The E2E harness".
+minutes: run it detached, `--resume` an interrupted `--out`, never two at once. LOG.md, "The E2E harness".
 """
 
 from __future__ import annotations
@@ -267,7 +267,7 @@ def uncalibrated_banner(model: str, language: str = ml.ENGLISH) -> str | None:
     announced rather than refused — but its numbers must not read like a calibrated bundle's, since with no
     row the wrong-text verdict falls back to the sheet-span envelope gate (125/320 wrongtext passes on this
     corpus). So the banner names the pair and the fix, the meta carries `uncalibrated: true`, and
-    `e2e_gates` ERRORs the moved metrics. README, "W10: the first non-Latin calibration rows"."""
+    `e2e_gates` ERRORs the moved metrics. LOG.md, "W10: the first non-Latin calibration rows"."""
     if lexical.is_calibrated(model, language):
         return None
     return (
@@ -1917,7 +1917,7 @@ def verdicts(document: Mapping[str, Any], args: argparse.Namespace) -> int:
 
 def foreign_language_songs(corpus: str, language: str, slugs: Sequence[str]) -> list[str]:
     """The selected slugs that DECLARE a language other than the run's, `amll-<language>-<title>` being the
-    only naming that declares one. ONE LANGUAGE A RUN: README, "W8 stages 1-2"."""
+    only naming that declares one. ONE LANGUAGE A RUN: LOG.md, "W8 stages 1-2"."""
     if corpus != lib.NONLATIN_CORPUS:
         return []
     return [

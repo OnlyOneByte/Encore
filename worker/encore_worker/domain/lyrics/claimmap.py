@@ -3,7 +3,7 @@
 The claims are mapped here, before the first `reconcile`, and only the CLAIMS move (XA-04). The estimator is a
 VOTE, not a fit, under three floors, and PURE and DETERMINISTIC so a DBOS replay and a bench re-run map
 identically. The candidate table, the floors and why piecewise is an arm: `docs/arch/04-alignment.md` §7 and
-§14; README, "The claim clock", "The rung's own claim clock" and "The claim clock's own exhibits".
+§14; LOG.md, "The claim clock", "The rung's own claim clock" and "The claim clock's own exhibits".
 """
 
 from __future__ import annotations
@@ -21,13 +21,13 @@ MIN_PAIRS = MIN_FITTED_PAIRS
 
 #: The winner must explain this many more paired lines than no-shift — or this share of them, whichever is
 #: larger. `int()` and not a ceiling, which is the rule the measured numbers came from. Which term binds, and
-#: how many cases the share alone refuses, is in README, "The claim clock's own exhibits".
+#: how many cases the share alone refuses, is in LOG.md, "The claim clock's own exhibits".
 MIN_GAIN_LINES = 2
 MIN_GAIN_SHARE = 0.05
 
 #: ...and the winner must explain at least this SHARE of the paired lines outright, the margin above being a
 #: DIFFERENCE, so four candidates explaining almost nothing can still leave one two lines ahead. In an EMPTY
-#: band (README, "The claim clock's own exhibits").
+#: band (LOG.md, "The claim clock's own exhibits").
 MIN_INLIER_SHARE = 0.2
 
 #: A map that moves no paired claim by at least this much is not applied, whatever it explains. One frame

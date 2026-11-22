@@ -2,7 +2,7 @@
 # hold for EVERY language rather than for the 4 zh songs one run could reach. Companion to
 # `gates/w8-nonlatin.yaml`, which is the zh cell's own file and counts its four songs by hand; this one is
 # read once per language and says the same thing relatively, so adding a song cannot make it vacuous.
-# Narrative and every number: README, "W8: the non-Latin lane, priced on the corpus".
+# Narrative and every number: LOG.md, "W8: the non-Latin lane, priced on the corpus".
 #
 #   cd worker && for L in zh ja ko; do .venv/bin/python \
 #       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
@@ -30,7 +30,7 @@
 # `wrongtext_pass` is now readable on them and a rule for it is what §1 should be replaced BY); and with
 # `margin_floor_nats` None on both rows, their word documents grade with the placement-ambiguity demotion
 # ABSTAINING. Restating these rules needs the corpus numbers nobody has yet — it is the bench agent's cell
-# and then the owner's call, not a review's. README, "W10: the first non-Latin calibration rows".
+# and then the owner's call, not a review's. LOG.md, "W10: the first non-Latin calibration rows".
 #
 # MEASURED, 2026-10-15, code `0125c5457b5c8bf8`: `_runs/w8-nl-{zh,ja,ko}-ra`, 7 songs (4 zh + 2 ja + 1 ko),
 # **340 lines line-synced, gross 0, ±500 100.0, band 0, `high` 0, 0 word documents**, and **0 of 21 wrong

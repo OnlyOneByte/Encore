@@ -1,14 +1,14 @@
 # W8a's WAVE GATE: the 0.5-2 s band, measured over the WHOLE corpus at both levels (PLAN-alignment-v3 W8a).
 # The three tasks of the wave are diagnose-band, see-the-band (`e2e_lib` band metrics, `reconcile.off_sheet`)
 # and fix-the-band (`align_steps.skipped_opening` / `end_bias`, `generate.reopened_line`); this file is the
-# sweep that scores all three at once. Narrative and per-song numbers: README, "W8a: the 0.5-2 s band ..."
-# sections; design: docs/arch/04-alignment.md §4 and §6.1.
+# sweep that scores all three at once. Narrative and per-song numbers: LOG.md, "W8a: the 0.5-2 s band", and the
+# W8a sections after it; design: docs/arch/04-alignment.md §4 and §6.1.
 #
 # W9 (2026-10-14): THE NAME `band-reopen` BELOW IS RETIRED — the rule went DEFAULT-ON and the name left
 # `host.config.ALIGN_EXPERIMENTS`, so setting it now exits before any model work and the stand-down control
 # is `ENCORE_ALIGN_EXPERIMENTS=band-late-kept`. Every reading in this file is W8a's, taken when the rule was
 # an arm, and is kept as such; this file reads 152/154 on the post-flip default and both failures are W8b's
-# own rows (README, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
+# own rows (LOG.md, "W9: `band-reopen` flipped default-on, and the four words the owner waived").
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --modes all,wrongtext+ownclock --tag w8a-ra \
@@ -145,7 +145,7 @@ high-gross-blind-at-most-three: blind.high_gross <= 3
 # 5373 at `truth` and 5096 at `jit`. W8b re-judged the two rules below rather than waiving them and they
 # stand — 4 of the 6 words the arm re-labels at `jit` paid for the new label with a published start 273-342 ms
 # FURTHER from truth. `gates/w8b-arms.yaml` is the rule that says that directly, over a denominator a
-# reclassification cannot move; README, "W8b: re-judging `word-aligned-not-down`".
+# reclassification cannot move; LOG.md, "W8b: re-judging `word-aligned-not-down`".
 word-pm100-truth: truth.jamendo.word_pm100 >= 85.46
 word-pm300-truth: truth.jamendo.word_pm300 >= 97.16
 word-aae-truth: truth.jamendo.word_aae_ms <= 71.1

@@ -6,7 +6,7 @@ Hangul block. Two arms that only ever touch a non-Latin text live here too: the 
 the simplified-only zh-cn vocabulary needs, and the romanised target sequence MMS_FA reads (XA-20). `ROUTED`
 says which of them ship for which language — a measurement per language, never one default (XA-21). PURE;
 every backend is an optional package.
-docs/arch/04-alignment.md §9.1, §9.2; README, "W10: the per-language stage-2 table".
+docs/arch/04-alignment.md §9.1, §9.2; LOG.md, "W10: the per-language stage-2 table".
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 TWO DOCUMENTS LOOK IDENTICAL FROM THE CLAIMS ALONE and the engine must grade them apart: `bad-guy`'s, whose
 SHEET is 0.86 s early and whose timings are right, and the mirror case, whose DECODE is 0.86 s late on a sheet
 the audio confirms. `reconcile.off_sheet` separates them with the activity envelope and demotes only the
-second. docs/arch/04-alignment.md §6.1; docs/benchmarks/forced-alignment/README.md, "The 0.5-2 s band".
+second. docs/arch/04-alignment.md §6.1; docs/benchmarks/forced-alignment/LOG.md, "The 0.5-2 s band".
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from encore_worker.domain.lyrics.generate import ONSET_LEAD_SEC
 from tests.test_align_provenance import SPARSE, align, truth
 
 #: Seconds the sheet precedes the singing: `bad-guy`'s measured caption lead, +1.007 s against its own
-#: stem's vocal onsets, rounded to the band's middle (README, "The 0.5-2 s band").
+#: stem's vocal onsets, rounded to the band's middle (LOG.md, "The 0.5-2 s band").
 EARLY_BY = 0.86
 
 #: Seconds the DECODE is late in the mirror case. The same magnitude as `EARLY_BY`, so the two documents are
@@ -139,7 +139,7 @@ def test_half_a_document_shifted_and_half_exactly_on_its_claim_is_not_one_displa
     and turns off the room's word wipe. `MIN_COHERENT_SHARE` is the share conjunct the rule was missing.
 
     The numbers are the finding's own: 11 lines 0.9 s late, 9 EXACTLY on their claim. The floor's provenance
-    (the corpus's own coherent readings bottom out at 0.714) is in README, "W8a: the share a coherent lag has
+    (the corpus's own coherent readings bottom out at 0.714) is in LOG.md, "W8a: the share a coherent lag has
     to carry".
     """
     claims = {index: 10.0 * index for index in range(20)}
@@ -185,7 +185,7 @@ def test_a_decode_coherently_late_on_a_sheet_the_audio_confirms_publishes_low(
     published. This is the grade `bad-guy` would have had if its captions had been right.
 
     DEMOTING ON IT IS BEHIND `band-off-sheet` AND OFF BY DEFAULT, so both readings are here; the default must
-    still SAY SO on the trail. Why it ships off: README, "W8a: what the corpus said about the two band
+    still SAY SO on the trail. Why it ships off: LOG.md, "W8a: what the corpus said about the two band
     components"."""
     from tests.ctc_fixture import sung_matrix  # noqa: PLC0415
     from tests.test_align_provenance import DIC  # noqa: PLC0415

@@ -1,5 +1,5 @@
 # W8 STAGES 1-2: script-aware units, and MMS_FA over romanised text (PLAN-alignment-v3 W8, review §3 item
-# 12). Narrative and every number: README, "W8 stages 1-2: script-aware units, and MMS_FA over romanised
+# 12). Narrative and every number: LOG.md, "W8 stages 1-2: script-aware units, and MMS_FA over romanised
 # text".
 #
 #   cd worker && ENCORE_ALIGN_EXPERIMENTS=nonlatin-units .venv/bin/python \
@@ -51,7 +51,7 @@ syllables-have-a-truth: truth.syllable_in_text >= 400
 # `syllable_unpublished` and reads 0 for it, so the identity FAILED on the 2026-10-15 rows by construction.
 # All 10 cells were therefore RE-RUN on 2026-10-15 (`results/w8r1-*-generate.json`, `_runs/w8r1-*`), and the
 # identity holds on every one. Only ko has a non-zero reading — 24 of 535, 4.49%, both ko arms — which is
-# what the ko document costs today; zh and ja read 0. README, "W8 stages 1-2".
+# what the ko document costs today; zh and ja read 0. LOG.md, "W8 stages 1-2".
 syllables-account-for-every-truth-span: truth.syllable_aligned + truth.syllable_interpolated + truth.syllable_unpaired + truth.syllable_unpublished == truth.syllable_in_text
 syllables-mostly-on-published-lines: truth.syllable_unpublished <= 0.06 * truth.syllable_in_text
 
@@ -69,7 +69,7 @@ syllables-mostly-on-published-lines: truth.syllable_unpublished <= 0.06 * truth.
 # box to admit and a new one needs audio this tree does not and cannot hold. 72.0 is one lost line of
 # stated head-room (35/48 = 72.92 passes, 34/48 = 70.83 fails) instead of zero implied. Every other cell
 # clears it by 15 points or more (zh 97.47 / 96.46, ja 87.36 on all three arms, ko 85.45 under `mms-roman`).
-# README, "W10: the ko floor, restated as the one-song reading it is".
+# LOG.md, "W10: the ko floor, restated as the one-song reading it is".
 lines-not-lost: truth.pm500 >= 72.0
 lines-published: truth.published + truth.line_sync == truth.cases
 

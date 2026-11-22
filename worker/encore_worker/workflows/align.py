@@ -288,7 +288,7 @@ def _sync_mode_note(job: JobRef, pin: Pin | None, *, stemless: bool = False) -> 
 
     `lines` on a song with NO VOCALS STEM is aligned as `forced`, because the LINE_SYNC rung's gates are
     calibrated on the stem and on the mix the sheet gate cannot separate a right sheet from a wrong one.
-    The populations: docs/benchmarks/forced-alignment/README.md, "Why `syncMode=lines` needs a vocals stem".
+    The populations: docs/benchmarks/forced-alignment/LOG.md, "Why `syncMode=lines` needs a vocals stem".
     """
     asked = job.param_str("syncMode")
     if asked == SyncMode.LINES and pin is not None:

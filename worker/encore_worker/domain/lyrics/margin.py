@@ -4,7 +4,7 @@ A second question of the decode's own trellis: how much WORSE is the best path t
 character at least `WINDOW_SEC` away? That max-marginal margin is near zero exactly when the audio holds
 another place the line fits as well, and NOT A PATH SCORE, which is what makes it new.
 The rule, why the floor lives in `lexical.Bands` and the cost shape: `docs/arch/04-alignment.md` §6 and §14;
-README, "The confidence rule".
+LOG.md, "The confidence rule".
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from statistics import median
 import numpy as np
 
 #: Seconds a competing placement must be from the chosen one to count as a DIFFERENT placement — MEASURED
-#: over four reaches, and it decided the whole rule (README, "`WINDOW_SEC` = 1.0 s, and it is a measured
+#: over four reaches, and it decided the whole rule (LOG.md, "`WINDOW_SEC` = 1.0 s, and it is a measured
 #: choice rather than the review's 3 s").
 WINDOW_SEC = 1.0
 
@@ -174,7 +174,7 @@ def low_lines(
 def fuzzy_repeats(line_texts: Mapping[int, str], *, ratio: float = REPEAT_RATIO) -> frozenset[int]:
     """Line indexes whose text nearly repeats another line's (`difflib` ratio >= `ratio`).
 
-    A FEATURE, NOT A DEFAULT: the `conf-fuzzy-repeats` arm, measured and left off (README, "The optional half:
+    A FEATURE, NOT A DEFAULT: the `conf-fuzzy-repeats` arm, measured and left off (LOG.md, "The optional half:
     near-repeat detection"). QUADRATIC deliberately — a sheet is under 200 lines, and a shingle index would be
     a second definition of "nearly the same line".
     """

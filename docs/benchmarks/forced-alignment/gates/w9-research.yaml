@@ -1,6 +1,6 @@
 # W9 RESEARCH TRACK — the vendored decoder and the three arms it unblocks, on the 28-SONG ACCURACY BASIS.
 # One file, read once PER ARM: `ENCORE_ALIGN_EXPERIMENTS=<arm>` against the same code with the knob unset.
-# The arms, the graph and what each one is for: README, "W9: a vendored decoder, and the three arms it
+# The arms, the graph and what each one is for: LOG.md, "W9: a vendored decoder, and the three arms it
 # unblocks"; docs/arch/04-alignment.md §3.2; the review's roadmap items 14 and 15, and star phase B.
 #
 #   vendored        the CONTROL. An empty graph, so the decoder swap and nothing else (XA-18).

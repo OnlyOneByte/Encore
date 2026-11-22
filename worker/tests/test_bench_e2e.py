@@ -91,6 +91,24 @@ def claims(song: Any, mode: str, corpus: Sequence[Any] = (), **kw: Any) -> Any:
     return lib.build_claims(song, mode, corpus=list(corpus) or [song], duration_sec=200.0, **kw)
 
 
+def test_the_bench_root_is_the_env_var_else_a_home_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ENCORE_BENCH_ROOT", raising=False)
+    monkeypatch.setattr(lib, "DEFAULT_BENCH_ROOT", tmp_path / "home" / "encore-bench")
+    assert lib.bench_root() == tmp_path / "home" / "encore-bench"
+    monkeypatch.setenv("ENCORE_BENCH_ROOT", str(tmp_path / "corpus"))
+    assert lib.bench_root() == tmp_path / "corpus"
+    monkeypatch.setenv("ENCORE_BENCH_ROOT", "")
+    assert lib.bench_root() == tmp_path / "home" / "encore-bench", "an empty value means unset"
+
+
+def test_the_shipped_default_bench_root_is_a_home_directory_not_a_machine_path() -> None:
+    """Read off the name, not `Path.home()`: the default was bound at import, before any per-test HOME pin."""
+    assert lib.DEFAULT_BENCH_ROOT.name == "encore-bench" and lib.DEFAULT_BENCH_ROOT.is_absolute()
+    assert "/Volumes/" not in str(lib.DEFAULT_BENCH_ROOT)
+
+
 # ── modes ────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -447,7 +465,7 @@ def test_an_unaligned_words_published_onset_is_scored_beside_the_aligned_ones() 
 
     The aligned-only family is one word short of the paired set here, and that word is on its truth to the
     millisecond — so the two families disagree by construction, which is the point. W8b's re-judgement of
-    `word-aligned-not-down` turned on exactly this gap: README, "W8b: re-judging `word-aligned-not-down`"."""
+    `word-aligned-not-down` turned on exactly this gap: LOG.md, "W8b: re-judging `word-aligned-not-down`"."""
     song = song_of(
         [("one two", 0.0, 2.0), ("three four", 3.0, 5.0)],
         words=[(0.0, 0.5), (1.0, 1.5), (3.0, 3.5), (4.0, 4.5)],
@@ -1432,7 +1450,7 @@ def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_ri
 
 
 #: `gates/w8b-arms.yaml`'s published-onset floors: mode -> (±100, ±250, ±300, AAE ms). `jit`'s first three are
-#: W9's named exception, the rest W8b's. README, "W8b: re-judging `word-aligned-not-down`" and "W9:
+#: W9's named exception, the rest W8b's. LOG.md, "W8b: re-judging `word-aligned-not-down`" and "W9:
 #: `band-reopen` flipped default-on, and the four words the owner waived".
 W8B_PUBLISHED_FLOORS: Mapping[str, tuple[float, float, float, float]] = {
     "truth": (82.79, 94.43, 95.36, 86.6),
@@ -1479,7 +1497,7 @@ def test_the_w8b_arms_file_judges_where_words_landed_and_not_what_they_were_call
     The owner's decision was that a small aligned/interpolated reclassification is bookkeeping when the words
     did not move, so this file must PASS that and FAIL a move — identically whether or not the moved word was
     re-labelled, which is the half `word_aligned` misses. Every floor is pinned to the measurement, because a
-    floor typed one digit off cannot bite. README, "W8b: re-judging `word-aligned-not-down`"."""
+    floor typed one digit off cannot bite. LOG.md, "W8b: re-judging `word-aligned-not-down`"."""
     rules = gates.parse_gates((GATES_DIR / "w8b-arms.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 76, "run_gates adds the built-in no-error-rows on top"
     floors = {
@@ -2454,7 +2472,7 @@ def test_a_head_label_moves_the_LINE_start_even_though_the_word_metrics_ignore_i
     is lit, label included, so a label held across the gap before the singing scores as an early line.
 
     This is the whole of numb's 54.29 % vs 20.00 % ±500 — 12 of 35 lines scored off a `CHORUS:` token's start
-    at the raw-claims level. README, "W8b: numb's three levels, closed"."""
+    at the raw-claims level. LOG.md, "W8b: numb's three levels, closed"."""
     song = worded("s")
     got = lib.Claims(
         lines=(
@@ -5016,7 +5034,7 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
     P = 1.0 arm — which it must still reject, on MORE clauses than `w7-star.yaml`'s 32-song pooled rules
     did — and a pre-W8b baseline, where the pooled 28-song rules must ERROR rather than be called clear.
 
-    README, "W9: the star re-fitted out of sample, at an optimum outside the review's range".
+    LOG.md, "W9: the star re-fitted out of sample, at an optimum outside the review's range".
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w9-star.yaml").read_text(encoding="utf-8"))
@@ -5083,7 +5101,7 @@ def test_w9s_star_gate_reads_the_28_song_basis_and_rejects_the_in_sample_P_on_it
         "truth-jamendo-word-pm300-at-least-97-16",
         "truth-scored-word-aae-at-most-71-1",
         "truth-scored-word-pm100-at-least-85-46",
-    ], "README, 'The star at the re-fitted P = 0.3': 62 PASS, 10 FAIL, 0 ERROR"
+    ], "LOG.md, 'The star at the re-fitted P = 0.3': 62 PASS, 10 FAIL, 0 ERROR"
 
 
 def test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites() -> None:
@@ -5091,7 +5109,7 @@ def test_w9s_research_gate_holds_the_standing_bar_and_its_control_clause_bites()
 
     A gate file is worth what it rejects, so three readings: the default against itself, the `vendored`
     control clause against runs whose documents really differ, and a pre-W8b baseline that must ERROR.
-    README, "W9: a vendored decoder, and the three arms it unblocks".
+    LOG.md, "W9: a vendored decoder, and the three arms it unblocks".
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w9-research.yaml").read_text(encoding="utf-8"))
@@ -5154,7 +5172,7 @@ def test_w9s_round_one_gate_reads_identity_on_the_fix_pass_and_sees_the_flip() -
     baseline it must match, the same row against W8b's PRE-flip row — where section 1 must fail on exactly
     the modes the flip fires in — and a pre-W8b baseline, where the pooled `scored.` reads must ERROR.
 
-    README, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
+    LOG.md, "W9 review round 1: the fix pass re-benched, and the no-op is now measured".
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w9-r1.yaml").read_text(encoding="utf-8"))
@@ -5210,7 +5228,7 @@ def test_the_exact_frame_clock_took_the_offset_and_tempo_gross_down_not_up() -> 
     """The W8a review was handed "the clock put gross up in off3 / tempo098 / tempo102 / drop50" as its first
     priority; on the committed rows three of the four fell by an order of magnitude and sit at zero.
 
-    Here so the refutation is a reading rather than a paragraph. README, "W8a review: the three bench
+    Here so the refutation is a reading rather than a paragraph. LOG.md, "W8a review: the three bench
     priorities, re-read on rows already on disk".
     """
     results = SCRIPTS.parent / "results"
@@ -5281,7 +5299,7 @@ def test_the_frame_clocks_jamendo_cost_is_paid_back_on_the_shipped_tree() -> Non
     """The second priority: Jamendo `truth` line ±500 97.34 -> 96.42 and word ±300 95.16 -> 94.98.
 
     Both are ABOVE their pre-clock values now. What is left is one song's WORD residue, which is the reading
-    this test exists to keep. README, "W8a review: the three bench priorities, re-read on rows already on
+    this test exists to keep. LOG.md, "W8a review: the three bench priorities, re-read on rows already on
     disk".
     """
     results = SCRIPTS.parent / "results"
@@ -5351,7 +5369,7 @@ def test_the_twenty_eight_song_gates_reject_a_tree_whose_documents_moved() -> No
     all 153 are scored here — on `results/w8b-arms-run_align.json`, W8a's own arms rows re-summarised on the
     W8b harness (0 model seconds) so the `scored` group its 86 accuracy rules read exists at all. On the
     committed `w8a-r2-arms-run_align.json` those 86 ERROR for want of it, which is fail-loud and not a reading
-    (review r2-tests-13). README, "W8b: re-judging `word-aligned-not-down`".
+    (review r2-tests-13). LOG.md, "W8b: re-judging `word-aligned-not-down`".
     """
     results = SCRIPTS.parent / "results"
     rules = gates.parse_gates((GATES_DIR / "w8b.yaml").read_text(encoding="utf-8"))
@@ -5605,7 +5623,7 @@ def test_every_shipped_stage2_route_is_the_measured_WINNER_on_the_recorded_cells
     """W10's table is a MEASUREMENT and not a preference, so the suite reads the ten committed `w8r1-*`
     `generate` cells and re-picks the winner: a route edited to a losing arm has to fail here.
 
-    `syllable_pco300` on the AMLL truth's own spans is the number each row was chosen on (README, "W10: the
+    `syllable_pco300` on the AMLL truth's own spans is the number each row was chosen on (LOG.md, "W10: the
     per-language stage-2 table"), and the arm names map to the recorded run slugs: `base` is the whitespace
     rule, `units` is `nonlatin-units`, `mms` is `mms-roman`.
     """

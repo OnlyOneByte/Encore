@@ -8,7 +8,7 @@ and the line metrics are the review's scratch harness kept exactly, because that
 this one must reproduce; the word metrics are `bench.py --global --words` and the ends its `exp_ends.py`.
 Three deliberate differences, each measured-harmless: lines pair by IDENTITY rather than by text, every random
 draw is seeded by a stable hash, and the highlight reads the lit word through a port of the TV's own logic.
-`gates/w0-reproduce-generate.yaml` has the provenance, and README, "The harness scripts", the baseline rows.
+`gates/w0-reproduce-generate.yaml` has the provenance, and LOG.md, "The harness scripts", the baseline rows.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ AMLL_DIR = "amll"
 
 #: Which SONG SET a run measures (`e2e.py --corpus`), and part of the setup a `base.` gate must share
 #: (`e2e_gates.SETUP_META`): every recorded row is the ENGLISH 32, so the non-Latin lane is a corpus of its
-#: own rather than four more songs in the pooled groups. README, "W8: the non-Latin truth set".
+#: own rather than four more songs in the pooled groups. LOG.md, "W8: the non-Latin truth set".
 ENGLISH_CORPUS, NONLATIN_CORPUS = "english", "nonlatin"
 CORPORA = (ENGLISH_CORPUS, NONLATIN_CORPUS)
 
@@ -243,7 +243,7 @@ class TruthSyllable:
     """One timed span of a truth line, located by a CHARACTER OFFSET into that line's text.
 
     The offset is what lets a published unit pair with it however the publisher split the line, which is the
-    whole point for a script that writes no spaces (README, "W8 stages 1-2").
+    whole point for a script that writes no spaces (LOG.md, "W8 stages 1-2").
     """
 
     line: int
@@ -257,12 +257,12 @@ class TruthSyllable:
         return self.at + len(self.text)
 
 
-#: The id of the measurement `corpus-truth.json` records, spelled out in README, "W8b: the corpus's own truth,
+#: The id of the measurement `corpus-truth.json` records, spelled out in LOG.md, "W8b: the corpus's own truth,
 #: measured, and the 28 songs that score".
 DISPLACEMENT_METHOD = "silent-start-onset+envelope-lag"
 
 #: Where a reader of a results file goes for the measurement behind an `accuracy_excluded` reason.
-CORPUS_TRUTH_DOC = "docs/benchmarks/forced-alignment/README.md"
+CORPUS_TRUTH_DOC = "docs/benchmarks/forced-alignment/LOG.md"
 
 #: A truth sheet leading its own audio by this much cannot score the aligner that places words where they are
 #: sung. 250 ms is W8a's own coherence cut (`gates/w8a.yaml` `coherent-songs-not-pulled-truth`), reused rather
@@ -288,7 +288,7 @@ MIN_DISPLACEMENT_ONSETS, MIN_DISPLACEMENT_SHARE = 5, 0.15
 MEASURED, THIN, NO_EVIDENCE = "measured", "thin", "none"
 
 #: Grounds OTHER than a measured displacement on which a song may leave accuracy scoring. A closed set: an
-#: exclusion nobody can name is a hidden song list. The one entry is numb's — README, "numb is excluded on a
+#: exclusion nobody can name is a hidden song list. The one entry is numb's — LOG.md, "numb is excluded on a
 #: displacement the silence arbiter cannot see". `TruthQuality.unsupported_ground` is its precondition.
 UNUSABLE_REASONS = frozenset({"continuous-vocal"})
 
@@ -300,7 +300,7 @@ class TruthQuality:
     `median_ms` is the delay to first singing over truth starts that land in stem silence; `lag_ms` the
     sheet/stem envelope cross-correlation lag, positive when the sheet is EARLY, which corroborates only at
     `MIN_LAG_CORRELATION` and above; `starts_level_median` is the stem's own level at a truth start, which
-    says whether the silence arbiter could read this song at all. README, "W8b: the corpus's own truth,
+    says whether the silence arbiter could read this song at all. LOG.md, "W8b: the corpus's own truth,
     measured, and the 28 songs that score".
     """
 
@@ -1103,7 +1103,7 @@ class WordScore:
     end_errors: tuple[float, ...] = ()
     final_end_errors: tuple[float, ...] = ()
     #: `errors`' counterpart for the paired words that were NOT aligned, read off the start the document
-    #: publishes. The two together are every paired word, which is what `word_published_*` scores — README,
+    #: publishes. The two together are every paired word, which is what `word_published_*` scores — LOG.md,
     #: "W8b: re-judging `word-aligned-not-down`".
     unaligned_errors: tuple[float, ...] = ()
 
@@ -1306,7 +1306,7 @@ TV_CJK_JOINS = re.compile(
 
 def cjk_join_ranges() -> list[list[int]]:
     """`TV_CJK_JOINS` enumerated over every codepoint, as inclusive `[lo, hi]` INTEGER ranges — what
-    `tv_parity.py` commits and both trees are held to (README, "Core: one gap rule")."""
+    `tv_parity.py` commits and both trees are held to (LOG.md, "Core: one gap rule")."""
     out: list[list[int]] = []
     for code in range(0x110000):
         if not TV_CJK_JOINS.match(chr(code)):
@@ -1684,7 +1684,7 @@ def coherence_metrics(errors: Sequence[float]) -> dict[str, float | None]:
     and eight waves of gates could not tell them apart. `bias_ms` is median(published − truth) and `mad_ms`
     its median absolute deviation: a COHERENT per-song offset is a large `bias_ms` with a small `mad_ms`, and
     it is one number per song in `results/`.
-    docs/benchmarks/forced-alignment/README.md, "The 0.5-2 s band"."""
+    docs/benchmarks/forced-alignment/LOG.md, "The 0.5-2 s band"."""
     if not errors:
         return {"bias_ms": None, "mad_ms": None}
     bias = statistics.median(errors)
@@ -1774,7 +1774,7 @@ def word_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     PCO denominator (`in_text`) counts every truth word every case's text asked for, a refused or ERROR
     case's too (`unpublished` of them), as MIREX's PCO does: a word nobody timed is not a correct onset.
     The `published*` family scores the SAME onsets with the provenance flag ignored, so a word cannot leave
-    the scoring by being re-labelled: README, "W8b: re-judging `word-aligned-not-down`".
+    the scoring by being re-labelled: LOG.md, "W8b: re-judging `word-aligned-not-down`".
     """
     carried = [r for r in rows if r.get("words")]
     if not carried:
@@ -2087,7 +2087,7 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "pco300_pct", "word_pco300"),
     #: The same onsets with the provenance flag ignored — what a reclassification cannot move. A gate reads
     #: these BESIDE `word_aligned` so "fewer words are called aligned" and "a published word moved further
-    #: from truth" are separate verdicts (README, "W8b: re-judging `word-aligned-not-down`").
+    #: from truth" are separate verdicts (LOG.md, "W8b: re-judging `word-aligned-not-down`").
     ("words", "published100_pct", "word_published_pm100"),
     ("words", "published250_pct", "word_published_pm250"),
     ("words", "published300_pct", "word_published_pm300"),
@@ -2101,7 +2101,7 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "final_end100_pct", "final_end_pm100"),
     ("words", "final_end250_pct", "final_end_pm250"),
     ("words", "final_end_bias_ms", "final_end_bias_ms"),
-    #: W8 stages 1-2 of docs/benchmarks/forced-alignment/README.md, whose reject-if reads
+    #: W8 stages 1-2 of docs/benchmarks/forced-alignment/LOG.md, whose reject-if reads
     #: `syllable_pco300` (the TRUTH's denominator): the non-Latin lane's only sub-line accuracy, None on
     #: every English row for want of a syllable truth.
     ("syllables", "aligned", "syllable_aligned"),
@@ -2335,7 +2335,7 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
             syl = entry.get("syllables")
             if syl and syl["in_text"] and group not in POOLED_GROUPS:
                 # BESIDE the word line and never instead of it: on a script with no spaces the two have
-                # different denominators on purpose (README, "W8 stages 1-2").
+                # different denominators on purpose (LOG.md, "W8 stages 1-2").
                 out.append(
                     f"  {'':<8} syllables {syl['aligned']}/{syl['in_text']}"
                     f"  ±100 {_fmt(syl['w100_pct'], 0, '.1f')}  ±250 {_fmt(syl['w250_pct'], 0, '.1f')}"

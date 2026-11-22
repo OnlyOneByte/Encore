@@ -48,7 +48,7 @@ class Candidate:
     has_own_line_timings: bool = False
     #: ANOTHER TEXT IN THIS POOL AGREES WITH IT ON THE WORDS (`policy.corroboration`), which breaks the tie
     #: WITHIN a tier where arrival order used to. Not a knob and not a gate; what it is worth, measured
-    #: whole jobs, is README, "W7: the provider pool is real now".
+    #: whole jobs, is LOG.md, "W7: the provider pool is real now".
     corroborated: bool = False
 
     def first_attempt(self, *, aligned_on_stem: bool) -> Attempt:

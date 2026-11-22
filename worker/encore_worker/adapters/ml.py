@@ -37,7 +37,7 @@ ENGLISH = "en"
 ALIGN_MODELS_BY_DEVICE: Mapping[str, str] = {}
 
 #: THE ENGLISH BUNDLE THIS BOX LOADS WHEN NOBODY NAMES ONE: ~2x the base bundle's seconds a song and a
-#: one-time 1.2 GB download, A/B'd in README, "The English bundle is a setting" and "W5: the flip, landed".
+#: one-time 1.2 GB download, A/B'd in LOG.md, "The English bundle is a setting" and "W5: the flip, landed".
 DEFAULT_ALIGN_MODEL = "HUBERT_ASR_LARGE"
 
 #: The ONE bundle that times a NON-LATIN language off a romanised target sequence, under the `mms-roman`
@@ -201,7 +201,7 @@ _FRAME_HOP_SAMPLES = 320
 _FRAME_FIELD_SAMPLES = 400
 
 #: Seconds in one emission frame: EXACTLY the hop over the rate, which is arithmetic rather than evidence
-#: (README, "The clock was wrong twice over").
+#: (LOG.md, "The clock was wrong twice over").
 FRAME_SEC = _FRAME_HOP_SAMPLES / _EMISSION_SAMPLE_RATE
 
 #: Seconds of audio one forward pass STAMPS, which is what bounds memory (docs/arch/04-alignment.md §3.1).
@@ -249,7 +249,7 @@ class Emissions:
     #: EMPTY means unnamed, which `lexical.calibration` reads as the BASE bundle's row.
     model: str = ""
     #: CTC's blank column in THIS matrix, NOT always 0 — which is why hard-coding it survived — and read
-    #: with `getattr` so older bench entries still decode (README, "M9: the blank is the matrix's").
+    #: with `getattr` so older bench entries still decode (LOG.md, "M9: the blank is the matrix's").
     blank_id: int = 0
     #: The vocabulary's non-character entries by name -> id, blank included, READ BY THE TARGET FILTER
     #: (`generate.excluded_of`): a single-character special is reachable from a lyric. Empty = not reported.
@@ -294,7 +294,7 @@ STAR_NAME = "<star>"
 OWN_STAR_NAME = "<model-star>"
 
 #: Nats BELOW each frame's own best log-probability that the star column sits at (docs/arch/04-alignment.md
-#: §3.1). The sweep, the objectives and the verdict: README, "W9: the star re-fitted out of sample, at an
+#: §3.1). The sweep, the objectives and the verdict: LOG.md, "W9: the star re-fitted out of sample, at an
 #: optimum outside the review's range" and "W7: the star/filler token, phase A" (W7's in-sample 1.0).
 STAR_PENALTY_NATS = 0.3
 

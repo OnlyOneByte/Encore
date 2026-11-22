@@ -574,7 +574,7 @@ wrap would publish a lyric broken at whatever width YouTube chose.
 An automatic YouTube track is a **roll-up**: the words appear one at a time, so every line of lyric is emitted
 three times — as the growing line with per-word timestamps, as a ~10 ms "the line is now complete" cue, and
 again as the carried-over first line of the next cue. Four rules, each a defect the old parser had (the counts
-are in [`../benchmarks/forced-alignment/README.md`](../benchmarks/forced-alignment/README.md), "Caption cues"):
+are in [`../benchmarks/forced-alignment/LOG.md`](../benchmarks/forced-alignment/LOG.md), "Caption cues"):
 
 1. **The cue separator is an empty line, not a blank-looking one.** YouTube writes a lone SPACE as the
    roll-up's empty half, and a splitter that cuts blocks on `line.strip() == ""` cut every such cue in two —
@@ -707,7 +707,7 @@ music video with an intro, an outro or a spoken skit is minutes longer than the 
 asymmetric: an unqualified lookup may answer with another cut's sheet, whose **line timings** are then wrong —
 a hazard the claim clock maps, the LINE_SYNC gate judges and the lexical lift refuses, three shipped gates that
 already read it — where a 404 is no text at all, which no gate can recover. One retry, and only on a 404
-(README, "W7: the provider pool is real now"). A payload's `instrumental: true` is the provider stating
+(LOG.md, "W7: the provider pool is real now"). A payload's `instrumental: true` is the provider stating
 positively that the track has no words, which is better evidence than an empty field but still "no text" to the
 caller; a synced sheet is preferred over a plain one and **falls back** rather than failing, a plain sheet
 still being a real set of words that forced alignment can time from scratch.
@@ -968,7 +968,7 @@ three legitimate paragraphs, so W7c replaced it with one number per kind, in
 | 10. consecutive comment overlap | 0.6 Jaccard on content words | `pool_gate.py`'s `ARMS` carried `SOUND_CUES`' `#:` block verbatim: three index claims that were false of its own tuple, and the arms' real semantics deleted. Set in the gap the tree measures — the one real pair **0.889**, the next **0.436** over **773** adjacent disjoint pairs — so a pasted block fails and two comments about related constants do not (review r2-correctness-1). |
 
 **Where the package's own ratio was read.** Rule 8's row quotes **0.82** for the `w7c-start` snapshot, measured
-with the ratchet's `_counts` over the tree extracted from the shadow repo (7 840 prose / 9 593 code = 0.8173;
+with the ratchet's `_counts` over that snapshot's tree (7 840 prose / 9 593 code = 0.8173;
 `_tools/prose_scan.py`'s different convention reads 0.801 on the same tree). The figure the row first carried,
 **0.745**, is the same measure taken MID-WAVE — after the first pass over the largest blocks had already landed
 — so it was never the pre-wave baseline it was quoted as (review r1-tests-11). For the same reason the 1.21 is
@@ -1012,7 +1012,7 @@ STRICT"`); the four-root file the arrow points at has since been superseded twic
 **THE LIVE MANIFEST IS W10's, AND IT NAMES ITS TREE.** The 2026-10-05 freeze — **4 081** numbers, **2 894**
 strict-substantive rows — was run before `prose_scan.py` required `--frozen-from`, so it reported
 `frozen_from: "UNRECORDED — this manifest cannot say which tree it speaks for"` and the gate's baseline spoke
-for a tree nobody had written down. W10 re-froze from the `w10-start` TREE, extracted from the shadow repo:
+for a tree nobody had written down. W10 re-froze from the `w10-start` TREE:
 `_prose/numbers.json` now holds **4 565** numbers and **3 196** strict-substantive rows over **175** files in
 all four roots and reports `frozen_from: "shadow tag w10-start (2026-10-16 20:23:10 -0500), all four roots,
 STRICT"`, verified **0 LOST** under Python 3.12 — 2 979 code, 206 doc, 11 fixture. (The one row that first

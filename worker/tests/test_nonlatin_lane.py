@@ -33,7 +33,7 @@ from tests.test_lexical_gate import NamedEmissions, NamingAligner
 
 #: A SYNTHETIC Han sheet, six lines, written as the script is: no spaces, so one whitespace token per line.
 #: Enumerations and not a sheet's words: the corpus is commercial music and no lyric text is committed to
-#: this tree (docs/benchmarks/forced-alignment/README.md, "Why no fixture holds a lyric").
+#: this tree (docs/benchmarks/forced-alignment/LOG.md, "Why no fixture holds a lyric").
 HAN_SHEET = (
     "一二三四五六七",
     "甲乙丙丁戊己庚",

@@ -2,7 +2,7 @@
 # can move a line (PLAN-alignment-v3 W8b; `--sync-mode lines` = every text's only attempt is the gated LINE_SYNC
 # rung). Companion to `w8b.yaml`, which serves `time_text` and `run_align`/forced; this rung needs its own file
 # because it grades NO line (`high` 0 by construction) and scores no word, so half of that file would be an
-# ERROR here. Narrative: README, "W8b: the corpus's own truth, measured, and the 28 songs that score".
+# ERROR here. Narrative: LOG.md, "W8b: the corpus's own truth, measured, and the 28 songs that score".
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
 #       --level run_align --sync-mode lines --modes all,wrongtext+ownclock --tag w8b-lines \
@@ -32,7 +32,7 @@
 #
 # MEASURED READING, 93 rules (94 with `run_gates`' built-in no-error-rows): the W8b sweep reads **94/94**
 # (`results/w8b-lines-run_align.json`, 2026-10-05, code `4804fae43eb43d7c`, 1088 cases, 904 s, 0 matrices
-# computed), and so does the baseline — the floors are its reading. README, "W8b: the sweep, read both ways".
+# computed), and so does the baseline — the floors are its reading. LOG.md, "W8b: the sweep, read both ways".
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the wave's reject-if); see e2e_gates.py.
 

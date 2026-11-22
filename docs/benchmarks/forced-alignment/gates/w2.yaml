@@ -105,7 +105,7 @@
 # [W2's record, as written. Since 2026-10-01 that gate is `blind-onsets-unchanged` and compares every line and
 #  word ONSET instead of the bytes — section 4 carries the accounting.]
 #
-# MEASURED SO FAR (targeted probes only, `docs/benchmarks/forced-alignment/README.md` "The claim clock";
+# MEASURED SO FAR (targeted probes only, `docs/benchmarks/forced-alignment/LOG.md` "The claim clock";
 # the corpus row is the wave's own bench run, which is what these gates are for):
 #   4 Jamendo songs x 5 modes: truth +0.00 pt on all four at ±500 ms and words ±300 ms, no song gains a
 #   gross line in any mode, off3 -29 gross over the four, tempo102 -73 gross and +75..+96 pt within ±500 ms.
@@ -225,7 +225,7 @@ truth-text-pm500: truth.text_pm500 >= base.truth.text_pm500 - 1.0
 # ── 2) MUST (§3.2): no Jamendo song — the split with MEASURED word onsets — gains a gross line. `gross`
 # counts only lines that published, so `missing_up` rides along to catch a song that lost the line instead.
 # TWO OF THESE FAIL AT `run_align` AND BOTH ARE EXPLICITLY WAIVED (2026-09-29, review r2 — they had been
-# reported as failures in README's "What failed" and in the PLAN, but no DECISION was recorded against them,
+# reported as failures in LOG.md's "What failed" and in the PLAN, but no DECISION was recorded against them,
 # which is the one outcome 'Owner decisions' does not admit). Both are at `run_align` only, and BOTH LIMBS of
 # the expression are involved, which matters for reading them:
 #   off3  [2 == 0]  two songs. The_Rinn_-_Voices__2017_Version_ on `gross_up`: 46/46 line starts within ±500 ms
@@ -244,7 +244,7 @@ truth-text-pm500: truth.text_pm500 >= base.truth.text_pm500 - 1.0
 # THE POPULATION, because one song's rows are not an argument: 24 song-modes changed kind between W3 and W2 at
 # this level, for a net of -24 line starts within ±500 ms, +2 gross lines (all of them The_Rinn off3) and
 # +8109 word timings that did not exist before; 10 more go from REFUSED to committed. The gross lines are real
-# and the gate is right to see them — see README's "documents that changed KIND".
+# and the gate is right to see them — see LOG.md's "What failed, and the arm it forced" (the documents that changed KIND).
 # WHY A WAIVER AND NOT ONE OF THE OTHER TWO ANSWERS. Default-off is the whole clock (already priced and refused:
 # off3 449 gross lines instead of 28, -19.7 pt, all 12 recovered right texts refused again). The real fix is
 # W1's `policy.improves` best-so-far — keep the line document where the word document is not an improvement —
@@ -452,7 +452,7 @@ truth-jamendo-words-pm100: truth.jamendo.word_pm100 >= base.truth.jamendo.word_p
 # lag +0.72 s, so the vote drags every claim WINDOW ~0.6 s, R1 (armed by `unrelated`) re-decodes inside the
 # moved windows, and the truth this is scored against is the caption track the mode handed the engine as its
 # claims. That is exactly the population section 1's WAIVER is written about, at its worst single document; the
-# README's drop50 row now carries it beside the other movers.
+# LOG.md's drop50 row now carries it beside the other movers.
 #
 # THE BOUNDS ARE ONE WAVE'S MEASURED WORST PER MODE, rounded out to the next whole point, at whichever level
 # is worse. Read as a ratchet: a later wave may not displace a document further than the wave that set them.

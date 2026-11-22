@@ -1,7 +1,7 @@
 """The word-end post-pass (`domain/lyrics/ends.py`) as hermetic properties, chiefly invariant XA-01.
 
 Starts are compared EXACTLY so "no onset moved" is bit for bit; extended ends go through `at()`.
-Design: docs/arch/04-alignment.md §10. Measurements: the forced-alignment README, "Word ends, held
+Design: docs/arch/04-alignment.md §10. Measurements: the forced-alignment LOG.md, "Word ends, held
 through the singing" and "The OOV placeholder's own exhibit".
 """
 

@@ -4,7 +4,7 @@ CTC is peaky, so every end is merely the model's last confident frame and a phra
 it is still being held. Each end is walked forward while the target's activity envelope still calls it
 singing, and never shrunk. PURE: the envelope is measured by the step and handed over as a plain sequence.
 The four bounds, and why this is not the energy-snap this repo rejected: `docs/arch/04-alignment.md` §10;
-README, "Word ends, held through the singing" and "Word ends: the full corpus table".
+LOG.md, "Word ends, held through the singing" and "Word ends: the full corpus table".
 """
 
 from __future__ import annotations

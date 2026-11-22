@@ -8,7 +8,7 @@
 `e2e.py --level run_align` serves ONE text per case, so its pool of one can exercise neither the
 corroboration-ordered candidate tier nor the LRCLIB retry. This drives the same shipped acquisition, ranking,
 ladder and gates with a pool of three to four texts to choose between, and writes its own rows, so nothing
-under `results/` moves. The pools, the arms and the synthetic pool's three stated limitations are in README,
+under `results/` moves. The pools, the arms and the synthetic pool's three stated limitations are in LOG.md,
 "The harness scripts: what each one is for, and the limit it states".
 """
 
@@ -83,7 +83,7 @@ POOLS = ("sdh", "wrong-track", "allwrong", "clean")
 
 #: M13 has two separable halves, which is why `pre-tie` exists: `arrival` turns BOTH off
 #: (every-provider-a-candidate AND the corroboration tie-break), `pre-tie` only the tie-break, so each step
-#: along the arms prices one half. README, "The four pools and the four arms".
+#: along the arms prices one half. LOG.md, "The four pools and the four arms".
 ARMS = ("ranked", "arrival", "pre-tie", "no-l5")
 
 #: (pool, arm) pairs a bare run measures: the review's case and where the tie-break bites, each against both

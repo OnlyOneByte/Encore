@@ -8,7 +8,7 @@
 A separate script because the language question needs another CORPUS and another COMPARISON — bundle against
 bundle on the same audio and text, blind, no ladder between — while reading the same shipped `emissions` /
 `generate` / `forced_align_decoder` that publish. `--folds` gates everything else: a target-filter fold that
-moved one English sequence would move every number under `results/`. README, "The harness scripts", has the
+moved one English sequence would move every number under `results/`. LOG.md, "The harness scripts", has the
 rest, including what `--blank` states and why a model whose `[PAD]` is not at 0 is the shape to prove it on.
 """
 

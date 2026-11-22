@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """JamendoLyrics -> this benchmark's truth format. The first MEASURED (not authored) ground truth here.
 
-    git clone https://github.com/f90/jamendolyrics /tmp/encore-align-bench/jamendolyrics
-    uv run python docs/benchmarks/forced-alignment/scripts/jamendo.py
+    git clone https://github.com/f90/jamendolyrics "${ENCORE_BENCH_ROOT:-$HOME/encore-bench}/jamendolyrics"
+    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/jamendo.py
 
 Every other song's truth is AUTHORED captions, one onset per line and carrying the caption author's jitter,
 so the benchmark could only ever measure LINE onsets. JamendoLyrics ships hand-MEASURED word AND line onsets
@@ -17,25 +17,30 @@ import csv
 import json
 import os
 import pathlib
+import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-ROOT = pathlib.Path("/tmp/encore-align-bench/jamendolyrics")
-OUT = pathlib.Path("/tmp/encore-align-bench/jamendo")
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import e2e_lib as lib  # noqa: E402 - after the path setup above
 
 
 def build() -> None:
-    if not ROOT.is_dir():
-        raise SystemExit(f"clone f90/jamendolyrics to {ROOT} first")
-    rows = list(csv.DictReader(open(ROOT / "JamendoLyrics.csv", encoding="utf-8")))
+    clone = lib.bench_root() / "jamendolyrics"
+    out = lib.bench_root() / "jamendo"
+    if not clone.is_dir():
+        raise SystemExit(f"clone f90/jamendolyrics to {clone} first")
+    rows = list(csv.DictReader(open(clone / "JamendoLyrics.csv", encoding="utf-8")))
     english = [r for r in rows if r["Language"] == "English"]
     made = 0
     for r in english:
         slug = r["Filepath"][:-4]  # drop .mp3
-        directory = OUT / slug
+        directory = out / slug
         directory.mkdir(parents=True, exist_ok=True)
 
         lines = []
-        with open(ROOT / "annotations" / "lines" / f"{slug}.csv", encoding="utf-8") as handle:
+        with open(clone / "annotations" / "lines" / f"{slug}.csv", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
                 lines.append(
                     {
@@ -51,12 +56,12 @@ def build() -> None:
         )
 
         words = []
-        with open(ROOT / "annotations" / "words" / f"{slug}.csv", encoding="utf-8") as handle:
+        with open(clone / "annotations" / "words" / f"{slug}.csv", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
                 words.append({"start": float(row["word_start"]), "end": float(row["word_end"])})
         tokens = [
             t
-            for t in open(ROOT / "lyrics" / f"{slug}.words.txt", encoding="utf-8").read().split("\n")
+            for t in open(clone / "lyrics" / f"{slug}.words.txt", encoding="utf-8").read().split("\n")
             if t.strip()
         ]
         if len(tokens) != len(words):
@@ -70,9 +75,9 @@ def build() -> None:
 
         link = directory / "mix.mp3"
         if not link.exists():
-            os.symlink(ROOT / "mp3" / r["Filepath"], link)
+            os.symlink(clone / "mp3" / r["Filepath"], link)
         made += 1
-    print(f"built {made} English songs under {OUT}")
+    print(f"built {made} English songs under {out}")
     print(
         "next: separate vocals (demucs-mlx -n htdemucs -o <dir> <dir>/mix.mp3), then bench.py "
         "--global --words <dir>/truth-words.json --audio <dir>/mix/vocals.wav"
