@@ -53,7 +53,8 @@ jobs:
     needs: moved
     if: needs.moved.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The full suite takes ~45 min on 2 workers (328 tests, Nov 2026); 40 cut it off before the report.
+    timeout-minutes: 75
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
       options: --ipc=host

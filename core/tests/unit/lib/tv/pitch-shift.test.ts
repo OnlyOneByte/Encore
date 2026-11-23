@@ -501,12 +501,21 @@ function peakHz(sig: Float32Array, from = 100, to = 4000): number {
 	let bestHz = 0;
 	let bestMag = -1;
 	for (let hz = from; hz <= to; hz += 5) {
+		// The phasor is rotated by one complex multiply per sample, not a sin and a cos: per-sample trig made this
+		// helper ~97% of the test, and past the 5 s budget whenever JSC left it unoptimised (#1073).
+		const th = (2 * Math.PI * hz) / RATE;
+		const dc = Math.cos(th);
+		const ds = Math.sin(th);
+		let c = 1;
+		let s = 0;
 		let re = 0;
 		let im = 0;
 		for (let i = 0; i < sig.length; i++) {
-			const th = (2 * Math.PI * hz * i) / RATE;
-			re += sig[i] * Math.cos(th);
-			im += sig[i] * Math.sin(th);
+			re += sig[i] * c;
+			im += sig[i] * s;
+			const nc = c * dc - s * ds;
+			s = s * dc + c * ds;
+			c = nc;
 		}
 		const mag = re * re + im * im;
 		if (mag > bestMag) {
@@ -563,7 +572,8 @@ test('4 channels shifted: each channel keeps its OWN content — no cross-talk b
 	// arriving at the guide's gain.
 	const ratio = semitonesToRatio(4);
 	const { out } = run4(4, [200, 200, 900, 900]);
-	const tail = (sig: Float32Array) => sig.subarray(Math.floor(sig.length / 2));
+	// The last quarter: steady state, and half the DFT work of the second half at a 7.5 Hz resolution.
+	const tail = (sig: Float32Array) => sig.subarray(Math.floor((sig.length * 3) / 4));
 	expect(peakHz(tail(out[0]))).toBeCloseTo(200 * ratio, -1.4);
 	expect(peakHz(tail(out[1]))).toBeCloseTo(200 * ratio, -1.4);
 	expect(peakHz(tail(out[2]))).toBeCloseTo(900 * ratio, -1.4);
