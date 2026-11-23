@@ -81,10 +81,55 @@ def test_the_gpu_probe_cannot_hang_dev_sh() -> None:
 
 
 def test_dev_sh_installs_the_picked_wheel_not_a_hardcoded_cpu() -> None:
-    extras = re.search(r'^WORKER_EXTRAS="(.*)"$', (REPO / "dev.sh").read_text(), re.M)
+    extras = re.search(r'^\s*WORKER_EXTRAS="(.*)"$', (REPO / "dev.sh").read_text(), re.M)
     assert extras
     assert "--extra $TORCH_EXTRA" in extras.group(1)
     assert "--extra cpu" not in extras.group(1)
+
+
+def test_core_only_probes_no_gpu() -> None:
+    """--core-only and --ui run no worker, so the wheel pick (and its nvidia-smi) sits inside their gate."""
+    text = (REPO / "dev.sh").read_text()
+    gate = text.index('if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then\n\tTORCH_EXTRA="$(torch_extra)"')
+    assert text.count('TORCH_EXTRA="$(torch_extra)"') == 1 and gate > text.index("torch_extra() {")
+
+
+def compose_files(tmp_path: Path, *, runtimes: str, gpu: bool, machine: str = "x86_64", env: str = "") -> str:
+    """The `docker compose` argv `./dev.sh compose --stems up` execs, with faked docker, uname, nvidia-smi."""
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "uname").write_text(f'#!/bin/sh\n[ "$1" = -s ] && echo Linux || echo {machine}\n')
+    (fake / "nvidia-smi").write_text(f"#!/bin/sh\nexit {0 if gpu else 9}\n")
+    (fake / "docker").write_text(f'#!/bin/sh\n[ "$1" = info ] && echo \'{runtimes}\' || echo "$@"\n')
+    for tool in ("uname", "nvidia-smi", "docker"):
+        (fake / tool).chmod(0o755)
+    run = subprocess.run(
+        ["bash", str(REPO / "dev.sh"), "compose", "--stems", "up"],
+        cwd=REPO,  # dev.sh resolves docker/ from its cwd; the faked docker only echoes, so nothing is written
+        env={"PATH": f"{fake}:/usr/bin:/bin", **({"ENCORE_TORCH_EXTRA": env} if env else {})},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return run.stdout
+
+
+@pytest.mark.parametrize(
+    ("runtimes", "gpu", "machine", "env", "cuda"),
+    [
+        ('{"nvidia":{},"runc":{}}', True, "x86_64", "", True),
+        ('{"runc":{}}', True, "x86_64", "", False),  # no nvidia runtime: the override would fail to start
+        ('{"nvidia":{}}', False, "x86_64", "", False),  # the runtime but no GPU answering
+        ('{"nvidia":{}}', True, "aarch64", "", False),  # no cu128 wheels for linux-aarch64
+        ('{"nvidia":{}}', True, "x86_64", "cpu", False),  # the opt-out
+    ],
+)
+def test_dev_sh_compose_adds_the_gpu_override_by_itself(
+    tmp_path: Path, runtimes: str, gpu: bool, machine: str, env: str, cuda: bool
+) -> None:
+    argv = compose_files(tmp_path, runtimes=runtimes, gpu=gpu, machine=machine, env=env)
+    assert ("docker/compose.cuda.yaml" in argv) == cuda
+    assert "--profile stems up" in argv
 
 
 # ── the diarizer, once at boot ───────────────────────────────────────────────────────────────────
@@ -168,7 +213,11 @@ def boot(
     adapters = SimpleNamespace(probe=None, diarizer="built")
     _Client.dialled = threading.Event()
     _Client.order = []
-    monkeypatch.setattr(Config, "from_env", staticmethod(lambda: Config(media_dir=str(tmp_path))))
+    # No warm-up (it would load real models) and no thread pinning (it writes this process's env): both are
+    # test_autoconfig's.
+    cfg = Config(media_dir=str(tmp_path), warmup=False)
+    monkeypatch.setattr(Config, "from_env", staticmethod(lambda: cfg))
+    monkeypatch.setattr(hardware, "apply_threads", lambda n: n or None)
     monkeypatch.setattr(hardware, "probe", lambda: hardware.Report(machine="m", python="3", platform="p"))
     monkeypatch.setattr(hardware, "module_available", lambda name: name in modules)
     monkeypatch.setattr(hardware, "binary_available", lambda name: name in binaries)

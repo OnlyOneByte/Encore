@@ -27,8 +27,10 @@ frames are generated rather than committed, so regenerate them locally when you 
 cp docker/.env.example docker/.env     # then set ENCORE_WORKER_TOKEN in it (see Security)
 ./dev.sh compose up                    # core only, on http://localhost:3000
 ./dev.sh compose --stems up            # core + the worker that makes karaoke tracks
-./dev.sh compose --cuda --stems up -d  # the same on an NVIDIA box
 ```
+
+On an NVIDIA box the same command adds the GPU override by itself when Docker has the `nvidia` runtime
+and `nvidia-smi -L` sees a GPU (`--cuda` forces it; `ENCORE_TORCH_EXTRA=cpu` opts out).
 
 `docker/.env` is optional (every value in it has a default), and the worker token belongs there. Both run
 modes read it: a native `bash dev.sh` run loads all of it, and under Docker `docker/compose.yaml` passes
@@ -109,7 +111,9 @@ The worker **dials home** to core, never the reverse. It runs `yt-dlp` and the s
 via PATH** (torch demucs as `python -m demucs.separate`), hence `uv run` above, and capabilities are probed
 against PATH too. ffmpeg prefers the static build the `ffmpeg` extra bundles. `ENCORE_MEDIA_DIR` must point
 at the _same_ directory core is using, or core will mark a job complete for a file it cannot serve.
-`ENCORE_WORKER_CONCURRENCY` (default `1`) sets how many jobs run at once.
+The worker picks its threads and its other performance settings at boot and prints why; each has an
+override (`worker/README.md`, Configuration). `ENCORE_WORKER_CONCURRENCY` (default `1`) sets how many jobs
+run at once.
 
 A native worker also needs a **JavaScript runtime on PATH — install `deno`.** YouTube's player
 challenge (the signature and `n` parameters) cannot be solved without one, and yt-dlp needs its solver
@@ -311,7 +315,9 @@ worker at startup with a message naming the variable and what it accepts. `ENCOR
 Everything else is an **override**, with a default that suits one worker beside one core:
 
 - **Placement** — `ENCORE_WORKER_TOKEN` (must match core's), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
-  `ENCORE_WORKER_CONCURRENCY` (`1`; separation and alignment are both GPU-bound)
+  `ENCORE_WORKER_CONCURRENCY` (`1`; above 1 the CPU threads are split between the jobs)
+- **Speed** — `ENCORE_THREADS` and `ENCORE_ASR_COMPUTE` (auto at boot), `ENCORE_DEMUCS_JOBS` (`1`) and
+  `ENCORE_WARMUP=0` (skip loading the models right after boot)
 - **Device** — `ENCORE_DEVICE` (unset = CUDA, then Apple MPS, then CPU, as torch finds them; otherwise a
   torch device string such as `cuda:1` or `xpu`), `ENCORE_SEPARATOR_BACKEND` (`torch` or `mlx`; unset picks
   `mlx` on Apple Silicon when `demucs-mlx` is installed)

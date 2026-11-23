@@ -95,8 +95,22 @@ def boot(monkeypatch: pytest.MonkeyPatch, config: Config) -> dict[str, Any]:
     monkeypatch.setattr(hardware, "probe", lambda: hardware.Report(machine="m", python="3", platform="p"))
     monkeypatch.setattr(hardware, "module_available", lambda name: name == "demucs")
     monkeypatch.setattr(entry, "_launch_dbos", lambda cfg: None)
-    monkeypatch.setattr(entry, "build_adapters", lambda cfg, *, device: SimpleNamespace(probe=None))
-    monkeypatch.setattr(entry, "Client", _Client)
+    monkeypatch.setattr(
+        entry,
+        "build_adapters",
+        lambda cfg, *, device: SimpleNamespace(probe=None, aligner=None, transcriber=None),
+    )
+    # No real thread pinning (it writes this process's env) and no real downloads.
+    monkeypatch.setattr(hardware, "apply_threads", lambda n: got.update(applied=n) or (n or None))
+    real_steps = entry.warm_steps
+
+    def steps(*args: Any, **kwargs: Any) -> Any:
+        planned = real_steps(*args, **kwargs)
+        got["warmed"] = [name for name, _ in planned]
+        return []
+
+    monkeypatch.setattr(entry, "warm_steps", steps)
+    monkeypatch.setattr(entry, "Client", lambda **wired: got.setdefault("client", _Client(**wired)))
     monkeypatch.setattr(durable, "register", lambda dbos, **providers: got.update(providers))
     monkeypatch.setattr(
         sep, "build_separator", lambda *a, **k: got["separators"].append(k) or real_build(*a, **k)
@@ -117,6 +131,183 @@ def test_both_separators_main_builds_use_the_resolved_jobs(
 def test_main_gates_mlx_stems_on_the_bin_it_will_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     got = boot(monkeypatch, Config(mlx_bin="/venv/bin/demucs-mlx", media_dir=str(tmp_path)))
     assert got["caps"]["mlx_bin"] == "/venv/bin/demucs-mlx"
+
+
+# ── proposal 26: the boot profile ────────────────────────────────────────────────────────────────
+
+
+def test_auto_concurrency_is_one_and_an_explicit_one_wins() -> None:
+    """Whisper and the aligner share one lock: a second job would halve every job's threads for little."""
+    assert hardware.resolve_concurrency(None).count == 1
+    told = hardware.resolve_concurrency(3)
+    assert (told.count, "ENCORE_WORKER_CONCURRENCY" in told.why) == (3, True)
+
+
+def test_one_job_keeps_every_core_and_two_split_them() -> None:
+    auto = dict(threads=None, demucs_jobs=None, asr_compute=None, warmup=True, device="cpu")
+    one = hardware.resolve_profile(concurrency=None, cores=32, **auto)  # type: ignore[arg-type]
+    assert (one.concurrency.count, one.threads.count, one.demucs_jobs.count) == (1, 32, 1)
+    two = hardware.resolve_profile(concurrency=2, cores=32, **auto)  # type: ignore[arg-type]
+    assert (two.concurrency.count, two.threads.count, two.demucs_jobs.count) == (2, 16, 1)
+
+
+def _cgroup(root: Path, files: dict[str, str]) -> str:
+    for name, body in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(body + "\n")
+    return str(root)
+
+
+def test_a_cgroup_cpu_quota_caps_the_cores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`docker --cpus 4` on a 32-core host: the affinity mask still shows 32."""
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "v2", {"cpu.max": "400000 100000"})) == 4
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "none", {"cpu.max": "max 100000"})) == 32
+    v1 = {"cpu/cpu.cfs_quota_us": "200000", "cpu/cpu.cfs_period_us": "100000"}
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "v1", v1)) == 2
+    assert hardware.cpu_count(root=str(tmp_path / "absent")) == 32
+
+
+def test_the_profile_reads_the_cgroup_when_not_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A `--cpus 4` container on a 32-core host: four threads, not 32."""
+    monkeypatch.setattr(hardware, "CGROUP_ROOT", _cgroup(tmp_path, {"cpu.max": "400000 100000"}))
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
+    picked = hardware.resolve_profile(
+        concurrency=None, threads=None, demucs_jobs=None, asr_compute=None, warmup=True, device="cpu"
+    )
+    assert (picked.concurrency.count, picked.threads.count) == (1, 4)
+    assert "4 cores" in picked.threads.why
+
+
+@pytest.mark.parametrize(("device", "compute"), [("cpu", "float32"), ("cuda", "float16"), ("mps", "float32")])
+def test_an_accelerator_keeps_torchs_threads_and_cuda_alone_gets_float16(device: str, compute: str) -> None:
+    got = hardware.resolve_profile(
+        concurrency=None, threads=None, demucs_jobs=None, asr_compute=None, warmup=True, device=device,
+        cores=32,
+    )  # fmt: skip
+    assert got.asr_compute == compute, "int8 is never the auto pick: unmeasured against the corpus"
+    assert (got.threads.count == 0) == (device != "cpu")
+
+
+def test_every_override_wins_and_unset_is_auto() -> None:
+    told = Config.from_env(
+        {
+            "ENCORE_WORKER_CONCURRENCY": "3",
+            "ENCORE_THREADS": "6",
+            "ENCORE_DEMUCS_JOBS": "5",
+            "ENCORE_ASR_COMPUTE": "int8",
+            "ENCORE_WARMUP": "0",
+        }
+    )
+    picked = hardware.resolve_profile(
+        concurrency=None if told.auto_concurrency else told.concurrency,
+        threads=told.threads,
+        demucs_jobs=told.demucs_jobs,
+        asr_compute=told.asr_compute,
+        warmup=told.warmup,
+        device="cpu",
+        cores=32,
+    )
+    assert (picked.concurrency.count, picked.threads.count, picked.demucs_jobs.count) == (3, 6, 5)
+    assert (picked.asr_compute, picked.warmup) == ("int8", False)
+    assert "ENCORE_THREADS" in picked.threads.why and "ENCORE_ASR_COMPUTE" in picked.asr_compute_why
+    assert len(picked.lines()) == 4, "four startup lines say what it picked and why"
+
+    unset = Config.from_env({})
+    assert (unset.auto_concurrency, unset.concurrency, unset.threads) == (True, 1, None)
+    assert unset.asr_compute is None
+    assert unset.warmup, "warm-up is on unless switched off"
+
+
+@pytest.mark.parametrize(("key", "value"), [("ENCORE_ASR_COMPUTE", "int4"), ("ENCORE_THREADS", "0")])
+def test_a_bad_override_is_refused_at_the_boundary(key: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=key):
+        Config.from_env({key: value})
+
+
+def test_apply_threads_pins_the_children_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """demucs runs as a child process, so torch.set_num_threads alone would leave it on every core."""
+    for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        monkeypatch.setenv(key, "1")  # set first, so the undo removes what apply_threads writes
+    monkeypatch.setattr(hardware, "module_available", lambda name: False)
+    assert hardware.apply_threads(12) == 12
+    assert (os.environ["OMP_NUM_THREADS"], os.environ["MKL_NUM_THREADS"]) == ("12", "12")
+    monkeypatch.setenv("OMP_NUM_THREADS", "7")
+    assert hardware.apply_threads(0) is None, "0 is torch's own default: nothing pinned"
+    assert os.environ["OMP_NUM_THREADS"] == "7"
+
+
+def test_main_hands_the_client_and_the_config_the_resolved_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hello's threads are what was PINNED (the probe ran before), and the slots are the picked count."""
+    monkeypatch.setattr(hardware, "cpu_count", lambda **_: 32)
+    got = boot(monkeypatch, Config(media_dir=str(tmp_path), concurrency=2))
+    wired = got["client"].wired
+    assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 16, 1, 16)
+    cfg = wired["config"]
+    assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 16, 1, "float32")
+
+
+def test_warmup_off_loads_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    on = boot(monkeypatch, Config(media_dir=str(tmp_path)))
+    assert on["warmed"] == ["demucs htdemucs checkpoint"], "the torch separator's checkpoint is prefetched"
+    off = boot(monkeypatch, Config(media_dir=str(tmp_path), warmup=False))
+    assert "warmed" not in off
+
+
+def test_the_warmup_names_each_model_and_survives_a_failure(capsys: pytest.CaptureFixture[str]) -> None:
+    from encore_worker import __main__ as entry
+
+    calls: list[str] = []
+
+    def broken() -> None:
+        raise OSError("no network")
+
+    adapters = SimpleNamespace(
+        aligner=SimpleNamespace(warm=broken), transcriber=SimpleNamespace(warm=lambda: calls.append("asr"))
+    )
+    cfg = Config(asr_compute="float32")
+    steps = entry.warm_steps(cfg, adapters, None, device="cpu")  # type: ignore[arg-type]
+    assert [name for name, _ in steps] == ["HUBERT_ASR_LARGE", "whisper base float32"]
+    entry._warm_up(steps)
+    out = capsys.readouterr().out
+    assert "warm: HUBERT_ASR_LARGE failed (OSError: no network); the first job loads it" in out
+    assert calls == ["asr"], "a failed step does not stop the next one"
+    assert "warm: whisper base float32" in out and "warm-up done in" in out
+
+
+def test_the_hello_carries_the_demucs_jobs_core_stamps() -> None:
+    """Core's `WorkerProfile` takes `demucsJobs`; the hello must send it."""
+    from encore_worker.transport.client import Client
+
+    client = Client(
+        config=Config(concurrency=2),
+        connect=None,  # type: ignore[arg-type]
+        run_job=None,  # type: ignore[arg-type]
+        capabilities=frozenset(),
+        device="cpu",
+        threads=16,
+        demucs_jobs=4,
+    )
+    wire = client._hello().to_wire()
+    assert (wire["device"], wire["threads"], wire["demucsJobs"], wire["concurrency"]) == ("cpu", 16, 4, 2)
+
+
+def test_the_asr_compute_reaches_whisper(monkeypatch: pytest.MonkeyPatch) -> None:
+    from encore_worker.adapters import ml
+
+    loaded: list[tuple[str, str, str]] = []
+
+    def load_model(ckpt: str, dev: str, compute_type: str) -> None:
+        loaded.append((ckpt, dev, compute_type))
+
+    monkeypatch.setitem(sys.modules, "whisperx", SimpleNamespace(load_model=load_model))
+    monkeypatch.setattr(ml, "_allow_pyannote_checkpoints", lambda: None)
+    monkeypatch.setattr(ml, "_MODELS", {})
+    ml.WhisperTranscriber(device="cpu", checkpoint="base", compute="int8")._model()
+    ml.WhisperTranscriber(device="cuda", checkpoint="tiny")._model()
+    assert loaded == [("base", "cpu", "int8"), ("tiny", "cuda", "float16")]
 
 
 # ── AC-10: this install's engines ────────────────────────────────────────────────────────────────

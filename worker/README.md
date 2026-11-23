@@ -290,19 +290,46 @@ or experiment name, a non-positive number (so `ENCORE_FLAC_LEVEL=0` too), or an 
 `ENCORE_ALIGN_MODEL` (`__main__.align_model_for`) is refused at startup with a message naming the variable
 and the accepted values. A flag reads anything but `1`, `true`, `yes` or `on` as off.
 
+**The boot profile.** On startup the worker picks its own performance settings from the device and the
+cores it may use (a cgroup's `cpu.max` included, so `docker --cpus` counts), prints one line per pick with
+the reason, and tells core in `hello` (`device`, `threads`, `demucsJobs`, `concurrency`). Every pick below
+marked "auto" is overridden by setting its variable. On a 32-core aarch64 CPU box with nothing set it
+prints:
+
+```
+[worker] concurrency 1 (auto 1 (the models share one lock))
+[worker] threads 32 (auto 32 (cpu, 32 cores / 1 at once)); demucs -j 1 (auto 1 (cpu: demucs -j above 1 can return NaN on CPU, saved as a silent song))
+[worker] asr compute float32 (auto (cpu))
+[worker] warm-up on (ENCORE_WARMUP=0 turns it off)
+```
+
+and in a `docker --cpus 4` container on the same host, `threads 4`.
+
+Right after the first dial, off the event loop, the warm-up fetches any missing checkpoint and loads the
+models the first song would otherwise wait for, one line each (`[worker] warm: HUBERT_ASR_LARGE 7.4 s`).
+Jobs are taken during it; one that arrives first loads what it needs itself, as before. demucs runs as a
+new process per job, so only its checkpoint download is moved to boot.
+
+Concurrency is never auto-picked above 1. Whisper and the aligner run behind one process-wide lock
+(`host/mlrt.py`), so a second job would split the threads while align steps still ran one at a time, and on
+a GPU two jobs would share its memory unguarded.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ENCORE_CORE_URL` | `ws://localhost:3000/ws?role=worker` | the core's websocket. The `/ws` path and `role=worker` are both required |
 | `ENCORE_WORKER_TOKEN` | unset | the shared secret core checks on a `role=worker` upgrade; the same value on both sides. Never printed |
 | `ENCORE_WORKER_ID` | `worker-` plus a stable suffix, e.g. `worker-3fa2c1` | this worker's id. Core treats a repeated id as the same worker reconnecting, so two live workers must never share one |
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
-| `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Separation and alignment are both GPU-bound |
+| `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Above 1, the CPU threads are split between the jobs |
+| `ENCORE_THREADS` | auto: on CPU `cores ÷ concurrency`, else torch's own | torch's intra-op threads, and `OMP_NUM_THREADS`/`MKL_NUM_THREADS` for the demucs children, so the two match |
 | `ENCORE_MEDIA_DIR` | `/media` | the shared media volume (core's `job:assign` names none) |
 | `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box. A relative path is relative to the working directory, and the derived worker id hashes its absolute path, so starting from another directory gives a new state file and a new id |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
 | `ENCORE_DEVICE` | auto | the compute device, overriding the hardware probe |
 | `ENCORE_DEMUCS_JOBS` | `1` | torch demucs `-j`, chunks separated at once. Not auto-picked: above 1, demucs on CPU runs the chunks on threads over one model, and on a 32-core aarch64 box with torch 2.8.0 some came back NaN (9 of 248 s of a song at `-j 8`, none at `-j 1`). demucs rescales the file by its max, which is then NaN, so both stems save as all-zero and the silence gate refuses the song at −91 dBFS (`hardware.DEMUCS_JOBS_UNSAFE`). It is a race: one clean run at `-j 2` proves nothing. `-j 8` was about 2× faster when it worked (61.8 s against 126.7 s for 240 s of audio). Ignored on a GPU: demucs only pools `-j` on CPU. The startup line warns when it is set above 1 |
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
+| `ENCORE_ASR_COMPUTE` | auto: `float16` on CUDA, else `float32` | whisper's compute type: one of `ASR_COMPUTE_TYPES`. `int8` is faster on CPU but unmeasured against the alignment corpus, so it is never the auto pick |
+| `ENCORE_WARMUP` | on | `0` skips the boot warm-up: nothing is fetched or loaded until a job needs it |
 | `ENCORE_ALIGN_MODEL` | `HUBERT_ASR_LARGE` | the English alignment bundle, a torchaudio pipeline name with a calibration row |
 | `ENCORE_ALIGN_EXPERIMENTS` | none | comma-separated names from `ALIGN_EXPERIMENTS`: most switch on an arm, seven switch off a default-on feature (04-alignment.md §14) |
 | `ENCORE_FFMPEG_BIN` | best available | the ffmpeg to run (`host/ffmpeg.py`, 05-worker.md §5) |

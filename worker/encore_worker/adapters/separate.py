@@ -135,6 +135,13 @@ class TorchDemucs:
         )
         return demucs_paths(out_dir, input_wav, self._model)
 
+    def prefetch(self) -> None:
+        """Download the checkpoint into torch's hub cache, which the per-job demucs child reads, so the first
+        song does not. The loaded copy is dropped: each job runs demucs in its own process anyway."""
+        from demucs.pretrained import get_model  # noqa: PLC0415 - lazy, as every ML import here
+
+        get_model(self._model)
+
 
 # ── demucs-mlx ───────────────────────────────────────────────────────────────────────────────────
 

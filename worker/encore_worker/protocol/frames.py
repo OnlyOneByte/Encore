@@ -85,7 +85,6 @@ class Hello:
     device: str | None = None
     threads: int | None = None
     #: How many tracks torch demucs separates at once (its `-j`). Core accepts it in `WorkerProfile`.
-    #: TODO(#1051): set it from #1051's `jobs.count` in `__main__.main` once that lands; None until then.
     demucs_jobs: int | None = None
     host: dict[str, Any] | None = None
 

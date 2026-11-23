@@ -46,6 +46,10 @@ BACKENDS = ("torch", "mlx")
 #: Whisper checkpoints the ASR fallback may load. A job may not name an arbitrary model.
 ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
+#: CTranslate2 compute types `ENCORE_ASR_COMPUTE` may name. `int8` is faster on CPU but unmeasured against the
+#: alignment corpus, so it is never the auto pick.
+ASR_COMPUTE_TYPES = ("float32", "float16", "bfloat16", "int8", "int8_float16", "int8_float32")
+
 #: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`); seven of these
 #: names are default-ON features' controls. What each switches, why it is off and what retiring a name costs:
 #: docs/arch/04-alignment.md §14, with the numbers in docs/benchmarks/forced-alignment/README.md.
@@ -105,9 +109,14 @@ class Config:
     #: only what a test-built `Config()` carries.
     worker_id: str = "worker-1"
     version: str = "0.1.0"
-    #: How many jobs at once. One by default: separation and alignment are both GPU-bound. It also sizes the
-    #: emission cache (`adapters.ml._emission_cache_size`), since each live align job holds two matrices.
+    #: How many jobs at once, which also sizes the emission cache (`adapters.ml._emission_cache_size`). Unset,
+    #: `hardware.resolve_profile` picks it at boot.
     concurrency: int = 1
+    #: True when nobody set ENCORE_WORKER_CONCURRENCY, so the boot profile may pick it.
+    auto_concurrency: bool = False
+    #: torch's intra-op threads, and OMP_NUM_THREADS for the demucs children (`ENCORE_THREADS`); unset means
+    #: `hardware.resolve_profile` picks from the cores and the concurrency.
+    threads: int | None = None
     media_dir: str = "/media"
     #: Where DBOS keeps its durable state. Per-box machine state: it holds in-flight checkpoints, so it must
     #: not be shared or committed.
@@ -117,6 +126,10 @@ class Config:
     #: torch demucs `-j` (`ENCORE_DEMUCS_JOBS`); unset means 1 (`hardware.DEMUCS_JOBS_UNSAFE`).
     demucs_jobs: int | None = None
     asr_model: str = "base"
+    #: whisper's CTranslate2 compute type (`ENCORE_ASR_COMPUTE`); unset means float16 on CUDA, else float32.
+    asr_compute: str | None = None
+    #: Load the models and fetch missing checkpoints right after the dial (`ENCORE_WARMUP=0` turns it off).
+    warmup: bool = True
     #: A bare name as the dataclass default, but `from_env` resolves a real path through `host.ffmpeg`. Left
     #: bare so a `Config()` built in a test does not need the `ffmpeg` extra installed.
     ffmpeg_bin: str = "ffmpeg"
@@ -190,13 +203,26 @@ class Config:
                 f"Expected one of {', '.join(ASR_MODELS)}."
             )
 
+        compute = optional("ENCORE_ASR_COMPUTE")
+        if compute is not None and compute not in ASR_COMPUTE_TYPES:
+            raise ConfigError(
+                f"ENCORE_ASR_COMPUTE={compute!r} is not a compute type whisper takes. "
+                f"Expected one of {', '.join(ASR_COMPUTE_TYPES)}, or leave it unset."
+            )
+
         dbos_db = text("ENCORE_DBOS_DB", "encore-worker.sqlite")
+        concurrency = _positive_int(src, "ENCORE_WORKER_CONCURRENCY", 0)
         return Config(
             core_url=core_url,
             worker_token=optional("ENCORE_WORKER_TOKEN"),
             worker_id=optional("ENCORE_WORKER_ID") or _default_worker_id(dbos_db),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
-            concurrency=_positive_int(src, "ENCORE_WORKER_CONCURRENCY", 1),
+            concurrency=concurrency or 1,
+            auto_concurrency=not concurrency,
+            threads=_positive_int(src, "ENCORE_THREADS", 0) or None,
+            asr_compute=compute,
+            # On unless switched off: `_flag` reads unset as False, which is the wrong default here.
+            warmup=src.get("ENCORE_WARMUP", "").strip().lower() not in ("0", "false", "no", "off"),
             media_dir=text("ENCORE_MEDIA_DIR", "/media"),
             dbos_db=dbos_db,
             backend=backend,

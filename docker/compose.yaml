@@ -131,6 +131,9 @@ services:
       # core's guards this list in both directions.
       - ENCORE_SEPARATOR_BACKEND
       - ENCORE_DEMUCS_JOBS
+      - ENCORE_THREADS
+      - ENCORE_ASR_COMPUTE
+      - ENCORE_WARMUP
       - ENCORE_PUBLISH_STEM_FORMAT
       - ENCORE_LRCLIB_URL
       - ENCORE_ALIGN_MODEL

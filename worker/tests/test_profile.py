@@ -106,7 +106,9 @@ def test_main_hands_the_client_its_resolved_device_and_threads(
     from encore_worker import __main__ as entry
 
     report = hardware.Report(machine="m", python="3", platform="p", accelerator="mps", threads=10)
-    monkeypatch.setattr(Config, "from_env", staticmethod(lambda: Config(media_dir=str(tmp_path))))
+    # No warm-up: it would load real models (test_autoconfig covers it). An accelerator pins no threads.
+    cfg = Config(media_dir=str(tmp_path), warmup=False)
+    monkeypatch.setattr(Config, "from_env", staticmethod(lambda: cfg))
     monkeypatch.setattr(hardware, "probe", lambda: report)
     monkeypatch.setattr(hardware, "module_available", lambda name: False)
     monkeypatch.setattr(entry, "_launch_dbos", lambda cfg: None)
