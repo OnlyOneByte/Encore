@@ -1,0 +1,406 @@
+{
+  "scenario": "phone-sing-widen-320",
+  "what": "Phone 320x844: \"Not it? Search everything\" under a default answer — the rows are replaced by the wider search's, a cut; the field alone above them does not move (rows from the local index)",
+  "capturedAt": "2026-11-23T15:25:08.624Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "findRow": {
+      "x": 32,
+      "y": 128,
+      "width": 256,
+      "height": 70,
+      "top": 128,
+      "right": 288,
+      "bottom": 198,
+      "left": 32
+    },
+    "rows": 1,
+    "widenOffered": false
+  },
+  "subject": {
+    "selector": ".find-row",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-an7q9u-spin",
+        "target": "span[data-slot=spinner].encore-spinner",
+        "durationMs": 800,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.8s linear 0s infinite normal none running svelte-an7q9u-spin | 0.8s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.8s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-18guw72-shimmer",
+        "target": "div[data-slot=skeleton].encore-skel",
+        "durationMs": 1300,
+        "delayMs": 0,
+        "endTimeMs": null,
+        "easing": "",
+        "iterations": null,
+        "fill": "none",
+        "properties": [
+          "backgroundPositionX",
+          "backgroundPositionY"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "1.3s ease 0s infinite normal none running svelte-18guw72-shimmer | 1.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "1.3s"
+          ],
+          "colours": [
+            "100%",
+            "0px",
+            "0px",
+            "0px"
+          ],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "findRow": {
+        "x": 32,
+        "y": 128,
+        "width": 256,
+        "height": 70,
+        "top": 128,
+        "right": 288,
+        "bottom": 198,
+        "left": 32
+      },
+      "rows": 1,
+      "widenOffered": false
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.8,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "findRow": {
+        "x": 32,
+        "y": 128,
+        "width": 256,
+        "height": 70,
+        "top": 128,
+        "right": 288,
+        "bottom": 198,
+        "left": 32
+      },
+      "rows": 1,
+      "widenOffered": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 5589,
+    "encodeMs": 460,
+    "liveMs": 9541,
+    "reducedMs": 1714,
+    "reducedEncodeMs": 507
+  },
+  "files": {
+    "clip.gif": 27010,
+    "clip-slow4x.gif": 27010,
+    "filmstrip.png": 85745,
+    "filmstrip-reduced.png": 85438
+  }
+}
