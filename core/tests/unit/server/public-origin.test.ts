@@ -2,7 +2,7 @@
 // no proxy header configured it reports **https** for a plain HTTP request: `url.origin` became
 // `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone on the LAN could
 // open. Invisible in normal testing, because the usual path is an https tunnel.
-import { test, expect } from 'bun:test';
+import { test, expect, spyOn } from 'bun:test';
 import {
 	publicOrigin,
 	publicOriginIsHttps,
@@ -11,7 +11,11 @@ import {
 	resolveOrigin,
 	lanAddresses,
 	joinCandidates,
-	startupAddress
+	startupAddress,
+	parseLinuxRoute,
+	parseMacRoute,
+	parseWindowsRoute,
+	type DefaultRoute
 } from '$lib/server/public-origin';
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
 
@@ -185,7 +189,8 @@ test('fallbackJoinOrigin is what an empty setting resolves to, so the UI can sho
 
 // THE LOOPBACK TV (proposal 25). The README says to open http://localhost:3000/tv on the machine plugged into the TV,
 // and with nothing declared the QR then said `localhost`. A loopback request now advertises this box's home-network
-// address: 192.168/16, then 10/8, never 172.16/12 (Docker's and WSL2's NAT), never a virtual interface, never public.
+// address: the default route's interface first, then 192.168/16, then 10/8; never 172.16/12 (Docker's and WSL2's NAT),
+// never a known virtual interface, never public. Always on this server's own plain-http port.
 
 const nic = (address: string, extra: Partial<NetworkInterfaceInfo> = {}) =>
 	({
@@ -197,9 +202,12 @@ const nic = (address: string, extra: Partial<NetworkInterfaceInfo> = {}) =>
 		cidr: null,
 		...extra
 	}) as NetworkInterfaceInfo;
+type Ifaces = Record<string, NetworkInterfaceInfo[]>;
+const net = (interfaces: Ifaces, route: DefaultRoute | null = null) => ({ interfaces, route });
 const LO = { lo: [nic('127.0.0.1', { internal: true })] };
-const HOME = { ...LO, eth0: [nic('192.168.1.20')] };
+const HOME = net({ ...LO, eth0: [nic('192.168.1.20')] });
 const local = (host = 'localhost:3000') => req({ host });
+const ips = (interfaces: Ifaces, route: DefaultRoute | null = null) => lanAddresses(net(interfaces, route));
 
 const withEnv = <T>(name: string, value: string | undefined, fn: () => T): T => {
 	const prior = process.env[name];
@@ -212,38 +220,104 @@ const withEnv = <T>(name: string, value: string | undefined, fn: () => T): T => 
 		else process.env[name] = prior;
 	}
 };
+/** No declared origin, and this server on PORT (3000 unless given), so a result never depends on the runner's env. */
+const bare = <T>(fn: () => T, port = '3000'): T => withEnv('PORT', port, () => withOrigin(undefined, fn));
 
-test('a TV at localhost, 127.0.0.1 or ::1 advertises the home-network address on the same port', () => {
-	for (const host of ['localhost:3000', '127.0.0.1:3000', '[::1]:3000']) {
-		expect(withOrigin(undefined, () => fallbackJoinOrigin(local(host), url, HOME))).toBe('http://192.168.1.20:3000');
+test("a TV at any loopback spelling advertises the home-network address on the server's own port", () => {
+	for (const host of ['localhost:3000', '127.0.0.1:3000', '[::1]:3000', '0.0.0.0:3000', '[::ffff:127.0.0.1]:3000']) {
+		expect(bare(() => fallbackJoinOrigin(local(host), url, HOME))).toBe('http://192.168.1.20:3000');
 	}
-	expect(withOrigin(undefined, () => fallbackJoinOrigin(local('localhost'), url, HOME))).toBe('http://192.168.1.20');
+	// The port is the one this server listens on, whatever port the TV's request came in on.
+	expect(bare(() => fallbackJoinOrigin(local('localhost'), url, HOME))).toBe('http://192.168.1.20:3000');
+	expect(bare(() => fallbackJoinOrigin(local('localhost:5173'), url, HOME), '4100')).toBe('http://192.168.1.20:4100');
 });
 
 test('10.x when there is no 192.168, and 192.168 first whatever the interface order', () => {
-	expect(lanAddresses({ ...LO, eth0: [nic('10.0.0.7')] })).toEqual(['10.0.0.7']);
-	expect(lanAddresses({ eth0: [nic('10.0.0.7')], wlan0: [nic('192.168.1.20')] })).toEqual(['192.168.1.20', '10.0.0.7']);
+	expect(ips({ ...LO, eth0: [nic('10.0.0.7')] })).toEqual(['10.0.0.7']);
+	expect(ips({ eth0: [nic('10.0.0.7')], wlan0: [nic('192.168.1.20')] })).toEqual(['192.168.1.20', '10.0.0.7']);
 });
 
-test('Docker and WSL2 are never advertised: 172.16/12 or a virtual interface keeps the warning', () => {
-	const cases = [
+test('Docker, WSL2, VM and VPN adapters are never advertised: 172.16/12 or a known virtual name keeps the warning', () => {
+	const cases: Ifaces[] = [
 		{ ...LO, docker0: [nic('172.17.0.1')] },
 		{ ...LO, eth0: [nic('172.28.123.4')] }, // WSL2's NAT
 		{ ...LO, eth0: [nic('172.16.0.2')], br: [nic('172.31.255.1')] },
 		// A virtual adapter on a home-looking range is still not the phones' network.
 		{ docker0: [nic('192.168.99.1')], 'br-1a2b': [nic('10.10.0.1')], veth9: [nic('192.168.5.1')] },
 		{ virbr0: [nic('192.168.122.1')], tailscale0: [nic('10.64.0.1')], utun3: [nic('10.8.0.2')] },
-		{ 'vEthernet (WSL)': [nic('192.168.240.1')] }
+		{ 'vEthernet (WSL)': [nic('192.168.240.1')] },
+		// The reviewer's list: macOS, VMware, VirtualBox, Parallels, LXC/LXD, VPNs, ZeroTier, Kubernetes.
+		{ bridge100: [nic('192.168.64.1')], vmnet8: [nic('192.168.135.1')], vboxnet0: [nic('192.168.56.1')] },
+		{ 'VirtualBox Host-Only Network': [nic('192.168.56.1')], 'VMware Network Adapter VMnet8': [nic('192.168.8.1')] },
+		{ vnic0: [nic('10.211.55.2')], lxcbr0: [nic('10.0.3.1')], lxdbr0: [nic('10.155.1.1')] },
+		{ wg0: [nic('10.8.0.2')], tun0: [nic('10.9.0.2')], tap0: [nic('192.168.7.1')], ztabcdef: [nic('10.147.17.5')] },
+		{ 'ZeroTier One [8056c2e21c]': [nic('10.147.17.5')], cni0: [nic('10.42.0.1')], 'flannel.1': [nic('10.42.0.0')] }
 	];
 	for (const list of cases) {
-		expect(lanAddresses(list)).toEqual([]);
-		expect(withOrigin(undefined, () => fallbackJoinOrigin(local(), url, list))).toBe('http://localhost:3000');
+		expect(ips(list)).toEqual([]);
+		expect(bare(() => fallbackJoinOrigin(local(), url, net(list)))).toBe('http://localhost:3000');
 	}
 });
 
 test('a Docker bridge next to the real NIC: the real NIC is picked', () => {
 	const list = { docker0: [nic('192.168.99.1')], eth0: [nic('172.17.0.5')], wlan0: [nic('192.168.1.20')] };
-	expect(lanAddresses(list)).toEqual(['192.168.1.20']);
+	expect(ips(list)).toEqual(['192.168.1.20']);
+});
+
+test("the default route's interface wins over a VM bridge on 192.168, even one with an unknown name", () => {
+	// A Mac on a 10.0.0.x router (Xfinity's default) with Apple Virtualization's bridge: must pick 10.0.0.x.
+	const mac = { lo0: LO.lo, en0: [nic('10.0.0.23')], bridge100: [nic('192.168.64.1')] };
+	expect(ips(mac, { iface: 'en0' })).toEqual(['10.0.0.23']);
+	expect(ips(mac)).toEqual(['10.0.0.23']); // route unknown: the denylist is the backstop
+	// A bridge no list names: only the route knows. Every other address is still a candidate.
+	const odd = { en0: [nic('10.0.0.23')], vmenet7: [nic('192.168.64.1')] };
+	expect(ips(odd, { iface: 'en0' })).toEqual(['10.0.0.23', '192.168.64.1']);
+	expect(bare(() => fallbackJoinOrigin(local(), url, net(odd, { iface: 'en0' })))).toBe('http://10.0.0.23:3000');
+	// Windows names the route by its address. VirtualBox's host-only adapter loses either way.
+	const win = { 'Wi-Fi': [nic('10.0.0.5')], 'VirtualBox Host-Only Network': [nic('192.168.56.1')] };
+	expect(ips(win, { address: '10.0.0.5' })).toEqual(['10.0.0.5']);
+	expect(ips(win)).toEqual(['10.0.0.5']);
+	// An adapter no list names (Windows' hotspot bridge): the route's address still puts Wi-Fi first.
+	const hotspot = { 'Wi-Fi': [nic('10.0.0.5')], 'Local Area Connection* 10': [nic('192.168.137.1')] };
+	expect(ips(hotspot, { address: '10.0.0.5' })).toEqual(['10.0.0.5', '192.168.137.1']);
+});
+
+test('a default route the phones cannot use (VPN, WSL2, Docker) falls back to the ranked list', () => {
+	expect(ips({ wg0: [nic('10.8.0.2')], wlan0: [nic('192.168.1.20')] }, { iface: 'wg0' })).toEqual(['192.168.1.20']);
+	expect(ips({ eth0: [nic('172.28.1.4')] }, { iface: 'eth0' })).toEqual([]);
+	expect(ips({ eth0: [nic('10.0.0.7')], wlan0: [nic('192.168.1.20')] }, { iface: 'gone0' })).toEqual([
+		'192.168.1.20',
+		'10.0.0.7'
+	]);
+});
+
+test("each OS's default-route output is read for the lowest-metric default", () => {
+	const linux = [
+		'Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT',
+		'wlan0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0',
+		'eth0\t00000000\t0100000A\t0003\t0\t0\t100\t00000000\t0\t0\t0',
+		// OpenVPN's def1 half-route 0.0.0.0/1: destination 0 but not a default, whatever its metric.
+		'tun0\t00000000\t0100080A\t0003\t0\t0\t0\t00000080\t0\t0\t0',
+		'eth0\t0000000A\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0'
+	].join('\n');
+	expect(parseLinuxRoute(linux)).toEqual({ iface: 'eth0' });
+	expect(parseLinuxRoute(linux.split('\n').slice(0, 1).concat(linux.split('\n')[3]!).join('\n'))).toBeNull();
+	const mac =
+		'   route to: default\ndestination: default\n       mask: default\n    gateway: 10.0.0.1\n  interface: en0\n';
+	expect(parseMacRoute(mac)).toEqual({ iface: 'en0' });
+	expect(parseMacRoute('route: writing to routing socket: not in table')).toBeNull();
+	const win = [
+		'IPv4 Route Table',
+		'Active Routes:',
+		'Network Destination        Netmask          Gateway       Interface  Metric',
+		'          0.0.0.0          0.0.0.0      192.168.1.1    192.168.1.20     35',
+		'          0.0.0.0          0.0.0.0         10.0.0.1        10.0.0.5     25',
+		'Persistent Routes:',
+		'  Network Address          Netmask  Gateway Address  Metric',
+		'          0.0.0.0          0.0.0.0     172.16.0.1       1'
+	].join('\r\n');
+	expect(parseWindowsRoute(win)).toEqual({ address: '10.0.0.5' });
+	expect(parseWindowsRoute('Active Routes:\r\n  None\r\n')).toBeNull();
 });
 
 test('a public, reserved, link-local, internal or IPv6 address is never advertised', () => {
@@ -252,24 +326,30 @@ test('a public, reserved, link-local, internal or IPv6 address is never advertis
 		eth1: [nic('fe80::1', { family: 'IPv6' }), nic('fd00::5', { family: 'IPv6' })],
 		lo: [nic('127.0.0.1', { internal: true }), nic('10.0.0.9', { internal: true })]
 	};
-	expect(lanAddresses(list)).toEqual([]);
+	expect(ips(list)).toEqual([]);
 });
 
 test('several NICs: the first is advertised and every one is a candidate, once each', () => {
-	const list = {
+	const list = net({
 		eth0: [nic('192.168.1.21')],
 		wlan0: [nic('192.168.1.20'), nic('192.168.1.21')],
 		usb0: [nic('10.0.0.4')]
-	};
-	expect(withOrigin(undefined, () => fallbackJoinOrigin(local(), url, list))).toBe('http://192.168.1.21:3000');
-	expect(joinCandidates(local(), url, list)).toEqual([
+	});
+	expect(bare(() => fallbackJoinOrigin(local(), url, list))).toBe('http://192.168.1.21:3000');
+	expect(bare(() => joinCandidates(list))).toEqual([
 		'http://192.168.1.21:3000',
 		'http://192.168.1.20:3000',
 		'http://10.0.0.4:3000'
 	]);
-	// From a phone on the LAN too: the candidates are the box's, not the request's.
-	expect(joinCandidates(req({ host: '192.168.1.20:3000' }), url, list)).toHaveLength(3);
-	expect(joinCandidates(local(), url, LO)).toEqual([]);
+	expect(bare(() => joinCandidates(net(LO)))).toEqual([]);
+});
+
+test("over a tunnel, the pick and the candidates are still this server's plain http and own port", () => {
+	// A tunnel that rewrites Host to localhost, over https: never `https://192.168.1.20` with no port.
+	const tunnel = req({ host: 'localhost', 'x-forwarded-proto': 'https' });
+	expect(bare(() => fallbackJoinOrigin(tunnel, url, HOME))).toBe('http://192.168.1.20:3000');
+	expect(bare(() => joinCandidates(HOME))).toEqual(['http://192.168.1.20:3000']);
+	expect(bare(() => joinCandidates(HOME), '4100')).toEqual(['http://192.168.1.20:4100']);
 });
 
 test('ENCORE_PUBLIC_ORIGIN still wins over the home-network pick', () => {
@@ -283,16 +363,16 @@ test('ENCORE_PUBLIC_ORIGIN still wins over the home-network pick', () => {
 });
 
 test('a LAN or tunnel request is unchanged: the Host it arrived on wins, as before', () => {
-	const other = { eth0: [nic('10.0.0.7')] };
-	expect(withOrigin(undefined, () => fallbackJoinOrigin(req({ host: '192.168.1.30:3000' }), url, other))).toBe(
+	const other = net({ eth0: [nic('10.0.0.7')] });
+	expect(bare(() => fallbackJoinOrigin(req({ host: '192.168.1.30:3000' }), url, other))).toBe(
 		'http://192.168.1.30:3000'
 	);
 	const tunnel = req({ host: '127.0.0.1:3000', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' });
-	expect(withOrigin(undefined, () => fallbackJoinOrigin(tunnel, url, HOME))).toBe('https://party.example');
+	expect(bare(() => fallbackJoinOrigin(tunnel, url, HOME))).toBe('https://party.example');
 });
 
 test('the cookie origin never takes the pick: publicOrigin stays the request', () => {
-	expect(withEnv('ENCORE_TEST_INTERFACES', JSON.stringify(HOME), () => publicOrigin(local(), url))).toBe(
+	expect(withEnv('ENCORE_TEST_INTERFACES', JSON.stringify(HOME.interfaces), () => publicOrigin(local(), url))).toBe(
 		'http://localhost:3000'
 	);
 });
@@ -300,35 +380,50 @@ test('the cookie origin never takes the pick: publicOrigin stays the request', (
 test('HOST=127.0.0.1 listens on loopback only, so nothing is advertised', () => {
 	withEnv('ENCORE_TEST_INTERFACES', undefined, () =>
 		withEnv('HOST', '127.0.0.1', () => {
-			expect(withOrigin(undefined, () => fallbackJoinOrigin(local(), url))).toBe('http://localhost:3000');
-			expect(joinCandidates(local(), url)).toEqual([]);
-			expect(startupAddress(3000)).toBeNull();
+			expect(bare(() => fallbackJoinOrigin(local(), url))).toBe('http://localhost:3000');
+			expect(bare(() => joinCandidates())).toEqual([]);
+			expect(bare(() => startupAddress())).toBeNull();
 		})
 	);
 });
 
 test('HOST unset, 0.0.0.0 or :: listens everywhere, so the real interface list is read', () => {
-	// Paired with the test above: on a box with a home-network address (most), only HOST tells the two apart.
-	const real = lanAddresses(networkInterfaces())[0];
+	// Paired with the test above: on a box with a home-network address (most), only HOST tells the two apart. The
+	// default route only reorders the list, so whether there is an address does not depend on it.
+	const found = lanAddresses({ interfaces: networkInterfaces(), route: null });
 	for (const host of [undefined, '0.0.0.0', '::']) {
 		withEnv('ENCORE_TEST_INTERFACES', undefined, () =>
 			withEnv('HOST', host, () => {
-				expect(startupAddress(3000)).toBe(real ? `http://${real}:3000` : null);
+				const line = bare(() => startupAddress());
+				expect(line === null).toBe(found.length === 0);
+				if (line !== null) expect(found).toContain(new URL(line).hostname);
 			})
 		);
 	}
 });
 
-test('the test hook stands in for the interfaces, and a malformed one advertises nothing', () => {
-	withOrigin(undefined, () => {
-		expect(withEnv('ENCORE_TEST_INTERFACES', JSON.stringify(HOME), () => joinOrigin(local(), url))).toBe(
-			'http://192.168.1.20:3000'
-		);
-		expect(withEnv('ENCORE_TEST_INTERFACES', '{nope', () => joinOrigin(local(), url))).toBe('http://localhost:3000');
-	});
+test('the test hook stands in for the interfaces; a malformed one is ignored with a warning, never a crash', () => {
+	expect(
+		withEnv('ENCORE_TEST_INTERFACES', JSON.stringify(HOME.interfaces), () => bare(() => joinOrigin(local(), url)))
+	).toBe('http://192.168.1.20:3000');
+	const warn = spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		// Bad JSON, and good JSON of the wrong shape (an object where the list belongs). HOST pins the fallthrough.
+		for (const bad of ['{nope', '{"eth0":{"address":"192.168.1.20"}}', '[1]', '{"eth0":[null]}']) {
+			warn.mockClear();
+			const got = withEnv('HOST', '127.0.0.1', () =>
+				withEnv('ENCORE_TEST_INTERFACES', bad, () => bare(() => joinOrigin(local(), url)))
+			);
+			expect(got).toBe('http://localhost:3000');
+			expect(warn).toHaveBeenCalledTimes(1);
+		}
+	} finally {
+		warn.mockRestore();
+	}
 });
 
-test('the startup line names the same address the QR uses', () => {
-	expect(startupAddress(3000, HOME)).toBe('http://192.168.1.20:3000');
-	expect(startupAddress(3000, { docker0: [nic('172.17.0.1')] })).toBeNull();
+test('the startup line names the same address the QR uses, and a declared one first', () => {
+	expect(bare(() => startupAddress(HOME))).toBe('http://192.168.1.20:3000');
+	expect(bare(() => startupAddress(net({ docker0: [nic('172.17.0.1')] })))).toBeNull();
+	expect(withOrigin('https://karaoke.example', () => startupAddress(HOME))).toBe('https://karaoke.example');
 });

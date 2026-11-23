@@ -79,6 +79,16 @@ test('a TV opened at localhost advertises the home-network address, and Settings
 	await phone.locator('#joining').scrollIntoViewIfNeeded();
 	await shot(phone, 'settings-server-390');
 	await phone.setViewportSize({ width: 320, height: 844 });
+	// At 320 the line breaks at `http://`, never inside the host and port: their text sits on one line.
+	const addr = phone.locator('#join-origin-hint strong');
+	await expect(addr).toHaveText(`http://${lan}`);
+	const lines = () =>
+		addr.evaluate((el) => {
+			const range = document.createRange();
+			range.selectNodeContents(el.lastChild!); // the host and port, after the `<wbr>`
+			return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+		});
+	await expect.poll(lines).toBe(1);
 	await phone.locator('#joining').scrollIntoViewIfNeeded();
 	await shot(phone, 'settings-server-320');
 	await phone.setViewportSize({ width: 390, height: 844 });

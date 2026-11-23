@@ -171,6 +171,8 @@
 	}
 
 	// The stored address is not offered again: a "Use" that changes nothing is a dead tap.
+	// A `<wbr>` after the fallback's `http://` gives a narrow card a break there, so it never splits the port.
+	const fallbackScheme = $derived(/^https?:\/\//.exec(data.joinOriginFallback)?.[0] ?? '');
 	const joinChoices = $derived((data.joinCandidates ?? []).filter((c) => c !== settings.global.joinOrigin));
 	function useJoinOrigin(origin: string) {
 		joinDraft = origin;
@@ -300,7 +302,8 @@
 				onchange={commitJoinOrigin}
 			/>
 			<Field.Description id="join-origin-hint"
-				>Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description
+				>Empty means <strong>{fallbackScheme}<wbr />{data.joinOriginFallback.slice(fallbackScheme.length)}</strong
+				>.</Field.Description
 			>
 			{#if joinError}<p class="err" role="alert">{joinError}</p>{/if}
 			{#if joinUnreachable}

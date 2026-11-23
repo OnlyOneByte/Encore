@@ -356,7 +356,7 @@ setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 // The address phones should open, from the same pick as the TV's QR. `0.0.0.0` is not one, so it is only the fallback.
 console.log(
-	`🎤 Encore on ${startupAddress(PORT) ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
+	`🎤 Encore on ${startupAddress() ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );
 
 // Loud, so an open box is not silently exposed.

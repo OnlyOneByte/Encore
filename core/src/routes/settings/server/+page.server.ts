@@ -19,7 +19,7 @@ export const load: PageServerLoad = ({ cookies, request, url }) => {
 		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),
 		// This box's home-network addresses, so a host on two networks picks one instead of typing an IP.
-		joinCandidates: joinCandidates(request, url),
+		joinCandidates: joinCandidates(),
 		// Only the server knows the real scheme this phone arrived on; `location.protocol` cannot be trusted for it.
 		requestIsHttps: publicOriginIsHttps(request, url),
 		// Models the CONNECTED WORKERS reported, rather than a list compiled here. A worker knows what it can

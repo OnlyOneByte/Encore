@@ -85,6 +85,15 @@ on the LAN IP and need none of what follows.
 A self-signed certificate also works in principle and is usually not worth it: the CA has to be
 installed on the television.
 
+**Which address the localhost TV's QR shows.** With no join address saved and no `ENCORE_PUBLIC_ORIGIN`,
+it is this box's address on the interface that carries the default route, else its first 192.168.x, else
+10.x, always on `PORT` over plain http. It never shows a 172.16-31.x address (Docker's and WSL2's NAT), so
+a home network on that range gets the "Phones can't open this address" warning: type the address in
+Settings -> This machine, or pick it from the choices there. Behind a tunnel or proxy, set
+`ENCORE_PUBLIC_ORIGIN`. A tunnel that rewrites `Host` to localhost (`ngrok --host-header=rewrite`) looks
+like the localhost TV, so its visitors see the box's private LAN address in the QR; Settings -> This
+machine also lists those addresses to anyone who has joined.
+
 ### Why this is not simply fixed in code
 
 There is no non-secure path to `AudioWorklet`, so nothing in this repo can lift the restriction. The
