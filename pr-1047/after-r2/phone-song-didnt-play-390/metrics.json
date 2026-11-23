@@ -1,0 +1,154 @@
+{
+  "scenario": "phone-song-didnt-play-390",
+  "what": "Phone 390x844: \"Your song didn’t play\" rising over the dock on the Library tab as the TV fails Theo’s song, with Try again and Pick another (rise-in, --motion-base). The 0 ms frame is a seek artefact: in real time the sheet mounts once and starts at opacity 0 (rAF probe, #1047)",
+  "capturedAt": "2026-11-23T11:32:55.587Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.didnt-play.your-turn.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 18,
+  "seekObserved": {
+    "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+    "live": "Your song didn’t play, dont-stop-believin",
+    "youreUp": false
+  },
+  "subject": {
+    "selector": ".didnt-play",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.didnt-play.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 149.96899990402162,
+        "delayMs": 0,
+        "endTimeMs": 149.96899990402162,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+      "live": "Your song didn’t play, dont-stop-believin",
+      "youreUp": false
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 4,
+      "min": 0,
+      "max": 5
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 50,
+      "max": 83.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+      "live": "Your song didn’t play, dont-stop-believin",
+      "youreUp": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12243,
+    "encodeMs": 1281,
+    "liveMs": 16692,
+    "reducedMs": 6002,
+    "reducedEncodeMs": 437
+  },
+  "files": {
+    "clip.gif": 446051,
+    "clip-slow4x.gif": 446051,
+    "filmstrip.png": 288649,
+    "filmstrip-reduced.png": 56464
+  }
+}
