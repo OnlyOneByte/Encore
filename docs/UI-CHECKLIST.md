@@ -97,16 +97,17 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
 ## Tenet checks
 
 Each line holds one of the [UI tenets](UI-TENETS.md); the tenet says why. "Automated" names the gate or probe that
-already checks the line. A line marked **not automated yet** is the reviewer's to answer from the diff, the phone
-390×844 and 320×568 frames and the TV 1920×1080 frame; a gate candidate is a line worth promoting to `gate` once it
-is stable.
+already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwright/specs/gate/`. A line marked
+**not automated yet** is the reviewer's to answer from the diff, the phone 390×844 and 320×568 frames and the TV
+1920×1080 frame; a gate candidate is a line worth promoting to `gate` once it is stable.
 
 ### Speed (tenets 1 and 2)
 
 - **S1.** Tap to first visible change is at most 100 ms, at CPU 1× and 4×, for every control the PR touches.
   Not automated yet; a gate candidate.
 - **S2.** The PR's moments stay inside the [speed budget](UI-TENETS.md#speed-budget). Measure on `main` and on the
-  branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule).
+  branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule). Measured by hand
+  (the browser's Performance panel or a throwaway Playwright timing) until a speed probe is committed.
 - **S3.** No spinner or skeleton is on screen for less than 300 ms: it is never painted, or it stays at least
   300 ms (`PENDING_GRACE_MS` is the pattern). Not automated yet; a gate candidate.
 - **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
@@ -131,12 +132,14 @@ is stable.
 
 - **T1.** A live screen equals a reloaded one, and phone and TV agree within 1 s (the handoff within 1.5 s).
   Covered in part by the `fresh-pick-every-phone` and `handoff` probes.
-- **T2.** Every failure state the PR touches shows a next action. Automated: the `p21-no-dead-ends` probe.
+- **T2.** Every failure state the PR touches shows a next action. Automated for the song-making failures
+  (`p21-no-dead-ends`); a new failure state adds a case there.
 
 ### TV (tenet 6)
 
-- **V1.** The TV type floor, the safe area and plain ASCII hold. Automated: `gate:measured` CLAIM 5 and the
-  plain-ASCII guard in `core/tests/unit/lib/tv/stage-words.test.ts`.
+- **V1.** The TV type floor, the safe area and plain ASCII hold. Automated for the type floor (`gate:measured`
+  CLAIM 5) and plain ASCII (the guard in `core/tests/unit/lib/tv/stage-words.test.ts`); the safe area is a human
+  check, from the 1920×1080 frame (the cheers lane is checked by the `reactions-lane` probe).
 - **V2.** One copy of each fact on the stage. A human check, from the 1920×1080 frame.
 
 ### Fun (tenet 7)

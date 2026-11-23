@@ -30,7 +30,7 @@ and a target marked **calibrate** must be measured on `main` before anything fai
 ## 2. The room never waits on the software
 
 **Rule.** Every moment on the night has a time budget ([the table below](#speed-budget)). The only waits allowed
-are the ones that carry the room, and each of those is a deliberate, named pause.
+are the ones that carry the room, and each of those is ruled: a deliberate, named pause.
 
 - **Phone:** opening the app, joining, searching and adding a song all fit their budgets on a mid-range phone. A
   wait that usually ends in under 300 ms shows **nothing**: no spinner, no skeleton. A longer one shows a
@@ -114,8 +114,9 @@ phone.
   empty-room screens.
 - **Checks:**
   - The smallest TV type tier is at least **27 px** at 1920×1080, and nothing goes under 24 px (`gate:measured`
-    CLAIM 5). The lyric line is 3.121 rem, about **91 px**.
-  - Chrome stays inside `--tv-safe-x` / `--tv-safe-y` (48 px / 5vw, 40 px / 6vh) for overscan.
+    CLAIM 5, a spec in `core/tests/playwright/specs/gate/`). The lyric line is 3.121 rem, about **91 px**.
+  - Chrome stays inside `--tv-safe-x` / `--tv-safe-y` (48 px / 5vw, 40 px / 6vh) for overscan. A human check,
+    from the 1920×1080 frame.
   - The plain-ASCII guard (`core/tests/unit/lib/tv/stage-words.test.ts`) covers every string the TV can render.
   - Rule of thumb for distance: text about 1/200 of the viewing distance tall, so about 15 mm at 3 m. 27 px is
     about 13 mm on a 43" 1080p set and 17 mm on a 55". **Small TVs are at the edge**, so the floor must not go
@@ -154,7 +155,7 @@ CPU 4× on localhost. Wi-Fi adds a round trip that is not measured here. "Today"
 | Open `/` cold → code box ready                      | ≤ 1000 ms at 4×                           | 176 (160–448)    | 684 (608–708) |                                                                            |
 | Reload a joined phone → Sing box ready              | ≤ 500 ms                                  | 127 (84–154)     | –             |                                                                            |
 | TV `/tv` cold → room code and QR                    | ≤ 1000 ms                                 | 112 (100–160)    | –             | LCP 784 ms is the attract phrase's ruled 600 ms fade                       |
-| Join: tap Start singing → Sing box ready            | ≤ 300 ms                                  | 136 (105–149)    | –             | dock at 162                                                                |
+| Join: tap Start singing → Sing box ready            | ≤ 300 ms                                  | 136 (105–149)    | –             | dock at 162 ms                                                             |
 | Search: last keystroke → first library result       | ≤ 300 ms                                  | 205 (175–259)    | 275 (214–279) | 150 ms of that is the debounce in `core/src/routes/+page.svelte`           |
 | Search: default sources (catalog and YouTube)       | ≤ 1000 ms on real Wi-Fi                   | **unmeasured**   | –             | 188 (179–277) with the resolvers stubbed; real network unmeasured          |
 | Tap Sing (+) → button reads "queued"                | ≤ 100 ms                                  | 40 (31–82)       | 33            | optimistic                                                                 |
@@ -162,7 +163,7 @@ CPU 4× on localhost. Wi-Fi adds a round trip that is not measured here. "Today"
 | Tap Sing → TV "Up next"                             | ≤ 250 ms                                  | 46               | 37            |                                                                            |
 | Tap Sing → row on another phone's `/queue`          | ≤ 250 ms                                  | 134              | 119           | in the DOM at about 11 ms; about 120 ms is the row-hold animation          |
 | Skip → next singer's strip                          | ≤ 100 ms                                  | 33               | –             |                                                                            |
-| Skip → TV "Now singing" card visible                | ≤ 300 ms                                  | 137              | –             | fully opaque at 454, the card's ruled 400 ms fade                          |
+| Skip → TV "Now singing" card visible                | ≤ 300 ms                                  | 137              | –             | fully opaque at 454 ms, the card's ruled 400 ms fade                       |
 | Skip → "You're up" on the next phone                | ≤ 300 ms, and within 1.5 s of the TV card | 102 (91–215)     | –             | lands 34 ms before the TV card                                             |
 | Skip → new song's audio running                     | ≤ 300 ms                                  | 43 (26–83)       | –             | `<audio>` element state only; WebAudio audibility is not proven            |
 | Skip → lyrics back                                  | the ruled 2.5 s hold                      | 2608 (2551–2681) | –             | ceremony, not lag                                                          |
