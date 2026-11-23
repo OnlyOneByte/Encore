@@ -114,7 +114,8 @@ services:
       - ENCORE_CORE_URL=ws://core:3000/ws?role=worker
       # Appended by the worker as `&token=`; must match core's (see the core service).
       - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
-      - ENCORE_WORKER_ID=${ENCORE_WORKER_ID:-worker-1}
+      # Unset means the worker derives a per-machine id; a fixed default here would make every worker collide.
+      - ENCORE_WORKER_ID=${ENCORE_WORKER_ID:-}
       # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator and
       # installed engines at startup (host/hardware.py), so a wrong guess here is worse than no value. The
       # full list of worker variables is in the README's Configuration section.

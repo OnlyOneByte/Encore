@@ -297,7 +297,7 @@ worker at startup with a message naming the variable and what it accepts. `ENCOR
 
 Everything else is an **override**, with a default that suits one worker beside one core:
 
-- **Placement** — `ENCORE_WORKER_TOKEN` (must match core's), `ENCORE_WORKER_ID` (`worker-1`),
+- **Placement** — `ENCORE_WORKER_TOKEN` (must match core's), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
   `ENCORE_WORKER_CONCURRENCY` (`1`; separation and alignment are both GPU-bound)
 - **Device** — `ENCORE_DEVICE` (unset = CUDA, then Apple MPS, then CPU, as torch finds them; otherwise a
   torch device string such as `cuda:1` or `xpu`), `ENCORE_SEPARATOR_BACKEND` (`torch` or `mlx`; unset picks
