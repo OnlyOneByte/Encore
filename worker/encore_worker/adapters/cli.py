@@ -395,9 +395,10 @@ def caption_argv(
         "--skip-download",
         "--write-auto-subs" if automatic else "--write-subs",
         "--sub-langs",
-        # Real English tracks only: `en.*` also matched the machine-translated `en-ar`, `en-fr`, … tracks,
-        # a dozen extra requests per song, and a 429 on any one of them failed the call.
-        "en,en-orig,en-US,en-GB",
+        # YouTube's machine-translated `en-ar`, `en-fr`, … tracks are automatic-only, and yt-dlp matches
+        # case-insensitively, so `en.*` there was a dozen extra requests and a 429 on any one failed the call.
+        # Authored tracks are never translations, so `en.*` keeps their `en-CA`, `en-AU`, … variants.
+        "en,en-orig" if automatic else "en.*",
         "--sub-format",
         "vtt/srt/best",
         "-o",
@@ -481,8 +482,10 @@ class YtDlpCaptions:
             # yt-dlp exits non-zero when ANY requested track fails (a 429 on the second), even after it wrote
             # the first. The written track is still good, so keep it and say what went wrong.
             kind = "automatic" if automatic else "authored"
+            # -1 is ours (cancelled or stalled): yt-dlp did not exit, we stopped it.
+            how = f"exited {failed.code}" if failed.code >= 0 else "was stopped"
             print(
-                f"[captions] yt-dlp exited {failed.code} after writing {os.path.basename(path)}; "
+                f"[captions] yt-dlp {how} after writing {os.path.basename(path)}; "
                 f"keeping the {kind} track ({failed.output.strip()[-200:]})",
                 flush=True,
             )
