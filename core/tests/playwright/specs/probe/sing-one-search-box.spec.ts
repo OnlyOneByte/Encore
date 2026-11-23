@@ -177,6 +177,29 @@ test('a clear right after the widen leaves no widened count behind', async ({ wo
 		'no stale count'
 	).toEqual([]);
 	await expect(page.locator('#widen-count'), 'the count goes with the answer').toHaveCount(0);
+	await expect(page.locator('[aria-describedby="widen-count"]'), 'and so does its idref').toHaveCount(0);
+});
+
+test('a failed widen describes the failure on the field, and Try again leaves nothing on it', async ({ world }) => {
+	const track = await world.awaitDemoTrack('caroline');
+	const page = await world.openPhone('Maya');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await openBrowseFromHome(page);
+	const field = page.locator(SEL.search);
+	await field.fill(track.title);
+	const widen = page.getByRole('button', WIDEN);
+	await widen.waitFor({ timeout: 30_000 });
+	const wide = (u: URL) => u.pathname === '/api/search' && u.searchParams.get('source') === 'all';
+	await page.route(wide, (r) => r.fulfill({ status: 500, body: '{}' }));
+	await widen.click();
+	await expect(field, 'focus goes back to the field').toBeFocused({ timeout: 30_000 });
+	await expect(field).toHaveAccessibleDescription(/^Couldn't reach the server/);
+	await page.unroute(wide);
+	await page.getByRole('button', { name: 'Try again' }).click();
+	await page.locator(SEL.songRow).first().waitFor({ timeout: 30_000 });
+	await expect(field, 'no failure left on the field').toHaveAccessibleDescription('');
+	await expect(field, 'and no idref left pointing at nothing').not.toHaveAttribute('aria-describedby');
+	await expect(page.locator('#widen-count')).toHaveCount(0);
 });
 
 test('a widen in the air when the guest leaves moves no focus on the next page', async ({ world }) => {

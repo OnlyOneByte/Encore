@@ -133,6 +133,13 @@
 	let widened = $state(false);
 	/** The widened answer's count, described on the element the widen focuses. Empty once a newer search starts. */
 	let widenCount = $state('');
+	let widenTarget: HTMLElement | null = null;
+	/** Drops the count and its `aria-describedby`, so the attribute never points at nothing. */
+	function clearWidenCount() {
+		widenCount = '';
+		widenTarget?.removeAttribute('aria-describedby');
+		widenTarget = null;
+	}
 	const searchSource = $derived(widened ? 'all' : urlSource);
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
@@ -189,7 +196,7 @@
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
 		widened = false;
-		widenCount = '';
+		clearWidenCount();
 		const q = query.trim();
 		if (!q) {
 			clearResults();
@@ -228,12 +235,12 @@
 			return;
 		}
 		/* The count is the focus target's description, read as focus lands. A live update queued before a focus move
-		   is often dropped. `widenCount` clears with the next search, so nothing stale is left to read. */
+		   is often dropped. `clearWidenCount` runs on the next search, so nothing stale is left to read. */
 		widenCount = msg;
 		await tick();
-		const target = document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl;
-		target?.setAttribute('aria-describedby', 'widen-count');
-		target?.focus();
+		widenTarget = document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl;
+		widenTarget?.setAttribute('aria-describedby', 'widen-count');
+		widenTarget?.focus();
 	}
 
 	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
@@ -258,7 +265,7 @@
 		   already has a gate waiting for exactly this state. */
 		clearResults();
 		searchFailed = false;
-		widenCount = '';
+		clearWidenCount();
 		try {
 			// The default is the route's own, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
