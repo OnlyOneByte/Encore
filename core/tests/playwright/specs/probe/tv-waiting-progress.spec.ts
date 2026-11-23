@@ -39,6 +39,10 @@ test('the waiting bar is the live figure, or hidden, and the title never moves',
 
 	// No live status: the slot is laid out but hidden, so nothing reads as a figure.
 	await expect(bar).toBeHidden();
+	// The card's own entrance (`card-rise`, a translateY) is still running when it turns visible, and a box read
+	// mid-rise is 2-20 px low. Wait it out ONCE, here: the reads below are taken straight after each status, so a
+	// status that re-mounted the lines and replayed the rise would still fail them.
+	await waiting.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
 	const y0 = await titleY();
 	await shot('no-status');
 

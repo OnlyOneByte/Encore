@@ -241,17 +241,19 @@ test('RESTART ROUND TRIP: proc, "restart" with the catalog rehydrated, re-reques
 
 test('a reused ALREADY-READY job reconciles the media instead of deadlocking rotation', () => {
 	// The dedup index counts `ready` as live, so enqueue can hand back a FINISHED job. Leaving the media processing
-	// against it means no worker ever runs and the entry is held out of rotation forever.
+	// against it means no worker ever runs and the entry is held out of rotation forever. A LOCAL song, so the finished
+	// job is the separation itself: a finished fetch says nothing about stems (next test).
 	const d = deps();
-	d.mediaById.set('m1', media('m1'));
+	d.mediaById.set('m1', media('m1', { source: 'local' }));
 	const first = requestProcess('m1', d)!;
+	expect(first.jobType).toBe('stems');
 	d.jobs.assign(first.id, 'w1', T0 + 1000, T0);
 	d.jobs.accept(first.id, T0 + 2000, T0);
 	d.jobs.complete(first.id, T0);
 	expect(d.jobs.byId(first.id)!.status).toBe('ready');
 
 	// The media's ready flags are lost (a stub overwrote the runtime entry), so request again.
-	d.mediaById.set('m1', media('m1'));
+	d.mediaById.set('m1', media('m1', { source: 'local' }));
 	const second = requestProcess('m1', d)!;
 	expect(second.id).toBe(first.id); // deduped to the finished job
 	const m = d.mediaById.get('m1')!;
@@ -265,6 +267,28 @@ test('a reused ALREADY-READY job reconciles the media instead of deadlocking rot
 	expect(pendingGates(m).map((g) => g.id)).toEqual(['lyrics']);
 	m.lyricsStatus = 'ready';
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true); // playable, not held forever
+});
+
+test('Try again after a failed separation runs stems again, not the finished fetch', () => {
+	// A YouTube song: fetch finished (the audio is on disk), then stems failed for good. Re-enqueueing `fetch` handed
+	// back the finished fetch job, so no worker ever got the retry and the song was marked ready with no stems.
+	const d = deps();
+	d.mediaById.set('m1', media('m1'));
+	const fetch = requestProcess('m1', d)!;
+	d.jobs.assign(fetch.id, 'w1', T0 + 1000, T0);
+	d.jobs.accept(fetch.id, T0 + 2000, T0);
+	d.jobs.complete(fetch.id, T0);
+	const stems = d.jobs.enqueue('m1', 'stems', 0, T0);
+	d.jobs.assign(stems.id, 'w1', T0 + 1000, T0);
+	d.jobs.accept(stems.id, T0 + 2000, T0);
+	d.jobs.fail(stems.id, 'boom', T0);
+	expect(settleStemsGate('m1', d.mediaById)).toBe(true);
+
+	const retry = requestProcess('m1', d)!;
+	expect(retry.jobType).toBe('stems');
+	expect(retry.id).not.toBe(stems.id);
+	expect(retry.status).toBe('queued');
+	expect(d.mediaById.get('m1')!.stemStatus).toBe('queued'); // NOT marked ready
 });
 
 // settleStemsGate — the twin of settleLyricsGate. A terminal stems failure that leaves stemStatus mid-flight keeps
