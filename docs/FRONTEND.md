@@ -614,7 +614,8 @@ next frame, and every card's ink clears AA.
   here moved `cn()` into a chunk of its own and cost every shipped route about 6 KB of gzipped JS (CLAIM 13).
 
 `src/lib/ui/GuideSegments.svelte` is Guide as Off / Low / Full (an owner ruling; the song page keeps the slider for
-fine control). Levels are in `src/lib/guide-preset.ts`. Low is 0.3, a default rather than a ruling. A level the
+fine control). Levels are in `src/lib/guide-preset.ts`. Low is 0.3, the owner's accepted default, and it is tunable there:
+change `GUIDE_PRESETS` and `guide-preset.test.ts` together. A level the
 slider set between presets presses no segment, rather than the nearest one. A tap presses its segment in the same
 frame. When `onpick` returns false (the command never reached the wire), the press drops again, the rule
 `guide-send.ts` states for the slider. A pressed segment is filled in `currentColor` and its label is inked in
