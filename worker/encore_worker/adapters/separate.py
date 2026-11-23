@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,10 +82,11 @@ def demucs_argv(
 
     `--two-stems=vocals` is the whole reason this engine is cheaper than the mlx path: demucs writes
     `vocals.wav` and `no_vocals.wav` directly, so no mix-minus pass is needed. `-n` is the model and
-    reaches a subprocess, which is why `resolve_model` gates it.
+    reaches a subprocess, which is why `resolve_model` gates it. `sys.executable`, not `python` from PATH:
+    `capabilities` probed demucs in THIS interpreter, and a service manager's PATH may have no `python`.
     """
     return [
-        "python",
+        sys.executable,
         "-m",
         "demucs.separate",
         "-n",
@@ -424,6 +426,7 @@ def build_separator(
     ffmpeg_bin: str,
     engine: str | None = None,
     zoo_model_dir: str = "",
+    demucs_jobs: int = 1,
 ) -> TorchDemucs | MlxDemucs | Roformer | Any | None:
     """The separator for the RESOLVED backend, or None when this box cannot build one — a refused job rather
     than a crashed process, `host.capabilities` having already declined to advertise `stems`.
@@ -459,7 +462,7 @@ def build_separator(
         return MlxDemucs(model=model, mlx_bin=mlx_bin, ffmpeg_bin=ffmpeg_bin)
     if not module_available("demucs"):
         return None
-    return TorchDemucs(model=model, device=device)
+    return TorchDemucs(model=model, device=device, jobs=demucs_jobs)
 
 
 __all__ = [

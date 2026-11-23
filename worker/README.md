@@ -301,12 +301,13 @@ and the accepted values. A flag reads anything but `1`, `true`, `yes` or `on` as
 | `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
 | `ENCORE_DEVICE` | auto | the compute device, overriding the hardware probe |
+| `ENCORE_DEMUCS_JOBS` | auto: on CPU `max(1, min(8, cores ÷ 4, ⌊(free GB − 4) ÷ 0.75⌋))`, else `1` | torch demucs `-j`, chunks separated at once. Cores and free RAM honour a cgroup's `cpu.max` and `memory.max` (`docker --cpus`/`--memory`), so a pick never outgrows the RAM it runs in. Ignored on a GPU: demucs only pools `-j` on CPU. The startup line prints the pick and the limit that bound it |
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
 | `ENCORE_ALIGN_MODEL` | `HUBERT_ASR_LARGE` | the English alignment bundle, a torchaudio pipeline name with a calibration row |
 | `ENCORE_ALIGN_EXPERIMENTS` | none | comma-separated names from `ALIGN_EXPERIMENTS`: most switch on an arm, seven switch off a default-on feature (04-alignment.md §14) |
 | `ENCORE_FFMPEG_BIN` | best available | the ffmpeg to run (`host/ffmpeg.py`, 05-worker.md §5) |
 | `ENCORE_YTDLP_BIN` | `yt-dlp` | the yt-dlp to run |
-| `ENCORE_MLX_BIN` | `demucs-mlx` | the demucs-mlx to run |
+| `ENCORE_MLX_BIN` | `demucs-mlx` beside the worker's Python, else from PATH | the demucs-mlx to run. `stems` is only advertised on the mlx backend when it is found |
 | `ENCORE_ZOO_MODEL_DIR` | `$XDG_CACHE_HOME/encore-worker/separator-models` | where separator checkpoints are cached, deliberately not `/tmp` |
 | `ENCORE_KEEPALIVE_SEC` | `10` | progress interval while a long step runs; must stay well under the core's progress lease |
 | `ENCORE_JOB_CEILING_SEC` | `21600` | how long, from job start, the keepalive vouches for a job |

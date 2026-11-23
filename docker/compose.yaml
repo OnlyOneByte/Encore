@@ -130,6 +130,7 @@ services:
       # docker/.env. In-container paths and binaries stay the image's (worker.Dockerfile). The same test as
       # core's guards this list in both directions.
       - ENCORE_SEPARATOR_BACKEND
+      - ENCORE_DEMUCS_JOBS
       - ENCORE_PUBLISH_STEM_FORMAT
       - ENCORE_LRCLIB_URL
       - ENCORE_ALIGN_MODEL
