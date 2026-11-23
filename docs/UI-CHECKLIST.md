@@ -1,4 +1,9 @@
-# UI checklist: motion
+# UI checklist
+
+A UI PR's reviewer checks it against this list. It has two parts: the [motion checks](#motion-checks), answered
+from the frames `bun run ui:review` records, and the [tenet checks](#tenet-checks), which hold a change to the
+[UI tenets](UI-TENETS.md): speed, stillness, one glance, one truth, the TV stage, fun and access. A PR answers the
+sections it touches and says which lines passed, as "Motion 11/11, Speed 4/4".
 
 A static screenshot cannot see motion. The leave confirm drew itself half its own size up and to the left for its
 whole 120 ms opening and then snapped to the centre (#964). CLS was 0, no frame dropped, and reduced motion hid it.
@@ -50,9 +55,9 @@ a block under a media query or `@supports` that does not hold (a `reduce` overri
 skipped. `metrics.json` records what the built CSS says for each one
 (`declared[].source`), the strip's subtitle prints the verdict, and `tokens.problems` lists every literal.
 
-## The checks
+## Motion checks
 
-Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which passed, as "checklist 11/11".
+Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which passed, as "Motion 11/11".
 
 1. **Every frame is a plausible blend of its two ends.** Nothing is offset, clipped, flashing, blank or doubled.
 2. **No jump at either end.** Compare `before` with `0 ms`, and the last frame with the settled state. Anything
@@ -88,6 +93,64 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
     `stripClip`, shrink with `scale`).
 11. **A row about timing (a stream, a sequence, anything released on a clock) has `realtime`.** Its overlap is 0 and
     its blank count is 0 in both runs.
+
+## Tenet checks
+
+Each line holds one of the [UI tenets](UI-TENETS.md); the tenet says why. "Automated" names the gate or probe that
+already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwright/specs/gate/`. A line marked
+**not automated yet** is the reviewer's to answer from the diff, the phone 390×844 and 320×568 frames and the TV
+1920×1080 frame; a gate candidate is a line worth promoting to `gate` once it is stable.
+
+### Speed (tenets 1 and 2)
+
+- **S1.** Tap to first visible change is at most 100 ms, at CPU 1× and 4×, for every control the PR touches.
+  Not automated yet; a gate candidate.
+- **S2.** The PR's moments stay inside the [speed budget](UI-TENETS.md#speed-budget). Measure on `main` and on the
+  branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule). Measured by hand
+  (the browser's Performance panel or a throwaway Playwright timing) until a speed probe is committed.
+- **S3.** No spinner or skeleton is on screen for less than 300 ms: it is never painted, or it stays at least
+  300 ms (`PENDING_GRACE_MS` is the pattern). Not automated yet; a gate candidate.
+- **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
+  table with the owner's ruling. Read from the diff.
+
+### Stillness (tenet 3)
+
+- **M1.** Nothing runs longer than `--motion-slow` (400 ms), and no content is held at opacity 0 for longer than
+  `--motion-base` (250 ms), beyond the ruled exceptions in tenet 3. This tightens motion check 3. Read from
+  `metrics.json`'s `declared[].durationMs`; making `ui:review` fail above 400 ms is a gate candidate.
+
+### Glance (tenet 4)
+
+- **G1.** At 320×568 the screen's primary action lies between the header and the dock's top edge, or the page
+  brings it there. Not automated yet; a gate candidate for `measured-hit-extents`.
+- **G2.** At 320 px there is no horizontal overflow and no ellipsised ruled copy; ruled copy wraps to at most two
+  lines with no orphaned last word. Overflow and ellipsis are gate candidates; orphans are a human check.
+- **G3.** Guest words: no jargon, and at most 25 words above the fold on a guest screen, not counting song titles
+  and names. The word limit is to be calibrated on `main` before it fails anything; the wording is a human check.
+
+### Truth (tenet 5)
+
+- **T1.** A live screen equals a reloaded one, and phone and TV agree within 1 s (the handoff within 1.5 s).
+  Covered in part by the `fresh-pick-every-phone` and `handoff` probes.
+- **T2.** Every failure state the PR touches shows a next action. Automated for the song-making failures
+  (`p21-no-dead-ends`); a new failure state adds a case there.
+
+### TV (tenet 6)
+
+- **V1.** The TV type floor, the safe area and plain ASCII hold. Automated for the type floor (`gate:measured`
+  CLAIM 5) and plain ASCII (the guard in `core/tests/unit/lib/tv/stage-words.test.ts`); the safe area is a human
+  check, from the 1920×1080 frame (the cheers lane is checked by the `reactions-lane` probe).
+- **V2.** One copy of each fact on the stage. A human check, from the 1920×1080 frame.
+
+### Fun (tenet 7)
+
+- **F1.** The PR says what each new motion tells the room. A human check.
+
+### Access
+
+- **A1.** Tap targets are at least 44 px, focus shows a ring of at least 2 px, and a live region is mounted before
+  its text arrives. Automated for the tap floor and the ring (`gate:measured` CLAIM 1 and CLAIM 4); the live-region
+  order is not automated yet and is a gate candidate.
 
 ## Putting the GIF in the PR
 

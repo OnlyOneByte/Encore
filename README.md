@@ -250,7 +250,9 @@ LICENSE  CREDITS.md   ← PolyForm Noncommercial 1.0.0; third-party material (co
 | [`SERVER.md`](docs/SERVER.md)             | the same for the server, the shared contract, the job pipeline and the worker   |
 | [`TESTS.md`](docs/TESTS.md)               | the two test rungs, what each can honestly decide, and what was cut             |
 | [`E2E.md`](docs/E2E.md)                   | the browser harness, the selector contract, and what each probe proves          |
-| [`UI-CHECKLIST.md`](docs/UI-CHECKLIST.md) | the motion checklist a UI PR's frames are checked against (`bun run ui:review`) |
+| [`UI-TENETS.md`](docs/UI-TENETS.md)       | the seven UI tenets in priority order, and the speed budget for each moment     |
+| [`UI-DESIGN.md`](docs/UI-DESIGN.md)       | the visual rules: control contrast, the spacing and type ladders, one look each |
+| [`UI-CHECKLIST.md`](docs/UI-CHECKLIST.md) | what a UI PR is checked against: the motion frames and the tenet checks         |
 | [`arch/`](docs/arch/README.md)            | subsystem contracts as numbered requirements a machine can often check          |
 | [`deploy/`](docs/deploy/README.md)        | getting a secure context, and the WSL2 case that breaks it                      |
 | [`benchmarks/`](docs/benchmarks/)         | the stem-separation and forced-alignment measurements, and how to rerun them    |

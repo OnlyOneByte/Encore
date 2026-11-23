@@ -3,8 +3,8 @@
 The visual-design rules the phone and TV surfaces are held to: control contrast, the spacing and type ladders,
 one look per action, one label register, one commit control, and where the join gate sits. Most rules name
 the test that holds them. Tokens are declared in `core/src/app.css`; [`FRONTEND.md`](FRONTEND.md) is the wider
-frontend contract. Contrast figures are WCAG 2.2 ratios computed from the token values, and the tests bound
-most of them.
+frontend contract. The principles these rules serve, in priority order, are the [UI tenets](UI-TENETS.md).
+Contrast figures are WCAG 2.2 ratios computed from the token values, and the tests bound most of them.
 
 ## 1. A control's boundary clears 3:1 (SC 1.4.11)
 
@@ -160,4 +160,5 @@ placement on each host as well as their agreement.
 
 `/metrics`, `/stats`, `/admin` and `/song/[mediaId]` have had no page-level design pass beyond the cross-cutting
 scale and contrast rules above. Motion is covered by [`UI-CHECKLIST.md`](UI-CHECKLIST.md); loading and error
-states have no design rules here yet.
+states have no design rules here yet, beyond what [`UI-TENETS.md`](UI-TENETS.md) asks of them (no indicator that
+flashes, and a next action on every failure).
