@@ -118,7 +118,13 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 				expect(f.corners[0]!, `${at}: the join QR is dimmed`).toBeLessThanOrEqual(0.72);
 				expect(f.upnext[1], `${at}: "Up next" stays`).toBe(f.upnext[0]);
 			}
-			expect(held.some((f) => f.upnext[0] > 0), 'no card was up with an "Up next" behind it').toBe(true);
+			expect(
+				held.some((f) => f.upnext[0] > 0),
+				'no card was up with an "Up next" behind it'
+			).toBe(true);
+			// Never two QRs, the card's exit fade included: the dimmed copy and the stage's hand over in one frame.
+			const doubled = all.filter((f) => f.corners.length > 1).map((f) => f.at);
+			expect(doubled, 'frames with two join QRs painted').toEqual([]);
 
 			// The layer's exit: the first frame each card's layer drops `shown`.
 			const exits = all.filter((f, i) => i > 0 && !f.shown && all[i - 1]!.shown && all[i - 1]!.cardName);
@@ -127,23 +133,19 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 				const prev = all[all.indexOf(f) - 1]!;
 				const at = `exit of "${prev.cardName}" at ${f.at}`;
 				expect(f.ltVisible, `${at}: the lower third is back as the card leaves`).toBe(true);
-				// Mid-fade frames: under no-preference the lower third and the edge line pass through partial opacity
-				// as the layer leaves; under reduce they cut straight back to full.
-				const fade = all.filter((g) => g.at >= f.at && g.at <= f.at + 600);
-				const lowerFading = fade.some((g) => g.ltVisible && g.ltOpacity > 0 && g.ltOpacity < 1);
-				const edgeFading = fade.some((g) => g.edgeOpacity > 0 && g.edgeOpacity < 1);
+				// The exit's own frame: the style recalc that drops `under-card` is the one that starts the fade, so under
+				// no-preference the lower third and the edge line are painted from below full opacity; under reduce they
+				// cut straight back to full. Read here, not mid-fade: under load rAF frames land further apart than the fade.
+				const fromBelow = [f.ltOpacity < 1, f.edgeOpacity < 1];
 				if (motion === 'reduce') {
 					expect(f.ltTransition, `${at}: reduced motion cuts back`).toBe('0s');
-					expect([lowerFading, edgeFading], `${at}: [lower third, edge line] fading under reduce`).toEqual([
-						false,
-						false
-					]);
+					expect(fromBelow, `${at}: [lower third, edge line] fading under reduce`).toEqual([false, false]);
 				} else {
 					expect(f.ltTransition, `${at}: the lower third fades in with the layer`).not.toBe('0s');
-					expect([lowerFading, edgeFading], `${at}: [lower third, edge line] seen mid-fade`).toEqual([true, true]);
+					expect(fromBelow, `${at}: [lower third, edge line] fading in`).toEqual([true, true]);
 				}
-				// Within a second the stage names the singer the card named, at full strength.
-				const settled = all.filter((g) => g.at >= f.at && g.at <= f.at + 1_000 && g.ltName).at(-1);
+				// Within two seconds (a loaded host paints far apart) the stage names the singer the card named, at full.
+				const settled = all.filter((g) => g.at >= f.at && g.at <= f.at + 2_000 && g.ltName).at(-1);
 				expect(settled?.ltName ?? '', `${at}: the lower third names the new singer`).toContain(prev.cardName);
 				expect(settled?.ltOpacity ?? 0, `${at}: the lower third is back at full strength`).toBe(1);
 			}

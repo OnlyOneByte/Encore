@@ -1421,7 +1421,7 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 		const exit = phase === 'out' || phase === 'arrive';
 		const what = {
 			in: 'TV 1920x1080: the "Now singing" card for Maya as Ana skips to her, the handoff on every change of singer: the layer fades in and the lines rise one --tv-space-4xl into place (--motion-slow, ease-out)',
-			out: 'TV 1920x1080: the hold ending: Maya’s card fades out (--motion-base, ease, the player slots’ crossfade), starting --motion-base + --motion-fast before the hold ends so it has gone when her song starts; the words do not move',
+			out: 'TV 1920x1080: the hold ending: Maya’s card fades out (--motion-base, ease, the player slots’ crossfade), starting --motion-base + --motion-fast before the hold ends so it has gone when her song starts; the words do not move. The lower third and the edge progress line, hidden under the card, fade back in on the same curve (--motion-base, ease)',
 			arrive:
 				'TV 1920x1080: once Maya’s card has gone, her lyrics fade in (lyrics-arrive, --motion-fast, ease-out, opacity only) in the hold’s last moment, so card text never draws over lyric text and the first line is readable when the song starts, as on main',
 			change:
@@ -1514,7 +1514,13 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 			// `arrive` catches only the reel, so the card's exit runs live and the reel can mount: a caught (paused) exit
 			// fade never ends, and the reel waits for it. One seek row cannot hold both: its caught set is fixed when
 			// the trigger resolves.
-			only: phase === 'arrive' ? SEL.lyrics : '.takeover-layer, .state-next, .state-next *',
+			// The exit also catches the stage chrome the card hid, which fades back in with it (proposal 23).
+			only:
+				phase === 'arrive'
+					? SEL.lyrics
+					: phase === 'out'
+						? '.takeover-layer, .state-next, .state-next *, .lower-third, .edgebar'
+						: '.takeover-layer, .state-next, .state-next *',
 			// The exit's subject is the stage: the card ends at opacity 0 by design, and the lyrics come in only after it.
 			subject: phase === 'out' ? SEL.tvRoot : phase === 'arrive' ? SEL.lyrics : '.state-next',
 			// The card's intro hold is a wall-clock timeout (`interstitialTimer`, tv/+page.svelte): it would take the
