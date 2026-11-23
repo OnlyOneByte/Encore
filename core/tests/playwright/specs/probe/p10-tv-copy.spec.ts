@@ -214,6 +214,8 @@ test('the TV drops mid-song: every copy says "The TV is reconnecting..." and goe
 		for (const s of [tv, ...copies]) await tap(s);
 		await queueReady(phone, 'caroline');
 		await expect(copies[0]!.page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		// Past the "Now singing" card, so the drop lands over the lyrics.
+		for (const c of copies) await expect(c.page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
 		for (const c of copies) await expect(c.page.locator(CHIP)).toContainText('Another screen is the TV');
 
 		await tv.page.context().close();
