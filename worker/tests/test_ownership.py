@@ -354,7 +354,7 @@ def test_flags_read_what_an_operator_actually_types(raw: str, expected: bool) ->
 
 def test_whitespace_only_values_fall_back_to_the_default() -> None:
     """An env var set to nothing in a compose file is absent, not an override to empty string."""
-    assert Config.from_env({"ENCORE_WORKER_ID": "   "}).worker_id == "worker-1"
+    assert Config.from_env({"ENCORE_WORKER_ID": "   "}).worker_id == Config.from_env({}).worker_id
 
 
 # ── backend resolution ───────────────────────────────────────────────────────────────────────────

@@ -294,7 +294,7 @@ and the accepted values. A flag reads anything but `1`, `true`, `yes` or `on` as
 | --- | --- | --- |
 | `ENCORE_CORE_URL` | `ws://localhost:3000/ws?role=worker` | the core's websocket. The `/ws` path and `role=worker` are both required |
 | `ENCORE_WORKER_TOKEN` | unset | the shared secret core checks on a `role=worker` upgrade; the same value on both sides. Never printed |
-| `ENCORE_WORKER_ID` | `worker-1` | this worker's id |
+| `ENCORE_WORKER_ID` | `worker-` plus a stable suffix, e.g. `worker-3fa2c1` | this worker's id. Core treats a repeated id as the same worker reconnecting, so two live workers must never share one |
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
 | `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Separation and alignment are both GPU-bound |
 | `ENCORE_MEDIA_DIR` | `/media` | the shared media volume (core's `job:assign` names none) |

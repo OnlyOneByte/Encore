@@ -10,8 +10,10 @@ See docs/arch/05-worker.md §9.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
@@ -97,6 +99,9 @@ class Config:
     #: sides). Sent as the `token` query param at dial time; kept out of `core_url` and `repr` so it is never
     #: printed. None means core runs unauthenticated.
     worker_token: str | None = field(default=None, repr=False)
+    #: Core keys a worker by this id and treats a repeated id as a RECONNECT of the same worker, so two live
+    #: workers must never share one. `from_env` derives it per machine (`_default_worker_id`); this literal is
+    #: only what a test-built `Config()` carries.
     worker_id: str = "worker-1"
     version: str = "0.1.0"
     #: How many jobs at once. One by default: separation and alignment are both GPU-bound. It also sizes the
@@ -182,14 +187,15 @@ class Config:
                 f"Expected one of {', '.join(ASR_MODELS)}."
             )
 
+        dbos_db = text("ENCORE_DBOS_DB", "encore-worker.sqlite")
         return Config(
             core_url=core_url,
             worker_token=optional("ENCORE_WORKER_TOKEN"),
-            worker_id=text("ENCORE_WORKER_ID", "worker-1"),
+            worker_id=optional("ENCORE_WORKER_ID") or _default_worker_id(dbos_db),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=_positive_int(src, "ENCORE_WORKER_CONCURRENCY", 1),
             media_dir=text("ENCORE_MEDIA_DIR", "/media"),
-            dbos_db=text("ENCORE_DBOS_DB", "encore-worker.sqlite"),
+            dbos_db=dbos_db,
             backend=backend,
             device=optional("ENCORE_DEVICE"),
             asr_model=asr,
@@ -213,6 +219,19 @@ class Config:
             align_experiments=_experiments(src, "ENCORE_ALIGN_EXPERIMENTS"),
             align_model=optional("ENCORE_ALIGN_MODEL"),
         )
+
+
+def _default_worker_id(dbos_db: str) -> str:
+    """`worker-` plus a stable hash of the MAC and the durable-state path, e.g. `worker-3fa2c1`.
+
+    Two boxes differ by MAC, two workers on one box by state file; restarts keep the id. No hostname: guests
+    see the id on /metrics, and a hostname often names the owner. A relative ENCORE_DBOS_DB is resolved from
+    the current directory, so a worker started elsewhere gets a new id along with its new state file.
+    shortcut: `uuid.getnode` falls back to a random number on a box with no readable MAC, so the id there
+    changes on restart; set ENCORE_WORKER_ID if a box like that needs a fixed name.
+    """
+    seed = f"{uuid.getnode():012x}:{os.path.abspath(dbos_db)}"
+    return f"worker-{hashlib.sha256(seed.encode()).hexdigest()[:6]}"
 
 
 def _default_zoo_dir(src: Mapping[str, str]) -> str:
