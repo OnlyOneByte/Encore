@@ -63,9 +63,10 @@ export function processingGroupHeading(making: boolean[]): string {
 
 /** WHAT THE ROOM IS WAITING ON when nothing queued can play and nothing is being made: the TV lobby's headline and
  * line, and the phone strip's headline. One source, so the TV and every phone say the same sentence. `null` while
- * something is being made, or nothing is stuck — the caller's ordinary copy is then the true one.
+ * something is being made, or nothing is stuck and a maker is here — the caller's ordinary copy is then the true one.
  * NO MAKER OUTRANKS A FAILURE, because it is the one that also stops the NEXT song: a guest who picks another
- * unprocessed song hits the same wall, so the honest move is a ready one.
+ * unprocessed song hits the same wall, so the honest move is a ready one. It needs no stuck turn: with the room's
+ * `canMake` false, the lobby says so before anyone has lost a pick.
  * ANY OTHER STUCK TURN NAMES BOTH WAYS OUT, as its card does ("Couldn't make karaoke · Try again · Pick another"):
  * once a maker is here, a song that died for want of one is made by a Try again, so "pick another" alone sent the
  * guest away from a song that now works.
@@ -75,8 +76,9 @@ export function stuckTurnsLines(
 	nameOf: (singerId: string) => string,
 	me?: string | null
 ): { headline: string; next: string } | null {
-	if (waiting.making || !waiting.stuckSingerIds.length) return null;
+	if (waiting.making) return null;
 	if (waiting.noMaker) return { headline: "Can't make new karaoke right now", next: 'Pick a ready song on your phone' };
+	if (!waiting.stuckSingerIds.length) return null;
 	const only = waiting.stuckSingerIds.length === 1 ? waiting.stuckSingerIds[0]! : null;
 	if (only && only === me)
 		return { headline: "Your song didn't work. Try again or pick another.", next: 'Try again or pick another' };

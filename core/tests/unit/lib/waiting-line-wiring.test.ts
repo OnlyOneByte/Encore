@@ -42,6 +42,9 @@ test('the TV lobby counts only turns being made, and is handed the stuck line', 
 	expect(tv).toContain('const stuck = $derived(stuckTurnsLines(waiting, singerName));');
 	// The live statuses the fold reads: without them a no-maker turn classifies as cooking off the catalog.
 	expect(tv).toContain('(id) => liveStatus.get(id)');
+	// The room's maker verdict, read off every sync that carries it and folded in, so the lobby says it before a pick.
+	expect(tv).toContain('if (e.canMake !== undefined) canMake = e.canMake;');
+	expect(tv).toMatch(/\(id\) => liveStatus\.get\(id\),\s*canMake\s*\)/);
 	// The count that called every unplayable turn "processing": `pending` is kept only for #978's overdue question.
 	expect(tv).not.toContain('pendingCount={pendingCount}');
 	expect(tv).not.toContain('pending.length');

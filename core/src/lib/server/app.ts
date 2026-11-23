@@ -459,6 +459,16 @@ export function getApp(): EncoreApp {
 		})();
 	});
 
+	/** A room-wide `queue:sync`, for the hub's own re-sends (a song turned ready, the maker verdict moved). */
+	const roomSync = () =>
+		syncEvent(state, {
+			mediaById,
+			listSingers: () => app.singers.listPublic(app.activeRoomId),
+			listOnline: () => app.presence.online(),
+			getSettings: () => app.settings.getEffective(app.activeRoomId),
+			canMake: () => app.workerHub.canMake()
+		});
+
 	const workerHub = new WorkerHub({
 		jobs,
 		attempts,
@@ -497,14 +507,7 @@ export function getApp(): EncoreApp {
 		},
 		// queue:sync FIRST, so clients get the new ready status BEFORE reconcile — otherwise the TV's cached media stays 'queued' until a later sync.
 		onMediaReady: () => {
-			app.publish(
-				syncEvent(state, {
-					mediaById,
-					listSingers: () => app.singers.listPublic(app.activeRoomId),
-					listOnline: () => app.presence.online(),
-					getSettings: () => app.settings.getEffective(app.activeRoomId)
-				})
-			);
+			app.publish(roomSync());
 			// Not optional garnish: reconcileOnReady picks what plays next, so without them it uses fair rotation while clients see the ordering the room actually chose.
 			reconcileOnReady({
 				state,
@@ -516,6 +519,8 @@ export function getApp(): EncoreApp {
 				onSang: (singerId) => app.singers.markSang(singerId, app.now())
 			});
 		},
+		// The maker verdict moved (a worker joined, or the last one has been gone the grace): every screen re-reads it.
+		onCanMakeChange: () => app.publish(roomSync()),
 		now: () => app.now()
 	});
 
@@ -637,6 +642,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		listAway: perFrame.listAway,
 		tvConnected: perFrame.tvConnected,
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
+		canMake: () => app.workerHub.canMake(),
 		onNowPlaying: (e) => app.plays.onNowPlaying(e),
 		onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 		recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),

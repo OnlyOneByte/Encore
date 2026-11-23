@@ -91,16 +91,18 @@ export interface WaitingTurns {
 	making: number;
 	/** Singers holding a turn nothing is making karaoke for (failed or stalled), once each, in rotation order. */
 	stuckSingerIds: string[];
-	/** A stuck turn is stuck because no connected worker can make it — the server said so — not because it failed. */
+	/** Nothing connected can make karaoke — the server said so, for a stuck turn (`unservable`) or for the room
+	 *  (`canMake: false` on `queue:sync`), so it holds before anyone has picked, not only after a turn died. */
 	noMaker: boolean;
 }
 
 export function waitingTurns(
 	queued: { singerId: string; mediaId: string }[],
 	mediaOf: (mediaId: string) => Media | undefined,
-	liveOf: (mediaId: string) => { status: MediaStatus; unservable?: boolean } | undefined
+	liveOf: (mediaId: string) => { status: MediaStatus; unservable?: boolean } | undefined,
+	canMake = true
 ): WaitingTurns {
-	const out: WaitingTurns = { making: 0, stuckSingerIds: [], noMaker: false };
+	const out: WaitingTurns = { making: 0, stuckSingerIds: [], noMaker: !canMake };
 	for (const e of queued) {
 		const live = liveOf(e.mediaId);
 		const kind = queueCardKind(mediaOf(e.mediaId), live);
