@@ -18,9 +18,9 @@ test('CLAIM 8 the strip waiting line wraps whole, inside the strip, before the t
 	const track = await world.awaitDemoTrack();
 	const page = await world.openPhone(`Strip${Date.now() % 1_000_000}`);
 	await page.setViewportSize({ width: 320, height: 640 });
-	await openBrowse(page);
 	// `local`, so the row is the seeded fixture rather than a remote hit.
-	await page.locator(SEL.searchSource).first().selectOption('local');
+	await page.goto('/?source=local');
+	await openBrowse(page);
 	await fill(page, SEL.search, track.title);
 	await page.locator(SEL.songRow).first().locator(SEL.singAction).click({ timeout: 20_000 });
 	await expect(page.locator(SEL.npStripStatus)).toHaveText("Can't make new karaoke right now", { timeout: 10_000 });

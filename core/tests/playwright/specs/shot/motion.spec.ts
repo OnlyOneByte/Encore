@@ -455,7 +455,7 @@ function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): Mot
 			if (!maya) {
 				maya = await world.openPhone(`Motion${++joins}`);
 				const track = await world.awaitDemoTrack();
-				await maya.locator(SEL.searchSource).first().selectOption('local');
+				await maya.goto('/?source=local');
 				await maya.locator(SEL.search).fill(track.title);
 				await maya.locator(SEL.songRow).first().locator(SEL.singAction).click();
 			}

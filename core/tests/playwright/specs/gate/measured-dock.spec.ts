@@ -373,13 +373,13 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	/* ── STATE C — DRIVE THE STRIP UP ─────────────────────────────────────────────────────────────────────────
 	   Through the real find column, because that is the only path a guest has.
 
-	   THE SOURCE IS NARROWED TO `local`: the default `music` source fans out to YouTube Music, so the first row
+	   THE SOURCE IS NARROWED TO `local` (by URL: there is no menu): the default fans out to YouTube Music, so the first row
 	   would be a remote result whose action starts a fetch job, and the result content would not be this
 	   fixture's to own. The ACTION is `addOrSing`, the UNION, because the seeded demo WAVs have no stems — their
 	   row offers process-and-queue, so `[data-testid="song-add"]` alone resolves against nothing here. */
 	const track = await world.awaitDemoTrack();
+	await page.goto('/?source=local');
 	await openBrowse(page);
-	await page.locator(SEL.searchSource).first().selectOption('local');
 	await fill(page, SEL.search, track.title);
 	await page.locator(SEL.songRow).first().waitFor({ state: 'attached', timeout: 20_000 });
 	await page.waitForTimeout(600);
@@ -706,9 +706,8 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   reserve 119px against a 91px dock, a leaf population far over the floor of 2, zero occlusion at max scroll,
 	   and the same token as everywhere else. The scrolling/non-scrolling pair below is carried by /settings and
 	   /stats against /queue and /library, so it never depends on this surface either. */
-	await page.goto('/');
+	await page.goto('/?source=local');
 	await openBrowse(page);
-	await page.locator(SEL.searchSource).first().selectOption('local');
 	await fill(page, SEL.search, 'a');
 	await page
 		.locator(SEL.songRow)

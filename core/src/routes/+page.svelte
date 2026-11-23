@@ -30,7 +30,6 @@
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
 	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
-	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as Empty from '$lib/components/ui/empty';
 	import { rememberedKey } from '$lib/stores/remembered-key';
 
@@ -121,13 +120,16 @@
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
 	let queryEl = $state<HTMLInputElement | null>(null);
-	/* WHERE to search. `music` is the DEFAULT and sends no `source` param at all, which the route reads as
+	/* WHERE to search. NO MENU (proposal 21): the default sends no `source` param at all, which the route reads as
 	   its default set: the YouTube Music catalog, local files, and Spotify metadata — everything except
 	   plain all-of-YouTube ytsearch, whose hits are lyric reuploads and hour loops credited to a channel
-	   rather than a performer. `everything` adds ytsearch back for an upload no catalog lists.
-	   The spelling matters: `music` is NOT `?source=ytmusic`, because narrowing to one source would drop
-	   the user's own local files, which live in a separate disk-scan index rather than the catalog. */
-	let searchSource = $state<'music' | 'everything' | 'youtube' | 'local'>('music');
+	   rather than a performer. `Not it? Search everything` (`widened`) adds ytsearch back for an upload no
+	   catalog lists, for the query it was tapped on; the next keystroke goes back to the default.
+	   `?source=` on this page's own URL passes straight through as the narrowing filter, off-screen, so a test
+	   or a host trying one source (`/?source=local`) can still narrow without a control a guest has to read. */
+	const urlSource = $derived(page.url.searchParams.get('source') ?? '');
+	let widened = $state(false);
+	const searchSource = $derived(widened ? 'all' : urlSource);
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
@@ -182,6 +184,7 @@
 
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
+		widened = false;
 		const q = query.trim();
 		if (!q) {
 			clearResults();
@@ -192,19 +195,15 @@
 		debounceTimer = setTimeout(() => runSearch(q), 150);
 	}
 
-	function onSourceChange() {
-		// The pending keystroke's timer is cancelled first, or one source change fires two full searches:
-		// this one now, and the debounced one 150 ms later — two resolver fan-outs for one query.
-		clearTimeout(debounceTimer);
-		const q = query.trim();
-		if (q) runSearch(q);
-	}
-
 	/* One tap from the narrowed default to the full fan-out, re-running the query it is already holding.
 	   Offered beside results, not only when there are none — see the note at its render site. */
 	function widenSearch() {
-		searchSource = 'everything';
-		onSourceChange();
+		// The pending keystroke's timer is cancelled first, or one widen fires two full searches:
+		// this one now, and the debounced one 150 ms later — two resolver fan-outs for one query.
+		clearTimeout(debounceTimer);
+		widened = true;
+		const q = query.trim();
+		if (q) runSearch(q);
 	}
 
 	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
@@ -228,9 +227,9 @@
 		clearResults();
 		searchFailed = false;
 		try {
-			// `music` is the route's own default, so it sends nothing — one spelling of the default, on the
+			// The default is the route's own, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
-			const source = searchSource === 'music' ? '' : `&source=${searchSource === 'everything' ? 'all' : searchSource}`;
+			const source = searchSource ? `&source=${encodeURIComponent(searchSource)}` : '';
 			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${source}`, { signal: ctrl.signal });
 			if (ctrl.signal.aborted) return;
 			// A 500 whose body happens to be JSON parsed cleanly into `{}`, so every group came back empty
@@ -441,8 +440,8 @@
 	</header>
 	<main>
 		{#if me}
-			<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. A CLUSTER OF
-					TWO: the box and the scope it searches. The library door that used to sit on the field's leading edge is
+			<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. ONE
+					CONTROL: the scope menu that sat under it is gone (proposal 21). The library door that used to sit on the field's leading edge is
 					gone with the shelf it labelled — the TabBar's Library tab sits in the fixed dock at the foot of every phone
 					surface, so a second route to the same page from the same screen was one count of the library too
 					many. -->
@@ -466,19 +465,6 @@
 						onclear={clearSearch}
 						oninput={onQueryInput}
 					/>
-				</div>
-				<div class="source-slot">
-					<NativeSelect.Root
-						aria-label="Where to search"
-						title="Where to search"
-						bind:value={searchSource}
-						onchange={onSourceChange}
-					>
-						<NativeSelect.Option value="music">Music</NativeSelect.Option>
-						<NativeSelect.Option value="everything">Everything</NativeSelect.Option>
-						<NativeSelect.Option value="youtube">YouTube</NativeSelect.Option>
-						<NativeSelect.Option value="local">Library</NativeSelect.Option>
-					</NativeSelect.Root>
 				</div>
 			</div>
 
@@ -590,7 +576,7 @@
 						 inside the zero-state would be unreachable exactly when it is needed — the default returns
 						 twelve confident wrong rows and no hint that a wider net exists. It sits after the rows, low
 						 in the column, because most searches do not need it. -->
-				{#if !searching && searchSource === 'music' && (rawRows.length || readyResults.length)}
+				{#if !searching && !searchSource && (rawRows.length || readyResults.length)}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" onclick={widenSearch}>
 							<Icon name="search" /> Not it? Search everything
@@ -781,12 +767,9 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* THE FIELD AND ITS SCOPE PICKER, one row. The bottom margin lives HERE rather than on `.findbox`, or the two
-	   controls would carry separate spacing and the shorter one would not clear the group below it.
-	   `center`, NOT `stretch`: stretch was here for the library door, a FIXED 44px square that had to be bound to a
-	   70px field, and with the door gone it left the picker top-aligned in the field's 70px slot — measured at 521px,
-	   the picker's centre at y=96 against the field's 109, 13px out. `center` puts both on 109. Below 520px the picker
-	   takes its own line and neither value applies.
+	/* THE FIELD'S ROW, and the field is all of it: the scope picker that shared it is gone (proposal 21), so
+	   `Not it? Search everything` under the results is the one way wider. The bottom margin lives HERE rather than
+	   on `.findbox`.
 	   That margin takes the SECTION rung, because this is the controls -> content boundary and so the largest
 	   structural break on the surface. At --space-lg it was 12px, which made it SMALLER than the 16px then
 	   separating two sections of the same kind below it — an inversion, not a near-miss. `.grouphead:first-of-type`
@@ -823,38 +806,12 @@
 	.field-slot {
 		flex: 1;
 		min-width: 0;
-		/* THE PROSE MEASURE, and UNCONDITIONALLY — no @media, because a `max-width` can only ever take space BACK and
-		   the cap cannot bite until the ROW reaches 692px: 560 plus this row's --space-md gap plus the picker's 122px.
-		   RE-DERIVED WITH THE DOOR GONE, and the reading moved: the findbox is 284px at a 767px viewport and 560 at 768,
-		   because --max-w steps 480 -> 760 there and the row steps 416 -> 696 with it. So the cap now binds exactly AT
-		   --bp-md and never between two widths — the old 230 / 510 figures were taken with a third control in the row.
-		   --measure-prose is the token for the ROLE ("protects line length") and a one-line text field is that role; it
-		   had no caller on either field. At 1440x900 --max-w 1080, less the shell's 2x--space-2xl and main's
-		   2x--space-2xl, is a 1016px row, which would hand this slot ~884px — well over a measure of caret to chase,
-		   with the placeholder adrift from the mark that labels it. Capped, the findbox measures exactly 560 (212->772)
-		   and the picker stays pinned beside it at 782->904, so the two read as one control cluster rather than a bar
-		   stretched across the column. */
+		/* THE PROSE MEASURE, and UNCONDITIONALLY — no @media, because a `max-width` can only ever take space BACK.
+		   --measure-prose is the token for the ROLE ("protects line length") and a one-line text field is that role.
+		   At 1440x900 --max-w 1080, less the shell's 2x--space-2xl and main's 2x--space-2xl, is a 1016px row, which
+		   would hand this slot the whole row — well over a measure of caret to chase, with the placeholder adrift from
+		   the mark that labels it. Capped, the findbox measures 560. */
 		max-width: var(--measure-prose);
-	}
-	/* THE PICKER YIELDS THE ROW, NOT THE FIELD, and this cost a measurement to learn — twice, because the first
-	   reading was taken when a library door was pinned here too. `flex: 0 0 auto` leaves the field as the only
-	   flexible item, so it absorbs the whole deficit: measured in headless Chromium at 320px with this arm defeated,
-	   the search input's content box is 68px idle, 14px once a query puts FindField's clear control in the row, and
-	   ZERO while the search is still in flight and the spinner sits beside the clear — the primary control of the
-	   primary surface, showing one word, then no word, then nothing at all. THE THREE STATES ARE NAMED SEPARATELY
-	   BECAUSE THEY DIFFER: "mid-search" alone used to carry the 14, which is the settled clear-only reading and the
-	   mildest of the three. Below --bp-sm the picker takes its own line instead, which leaves the input 200px idle,
-	   146px settled and 121px with the spinner up at 320px (and no overflow: `.find-row` is 124px tall there). The
-	   literal is required: a media condition is evaluated before the cascade and cannot read var(--bp-sm). */
-	.source-slot {
-		flex: 0 0 auto;
-		display: flex;
-		min-width: 0;
-	}
-	@media (max-width: 520px) {
-		.source-slot {
-			flex: 1 1 100%;
-		}
 	}
 
 	.showall-row {

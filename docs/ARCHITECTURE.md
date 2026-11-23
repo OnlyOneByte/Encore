@@ -431,7 +431,8 @@ with the original vocals", which is why it was renamed rather than reworded.
 ### Search sources
 
 A query with no `?source=` asks the **default set** — `ytmusic` + `local` + `spotify` — and `?source=`
-narrows, which is what the phone's picker sets:
+narrows. The phone has no picker for it: `Not it? Search everything` sends `?source=all`, and the Sing tab passes
+its own `/?source=` through for testing one source:
 
 | Source    | What it searches                                    | In the default set?                                                        |
 | --------- | --------------------------------------------------- | -------------------------------------------------------------------------- |

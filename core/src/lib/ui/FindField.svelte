@@ -10,7 +10,7 @@
 	 * which is why this takes callbacks rather than owning a query.
 	 *
 	 * SIZING IS THE CALLER'S. The root is `width: 100%; min-width: 0` and nothing else, because the two need different
-	 * flex behaviour — home shares a row with the scope picker, /library spans alone. A class handed to a component is
+	 * flex behaviour — home caps it at the prose measure, /library bounds it by its row grid. A class handed to a component is
 	 * stripped at the caller, so a caller that needs flex-item layout wraps this in its own slot div, the same idiom
 	 * `/`'s `.field-slot` / `.me-slot` / `.gear-slot` already use.
 	 *
