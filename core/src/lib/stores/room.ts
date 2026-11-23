@@ -7,6 +7,7 @@
 
 import {
 	DEFAULT_EFFECTIVE_SETTINGS,
+	LEFT_CLOSE_CODE,
 	heldEntryId,
 	mediaStagePosition,
 	singHistoryFrom,
@@ -28,6 +29,9 @@ import { onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
+
+/** The channel this browser's tabs tell each other on when a join or a leave lands. */
+const SESSION_CHANNEL = 'encore-session';
 
 /** Live process progress for one song, as the room broadcasts it. */
 export interface LiveMediaStatus {
@@ -69,6 +73,9 @@ export class RoomLink {
 	lostName: string | null = null;
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
+	/** Another tab of this browser joined as someone new, so this phone is THEM now. The layout reloads, since every
+	 * store on the page is keyed to `me` and a reload is the one tested path to a page that is. */
+	replacedBy: PublicSinger | null = null;
 	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
 	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". False again
 	 *  from each socket open until that hello's `playback:state`: in between, `entries` can already be the new list
@@ -137,6 +144,21 @@ export class RoomLink {
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 	/** The socket has been up once, so the next `connected` edge is a RE-connect that may have missed frames. */
 	#wasConnected = false;
+	/** This browser's other tabs. They share one session cookie, so a join or a leave in one changes who all of them are. */
+	#session: BroadcastChannel | undefined;
+	/** Unbinds the channel and the visibility listener; set while they are bound. */
+	#unlisten: (() => void) | undefined;
+	/** A re-check is out; a reason to ask that arrives meanwhile asks once more after it, never alongside it. */
+	#rechecking = false;
+	#recheckAgain = false;
+	/** Set between `beginLeave()` and `left()`: this tab's own Leave is in flight. */
+	#leaving = false;
+	/** Who this tab just joined as, while `me` is still unset (see `sessionChanged`). */
+	#joinedAs: string | undefined;
+	/** A tab coming back to the front asks too: a browser that froze it in the background never delivered the message. */
+	#onVisible = () => {
+		if (document.visibilityState === 'visible') void this.#recheckMe();
+	};
 
 	/** Notified after every change to the fields above. Returns a disposer. */
 	subscribe(fn: () => void): () => void {
@@ -211,6 +233,17 @@ export class RoomLink {
 		const me = await this.#askMe();
 		if (!me) return; // closed while asking
 		this.placeholder = false;
+		// Bound once there is an answer to compare with: while still asking, the ask itself wakes on the page coming back.
+		const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(SESSION_CHANNEL);
+		if (channel) channel.onmessage = () => void this.#recheckMe();
+		this.#session = channel;
+		const doc = typeof document === 'undefined' ? undefined : document;
+		doc?.addEventListener('visibilitychange', this.#onVisible);
+		this.#unlisten = () => {
+			channel?.close();
+			this.#session = undefined;
+			doc?.removeEventListener('visibilitychange', this.#onVisible);
+		};
 		if (me === 'not-joined') {
 			// Unjoined: `/` is the landing page, so the route renders its JoinLanding state — no store and no socket.
 			this.#state = 'guest';
@@ -253,7 +286,12 @@ export class RoomLink {
 		this.#ws = new WsClient({
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 			getLastRev: () => this.queue?.rev ?? 0,
-			onConnectionChange: (c) => {
+			onConnectionChange: (c, closeCode) => {
+				// The server closed it because this singer left from another tab: not a dropped link, so no
+				// "Reconnecting…", and the ask goes out now rather than after the reconnect. A tab frozen in the
+				// background gets the close when it thaws, and lands on the join screen the same way.
+				const left = closeCode === LEFT_CLOSE_CODE;
+				if (left) void this.#recheckMe();
 				if (c && this.#wasConnected) {
 					// A socket that comes BACK is when a lost session shows: the server upgrades a phone with no valid
 					// session to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
@@ -269,7 +307,7 @@ export class RoomLink {
 				if (c) this.playbackSynced = false;
 				this.connected = c;
 				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
-				this.offline = !c;
+				this.offline = !c && !left;
 				this.#emit();
 			},
 			onEvent: (e: ServerEvent) => this.#onServerEvent(e)
@@ -375,26 +413,83 @@ export class RoomLink {
 		}
 	}
 
-	/** After a reconnect: is this phone still in the room? Only a 401 says no — anything else proves nothing, and the
-	 * socket being up says the party is there. A no settles the phone as `not-joined` and drops the socket, so the tabs
-	 * show the join screen with the name filled in. Never a silent rejoin: a session only goes when someone left on
-	 * purpose or the room was reset, and rejoining would undo a Leave. */
+	/** After a reconnect, a word from another tab, or the tab coming back to the front: who is this phone now? A 401
+	 * settles a joined phone as `not-joined` and drops the socket, so the tabs show the join screen with the name filled
+	 * in. Never a silent rejoin: a session only goes when someone left on purpose or the room was reset, and rejoining
+	 * would undo a Leave. A DIFFERENT singer means another tab joined as someone new, and the cookie is theirs now: that
+	 * is `replacedBy`, and the layout reloads. Anything else proves nothing. */
 	async #recheckMe(): Promise<void> {
-		if ((await this.#me()) !== 'not-joined' || this.#state !== 'live') return;
-		this.lostName = this.me?.displayName ?? null;
-		this.lostColor = this.me?.color ?? null;
+		if (this.#rechecking) return void (this.#recheckAgain = true);
+		this.#rechecking = true;
+		const answer = await this.#me();
+		this.#rechecking = false;
+		if (this.#recheckAgain) {
+			this.#recheckAgain = false;
+			return this.#recheckMe();
+		}
+		if (answer === 'not-joined') {
+			if (this.#state !== 'live') return;
+			// This tab's own leave is not a lost session: no name to offer back, and no line saying they were removed.
+			this.lostName = this.#leaving ? null : (this.me?.displayName ?? null);
+			this.lostColor = this.#leaving ? null : (this.me?.color ?? null);
+			this.me = null;
+			this.status = 'not-joined';
+			// `guest`, not `closed`: still listening, so this tab follows when another one joins.
+			this.#state = 'guest';
+			this.#dropSocket();
+			this.#emit();
+			return;
+		}
+		const following = this.#state === 'live' || this.#state === 'guest';
+		const self = this.me?.id ?? this.#joinedAs;
+		if (answer && answer.id !== self && following && !this.replacedBy) {
+			this.replacedBy = answer;
+			this.#emit();
+		}
+	}
+
+	/** Tell this browser's other tabs that a join or a leave just landed here, so they ask who they are now. `joinedAs`
+	 *  is who THIS tab just joined as, so its own re-check does not read that singer as someone new (a join that
+	 *  navigates to `?next=` without a reload leaves `me` unset). */
+	sessionChanged(joinedAs?: string): void {
+		if (joinedAs) this.#joinedAs = joinedAs;
+		this.#session?.postMessage('changed');
+	}
+
+	/** This tab is leaving on purpose. The server closes this tab's socket too (4001), possibly before the Leave's own
+	 *  response lands, so until `left()` or the returned undo, a session that ends is this tab's own leave, not news.
+	 *  The undo is for a leave that failed. */
+	beginLeave(): () => void {
+		this.#leaving = true;
+		return () => void (this.#leaving = false);
+	}
+
+	/** The Leave landed. This tab goes to the plain join screen: no "You're not in the room any more", which is for a tab
+	 *  that did not choose it. The socket goes now, so the server's close finds nothing to answer, and the other tabs are told. */
+	left(): void {
+		this.#leaving = false;
 		this.me = null;
+		this.lostName = null;
+		this.lostColor = null;
 		this.status = 'not-joined';
-		this.close();
+		if (this.#state === 'live') this.#state = 'guest';
+		this.#dropSocket();
+		this.sessionChanged();
 		this.#emit();
+	}
+
+	#dropSocket(): void {
+		clearTimeout(this.#unreachableTimer);
+		this.#ws?.close();
+		this.#ws = undefined;
 	}
 
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
 	close(): void {
 		this.#state = 'closed';
-		clearTimeout(this.#unreachableTimer);
-		this.#ws?.close();
-		this.#ws = undefined;
+		this.#dropSocket();
+		this.#unlisten?.();
+		this.#unlisten = undefined;
 	}
 
 	/** Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. It lives on the link because the

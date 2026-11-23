@@ -109,6 +109,9 @@ export interface EncoreApp {
 	 *  app with `as unknown as EncoreApp` and a required field would be absent at runtime anyway — so every
 	 *  caller must use `?.()` and get a real no-op instead of a crash. */
 	refreshMembership?: () => void;
+	/** Unbinds and closes every socket of a singer who left (src/lib/server/realtime/singer-sockets.ts). Assigned
+	 *  by server.ts, which owns the sockets; OPTIONAL for the same reason as {@link refreshMembership}. */
+	releaseSinger?: (singerId: string) => void;
 	now: () => number;
 }
 

@@ -1,0 +1,269 @@
+import { afterEach, expect, test } from 'bun:test';
+import { RoomLink } from '$lib/stores/room';
+
+/*
+ * ONE PHONE, ONE SINGER, IN EVERY TAB (proposal 20). The tabs of one browser share one session cookie, so a join or a
+ * leave in one changes who all of them are. The tab that did it says so on a BroadcastChannel; every other tab asks
+ * /api/me again, as it does after a reconnect and when it comes back to the front. A 401 is the join screen, as before;
+ * a DIFFERENT singer is `replacedBy`, which the layout turns into a reload as that singer.
+ *
+ * Real connect path against a real Bun WebSocket server and a real BroadcastChannel; only `fetch` is stood in.
+ */
+
+const restore: (() => void)[] = [];
+afterEach(() => {
+	for (const fn of restore.splice(0).reverse()) fn();
+});
+
+function stub<K extends string>(key: K, value: unknown): void {
+	const g = globalThis as Record<string, unknown>;
+	const had = key in g;
+	const old = g[key];
+	g[key] = value;
+	restore.push(() => (had ? (g[key] = old) : delete g[key]));
+}
+
+const MAYA = { id: 's1', displayName: 'Maya', color: '#a78bfa' };
+const THEO = { id: 's2', displayName: 'Theo', color: '#ff5cae' };
+type Answer = typeof MAYA | 401;
+
+/** A phone tab joined as Maya. `answer` is what every /api/me AFTER the first says. */
+async function tab(first: Answer = MAYA) {
+	let answer: Answer = MAYA;
+	const open = new Set<{ close(code?: number): void }>();
+	const server = Bun.serve({
+		port: 0,
+		fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response('no', { status: 404 })),
+		websocket: { open: (ws) => void open.add(ws), close: (ws) => void open.delete(ws), message() {} }
+	});
+	restore.push(() => server.stop(true));
+	const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+	stub('window', new EventTarget());
+	stub('document', doc);
+	stub('location', { protocol: 'http:', host: `127.0.0.1:${server.port}` });
+	let asked = 0;
+	stub('fetch', (url: string | URL) => {
+		if (!String(url).startsWith('/api/me')) return Promise.resolve(Response.json({ library: [] }));
+		const a = asked++ === 0 ? first : answer;
+		return Bun.sleep(20).then(() => (a === 401 ? new Response('', { status: 401 }) : Response.json({ singer: a })));
+	});
+	const link = new RoomLink();
+	restore.push(() => link.close());
+	let replacements = 0;
+	let wentOffline = false;
+	link.subscribe(() => {
+		if (link.replacedBy) replacements++;
+		if (link.offline) wentOffline = true;
+	});
+	await link.connect();
+	for (let i = 0; i < 40 && !link.connected; i++) await Bun.sleep(25);
+	// Another tab of the same browser.
+	const other = new BroadcastChannel('encore-session');
+	restore.push(() => other.close());
+	return {
+		link,
+		asked: () => asked,
+		answer: (a: Answer) => void (answer = a),
+		post: () => other.postMessage('changed'),
+		show: (state: 'visible' | 'hidden') => {
+			doc.visibilityState = state;
+			doc.dispatchEvent(new Event('visibilitychange'));
+		},
+		replacements: () => replacements,
+		wentOffline: () => wentOffline,
+		/** The server closes every socket of this tab, with `code`. */
+		kick: (code?: number) => {
+			for (const ws of [...open]) ws.close(code);
+		}
+	};
+}
+
+test('another tab joined as the same singer: nothing changes', async () => {
+	const t = await tab();
+	t.post();
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.status).toBe('joined');
+	expect(t.link.replacedBy).toBeNull();
+});
+
+test('another tab joined as someone new: this tab is them now, said once', async () => {
+	const t = await tab();
+	t.answer(THEO);
+	t.post();
+	await Bun.sleep(100);
+	expect(t.link.replacedBy?.displayName).toBe('Theo');
+	t.post();
+	t.show('visible');
+	await Bun.sleep(150);
+	expect(t.replacements(), 'the layout would reload more than once').toBe(1);
+});
+
+test('another tab left: the join screen with the name filled in, as after a reconnect', async () => {
+	const t = await tab();
+	t.answer(401);
+	t.post();
+	await Bun.sleep(100);
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.me).toBeNull();
+	expect(t.link.lostName).toBe('Maya');
+	expect(t.link.replacedBy).toBeNull();
+});
+
+test('a burst of messages asks once, then once more for what came in meanwhile, never alongside', async () => {
+	const t = await tab();
+	t.answer(THEO);
+	t.post();
+	t.post();
+	t.post();
+	await Bun.sleep(150);
+	expect(t.asked() - 1).toBe(2);
+	expect(t.link.replacedBy?.displayName).toBe('Theo');
+});
+
+test('a message sent while the first ask is out still gets its answer', async () => {
+	const t = await tab();
+	t.answer(401);
+	t.post();
+	await Bun.sleep(5); // the 401 ask is out
+	t.answer(THEO);
+	t.post();
+	await Bun.sleep(150);
+	expect(t.link.replacedBy?.displayName, 'the join that followed the leave was missed').toBe('Theo');
+});
+
+test('coming back to the front asks; going to the back does not', async () => {
+	const t = await tab();
+	t.show('hidden');
+	await Bun.sleep(60);
+	expect(t.asked()).toBe(1);
+	t.answer(THEO);
+	t.show('visible');
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.replacedBy?.displayName).toBe('Theo');
+});
+
+test('a tab on the join screen follows when another tab joins', async () => {
+	const t = await tab(401);
+	expect(t.link.status).toBe('not-joined');
+	t.answer(THEO);
+	t.post();
+	await Bun.sleep(100);
+	expect(t.link.replacedBy?.displayName).toBe('Theo');
+});
+
+test('a tab left on the join screen by a leave follows the next join', async () => {
+	const t = await tab();
+	t.answer(401);
+	t.post();
+	await Bun.sleep(100);
+	t.answer(THEO);
+	t.show('visible');
+	await Bun.sleep(100);
+	expect(t.link.replacedBy?.displayName).toBe('Theo');
+});
+
+test('a closed link stops listening', async () => {
+	const t = await tab();
+	t.link.close();
+	t.answer(THEO);
+	t.post();
+	t.show('visible');
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(1);
+	expect(t.link.replacedBy).toBeNull();
+});
+
+test('a new singer that lands after the link was closed changes nothing', async () => {
+	// The ask is out when the layout unmounts, and its answer comes back after.
+	const t = await tab();
+	t.answer(THEO);
+	t.post();
+	await Bun.sleep(10);
+	t.link.close();
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.replacedBy, 'a closed link would reload the page').toBeNull();
+});
+
+test('a socket closed because the singer left is the join screen, never "Reconnecting…"', async () => {
+	// No channel message: a tab that was frozen in the background gets only the server's close when it thaws.
+	const t = await tab();
+	expect(t.link.connected).toBe(true);
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.lostName).toBe('Maya');
+	expect(t.wentOffline(), 'a session that ended read as a dropped link').toBe(false);
+});
+
+test("the tab that taps Leave: the server's close lands first, and it is still no lost line", async () => {
+	const t = await tab();
+	t.link.beginLeave();
+	t.answer(401);
+	t.kick(4001); // before the Leave's own response
+	await Bun.sleep(150);
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.lostName, 'a guest who left on purpose was told they were removed').toBeNull();
+	t.link.left();
+	expect(t.link.lostName).toBeNull();
+	expect(t.wentOffline()).toBe(false);
+});
+
+test("the tab that taps Leave: left() settles it plainly and tells the others; the server's close then changes nothing", async () => {
+	const t = await tab();
+	const heard: unknown[] = [];
+	const other = new BroadcastChannel('encore-session');
+	restore.push(() => other.close());
+	other.onmessage = (e) => heard.push(e.data);
+	t.link.beginLeave();
+	t.link.left();
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.me).toBeNull();
+	expect(t.link.lostName).toBeNull();
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.lostName).toBeNull();
+	expect(t.asked(), 'the dropped link answered a close it no longer has').toBe(1);
+	expect(heard).toHaveLength(1);
+});
+
+test('a Leave that failed is undone: a session lost later is a lost session again', async () => {
+	const t = await tab();
+	t.link.beginLeave()();
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.lostName).toBe('Maya');
+});
+
+test('a tab that just joined and moved on without a reload does not read itself as someone new', async () => {
+	const t = await tab(401);
+	t.link.sessionChanged(THEO.id);
+	t.answer(THEO);
+	t.show('visible');
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.replacedBy, 'its ?next= destination would be lost to a reload').toBeNull();
+});
+
+test('any other close is still a dropped link', async () => {
+	const t = await tab();
+	t.kick(1001);
+	await Bun.sleep(30);
+	expect(t.wentOffline()).toBe(true);
+});
+
+test('the tab that joined or left tells the others', async () => {
+	const t = await tab();
+	const heard: unknown[] = [];
+	const other = new BroadcastChannel('encore-session');
+	restore.push(() => other.close());
+	other.onmessage = (e) => heard.push(e.data);
+	t.link.sessionChanged();
+	await Bun.sleep(50);
+	expect(heard).toHaveLength(1);
+});

@@ -479,6 +479,14 @@ that leaves open.
 - **One cookie: `encore_singer`.** It is written by exactly one live writer, `cookies.set` in
   `src/routes/api/join/+server.ts`, and cleared by `cookies.delete` in
   `src/routes/api/leave/+server.ts` with a MATCHING `path`, or the delete does not apply.
+- **A cookie is a browser, not a tab, and a Leave ends it on the server.** The tabs of one phone share the
+  cookie, so they are one singer. `POST /api/leave` replaces the singer's token (`endSession`), so no copy of
+  the cookie resolves again, and releases every socket opened with it (`singer-sockets.ts`): each stops acting
+  as them at once and every phone socket is closed, so its tab reconnects and asks `/api/me`. A socket's
+  singer is still fixed at upgrade, and re-checked at open in case a Leave landed in between. On the phone,
+  a tab that joins or leaves posts on the `encore-session` BroadcastChannel; every other tab, and any tab
+  coming back to the front, asks `/api/me` again. A 401 is the join screen; a different singer reloads the
+  tab as that singer.
 - **Its five attributes are fixed:** `path: '/'`, `httpOnly: true`, `sameSite: 'lax'`, a 30-day `maxAge`,
   and `secure` derived from the real forwarded scheme via `publicOriginIsHttps`. `secure` must NOT come from
   `url.protocol`: the node adapter reports https for every request, which marks the cookie Secure on a

@@ -58,6 +58,10 @@ export function mediaStagePosition(status: MediaStatus): number {
 // A singer safe to broadcast (no sessionToken).
 export type PublicSinger = Omit<Singer, 'sessionToken'>;
 
+/** The WebSocket close code for "this socket's singer left the room" (server.ts, on a Leave from any tab). The phone
+ *  reads it as a session ending, not a dropped link, so it asks /api/me without showing "Reconnecting…". */
+export const LEFT_CLOSE_CODE = 4001;
+
 // core -> all clients (broadcasts)
 export type ServerEvent =
 	| { type: 'queue:patch'; patch: ServerPatch }

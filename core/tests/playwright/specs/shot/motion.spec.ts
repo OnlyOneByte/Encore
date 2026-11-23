@@ -38,7 +38,11 @@ const CUTS = new Set([
 	'tv-copy-claim',
 	'tv-copy-offline',
 	'tv-copy-offline-390',
-	'tv-copy-offline-320'
+	'tv-copy-offline-320',
+	'phone-tab-left-390',
+	'phone-tab-left-320',
+	'phone-tab-adopted-390',
+	'phone-tab-adopted-320'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -90,6 +94,56 @@ const HELD: Record<string, typeof HELD_LINE> = {
 };
 
 let joins = 0;
+
+/** Proposal 20: what one tab shows when ANOTHER tab of the same phone leaves the room (`left`: the join screen, at
+ *  once) or joins as someone new (`adopted`: this tab comes back as them). The other tab is the browser's own request
+ *  API, so the change reaches this tab the way a tab frozen in the background gets it: the server's close, then the
+ *  re-check when the tab comes to the front. Both are cuts: the page swaps, nothing animates. */
+function otherTab(kind: 'left' | 'adopted', width: number): Make {
+	return (browser, world) => ({
+		name: `phone-tab-${kind}-${width}`,
+		what:
+			kind === 'left'
+				? `Phone ${width}: another tab of this phone left the room, so this one shows the join screen with "You're not in the room any more"`
+				: `Phone ${width}: another tab joined as someone new, so this one comes back as them (header name changes)`,
+		scale: 1,
+		columns: 4,
+		open: async (opts) => {
+			const ctx = await browser.newContext({
+				...opts,
+				viewport: { width, height: width === 320 ? 568 : 844 },
+				baseURL: world.baseURL
+			});
+			const page = await ctx.newPage();
+			await world.joinAs(page, `Maya${++joins}`);
+			if (kind === 'adopted') {
+				await ctx.request.post('/api/leave');
+				await expect(page.getByText("You're not in the room any more. Join again to sing.")).toBeVisible();
+			}
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: async (page) => {
+			const request = page.context().request;
+			if (kind === 'left') await request.post('/api/leave');
+			else {
+				await request.post('/api/join', { data: { displayName: `Theo${++joins}`, code: world.code } });
+				// The tab reloads as them, by design: wait for the new page so the capture reads it, not a torn-down one.
+				const loaded = page.waitForEvent('load');
+				await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+				await loaded;
+				await page.locator('.me-name').first().waitFor();
+			}
+		},
+		subject: kind === 'left' ? '.join-main' : '.me-name',
+		filmMs: 1_500,
+		observe: (page) =>
+			page.evaluate(() => ({
+				lost: !!document.querySelector('.lost')?.textContent,
+				me: document.querySelector('.me-name')?.textContent?.trim() ?? null
+			}))
+	});
+}
 
 /** A fresh context that is already this phone's singer, so each of the three runs gets its own page. */
 async function asSinger(
@@ -1078,6 +1132,11 @@ const SCENARIOS: Record<string, Make> = {
 	 *  "On deck" with its time-left and, 30 s from the end, becomes "You’re next": the class, the eyebrow text and
 	 *  the time-left all change in one update, and the card fades to her colour (--motion-slow). Each run restarts
 	 *  Theo's song so it opens before the crossing. Needs the long track in this file's library (`LIBRARY`). */
+	'phone-tab-left-390': otherTab('left', 390),
+	'phone-tab-left-320': otherTab('left', 320),
+	'phone-tab-adopted-390': otherTab('adopted', 390),
+	'phone-tab-adopted-320': otherTab('adopted', 320),
+
 	'phone-on-deck-heads-up': (browser, world, cleanup) => {
 		let theo: Page | undefined;
 		let maya: Page | undefined;
