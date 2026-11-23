@@ -3,6 +3,7 @@
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import './tokens.css';
 
 /* `source(none)` plus ONE `@source`: auto-detection mints a utility from any bare token anywhere in the tree. */
 @source './lib/components/ui/**/*.svelte';
@@ -776,9 +777,8 @@ body {
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */
 @media (prefers-reduced-motion: no-preference) {
-	/* A literal, waived by name on the motion rows `phone-queue-your-song-*`: a held queue row matches this rule too. */
 	.pop-in {
-		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+		animation: pop var(--motion-pop) var(--ease-pop);
 	}
 }
 /* THE QUEUE'S HOLD (routes/queue, proposal 18): a block the page moved in layout is drawn where it was, --hold-from
@@ -814,7 +814,7 @@ body {
    place where `.pop-in` drops from above, on the --motion-base token. */
 @media (prefers-reduced-motion: no-preference) {
 	.rise-in {
-		animation: rise var(--motion-base) cubic-bezier(0.2, 0.9, 0.3, 1.3);
+		animation: rise var(--motion-base) var(--ease-pop);
 	}
 }
 @keyframes rise {

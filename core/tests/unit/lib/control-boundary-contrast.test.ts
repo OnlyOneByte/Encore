@@ -150,8 +150,9 @@ test('--line is unchanged and still fails 3:1, so the fix cannot have been a glo
 	   /queue's "Singing now" card beside it (18 + 1). 20 since `ReactionRow`, the dock's reaction row, took the
 	   same top hairline as the strip below it (19 + 1). 19 again since proposal 13 moved the reactions into the
 	   strip's own row, which already has the hairline (20 - 1). 18 since the unused vendored `ui/tabs` was deleted,
-	   taking `tabs-list.svelte`'s edge with it (19 - 1). */
-	expect(filesSpelling('var(--line)').length).toBe(18);
+	   taking `tabs-list.svelte`'s edge with it (19 - 1). 19 since `tokens.css` aliased it as `--role-rule`, the
+	   Spotlight's decorative rule role, still decoration (18 + 1). */
+	expect(filesSpelling('var(--line)').length).toBe(19);
 
 	/* THE --line FAMILY AS A BORDER UTILITY IS CONFINED TO VENDORED REGISTRY CODE, which is the invariant the count
 	   was standing in for and the one it could not express. A new decorative hairline in this app is authored CSS

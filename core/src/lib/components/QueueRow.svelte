@@ -248,7 +248,7 @@
 	   degrades the roll to a plain fade. Under Reduce Motion the number simply changes. */
 	@media (prefers-reduced-motion: no-preference) {
 		.seq .n {
-			animation: seq-roll 180ms cubic-bezier(0.32, 0.72, 0, 1);
+			animation: seq-roll var(--motion-roll) var(--ease-slide);
 		}
 		@keyframes seq-roll {
 			from {
@@ -327,7 +327,7 @@
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.shifted {
-			transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1);
+			transition: transform var(--motion-slide) var(--ease-slide);
 		}
 	}
 </style>

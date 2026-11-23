@@ -333,6 +333,62 @@ authored CSS, and the rules are:
   rather than `transition: none` so the library's own bookkeeping still saw a transition it could complete instantly.
   Kept as the shape to recognise, because the next vendored component that animates inline will need exactly it.
 
+### Spotlight tokens
+
+The redesign's tokens (step 2 of the Spotlight rollout, #1106) live in `core/src/tokens.css`, which `app.css`
+imports. They are additive: no shipped screen reads them yet, and step 3 moves each screen onto them, Sing first.
+The old names stay until then.
+
+**Colour roles.** In the dark theme every role but `--role-raise` aliases a name `app.css` already declares, so
+moving a rule onto its role changes no pixel. That way round, not the other: the palette generator and the
+contrast guards read `app.css`'s literal hexes. The light theme is opt-in through `data-theme="light"`, and only
+the dev story sets it. `spotlight-tokens.test.ts` holds every pair below at WCAG AA in both themes.
+
+| Role                    | Dark aliases     | Light     | Use it for                                                      |
+| ----------------------- | ---------------- | --------- | --------------------------------------------------------------- |
+| `--role-ground`         | `--bg`           | `#f7f7fb` | The page. Everything that is not the Spotlight sits on it        |
+| `--role-raise`          | `#161622` (new)  | `#ffffff` | The Spotlight when it is idle: lit by its ring, not by a fill    |
+| `--role-rule`           | `--line`         | `#e1e1ea` | A decorative hairline between rows. Never a control's boundary   |
+| `--role-ink`            | `--ink`          | `#15151f` | Text                                                            |
+| `--role-ink-dim`        | `--ink-dim`      | `#5a5a72` | Secondary text (AA on ground and raise)                         |
+| `--role-control`        | `--control-line` | `#7a7a96` | A control's boundary (3:1, SC 1.4.11)                           |
+| `--role-accent`         | `--accent`       | `#6446de` | The one accent fill on a screen with no owner (Sing's search)   |
+| `--role-on-accent`      | `--on-accent`    | `#ffffff` | Ink on `--role-accent`, and nothing else                        |
+| `--role-accent-ink`     | `--accent-ink`   | `#5536cf` | Accent as text                                                  |
+| `--role-focus`          | `--focus`        | `#6a4bdb` | The focus ring                                                  |
+| `--role-danger`         | `--danger-ink`   | `#b42318` | Failure text                                                    |
+| `--role-danger-surface` | `--danger-bg`    | `#fdecea` | The error Spotlight's surface                                   |
+| `--role-danger-line`    | `--danger-line`  | `#f1b5ae` | The error Spotlight's ring                                      |
+| `--role-ok`             | `--ok`           | `#0e7a5a` | Success marks (3:1 on ground)                                   |
+| `--role-warn`           | `--warn`         | `#9a5b00` | Warning marks (3:1 on ground)                                   |
+| `--spot` / `--on-spot`  | the accent pair  | the same  | The moment's owner. `<Spotlight colour>` sets both from the singer's registry stop: its `fill` and certified `on_fill` |
+
+**Type.** A reading ladder of 13 / 15 / 17 / 22 px plus two display sizes, each minted with its caller. It is a
+separate ladder from `--ph-text-*`, which step 3 retires screen by screen.
+
+| Token            | rem    | px | Use it for                                  |
+| ---------------- | ------ | -- | ------------------------------------------- |
+| `--type-meta`    | 0.8125 | 13 | A meta line, a segment label                |
+| `--type-body`    | 0.9375 | 15 | Body copy inside a Spotlight                |
+| `--type-title`   | 1.0625 | 17 | A row or song title                         |
+| `--type-lead`    | 1.375  | 22 | The Spotlight's headline at rest            |
+| `--type-display` | 2.125  | 34 | The On deck headline ("You're next")        |
+| `--type-hero`    | 3.5    | 56 | The You're up headline: the phone's biggest moment |
+
+**Space and radius.** `--step-1` to `--step-5` alias `--space-2xs`, `sm`, `lg`, `2xl` and `5xl` (4, 8, 12, 16 and
+24 px). `--step-6` (32) and `--step-7` (48) are new, and their first caller is You're up's padding. `--round-spot`
+is `--radius` (18 px; the prototype drew 20, and a seventh radius value is the bug `app.css` names), and
+`--round-pill` is `--radius-pill`. Each `--type-*` and `--step-*` rung must have a reader, and the guard checks it.
+
+**Motion.** The three durations stay `--motion-fast` / `base` / `slow` (120, 250 and 400 ms). Three tokens hold
+the queue's existing timings at their old values, so the rows are frame-identical today: `--motion-pop` (0.22 s,
+`.pop-in`), `--motion-slide` (160 ms, the live sort) and `--motion-roll` (180 ms, the number roll). They are off the
+120/250/400 ladder in tenet 3, and step 3 snaps them (#1069, #1076). Easings: `--ease-out` is the Spotlight's
+entrance, `--ease-pop` is `.pop-in` and `.rise-in`, and `--ease-slide` is the slide and the roll.
+
+**The TV safe area** stays `--tv-safe-x` / `--tv-safe-y` in `app.css` (48 px or 5vw, 40 px or 6vh). The redesign
+reuses it unchanged.
+
 ## Svelte 5 and reactivity
 
 The app is runes-only. `bun run check` is held at **0 errors and 0 warnings**, so a Svelte warning is a
@@ -533,6 +589,35 @@ because a `class:` directive is not valid on a component. Their common contracts
   then the add, and the add only if the process started. The POST marks the song `queued` before it answers, so
   every other phone reads the new turn as "Making karaoke…" from its first frame. The job's priority comes from
   the hub's `onEntryAdded` reprioritise when the add lands.
+
+### The Spotlight and the Guide segments
+
+`src/lib/ui/Spotlight.svelte` is the redesign's one lit surface. A screen has at most one, and it holds the next
+thing to do. No screen uses it yet. Its story is `/components/spotlight` (dev-only), filmed by the `spotlight-*`
+rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). The `spotlight` probe holds four
+things on the same story: only transform and opacity move, the spinner obeys the grace, a Guide tap presses in the
+next frame, and every card's ink clears AA.
+
+- **`moment`**:
+  - `idle`: the raise surface, ringed in `--spot`.
+  - `on-deck`: filled in the owner's colour, with a `--type-display` headline.
+  - `your-turn`: the same fill, a `--type-hero` headline and more room.
+  - `error`: the danger surface and ring, with no fill.
+- **`colour`** is the owner's singer colour, snapped to its registry stop. Ink is that stop's certified `on_fill`,
+  never a guess. The dimmed meta line is 80% of it, the lowest that clears 4.5:1 on all 48 stops.
+- **Motion** is transform and opacity only. The fill is a `.fill` layer that lights by opacity, never a background
+  animation. On mount the card fades in from `scale(.98)` over `--motion-base`. On deck to You're up animates only
+  the headline, which pops from `scale(.92)` over `--motion-slow`. The fill is already lit, and a flood restarting
+  from 0 blinked the card dark (seen in the ui:review filmstrip). Reduced motion cuts.
+- **`busy`** shows a spinner only through `src/lib/ui/grace.ts`: nothing for a wait under `PENDING_GRACE_MS`, and
+  once shown it stays at least that long (tenet 2).
+
+`src/lib/ui/GuideSegments.svelte` is Guide as Off / Low / Full (an owner ruling; the song page keeps the slider for
+fine control). Levels are in `src/lib/guide-preset.ts`. Low is 0.3, a default rather than a ruling. A level the
+slider set between presets presses no segment, rather than the nearest one. A tap presses its segment in the same
+frame. When `onpick` returns false (the command never reached the wire), the press drops again, the rule
+`guide-send.ts` states for the slider. A pressed segment is filled in `currentColor` and its label is inked in
+`--seg-ink`, which the Spotlight sets to its own surface.
 
 ### Charts, fields and the rest
 
