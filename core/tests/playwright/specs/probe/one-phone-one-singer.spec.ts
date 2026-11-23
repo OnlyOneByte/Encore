@@ -50,6 +50,41 @@ async function leaveFrom(tab: Page): Promise<void> {
 	await tab.waitForURL((u) => u.pathname === '/');
 }
 
+/** The tab that tapped Leave: the join screen with no "not in the room any more" line, as on main. Read twice, the
+ *  second time well past the server's close and a re-check, so a late line cannot slip in after the first look. */
+async function leaverSeesPlainJoin(tab: Page): Promise<void> {
+	await expect(tab.locator(SEL.joinColumn).first()).toBeVisible();
+	for (const wait of [0, 2_000]) {
+		await tab.waitForTimeout(wait);
+		expect((await tab.locator('.lost').allTextContents()).join('').trim(), 'the leaver was told they were removed').toBe(
+			''
+		);
+		expect(await tab.getByText(LOST).count()).toBe(0);
+		expect(await tab.locator(SEL.dock).count(), 'the dock outlived the leave').toBe(0);
+	}
+}
+
+test('the only tab that taps Leave lands on the plain join screen', async ({ browser, world }) => {
+	const context = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: world.baseURL });
+	const a = await context.newPage();
+	await world.joinAs(a, 'Maya');
+	await leaveFrom(a);
+	await leaverSeesPlainJoin(a);
+	await shot(a, 'phone-leaver-one-tab-390');
+	await context.close();
+});
+
+test('with two tabs, the one that taps Leave lands on the plain join screen; the other is told', async ({
+	browser,
+	world
+}) => {
+	const { context, a, b } = await twoTabs(browser, world, 'Maya', 390);
+	await leaveFrom(b);
+	await leaverSeesPlainJoin(b);
+	await expect(a.getByText(LOST)).toBeVisible({ timeout: 1_000 });
+	await context.close();
+});
+
 /** What the TV's stage says now, whitespace folded. */
 const tvText = async (tv: Page) => (await tv.locator('body').innerText()).replace(/\s+/g, ' ');
 
