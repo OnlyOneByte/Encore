@@ -1394,6 +1394,55 @@ test('an overdue job that fails is reported without its overrun', () => {
 	expect(lastStatus(h).etaSec).toBeUndefined();
 });
 
+// ── a hung step stops at 3× its estimate, not at the worker's wall clock three attempts over ─────────
+
+const revokesOf = (h: ReturnType<typeof harness>) => cmdsOfType(h.sent, 'job:revoked');
+
+test('a step past 3× its estimate is stopped as hung: revoked, failed, and not retried', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	seedRun(h, 'r', 'stems', 400, { engine: 'roformer', model: 'bs-1' }); // 4 s/s: 800 s expected, hung past 2400
+	h.setClock(T0 + 2_401_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 40 });
+	const job = h.jobs.byId(jobId)!;
+	expect(job.status).toBe('failed'); // with attempts left: a retry would hang the same way
+	expect(job.error).toContain('took far longer than usual');
+	expect(revokesOf(h)).toEqual([{ type: 'job:revoked', jobId, reason: 'failed' }]);
+	expect(lastStatus(h).status).toBe('failed');
+});
+
+test('a healthy long step is overdue but not stopped before 3× its estimate', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	seedRun(h, 'r', 'stems', 400, { engine: 'roformer', model: 'bs-1' }); // 800 s expected
+	h.setClock(T0 + 2_399_000); // overdue and past ten minutes, but under 2400 s
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 90 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
+test('a quick step is never called hung inside ten minutes', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'd', 'stems', 50, { engine: 'demucs', model: 'htdemucs' }); // 100 s expected: 3× is only 300
+	h.setClock(T0 + 599_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	h.setClock(T0 + 601_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('failed');
+});
+
+test('with no history for the engine, a long step keeps running: no guessed limit', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	seedRun(h, 'd', 'stems', 50, { engine: 'demucs', model: 'htdemucs' }); // another engine's speed says nothing
+	h.setClock(T0 + 5 * 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
 test('a figure that falls within a stage is ignored; the bar never runs back', () => {
 	const h = harness();
 	const jobId = running(h);

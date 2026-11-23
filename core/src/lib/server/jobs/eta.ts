@@ -59,6 +59,16 @@ export function overdueAfterSec(expectedSec: number): number {
 	return expectedSec + OVERDUE_GRACE_SEC;
 }
 
+/** No step is called hung sooner than this, however quick its history: a short song on a warm box. */
+export const OVERRUN_FLOOR_SEC = 600;
+
+/** When a step whose estimate is `expectedSec` is HUNG, not slow: three times its estimate, never under ten
+ *  minutes. An engine with no silence limit (demucs-mlx, roformer, the zoo) is stopped here, not at its 1 h
+ *  wall clock three attempts over, or the 6 h ceiling. */
+export function overrunAfterSec(expectedSec: number): number {
+	return Math.max(OVERRUN_FLOOR_SEC, 3 * expectedSec);
+}
+
 /**
  * Whole seconds until the song is ready: what is left of the running step, plus every later step in full.
  * Null when the song's length, or any step's rate, is unknown. A small overrun reads 0 ("under a minute") and
