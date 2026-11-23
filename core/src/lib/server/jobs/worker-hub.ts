@@ -46,7 +46,7 @@ import {
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { completedStatusFor, mediaStatusFor, shouldBroadcastProcess } from './media-status';
-import { ETA_SAMPLE, ETA_WINDOW, etaSec, laterSteps, sameEngine, workPerAudioSec } from './eta';
+import { ETA_SAMPLE, ETA_WINDOW, etaSec, laterSteps, overrunAfterSec, sameEngine, workPerAudioSec } from './eta';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -508,6 +508,21 @@ export class WorkerHub {
 	#onProgress(msg: Extract<WorkerMessage, { type: 'job:progress' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
+		const hungSec = this.#hungSec(job);
+		if (hungSec != null) {
+			// Read like the reaper: revoke first, so the worker stops the engine (`_stop`) for a job no longer its.
+			this.revoke(job.id, msg.workerId, 'failed');
+			// Not retryable: the next attempt runs the same engine on the same song, and each would hang to its own
+			// 1 h wall clock before the guest hears "didn't work".
+			this.#onFailed({
+				type: 'job:failed',
+				workerId: msg.workerId,
+				jobId: msg.jobId,
+				error: `took far longer than usual (${Math.round(hungSec)}s) — stopped as hung`,
+				retryable: false
+			});
+			return;
+		}
 		const updated = this.#d.jobs.progress(
 			msg.jobId,
 			{
@@ -538,6 +553,30 @@ export class WorkerHub {
 			current: workPerAudioSec(current.slice(0, ETA_SAMPLE)),
 			later: laterSteps(job.jobType).map((type) => workPerAudioSec(ledger.recentReady(type, ETA_SAMPLE)))
 		});
+	}
+
+	/** Seconds the open SEPARATION attempt has run once that is past `overrunAfterSec` of its estimate, else
+	 *  null. Null with no history or no length too: an unmeasured step keeps today's bounds (the worker's own
+	 *  wall clock, then the job ceiling), never a guessed one. */
+	#hungSec(job: Job): number | null {
+		// Separations only: fetch has its own silence limit, and align's history mixes every ASR model and sync mode.
+		if (!separatorFor(job.jobType)) return null;
+		const ledger = this.#d.attempts;
+		const open = ledger?.openFor(job.id);
+		if (!ledger || open?.startedAt == null || open.workerId == null) return null;
+		// Narrower than the ETA's sample, because this one kills: only this worker's runs, so another box's speed
+		// can't stop a healthy run. Matched by engine family, as the ETA is: the open attempt holds the request
+		// ('demucs', 'audiosep') and history holds what the worker reported ('demucs-mlx', 'audiosep:<token>').
+		const own = sameEngine(
+			ledger.recentReady(job.jobType, ETA_WINDOW).filter((r) => r.workerId === open.workerId),
+			open.engine,
+			open.model
+		);
+		const rate = workPerAudioSec(own.slice(0, ETA_SAMPLE));
+		const audioSec = open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec;
+		if (rate == null || audioSec == null || !(audioSec > 0)) return null;
+		const elapsedSec = (this.#d.now() - open.startedAt) / 1000;
+		return elapsedSec > overrunAfterSec(rate * audioSec) ? elapsedSec : null;
 	}
 
 	/** running → ready (terminal): publish the instrumental, free the slot, reconcile playback. */
