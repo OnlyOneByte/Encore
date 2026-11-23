@@ -65,6 +65,8 @@ class Client:
     device: str | None = None
     #: torch's intra-op threads (`hardware.Report.threads`), stamped on every attempt beside the device.
     threads: int | None = None
+    #: torch demucs `-j` from the boot profile (`hardware.resolve_profile`), stamped beside the threads.
+    demucs_jobs: int | None = None
     #: `Hello.host`, what `hardware.probe()` measured. Diagnostic only, so None simply omits it.
     host: dict[str, object] | None = None
 
@@ -197,6 +199,7 @@ class Client:
             backend=self.backend,
             device=self.device,
             threads=self.threads,
+            demucs_jobs=self.demucs_jobs,
             host=self.host,
         )
 

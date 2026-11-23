@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from collections.abc import Coroutine, Sequence
+from collections.abc import Callable, Coroutine, Sequence
+from dataclasses import replace
 from typing import Any, TypeVar
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, separate, zoo
@@ -51,9 +52,13 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         probe=cli.FfmpegProbe(config.ffmpeg_bin) if hardware.binary_available(config.ffmpeg_bin) else None,
         captions=cli.YtDlpCaptions(config.ytdlp_bin) if hardware.binary_available(config.ytdlp_bin) else None,
         providers=build_providers(config),
-        transcriber=ml.build_transcriber(device=device, checkpoint=config.asr_model),
+        transcriber=ml.build_transcriber(
+            device=device, checkpoint=config.asr_model, compute=config.asr_compute
+        ),
         # A job's own `asrModel`: built on demand, the weights cached per checkpoint in `ml`.
-        transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
+        transcriber_for=lambda checkpoint: ml.build_transcriber(
+            device=device, checkpoint=checkpoint, compute=config.asr_compute
+        ),
         # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
         aligner=ml.build_aligner(
             device=device,
@@ -161,7 +166,26 @@ async def main() -> None:
     report = hardware.probe()
     backend = hardware.resolve_backend(config.backend, report=report, mlx_bin=config.mlx_bin)
     device = device_for(config, report)
-    jobs = hardware.resolve_demucs_jobs(config.demucs_jobs, device=device)
+    profile = hardware.resolve_profile(
+        concurrency=None if config.auto_concurrency else config.concurrency,
+        threads=config.threads,
+        demucs_jobs=config.demucs_jobs,
+        asr_compute=config.asr_compute,
+        warmup=config.warmup,
+        device=device,
+    )
+    # BEFORE any model loads, so torch and every demucs child run the picked thread count.
+    # The probe's count stands where nothing was pinned and torch could not be asked again.
+    threads = hardware.apply_threads(profile.threads.count) or report.threads
+    # The RESOLVED values from here on, so the slots, the emission cache and the warm-up use what this box
+    # picked rather than an unset env var.
+    config = replace(
+        config,
+        concurrency=profile.concurrency.count,
+        threads=threads,
+        demucs_jobs=profile.demucs_jobs.count,
+        asr_compute=profile.asr_compute,
+    )
     caps = hardware.capabilities(
         backend=backend.name,
         ytdlp=config.ytdlp_bin,
@@ -176,10 +200,11 @@ async def main() -> None:
     print(
         f"[worker] {config.worker_id} on {report.platform} ({report.machine}); "
         f"accelerator={report.accelerator} device={device} backend={backend.name} ({backend.why}); "
-        f"demucs -j {jobs.count} ({jobs.why}); "
         f"capabilities={','.join(sorted(caps)) or 'NONE'}",
         flush=True,
     )
+    for line in profile.lines():
+        print(f"[worker] {line}", flush=True)
     # WHICH ffmpeg and WHICH align bundle, stated once at startup because nothing in `job_attempts` records
     # either, and both are properties of every artifact this box publishes. `align_model_for` is pure, so this
     # line says what `build_adapters` resolves below — and refuses an uncalibrated name before any work.
@@ -206,7 +231,7 @@ async def main() -> None:
         mlx_bin=config.mlx_bin,
         ffmpeg_bin=config.ffmpeg_bin,
         zoo_model_dir=config.zoo_model_dir,
-        demucs_jobs=jobs.count,
+        demucs_jobs=profile.demucs_jobs.count,
     )
 
     def settled(job_id: str, resumable: bool) -> None:
@@ -228,7 +253,9 @@ async def main() -> None:
         capabilities=caps,
         backend=backend.name,
         device=device,
-        threads=report.threads,
+        # What `apply_threads` pinned, not the probe's count from before it.
+        threads=threads,
+        demucs_jobs=profile.demucs_jobs.count,
         host=report.to_wire(),
         on_settled=settled,
         stop_job=_stop,
@@ -265,7 +292,7 @@ async def main() -> None:
                 engine=job.param_str("engine"),
                 model=job.param_str("model"),
                 zoo_model_dir=config.zoo_model_dir,
-                demucs_jobs=jobs.count,
+                demucs_jobs=profile.demucs_jobs.count,
             )
             or separator
         )
@@ -289,13 +316,51 @@ async def main() -> None:
     # Off the loop and AFTER the dial starts: describing the routes imports torch, transformers and whisperx
     # (5.5 s on a warm CPU box), and nothing the handshake needs waits on a log line.
     routes = asyncio.create_task(asyncio.to_thread(_print_routes, config))
+    # Off the loop and after the dial too, and NOT a gate: a job that arrives first loads what it needs
+    # itself, as every job did before, the loads all taking `ML_LOCK`.
+    background = [sweeper, routes]
+    if config.warmup:
+        steps = warm_steps(config, adapters, separator, device=device)
+        background.append(asyncio.create_task(asyncio.to_thread(_warm_up, steps)))
     try:
         await client.serve_forever()
     finally:
-        for task in (sweeper, routes):
+        for task in background:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+
+def warm_steps(
+    config: Config, adapters: Adapters, separator: Any, *, device: str
+) -> list[tuple[str, Callable[[], None]]]:
+    """What the warm-up loads, in order, each with its log name: the demucs checkpoint (a child process per
+    job, so only the download can be saved), the English align bundle, and the ASR fallback's checkpoint."""
+    steps: list[tuple[str, Callable[[], None]]] = []
+    if isinstance(separator, separate.TorchDemucs):
+        steps.append((f"demucs {separator.model} checkpoint", separator.prefetch))
+    if (warm := getattr(adapters.aligner, "warm", None)) is not None:
+        steps.append((align_model_for(config, device), warm))
+    if (warm := getattr(adapters.transcriber, "warm", None)) is not None:
+        steps.append((f"whisper {config.asr_model} {config.asr_compute or ''}".strip(), warm))
+    return steps
+
+
+def _warm_up(steps: Sequence[tuple[str, Callable[[], None]]]) -> None:
+    """Run each warm-up step, one line each. A failure is a log line, never a crash: the job that needs
+    the model loads it again and reports its own error."""
+    started = time.monotonic()
+    for name, step in steps:
+        began = time.monotonic()
+        try:
+            step()
+        except Exception as exc:  # noqa: BLE001 - a warm-up must not take the worker down
+            why = f"{type(exc).__name__}: {exc}"
+            print(f"[worker] warm: {name} failed ({why}); the first job loads it", flush=True)
+            continue
+        print(f"[worker] warm: {name} {time.monotonic() - began:.1f} s", flush=True)
+    if steps:
+        print(f"[worker] warm-up done in {time.monotonic() - started:.1f} s", flush=True)
 
 
 def _print_routes(config: Config) -> None:

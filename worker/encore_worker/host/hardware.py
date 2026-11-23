@@ -9,6 +9,7 @@ and §9.1.
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 import shutil
 from dataclasses import dataclass
@@ -145,6 +146,44 @@ class Jobs:
 DEMUCS_JOBS_UNSAFE = "demucs -j above 1 can return NaN on CPU, saved as a silent song"
 
 
+CGROUP_ROOT = "/sys/fs/cgroup"
+
+
+def _read(path: str) -> str | None:
+    try:
+        with open(path, encoding="ascii") as f:
+            return f.read().strip()
+    except (OSError, ValueError):
+        return None
+
+
+def _cgroup_cpus(root: str) -> int | None:
+    """The CPU quota as whole cores (cgroup v2 `cpu.max`, then v1 cfs), or None when there is none."""
+    quota: str | None = None
+    period: str | None = None
+    v2 = _read(f"{root}/cpu.max")
+    if v2:
+        quota, _, period = v2.partition(" ")
+    else:
+        quota, period = _read(f"{root}/cpu/cpu.cfs_quota_us"), _read(f"{root}/cpu/cpu.cfs_period_us")
+    try:
+        q, p = int(quota or ""), int(period or "")
+    except ValueError:  # "max", missing, or junk: no quota
+        return None
+    return max(1, q // p) if q > 0 and p > 0 else None
+
+
+def cpu_count(*, root: str | None = None) -> int:
+    """Cores this process may run on: the affinity mask where the OS has one, so a cpuset counts, and no more
+    than a cgroup CPU quota (`docker --cpus`) allows."""
+    try:
+        n = len(os.sched_getaffinity(0))
+    except AttributeError:  # macOS and Windows have no affinity call
+        n = os.cpu_count() or 1
+    quota = _cgroup_cpus(root or CGROUP_ROOT)
+    return min(n, quota) if quota else n
+
+
 def resolve_demucs_jobs(configured: int | None, *, device: str) -> Jobs:
     """How many chunks torch demucs separates at once: 1 unless `ENCORE_DEMUCS_JOBS` says otherwise.
 
@@ -156,6 +195,102 @@ def resolve_demucs_jobs(configured: int | None, *, device: str) -> Jobs:
     if device != "cpu":
         return Jobs(1, f"auto 1 ({device}: demucs runs -j on CPU only)")
     return Jobs(1, f"auto 1 (cpu: {DEMUCS_JOBS_UNSAFE})")
+
+
+def resolve_concurrency(configured: int | None) -> Jobs:
+    """How many jobs this box runs at once: 1 unless `ENCORE_WORKER_CONCURRENCY` says otherwise.
+
+    Whisper and the aligner share `ML_LOCK`, so a second job would halve every job's threads and gain little.
+    shortcut: always 1; overlapping songs safely is proposal 28's.
+    """
+    if configured:
+        return Jobs(configured, f"explicitly configured {configured} (ENCORE_WORKER_CONCURRENCY)")
+    return Jobs(1, "auto 1 (the models share one lock)")
+
+
+@dataclass(frozen=True, slots=True)
+class Profile:
+    """Every performance setting this box boots with, each with the `why` the startup lines print."""
+
+    concurrency: Jobs
+    #: torch intra-op threads; `count` 0 means "torch's own default", which is what an accelerator keeps.
+    threads: Jobs
+    demucs_jobs: Jobs
+    asr_compute: str
+    asr_compute_why: str
+    warmup: bool
+
+    def lines(self) -> tuple[str, ...]:
+        """One line per setting, for the startup log."""
+        threads = str(self.threads.count) if self.threads.count else "torch default"
+        demucs = self.demucs_jobs
+        return (
+            f"concurrency {self.concurrency.count} ({self.concurrency.why})",
+            f"threads {threads} ({self.threads.why}); demucs -j {demucs.count} ({demucs.why})",
+            f"asr compute {self.asr_compute} ({self.asr_compute_why})",
+            "warm-up on (ENCORE_WARMUP=0 turns it off)" if self.warmup else "warm-up off (ENCORE_WARMUP=0)",
+        )
+
+
+def resolve_profile(
+    *,
+    concurrency: int | None,
+    threads: int | None,
+    demucs_jobs: int | None,
+    asr_compute: str | None,
+    warmup: bool,
+    device: str,
+    cores: int | None = None,
+) -> Profile:
+    """The boot profile: each setting's explicit value when one was set, else the auto pick for this box.
+
+    Threads split the cores between the concurrent jobs, so two at once never run twice the box's threads.
+    """
+    n = cores if cores is not None else cpu_count()
+    jobs = resolve_concurrency(concurrency)
+    if threads:
+        picked_threads = Jobs(threads, f"explicitly configured {threads} (ENCORE_THREADS)")
+    elif device != "cpu":
+        picked_threads = Jobs(0, f"auto ({device}: the work is on the accelerator)")
+    else:
+        each = max(1, n // jobs.count)
+        picked_threads = Jobs(each, f"auto {each} (cpu, {n} cores / {jobs.count} at once)")
+    if asr_compute:
+        compute, compute_why = asr_compute, "explicitly configured (ENCORE_ASR_COMPUTE)"
+    else:
+        # float16 is an optimisation on CUDA alone; elsewhere it reads as a bad transcription, not a dtype
+        # error. int8 is never picked: it is unmeasured against the alignment corpus.
+        compute = "float16" if device == "cuda" else "float32"
+        compute_why = f"auto ({device})"
+    return Profile(
+        concurrency=jobs,
+        threads=picked_threads,
+        demucs_jobs=resolve_demucs_jobs(demucs_jobs, device=device),
+        asr_compute=compute,
+        asr_compute_why=compute_why,
+        warmup=warmup,
+    )
+
+
+def apply_threads(threads: int) -> int | None:
+    """Pin this process's torch threads, and the OMP/MKL threads every child inherits, to `threads`. 0 sets
+    nothing. Returns the thread count torch now runs, or None without torch.
+
+    Set in this process's environment because the demucs children are started from it and must match.
+    """
+    if threads:
+        # WRITTEN for the children, never read: not a setting docker/.env carries.
+        os.environ.update(OMP_NUM_THREADS=str(threads), MKL_NUM_THREADS=str(threads))
+    if not module_available("torch"):
+        return threads or None
+    try:
+        import torch  # noqa: PLC0415 - deliberately lazy; see the module docstring
+
+        if threads:
+            torch.set_num_threads(threads)
+        return int(torch.get_num_threads())
+    except Exception:  # noqa: BLE001 - a broken install must not fail the boot over a thread count
+        return threads or None
 
 
 def capabilities(

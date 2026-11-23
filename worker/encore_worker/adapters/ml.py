@@ -461,9 +461,10 @@ class WhisperTranscriber:
     """`Transcriber` over whisperX's batched whisper — the ASR tier, and so the mandatory fallback: its
     output cannot be the wrong song and cannot be misplaced in time (docs/arch/04-alignment.md §3)."""
 
-    def __init__(self, *, device: str = "cpu", checkpoint: str = "base") -> None:
+    def __init__(self, *, device: str = "cpu", checkpoint: str = "base", compute: str | None = None) -> None:
         self._device = device
         self._checkpoint = checkpoint
+        self._compute = compute
 
     def _model(self) -> Any:
         def build() -> Any:
@@ -479,11 +480,18 @@ class WhisperTranscriber:
             device = transcriber_device(self._device)
             # float32 everywhere but CUDA, where float16 is an optimisation; elsewhere it reads as a bad
             # transcription rather than as a wrong dtype.
-            compute = "float16" if device == "cuda" else "float32"
+            compute = self._compute or ("float16" if device == "cuda" else "float32")
             return whisperx.load_model(self._checkpoint, device, compute_type=compute)
 
         # Cached under the RESOLVED device, so asking for mps and getting cpu shares one handle.
         return _cached(transcriber_device(self._device), f"whisper:{self._checkpoint}", build)
+
+    def warm(self) -> None:
+        """Load (and fetch) the checkpoint and run it once on silence, ahead of the first song."""
+        with ML_LOCK:
+            import numpy as np  # noqa: PLC0415
+
+            self._model().transcribe(np.zeros(_EMISSION_SAMPLE_RATE, dtype=np.float32), language=ENGLISH)
 
     def transcribe(self, audio_path: str, *, language: str | None = None) -> Transcribed:
         """What was heard, AND IN WHICH LANGUAGE — whisper's own detection, the one language signal MEASURED
@@ -570,6 +578,16 @@ class WhisperXAligner:
         cached: tuple[Any, Any] = _cached(self._device, f"align:{language}:{bundle or 'default'}", build)
         model, metadata = cached
         return model, metadata
+
+    def warm(self) -> None:
+        """Load (and fetch) the English bundle and run it once on silence, ahead of the first song."""
+        with ML_LOCK:
+            import torch  # noqa: PLC0415
+
+            model, _metadata = self._aligner(ENGLISH)
+            model_device = next(model.parameters()).device
+            with torch.inference_mode():
+                model(torch.zeros((1, _EMISSION_SAMPLE_RATE), device=model_device))
 
     def _bundle_name(self, language: str) -> str:
         """The bundle `_aligner` loads for `language`, for `Emissions.model` — resolved, never a placeholder:
@@ -736,14 +754,16 @@ class PyannoteDiarizer:
             )
 
 
-def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | None:
+def build_transcriber(
+    *, device: str, checkpoint: str, compute: str | None = None
+) -> WhisperTranscriber | None:
     """A transcriber, or None when this box has no whisperx. Never raises at build time: a box without it
     should not advertise `align` at all (docs/arch/05-worker.md §9.1)."""
     from encore_worker.host.hardware import module_available
 
     if not module_available("whisperx"):
         return None
-    return WhisperTranscriber(device=device, checkpoint=checkpoint)
+    return WhisperTranscriber(device=device, checkpoint=checkpoint, compute=compute)
 
 
 def build_aligner(

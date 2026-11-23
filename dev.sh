@@ -50,13 +50,25 @@ ROOT="$PWD"
 # spelled out, and a forgotten `-f` silently acts on nothing.
 #
 # `--cuda` is sugar for adding the GPU override, since that is the real deploy target and the two-file
-# invocation is the single most-mistyped command in the runbook.
+# invocation is the single most-mistyped command in the runbook. Without it the override is added when a GPU
+# and Docker's nvidia runtime are both there (docs/deploy/README.md); ENCORE_TORCH_EXTRA=cpu opts out.
 if [ "${1:-}" = "compose" ]; then
 	shift
 	compose_files=(-f "$ROOT/docker/compose.yaml")
 	if [ "${1:-}" = "--cuda" ]; then
 		shift
 		compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+	else
+		# Captured, not piped into `grep -q`: under pipefail an early-exiting grep fails the whole check.
+		extra="${ENCORE_TORCH_EXTRA:-$(sed -n 's/^ENCORE_TORCH_EXTRA=\([a-z0-9]*\).*/\1/p' "$ROOT/docker/.env" 2>/dev/null | tail -n 1 || true)}"
+		runtimes=""
+		if [ "$extra" != cpu ] && [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ]; then
+			runtimes="$(timeout 10 docker info --format '{{json .Runtimes}}' 2>/dev/null || true)"
+		fi
+		if [[ "$runtimes" == *'"nvidia"'* ]] && timeout 10 nvidia-smi -L >/dev/null 2>&1; then
+			echo "dev.sh compose: NVIDIA GPU and Docker's nvidia runtime found, adding docker/compose.cuda.yaml (ENCORE_TORCH_EXTRA=cpu opts out)" >&2
+			compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+		fi
 	fi
 	# `--stems` is sugar for the worker's compose profile. Spelled here rather than left to the caller
 	# because the two worker profiles must never run together: they advertise overlapping capabilities, so
@@ -558,11 +570,12 @@ torch_extra() {
 		echo cpu
 	fi
 }
-TORCH_EXTRA="$(torch_extra)"
-WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra $TORCH_EXTRA"
-WORKER_EXTRAS="$WORKER_EXTRAS --extra romanize --extra nonlatin"
 
+# Inside the worker gate: --core-only and --ui run no worker, so they probe no GPU and read no torch extra.
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
+	TORCH_EXTRA="$(torch_extra)"
+	WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra $TORCH_EXTRA"
+	WORKER_EXTRAS="$WORKER_EXTRAS --extra romanize --extra nonlatin"
 	if ! command -v uv >/dev/null 2>&1; then
 		echo "dev.sh: uv is required to run the worker (it reads worker/uv.lock)." >&2
 		echo "  brew install uv        # or: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2

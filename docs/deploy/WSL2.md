@@ -475,5 +475,6 @@ Flagged rather than glossed, because each could cost an evening:
 - **Mirrored networking with Docker Desktop.** Both features rewrite WSL networking; their
   interaction is not something this runbook has tested. If phones cannot reach port 3000 under
   mirrored mode, the §1 portproxy fallback is the escape hatch.
-- **First-process downloads.** The first `stems` process fetches the separator checkpoint and yt-dlp's
-  solver script into `worker-cache`. Expect a slow first song, not a hang.
+- **First-process downloads.** The worker's boot warm-up fetches the separator checkpoint and the align
+  and whisper models into `worker-cache` right after it connects (`[worker] warm: ...` lines); the first
+  song still fetches yt-dlp's solver script. A song queued before the warm-up ends waits on it, not a hang.

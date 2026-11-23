@@ -6,11 +6,13 @@ base `compose.yaml` — this directory holds the prose runbooks that explain the
 a new env var, a hardening tweak) reaches every deployment automatically instead of silently applying
 to only one of several forked copies.
 
-Use them by stacking `-f` flags — later files win. `./dev.sh compose` supplies the base file, and
-`--cuda` adds the GPU override:
+Use them by stacking `-f` flags — later files win. `./dev.sh compose` supplies the base file, and adds
+the GPU override by itself on Linux x86_64 when Docker lists the `nvidia` runtime and `nvidia-smi -L`
+sees a GPU. `--cuda` adds it unconditionally, and `ENCORE_TORCH_EXTRA=cpu` keeps it off:
 
 ```bash
-./dev.sh compose --cuda --profile stems up -d          # the NVIDIA target
+./dev.sh compose --profile stems up -d                 # the NVIDIA target, picked by itself
+./dev.sh compose --cuda --profile stems up -d          # the same, forced
 
 # or by hand, from the repo root, for any override:
 docker compose -f docker/compose.yaml -f docker/compose.<target>.yaml \
