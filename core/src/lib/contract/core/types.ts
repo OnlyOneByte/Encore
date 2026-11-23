@@ -218,6 +218,8 @@ export interface JobAttempt {
 	model: string | null;
 	backend: string | null;
 	device: string | null;
+	/** torch's intra-op threads on the worker that ran it (`WorkerProfile.threads`). */
+	threads: number | null;
 	asrModel: string | null;
 	syncMode: string | null;
 

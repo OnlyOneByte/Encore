@@ -80,7 +80,10 @@ class Hello:
     #: Resolved separator backend (`torch` / `mlx`). Recorded so a Mac announcing `mlx` cannot be
     #: believed to be running torch demucs.
     backend: str | None = None
+    #: The resolved torch device and torch's intra-op threads. With `backend`, core's `WorkerProfile`: it
+    #: stamps all three on every attempt this worker is assigned. Names and a count, never a host or path.
     device: str | None = None
+    threads: int | None = None
     host: dict[str, Any] | None = None
 
     def to_wire(self) -> dict[str, object]:
@@ -92,6 +95,7 @@ class Hello:
             version=self.version,
             backend=self.backend,
             device=self.device,
+            threads=self.threads,
             host=self.host,
         )
 

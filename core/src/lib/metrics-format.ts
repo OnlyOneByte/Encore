@@ -135,6 +135,7 @@ const FACT_LABELS: Record<string, string> = {
 	model: 'model',
 	backend: 'runtime',
 	device: 'hardware',
+	threads: 'threads',
 	asrModel: 'speech model',
 	syncMode: 'timing'
 };
@@ -169,8 +170,23 @@ const HOST_LABELS: Record<string, string> = {
 	contained: 'contained'
 };
 export function hostFacts(host: Record<string, unknown>): [string, string][] {
-	return Object.entries(HOST_LABELS)
-		.map(([key, label]): [string, string] => [label, host[key] == null ? '' : String(host[key])])
+	return labelled(HOST_LABELS, host);
+}
+
+/** The worker's resolved profile, in the same words the attempt rows use (`FACT_LABELS`). */
+const PROFILE_LABELS: Record<string, string> = { device: 'hardware', backend: 'runtime', threads: 'threads' };
+
+/** One worker's fact list: what it RESOLVED first, then what it measured about the box. */
+export function workerFacts(
+	profile: Record<string, unknown> | null,
+	host: Record<string, unknown> | null
+): [string, string][] {
+	return [...labelled(PROFILE_LABELS, profile ?? {}), ...labelled(HOST_LABELS, host ?? {})];
+}
+
+function labelled(labels: Record<string, string>, bag: Record<string, unknown>): [string, string][] {
+	return Object.entries(labels)
+		.map(([key, label]): [string, string] => [label, bag[key] == null ? '' : String(bag[key])])
 		.filter(([, value]) => value !== '');
 }
 

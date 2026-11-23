@@ -35,7 +35,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -84,7 +83,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -124,7 +122,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -161,7 +158,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": true,
      "asrModel": "base",
      "syncMode": "forced"
@@ -198,7 +194,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -246,7 +241,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -287,7 +281,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -326,7 +319,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -364,7 +356,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"
@@ -402,7 +393,6 @@
      }
     },
     "facts": {
-     "backend": null,
      "noLyrics": false,
      "asrModel": "base",
      "syncMode": "forced"

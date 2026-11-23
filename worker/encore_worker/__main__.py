@@ -214,6 +214,8 @@ async def main() -> None:
         run_job=lambda assign: _run(assign, config, adapters, separator, client, dbos),
         capabilities=caps,
         backend=backend.name,
+        device=device,
+        threads=report.threads,
         host=report.to_wire(),
         on_settled=settled,
         stop_job=_stop,
@@ -420,10 +422,10 @@ def _align_facts(job: JobRef, config: Config, outcome: AlignOutcome) -> dict[str
 
     `asrModel` and `syncMode` are the RESOLVED values, the ones `steps.api` resolved for the steps: core
     records the request at dispatch and lets these overwrite it, so a checkpoint this worker would not load,
-    or a pin aligned under `lines`, is reported as what ran rather than as what was asked.
+    or a pin aligned under `lines`, is reported as what ran rather than as what was asked. No backend or
+    device: those are the process's, sent once in hello and stamped by core on every attempt.
     """
     return {
-        "backend": config.backend,
         "noLyrics": outcome.no_lyrics,
         "asrModel": asr_model_of(job, config.asr_model),
         # What RAN: `lines` on a stemless song is aligned (`workflows.align._sync_mode_note`). A record
@@ -485,7 +487,6 @@ def _stems_completion(
         # What RAN: a `stems-upgrade` builds its own separator per job, so the startup one is only the
         # fallback. An unknown model is OMITTED, so it cannot overwrite the requested one with null.
         facts={
-            "backend": config.backend,
             # `getattr`: a record checkpointed before these fields existed unpickles without them.
             "engine": getattr(stems, "engine", None) or getattr(separator, "name", None),
             **({"model": model} if (model := getattr(stems, "model", None)) else {}),

@@ -15,6 +15,7 @@ export interface AttemptFacts {
 	model?: string | null;
 	backend?: string | null;
 	device?: string | null;
+	threads?: number | null;
 	asrModel?: string | null;
 	syncMode?: string | null;
 	audioSec?: number | null;
@@ -52,6 +53,7 @@ export class AttemptLedger {
 			model: null,
 			backend: null,
 			device: null,
+			threads: null,
 			asrModel: null,
 			syncMode: null,
 			audioSec: null,
@@ -63,7 +65,7 @@ export class AttemptLedger {
 		return row;
 	}
 
-	/** Records what was ASKED for, not what ran. */
+	/** Records what was ASKED for, plus the assigned worker's own profile (backend, device, threads). */
 	assigned(jobId: string, workerId: string, facts: AttemptFacts, now: number): void {
 		this.#patchOpen(jobId, { workerId, assignedAt: now, ...pickFacts(facts) });
 	}
@@ -179,6 +181,7 @@ function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 		'model',
 		'backend',
 		'device',
+		'threads',
 		'asrModel',
 		'syncMode',
 		'audioSec',

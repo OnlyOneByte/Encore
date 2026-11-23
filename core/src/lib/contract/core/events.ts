@@ -199,6 +199,11 @@ export type WorkerMessage =
 			concurrency: number;
 			version: string;
 			host?: WorkerHost;
+			/** The worker's resolved profile. UNTRUSTED like the rest of the frame: `#onHello` keeps only the
+			 *  well-shaped fields (`workerProfile`). */
+			backend?: unknown;
+			device?: unknown;
+			threads?: unknown;
 	  }
 	| {
 			/**
@@ -279,6 +284,15 @@ export interface ResolvedFacts {
 	device?: string;
 	asrModel?: string;
 	syncMode?: string;
+}
+
+/** What a worker RESOLVED for itself at boot: the torch device, the separator backend and torch's
+ *  intra-op thread count. Stamped on every attempt the worker is assigned, so each `job_attempts` row says
+ *  which hardware path it ran on. Names and a count only — never a hostname or a path. */
+export interface WorkerProfile {
+	backend?: string;
+	device?: string;
+	threads?: number;
 }
 
 /** The SPLIT the core cannot see: only the worker observes a stage transition. */

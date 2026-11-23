@@ -808,7 +808,6 @@ def test_the_align_completion_reports_what_actually_ran() -> None:
     outcome = AlignOutcome(published=None, why="")
     config = Config(asr_model="base")
     assert _align_facts(job(asrModel="small", syncMode="lines"), config, outcome) == {
-        "backend": None,
         "noLyrics": True,
         "asrModel": "small",
         "syncMode": "lines",

@@ -12,13 +12,14 @@ import type {
 	JobType,
 	MediaStoreConfig,
 	GlobalSettings,
-	EffectiveSettings
+	EffectiveSettings,
+	WorkerProfile
 } from '../../contract';
 import { publishStemFormat } from '../media/paths';
 import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
-import type { AttemptLedger } from './attempts';
+import type { AttemptFacts, AttemptLedger } from './attempts';
 import { WorkerRegistry, type WorkerSession } from './registry';
 import {
 	planAssignments,
@@ -135,6 +136,36 @@ const TRAIL_CAP = 200;
  * capability string against a worker's list.
  */
 export const MODEL_CAPABILITY_PREFIX = 'stems:model:';
+
+/** A device or backend NAME as a worker reports it (`cpu`, `cuda:1`, `torch`, `mlx`): short, and nothing a
+ *  path or a hostname could hide in, since it is stored and shown on /metrics verbatim. */
+const PROFILE_NAME = /^[a-z0-9][a-z0-9_:.-]{0,31}$/i;
+/** A resolved fact (`htdemucs`, `bs-roformer-1297`, `large-v3`): stored verbatim, so bounded. */
+const FACT_MAX = 128;
+
+/** The well-shaped part of a hello's profile. A bad field is DROPPED rather than refusing the frame: the
+ *  profile is a diagnostic, and a diagnostic must never fail a handshake. */
+export function workerProfile(msg: { backend?: unknown; device?: unknown; threads?: unknown }): WorkerProfile {
+	const out: WorkerProfile = {};
+	if (typeof msg.backend === 'string' && PROFILE_NAME.test(msg.backend)) out.backend = msg.backend;
+	if (typeof msg.device === 'string' && PROFILE_NAME.test(msg.device)) out.device = msg.device;
+	if (typeof msg.threads === 'number' && Number.isInteger(msg.threads) && msg.threads >= 1 && msg.threads <= 4096)
+		out.threads = msg.threads;
+	return out;
+}
+
+/** The string facts of a completion that are actually strings. Anything else (a null, an object, a number)
+ *  is dropped, so it can neither blank what dispatch already recorded nor land in a text column unchecked. */
+export function resolvedFacts(facts: unknown): AttemptFacts {
+	if (!facts || typeof facts !== 'object' || Array.isArray(facts)) return {};
+	const f = facts as Record<string, unknown>;
+	const out: AttemptFacts = {};
+	for (const k of ['engine', 'model', 'backend', 'device', 'asrModel', 'syncMode'] as const) {
+		const v = f[k];
+		if (typeof v === 'string' && v.length > 0 && v.length <= FACT_MAX) out[k] = v;
+	}
+	return out;
+}
 
 export function validateWorkerMessage(msg: unknown): string | null {
 	if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'malformed worker frame';
@@ -456,7 +487,15 @@ export class WorkerHub {
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		const before = this.#offered();
-		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
+		this.#d.registry.hello(
+			msg.workerId,
+			msg.capabilities,
+			msg.concurrency,
+			msg.version,
+			this.#d.now(),
+			msg.host,
+			workerProfile(msg)
+		);
 		// `cpuCount` is the worker's EFFECTIVE count; `(contained)` marks a slice of a bigger box.
 		const hw = msg.host
 			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
@@ -639,7 +678,7 @@ export class WorkerHub {
 		this.#unservableSince.delete(msg.jobId); // terminal — prune any stale unservable tracking
 		// MUST precede `complete`, which seals the attempt row; a sealed row is never written again.
 		this.#d.attempts?.reportFacts(msg.jobId, {
-			...(msg.facts ?? {}),
+			...resolvedFacts(msg.facts),
 			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined,
 			selection: msg.selection ? JSON.stringify(msg.selection) : undefined,
 			// The worker sends its trail on completion AND streams it as `job:state`; prefer the streamed one,
@@ -776,8 +815,13 @@ export class WorkerHub {
 			if (!pending) continue; // vanished between planning and dispatch
 			const media = this.#d.mediaById.get(pending.mediaId);
 			const params = assignParams(pending.jobType, media, settings);
-			// The REQUEST, not the truth: a worker's own resolved model overwrites these via reportFacts.
+			// The REQUEST, not the truth: a worker's own resolved model overwrites these via reportFacts. The
+			// worker's profile is stamped HERE so a failed or abandoned attempt still says what it ran on.
+			const profile = this.#d.registry.get(workerId)?.profile ?? {};
 			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now, {
+				backend: profile.backend ?? null,
+				device: profile.device ?? null,
+				threads: profile.threads ?? null,
 				engine: params.engine ?? null,
 				model: params.model ?? null,
 				asrModel: params.asrModel ?? null,
