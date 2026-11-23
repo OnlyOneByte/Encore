@@ -1,0 +1,310 @@
+{
+  "scenario": "tv-song-failed",
+  "what": "TV 1920x1080: \"Skipped · Theo’s song wouldn’t play · Up next - Ana\" the moment a dead file comes up: the layer fades in and the lines rise (--motion-slow)",
+  "capturedAt": "2026-11-23T09:39:17.143Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "div.takeover-layer.shown",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease | opacity var(--motion-slow) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.state-mark",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-label",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-song",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-replaces",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 15,
+  "seekObserved": {
+    "notice": "Skipped Theo's song wouldn't play Up next - Ana - livin-on-a-prayer",
+    "card": null
+  },
+  "subject": {
+    "selector": ".state-error",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.takeover-layer.shown",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease | opacity var(--motion-slow) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.state-mark",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-label",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-song",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-replaces",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "notice": "Skipped Theo's song wouldn't play Up next - Ana - livin-on-a-prayer",
+      "card": null
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 2
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 66.7,
+      "min": 50,
+      "max": 83.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "notice": "Skipped Theo's song wouldn't play Up next - Ana - livin-on-a-prayer",
+      "card": null
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12388,
+    "encodeMs": 1357,
+    "liveMs": 20242,
+    "reducedMs": 6904,
+    "reducedEncodeMs": 351
+  },
+  "files": {
+    "clip.gif": 232126,
+    "clip-slow4x.gif": 232126,
+    "filmstrip.png": 134894,
+    "filmstrip-reduced.png": 45271
+  }
+}
