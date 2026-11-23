@@ -77,13 +77,24 @@ on the LAN IP and need none of what follows.
 
 | Situation                                             | What to do                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The display is driven by the Encore host              | Open **`http://localhost:3000/tv`** on that machine. Phones keep using the LAN IP. Nothing to install.                                                                                                                                                                                                                                   |
+| The display is driven by the Encore host              | Open **`http://localhost:3000/tv`** on that machine; the QR shows its home-network address, which phones keep using. Nothing to install.                                                                                                                                                                                                 |
 | The TV is a separate device with a shell              | Forward the port so the **origin** is localhost: `ssh -N -L 3000:localhost:3000 user@<host>`, then open `http://localhost:3000/tv`. The browser only cares about the origin, not where the bytes come from. No certificates.                                                                                                             |
 | The TV is a Chrome you launch yourself                | `--unsafely-treat-insecure-origin-as-secure=http://<LAN-IP>:3000 --user-data-dir=/tmp/encore-tv`. Per-device, and it breaks when the host IP changes. Do not set it in a browser you also use for anything else.                                                                                                                         |
 | The TV is an appliance (Chromecast, smart-TV browser) | Real TLS is the only route. `tailscale cert` issues a genuine certificate for `<host>.<tailnet>.ts.net` with no port forwarding, or put Caddy in front. `Bun.serve` takes `tls: { cert, key }` natively and the client already switches to `wss:` on its own, but **`server.ts` is HTTP-only today** — the TLS block does not exist yet. |
 
 A self-signed certificate also works in principle and is usually not worth it: the CA has to be
 installed on the television.
+
+**Which address the localhost TV's QR shows.** With no join address saved and no `ENCORE_PUBLIC_ORIGIN`,
+it is this box's address on the interface whose default route goes through a router, else its first
+192.168.x, else 10.x, always on `PORT` over plain http. A full-tunnel VPN's default route has no router, so it
+never outranks the home network. A VPN that routes through its own gateway can still win: choose the address in
+Settings -> This machine. It never shows a 172.16-31.x address (Docker's and WSL2's NAT), so
+a home network on that range gets the "Phones can't open this address" warning: type the address in
+Settings -> This machine, or pick it from the choices there. Behind a tunnel or proxy, set
+`ENCORE_PUBLIC_ORIGIN`. A tunnel that rewrites `Host` to localhost (`ngrok --host-header=rewrite`) looks
+like the localhost TV, so its visitors see the box's private LAN address in the QR; Settings -> This
+machine also lists those addresses to anyone who has joined.
 
 ### Why this is not simply fixed in code
 

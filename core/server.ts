@@ -30,6 +30,7 @@ import { createReactionLimiter, handleReaction } from './src/lib/server/realtime
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
+import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -353,19 +354,6 @@ setPublish(broadcast);
 
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
-console.log(
-	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
-);
-
-// Loud, so an open box is not silently exposed.
-if (!WORKER_TOKEN) {
-	console.warn(
-		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
-			'that can reach this port can register as a worker and receive job assignments. Set ' +
-			'ENCORE_WORKER_TOKEN to require a matching `token` on the worker handshake.'
-	);
-}
-
 // State write-behinds on a 250ms debounce, so a `docker stop` inside that window drops the pending write
 // unless flushed here. Guarded against re-entry from a second signal.
 let shuttingDown = false;
@@ -386,5 +374,22 @@ function gracefulShutdown(signal: string): void {
 	}
 	process.exit(ok ? 0 : 1);
 }
+// Registered before the awaited route read below, so a stop during startup still flushes state.
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// The address phones should open, from the same pick as the TV's QR. `0.0.0.0` is not one, so it is only the fallback.
+// The route is read first so the line ranks the home network over a VM bridge.
+await refreshDefaultRoute();
+console.log(
+	`🎤 Encore on ${startupAddress() ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
+);
+
+// Loud, so an open box is not silently exposed.
+if (!WORKER_TOKEN) {
+	console.warn(
+		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
+			'that can reach this port can register as a worker and receive job assignments. Set ' +
+			'ENCORE_WORKER_TOKEN to require a matching `token` on the worker handshake.'
+	);
+}

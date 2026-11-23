@@ -57,7 +57,8 @@ const CONTAINER_OWNED: Record<'core' | 'worker', string[]> = {
 		'FFMPEG_BIN',
 		'ENCORE_MIGRATIONS_DIR',
 		'ENCORE_DEV_HARNESS',
-		'ENCORE_UNSERVABLE_TTL_MS' // a probe's knob (worker-hub.ts): it shortens the TTL so ui:review can film what follows
+		'ENCORE_UNSERVABLE_TTL_MS', // a probe's knob (worker-hub.ts): it shortens the TTL so ui:review can film what follows
+		'ENCORE_TEST_INTERFACES' // a probe's knob (public-origin.ts): a fake interface list for a core with no LAN
 	],
 	worker: [
 		'ENCORE_MEDIA_DIR',
