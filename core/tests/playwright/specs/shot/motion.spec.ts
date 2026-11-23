@@ -61,6 +61,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-processing-bar': [...DEMO_LIBRARY, ...BAR_TRACKS],
 	'phone-reorder-held-390': HELD_LIBRARY,
 	'phone-reorder-held-320': HELD_LIBRARY,
+	'phone-queue-your-song-390': HELD_LIBRARY,
+	'phone-queue-your-song-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
@@ -371,6 +373,65 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 	};
 }
 
+/** Theo's /queue at one phone width as his own song starts (proposal 18): his On deck card goes (a cut) and the
+ *  "Queued" heading and the rows under it ease up from where they were drawn (`data-hold`, transform, --motion-base),
+ *  once, though the list changes in two patches 12 ms apart. Under reduced motion it is a cut. Each run first drains
+ *  the room and queues Maya, Theo, Ana, Maya again. */
+function queueYourSong(width: number): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		const DECK = 'section[aria-label="On deck"]';
+		return {
+			name: `phone-queue-your-song-${width}`,
+			what: `Phone ${width}x844: /queue as Theo’s own song starts — the On deck card goes (a cut) and the heading and rows ease up into its place (transform, --motion-base), one glide and no jump; a cut under reduced motion`,
+			// Not the heading: at 390 it is held at its old top, under the fold, on the first frame.
+			subject: 'main > .below',
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world, { seconds: HELD_SECS });
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					for (const q of ['caroline', 'believin', 'prayer', 'bohemian']) await readySong(world, ph.maya, q);
+				}
+				await drain(ph.ana);
+				await queueReady(ph.maya, 'caroline');
+				await queueReady(ph.theo, 'believin');
+				await queueReady(ph.ana, 'prayer');
+				await queueReady(ph.maya, 'bohemian');
+				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+				await ph.ana.waitForTimeout(SETTLE_MS + 250);
+				const page = await asSinger(browser, world, opts, ph.theo, width);
+				await page.goto('/queue');
+				await expect(page.locator(DECK)).toBeVisible({ timeout: 10_000 });
+				await page.waitForTimeout(1_000);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await ph!.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await page.locator(DECK).waitFor({ state: 'detached', timeout: 10_000 });
+			},
+			// `.youre-up` too: the sheet rises over the dock in the same moment, so a capture without it froze it mid-fade.
+			only: 'main .grouphead, main .qrow, .youre-up',
+			// The rule the hold outranks, not its timing: a row also matches app.css's `.pop-in` (its entrance, 0.22s).
+			literalsAllowed: { match: 'literal timing 0.22s', reason: 'QueueRow’s .pop-in entrance, outranked by the hold' },
+			stripClip: async () => ({ x: 0, y: 0, width, height: 844 }),
+			observe: (page) =>
+				page.evaluate(() => ({
+					deck: !!document.querySelector('section[aria-label="On deck"]'),
+					headTop: document.querySelector('main .grouphead')?.getBoundingClientRect().top ?? null
+				}))
+		};
+	};
+}
+
 /** The line at +250 ms, +1 s (inside the 1.5 s hold) and +2.2 s (settled), read by the page itself so the capture's
  *  own pacing cannot move them. The spec asserts all three (`HELD`). */
 const HOLD_SAMPLES = { at250: 250, at1000: 1000, settled: 2200 };
@@ -494,6 +555,8 @@ const SCENARIOS: Record<string, Make> = {
 	'tv-copy-offline-320': tvCopyOffline(320, 568),
 	'phone-queue-card-arrive': queueCard('arrive'),
 	'phone-queue-card-leave': queueCard('leave'),
+	'phone-queue-your-song-390': queueYourSong(390),
+	'phone-queue-your-song-320': queueYourSong(320),
 	'phone-dock-your-song-390': dockYourSong(390),
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),

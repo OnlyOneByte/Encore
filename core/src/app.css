@@ -774,8 +774,38 @@ body {
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */
 @media (prefers-reduced-motion: no-preference) {
+	/* A literal, waived by name on the motion rows `phone-queue-your-song-*`: a held queue row matches this rule too. */
 	.pop-in {
 		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+	}
+}
+/* THE QUEUE'S HOLD (routes/queue, proposal 18): a block the page moved in layout is drawn where it was, --hold-from
+   away, and eased home, so a layout shift never paints. Two names, so a second hold restarts the ease. `add`, so a
+   row's own transform (the live sort's shift) still applies under it. AFTER `.pop-in`, which it must outrank on a row. */
+@media (prefers-reduced-motion: no-preference) {
+	[data-hold='a'] {
+		animation: hold-a var(--motion-base) ease-out;
+		animation-composition: add;
+	}
+	[data-hold='b'] {
+		animation: hold-b var(--motion-base) ease-out;
+		animation-composition: add;
+	}
+}
+@keyframes hold-a {
+	from {
+		transform: translateY(var(--hold-from));
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+@keyframes hold-b {
+	from {
+		transform: translateY(var(--hold-from));
+	}
+	to {
+		transform: translateY(0);
 	}
 }
 /* `.pop-in`'s entrance for something anchored to the BOTTOM edge (the "You're up" sheet over the dock): it rises into

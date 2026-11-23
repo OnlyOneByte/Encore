@@ -127,3 +127,13 @@ export function modeInvalidation(
 	}
 	return null;
 }
+
+/**
+ * The ids both lists hold are in the same order in each: the list only gained or lost rows, and was not reordered.
+ * /queue's hold eases rows that moved because a block above them left or changed size; a reorder is the live sort's
+ * to draw, and easing one would slide rows through each other.
+ */
+export function orderKept(prev: readonly string[], next: readonly string[]): boolean {
+	const shared = (a: readonly string[], b: readonly string[]) => a.filter((id) => b.includes(id)).join('\n');
+	return shared(prev, next) === shared(next, prev);
+}
