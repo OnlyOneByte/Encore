@@ -90,11 +90,8 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	 *  replace each other's socket. Defaults to a per-call counter. */
 	workerId?: string;
 	/**
-	 * What the worker ADVERTISES, which is what dispatch routes by. The default is a FULL worker's: a real one with
-	 * yt-dlp advertises `fetch:ytdlp`, which is what `requiredCapability('fetch')` routes a YouTube fetch as, and
-	 * what the room's `canFetch` reads. A bare `fetch` (the old default) routes nothing, so every probe used to run
-	 * on a box that could not fetch. A roformer-capped room routes stems as `stems:roformer`, so a spec exercising
-	 * that must widen this; an uploads-only box is `['stems', 'align']`. A local library file needs no fetch.
+	 * What the worker ADVERTISES, which dispatch routes by. The default is a full worker's (a bare `fetch` routes
+	 * nothing); an uploads-only box is `['stems', 'align']`, a roformer-capped room needs `stems:roformer`.
 	 */
 	capabilities?: string[];
 	concurrency?: number;

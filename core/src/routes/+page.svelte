@@ -117,8 +117,7 @@
 		).noMaker
 	);
 
-	/* "Find any song and we'll make it" is a promise about SEARCH RESULTS, so it needs a fetcher as well as a maker: an
-	   uploads-only box makes only the library's own files, which a guest finds on /library, not by searching. */
+	// "Find any song and we'll make it" promises SEARCH results, so it needs a fetcher as well as a maker.
 	const onlyReady = $derived(noMaker || !verdicts.canFetch);
 
 	function liveOf(id: string) {
@@ -392,10 +391,7 @@
 	   (the group, the widen gate and `showsNoRows`); the window below is a fourth, and an `{@const}` cannot be read
 	   by the script. */
 	const rawRows = $derived(unaccounted(rawResults));
-	/* SPLIT BY WHAT CAN BE MADE NOW (proposal 24). A song that would be made on a tap (unprocessed or failed) but that
-	   nothing connected can make (`makeableNow`: no maker, or a search result with no fetcher) moves to its own group
-	   with no Sing button, so the tab stops offering a pick the server would refuse. A row already in flight, or a
-	   name match only, stays where it was: neither offers Sing. */
+	// A pick the server would refuse is not offered: those rows get their own group (docs/FRONTEND.md#the-sing-tab).
 	const cantMakeRow = (m: Media) => canProcess(m, readinessFor(m)) && !makeableNow(m, verdicts, defaultFetcher);
 	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m)));
 	const cantRows = $derived(rawRows.filter(cantMakeRow));
@@ -595,19 +591,16 @@
 							</Button>
 						</div>
 					{/if}
-				{:else if cantRows.length && library.length}
-					<!-- NOTHING READY MATCHES, AND SOME OF WHAT DID CAN'T BE MADE: the answer to "which ones are ready?" is
-							one tap away, so the ready group points at them rather than leaving the guest to guess. -->
-					<h2 class="grouphead">Ready to sing</h2>
-					<div class="showall-row">
-						<Button variant="secondary" size="tap" href="/library">
-							<Icon name="library" /> See all ready songs
-						</Button>
-					</div>
 				{/if}
 
 				{#if makeRows.length}
-					<h2 class="grouphead" tabindex="-1">Needs karaoke</h2>
+					<!-- Holds the taller can't-make wording's height, so a maker dropping swaps the words without a shift. -->
+					<h2 class="grouphead" tabindex="-1">
+						<span class="swap"
+							><span>Needs karaoke</span><span class="ghost" aria-hidden="true">{cantMakeHeading(makeRows.length)}</span
+							></span
+						>
+					</h2>
 					{#each rawView.shown as m (m.id)}
 						{@const r = readinessFor(m)}
 						<SongRow
@@ -671,6 +664,14 @@
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" onclick={widenSearch}>
 							<Icon name="search" /> Not it? Search everything
+						</Button>
+					</div>
+				{/if}
+				<!-- Last, below the rows and the widen: arriving mid-search it must push nothing from under a thumb. -->
+				{#if cantRows.length && !readyResults.length && library.length}
+					<div class="showall-row">
+						<Button variant="secondary" size="tap" href="/library">
+							<Icon name="library" /> See all ready songs
 						</Button>
 					</div>
 				{/if}
@@ -885,6 +886,16 @@
 	}
 	.promise > .shown {
 		visibility: visible;
+	}
+	/* The same stacking for a group heading: the box is the taller wording's. */
+	.swap {
+		display: grid;
+	}
+	.swap > span {
+		grid-area: 1 / 1;
+	}
+	.swap > .ghost {
+		visibility: hidden;
 	}
 	.replacing {
 		display: flex;

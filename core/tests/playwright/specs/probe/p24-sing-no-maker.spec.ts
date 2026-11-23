@@ -45,7 +45,47 @@ async function shoot(phone: Page, name: string): Promise<void> {
 
 const promise = (p: Page) => p.locator('.promise .shown');
 const sings = (p: Page) => p.locator(SEL.songRow).locator(SEL.singAction);
-const heading = (p: Page, text: string | RegExp) => p.locator('h2.grouphead', { hasText: text });
+// Not the `Needs karaoke` heading, which carries the can't-make words as a hidden ghost to hold its height.
+const heading = (p: Page, text: string | RegExp) =>
+	p.locator('h2.grouphead', { hasText: text, hasNot: p.locator('.swap') });
+
+/** Tenet 3: sum every layout shift from now on that no input caused, and where each row sits. */
+async function watchShifts(p: Page): Promise<void> {
+	await p.evaluate(() => {
+		const w = window as unknown as { __cls: number };
+		w.__cls = 0;
+		new PerformanceObserver((list) => {
+			for (const e of list.getEntries() as unknown as { value: number; hadRecentInput: boolean }[])
+				if (!e.hadRecentInput) w.__cls += e.value;
+		}).observe({ type: 'layout-shift', buffered: false });
+	});
+}
+const shifted = (p: Page) => p.evaluate(() => (window as unknown as { __cls: number }).__cls);
+const rowTops = (p: Page) =>
+	p.locator(SEL.songRow).evaluateAll((els) =>
+		els.map((e) => {
+			const r = e.getBoundingClientRect();
+			return [Math.round(r.top), Math.round(r.height)];
+		})
+	);
+
+/** Drop the maker under a search on screen, and hold the page to CLS 0: rows stay put, the link lands below them. */
+async function dropHoldsStill(p: Page, stop: () => Promise<void>): Promise<void> {
+	const before = await rowTops(p);
+	await watchShifts(p);
+	await stop();
+	await expect(sings(p), 'gone once the grace has passed, with no new search').toHaveCount(0, {
+		timeout: AFTER_GRACE_MS
+	});
+	const seeAll = p.getByRole('link', { name: 'See all ready songs' });
+	await expect(seeAll).toBeVisible();
+	await p.waitForTimeout(500); // past any trailing frame
+	expect(await shifted(p), 'nothing moved under the guest when the maker dropped').toBe(0);
+	expect(await rowTops(p), 'every row where it was').toEqual(before);
+	const lastRow = await p.locator(SEL.songRow).last().boundingBox();
+	const link = await seeAll.boundingBox();
+	expect(link!.y, 'the link sits below the rows').toBeGreaterThanOrEqual(lastRow!.y + lastRow!.height);
+}
 
 async function search(p: Page, q: string, path = '/?source=local'): Promise<void> {
 	await p.goto(path);
@@ -82,13 +122,9 @@ test('a worker dropping mid-night: Sing buttons go after the grace, "See all rea
 		await expect(sings(maya), 'a maker is here, so the unmade row offers Sing').not.toHaveCount(0);
 		await shoot(maya, 'sing-search-maker-online');
 
-		await worker.stop();
-		await expect(sings(maya), 'gone once the grace has passed, with no new search').toHaveCount(0, {
-			timeout: AFTER_GRACE_MS
-		});
+		// At 390: the drop moves nothing.
+		await dropHoldsStill(maya, () => worker.stop());
 		await expect(heading(maya, CANT)).toBeVisible();
-		const seeAll = maya.getByRole('link', { name: 'See all ready songs' });
-		await expect(seeAll).toBeVisible();
 		await shoot(maya, 'sing-search-maker-dropped');
 
 		worker = await startFakeWorker(world, { capabilities: MAKER });
@@ -96,8 +132,11 @@ test('a worker dropping mid-night: Sing buttons go after the grace, "See all rea
 			timeout: ONE_BROADCAST_MS
 		});
 		await expect(heading(maya, CANT)).toHaveCount(0);
-		await worker.stop();
-		await expect(seeAll).toBeVisible({ timeout: AFTER_GRACE_MS });
+		// At 320, where the headings wrap: the same drop moves nothing either.
+		await maya.setViewportSize({ width: 320, height: 568 });
+		await maya.waitForTimeout(500);
+		await dropHoldsStill(maya, () => worker.stop());
+		const seeAll = maya.getByRole('link', { name: 'See all ready songs' });
 		await seeAll.click();
 		await expect(maya).toHaveURL(/\/library/);
 		for (const title of ready) await expect(maya.getByText(title).first()).toBeVisible();
@@ -108,14 +147,31 @@ test('a worker dropping mid-night: Sing buttons go after the grace, "See all rea
 
 test('an uploads-only worker: a library file keeps Sing, a YouTube result does not', async ({ world }) => {
 	test.setTimeout(180_000);
+	// A full worker first, then an uploads-only one in its place, so `canFetch` flips while this phone is CONNECTED:
+	// the flip reaches it only by the sync the hub re-sends, never a reconnect's hello.
+	const full = await startFakeWorker(world, { capabilities: [...MAKER, 'fetch:ytdlp'] });
+	const maya = await world.openPhone('Maya');
+	await maya.goto('/');
+	await expect(promise(maya)).toHaveText(PROMISE, { timeout: AFTER_GRACE_MS });
+	await maya.evaluate(async () => {
+		const w = window as unknown as { __canFetch: unknown[] };
+		w.__canFetch = [];
+		const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`);
+		ws.onmessage = (ev: MessageEvent<string>) => {
+			const m = JSON.parse(ev.data) as { type?: string; canFetch?: boolean };
+			if (m.type === 'queue:sync' && m.canFetch !== undefined) w.__canFetch.push(m.canFetch);
+		};
+		await new Promise((r) => (ws.onopen = r));
+	});
 	const worker = await startFakeWorker(world, { capabilities: MAKER });
+	await full.stop();
 	try {
-		const maya = await world.openPhone('Maya');
-		await maya.goto('/');
 		await expect(promise(maya), 'a search result cannot be fetched, so the promise is not made').toHaveText(
 			ONLY_READY,
 			{ timeout: AFTER_GRACE_MS }
 		);
+		const told = await maya.evaluate(() => (window as unknown as { __canFetch: unknown[] }).__canFetch);
+		expect(told, 'the open socket heard canFetch go false, with no reconnect').toContain(false);
 		// The library's own file: made by this worker, so it keeps its Sing button.
 		await search(maya, 'bohemian');
 		await expect(sings(maya)).toHaveCount(1);

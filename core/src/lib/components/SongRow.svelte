@@ -55,9 +55,7 @@
 		 * dropping only `onmake` falls through to a live add — and a turn on a song that can never be processed is held
 		 * in the rotation and silently skipped every pass. The row still says why, in the chip line. */
 		processable?: boolean;
-		/** Nothing connected can make this song right now (`makeableNow`): the row keeps its words so the song is still
-		 * seen to exist, and has NO action, since a Sing that cannot work is a dead tap and a bare add holds a turn
-		 * nothing will make. Its group heading says why. */
+		/** Nothing connected can make it now: no action, since a Sing that cannot work is a dead tap (docs/FRONTEND.md). */
 		cantMake?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
@@ -276,7 +274,8 @@
 			</Item.Content>
 
 			{#if cantMake}
-				<!-- No control at all: see `cantMake`. -->
+				<!-- The button's box, empty: the row keeps its height when a maker drops, so nothing moves under a thumb. -->
+				<span class="action-slot" aria-hidden="true"></span>
 			{:else if onmake}
 				<!-- ONE action, never two: queueing without processing holds a rotation slot that can never become ready, and
 					processing without queueing gives the singer no turn. Icon-only, and the MARK is load-bearing: the two actions
@@ -369,6 +368,12 @@
 	.row.processing {
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
+	}
+	/* The `size="icon"` button's box (`size-tap`), with nothing in it. */
+	.action-slot {
+		width: var(--tap);
+		height: var(--tap);
+		flex: 0 0 auto;
 	}
 
 	/* 84×47 is 16:9, matching the source frame, so nothing is letterboxed or cropped. It arrives as a TOKEN pair

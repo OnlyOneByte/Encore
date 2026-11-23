@@ -61,6 +61,10 @@ test('the room verdicts reach the tab, and the promise line needs both', () => {
 	expect(home).toContain('verdicts = room.verdicts;');
 	expect(home).toContain('const onlyReady = $derived(noMaker || !verdicts.canFetch);');
 	expect(home).toMatch(/\(id\) => mediaStatus\.get\(id\),\s*verdicts\.canMake\s*\)/);
-	// "See all ready songs" only when nothing ready matched and something could not be made.
-	expect(home).toContain('{:else if cantRows.length && library.length}');
+	// "See all ready songs" only when nothing ready matched, and LAST, after the rows and the widen, so it pushes nothing.
+	expect(home).toContain('{#if cantRows.length && !readyResults.length && library.length}');
+	expect(home.indexOf('{#each cantView.shown')).toBeLessThan(home.indexOf('See all ready songs'));
+	expect(home.indexOf('Not it? Search everything')).toBeLessThan(home.indexOf('See all ready songs'));
+	// A can't-make row keeps the button's box, so the row's height holds when a maker drops.
+	expect(songRow).toMatch(/\{#if cantMake\}[\s\S]*?<span class="action-slot" aria-hidden="true"><\/span>/);
 });

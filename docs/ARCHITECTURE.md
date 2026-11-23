@@ -722,7 +722,10 @@ because missing lyrics is not missing audio. Before any job exists, `queue:sync`
 (no worker ids, hosts or counts): whether connected workers offer `stems` at the room's quality and `align`.
 It turns true the moment a capable worker joins and false only after the last one has been gone 10 s
 (`MAKER_GRACE_MS`). Boot counts as a loss, so a core restart doesn't flash "can't make" while the worker redials,
-and a box with no worker says it 10 s after boot. Each flip re-sends the room a `queue:sync`.
+and a box with no worker says it 10 s after boot. Beside it, `canFetch` (same grace, same boot rule, also a boolean
+only) says whether a connected worker offers the room's fetcher, `requiredCapability('fetch')` as dispatch routes it.
+A box with no yt-dlp is `canMake: true, canFetch: false`: it makes library uploads, which need no fetch, and nothing
+from a search. Either flip re-sends the room a `queue:sync`.
 
 ### Settings scopes
 
