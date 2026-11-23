@@ -230,7 +230,7 @@
 						variant="ghost"
 						size="icon"
 						press="grab"
-						aria-label={reorderName(title, singerName)}
+						aria-label={reorderName(title, singerName, !!onremove)}
 						aria-keyshortcuts="ArrowUp ArrowDown"
 						aria-disabled={pending ? 'true' : undefined}
 						data-grip={gripId}

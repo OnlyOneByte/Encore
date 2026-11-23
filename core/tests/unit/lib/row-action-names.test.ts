@@ -27,7 +27,15 @@ test('two rows never share a name', () => {
 test('two singers on one song get two grip names', () => {
 	expect(reorderName('Sweet Caroline', 'Theo')).toBe("Reorder Sweet Caroline, Theo's turn — drag, or use arrow keys");
 	expect(reorderName('Sweet Caroline', 'Theo')).not.toBe(reorderName('Sweet Caroline', 'Ana'));
-	expect(reorderName('Sweet Caroline', 'You')).toBe('Reorder Sweet Caroline, your turn — drag, or use arrow keys');
+});
+
+test('"your turn" comes from ownership, never from a singer called "You"', () => {
+	expect(reorderName('Sweet Caroline', 'You', true)).toBe(
+		'Reorder Sweet Caroline, your turn — drag, or use arrow keys'
+	);
+	// A guest whose display name is literally "You", on someone else's phone.
+	expect(reorderName('Sweet Caroline', 'You')).toBe("Reorder Sweet Caroline, You's turn — drag, or use arrow keys");
+	expect(reorderName('Sweet Caroline', 'You', true)).not.toBe(reorderName('Sweet Caroline', 'You'));
 });
 
 /** A source file with its comments blanked, so prose describing the wiring cannot satisfy a scan. */
@@ -42,7 +50,9 @@ test('every repeated row and card button takes its name from the helpers, with t
 	for (const file of ['src/lib/components/QueueRow.svelte', 'src/lib/components/ProcessingCard.svelte']) {
 		const src = code(file);
 		for (const call of [
-			'reorderName(title, singerName)',
+			file.endsWith('QueueRow.svelte')
+				? 'reorderName(title, singerName, mine)'
+				: 'reorderName(title, singerName, !!onremove)',
 			'removeTurnName(title)',
 			'tryAgainName(title)',
 			'pickAnotherName(title)'

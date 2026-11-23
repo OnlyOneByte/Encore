@@ -14,10 +14,10 @@ export function removeTurnName(title: string): string {
 }
 
 /** The drag grip, which also takes Arrow Up/Down. It shows on every singer's rows, and two singers can queue one
- * song, so the name carries the singer as well as the song. `singer` is the row's visible singer line, which reads
- * "You" on the viewer's own rows. */
-export function reorderName(title: string, singer?: string): string {
-	const turn = !singer ? '' : singer === 'You' ? ', your turn' : `, ${singer}'s turn`;
+ * song, so the name carries the singer as well as the song. `mine` is the row's ownership flag (the one that gates
+ * remove), never the visible "You", so a guest who is literally named "You" is still "You's turn". */
+export function reorderName(title: string, singer?: string, mine = false): string {
+	const turn = mine ? ', your turn' : singer ? `, ${singer}'s turn` : '';
 	return `Reorder ${title}${turn} — drag, or use arrow keys`;
 }
 
