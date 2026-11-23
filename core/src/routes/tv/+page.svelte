@@ -57,6 +57,8 @@
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	// The last `media:status` per media — the lobby's ONLY use of it, so it never reaches the catalog or a playhead.
 	let liveStatus = $state<Map<string, Extract<ServerEvent, { type: 'media:status' }>>>(new Map());
+	// Whether anything connected can make karaoke (`queue:sync`'s `canMake`), so the lobby says so before anyone picks.
+	let canMake = $state(true);
 	let connected = $state(false);
 	// ONE TV PER ROOM: whether this screen holds the room's seat (`tv:seat`); null until the server says, which it does
 	// on connect. A COPY (`false`) shows the same stage, muted and sending no telemetry, so it can neither end the song
@@ -419,6 +421,7 @@
 			// An OMITTED `online` means "no info", not "nobody here", and must not blank a roster we hold.
 			if (e.online) online = e.online;
 			if (e.away) away = e.away;
+			if (e.canMake !== undefined) canMake = e.canMake;
 		}
 		if (e.type === 'singer:presence') {
 			online = e.online;
@@ -591,7 +594,8 @@
 		waitingTurns(
 			entries.filter((e) => e.status === 'queued'),
 			(id) => mediaCatalog.get(id),
-			(id) => liveStatus.get(id)
+			(id) => liveStatus.get(id),
+			canMake
 		)
 	);
 	const stuck = $derived(stuckTurnsLines(waiting, singerName));

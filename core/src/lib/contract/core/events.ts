@@ -74,6 +74,9 @@ export type ServerEvent =
 			online?: string[];
 			away?: string[];
 			settings?: EffectiveSettings;
+			// Whether any connected worker can make karaoke at the room's quality (`WorkerHub.canMake`, after a 10 s grace
+			// on loss). A boolean only: no worker ids, hosts or counts. OMITTED means "no info", so a client keeps its own.
+			canMake?: boolean;
 	  }
 	| { type: 'playback:state'; state: PlaybackState; rev: number }
 	| { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }

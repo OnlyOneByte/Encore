@@ -118,6 +118,50 @@ test('the room line: several singers get one line for the room', () => {
 	).toBe("Those songs didn't work");
 });
 
+// Proposal 24: the room's `canMake` makes "no maker" true before any turn has died, so the first pick is not the one
+// that finds out.
+test('waitingTurns: with nothing able to make karaoke, an empty queue is already no maker', () => {
+	expect(
+		waitingTurns(
+			[],
+			() => undefined,
+			() => undefined,
+			false
+		)
+	).toEqual({
+		making: 0,
+		stuckSingerIds: [],
+		noMaker: true
+	});
+	// A caller that passes nothing keeps today's answer.
+	expect(
+		waitingTurns(
+			[],
+			() => undefined,
+			() => undefined
+		).noMaker
+	).toBe(false);
+	// A plain failure under no maker is no maker: the next pick hits the same wall.
+	const failedOnly = OUTCOMES.find((o) => o.name === 'failed')!;
+	expect(
+		waitingTurns(
+			[{ singerId: 'maya', mediaId: 'failed' }],
+			() => failedOnly.media,
+			() => failedOnly.live,
+			false
+		)
+	).toEqual({ making: 0, stuckSingerIds: ['maya'], noMaker: true });
+});
+
+test('the room line: no maker needs no stuck turn, but a turn being made still wins', () => {
+	const empty = { making: 0, stuckSingerIds: [], noMaker: true };
+	expect(stuckTurnsLines(empty, () => 'Someone')).toEqual({
+		headline: "Can't make new karaoke right now",
+		next: 'Pick a ready song on your phone'
+	});
+	expect(stuckTurnsLines({ ...empty, making: 1 }, () => 'Someone')).toBeNull();
+});
+
 test('the room line is silent while anything is being made, or nothing is stuck', () => {
 	// One cooking turn beside a dead one: "Making karaoke…" is still true, so no stuck line.
 	expect(

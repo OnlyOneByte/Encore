@@ -45,6 +45,8 @@ export interface HubDeps {
 	listAway?: () => string[];
 	/** Optional: room-level separator settings snapshot for the sync directory. */
 	getSettings?: () => EffectiveSettings;
+	/** Optional: whether anything connected can make karaoke (`WorkerHub.canMake`), for the sync. */
+	canMake?: () => boolean;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
 	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
 	/** Stamp that a singer STARTED a song. MUST land BEFORE the reseq/broadcast that follow. Separate
@@ -316,7 +318,7 @@ export function orderingOf(deps: Pick<HubDeps, 'getSettings' | 'listSingers'>): 
  *  the library is `/api/library`'s job, and only its loudness levels ride along. */
 export function syncEvent(
 	state: AuthoritativeState,
-	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings'>
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings' | 'canMake'>
 ): Extract<ServerEvent, { type: 'queue:sync' }> {
 	return {
 		type: 'queue:sync',
@@ -327,6 +329,7 @@ export function syncEvent(
 		loudness: deps ? loudnessLevelsOf(deps.mediaById.values()) : undefined,
 		online: deps?.listOnline?.(),
 		away: deps?.listAway?.(),
-		settings: deps?.getSettings?.()
+		settings: deps?.getSettings?.(),
+		canMake: deps?.canMake?.()
 	};
 }
