@@ -3,8 +3,8 @@
 // of an offline night always died. Now the room's `canMake`/`canFetch` decide: an unmade row nothing can make sits
 // under "Can't make these right now" with no Sing button, and "See all ready songs" answers "which ones are ready?".
 // Three nights: no worker from the start, a worker dropping mid-night, and an uploads-only worker (no yt-dlp).
-// `/?source=local` keeps the first two off the network (the demo library is local files). The uploads-only night
-// needs a YouTube result, so it uses the default search, as a guest does, and fails loudly when none comes back.
+// Every night is off the network: `/?source=local` (the demo library is local files), and for the uploads-only night
+// a routed `/api/search` that answers the local index plus one fixed YouTube hit.
 // `SING_SHOTS=<dir>` writes phone 390 and 320 stills.
 import type { Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -22,6 +22,16 @@ const CANT = /Can't make (these|this one) right now/;
 const AFTER_GRACE_MS = 20_000;
 const ONE_BROADCAST_MS = 5_000;
 const MAKER = ['stems', 'align'];
+/** A YouTube search hit, fixed so the uploads-only night needs no live resolver. Never processed: it has no button. */
+const YOUTUBE_HIT = {
+	id: 'p24-youtube-bohemian',
+	source: 'youtube',
+	sourceRef: 'p24bohemian',
+	title: 'Bohemian Rhapsody (YouTube)',
+	artist: 'Queen',
+	durationSec: 355,
+	stemStatus: 'none'
+} as const;
 
 const shotsDir = process.env.SING_SHOTS;
 if (shotsDir) mkdirSync(shotsDir, { recursive: true });
@@ -110,19 +120,22 @@ test('an uploads-only worker: a library file keeps Sing, a YouTube result does n
 		await search(maya, 'bohemian');
 		await expect(sings(maya)).toHaveCount(1);
 		await expect(heading(maya, CANT)).toHaveCount(0);
-		// The default search, as a guest runs it: a YouTube hit needs a fetcher this box does not have.
-		const local = (await (await maya.request.get('/api/search?q=bohemian&source=local')).json()) as {
-			results?: unknown[];
-		};
+		// The default search, as a guest runs it, made HERMETIC the way motion.spec.ts's widen row is: the real answer
+		// is the local index, plus one fixed YouTube hit, so no live resolver decides this test.
+		await maya.route('**/api/search?*', async (r) => {
+			const u = new URL(r.request().url());
+			u.searchParams.set('source', 'local');
+			const res = await r.fetch({ url: u.toString() });
+			const body = (await res.json()) as { results?: unknown[] };
+			await r.fulfill({ response: res, json: { ...body, results: [...(body.results ?? []), YOUTUBE_HIT] } });
+		});
 		await search(maya, 'bohemian', '/');
-		await expect
-			.poll(() => maya.locator(SEL.songRow).count(), {
-				timeout: 20_000,
-				message: 'the default search returned no YouTube result, so this night cannot be checked'
-			})
-			.toBeGreaterThan(local.results?.length ?? 0);
+		const youtubeRow = maya.locator(SEL.songRow, { hasText: YOUTUBE_HIT.title });
+		await expect(youtubeRow).toBeVisible();
 		await expect(heading(maya, CANT)).toBeVisible();
-		await expect(sings(maya), 'only the library file offers Sing').toHaveCount(local.results?.length ?? 0);
+		// A YouTube hit needs a fetcher this box does not have; the library file still offers Sing.
+		await expect(youtubeRow.locator('button')).toHaveCount(0);
+		await expect(sings(maya), 'only the library file offers Sing').toHaveCount(1);
 		await shoot(maya, 'sing-search-uploads-only');
 	} finally {
 		await worker.stop();
