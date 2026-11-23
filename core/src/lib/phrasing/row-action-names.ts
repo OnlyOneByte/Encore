@@ -13,9 +13,12 @@ export function removeTurnName(title: string): string {
 	return `Remove ${title} from the queue`;
 }
 
-/** The drag grip, which also takes Arrow Up/Down. */
-export function reorderName(title: string): string {
-	return `Reorder ${title} — drag, or use arrow keys`;
+/** The drag grip, which also takes Arrow Up/Down. It shows on every singer's rows, and two singers can queue one
+ * song, so the name carries the singer as well as the song. `singer` is the row's visible singer line, which reads
+ * "You" on the viewer's own rows. */
+export function reorderName(title: string, singer?: string): string {
+	const turn = !singer ? '' : singer === 'You' ? ', your turn' : `, ${singer}'s turn`;
+	return `Reorder ${title}${turn} — drag, or use arrow keys`;
 }
 
 /** "Try again" on a held or dead turn. */

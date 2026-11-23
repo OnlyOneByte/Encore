@@ -24,6 +24,12 @@ test('two rows never share a name', () => {
 	expect(keyStepName(1, 'Sweet Caroline')).toBe('Raise Sweet Caroline by one semitone');
 });
 
+test('two singers on one song get two grip names', () => {
+	expect(reorderName('Sweet Caroline', 'Theo')).toBe("Reorder Sweet Caroline, Theo's turn — drag, or use arrow keys");
+	expect(reorderName('Sweet Caroline', 'Theo')).not.toBe(reorderName('Sweet Caroline', 'Ana'));
+	expect(reorderName('Sweet Caroline', 'You')).toBe('Reorder Sweet Caroline, your turn — drag, or use arrow keys');
+});
+
 /** A source file with its comments blanked, so prose describing the wiring cannot satisfy a scan. */
 const code = (file: string): string =>
 	readFileSync(at(file), 'utf8')
@@ -36,7 +42,7 @@ test('every repeated row and card button takes its name from the helpers, with t
 	for (const file of ['src/lib/components/QueueRow.svelte', 'src/lib/components/ProcessingCard.svelte']) {
 		const src = code(file);
 		for (const call of [
-			'reorderName(title)',
+			'reorderName(title, singerName)',
 			'removeTurnName(title)',
 			'tryAgainName(title)',
 			'pickAnotherName(title)'
