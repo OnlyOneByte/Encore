@@ -11,7 +11,7 @@
 import { WebSocket } from 'ws';
 
 /** 32 characters is the ceiling `SingerRepository` admits (`displayName.trim().slice(0, 32)`). */
-export const MAX_DISPLAY_NAME = 32;
+const MAX_DISPLAY_NAME = 32;
 
 /** The eight singer hues, in palette order. */
 const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', '#a855f7', '#10b981'];

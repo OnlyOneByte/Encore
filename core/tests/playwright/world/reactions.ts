@@ -8,7 +8,7 @@ import { openBrowseFromHome } from './actors';
 import type { World } from './fixtures';
 
 /** Taps each phone fires in a burst, three times the bucket. */
-export const TAPS_PER_PHONE = 9;
+const TAPS_PER_PHONE = 9;
 
 async function processSong(world: World, page: Page, query: string): Promise<void> {
 	const track = await world.awaitDemoTrack(query);

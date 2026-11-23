@@ -82,8 +82,8 @@ measures RENDERED geometry (`tests/playwright/specs/gate/measured-hit-extents.sp
 Two correct forms:
 
 - `:global([data-slot='…'])` — shadcn's own attribute for the element, stable across a re-vendor in a
-  way one of our class names is not. This is what `slider`, `progress`, `tabs-*`, `field-*`, `item`
-  and `sonner` use.
+  way one of our class names is not. This is what `slider`, `progress`, `field-*`, `item` and
+  `sonner` use.
 - put the class on a plain element **this** file renders. `card`, `input`, `native-select`, `badge`,
   `skeleton`, `spinner` and `table` can do this because their root is a real tag.
 

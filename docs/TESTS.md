@@ -7,11 +7,8 @@ Two rungs, and the split is about what each can honestly decide. Paths below are
 | **Logic**    | `bun test`              | `tests/unit/`       | pure functions, server modules, DB + migrations, contract shapes, stores |
 | **Rendered** | Chromium via Playwright | `tests/playwright/` | anything painted or measured: geometry, clipping, `env()`, `dvh`, colour |
 
-The gate is `bun run test`, the `test` script in `package.json` (`bun test --conditions=svelte`). The
-`--conditions=svelte` flag is no longer needed: every installed package that declares a `svelte` export
-condition also declares a `default` or `import` one, and a bare `bun test` passes the same suite. Removing it is
-the dead-code cleanup's job. `bunfig.toml` sets `[test] root = "tests/unit"`, so bun never opens the Playwright
-`*.spec.ts` files.
+The gate is `bun run test`, a plain `bun test`. `bunfig.toml` sets `[test] root = "tests/unit"`, so bun never
+opens the Playwright `*.spec.ts` files.
 
 ## What lives where
 
@@ -48,9 +45,9 @@ The same failure mode, **accidental green**, has two more answers:
 
 ## Gates
 
-`bun run gates` runs the full chain. `bun run typecheck` runs `typecheck:app` (svelte-check), `typecheck:root`
+`bun run gates` runs the full chain. `bun run typecheck` runs `check` (svelte-check), `typecheck:root`
 (`tsconfig.server.json`) and `typecheck:tests` (`tests/tsconfig.json`, which includes every `.ts` under `tests/`,
-Playwright specs too). `typecheck:app` excludes `tests/**`, which is why the third leg exists.
+Playwright specs too). `check` excludes `tests/**`, which is why the third leg exists.
 
 `tests/tsconfig.json` opts out of `noUncheckedIndexedAccess`; production code does not. Turning it on for the
 tests tree is a separate pass.

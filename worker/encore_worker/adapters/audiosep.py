@@ -38,9 +38,6 @@ class ZooSeparation:
     instrumental_bass: float
     vocals_bass: float
     ratio: float
-    #: True when the model's own metadata agreed with what the audio said. False is not an error — it is the
-    #: bs-roformer inversion, and it is worth a log line.
-    declaration_agreed: bool | None
 
 
 def _heartbeat(on_progress: object, stop: threading.Event) -> None:
@@ -75,22 +72,6 @@ def _outputs(out_dir: str, before: frozenset[str]) -> list[str]:
         os.path.join(out_dir, name) for name in os.listdir(out_dir) if name.lower().endswith(_AUDIO_SUFFIXES)
     }
     return sorted(now - before)
-
-
-def _declared_instrumental(model_stems: tuple[str, ...], path: str) -> bool | None:
-    """Does the model's own metadata call this file the backing track? None when it does not say.
-
-    Matched on the filename, because `audio-separator` interpolates the stem name into it
-    (`<track>_(Instrumental)_<model>.wav`). Only ever used to CROSS-CHECK the measurement.
-    """
-    lowered = os.path.basename(path).lower()
-    backing = [s for s in model_stems if s.lower() in {"instrumental", "no_vocals", "accompaniment", "other"}]
-    vocal = [s for s in model_stems if s.lower() in {"vocals", "vocal", "voice"}]
-    if any(s.lower() in lowered for s in backing):
-        return True
-    if any(s.lower() in lowered for s in vocal):
-        return False
-    return None
 
 
 class ZooSeparator:
@@ -171,7 +152,6 @@ class ZooSeparator:
             )
 
         verdict = self._roles_of(produced)
-        declared = _declared_instrumental(self._model.stems, verdict.instrumental_path)
         return ZooSeparation(
             stems=Stems(
                 instrumental_path=verdict.instrumental_path,
@@ -181,7 +161,6 @@ class ZooSeparator:
             instrumental_bass=verdict.instrumental_bass,
             vocals_bass=verdict.vocals_bass,
             ratio=verdict.ratio,
-            declaration_agreed=declared,
         )
 
     def _roles_of(self, produced: list[str]) -> roles.Roles:

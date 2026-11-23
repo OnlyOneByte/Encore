@@ -124,21 +124,6 @@ export default tseslint.config(
 		}
 	},
 
-	// Svelte fixtures a mount test imports. They are in no tsconfig program, so the type-aware Svelte
-	// block above fails to parse them outright; syntactic rules only.
-	{
-		files: ['tests/**/*.harness.svelte'],
-		languageOptions: {
-			parser: svelteParser,
-			parserOptions: {
-				parser: tseslint.parser,
-				projectService: false,
-				extraFileExtensions: ['.svelte']
-			},
-			globals: { ...globals.browser, ...globals.node }
-		}
-	},
-
 	// Pervasive and non-structural: kept visible as warnings rather than swept.
 	{
 		rules: {
