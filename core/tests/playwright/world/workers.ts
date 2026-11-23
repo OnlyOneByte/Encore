@@ -110,6 +110,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	/** Length of every audio file this worker writes (fetch, stems, guide mix). Default 8, the fixture's. A spec
 	 *  playing a longer library track sets it to match, or the TV ends the song when the 8 s stem does. */
 	seconds?: number;
+	/** Real-length lyric lines: six words, about 35 characters, as wide as a sung line on the TV. The default is one
+	 *  word a line, which no card or chrome can ever overlap, so a spec checking text against text needs this. */
+	longLyricLines?: boolean;
 	/** Overrides `MEDIA_DIR`. Defaults to the world's, which is what core was booted with. */
 	mediaDir?: string;
 	/**
@@ -186,7 +189,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		noVocals = false,
 		guideMix = false,
 		loudnessLufs = null,
-		seconds = 8
+		seconds = 8,
+		longLyricLines = false
 	} = options;
 
 	let output = '';
@@ -376,12 +380,16 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				// `words` — `word`. Anything else parses to an empty reel with no active word, which reads as a
 				// broken overlay when the FIXTURE is what is wrong.
 				const words = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
-				const lines = words.map((w, i) => ({
-					start: i * 0.8,
-					end: i * 0.8 + 0.7,
-					text: w,
-					words: [{ word: w, start: i * 0.8, end: i * 0.8 + 0.7 }]
-				}));
+				const lines = words.map((w, i) => {
+					const said = longLyricLines ? [w, 'tonight', 'forever', 'under', 'bright', 'lights'] : [w];
+					const step = 0.7 / said.length;
+					return {
+						start: i * 0.8,
+						end: i * 0.8 + 0.7,
+						text: said.join(' '),
+						words: said.map((x, j) => ({ word: x, start: i * 0.8 + j * step, end: i * 0.8 + (j + 1) * step }))
+					};
+				});
 				const lyrics = { source: 'fake-asr', provenance: 'transcribed', language: 'en', lines };
 				if (!skipWrite) writeRef(ref, Buffer.from(JSON.stringify(lyrics, null, 1)));
 				await progress('aligning', 100);

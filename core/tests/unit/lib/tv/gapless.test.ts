@@ -157,6 +157,26 @@ test('an intro raised over a loading slot ends in loading, unless the slot got r
 	expect(c.state).toBe('playing');
 });
 
+// The page starts the card's exit fade before the hold ends only when the hold's end starts the song: over a slot
+// still loading the card stays up past its hold, and fading it early would leave the stage empty under nothing.
+test('introEndsInSong: true over a ready slot, false over a loading one until it is ready', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	expect(c.introEndsInSong).toBe(false); // playing, no intro
+	c.onHiddenReady('q2');
+	c.onEnded(e('q2')); // gapless swap: the warmed slot is buffered
+	expect(c.introEndsInSong).toBe(true);
+	c.onInterstitialDone();
+	expect(c.introEndsInSong).toBe(false);
+
+	c.onNowPlaying(e('q3'), null); // a skip: loading
+	c.enterInterstitial();
+	expect(c.introEndsInSong).toBe(false);
+	c.onVisibleReady();
+	expect(c.introEndsInSong).toBe(true);
+});
+
 test('STALE PAIR (#1001): a frame still naming the ended entry neither rewinds nor re-targets', () => {
 	for (const warmed of [true, false]) {
 		const c = new GaplessController();
