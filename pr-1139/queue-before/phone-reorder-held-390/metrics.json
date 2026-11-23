@@ -1,0 +1,476 @@
+{
+  "scenario": "phone-reorder-held-390",
+  "what": "Phone 390x844: Maya drags Ana’s song toward the top while Theo is On deck — it stops at 2nd under Theo’s grip-less row, and one line says why",
+  "capturedAt": "2026-11-23T20:33:10.774Z",
+  "stepMs": 20,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "note": "Theo’s on deck. Ana goes right after.",
+    "rows": [
+      {
+        "grip": false,
+        "text": "1 dont-stop-believin Theo · A minor"
+      },
+      {
+        "grip": true,
+        "text": "2 mr-brightside Ana · A minor"
+      },
+      {
+        "grip": true,
+        "text": "3 livin-on-a-prayer Ana · A minor"
+      }
+    ]
+  },
+  "subject": {
+    "selector": ".reorder-note",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [
+      {
+        "kind": "CSSAnimation",
+        "name": "pop",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 220,
+        "delayMs": 0,
+        "endTimeMs": 220,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3) 0s 1 normal none running pop | 0.22s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "pop",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 220,
+        "delayMs": 0,
+        "endTimeMs": 220,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3) 0s 1 normal none running pop | 0.22s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "pop",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 220,
+        "delayMs": 0,
+        "endTimeMs": 220,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3) 0s 1 normal none running pop | 0.22s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 160,
+        "delayMs": 0,
+        "endTimeMs": 160,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "pop",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 220,
+        "delayMs": 0,
+        "endTimeMs": 220,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3) 0s 1 normal none running pop | 0.22s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "note": "Theo’s on deck. Ana goes right after.",
+      "rows": [
+        {
+          "grip": false,
+          "text": "1 dont-stop-believin Theo · A minor"
+        },
+        {
+          "grip": true,
+          "text": "2 livin-on-a-prayer Ana · A minor"
+        },
+        {
+          "grip": true,
+          "text": "3 mr-brightside Ana · A minor"
+        }
+      ]
+    },
+    "droppedFrames": {
+      "median": 8,
+      "min": 5,
+      "max": 10
+    },
+    "longAnimationFrames": {
+      "median": 31,
+      "min": 27,
+      "max": 34
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 83.4,
+      "min": 83.4,
+      "max": 83.4
+    },
+    "clsMax": 0.0475
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 3,
+    "observed": {
+      "note": "Theo’s on deck. Ana goes right after.",
+      "rows": [
+        {
+          "grip": false,
+          "text": "1 dont-stop-believin Theo · A minor"
+        },
+        {
+          "grip": true,
+          "text": "2 mr-brightside Ana · A minor"
+        },
+        {
+          "grip": true,
+          "text": "3 livin-on-a-prayer Ana · A minor"
+        }
+      ]
+    }
+  },
+  "timingsMs": {
+    "seekMs": 25300,
+    "encodeMs": 886,
+    "liveMs": 16654,
+    "reducedMs": 3485,
+    "reducedEncodeMs": 857
+  },
+  "files": {
+    "clip.gif": 46723,
+    "clip-slow4x.gif": 46723,
+    "filmstrip.png": 75793,
+    "filmstrip-reduced.png": 68493
+  }
+}
