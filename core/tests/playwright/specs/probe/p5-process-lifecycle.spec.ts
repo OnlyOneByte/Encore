@@ -403,10 +403,13 @@ test('removing a song mid-process settles CANCELED, not FAILED', async ({ world 
 				})
 				.toBe(true);
 
-			// Removed through the REAL affordance — the processing card's own "remove from queue" button, by its
-			// accessible name. The card lives on /queue since the Sing/Queue/Library tabs, so go there first.
+			// Removed through the REAL affordance — the processing card's own remove button, by its accessible name,
+			// which names the song. The card lives on /queue since the Sing/Queue/Library tabs, so go there first.
 			await openQueue(phone);
-			await phone.getByRole('button', { name: 'remove from queue' }).first().click();
+			await phone
+				.getByRole('button', { name: /^Remove .+ from the queue$/ })
+				.first()
+				.click();
 
 			await expect
 				.poll(() => ['canceled', 'failed', 'ready'].includes(watch.last()?.status ?? ''), {

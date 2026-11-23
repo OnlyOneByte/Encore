@@ -57,7 +57,7 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		const buzzes = () => theo.evaluate(() => (window as unknown as { __buzz: number }).__buzz);
 		const deck = theo.locator(ON_DECK);
 		await expect(deck).toBeVisible({ timeout: 10_000 });
-		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
+		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
 		await expect(deck).toContainText('−1');
 		await expect(tv.locator('.upnext')).toContainText('Theo');
 		// Maya's song reaches its last 30 s: Theo's heads-up buzzes, once.

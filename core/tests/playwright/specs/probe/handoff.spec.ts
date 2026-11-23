@@ -236,7 +236,10 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 		await hold!(true);
 		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana.getByRole('button', { name: 'Raise by one semitone' }).first().click();
+		await ana
+			.getByRole('button', { name: /^Raise .+ by one semitone$/ })
+			.first()
+			.click();
 		await ana.waitForTimeout(300);
 		await hold!(false);
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
@@ -246,7 +249,10 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 		await expect(theo.locator('.now .ctl')).toBeVisible();
 		expect(await keyLabel(ana)).toBe(await keyLabel(theo));
 		// The next tap steps from the ROOM's key for Theo's song, not from the dead draft.
-		await ana.getByRole('button', { name: 'Raise by one semitone' }).first().click();
+		await ana
+			.getByRole('button', { name: /^Raise .+ by one semitone$/ })
+			.first()
+			.click();
 		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift).toBe(theoStart.keyShift + 1);
 	} finally {
 		await worker.stop();

@@ -5,6 +5,7 @@
 	import { untrack } from 'svelte';
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
+	import { songRef } from '$lib/phrasing/row-action-names';
 	import { type MediaStatus } from '$lib/contract';
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -167,22 +168,26 @@
 		return null;
 	});
 
-	// The buttons are bare marks, so these labels are the whole announcement, and the process label names its COST.
+	// The buttons are bare marks, so these labels are the whole name. They stay short, because a results list reads one
+	// per row: the process COST and the name-match instruction live in each button's `title`, which a screen reader
+	// reads as the description, so saying them in the name too would say them twice.
 	// `onmake` WITH `inQueue` is the retry state — the singer already holds a turn and its process died — so it needs
-	// its own words: "Sing this" would promise a turn the action does not take.
+	// its own words: "Sing" would promise a turn the action does not take. Every label names the song as the row
+	// shows it, because a results list is the same button once per row — see $lib/phrasing/row-action-names.
 	const retryProcess = $derived(!!onmake && inQueue);
+	const song = $derived(songRef(title, byline));
 	const actionLabel = $derived(
 		retryProcess
-			? 'Try making the karaoke again — you already have a turn for this song'
+			? `Make ${song} again — you keep your turn`
 			: onmake
-				? 'Sing this — strips the vocals first, takes about a minute'
+				? `Sing ${song}`
 				: // Announced BEFORE the inQueue branch because it is the stronger fact: this song can never be
 					// sung here, so "Already in the queue" would be both wrong and beside the point.
 					!processable
-					? "Can't sing this one — it's a name match only. Search for the song to make karaoke."
+					? `Can't sing ${song} — it's a name match only`
 					: inQueue
-						? 'Already in the queue'
-						: 'Add a turn'
+						? `${song} is already in the queue`
+						: `Add a turn for ${song}`
 	);
 </script>
 
@@ -278,7 +283,7 @@
 					aria-label={actionLabel}
 					title={retryProcess
 						? 'Try the karaoke again — you keep the turn you already have'
-						: 'Take a turn now and strip the vocals — you keep your place in line while it processes'}
+						: 'Take a turn — strips the vocals first, about a minute. You keep your place in line.'}
 					onclick={() => onmake?.()}
 				>
 					<Icon name="sparkle" />
@@ -298,7 +303,7 @@
 					data-testid="song-add"
 					data-row-state={inQueue ? 'queued' : !processable ? 'unavailable' : undefined}
 					aria-label={actionLabel}
-					title={actionLabel}
+					title={processable ? actionLabel : `${actionLabel}. Search for the song to make karaoke.`}
 					aria-disabled={inQueue || !processable || undefined}
 					onclick={() => {
 						// The GUARD is what `disabled` used to do: an aria-disabled button still dispatches clicks, so without this

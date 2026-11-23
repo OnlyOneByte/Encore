@@ -14,6 +14,7 @@
 	} from '$lib/phrasing/process-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
+	import { pickAnotherName, removeTurnName, reorderName, tryAgainName } from '$lib/phrasing/row-action-names';
 	interface Props {
 		/** WHICH CARD THIS IS, decided by `queueCardKind` at the route and never re-derived here from `status` — the
 		 * readiness classifier is the only thing that may answer "can the rotation ever play this entry", and a
@@ -229,7 +230,7 @@
 						variant="ghost"
 						size="icon"
 						press="grab"
-						aria-label="Reorder — drag, or use arrow keys"
+						aria-label={reorderName(title, singerName, !!onremove)}
 						aria-keyshortcuts="ArrowUp ArrowDown"
 						aria-disabled={pending ? 'true' : undefined}
 						data-grip={gripId}
@@ -283,7 +284,8 @@
 							variant="outline"
 							size="icon"
 							press="accent2"
-							aria-label="remove from queue"
+							aria-label={removeTurnName(title)}
+							data-testid="queue-remove"
 							onclick={() => onremove?.()}><Icon name="close" /></Button
 						>
 					{/if}
@@ -320,6 +322,7 @@
 							size="tap"
 							variant="secondary"
 							data-testid="card-retry"
+							aria-label={tryAgainName(title)}
 							title="Make the karaoke again — you keep your spot"
 							disabled={retrying}
 							onclick={retry}>Try again</Button
@@ -331,6 +334,7 @@
 							size="tap"
 							variant="secondary"
 							data-testid="card-pick-another"
+							aria-label={pickAnotherName(title)}
 							title="Pick another song — you keep your spot"
 							disabled={retrying}
 							href={pickHref}>Pick another</Button

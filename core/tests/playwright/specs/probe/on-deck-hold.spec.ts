@@ -69,7 +69,7 @@ test('someone else`s drag stops under the On deck row, says why, and Theo`s card
 
 		const deck = theo.locator(ON_DECK);
 		await expect(deck).toBeVisible({ timeout: 10_000 });
-		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
+		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
 		await expect(deck).toContainText('−1');
 		await expect(tv.locator('.upnext')).toContainText('Theo');
 		await shoot('before', { tv, maya, theo, ana });
