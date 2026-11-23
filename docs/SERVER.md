@@ -173,7 +173,17 @@ Rotation lives in `src/lib/contract/queue/rotation.ts`, the policies in
   together. A copy PROMOTED when the seat's grace runs out does not start it; a play from a phone does. The timer only acts on the
   song still held, so a lifted hold leaves it nothing to do. **A TV that comes back INSIDE the hold shows its "Now
   singing" card silent for up to ~2 s:** only the TV that raised the notice sends `resume`, so the returning one waits
-  out the fallback, by design.
+  out the fallback, by design. Each timer is keyed by a hold NUMBER, not the entry: Try again lets one entry be held
+  twice inside one fallback window, and the first timer must not start the second hold early.
+- **The singer's way back from a held turn is owner-only.** `retry-play` ("Try again") is one of the owner ops in
+  `on-deck-ops.ts`, with no `-any` capability: another singer, the TV and a socket with no session are refused. It
+  clears `playFailed` and moves nothing, so the turn plays straight after the current song, ahead of whoever is On
+  deck (who gets #14's "going first" line), or at once in an idle room, through `reconcileOnReady`. `play-failed`
+  counts `playFailures`; at `MAX_PLAY_FAILURES` (2) the hub refuses `retry-play` and the phone offers only Pick
+  another. Its `replace-media` lifts the hold and starts the count again for a DIFFERENT song; the same song keeps
+  its count and is refused past the limit, like a Try again. On a HELD turn `replace-media` is owner-only too: its
+  `remove-any` gate applies only to a turn that is not held. Those two ops are the only client ops that clear
+  `playFailed`. Both fields are server-owned: a re-sent `add` keeps the server's values.
 - **`DEFAULT_QUEUE_ORDER` is what an unconfigured room does**, so changing it re-orders every existing room
   that never chose. An unknown or de-whitelisted id degrades to it rather than throwing.
 

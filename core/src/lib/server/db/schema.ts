@@ -117,6 +117,8 @@ export const queueEntries = sqliteTable(
 		deferred: integer('deferred', { mode: 'boolean' }).notNull().default(false),
 		// QueueEntry.playFailed: the TV could not play this turn, which holds its slot until the singer acts.
 		playFailed: integer('play_failed', { mode: 'boolean' }).notNull().default(false),
+		// QueueEntry.playFailures: two failures of one song and Try again is gone, across a restart too.
+		playFailures: integer('play_failures').notNull().default(0),
 		// Scopes the queue and its rotation to a room, so the write-behind sink and boot-hydrate both touch only THIS room's rows and two rooms hold independent queues.
 		roomId: text('room_id').notNull()
 	},

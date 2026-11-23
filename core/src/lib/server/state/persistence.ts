@@ -27,6 +27,7 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 								guideLevel: e.guideLevel ?? null,
 								deferred: e.deferred ?? false,
 								playFailed: e.playFailed ?? false,
+								playFailures: e.playFailures ?? 0,
 								roomId // stamped from the sink's bound room — in-memory entries carry no room field
 							}))
 						)

@@ -107,6 +107,9 @@ export interface QueueEntry {
 	/** The TV could not play this turn's song. The entry is back to `queued` and HOLDS its slot: the rotation skips it
 	 *  until the singer acts, so a machine failure costs nobody their place. Server-owned. */
 	playFailed?: boolean;
+	/** How many times the TV has failed THIS song in this turn. At two, Try again is refused and only Pick another is
+	 *  offered: a dead file tried a third time helps nobody. A new song (`replace-media`) starts again at 0. Server-owned. */
+	playFailures?: number;
 }
 
 export interface PlaybackState {

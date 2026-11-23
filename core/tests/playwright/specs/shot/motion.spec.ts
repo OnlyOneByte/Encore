@@ -632,7 +632,75 @@ function songFailed(toCard: boolean): Make {
 	};
 }
 
+/** "Your song didn't play" (proposal 11, PR 2) rising over the dock on Theo's Library tab, the moment the TV reports his
+ *  dead file: in his colour, with Try again and Pick another (`.rise-in`, --motion-base). Each run drains the room, takes
+ *  Theo's held turn off with the queue's ✕ so he can queue the song again, and opens a fresh page as Theo. */
+function songDidntPlay(width: number): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		return {
+			name: `phone-song-didnt-play-${width}`,
+			what: `Phone ${width}x844: "Your song didn’t play" rising over the dock on the Library tab as the TV fails Theo’s song, with Try again and Pick another (rise-in, --motion-base). The 0 ms frame is a seek artefact: in real time the sheet mounts once and starts at opacity 0 (rAF probe, #1047)`,
+			stepMs: 16,
+			scale: 1,
+			columns: 6,
+			open: async (opts) => {
+				if (!ph) {
+					// 36 s stems, so Maya's song is still on while each run opens Theo's page under load.
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					await readySong(world, ph.maya, 'caroline');
+					await readySong(world, ph.maya, 'believin');
+					const theoMedia = (await world.awaitDemoTrack('believin')).id;
+					// The room's screen (#990's seat), with Theo's file dead on it.
+					const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+					cleanup(() => ctx.close());
+					await ctx.addCookies([world.tvCookie]);
+					const tv = await ctx.newPage();
+					await tv.route(`**/*${theoMedia}*`, (r) => r.fulfill({ status: 404, body: '' }));
+					await tv.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				}
+				await openQueue(ph.theo);
+				const held = ph.theo.locator(SEL.queueRemove);
+				while ((await held.count()) > 0) {
+					await held.first().click();
+					await ph.theo.waitForTimeout(300);
+				}
+				await ph.theo.goto('/');
+				await mayaThenTheo(ph);
+				const page = await asSinger(browser, world, opts, ph.theo, width);
+				await page.goto('/');
+				await page.getByRole('link', { name: 'Library' }).click();
+				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await page.locator('.didnt-play').waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: '.didnt-play',
+			subject: '.didnt-play',
+			// The dock and the sheet over it.
+			stripClip: async () => ({ x: 0, y: 404, width, height: 440 }),
+			observe: (page) =>
+				page.evaluate(() => ({
+					sheet: document.querySelector('.didnt-play')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+					live: document.querySelector('[data-didnt-play-live]')?.textContent?.trim() ?? null,
+					youreUp: !!document.querySelector('.youre-up')
+				}))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'phone-song-didnt-play-390': songDidntPlay(390),
+	'phone-song-didnt-play-320': songDidntPlay(320),
 	'tv-copy-offline': tvCopyOffline(1920, 1080),
 	'tv-copy-offline-390': tvCopyOffline(390, 844),
 	'tv-copy-offline-320': tvCopyOffline(320, 568),

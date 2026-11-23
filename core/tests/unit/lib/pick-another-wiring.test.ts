@@ -21,8 +21,8 @@ test('in replace mode Sing swaps the turn, carrying the NEW song key, and never 
 });
 
 test('Pick another is offered on my own dead cards only', () => {
-	expect(queuePage).toContain(
-		"pickAnotherHref={card !== 'processing' && e.singerId === me?.id ? pickAnotherHref(e.id) : undefined}"
+	expect(queuePage).toMatch(
+		/pickAnotherHref=\{card !== 'processing' && e\.singerId === me\?\.id\s*\? pickAnotherHref\(resolve\('\/'\), e\.id\)\s*: undefined\}/
 	);
 });
 

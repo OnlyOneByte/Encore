@@ -13,6 +13,9 @@
 		/** The TV could not play this turn's song and the rotation HOLDS it: it takes no number, because it is not coming
 		 *  up, and the bubble carries a warning mark instead. Say why in `subtitle`. */
 		held?: boolean;
+		/** A held turn's way back, the singer's own only: Try again (absent once the song failed twice) and Pick another. */
+		onretry?: () => void;
+		pickAnotherHref?: string;
 		/** The singer is in the room but unreachable. Surfaced here because the room decides BY HAND whether
 		 * to skip an absent singer's turn, and without it there is nothing to say a decision is due. */
 		singerAway?: boolean;
@@ -51,6 +54,8 @@
 		mine = false,
 		up = false,
 		held = false,
+		onretry,
+		pickAnotherHref,
 		singerAway = false,
 		subtitle = '',
 		pending = null,
@@ -67,6 +72,7 @@
 		hold
 	}: Props = $props();
 
+	const withNext = $derived(held && !pending && (!!onretry || !!pickAnotherHref));
 	/** One expression for both unconfirmed states, so a pending MOVE cannot drift back into the add path's word. */
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 
@@ -94,7 +100,13 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class={['qrow', 'card', 'list-row', 'pop-in', { mine, up, pending, moving, shifted: shift !== 0 }]}
+			class={[
+				'qrow',
+				'card',
+				'list-row',
+				'pop-in',
+				{ mine, up, pending, moving, shifted: shift !== 0, 'with-next': withNext }
+			]}
 			data-hold={hold?.turn}
 			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-from:{hold?.dy ?? 0}px"
 		>
@@ -171,6 +183,19 @@
 					{/if}
 				</Item.Actions>
 			{/if}
+			{#if withNext}
+				<!-- The dead processing card's pair (ProcessingCard `.next`), in its own row because a guest has to read them. -->
+				<div class="next">
+					{#if onretry}
+						<Button size="tap" variant="secondary" data-testid="row-retry" onclick={onretry}>Try again</Button>
+					{/if}
+					{#if pickAnotherHref}
+						<Button size="tap" variant="secondary" data-testid="row-pick-another" href={pickAnotherHref}
+							>Pick another</Button
+						>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	{/snippet}
 </Item.Root>
@@ -222,6 +247,16 @@
 	}
 	.seq.held {
 		color: var(--warn);
+	}
+	/* A held row of mine wraps its two buttons onto a line of their own, the full width of the row. */
+	.qrow.with-next {
+		flex-wrap: wrap;
+	}
+	.next {
+		flex-basis: 100%;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
 	}
 	.up .seq {
 		background: var(--accent);

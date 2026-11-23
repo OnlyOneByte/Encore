@@ -1,6 +1,7 @@
-// Proposal 11, PR 1: a song that won't play never stalls the room. Maya is singing, Theo is next, Ana after him. Maya
-// taps skip and Theo's song fails one way or another; within the watchdog's 8 s the TV says whose song it was, Ana is
-// singing, and Theo's turn is still queued in the spot it held. Nothing new reaches anyone's phone.
+// Proposal 11: a song that won't play never stalls the room. Maya is singing, Theo is next, Ana after him. Maya taps
+// skip and Theo's song fails one way or another; within the watchdog's 8 s the TV says whose song it was, Ana is
+// singing, and Theo's turn is still queued in the spot it held. Theo's phone alone says "Your song didn't play" (PR 2),
+// and his Try again makes his song the next one.
 // The evidence run on main (encore/evidence/p11): a dead file was marked `done` like a song he sang, and a rejected
 // play() sat on "This song won't play" for the full 30 s.
 import { test, expect } from '../../world/fixtures';
@@ -9,7 +10,7 @@ import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome, openQueue, queueReady } from '../../world/actors';
 import { autoplayIsBlocked, requireActivationForPlayback } from '../../world/autoplay';
 import { serverPlayback } from './audio-probe-support';
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import type { QueueEntry } from '$lib/contract';
 
@@ -150,7 +151,7 @@ async function room(world: World, breakIt?: (tv: Page, theoMedia: string) => Pro
 
 async function skipMaya(
 	world: World,
-	{ maya, tv, ana, mayaId }: { maya: Page; tv: Page; ana: Page; mayaId: string | null }
+	{ maya, tv, ana, theo, mayaId }: { maya: Page; tv: Page; ana: Page; theo: Page; mayaId: string | null }
 ): Promise<{ t0: number; theoId: string }> {
 	const theoId = (await theoEntry(world.baseURL))!.id;
 	await sampleFrames(tv, {
@@ -159,6 +160,7 @@ async function skipMaya(
 		cardTheo: [SEL.stateNext, 'Theo']
 	});
 	await sampleFrames(ana, { youreUp: ['.youre-up', ''] });
+	await sampleFrames(theo, { didntPlay: ['[data-testid="song-didnt-play"]', ''] });
 	await recordStarts(tv);
 	await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 	const t0 = Date.now();
@@ -166,10 +168,28 @@ async function skipMaya(
 	return { t0, theoId };
 }
 
+/** Stills for the PR: one PNG per page, named `<step>-<page>.png` in the test's output folder. */
+type Shoot = (step: string, pages: Record<string, Page>) => Promise<unknown>;
+const shooter =
+	(testInfo: TestInfo): Shoot =>
+	(step, pages) =>
+		Promise.all(Object.entries(pages).map(([n, p]) => p.screenshot({ path: testInfo.outputPath(`${step}-${n}.png`) })));
+
 /** The moment the room moved on, and everything every screen and the server say about it. */
-async function expectMovedOn(world: World, r: Awaited<ReturnType<typeof room>>, theoId: string, t0: number) {
+async function expectMovedOn(
+	world: World,
+	r: Awaited<ReturnType<typeof room>>,
+	theoId: string,
+	t0: number,
+	shoot?: Shoot
+) {
 	const notice = r.tv.locator(SEL.stateError);
 	await expect(notice).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
+	if (shoot) {
+		await r.theo.getByTestId('song-didnt-play').waitFor();
+		await r.tv.waitForTimeout(800); // past the takeover's fade-in (--motion-slow), well inside the 4 s notice
+		await shoot('failed', { tv: r.tv, theo: r.theo, ana: r.ana });
+	}
 	await expect
 		.poll(async () => (await seen(r.tv)).notice?.at, { message: 'no frame painted the notice' })
 		.toBeDefined();
@@ -215,13 +235,59 @@ async function expectMovedOn(world: World, r: Awaited<ReturnType<typeof room>>, 
 	await expect
 		.poll(() => r.tv.locator(SEL.slotVisibleAudio).evaluate((a) => (a as HTMLAudioElement).currentTime))
 		.toBeGreaterThan(0.2);
-	// Other phones get no notice — and in this PR neither does Theo's.
-	for (const p of [r.maya, r.ana, r.theo])
+	// THEO'S PHONE SAYS SO (PR 2), in his colour, with both ways back; it came up with the failure, inside the 8 s.
+	const sheet = r.theo.getByTestId('song-didnt-play');
+	await expect(sheet).toBeVisible();
+	expect((await seen(r.theo)).didntPlay!.at - t0, 'Theo’s sheet within 8 s of his song coming up').toBeLessThan(10_000);
+	await expect(sheet).toContainText('Your song didn’t play');
+	await expect(sheet).toContainText(/believin/i);
+	await expect(sheet).toContainText('You keep your spot.');
+	await expect(sheet.getByTestId('didnt-play-retry')).toBeVisible();
+	await expect(sheet.getByTestId('didnt-play-pick')).toBeVisible();
+	await expect(r.theo.locator('.youre-up')).toHaveCount(0);
+	// Other phones get nothing new: the TV tells the room.
+	for (const p of [r.maya, r.ana]) {
+		await expect(p.getByTestId('song-didnt-play')).toHaveCount(0);
 		expect(await p.locator('body').innerText()).not.toMatch(/wouldn.t play|didn.t play/i);
+	}
 	return failedAfterMs;
 }
 
-test('a dead file: the TV says whose song it was at once, and Theo keeps his spot', async ({ world }) => {
+/** The server's own up-next (what the TV preloads), read over a probe socket like `serverSync`. */
+function serverUpNext(baseURL: string): Promise<string | null> {
+	return new Promise((resolve, reject) => {
+		const ws = new WebSocket(`${baseURL.replace(/^http/, 'ws')}/ws?role=probe`);
+		const timer = setTimeout(() => reject(new Error('no nowplaying:changed within 5 s')), 5_000);
+		ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
+		ws.onmessage = (ev: MessageEvent) => {
+			const e = JSON.parse(String(ev.data)) as { type: string; upNext?: { id: string } | null };
+			if (e.type !== 'nowplaying:changed') return;
+			clearTimeout(timer);
+			ws.close();
+			resolve(e.upNext?.id ?? null);
+		};
+	});
+}
+
+/** Theo taps Try again on his sheet: the hold lifts and his song is the next one, from the spot it kept. */
+async function tryAgain(world: World, r: Awaited<ReturnType<typeof room>>, theoId: string) {
+	await r.theo.getByTestId('didnt-play-retry').click();
+	await expect(r.theo.getByTestId('song-didnt-play')).toBeHidden();
+	await expect
+		.poll(async () => (await serverQueue(world.baseURL)).find((e) => e.id === theoId)?.playFailed)
+		.toBe(false);
+	await expect.poll(() => serverUpNext(world.baseURL), { message: 'Theo’s song is up next' }).toBe(theoId);
+	// His queue tab agrees: his row is numbered again, and crowned next.
+	await openQueue(r.theo);
+	const row = r.theo.locator(SEL.queueRow, { hasText: /believin/i });
+	await expect(row).not.toContainText('Didn’t play');
+	await expect(row).toHaveClass(/\bup\b/);
+	// Ana's song is cut short, and the room plays his next.
+	await r.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+}
+
+test('a dead file: the TV says whose song it was at once, and Theo keeps his spot', async ({ world }, testInfo) => {
+	const shoot = shooter(testInfo);
 	const worker = await startFakeWorker(world);
 	try {
 		const r = await room(world, (tv, id) =>
@@ -229,7 +295,7 @@ test('a dead file: the TV says whose song it was at once, and Theo keeps his spo
 		);
 		// A file that is already dead must never be announced as starting: no "Now singing · Theo" paints, not once.
 		const { t0, theoId } = await skipMaya(world, r);
-		const ms = await expectMovedOn(world, r, theoId, t0);
+		const ms = await expectMovedOn(world, r, theoId, t0, shoot);
 		expect(ms, 'a file error fails at once, without waiting out the watchdog').toBeLessThan(3_000);
 		// At most ONE frame (≤17 ms): a dead file that missed its pre-warm is cold-loaded, and the loading card can paint
 		// once before the 404 comes back. The review measured ~80 ms (the card plus the watchdog's first tick).
@@ -237,6 +303,40 @@ test('a dead file: the TV says whose song it was at once, and Theo keeps his spo
 			(await seen(r.tv)).cardTheo?.frames ?? 0,
 			'frames of "Now singing · Theo" for a dead file'
 		).toBeLessThanOrEqual(1);
+		// Try again plays it next; the file is still dead, so it fails a second time, and now only Pick another is left.
+		await tryAgain(world, r, theoId);
+		await expect(r.tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
+		await expect.poll(async () => (await theoEntry(world.baseURL))?.playFailures).toBe(2);
+		const sheet = r.theo.getByTestId('song-didnt-play');
+		await expect(sheet).toBeVisible();
+		await expect(sheet.getByTestId('didnt-play-retry')).toHaveCount(0);
+		await expect(sheet.getByTestId('didnt-play-pick')).toBeVisible();
+		const row = r.theo.locator(SEL.queueRow, { hasText: /believin/i });
+		await expect(row.getByTestId('row-retry')).toHaveCount(0);
+		await expect(row.getByTestId('row-pick-another')).toBeVisible();
+		await r.tv.waitForTimeout(800);
+		await shoot('failed-twice', { tv: r.tv, theo: r.theo });
+		const size = r.theo.viewportSize()!;
+		await r.theo.setViewportSize({ width: 320, height: 568 });
+		await shoot('failed-twice-320', { theo: r.theo });
+		await r.theo.setViewportSize(size);
+		// Pick another keeps his spot: the Sing tab in replace mode, and the song he picks takes the same turn.
+		await sheet.getByTestId('didnt-play-pick').click();
+		await r.theo.waitForURL((u) => u.pathname === '/' && u.searchParams.has('replace'));
+		await expect(r.theo).toHaveTitle('Pick another · Encore');
+		await expect(r.theo.getByTestId('song-didnt-play')).toHaveCount(0);
+		await r.theo.locator(SEL.search).fill('caroline');
+		// The ready one: its row's action is the plain add, which in replace mode swaps the turn's song.
+		await r.theo.locator(SEL.addTurn).first().click();
+		await r.theo.waitForURL((u) => u.pathname === '/queue');
+		await expect
+			.poll(async () => {
+				const e = await theoEntry(world.baseURL);
+				return (
+					e && { id: e.id, playFailed: e.playFailed, playFailures: e.playFailures, changed: e.mediaId !== r.theoMedia }
+				);
+			})
+			.toEqual({ id: theoId, playFailed: false, playFailures: 0, changed: true });
 	} finally {
 		await worker.stop();
 	}
@@ -255,6 +355,8 @@ test('a song that refuses to start: one quiet retry at 4 s, moved on at 8 s, and
 		expect(ms).toBeLessThan(10_000);
 		expect(r.warnings.filter((w) => w.includes('reloading it once'))).toHaveLength(1);
 		await expect(r.tv.locator(SEL.autoplayHint)).toBeHidden();
+		await tryAgain(world, r, theoId);
+		await expect.poll(() => current(world), { timeout: 10_000 }).toBe(theoId);
 	} finally {
 		await worker.stop();
 	}
@@ -267,6 +369,8 @@ test('a song that stalls mid-file: the reload does not save it, and the room mov
 		const { t0, theoId } = await skipMaya(world, r);
 		await expectMovedOn(world, r, theoId, t0);
 		expect(r.warnings.filter((w) => w.includes('reloading it once'))).toHaveLength(1);
+		await tryAgain(world, r, theoId);
+		await expect.poll(() => current(world), { timeout: 10_000 }).toBe(theoId);
 	} finally {
 		await worker.stop();
 	}
@@ -338,6 +442,10 @@ test('a failure on the last song gives way to the lobby, with the turn still hel
 		await expect(row).toContainText('Didn’t play');
 		await expect(row.locator('.seq .n')).toHaveCount(0);
 		await expect(row.locator(SEL.queueRemove)).toBeVisible();
+		// Both ways back, on his own row (PR 2), as on his sheet.
+		await expect(row.getByTestId('row-retry')).toBeVisible();
+		await expect(row.getByTestId('row-pick-another')).toBeVisible();
+		await expect(theo.getByTestId('song-didnt-play')).toBeVisible();
 		// And the TV agrees: it is waiting for a song, not about to play his.
 		await expect(tv.locator(SEL.lobby)).toBeVisible();
 		await expect(tv.locator(SEL.anyTransientState)).toHaveCount(0);
@@ -640,6 +748,117 @@ test('a second failure after a song that played out: also within 8 s of its song
 		await expect(tv.locator(SEL.stateError)).toContainText("Bo's song wouldn't play", { timeout: CAP_MS });
 		expect(Date.now() - boAt, 'from Bo’s song coming up to the notice').toBeLessThan(CAP_MS);
 		expect(warnings.filter((w) => w.includes('reloading it once'))).toHaveLength(2); // one each, never two for Bo
+	} finally {
+		await worker.stop();
+	}
+});
+
+type ProbeOp =
+	{ op: 'retry-play'; id: string } | { op: 'replace-media'; id: string; mediaId: string; keyShift: number };
+/** One queue op over a fresh socket opened IN `page`, so its cookies go with it: what the server answered. */
+function opFrom(page: Page, wsPath: string, op: ProbeOp): Promise<string> {
+	return page.evaluate(
+		({ wsPath, op }) =>
+			new Promise<string>((resolve) => {
+				const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}${wsPath}`);
+				const clientOpId = `probe-${Math.random().toString(36).slice(2)}`;
+				const t = setTimeout(() => resolve('timeout'), 4_000);
+				ws.onopen = () => {
+					ws.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
+					ws.send(JSON.stringify({ type: 'queue:command', command: { clientOpId, op } }));
+				};
+				ws.onmessage = (ev) => {
+					const e = JSON.parse(String(ev.data));
+					const done = (s: string) => (clearTimeout(t), ws.close(), resolve(s));
+					if (e.type === 'op:reject' && e.clientOpId === clientOpId) done(`reject: ${e.reason}`);
+					if (e.type === 'queue:patch' && e.patch?.causedBy === clientOpId) done('applied');
+				};
+			}),
+		{ wsPath, op }
+	);
+}
+/** The same from the test runner itself: no browser, no cookie. */
+function opCookieless(baseURL: string, op: ProbeOp): Promise<string> {
+	return new Promise((resolve) => {
+		const ws = new WebSocket(`${baseURL.replace(/^http/, 'ws')}/ws`);
+		const t = setTimeout(() => resolve('timeout'), 4_000);
+		ws.onopen = () => {
+			ws.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
+			ws.send(JSON.stringify({ type: 'queue:command', command: { clientOpId: 'probe-anon', op } }));
+		};
+		ws.onmessage = (ev: MessageEvent) => {
+			const e = JSON.parse(String(ev.data));
+			const done = (s: string) => (clearTimeout(t), ws.close(), resolve(s));
+			if (e.type === 'op:reject' && e.clientOpId === 'probe-anon') done(`reject: ${e.reason}`);
+			if (e.type === 'queue:patch' && e.patch?.causedBy === 'probe-anon') done('applied');
+		};
+	});
+}
+
+test('only Theo can lift his hold: Try again and Pick another from Ana, the TV or a cookieless socket are refused', async ({
+	world
+}) => {
+	// The #1047 reviews measured Ana lifting Theo's hold twice: by `retry-play` (r1), then by "picking" his own dead song
+	// for him with `replace-media` (r2). Both asked for a capability every singer has. Folds in reviews/pr-1047-r2-sec.
+	const worker = await startFakeWorker(world);
+	try {
+		const r = await room(world, (tv, id) =>
+			tv.route(`**/*${id}*`, (route) => route.fulfill({ status: 404, body: '' }))
+		);
+		const { theoId } = await skipMaya(world, r);
+		await expect(r.tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
+		await expect.poll(async () => (await theoEntry(world.baseURL))?.playFailed).toBe(true);
+		const retry: ProbeOp = { op: 'retry-play', id: theoId };
+		const sameSong: ProbeOp = { op: 'replace-media', id: theoId, mediaId: r.theoMedia, keyShift: 0 };
+		const anaSong = (await serverQueue(world.baseURL)).find((e) => e.status === 'playing')!.mediaId;
+		const otherSong: ProbeOp = { op: 'replace-media', id: theoId, mediaId: anaSong, keyShift: 0 };
+		for (const op of [retry, sameSong, otherSong]) {
+			expect(await opFrom(r.ana, '/ws', op), `Ana's ${op.op}`).toBe('reject: only the singer can change this entry');
+			expect(await opFrom(r.tv, '/ws?role=tv', op), `the TV's ${op.op}`).toBe('reject: join the room first');
+			expect(await opCookieless(world.baseURL, op), `a cookieless ${op.op}`).toBe('reject: join the room first');
+		}
+		expect(await theoEntry(world.baseURL)).toMatchObject({ mediaId: r.theoMedia, playFailed: true, playFailures: 1 });
+		await expect(r.theo.getByTestId('song-didnt-play')).toBeVisible();
+		// Theo's own is the one that lands.
+		expect(await opFrom(r.theo, '/ws', retry)).toBe('applied');
+		await expect.poll(async () => (await theoEntry(world.baseURL))?.playFailed).toBe(false);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('Try again goes ahead of whoever is On deck, and Bo is told "Theo’s going first"', async ({ world }) => {
+	// Proposal 11: the turn plays straight after the current song. Proposal 14: a singer who loses On deck through
+	// nobody's fault of theirs is told who goes first, on any tab.
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		const bo = await world.openPhone('Bo');
+		await readyId(world, maya, 'caroline');
+		const theoMedia = await readyId(world, maya, 'believin');
+		await readyId(world, maya, 'prayer');
+		await readyId(world, maya, 'bohemian');
+		const tv = await world.openTv();
+		await tv.route(`**/*${theoMedia}*`, (route) => route.fulfill({ status: 404, body: '' }));
+		await queueReady(maya, 'caroline');
+		await expect(tv.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
+		await queueReady(theo, 'believin');
+		await queueReady(ana, 'prayer');
+		await queueReady(bo, 'bohemian');
+		await expect(tv.locator(SEL.stateNext)).toBeHidden({ timeout: 10_000 });
+		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
+		// Ana sings next and Bo is On deck: the server's up-next says so.
+		const boId = await entryOf(world, 'Bo');
+		await expect.poll(() => serverUpNext(world.baseURL)).toBe(boId);
+		await theo.getByTestId('didnt-play-retry').click();
+		const theoId = (await theoEntry(world.baseURL))!.id;
+		await expect.poll(() => serverUpNext(world.baseURL)).toBe(theoId);
+		await expect(bo.getByText(/Theo’s going first/)).toBeVisible({ timeout: 8_000 });
+		// Only Bo lost On deck, so only Bo is told.
+		for (const p of [maya, ana, theo]) await expect(p.getByText(/going first/)).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}

@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { SINGER_COLORS, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
+	import { SINGER_COLORS, canRetryPlay, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
 	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
 	import { processStageLabel, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { room } from '$lib/stores/room';
@@ -15,7 +15,10 @@
 	import { buzzOnce, deckStep, NO_DECK, rearmBuzz, type DeckMemo } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
-	import { YOURE_UP, deckBumpNotice } from '$lib/phrasing/turn-phrasing';
+	import { didntPlayKey, didntPlayTurn } from '$lib/song-didnt-play';
+	import SongDidntPlay from '$lib/components/SongDidntPlay.svelte';
+	import { pickAnotherHref } from '$lib/process-and-queue';
+	import { YOURE_UP, YOUR_SONG_DIDNT_PLAY, deckBumpNotice } from '$lib/phrasing/turn-phrasing';
 	import { staleNotice } from '$lib/phrasing/stale-phrasing';
 	/* STATIC IMPORTS, where the drawer needed a dynamic one. The whole reason that `import()` existed was
 	   `vaul-svelte` + `bits-ui`, which /tv, /admin and /metrics downloaded and parsed while rendering no band at all
@@ -93,6 +96,22 @@
 		youreUp = null;
 	}
 
+	/* "YOUR SONG DIDN'T PLAY" (proposal 11) takes the same slot, on any tab, and only on the failed singer's phone. It
+	   stays until they act or close it; it goes by itself once the turn is no longer held (a Try again or a Pick another
+	   from /queue, or a remove). */
+	let didntPlay = $state<{ id: string; key: string; title: string; color: string; canRetry: boolean } | null>(null);
+	// Plain, not $state: the failures this phone has closed or acted on, by `didntPlayKey`, so only `sync` reads it.
+	const didntPlaySeen: string[] = [];
+	function closeDidntPlay() {
+		if (didntPlay) didntPlaySeen.push(didntPlay.key);
+		didntPlay = null;
+	}
+	function retryDidntPlay() {
+		const id = didntPlay?.id;
+		closeDidntPlay();
+		if (id) room.queue?.retryPlay(id);
+	}
+
 	onMount(() => {
 		const sync = () => {
 			me = room.me?.id ?? null;
@@ -128,6 +147,17 @@
 				clearTimeout(youreUpTimer);
 				youreUpTimer = setTimeout(dismissYoureUp, youreUpMs(room.settings.room));
 			}
+			const failed = didntPlayTurn(room.entries, me, didntPlaySeen);
+			// It REPLACES "You're up" in the markup's one slot: on a song that would not start, that sheet said the opposite.
+			if (failed)
+				didntPlay = {
+					id: failed.id,
+					key: didntPlayKey(failed),
+					title: room.titleOf(failed.mediaId),
+					color: room.singers.get(failed.singerId)?.color ?? SINGER_COLORS[0],
+					canRetry: canRetryPlay(failed)
+				};
+			else didntPlay = null;
 			/* PLAYABLE, not merely queued. `some(status === 'queued')` was wrong and it reproduced the exact defect the
 			   strip was built to remove. The app's one compound action queues a turn AND starts stem separation, so
 			   immediately afterwards there is a queued entry with no stems: the server's `play` handler finds no
@@ -353,17 +383,19 @@
 	   both can appear at once: a restart or key change that named a song that had gone gets its notice in the same
 	   moment it becomes that phone's turn (a skip there says nothing, IN-02). The toaster rides --dock-h plus this, so
 	   it clears the sheet by the same gap the sheet keeps above the dock. */
-	let youreUpH = $state(0);
+	let sheetH = $state(0);
 	/* THE STACK HOLDS UNTIL BOTH ARE GONE. The sheet leaves at the TV's 2.5 s and the toast lives 4 s, so dropping the
 	   offset with the sheet dropped the toast ~143 px in one frame. Once the two have been up together, the offset
-	   stays until the toast has closed too, so the toast never moves while it is on screen. */
+	   stays until the toast has closed too, so the toast never moves while it is on screen. "Your song didn't play"
+	   STACKS FOR AS LONG AS IT IS UP: it stays until the singer acts, so any toast in that time would land on it. */
 	let transportToastOpen = $state(false);
 	let stacked = $state(false);
 	let stackH = 0;
 	$effect(() => {
-		if (youreUp && youreUpH) stackH = youreUpH;
-		if (youreUp && transportToastOpen) stacked = true;
-		else if (!youreUp && !transportToastOpen) stacked = false;
+		const sheetUp = !!youreUp || !!didntPlay;
+		if (sheetUp && sheetH) stackH = sheetH;
+		if (didntPlay || (youreUp && transportToastOpen)) stacked = true;
+		else if (!sheetUp && !transportToastOpen) stacked = false;
 	});
 	$effect(() => {
 		if (!stacked || !stackH) return;
@@ -493,8 +525,22 @@
 		<song>" and not "…, OK": the sheet's button sits outside it, and the sheet's own copy of the words is hidden from
 		assistive tech so they are not read twice. -->
 	<p class="vh" role="status" data-youre-up-live>{youreUp ? `${YOURE_UP}, ${youreUp.title}` : ''}</p>
-	{#if youreUp}
-		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={youreUpH} />
+	<p class="vh" role="status" data-didnt-play-live>
+		{didntPlay ? `${YOUR_SONG_DIDNT_PLAY}, ${didntPlay.title}` : ''}
+	</p>
+	<!-- One slot. A failed song's sheet wins it: it is waiting on the singer, where "You're up" only says hello. -->
+	{#if didntPlay}
+		<SongDidntPlay
+			title={didntPlay.title}
+			singerColor={didntPlay.color}
+			onretry={didntPlay.canRetry ? retryDidntPlay : undefined}
+			pickAnotherHref={pickAnotherHref(resolve('/'), didntPlay.id)}
+			onpick={closeDidntPlay}
+			ondismiss={closeDidntPlay}
+			bind:height={sheetH}
+		/>
+	{:else if youreUp}
+		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={sheetH} />
 	{/if}
 {/if}
 

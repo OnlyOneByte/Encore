@@ -11,7 +11,7 @@ import type {
 	Ordering,
 	QueueOp
 } from '../../contract';
-import { singHistoryFrom } from '../../contract';
+import { canRetryPlay, singHistoryFrom } from '../../contract';
 import type { AuthoritativeState } from '../state/store';
 import { can, type Capability } from '../capabilities';
 import { queueEntries } from '../db/schema';
@@ -112,6 +112,9 @@ function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: Hub
 	if (!target) return `unknown entry: ${op.id}`;
 	if (op.op === 'move-to-index' && !Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
 	if (op.op === 'replace-media') {
+		// A HELD turn's swap lifts the hold, so it is the singer's own Pick another, like their Try again (on-deck-ops.ts):
+		// `remove-any` must not let anyone else spend it or push the turn ahead of whoever is On deck (#1047 r2).
+		if (target.playFailed && target.singerId !== deps.actorSingerId) return 'only the singer can change this entry';
 		if (!deps.mediaById.has(op.mediaId)) return `unknown media: ${op.mediaId}`;
 		// `applyOp` would no-op anyway; refused so the phone's optimistic copy is rolled back rather than kept.
 		if (target.status !== 'queued') return 'only a waiting turn can change song';
@@ -119,6 +122,9 @@ function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: Hub
 		if (op.keyShift === undefined) return 'missing keyShift';
 		const prefs = entryPrefsRefusal({ keyShift: op.keyShift });
 		if (prefs) return prefs;
+		// The SAME song again is a Try again, not a new chance: it keeps its failure count, so it is held to the same limit.
+		if (op.mediaId === target.mediaId && target.playFailed && !canRetryPlay(target))
+			return 'this song failed twice; pick another';
 	}
 	if (target.singerId !== deps.actorSingerId) {
 		const gate = ENTRY_OP_GATE[op.op];
@@ -183,6 +189,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			return entryOpRefusal(op, deps);
 		case 'set-entry-prefs':
 		case 'not-yet':
+		case 'retry-play':
 			return onDeckOpRefusal(op, deps);
 		case 'status':
 			// SERVER-OWNED: only player.ts calls applyQueueOp directly for a status change. From a client it
@@ -240,8 +247,8 @@ export function handleQueueCommand(
 	// Re-stamp addedAt from the room's monotonic clock: every queue-order policy ranks singers by it, so
 	// a client-supplied stamp could jump the queue. `deferred` ("Not yet" spent) is server-owned the same way: a
 	// client-minted one is dropped rather than trusted, and a re-add of a live id (the optimistic echo) keeps the
-	// server's own value, so re-sending an add cannot buy a spent "Not yet" back. `playFailed` is the TV's verdict, kept
-	// by the same rule: a re-sent add can neither lift a held turn nor mint one.
+	// server's own value, so re-sending an add cannot buy a spent "Not yet" back. `playFailed` and `playFailures` are the
+	// TV's verdict, kept by the same rule: a re-sent add can neither lift a held turn, mint one, nor buy back a Try again.
 	let op: QueueOp = cmd.op;
 	if (op.op === 'add') {
 		const { entry } = op;
@@ -252,6 +259,7 @@ export function handleQueueCommand(
 				...entry,
 				deferred: existing?.deferred,
 				playFailed: existing?.playFailed,
+				playFailures: existing?.playFailures,
 				addedAt: deps.state.nextAddedAt()
 			}
 		};

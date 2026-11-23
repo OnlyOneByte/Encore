@@ -19,3 +19,7 @@ export function deckBumpNotice(onDeck: string, youreNext: boolean): string {
 export const YOURE_UP = 'You’re up';
 /** A turn the TV could not play, held in its slot until the singer acts (proposal 11). */
 export const DIDNT_PLAY = 'Didn’t play';
+/** The singer's own sheet for that turn, on any tab (proposal 11). */
+export const YOUR_SONG_DIDNT_PLAY = 'Your song didn’t play';
+/** Under its buttons: the turn is held, not lost. */
+export const KEEP_YOUR_SPOT = 'You keep your spot.';

@@ -106,7 +106,10 @@ export function reconcileOnReady(deps: HubDeps): void {
  * TV's watchdog does not count it, and keyed on the ROOM's state so two rooms never share one. Lifted by the TV's
  * `resume` telemetry, or by anyone's play/pause/skip, which outranks it.
  */
-const heldForNotice = new WeakMap<object, string>();
+const heldForNotice = new WeakMap<object, { id: string; hold: number }>();
+/** Numbers every hold, so a fallback timer only ever starts the hold that armed it. Keyed by entry it could not: Try
+ *  again lets the SAME entry be held twice inside one fallback window, and the first timer would start the second early. */
+let holdCount = 0;
 /** Past the notice, how long the server waits for the TV's `resume` before starting the song itself: a TV that lost
  *  the frame (a reload, a socket drop) must not leave the room paused for good. A released hold leaves its timer to find
  *  nothing held. A TV that reconnects INSIDE the hold shows its "Now singing" card silent until this fires (at most
@@ -119,7 +122,7 @@ const fallbackDue = new WeakSet<object>();
 /** The held song starts: by the TV's `resume`, or by the fallback. Only the song that was held, only once. */
 function startHeld(deps: HubDeps, id: string): void {
 	const { state } = deps;
-	if (heldForNotice.get(state) !== id || state.playback.currentEntryId !== id) return;
+	if (heldForNotice.get(state)?.id !== id || state.playback.currentEntryId !== id) return;
 	heldForNotice.delete(state);
 	fallbackDue.delete(state);
 	state.setPlayback({ isPlaying: true });
@@ -127,16 +130,17 @@ function startHeld(deps: HubDeps, id: string): void {
 }
 
 /** The fallback's own rule: start the held song only where a TV can play it. Absent `tvConnected` reads as one. */
-function fallBack(deps: HubDeps, id: string): void {
-	if (heldForNotice.get(deps.state) !== id) return;
+function fallBack(deps: HubDeps, hold: number): void {
+	const held = heldForNotice.get(deps.state);
+	if (held?.hold !== hold) return;
 	if (deps.tvConnected?.() === false) fallbackDue.add(deps.state);
-	else startHeld(deps, id);
+	else startHeld(deps, held.id);
 }
 
 /** A TV said hello. If the hold outlived its fallback with no TV to play it, this TV is the one: start it now. */
 export function onTvHello(deps: HubDeps): void {
-	const id = heldForNotice.get(deps.state);
-	if (id && fallbackDue.has(deps.state)) startHeld(deps, id);
+	const held = heldForNotice.get(deps.state);
+	if (held && fallbackDue.has(deps.state)) startHeld(deps, held.id);
 }
 
 /** Advance to the next playable entry (held-slot aware). Returns the new current (or null). A FAILED song is not
@@ -156,9 +160,9 @@ function advance(deps: HubDeps, outcome: 'done' | 'failed' = 'done'): QueueEntry
 	heldForNotice.delete(state);
 	fallbackDue.delete(state);
 	if (hold) {
-		const id = next.id;
-		heldForNotice.set(state, id);
-		setTimeout(() => fallBack(deps, id), HOLD_FALLBACK_MS);
+		const n = ++holdCount;
+		heldForNotice.set(state, { id: next.id, hold: n });
+		setTimeout(() => fallBack(deps, n), HOLD_FALLBACK_MS);
 	}
 	state.setPlayback({
 		...(next ? songStart(next) : EPHEMERAL_RESET),

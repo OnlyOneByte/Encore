@@ -137,6 +137,10 @@ export class QueueStore {
 	replaceMedia(id: string, mediaId: string, keyShift: number): void {
 		this.#optimistic({ op: 'replace-media', id, mediaId, keyShift });
 	}
+	/** "Try again": lift MY held turn, so the song the TV could not play is next again, in the same spot. */
+	retryPlay(id: string): void {
+		this.#optimistic({ op: 'retry-play', id });
+	}
 
 	/** The on-deck card's key and guide for one of MY entries. Absolute, like the `key` command. */
 	setEntryPrefs(id: string, keyShift: number, guideLevel: number | null): void {
