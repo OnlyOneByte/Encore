@@ -65,6 +65,7 @@ const EXPECTED = [
 	'MAX_LYRICS_LINES_BEFORE',
 	'MAX_LYRICS_SCALE_PCT',
 	'MAX_MEASURABLE_LUFS',
+	'MAX_PLAY_FAILURES',
 	'MAX_PRESENCE_GRACE_MINUTES',
 	'MAX_PROCESSES_PER_SINGER_CEILING',
 	'MAX_SONG_INTRO_MS',
@@ -119,6 +120,7 @@ const EXPECTED = [
 	// names, so the palette's copies are gone and `colors.ts` — which already owns hex parsing and hue maths —
 	// exports the survivors. `canonicalHex` also replaced four hand-inlined parse-then-re-emit sites inside
 	// colors.ts itself, so nothing spells that pair out any more.
+	'canRetryPlay',
 	'canonicalHex',
 	'chosenCandidate',
 	'clampDays',

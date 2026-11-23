@@ -13,6 +13,7 @@
 	import { navigating } from '$app/state';
 	import {
 		SINGER_COLORS,
+		canRetryPlay,
 		songDisplay,
 		isPlayable,
 		hasGuidingTrack,
@@ -30,7 +31,7 @@
 	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import { resolve } from '$app/paths';
-	import { REPLACE_PARAM } from '$lib/process-and-queue';
+	import { pickAnotherHref } from '$lib/process-and-queue';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -764,9 +765,6 @@
 		return () => window.removeEventListener('scroll', release);
 	});
 
-	/** "Pick another, keep your spot": search on the Sing tab, where the chosen song replaces this turn's. */
-	const pickAnotherHref = (entryId: string) => `${resolve('/')}?${REPLACE_PARAM}=${encodeURIComponent(entryId)}`;
-
 	const mediaTitleOf = (id: string) => songDisplay(mediaCatalog.get(id)).title || 'Untitled';
 	// The moved block calls this name; home spelled it `mediaTitle`.
 	const mediaTitle = mediaTitleOf;
@@ -977,7 +975,9 @@
 							noMaker={noMaker}
 							pending={pendingKind.get(e.id) ?? null}
 							onretry={card !== 'processing' ? () => retryKaraoke(e.mediaId) : undefined}
-							pickAnotherHref={card !== 'processing' && e.singerId === me?.id ? pickAnotherHref(e.id) : undefined}
+							pickAnotherHref={card !== 'processing' && e.singerId === me?.id
+								? pickAnotherHref(resolve('/'), e.id)
+								: undefined}
 							onremove={e.singerId === me?.id ? () => store?.removeEntry(e.id) : undefined}
 							grip={gripsVisible && e.id !== pinnedId}
 							gripId={e.id}
@@ -995,6 +995,8 @@
 						<QueueRow
 							seq={seqs[i]!}
 							held={!!e.playFailed}
+							onretry={e.singerId === me?.id && canRetryPlay(e) ? () => store?.retryPlay(e.id) : undefined}
+							pickAnotherHref={e.playFailed && e.singerId === me?.id ? pickAnotherHref(resolve('/'), e.id) : undefined}
 							title={mediaTitleOf(e.mediaId)}
 							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 							singerColor={s?.color ?? SINGER_COLORS[0]}

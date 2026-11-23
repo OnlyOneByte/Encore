@@ -1,13 +1,14 @@
-// The two entry ops the on-deck card sends. OWNER ONLY, unlike `remove`/`move`, which have an `-any` capability:
-// a preset is the singer's own voice, and "Not yet" spends the singer's own turn — nobody else may do either.
+// The singer's own entry ops: the two the on-deck card sends, and "Try again" on a held turn (proposal 11). OWNER ONLY,
+// unlike `remove`/`move`, which have an `-any` capability: a preset is the singer's own voice, "Not yet" spends the
+// singer's own turn, and Try again spends the singer's one retry of a song that would not play. Nobody else may.
 // Values are REJECTED, never clamped: a server-side rewrite would desync the sender's optimistic copy.
 // "Once per entry" fences THIS op only. The owner can still `move-to-index` their own entry anywhere, which is fine
 // on a trusted LAN; `deferred` itself is server-owned, and the hub strips it from a client add.
 
-import { MAX_KEY_SHIFT, clampGuideLevel, type QueueOp } from '../../contract';
+import { MAX_KEY_SHIFT, canRetryPlay, clampGuideLevel, type QueueOp } from '../../contract';
 import type { HubDeps } from './hub';
 
-export type OnDeckOp = Extract<QueueOp, { op: 'set-entry-prefs' | 'not-yet' }>;
+export type OnDeckOp = Extract<QueueOp, { op: 'set-entry-prefs' | 'not-yet' | 'retry-play' }>;
 
 /** Shared with the `add` arm, which may carry a remembered key. `undefined` is "no preset" and always valid. */
 export function entryPrefsRefusal(p: { keyShift?: unknown; guideLevel?: unknown }): string | null {
@@ -33,6 +34,12 @@ export function onDeckOpRefusal(op: OnDeckOp, deps: HubDeps): string | null {
 		// Both REQUIRED here: the op is absolute, and an absent field would read as "reset" on apply.
 		if (op.keyShift === undefined || op.guideLevel === undefined) return 'missing keyShift or guideLevel';
 		return entryPrefsRefusal(op);
+	}
+	if (op.op === 'retry-play') {
+		if (!target.playFailed) return 'this turn is not held';
+		// Moves nothing: the turn's slot was always ahead, so it plays straight after the current song, ahead of whoever
+		// is On deck, who is told so (`deckStep`'s bump notice).
+		return canRetryPlay(target) ? null : 'this song failed twice; pick another';
 	}
 	if (target.deferred) return 'not yet was already used for this song';
 	const queued = deps.state.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);

@@ -22,7 +22,19 @@ export type QueueOp =
 	| { op: 'replace-media'; id: string; mediaId: string; keyShift: number }
 	// SERVER-OWNED, like `status`: the TV reported the playing song failed. Back to `queued` in the SAME slot, held.
 	| { op: 'play-failed'; id: string }
+	// "Try again" (OWNER ONLY): lift a held turn so its song plays next. Nothing moves: the turn's slot is already
+	// earlier than anyone waiting, which is why it was held there.
+	| { op: 'retry-play'; id: string }
 	| { op: 'status'; id: string; status: EntryStatus };
+
+/** A song the TV failed this many times in one turn gets no Try again: only Pick another. SHARED so the phone offers
+ *  exactly what the hub accepts. */
+export const MAX_PLAY_FAILURES = 2;
+
+/** Can the singer Try again on this turn? Only a held one, and only until its song has failed `MAX_PLAY_FAILURES` times. */
+export function canRetryPlay(e: Pick<QueueEntry, 'playFailed' | 'playFailures'>): boolean {
+	return !!e.playFailed && (e.playFailures ?? 0) < MAX_PLAY_FAILURES;
+}
 
 export interface ClientCommand {
 	clientOpId: string; // ULID — idempotency + reject routing
@@ -63,10 +75,19 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			next = entries.map((e) => (e.id === op.id ? { ...e, rotationSeq: op.toIdx } : e));
 			break;
 		case 'replace-media':
-			// A QUEUED turn only: the playing song's media is what the TV is decoding.
+			// A QUEUED turn only: the playing song's media is what the TV is decoding. A new song is a new chance, so a
+			// turn held for a song the TV could not play is lifted and its failure count starts again. The SAME song is not
+			// a new chance: it keeps its count, so picking it again is a Try again under the same limit (the hub's rule).
 			next = entries.map((e) =>
 				e.id === op.id && e.status === 'queued'
-					? { ...e, mediaId: op.mediaId, keyShift: op.keyShift, guideLevel: null }
+					? {
+							...e,
+							mediaId: op.mediaId,
+							keyShift: op.keyShift,
+							guideLevel: null,
+							playFailed: false,
+							playFailures: op.mediaId === e.mediaId ? e.playFailures : 0
+						}
 					: e
 			);
 			break;
@@ -74,7 +95,14 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			next = entries.map((e) => (e.id === op.id ? { ...e, status: op.status } : e));
 			break;
 		case 'play-failed':
-			next = entries.map((e) => (e.id === op.id ? { ...e, status: 'queued' as const, playFailed: true } : e));
+			next = entries.map((e) =>
+				e.id === op.id
+					? { ...e, status: 'queued' as const, playFailed: true, playFailures: (e.playFailures ?? 0) + 1 }
+					: e
+			);
+			break;
+		case 'retry-play':
+			next = entries.map((e) => (e.id === op.id ? { ...e, playFailed: false } : e));
 			break;
 		case 'set-entry-prefs':
 			next = entries.map((e) => (e.id === op.id ? { ...e, keyShift: op.keyShift, guideLevel: op.guideLevel } : e));

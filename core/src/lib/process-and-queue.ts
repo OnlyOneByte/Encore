@@ -5,6 +5,10 @@
 /** `/?replace=<entryId>`: the Sing tab in "pick another" mode, where the queue step swaps that turn's song instead of
  * adding a turn, so a singer whose song could not be made keeps their spot. */
 export const REPLACE_PARAM = 'replace';
+/** The link to that mode for one turn. `home` is the caller's `resolve('/')`: this module is shared with the server and
+ *  the probes, so it cannot import `$app/paths` itself. */
+export const pickAnotherHref = (home: string, entryId: string) =>
+	`${home}?${REPLACE_PARAM}=${encodeURIComponent(entryId)}`;
 
 export interface ProcessAndQueueSteps {
 	/** The song tapped. A second Sing on it while its process is still in flight is ignored: one turn per tap. */

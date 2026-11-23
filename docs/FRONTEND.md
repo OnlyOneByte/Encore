@@ -1847,6 +1847,15 @@ fires on the turn's first PLAYING frame, which puts it beside the TV's card. A t
 cannot start the song spends the latch: the song is then the problem, and the watchdog fails it. There is no "won't play"
 overlay: a failure the room can do nothing about is moved past, not displayed.
 
+**The failed singer's phone, and only theirs, says so.** The root layout shows `SongDidntPlay` ("Your song didn't play",
+the title, Try again and Pick another, "You keep your spot.") in the "You're up" slot, on any tab, and it replaces
+"You're up" when both would show. `didntPlayTurn` (`$lib/song-didnt-play`) picks MY earliest held turn whose failure
+this page has not closed; it is not edge-triggered, so a phone that slept through the failure, or reloads, still
+hears about a turn that is waiting on it. A second failure of the same song is a new key and brings the sheet back,
+with Pick another alone (`canRetryPlay`). It has no timer: it stays until the singer acts or closes it, and toasts
+stack above it for as long as it is up. The held /queue row carries the same two buttons on the owner's phone; other
+phones see "Didn't play" with no buttons, and nothing else.
+
 ### The TV type floor
 
 `src/routes/tv/+page.svelte` declares `font-size` on `:global(:root)`, and both halves of that are
