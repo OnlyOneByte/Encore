@@ -1,13 +1,151 @@
 // The host speed page: pick to ready as a multiple of song length, per machine, and what went wrong.
+// Pick-to-ready cases run through the real JobRepository → AttemptLedger → finishedSince path, because the route
+// reads sealed rows only and an in-flight step is visible solely as a missing row.
 import { describe, expect, it } from 'bun:test';
 import type { JobAttempt, JobType } from '$lib/contract';
-import { attemptsCsv, classifyError, failures, perDevice, readySongs, speed } from '$lib/server/jobs/metrics';
+import { attemptsCsv, classifyError, e2e, failures, perDevice, readySongs, speed } from '$lib/server/jobs/metrics';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { migratedDb } from '$lib/server/db/test-db';
 
 const T0 = 1_700_000_000_000;
 const S = 1_000;
+const at = (sec: number) => T0 + sec * S;
+
+interface Machine {
+	worker?: string;
+	device?: string;
+	threads?: number;
+	audioSec?: number | null;
+}
+
+function ledger() {
+	const db = migratedDb();
+	const attempts = new AttemptLedger(db);
+	const jobs = new JobRepository(db, attempts);
+	/** One step: queued at q, started at s, then sealed at e as `end` (or left running). */
+	const step = (
+		media: string,
+		type: JobType,
+		pid: string,
+		[q, s, e]: [number, number, number],
+		end: 'ready' | 'failed' | 'running' = 'ready',
+		m: Machine = {}
+	) => {
+		const job = jobs.enqueue(media, type, 0, at(q), pid);
+		const facts = {
+			device: m.device ?? 'mps',
+			threads: m.threads ?? 10,
+			audioSec: m.audioSec === undefined ? 200 : m.audioSec
+		};
+		jobs.assign(job.id, m.worker ?? 'mac', null, at(q), facts);
+		jobs.accept(job.id, null, at(s));
+		if (end === 'ready') jobs.complete(job.id, at(e));
+		if (end === 'failed') jobs.fail(job.id, 'instrumental measures as digital silence (x)', at(e));
+		return job;
+	};
+	/** fetch 0–10 s, stems 15–75 s, align 80–100 s: 100 s for a 200 s song, so 0.5x. */
+	const pick = (media: string, pid: string, m: Machine = {}) => {
+		step(media, 'fetch', pid, [0, 0, 10], 'ready', m);
+		step(media, 'stems', pid, [10, 15, 75], 'ready', m);
+		step(media, 'align', pid, [75, 80, 100], 'ready', m);
+	};
+	return {
+		jobs,
+		step,
+		pick,
+		read: () => readySongs(attempts.finishedSince(0)),
+		sealed: () => attempts.finishedSince(0)
+	};
+}
+
+describe('pick to ready counts a song only once its chain reached a ready align', () => {
+	it('reads a whole pick as a multiple of its length, split by step', () => {
+		const l = ledger();
+		l.pick('m1', 'p1');
+		const [s] = l.read().songs;
+		expect(s!.multiple).toBeCloseTo(0.5);
+		expect([s!.fetchMs, s!.stemsMs, s!.alignMs, s!.waitMs]).toEqual([10 * S, 60 * S, 20 * S, 10 * S]);
+	});
+
+	it('leaves out a song whose stems are still running', () => {
+		const l = ledger();
+		l.step('m1', 'fetch', 'p1', [0, 0, 10]);
+		l.step('m1', 'stems', 'p1', [10, 15, 0], 'running');
+		expect(l.read().songs).toEqual([]);
+		expect(e2e(l.sealed()).n).toBe(0);
+	});
+
+	it('leaves out a song whose align is still running, here and in "From request to ready to sing"', () => {
+		const l = ledger();
+		l.step('m1', 'fetch', 'p1', [0, 0, 10]);
+		l.step('m1', 'stems', 'p1', [10, 15, 75]);
+		l.step('m1', 'align', 'p1', [75, 80, 0], 'running');
+		expect(l.read().songs).toEqual([]);
+		expect(e2e(l.sealed()).n).toBe(0);
+	});
+
+	it('never counts a lyrics-only re-align, such as the boot backfill', () => {
+		const l = ledger();
+		l.step('m1', 'align', 'p-backfill', [0, 0, 20]);
+		expect(l.read().songs).toEqual([]);
+		expect(e2e(l.sealed()).n).toBe(0);
+	});
+
+	it('leaves out a song whose stems failed, including a refused silent instrumental', () => {
+		const l = ledger();
+		l.pick('m1', 'p1');
+		l.step('m2', 'fetch', 'p2', [0, 0, 10]);
+		l.step('m2', 'stems', 'p2', [10, 15, 75], 'failed');
+		expect(l.read().songs.map((s) => s.processingId)).toEqual(['p1']);
+	});
+
+	it('counts a retried song with its retry time, since the singer waited through it', () => {
+		const l = ledger();
+		l.step('m1', 'fetch', 'p1', [0, 0, 10]);
+		const stems = l.step('m1', 'stems', 'p1', [10, 15, 0], 'running');
+		l.jobs.requeue(stems.id, 1, at(40)); // the worker was lost
+		l.jobs.assign(stems.id, 'mac', null, at(40), { device: 'mps', threads: 10, audioSec: 200 });
+		l.jobs.accept(stems.id, null, at(45));
+		l.jobs.complete(stems.id, at(105));
+		l.step('m1', 'align', 'p1', [105, 110, 130]);
+		const [s] = l.read().songs;
+		expect(s!.totalMs).toBe(130 * S);
+		expect(s!.stemsMs).toBe(60 * S); // the attempt that made it, not the abandoned one
+		expect(e2e(l.sealed()).n).toBe(1);
+	});
+
+	it('says how many ready songs had no known length instead of dropping them silently', () => {
+		const l = ledger();
+		l.pick('m1', 'p1');
+		l.pick('m2', 'p2', { audioSec: null });
+		const r = l.read();
+		expect([r.songs.length, r.noLength, r.badClock]).toEqual([1, 1, 0]);
+	});
+
+	it('drops a song whose clock jumped back rather than ranking it 0.00x', () => {
+		const l = ledger();
+		l.step('m1', 'stems', 'p1', [100, 100, 100]);
+		l.step('m1', 'align', 'p1', [100, 100, 100]);
+		const r = l.read();
+		expect([r.songs.length, r.noLength, r.badClock]).toEqual([0, 0, 1]);
+		expect(e2e(l.sealed()).n).toBe(0);
+	});
+
+	it('groups by worker, device and threads, fastest first, with the stems worker setting the pace', () => {
+		const l = ledger();
+		const pc = { worker: 'pc', device: 'cpu', threads: 16, audioSec: 100 };
+		l.pick('a', 'pa', pc);
+		l.pick('b', 'pb');
+		l.pick('c', 'pc', pc);
+		const { songs } = l.read();
+		expect(perDevice(songs).map((r) => [r.workerId, r.n, r.p50Multiple])).toEqual([
+			['mac', 1, 0.5],
+			['pc', 2, 1]
+		]);
+		expect(speed(songs).p50AudioSec).toBe(100);
+	});
+});
 
 let seq = 0;
 function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
@@ -16,7 +154,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		jobId: 'j1',
 		mediaId: 'm1',
 		processingId: 'p1',
-		jobType: 'stems' as JobType,
+		jobType: 'stems',
 		attempt: 1,
 		workerId: 'mac',
 		enqueuedAt: T0,
@@ -39,81 +177,6 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		...over
 	};
 }
-
-/** fetch 0–10 s, stems 15–75 s, align 80–100 s on a 200 s song: 100 s in all, so 0.5x. */
-function song(p: string, over: Partial<JobAttempt> = {}): JobAttempt[] {
-	const base = { processingId: p, mediaId: `m-${p}`, ...over };
-	return [
-		attempt({ ...base, jobId: `${p}-f`, jobType: 'fetch', enqueuedAt: T0, startedAt: T0, finishedAt: T0 + 10 * S }),
-		attempt({
-			...base,
-			jobId: `${p}-s`,
-			jobType: 'stems',
-			enqueuedAt: T0 + 10 * S,
-			startedAt: T0 + 15 * S,
-			finishedAt: T0 + 75 * S
-		}),
-		attempt({
-			...base,
-			jobId: `${p}-a`,
-			jobType: 'align',
-			enqueuedAt: T0 + 75 * S,
-			startedAt: T0 + 80 * S,
-			finishedAt: T0 + 100 * S
-		})
-	];
-}
-
-describe('pick to ready counts only songs that reached ready', () => {
-	it('reads a whole song as a multiple of its length, split by step', () => {
-		const [s] = readySongs(song('p1'));
-		expect(s!.multiple).toBeCloseTo(0.5);
-		expect([s!.fetchMs, s!.stemsMs, s!.alignMs, s!.waitMs]).toEqual([10 * S, 60 * S, 20 * S, 10 * S]);
-	});
-
-	it('leaves out a song whose stems failed, including a refused silent instrumental', () => {
-		const failed = song('p2').map((a) =>
-			a.jobType === 'stems'
-				? { ...a, outcome: 'failed' as const, error: 'instrumental measures as digital silence (x)' }
-				: a
-		);
-		expect(readySongs([...song('p1'), ...failed]).map((s) => s.processingId)).toEqual(['p1']);
-	});
-
-	it('counts a retried song with its retry time, since the singer waited through it', () => {
-		const [f, st, al] = song('p3');
-		const lost = { ...st!, outcome: 'abandoned' as const, finishedAt: T0 + 40 * S };
-		const retry = {
-			...st!,
-			id: 'retry',
-			attempt: 2,
-			enqueuedAt: T0 + 40 * S,
-			startedAt: T0 + 45 * S,
-			finishedAt: T0 + 105 * S
-		};
-		const late = { ...al!, enqueuedAt: T0 + 105 * S, startedAt: T0 + 110 * S, finishedAt: T0 + 130 * S };
-		const [s] = readySongs([f!, lost, retry, late]);
-		expect(s!.totalMs).toBe(130 * S);
-		expect(s!.stemsMs).toBe(60 * S); // the attempt that made it, not the abandoned one
-	});
-
-	it('skips a song still in flight, one older than the window, and a later stems-upgrade', () => {
-		const open = song('p4').map((a) => (a.jobType === 'align' ? { ...a, finishedAt: null, outcome: null } : a));
-		const upgrade = attempt({ processingId: 'p1', jobId: 'up', jobType: 'stems-upgrade', finishedAt: T0 + 900 * S });
-		expect(readySongs([...song('p1'), upgrade, ...open]).map((s) => s.totalMs)).toEqual([100 * S]);
-		expect(readySongs(song('p1'), T0 + 1)).toEqual([]);
-	});
-
-	it('groups by worker, device and threads, fastest first', () => {
-		const pc = (p: string) => song(p, { workerId: 'pc', device: 'cpu', threads: 16, audioSec: 100 });
-		const rows = perDevice(readySongs([...pc('a'), ...song('b'), ...pc('c')]));
-		expect(rows.map((r) => [r.workerId, r.n, r.p50Multiple])).toEqual([
-			['mac', 1, 0.5],
-			['pc', 2, 1]
-		]);
-		expect(speed(readySongs(song('b'))).p50AudioSec).toBe(200);
-	});
-});
 
 describe('what went wrong', () => {
 	it.each([

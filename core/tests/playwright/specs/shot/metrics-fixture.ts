@@ -21,7 +21,7 @@ interface SpeedFixture {
 }
 
 export interface MetricsFixture {
-	speed: SpeedFixture;
+	speed: SpeedFixture & { noLength: number; badClock: number };
 	devices: (SpeedFixture & {
 		workerId: string;
 		device: string;
@@ -89,8 +89,9 @@ export const METRICS_READY_TEXT = '47 attempts in the last 7 days, across 19 fin
 export const METRICS_FIXTURE_NOW = Date.UTC(2026, 10, 21, 20, 0);
 
 export const METRICS_FIXTURE: MetricsFixture = {
-	// One fast machine and one provisional slow one, and an `other` failure so its message line renders.
-	speed: { n: 19, p50Multiple: 0.62, p90Multiple: 1.1, p50AudioSec: 232, provisional: false },
+	// One fast machine and one provisional slow one, an `other` failure so its message line renders, and an
+	// untimed song so the "Not counted" line does.
+	speed: { n: 19, p50Multiple: 0.62, p90Multiple: 1.1, p50AudioSec: 232, noLength: 1, badClock: 0, provisional: false },
 	devices: [
 		{
 			workerId: 'stems-1',

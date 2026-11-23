@@ -10,6 +10,7 @@ interface SpeedBody {
 	speed: { n: number; p50Multiple: number | null };
 	devices: { workerId: string; device: string | null; threads: number | null; n: number }[];
 	failures: { cause: string; songs: number }[];
+	slowestProcesses: { steps: number }[];
 	workers: { workerId: string }[];
 }
 
@@ -23,13 +24,26 @@ async function metrics(world: World): Promise<SpeedBody> {
 	return (await (await fetch(`${world.baseURL}/api/metrics`)).json()) as SpeedBody;
 }
 
-/** One worker, its songs processed one at a time until each is terminal, then gone. */
+interface AuditBody {
+	processes: { attempts: { jobType: string; outcome: string | null }[] }[];
+}
+
+/** The song's chain is over: its align ended ready, or (`failed`) a step failed so no align will run. */
+async function settled(world: World, mediaId: string, end: 'align-ready' | 'failed'): Promise<boolean> {
+	const audit = (await (await fetch(`${world.baseURL}/api/audit/${mediaId}`)).json()) as AuditBody;
+	const attempts = audit.processes.flatMap((p) => p.attempts);
+	return end === 'failed'
+		? attempts.some((a) => a.outcome === 'failed')
+		: attempts.some((a) => a.jobType === 'align' && a.outcome === 'ready');
+}
+
+/** One worker, its songs processed one at a time until each one's chain is over, then gone. */
 async function drive(
 	world: World,
 	phone: Page,
 	options: FakeWorkerOptions,
 	queries: string[],
-	done: (m: SpeedBody) => boolean
+	end: 'align-ready' | 'failed' = 'align-ready'
 ) {
 	const worker = await startFakeWorker(world, options);
 	try {
@@ -40,8 +54,10 @@ async function drive(
 			const media = await world.awaitDemoTrack(q);
 			const res = await phone.request.post('/api/process', { data: { mediaId: media.id } });
 			expect(res.ok(), `/api/process refused ${q}: ${await res.text()}`).toBe(true);
+			await expect
+				.poll(() => settled(world, media.id, end), { timeout: 60_000, message: `${q}: ${worker.log()}` })
+				.toBe(true);
 		}
-		await expect.poll(async () => done(await metrics(world)), { timeout: 60_000, message: worker.log() }).toBe(true);
 	} finally {
 		await worker.stop();
 	}
@@ -52,22 +68,16 @@ test('the speed page counts only songs that reached ready, and names what went w
 	const phone = await world.openPhone('Host');
 
 	const mac = { backend: 'torch', device: 'mps', threads: 10 };
-	await drive(
-		world,
-		phone,
-		{ workerId: 'studio-mac', profile: mac, slowMs: 100 },
-		['caroline', 'believin'],
-		(m) => m.speed.n === 2
-	);
+	await drive(world, phone, { workerId: 'studio-mac', profile: mac, slowMs: 100 }, ['caroline', 'believin']);
 	const pc = { backend: 'torch', device: 'cpu', threads: 16 };
-	await drive(world, phone, { workerId: 'den-pc', profile: pc, slowMs: 400 }, ['bohemian'], (m) => m.speed.n === 3);
-	await drive(world, phone, { workerId: 'den-pc-2', silentInstrumental: true, slowMs: 100 }, ['prayer'], (m) =>
-		m.failures.some((f) => f.cause === 'silent')
-	);
+	await drive(world, phone, { workerId: 'den-pc', profile: pc, slowMs: 400 }, ['bohemian']);
+	await drive(world, phone, { workerId: 'den-pc-2', silentInstrumental: true, slowMs: 100 }, ['prayer'], 'failed');
 
 	const body = await metrics(world);
 	// The refused song is a failure, never a fourth song in the speed figure.
 	expect(body.speed.n).toBe(3);
+	// "Slowest songs" lists the same three, each with its stems and align (local tracks need no fetch).
+	expect(body.slowestProcesses.map((p) => p.steps)).toEqual([2, 2, 2]);
 	expect(body.failures).toEqual([expect.objectContaining({ cause: 'silent', songs: 1 })]);
 	expect(body.devices.map((d) => [d.workerId, d.device, d.threads, d.n]).sort()).toEqual([
 		['den-pc', 'cpu', 16, 1],

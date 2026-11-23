@@ -885,7 +885,15 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 function emptyMetricsBody(sample: Partial<MetricsSample> = {}, workers: unknown[] = []) {
 	return {
 		sample: { attempts: 0, total: 0, windowDays: 7, clipped: false, processes: 0, provisional: false, ...sample },
-		speed: { n: 0, p50Multiple: null, p90Multiple: null, p50AudioSec: null, provisional: true },
+		speed: {
+			n: 0,
+			p50Multiple: null,
+			p90Multiple: null,
+			p50AudioSec: null,
+			noLength: 0,
+			badClock: 0,
+			provisional: true
+		},
 		devices: [],
 		failures: [],
 		steps: [],

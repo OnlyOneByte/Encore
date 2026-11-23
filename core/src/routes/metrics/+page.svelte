@@ -16,6 +16,8 @@
 		stageLabel,
 		stepLabel,
 		times,
+		typicalSong,
+		unmeasured,
 		vsClaimed,
 		workerFacts
 	} from '$lib/metrics-format';
@@ -88,7 +90,7 @@
 		lastError: string | null;
 	}
 	interface Metrics {
-		speed: SpeedRow;
+		speed: SpeedRow & { noLength: number; badClock: number };
 		devices: DeviceRow[];
 		failures: FailureRow[];
 		/** `total`, `windowDays` and `clipped` are what the endpoint sends and this interface used to drop: `attempts`
@@ -134,6 +136,9 @@
 
 	/** The two facts the client used to drop on the floor. Joined HERE rather than in markup because the gap between two
 	    sentences is whitespace, and whitespace between `{#if}` blocks is what Svelte trims. */
+	const typicalLine = $derived(metrics ? typicalSong(metrics.speed.p50Multiple, metrics.speed.p50AudioSec) : '');
+	const unmeasuredLine = $derived(metrics ? unmeasured(metrics.speed.noLength, metrics.speed.badClock) : '');
+
 	const sampleCaveats = $derived.by(() => {
 		if (!metrics) return '';
 		const parts: string[] = [];
@@ -244,12 +249,7 @@
 						<p class="spot-sub">No song has reached ready in this window yet.</p>
 					{:else}
 						<p class="spot-n">{times(metrics.speed.p50Multiple)}</p>
-						<p class="spot-sub">
-							of the song's own length{#if metrics.speed.p50AudioSec !== null && metrics.speed.p50Multiple !== null}
-								{' · '}{dur(metrics.speed.p50Multiple * metrics.speed.p50AudioSec * 1000)} for a {dur(
-									metrics.speed.p50AudioSec * 1000
-								)} song{/if}
-						</p>
+						<p class="spot-sub">{typicalLine}</p>
 						<p class="spot-sub">
 							Slowest 1 in 10: {times(metrics.speed.p90Multiple)} · {count(
 								metrics.speed.n,
@@ -257,6 +257,7 @@
 							)}{#if metrics.speed.provisional}, too few to trust yet{/if}
 						</p>
 					{/if}
+					{#if unmeasuredLine}<p class="spot-sub">{unmeasuredLine}</p>{/if}
 				</section>
 
 				{#if metrics.devices.length}

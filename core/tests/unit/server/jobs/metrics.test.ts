@@ -48,6 +48,18 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 	};
 }
 
+/** The ready align that ends a pick, as an instant at `ms`, so it adds no time to the totals under test. */
+function alignAt(processingId: string, ms: number): JobAttempt {
+	return attempt({
+		jobId: `align-${processingId}`,
+		jobType: 'align',
+		processingId,
+		enqueuedAt: ms,
+		startedAt: ms,
+		finishedAt: ms
+	});
+}
+
 describe('percentile — nearest rank, not interpolated', () => {
 	it('returns a value that was actually measured', () => {
 		// Interpolation over a tiny sample invents a number lying between two real measurements and
@@ -115,15 +127,24 @@ describe('perStep', () => {
 describe('perProcess and e2e', () => {
 	it('spans the whole run and separates waited-time from worked-time', () => {
 		const proc = [
-			attempt({ jobType: 'fetch', processingId: 'c1', enqueuedAt: T0, startedAt: T0, finishedAt: T0 + 10_000 }),
+			attempt({
+				jobId: 'f',
+				jobType: 'fetch',
+				processingId: 'c1',
+				enqueuedAt: T0,
+				startedAt: T0,
+				finishedAt: T0 + 10_000
+			}),
 			// 30s of idle queue between the two steps
 			attempt({
+				jobId: 's',
 				jobType: 'stems',
 				processingId: 'c1',
 				enqueuedAt: T0 + 10_000,
 				startedAt: T0 + 40_000,
 				finishedAt: T0 + 100_000
-			})
+			}),
+			alignAt('c1', T0 + 100_000)
 		];
 		const [c] = perProcess(proc);
 		expect(c.totalMs).toBe(100_000); // what the singer waited
@@ -142,9 +163,18 @@ describe('perProcess and e2e', () => {
 	it('counts only complete processes in the aggregate', () => {
 		const stats = e2e([
 			attempt({ processingId: 'c1', finishedAt: T0 + 1_000 }),
+			alignAt('c1', T0 + 1_000),
 			attempt({ processingId: 'c2', outcome: 'failed', finishedAt: T0 + 9_000 })
 		]);
 		expect(stats.n).toBe(1); // a failed process has no end-to-end delivery time
+	});
+
+	it('counts a pick only once its align ended ready, and never a lyrics-only re-align', () => {
+		const stems = attempt({ processingId: 'c1', finishedAt: T0 + 1_000 });
+		expect(e2e([stems]).n).toBe(0); // align still to run
+		const realign = attempt({ jobId: 'a2', jobType: 'align', processingId: 'c2', finishedAt: T0 + 1_000 });
+		expect(e2e([realign]).n).toBe(0); // no separation in this process
+		expect(e2e([stems, alignAt('c1', T0 + 2_000)]).n).toBe(1);
 	});
 
 	it('ignores rows written before process ids existed', () => {
@@ -301,6 +331,7 @@ describe('the read window no longer understates the boundary process', () => {
 	it('still reports a process that lives entirely inside the window as complete', () => {
 		const inside = [
 			attempt({
+				jobId: 'f',
 				jobType: 'fetch',
 				processingId: 'inside',
 				enqueuedAt: boundary + 1_000,
@@ -308,12 +339,14 @@ describe('the read window no longer understates the boundary process', () => {
 				finishedAt: boundary + 5_000
 			}),
 			attempt({
+				jobId: 's',
 				jobType: 'stems',
 				processingId: 'inside',
 				enqueuedAt: boundary + 5_000,
 				startedAt: boundary + 5_000,
 				finishedAt: boundary + 65_000
-			})
+			}),
+			alignAt('inside', boundary + 65_000)
 		];
 		const [c] = perProcess(inside, boundary);
 		expect(c.clipped).toBe(false);

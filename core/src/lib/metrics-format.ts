@@ -201,6 +201,21 @@ function labelled(labels: Record<string, string>, bag: Record<string, unknown>):
 /** Pick to ready as a multiple of the song's length, the way goal 2 states it ("0.62x"). */
 export const times = (v: number | null): string => (v === null ? '—' : `${v.toFixed(2)}x`);
 
+/** "of the song's own length · 2m 24s for a 3m 52s song", the headline's second line. */
+export function typicalSong(multiple: number | null, audioSec: number | null): string {
+	const base = "of the song's own length";
+	if (multiple === null || audioSec === null) return base;
+	return `${base} · ${dur(multiple * audioSec * 1000)} for a ${dur(audioSec * 1000)} song`;
+}
+
+/** Songs that reached ready but could not be timed, said rather than silently dropped. '' when there are none. */
+export function unmeasured(noLength: number, badClock: number): string {
+	const parts: string[] = [];
+	if (noLength) parts.push(`${count(noLength, 'song')} had no known length`);
+	if (badClock) parts.push(`${count(badClock, 'song')} finished before it started (the clock jumped back)`);
+	return parts.length ? `Not counted: ${parts.join('; ')}.` : '';
+}
+
 const DEVICE_LABELS: Record<string, string> = { cuda: 'NVIDIA GPU', mps: 'Apple GPU', cpu: 'CPU' };
 
 /** "Apple GPU · 10 threads"; an older row with no device says so rather than guessing. */

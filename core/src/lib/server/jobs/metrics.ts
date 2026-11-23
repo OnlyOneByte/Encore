@@ -118,8 +118,22 @@ export interface ProcessStats {
 	clipped: boolean;
 }
 
-/** One row per process. Only processes whose every attempt is sealed are reported — a process still
- *  in flight has no end, and "now" as its end would report a shrinking duration as it runs. */
+/** The last attempt of each job, so a retry stands in for the attempt it replaced. */
+function lastAttempts(list: JobAttempt[]): JobAttempt[] {
+	return [...groupBy(list, (a) => a.jobId).values()].map((tries) =>
+		tries.reduce((x, y) => (y.attempt > x.attempt ? y : x))
+	);
+}
+
+/** A pick reached ready: it separated, and its final align ended ready. The ledger is read as sealed rows only,
+ *  so a song still in flight fails on its missing align, and a lyrics-only re-align on its missing stems. */
+export function pickReachedReady(list: JobAttempt[]): boolean {
+	const last = lastAttempts(list);
+	const ready = (t: JobType) => last.some((a) => a.jobType === t && a.outcome === 'ready');
+	return ready('stems') && ready('align');
+}
+
+/** One row per process with a sealed attempt. Only a `complete` one is a measured pick to ready. */
 export function perProcess(attempts: JobAttempt[], windowStartMs: number | null = null): ProcessStats[] {
 	// `|| null` so a row written before process ids existed is skipped rather than bucketed under ''.
 	const byProcess = groupBy(attempts, (a) => a.processingId || null);
@@ -130,7 +144,8 @@ export function perProcess(attempts: JobAttempt[], windowStartMs: number | null 
 		const start = Math.min(...sealed.map((a) => a.enqueuedAt));
 		const end = Math.max(...sealed.map((a) => a.finishedAt!));
 		const clipped = windowStartMs !== null && start < windowStartMs;
-		const complete = !clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
+		// end <= start is a clock that jumped back: no duration to report.
+		const complete = !clipped && end > start && pickReachedReady(sealed);
 		out.push({
 			processingId,
 			// `sealed` is non-empty from the guard above, and every attempt in one process names the same media.
@@ -256,30 +271,39 @@ export interface ReadySong {
 	alignMs: number;
 }
 
-/** Songs that REALLY reached ready: every job's last attempt is `ready`. A retried song counts, its retry time
- *  included; a failed one never does. See docs/SERVER.md#the-host-speed-page. */
-export function readySongs(attempts: JobAttempt[], windowStartMs: number | null = null): ReadySong[] {
-	// stems-upgrade is a later redo, not part of the pick-to-ready path.
-	const byProcess = groupBy(
-		attempts.filter((a) => a.jobType !== 'stems-upgrade'),
-		(a) => a.processingId || null
-	);
-	const out: ReadySong[] = [];
-	for (const [processingId, list] of byProcess) {
-		if (list.some((a) => a.finishedAt === null)) continue;
+/** Picks that reached ready (`pickReachedReady`), plus how many of those could not be measured. */
+export interface ReadySongs {
+	songs: ReadySong[];
+	/** Reached ready with no known song length, so no multiple. */
+	noLength: number;
+	/** Reached ready with a finish at or before its start: the clock jumped back. */
+	badClock: number;
+}
+
+/** A retried song counts, its retry time included; a failed one never does. See docs/SERVER.md#the-host-speed-page. */
+export function readySongs(attempts: JobAttempt[], windowStartMs: number | null = null): ReadySongs {
+	const out: ReadySongs = { songs: [], noLength: 0, badClock: 0 };
+	for (const [processingId, all] of groupBy(attempts, (a) => a.processingId || null)) {
+		const list = all.filter((a) => a.finishedAt !== null);
+		if (list.length === 0 || !pickReachedReady(list)) continue;
 		const start = Math.min(...list.map((a) => a.enqueuedAt));
 		if (windowStartMs !== null && start < windowStartMs) continue;
-		const last = [...groupBy(list, (a) => a.jobId).values()].map((tries) =>
-			tries.reduce((x, y) => (y.attempt > x.attempt ? y : x))
-		);
-		if (!last.every((a) => a.outcome === 'ready')) continue;
 		const audioSec = Math.max(0, ...list.map((a) => a.audioSec ?? 0));
-		if (audioSec <= 0) continue;
-		const totalMs = Math.max(0, Math.max(...list.map((a) => a.finishedAt!)) - start);
+		if (audioSec <= 0) {
+			out.noLength++;
+			continue;
+		}
+		const totalMs = Math.max(...list.map((a) => a.finishedAt!)) - start;
+		if (totalMs <= 0) {
+			out.badClock++;
+			continue;
+		}
+		const last = lastAttempts(list);
 		const stepMs = (t: JobType) => last.filter((a) => a.jobType === t).reduce((s, a) => s + (processingMs(a) ?? 0), 0);
 		const [fetchMs, stemsMs, alignMs] = [stepMs('fetch'), stepMs('stems'), stepMs('align')];
-		const pace = last.find((a) => a.jobType === 'stems') ?? last[last.length - 1]!;
-		out.push({
+		// pickReachedReady guarantees a stems attempt, the step that sets the pace.
+		const pace = last.find((a) => a.jobType === 'stems')!;
+		out.songs.push({
 			processingId,
 			mediaId: list[0]!.mediaId,
 			workerId: pace.workerId,

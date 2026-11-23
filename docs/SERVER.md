@@ -732,13 +732,20 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
 `readySongs` rollup in `core/src/lib/server/jobs/metrics.ts`. `GET /api/metrics` serves it as `speed`,
 `devices` and `failures`.
 
-- **Only songs that reached ready count.** A process counts when every job in it is sealed and each job's
-  LAST attempt is `ready`. A retried song counts, and its retry time is in its total because the singer
-  waited through it. A failed song never counts, and that includes a refused silent instrumental. A process
-  straddling the window's older edge is left out, as in `e2e`. `stems-upgrade` processes are left out: they
-  redo a song that was already ready.
+- **A song counts once its chain reached a ready align** (`pickReachedReady`). The process must have a
+  `stems` job and an `align` job, and the last attempt of each must be `ready`. Align is the last step of a
+  pick (`followUps`). The route reads sealed attempts only, so a song still being processed fails this
+  check through its missing align row. The same rule decides `complete` in `perProcess`, so "From request
+  to ready to sing" and "Slowest songs" count the same songs.
+- **Left out:** a failed song, including a refused silent instrumental. A lyrics-only re-align (a re-pick
+  or the boot backfill), and a pick whose separation was skipped because the stems were cached, since
+  neither has a `stems` job. Also `stems-upgrade` processes, which redo a song that was already ready, and
+  a process straddling the window's older edge. A retried song does count, with its retry time in its
+  total, because the singer waited through it.
 - **The time is `enqueuedAt` of the first step to `finishedAt` of the last**, divided by the snapshotted
-  `audioSec`. Typical is the median and "slowest 1 in 10" is p90, both nearest-rank.
+  `audioSec`. Typical is the median and "slowest 1 in 10" is p90, both nearest-rank. A ready song with no
+  known length, or one that finished at or before it started (the clock jumped back), has no multiple. It
+  is counted in `speed.noLength` or `speed.badClock`, and the page says so under the headline.
 - **Per machine** means the worker, device and threads of the song's last `stems` attempt, since separation
   sets the pace. The split is the final attempt's processing time per step (download, vocals out, lyrics
   timing). Waiting is the rest of the total: queueing, gaps between steps and abandoned retries. The four
@@ -748,8 +755,9 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   last seen. `abandoned` attempts were retried, so they are not failures here.
 - **`GET /api/metrics?format=csv`** returns the window's sealed attempts, one row each, times in epoch ms and
   JSON columns left out. A cell starting with `=`, `+`, `-` or `@` gets a leading `'`, since error text comes
-  from tools we don't control and a spreadsheet would run it as a formula. Gating `/metrics` and this route
-  is proposal 30's host key.
+  from tools we don't control and a spreadsheet would run it as a formula. It shares the page's row
+  backstop (`limit`, 2,000 by default), newest first. When the cap is hit, the file is named
+  `encore-attempts-<days>d-newest-<limit>.csv`. Gating `/metrics` and this route is proposal 30's host key.
 
 ### The dead turn
 
