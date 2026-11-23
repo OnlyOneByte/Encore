@@ -63,9 +63,11 @@ export function positiveMs(raw: string | undefined): number | undefined {
 	return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-/** How long the fleet may lack a maker before the room is told it cannot make karaoke. A worker reconnects after
- *  1, 2 and 5 s (`transport/client.py` BACKOFF_SEC), so a blip inside this changes nothing on any screen.
- *  shortcut: a fixed 10 s, tune it if real reconnects take longer. */
+/** How long the fleet may lack a maker before the room is told it cannot make karaoke, counted from the loss or from
+ *  boot. A worker redials after 1, 2, 5 s ±50 % jitter (`transport/client.py` BACKOFF_SEC; up to 12 s for three), so
+ *  this covers the usual blip and core restart, not the tail.
+ *  shortcut: a fixed 10 s. A core down longer than about 10 s pushes the worker's next redial past the grace and can
+ *  still show "can't make" until it lands; a longer boot grace if that is seen. */
 export const MAKER_GRACE_MS = 10_000;
 
 /** The steps EVERY song needs before it can be sung (both gates in `contract/queue/gates.ts`). Not `fetch`: a library
@@ -225,9 +227,10 @@ export class WorkerHub {
 	#unservableSince = new Map<string, number>();
 	/** Per-job decision trails from `job:state`, bounded. Flushed to the attempt ledger on completion. */
 	#trails = new Map<string, Array<Record<string, unknown>>>();
-	/** What the room was last told by `canMake()`. False at boot: nothing is connected yet, and a worker that is
-	 *  coming back says hello within seconds of the core starting. */
-	#canMake = false;
+	/** What the room was last told by `canMake()`. TRUE at boot, inside the grace: after a core restart the worker
+	 *  redials within seconds, and starting false flashed "can't make" on the TV until its hello landed. A box with no
+	 *  worker says so once the grace runs out. */
+	#canMake = true;
 	/** Armed while the fleet lacks a maker and the room still reads `canMake` true (MAKER_GRACE_MS). */
 	#makerGrace: ReturnType<typeof setTimeout> | null = null;
 	constructor(deps: WorkerHubDeps) {
@@ -236,6 +239,9 @@ export class WorkerHub {
 		// Slot release is EVENT-keyed and covers REJECT/COMPLETE only; FAIL releases explicitly at its
 		// own call site (#onFailed). See docs/SERVER.md#idempotency-and-the-process-cap.
 		this.#d.jobs.setSlotReleaseHook((workerId) => this.#d.registry.releaseSlot(workerId));
+		// Boot counts as a loss: nothing is connected yet. Armed directly, not via #reviewCanMake, because app.ts's
+		// settings sink is not wired until the hub is constructed.
+		this.#armMakerGrace();
 	}
 
 	/** The room's downward-only quality ceiling resolved INTO `defaultEngine`/`defaultModel`, because
@@ -383,6 +389,42 @@ export class WorkerHub {
 	}
 
 	/**
+	 * Whether anything connected can make karaoke at the room's quality: some worker offers each step every song
+	 * needs, by the same resolved capability the dispatch refusal routes by, so it is never more pessimistic than
+	 * the refusal it predicts. Only a boolean leaves the hub: no worker ids, hosts or counts ride `queue:sync`.
+	 */
+	canMake(): boolean {
+		return this.#canMake;
+	}
+
+	/** Moves `canMake` toward what the fleet offers now: true at once, false only after MAKER_GRACE_MS without one. */
+	#reviewCanMake(offered: Set<string>): void {
+		const settings = this.#processSettings();
+		const now = MAKES_KARAOKE.every((step) => offered.has(requiredCapability(step, settings)));
+		if (now) {
+			if (this.#makerGrace) clearTimeout(this.#makerGrace);
+			this.#makerGrace = null;
+			this.#setCanMake(true);
+		} else if (this.#canMake && !this.#makerGrace) this.#armMakerGrace();
+	}
+
+	/** Counts from the LOSS: a later fleet change still without a maker neither restarts nor adds a clock. */
+	#armMakerGrace(): void {
+		this.#makerGrace = setTimeout(() => {
+			this.#makerGrace = null;
+			this.#setCanMake(false);
+		}, MAKER_GRACE_MS);
+		// A hub in a test or a short-lived script must not keep the process alive for the grace.
+		this.#makerGrace.unref?.();
+	}
+
+	#setCanMake(value: boolean): void {
+		if (value === this.#canMake) return;
+		this.#canMake = value;
+		this.#d.onCanMakeChange?.();
+	}
+
+	/**
 	 * What the fleet offers decides "no maker", and nothing else would tell a room that already holds a verdict. So on
 	 * every change of what the fleet offers, each waiting song whose verdict flipped is re-sent:
 	 * - was "no maker", is not: a plain failure. The song still needs a Try again, which now can work.
@@ -401,37 +443,6 @@ export class WorkerHub {
 	 * fleet change the same way). Admin-only and rare; call
 	 * this from the settings write if it ever matters.
 	 */
-	/**
-	 * Whether anything connected can make karaoke at the room's quality: some worker offers each step every song
-	 * needs, by the same resolved capability the dispatch refusal routes by, so it is never more pessimistic than
-	 * the refusal it predicts. Only a boolean leaves the hub: no worker ids, hosts or counts ride `queue:sync`.
-	 */
-	canMake(): boolean {
-		return this.#canMake;
-	}
-
-	/** Moves `canMake` toward what the fleet offers now: true at once, false only after MAKER_GRACE_MS without one. */
-	#reviewCanMake(offered: Set<string>): void {
-		const settings = this.#processSettings();
-		const now = MAKES_KARAOKE.every((step) => offered.has(requiredCapability(step, settings)));
-		if (now) {
-			if (this.#makerGrace) clearTimeout(this.#makerGrace);
-			this.#makerGrace = null;
-			this.#setCanMake(true);
-		} else if (this.#canMake && !this.#makerGrace) {
-			this.#makerGrace = setTimeout(() => {
-				this.#makerGrace = null;
-				this.#setCanMake(false);
-			}, MAKER_GRACE_MS);
-		}
-	}
-
-	#setCanMake(value: boolean): void {
-		if (value === this.#canMake) return;
-		this.#canMake = value;
-		this.#d.onCanMakeChange?.();
-	}
-
 	#retellOnFleetChange(before: Set<string>): void {
 		const after = this.#offered();
 		this.#reviewCanMake(after);

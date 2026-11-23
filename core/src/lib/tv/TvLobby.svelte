@@ -169,6 +169,8 @@
 		line-height: 1.04;
 		margin: 0;
 		max-width: 26ch;
+		/* Two even lines, never one word left alone: "Can't make new karaoke right / now" at 1920. */
+		text-wrap: balance;
 	}
 	.sub {
 		font-size: var(--tv-label);

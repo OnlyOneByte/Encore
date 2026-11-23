@@ -1,7 +1,8 @@
 // PROPOSAL 24, PR 1: WITH NO KARAOKE MAKER, THE ROOM KNOWS BEFORE ANYONE PICKS. The phones and the TV learned "no maker"
 // only from a turn that had already died, so the first pick of an offline night always failed. `queue:sync` now
 // carries `canMake`, one boolean, and the TV lobby says "Can't make new karaoke right now" from it with nothing
-// queued. Two nights: the worker never connects, and the worker drops mid-night (after the hub's 10 s grace).
+// queued. Two nights: the worker never connects (said once the 10 s boot grace runs out), and the worker drops
+// mid-night (said after the same grace from the loss).
 // `MAKER_SHOTS=<dir>` also writes TV 1920 and phone 390 and 320 stills.
 import type { Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -59,7 +60,10 @@ test('with no worker ever connected, the TV lobby says so before anyone picks, a
 	const tv = await world.openTv();
 	const maya = await world.openPhone('Maya');
 	const lobby = tv.locator(SEL.lobby);
-	await expect(lobby, 'nothing is queued, so only the room verdict can say this').toContainText(NO_MAKER);
+	// Boot counts as a loss, so it says so once the boot grace has run out: a core restart is not a "can't make".
+	await expect(lobby, 'nothing is queued, so only the room verdict can say this').toContainText(NO_MAKER, {
+		timeout: AFTER_GRACE_MS
+	});
 	await expect(lobby).toContainText(NO_MAKER_NEXT);
 
 	// The verdict rides the sync as one boolean, and nothing about the workers rides with it.
