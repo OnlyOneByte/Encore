@@ -97,6 +97,8 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	 */
 	capabilities?: string[];
 	concurrency?: number;
+	/** The resolved profile sent in hello, which core stamps on every attempt it assigns. Default: none. */
+	profile?: { backend?: string; device?: string; threads?: number };
 	/** Matches `ENCORE_WORKER_TOKEN` on core. Omit it unless the spec booted core WITH one — core refuses a
 	 *  role=worker upgrade with 401 when the token is set and the query param does not match. */
 	token?: string;
@@ -173,6 +175,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		workerId = `fake-worker-${++seq}`,
 		capabilities = ['fetch', 'stems', 'align'],
 		concurrency = 1,
+		profile,
 		token,
 		claim = 'all',
 		mediaDir = world.mediaDir,
@@ -364,8 +367,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 						// `ranAsAsked`: report the engine and model the job named, as a real separator does.
 						engine: ranAsAsked ? params.engine : 'fake-separator',
 						model: ranAsAsked ? params.model : 'e2e-tone',
-						backend: 'none',
-						device: 'cpu'
+						backend: profile?.backend ?? 'none',
+						device: profile?.device ?? 'cpu'
 					},
 					stages: [{ stage: 'separate', ms: slowMs }]
 				});
@@ -445,7 +448,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			capabilities,
 			concurrency,
 			version: 'pw-fake',
-			host: { accelerator: 'cpu', cpuCount: 2, contained: false }
+			host: { accelerator: 'cpu', cpuCount: 2, contained: false },
+			...profile
 		});
 		heartbeat = setInterval(
 			() => send({ type: 'worker:heartbeat', workerId, slotsFree: 1, runningJobIds: [] }),

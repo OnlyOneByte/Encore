@@ -1,19 +1,32 @@
 <!-- Internal processing dashboard, ungated on the LAN. Rates, not raw seconds. docs/FRONTEND.md#metrics -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import {
+		causeLabel,
 		count,
 		dur,
+		lastSeen,
 		pct,
+		runsOn,
 		separatorLabel,
 		slowestStepType,
 		stageLabel,
 		stepLabel,
+		times,
 		vsClaimed,
 		workerFacts
 	} from '$lib/metrics-format';
+
+	const SEGMENTS = [
+		{ key: 'meanWaitMs', label: 'Waiting', cls: 'seg-wait' },
+		{ key: 'meanFetchMs', label: 'Download', cls: 'seg-fetch' },
+		{ key: 'meanStemsMs', label: 'Vocals out', cls: 'seg-stems' },
+		{ key: 'meanAlignMs', label: 'Lyrics timing', cls: 'seg-align' }
+	] as const;
+	const segTotal = (d: DeviceRow) => SEGMENTS.reduce((s, g) => s + (d[g.key] ?? 0), 0);
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -51,7 +64,33 @@
 		meanMs: number | null;
 		provisional: boolean;
 	}
+	interface SpeedRow {
+		n: number;
+		p50Multiple: number | null;
+		p90Multiple: number | null;
+		p50AudioSec: number | null;
+		provisional: boolean;
+	}
+	interface DeviceRow extends SpeedRow {
+		workerId: string | null;
+		device: string | null;
+		threads: number | null;
+		meanWaitMs: number | null;
+		meanFetchMs: number | null;
+		meanStemsMs: number | null;
+		meanAlignMs: number | null;
+	}
+	interface FailureRow {
+		cause: string;
+		songs: number;
+		attempts: number;
+		lastSeenAt: number;
+		lastError: string | null;
+	}
 	interface Metrics {
+		speed: SpeedRow;
+		devices: DeviceRow[];
+		failures: FailureRow[];
 		/** `total`, `windowDays` and `clipped` are what the endpoint sends and this interface used to drop: `attempts`
 		    alone is the count INSIDE an unnamed window, and when the server's row backstop bites it is the backstop
 		    rendered as a measurement — the exact failure `clipped` is computed to prevent. */
@@ -197,6 +236,138 @@
 			{/if}
 
 			{#if metrics}
+				<!-- Goal 2's number. Only songs that reached ready; failures are in "What went wrong", never averaged in. -->
+				<section class="spot" aria-labelledby="speed-h">
+					<h2 id="speed-h">Pick to ready, typical song</h2>
+					{#if metrics.speed.n === 0}
+						<p class="spot-n">—</p>
+						<p class="spot-sub">No song has reached ready in this window yet.</p>
+					{:else}
+						<p class="spot-n">{times(metrics.speed.p50Multiple)}</p>
+						<p class="spot-sub">
+							of the song's own length{#if metrics.speed.p50AudioSec !== null && metrics.speed.p50Multiple !== null}
+								{' · '}{dur(metrics.speed.p50Multiple * metrics.speed.p50AudioSec * 1000)} for a {dur(
+									metrics.speed.p50AudioSec * 1000
+								)} song{/if}
+						</p>
+						<p class="spot-sub">
+							Slowest 1 in 10: {times(metrics.speed.p90Multiple)} · {count(
+								metrics.speed.n,
+								'song'
+							)}{#if metrics.speed.provisional}, too few to trust yet{/if}
+						</p>
+					{/if}
+				</section>
+
+				{#if metrics.devices.length}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title role="heading" aria-level={2}>By machine</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<div class="machines">
+								<Table.Root>
+									<Table.Header>
+										<Table.Row>
+											<Table.Head scope="col">worker</Table.Head>
+											<Table.Head scope="col">typical</Table.Head>
+											<Table.Head scope="col" class="wrap">slowest 1 in 10</Table.Head>
+											<Table.Head scope="col">songs</Table.Head>
+										</Table.Row>
+									</Table.Header>
+									<Table.Body>
+										{#each metrics.devices as d (`${d.workerId}|${d.device}|${d.threads}`)}
+											<Table.Row>
+												<!-- Runs-on and the badge sit under the name so the multiples fit a 320 phone without scrolling. -->
+												<Table.Cell class="machine">
+													{d.workerId ?? 'unknown'}
+													<span class="note runs-on"
+														>{runsOn(d.device, d.threads)}{#if d.provisional}
+															<Badge variant="warn">few runs</Badge>{/if}</span
+													>
+												</Table.Cell>
+												<Table.Cell>{times(d.p50Multiple)}</Table.Cell>
+												<Table.Cell>{times(d.p90Multiple)}</Table.Cell>
+												<Table.Cell>{d.n}</Table.Cell>
+											</Table.Row>
+										{/each}
+									</Table.Body>
+								</Table.Root>
+							</div>
+							<p class="note">Each song counts for the worker that removed its vocals.</p>
+						</Card.Content>
+					</Card.Root>
+
+					<Card.Root>
+						<Card.Header>
+							<Card.Title role="heading" aria-level={2}>Where each machine's time goes</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<ul class="split">
+								{#each metrics.devices as d (`${d.workerId}|${d.device}|${d.threads}`)}
+									{@const total = segTotal(d)}
+									<li>
+										<div class="split-head">
+											<strong>{d.workerId ?? 'unknown'}</strong><span class="v">{dur(total)} average</span>
+										</div>
+										<div class="bar" aria-hidden="true">
+											{#each SEGMENTS as g (g.key)}
+												<i class={g.cls} style:width="{total > 0 ? ((d[g.key] ?? 0) / total) * 100 : 0}%"></i>
+											{/each}
+										</div>
+										<p class="note split-facts">
+											{#each SEGMENTS as g, i (g.key)}{i ? ' · ' : ''}<span class="key"
+													><i class={g.cls}></i>{g.label} {dur(d[g.key])}</span
+												>{/each}
+										</p>
+									</li>
+								{/each}
+							</ul>
+							<p class="note">Waiting includes time in the queue, between steps and on retries.</p>
+						</Card.Content>
+					</Card.Root>
+				{/if}
+
+				<Card.Root>
+					<Card.Header>
+						<Card.Title role="heading" aria-level={2}>What went wrong</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						{#if metrics.failures.length === 0}
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Description>Nothing failed in this window.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
+						{:else}
+							<Table.Root>
+								<Table.Header>
+									<Table.Row>
+										<Table.Head scope="col">reason</Table.Head>
+										<Table.Head scope="col">songs</Table.Head>
+										<Table.Head scope="col">last seen</Table.Head>
+									</Table.Row>
+								</Table.Header>
+								<Table.Body>
+									{#each metrics.failures as f (f.cause)}
+										<Table.Row>
+											<Table.Cell class="reason">
+												{causeLabel(f.cause)}
+												{#if f.cause === 'other' && f.lastError}<span class="note err">{f.lastError}</span>{/if}
+											</Table.Cell>
+											<Table.Cell>{f.songs}</Table.Cell>
+											<Table.Cell>{lastSeen(f.lastSeenAt)}</Table.Cell>
+										</Table.Row>
+									{/each}
+								</Table.Body>
+							</Table.Root>
+						{/if}
+						<a class="csv" href="{resolve('/api/metrics')}?format=csv&days={metrics.sample.windowDays}" download
+							>Download these attempts (CSV)</a
+						>
+					</Card.Content>
+				</Card.Root>
+
 				<Card.Root>
 					<Card.Header>
 						<Card.Title role="heading" aria-level={2}>From request to ready to sing</Card.Title>
@@ -541,6 +712,104 @@
 		min-height: var(--tap);
 		/* A title-less song shows its raw media id, which would otherwise push a 320px layout wide. */
 		overflow-wrap: anywhere;
+	}
+	/* The page's one lit surface: --on-accent on --accent. */
+	.spot {
+		background: var(--accent);
+		color: var(--on-accent);
+		border-radius: var(--radius);
+		padding: 1.25rem;
+	}
+	.spot h2 {
+		margin: 0;
+		font-size: var(--ph-text-base);
+		font-weight: 700;
+	}
+	.spot-n {
+		margin: 0.4rem 0;
+		font-size: 3rem;
+		font-weight: 800;
+		line-height: 1;
+		letter-spacing: -0.03em;
+		font-variant-numeric: tabular-nums;
+	}
+	.spot-sub {
+		margin: 0;
+		font-size: var(--ph-text-sm);
+		font-weight: 600;
+		line-height: var(--lh-loose);
+	}
+	.split {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 1rem;
+	}
+	.split-head {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.6rem;
+		overflow-wrap: anywhere;
+	}
+	.bar {
+		display: flex;
+		height: 10px;
+		margin-top: 0.4rem;
+		border-radius: var(--radius-pill);
+		overflow: hidden;
+		background: var(--track-bg);
+	}
+	.bar i {
+		display: block;
+	}
+	.key {
+		white-space: nowrap;
+	}
+	.key i {
+		display: inline-block;
+		width: 0.6rem;
+		height: 0.6rem;
+		margin-right: 0.25rem;
+		border-radius: var(--radius-xs);
+	}
+	.split-facts {
+		margin-top: 0.4rem;
+	}
+	.seg-wait {
+		background: var(--line-strong);
+	}
+	.seg-fetch {
+		background: var(--accent2);
+	}
+	.seg-stems {
+		background: var(--accent);
+	}
+	.seg-align {
+		background: var(--ok);
+	}
+	.err {
+		display: block;
+		margin: 0.15rem 0 0;
+		overflow-wrap: anywhere;
+	}
+	.runs-on {
+		display: block;
+		margin: 0.15rem 0 0;
+	}
+	.metrics :global(th.wrap),
+	.metrics :global(td.machine),
+	.metrics :global(td.reason) {
+		white-space: normal;
+	}
+	.csv {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		margin-top: 0.6rem;
+		color: var(--ink);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
 	.worker {
 		display: grid;

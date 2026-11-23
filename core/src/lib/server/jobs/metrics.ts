@@ -237,6 +237,209 @@ export function perStage(attempts: JobAttempt[]): { stage: string; n: number; me
 		.sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
 }
 
+/** One song that reached ready, as goal 2 measures it: pick to ready as a multiple of the song's length. */
+export interface ReadySong {
+	processingId: string;
+	mediaId: string;
+	/** The worker that ran the stems step, the one that sets the pace. */
+	workerId: string | null;
+	device: string | null;
+	threads: number | null;
+	audioSec: number;
+	totalMs: number;
+	/** totalMs ÷ song length. */
+	multiple: number;
+	/** Where totalMs went. `waitMs` is the rest: queueing, gaps between steps and abandoned retries. */
+	waitMs: number;
+	fetchMs: number;
+	stemsMs: number;
+	alignMs: number;
+}
+
+/** Songs that REALLY reached ready: every job's last attempt is `ready`. A retried song counts, its retry time
+ *  included; a failed one never does. See docs/SERVER.md#the-host-speed-page. */
+export function readySongs(attempts: JobAttempt[], windowStartMs: number | null = null): ReadySong[] {
+	// stems-upgrade is a later redo, not part of the pick-to-ready path.
+	const byProcess = groupBy(
+		attempts.filter((a) => a.jobType !== 'stems-upgrade'),
+		(a) => a.processingId || null
+	);
+	const out: ReadySong[] = [];
+	for (const [processingId, list] of byProcess) {
+		if (list.some((a) => a.finishedAt === null)) continue;
+		const start = Math.min(...list.map((a) => a.enqueuedAt));
+		if (windowStartMs !== null && start < windowStartMs) continue;
+		const last = [...groupBy(list, (a) => a.jobId).values()].map((tries) =>
+			tries.reduce((x, y) => (y.attempt > x.attempt ? y : x))
+		);
+		if (!last.every((a) => a.outcome === 'ready')) continue;
+		const audioSec = Math.max(0, ...list.map((a) => a.audioSec ?? 0));
+		if (audioSec <= 0) continue;
+		const totalMs = Math.max(0, Math.max(...list.map((a) => a.finishedAt!)) - start);
+		const stepMs = (t: JobType) => last.filter((a) => a.jobType === t).reduce((s, a) => s + (processingMs(a) ?? 0), 0);
+		const [fetchMs, stemsMs, alignMs] = [stepMs('fetch'), stepMs('stems'), stepMs('align')];
+		const pace = last.find((a) => a.jobType === 'stems') ?? last[last.length - 1]!;
+		out.push({
+			processingId,
+			mediaId: list[0]!.mediaId,
+			workerId: pace.workerId,
+			device: pace.device,
+			threads: pace.threads,
+			audioSec,
+			totalMs,
+			multiple: totalMs / 1000 / audioSec,
+			waitMs: Math.max(0, totalMs - fetchMs - stemsMs - alignMs),
+			fetchMs,
+			stemsMs,
+			alignMs
+		});
+	}
+	return out;
+}
+
+export interface SpeedStats {
+	n: number;
+	p50Multiple: number | null;
+	p90Multiple: number | null;
+	/** The typical song's length, so the multiple can be said in minutes too. */
+	p50AudioSec: number | null;
+}
+
+export function speed(songs: ReadySong[]): SpeedStats {
+	const multiples = songs.map((s) => s.multiple);
+	return {
+		n: songs.length,
+		p50Multiple: percentile(multiples, 50),
+		p90Multiple: percentile(multiples, 90),
+		p50AudioSec: percentile(
+			songs.map((s) => s.audioSec),
+			50
+		)
+	};
+}
+
+export interface DeviceStats extends SpeedStats {
+	workerId: string | null;
+	device: string | null;
+	threads: number | null;
+	/** Mean ms per segment of a song on this machine; they sum to the mean pick-to-ready time. */
+	meanWaitMs: number | null;
+	meanFetchMs: number | null;
+	meanStemsMs: number | null;
+	meanAlignMs: number | null;
+}
+
+/** One row per machine, keyed on worker, device and threads, fastest first. */
+export function perDevice(songs: ReadySong[]): DeviceStats[] {
+	const groups = groupBy(songs, (s) => `${s.workerId ?? ''}\u0000${s.device ?? ''}\u0000${s.threads ?? ''}`);
+	return [...groups.values()]
+		.map((list) => ({
+			...speed(list),
+			workerId: list[0]!.workerId,
+			device: list[0]!.device,
+			threads: list[0]!.threads,
+			meanWaitMs: mean(list.map((s) => s.waitMs)),
+			meanFetchMs: mean(list.map((s) => s.fetchMs)),
+			meanStemsMs: mean(list.map((s) => s.stemsMs)),
+			meanAlignMs: mean(list.map((s) => s.alignMs))
+		}))
+		.sort((a, b) => (a.p50Multiple ?? Infinity) - (b.p50Multiple ?? Infinity));
+}
+
+export const ERROR_CLASSES = [
+	'rate-limited',
+	'removed',
+	'hung',
+	'worker-lost',
+	'silent',
+	'out-of-memory',
+	'other'
+] as const;
+export type ErrorClass = (typeof ERROR_CLASSES)[number];
+
+// First match wins, so the specific causes sit above the broad ones.
+const ERROR_PATTERNS: [ErrorClass, RegExp][] = [
+	['silent', /digital silence/i],
+	['out-of-memory', /out of memory|cannot allocate memory|failed to allocate/i],
+	['hung', /stopped as hung/i],
+	['worker-lost', /worker died|lease expired/i],
+	['rate-limited', /\b429\b|too many requests|rate.?limit/i],
+	['removed', /video unavailable|private video|been removed|no longer available|copyright|terms of service/i]
+];
+
+export function classifyError(error: string | null): ErrorClass {
+	if (!error) return 'other';
+	return ERROR_PATTERNS.find(([, re]) => re.test(error))?.[0] ?? 'other';
+}
+
+export interface FailureStats {
+	cause: ErrorClass;
+	/** Distinct songs, since one song can fail on several attempts. */
+	songs: number;
+	attempts: number;
+	lastSeenAt: number;
+	/** The newest message, cut short, so an `other` can still be read. */
+	lastError: string | null;
+}
+
+/** Failed attempts grouped by cause, most songs first. Abandoned attempts were retried, so they are not here. */
+export function failures(attempts: JobAttempt[]): FailureStats[] {
+	const groups = groupBy(
+		attempts.filter((a) => a.outcome === 'failed'),
+		(a) => classifyError(a.error)
+	);
+	return [...groups.entries()]
+		.map(([cause, list]) => {
+			const newest = list.reduce((x, y) => ((y.finishedAt ?? 0) > (x.finishedAt ?? 0) ? y : x));
+			return {
+				cause,
+				songs: new Set(list.map((a) => a.mediaId)).size,
+				attempts: list.length,
+				lastSeenAt: newest.finishedAt ?? 0,
+				lastError: newest.error ? newest.error.slice(0, 200) : null
+			};
+		})
+		.sort((a, b) => b.songs - a.songs || b.lastSeenAt - a.lastSeenAt);
+}
+
+const CSV_COLUMNS = [
+	'id',
+	'jobId',
+	'mediaId',
+	'processingId',
+	'jobType',
+	'attempt',
+	'workerId',
+	'enqueuedAt',
+	'assignedAt',
+	'startedAt',
+	'finishedAt',
+	'outcome',
+	'error',
+	'engine',
+	'model',
+	'backend',
+	'device',
+	'threads',
+	'asrModel',
+	'syncMode',
+	'audioSec'
+] as const satisfies readonly (keyof JobAttempt)[];
+
+function csvCell(v: unknown): string {
+	if (v === null || v === undefined) return '';
+	let s = String(v);
+	// A leading = + - @ makes a spreadsheet run the cell as a formula; error text comes from tools we don't control.
+	if (/^[=+\-@\t\r]/.test(s) && typeof v === 'string') s = `'${s}`;
+	return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** The attempts as CSV, one row each, times in epoch ms. */
+export function attemptsCsv(attempts: JobAttempt[]): string {
+	const rows = attempts.map((a) => CSV_COLUMNS.map((c) => csvCell(a[c])).join(','));
+	return [CSV_COLUMNS.join(','), ...rows].join('\r\n') + '\r\n';
+}
+
 /** Whether a set of measurements is worth quoting as an average — a mean over two self-hosted samples
  *  otherwise reads with the same authority as one over two hundred. The UI labels below this as provisional. */
 export const CONFIDENT_SAMPLE = 10;

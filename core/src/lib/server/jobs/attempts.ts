@@ -3,7 +3,7 @@
 // only supported way to touch a row — calling `transition` directly leaves no trace here.
 // See docs/SERVER.md#the-attempt-ledger.
 
-import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobAttempts } from '../db/schema';
 import { ulid, type AttemptOutcome, type Job, type JobAttempt } from '../../contract';
@@ -23,6 +23,12 @@ export interface AttemptFacts {
 	selection?: string | null; // variant-pick provenance, serialized, from job:complete on align
 	trail?: string | null; // the worker's decision history, serialized, from job:state / job:complete
 }
+
+const DAY_MS = 86_400_000;
+/** How long a sealed attempt is kept. See docs/SERVER.md#the-attempt-ledger. */
+export const ATTEMPT_RETENTION_MS = 180 * DAY_MS;
+/** How often the prune runs; the first reaper tick after boot runs it too. */
+export const ATTEMPT_PRUNE_EVERY_MS = DAY_MS;
 
 export class AttemptLedger {
 	#db: DB;
@@ -146,6 +152,14 @@ export class AttemptLedger {
 			.where(isNotNull(jobAttempts.outcome))
 			.all();
 		return row[0]?.n ?? 0;
+	}
+
+	/** Deletes sealed attempts finished before `beforeMs`; an open attempt is never touched. */
+	pruneFinishedBefore(beforeMs: number): void {
+		this.#db
+			.delete(jobAttempts)
+			.where(and(isNotNull(jobAttempts.outcome), lt(jobAttempts.finishedAt, beforeMs)))
+			.run();
 	}
 
 	#findOpen(jobId: string): JobAttempt | undefined {
