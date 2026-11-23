@@ -1,0 +1,140 @@
+{
+  "scenario": "spotlight-handoff-tv",
+  "what": "TV 1920x1080: On deck becomes You’re up: the fill stays lit and the headline pops (opacity, scale .92), --motion-slow",
+  "capturedAt": "2026-11-23T22:23:34.201Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-j7l2rm-spot-pop",
+      "target": "h2.title",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-j7l2rm-spot-pop var(--motion-slow) var(--ease-out)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 15,
+  "seekObserved": {
+    "handoff": "your-turn",
+    "guide": [
+      "Off:true",
+      "Low:false",
+      "Full:false"
+    ]
+  },
+  "subject": {
+    "selector": "[data-testid=\"spot-handoff\"] .spotlight",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-j7l2rm-spot-pop",
+        "target": "h2.title",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-j7l2rm-spot-pop var(--motion-slow) var(--ease-out)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "handoff": "your-turn",
+      "guide": [
+        "Off:true",
+        "Low:false",
+        "Full:false"
+      ]
+    },
+    "droppedFrames": {
+      "median": 4,
+      "min": 3,
+      "max": 9
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 33.4,
+      "max": 66.6
+    },
+    "clsMax": 0.0083
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "handoff": "your-turn",
+      "guide": [
+        "Off:true",
+        "Low:false",
+        "Full:false"
+      ]
+    }
+  },
+  "timingsMs": {
+    "seekMs": 22741,
+    "encodeMs": 1574,
+    "liveMs": 9005,
+    "reducedMs": 3404,
+    "reducedEncodeMs": 698
+  },
+  "files": {
+    "clip.gif": 256221,
+    "clip-slow4x.gif": 256221,
+    "filmstrip.png": 98289,
+    "filmstrip-reduced.png": 38199
+  }
+}

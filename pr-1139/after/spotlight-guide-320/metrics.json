@@ -1,0 +1,92 @@
+{
+  "scenario": "spotlight-guide-320",
+  "what": "Phone 320x568: tapping Low on the Guide segments: the press lands in the next frame, a cut with no animation",
+  "capturedAt": "2026-11-23T22:25:04.082Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "handoff": "on-deck",
+    "guide": [
+      "Off:false",
+      "Low:true",
+      "Full:false"
+    ]
+  },
+  "subject": {
+    "selector": "[data-testid=\"guide-plain\"] .segments",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:false",
+        "Low:true",
+        "Full:false"
+      ]
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 7,
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:false",
+        "Low:true",
+        "Full:false"
+      ]
+    }
+  },
+  "timingsMs": {
+    "seekMs": 23957,
+    "encodeMs": 432,
+    "liveMs": 15826,
+    "reducedMs": 2505,
+    "reducedEncodeMs": 421
+  },
+  "files": {
+    "clip.gif": 28719,
+    "clip-slow4x.gif": 28719,
+    "filmstrip.png": 118783,
+    "filmstrip-reduced.png": 176054
+  }
+}
