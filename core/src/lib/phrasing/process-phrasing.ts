@@ -58,7 +58,12 @@ export const STALLED_TURN_LABEL = "Can't make this one right now";
  * `making` is one flag per row: in flight AND not condemned by the server. */
 export function processingGroupHeading(making: boolean[]): string {
 	if (making.some(Boolean)) return processStageLabel('queued');
-	return making.length === 1 ? STALLED_TURN_LABEL : "Can't make these right now";
+	return cantMakeHeading(making.length);
+}
+
+/** The heading over songs nothing can make right now, singular or plural: the same words as the stalled card. */
+export function cantMakeHeading(count: number): string {
+	return count === 1 ? STALLED_TURN_LABEL : "Can't make these right now";
 }
 
 /** WHAT THE ROOM IS WAITING ON when nothing queued can play and nothing is being made: the TV lobby's headline and

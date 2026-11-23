@@ -1,7 +1,14 @@
 // Client-side readiness view state. The CLASSIFICATION is shared with the server through
 // `$lib/contract/process/readiness` and must stay there: two copies with a parity test is one function with two
 // homes. Client-only here: a LIVE media:status can override the catalog, and 'failed' exists only as a live event.
-import { isProcessableSource, readyToSing, type Media, type MediaStatus } from '$lib/contract';
+import {
+	fetcherFor,
+	getFetcher,
+	isProcessableSource,
+	readyToSing,
+	type Media,
+	type MediaStatus
+} from '$lib/contract';
 import { readinessOf, type CatalogReadiness } from '$lib/contract/process/readiness';
 
 export { readinessOf };
@@ -137,6 +144,20 @@ export function retryHoldAfter(
  * singer's turn and leaves a turn nothing can ever make ready. `isProcessableSource` is the shared authority. */
 export function canProcess(m: Media, r: Readiness): boolean {
 	return isProcessableSource(m.source) && (r === 'unacquired' || r === 'failed');
+}
+
+/** The room's two maker verdicts (`queue:sync`'s `canMake` and `canFetch`). Both default true until the server says. */
+export interface MakerVerdicts {
+	canMake: boolean;
+	canFetch: boolean;
+}
+
+/** Whether a song nobody has made yet can be made NOW. PER SOURCE: a library upload needs only a maker, and a search
+ *  result also needs something to fetch it, so an uploads-only box (no yt-dlp) makes uploads and nothing else. The
+ *  fetch test is the fetcher registry's own (`capability: null` is the local file), not a source list kept here. */
+export function makeableNow(m: Media, verdicts: MakerVerdicts, defaultFetcher?: string): boolean {
+	if (!verdicts.canMake) return false;
+	return verdicts.canFetch || getFetcher(fetcherFor(m.source, defaultFetcher))?.capability == null;
 }
 
 /** What the screen says when NO rows are showing at all — the one zero-state for both views.

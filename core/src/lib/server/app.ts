@@ -469,7 +469,8 @@ export function getApp(): EncoreApp {
 			listSingers: () => app.singers.listPublic(app.activeRoomId),
 			listOnline: () => app.presence.online(),
 			getSettings: () => app.settings.getEffective(app.activeRoomId),
-			canMake: () => app.workerHub.canMake()
+			canMake: () => app.workerHub.canMake(),
+			canFetch: () => app.workerHub.canFetch()
 		});
 
 	const workerHub = new WorkerHub({
@@ -523,7 +524,7 @@ export function getApp(): EncoreApp {
 			});
 		},
 		// The maker verdict moved (a worker joined, or the last one has been gone the grace): every screen re-reads it.
-		onCanMakeChange: () => app.publish(roomSync()),
+		onMakerChange: () => app.publish(roomSync()),
 		now: () => app.now()
 	});
 
@@ -646,6 +647,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		tvConnected: perFrame.tvConnected,
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
 		canMake: () => app.workerHub.canMake(),
+		canFetch: () => app.workerHub.canFetch(),
 		onNowPlaying: (e) => app.plays.onNowPlaying(e),
 		onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 		recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),

@@ -16,10 +16,12 @@
 		showsNoRows,
 		processingGroupIds,
 		waitingTurns,
+		makeableNow,
+		type MakerVerdicts,
 		type Readiness
 	} from '$lib/readiness';
 	import { processAndQueue, REPLACE_PARAM } from '$lib/process-and-queue';
-	import { processingGroupHeading } from '$lib/phrasing/process-phrasing';
+	import { cantMakeHeading, processingGroupHeading } from '$lib/phrasing/process-phrasing';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -39,6 +41,9 @@
 	/** The library read and the first queue sync have both landed, so `noMaker` is the room's verdict, not a default. */
 	let verdictKnown = $state(false);
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
+	// The room's maker verdicts (`queue:sync`), so the tab says "can't make" before anyone's pick dies.
+	let verdicts = $state<MakerVerdicts>({ canMake: true, canFetch: true });
+	let defaultFetcher = $state<string | undefined>(undefined);
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }>>(
 		new Map()
@@ -69,6 +74,8 @@
 			if (live(readyResults).length !== readyResults.length) readyResults = live(readyResults);
 			if (live(rawResults).length !== rawResults.length) rawResults = live(rawResults);
 			mediaStatus = room.mediaStatus;
+			verdicts = room.verdicts;
+			defaultFetcher = room.settings.global.defaultFetcher;
 			entries = room.entries;
 			verdictKnown = room.libraryLoaded && (room.queue?.synced ?? false);
 			library = room.library;
@@ -105,9 +112,14 @@
 		waitingTurns(
 			queued,
 			(id) => mediaCatalog.get(id),
-			(id) => mediaStatus.get(id)
+			(id) => mediaStatus.get(id),
+			verdicts.canMake
 		).noMaker
 	);
+
+	/* "Find any song and we'll make it" is a promise about SEARCH RESULTS, so it needs a fetcher as well as a maker: an
+	   uploads-only box makes only the library's own files, which a guest finds on /library, not by searching. */
+	const onlyReady = $derived(noMaker || !verdicts.canFetch);
 
 	function liveOf(id: string) {
 		return mediaStatus.get(id);
@@ -176,6 +188,7 @@
 	let revealedProcessing = $state(LIBRARY_PAGE);
 	let revealedReady = $state(LIBRARY_PAGE);
 	let revealedRaw = $state(LIBRARY_PAGE);
+	let revealedCant = $state(LIBRARY_PAGE);
 
 	/* ALL THREE GROUPS TOGETHER, in one place: each is scoped to the query that produced it, so a group left behind
 	   renders under whatever the box shows next. Dropping them one site at a time is how `processingResults` was
@@ -191,6 +204,7 @@
 		revealedProcessing = LIBRARY_PAGE;
 		revealedReady = LIBRARY_PAGE;
 		revealedRaw = LIBRARY_PAGE;
+		revealedCant = LIBRARY_PAGE;
 	}
 
 	function onQueryInput() {
@@ -378,6 +392,13 @@
 	   (the group, the widen gate and `showsNoRows`); the window below is a fourth, and an `{@const}` cannot be read
 	   by the script. */
 	const rawRows = $derived(unaccounted(rawResults));
+	/* SPLIT BY WHAT CAN BE MADE NOW (proposal 24). A song that would be made on a tap (unprocessed or failed) but that
+	   nothing connected can make (`makeableNow`: no maker, or a search result with no fetcher) moves to its own group
+	   with no Sing button, so the tab stops offering a pick the server would refuse. A row already in flight, or a
+	   name match only, stays where it was: neither offers Sing. */
+	const cantMakeRow = (m: Media) => canProcess(m, readinessFor(m)) && !makeableNow(m, verdicts, defaultFetcher);
+	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m)));
+	const cantRows = $derived(rawRows.filter(cantMakeRow));
 
 	/* WHAT IS RENDERED, against what the reveal control still has behind it. DE-DUPLICATION AND THE ZERO-STATE READ
 	   THE FULL LISTS, not these: `accountedFor`/`unaccounted` decide which group OWNS a song, and `showsNoRows`
@@ -385,7 +406,8 @@
 	   `.shown`, so a 200-row answer whose first 60 happened to be ready would print "Nothing matches". */
 	const processingView = $derived(libraryWindow(processingRows, revealedProcessing));
 	const readyView = $derived(libraryWindow(readyResults, revealedReady));
-	const rawView = $derived(libraryWindow(rawRows, revealedRaw));
+	const rawView = $derived(libraryWindow(makeRows, revealedRaw));
+	const cantView = $derived(libraryWindow(cantRows, revealedCant));
 
 	function addSong(mediaId: string) {
 		/* PICK ANOTHER: the same turn, another song, so the spot the dead song held is kept — carrying THIS song's
@@ -573,9 +595,18 @@
 							</Button>
 						</div>
 					{/if}
+				{:else if cantRows.length && library.length}
+					<!-- NOTHING READY MATCHES, AND SOME OF WHAT DID CAN'T BE MADE: the answer to "which ones are ready?" is
+							one tap away, so the ready group points at them rather than leaving the guest to guess. -->
+					<h2 class="grouphead">Ready to sing</h2>
+					<div class="showall-row">
+						<Button variant="secondary" size="tap" href="/library">
+							<Icon name="library" /> See all ready songs
+						</Button>
+					</div>
 				{/if}
 
-				{#if rawRows.length}
+				{#if makeRows.length}
 					<h2 class="grouphead" tabindex="-1">Needs karaoke</h2>
 					{#each rawView.shown as m (m.id)}
 						{@const r = readinessFor(m)}
@@ -601,6 +632,22 @@
 							<Button variant="secondary" size="tap" onclick={() => (revealedRaw += LIBRARY_PAGE)}>
 								Show {Math.min(LIBRARY_PAGE, rawView.hidden)} more
 								<span class="chip-n">{rawView.hidden} left</span>
+							</Button>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- WHAT NOTHING CONNECTED CAN MAKE RIGHT NOW, listed so the guest sees the song exists, with no Sing button. -->
+				{#if cantRows.length}
+					<h2 class="grouphead" tabindex="-1">{cantMakeHeading(cantRows.length)}</h2>
+					{#each cantView.shown as m (m.id)}
+						<SongRow {...rowMeta(m)} readiness={readinessFor(m)} inQueue={inMyQueue(m.id)} cantMake />
+					{/each}
+					{#if cantView.hidden > 0}
+						<div class="reveal">
+							<Button variant="secondary" size="tap" onclick={() => (revealedCant += LIBRARY_PAGE)}>
+								Show {Math.min(LIBRARY_PAGE, cantView.hidden)} more
+								<span class="chip-n">{cantView.hidden} left</span>
 							</Button>
 						</div>
 					{/if}
@@ -691,10 +738,10 @@
 									the promise, then took it back 120 ms later, and the block below it jumped (CLS 0.0039). -->
 							<Empty.Description>
 								<span class="promise">
-									<span class:shown={verdictKnown && !noMaker}
+									<span class:shown={verdictKnown && !onlyReady}
 										>Find any song and we'll make the karaoke track for it.</span
 									>
-									<span class:shown={verdictKnown && noMaker}>Only ready songs can play right now.</span>
+									<span class:shown={verdictKnown && onlyReady}>Only ready songs can play right now.</span>
 								</span>
 							</Empty.Description>
 						</Empty.Header>

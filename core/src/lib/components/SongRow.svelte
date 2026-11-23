@@ -55,6 +55,10 @@
 		 * dropping only `onmake` falls through to a live add — and a turn on a song that can never be processed is held
 		 * in the rotation and silently skipped every pass. The row still says why, in the chip line. */
 		processable?: boolean;
+		/** Nothing connected can make this song right now (`makeableNow`): the row keeps its words so the song is still
+		 * seen to exist, and has NO action, since a Sing that cannot work is a dead tap and a bare add holds a turn
+		 * nothing will make. Its group heading says why. */
+		cantMake?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
 		onmake?: () => void;
@@ -74,6 +78,7 @@
 		unservable = false,
 		inQueue = false,
 		processable = true,
+		cantMake = false,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -270,7 +275,9 @@
 				{/if}
 			</Item.Content>
 
-			{#if onmake}
+			{#if cantMake}
+				<!-- No control at all: see `cantMake`. -->
+			{:else if onmake}
 				<!-- ONE action, never two: queueing without processing holds a rotation slot that can never become ready, and
 					processing without queueing gives the singer no turn. Icon-only, and the MARK is load-bearing: the two actions
 					differ on three axes, so a bare plus for both dresses an expensive action as a free one. See
