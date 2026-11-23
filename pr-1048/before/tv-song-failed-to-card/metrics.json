@@ -1,0 +1,379 @@
+{
+  "scenario": "tv-song-failed-to-card",
+  "what": "TV 1920x1080: the hand-off as the Skipped notice clears to Ana’s \"Now singing\" card: the scrim stays up and only the new lines rise (--motion-slow)",
+  "capturedAt": "2026-11-23T10:36:16.932Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-label",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-name.hero-name",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-song",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 15,
+  "seekObserved": {
+    "notice": null,
+    "card": "Now singing Ana livin-on-a-prayer"
+  },
+  "subject": {
+    "selector": ".state-next",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-label",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-name.hero-name",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-song",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.state-mark",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-label",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-song",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-replaces",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "notice": null,
+      "card": "Now singing Ana livin-on-a-prayer"
+    },
+    "droppedFrames": {
+      "median": 17,
+      "min": 15,
+      "max": 29
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 7
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 33.3,
+      "min": 33.3,
+      "max": 33.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 6,
+    "observed": {
+      "notice": null,
+      "card": "Now singing Ana livin-on-a-prayer"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 16953,
+    "encodeMs": 1792,
+    "liveMs": 35106,
+    "reducedMs": 11376,
+    "reducedEncodeMs": 684
+  },
+  "files": {
+    "clip.gif": 331364,
+    "clip-slow4x.gif": 331364,
+    "filmstrip.png": 134268,
+    "filmstrip-reduced.png": 64218
+  }
+}

@@ -1,0 +1,436 @@
+{
+  "scenario": "tv-song-intro",
+  "what": "TV 1920x1080: the \"Now singing\" card for Maya as Ana skips to her, the handoff on every change of singer: the layer fades in and the lines rise one --tv-space-4xl into place (--motion-slow, ease-out)",
+  "capturedAt": "2026-11-23T10:37:32.162Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "div.takeover-layer.shown",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease | opacity var(--motion-slow) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-label",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-name.hero-name",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-card-rise",
+      "target": "div.up-song",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 15,
+  "seekObserved": {
+    "cardText": "Now singing Maya dont-stop-believin",
+    "layerShown": true,
+    "layerOpacity": 1,
+    "lyrics": false
+  },
+  "subject": {
+    "selector": ".state-next",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [
+    {
+      "delayMs": 2130,
+      "atMs": 2241
+    },
+    {
+      "delayMs": 2500,
+      "atMs": 2611
+    }
+  ],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.takeover-layer.shown",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease | opacity var(--motion-slow) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-label",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-name.hero-name",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-card-rise",
+        "target": "div.up-song",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-177z3nv-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "cardText": "Now singing Maya dont-stop-believin",
+      "layerShown": true,
+      "layerOpacity": 0.996858,
+      "lyrics": false
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 50.1,
+      "min": 50,
+      "max": 50.1
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.fs-btn",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-slow) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "burstFrames": 4,
+    "observed": {
+      "cardText": "Now singing Maya dont-stop-believin",
+      "layerShown": true,
+      "layerOpacity": 1,
+      "lyrics": false
+    }
+  },
+  "realtime": {
+    "realtime": {
+      "throttle": 6,
+      "throttleRatio": 4,
+      "stall": null,
+      "windowMs": 900,
+      "sampledFrames": 25,
+      "screencastFrames": 14,
+      "droppedFrames": 3,
+      "rafIntervals": 24,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 12,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": 194,
+        "each": [
+          {
+            "id": "#14",
+            "ms": 194
+          },
+          {
+            "id": "#15",
+            "ms": 194
+          },
+          {
+            "id": "#16",
+            "ms": 194
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 20.1,
+        "each": [
+          {
+            "id": "#14",
+            "px": 20.1
+          },
+          {
+            "id": "#15",
+            "px": 20.1
+          },
+          {
+            "id": "#16",
+            "px": 20.1
+          }
+        ]
+      },
+      "line": "realtime 6×        overlap 0 frames · min gap 12 px · blank 0 · dropped 3/24 · first frame +194 ms",
+      "gif": {
+        "frames": 14,
+        "merged": 0,
+        "halved": false
+      }
+    },
+    "realtime-late": {
+      "throttle": 1,
+      "throttleRatio": null,
+      "stall": {
+        "ms": 400,
+        "at": "mount",
+        "atMs": 221
+      },
+      "windowMs": 900,
+      "sampledFrames": 13,
+      "screencastFrames": 10,
+      "droppedFrames": 2,
+      "rafIntervals": 12,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 12,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": 474,
+        "each": [
+          {
+            "id": "#8",
+            "ms": 474
+          },
+          {
+            "id": "#9",
+            "ms": 474
+          },
+          {
+            "id": "#10",
+            "ms": 474
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 16.3,
+        "each": [
+          {
+            "id": "#8",
+            "px": 16.3
+          },
+          {
+            "id": "#9",
+            "px": 16.3
+          },
+          {
+            "id": "#10",
+            "px": 16.3
+          }
+        ]
+      },
+      "line": "realtime-late 400  overlap 0 frames · min gap 12 px · blank 0 · dropped 2/12 · first frame +474 ms",
+      "gif": {
+        "frames": 10,
+        "merged": 0,
+        "halved": false
+      }
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12043,
+    "encodeMs": 1957,
+    "liveMs": 20236,
+    "reducedMs": 8550,
+    "reducedEncodeMs": 579,
+    "realtimeMs": 7021,
+    "realtimeEncodeMs": 2012,
+    "realtime-lateMs": 6743,
+    "realtime-lateEncodeMs": 1913
+  },
+  "files": {
+    "clip.gif": 278034,
+    "clip-slow4x.gif": 278034,
+    "filmstrip.png": 171024,
+    "filmstrip-reduced.png": 59226,
+    "realtime.gif": 228074,
+    "filmstrip-realtime.png": 166153,
+    "realtime-late.gif": 164236,
+    "filmstrip-realtime-late.png": 125648
+  }
+}

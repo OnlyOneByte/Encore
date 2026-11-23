@@ -1,0 +1,397 @@
+{
+  "scenario": "tv-reaction-lane",
+  "what": "TV 1920x1080 @300% lyrics: two fans’ cheers rising up the lane as a stream, 650 ms apart from each disc’s first frame, clear of each other, the lyrics and the corner (rise, --rise-ms)",
+  "capturedAt": "2026-11-23T10:39:22.709Z",
+  "stepMs": 80,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qae6fq-rise",
+      "target": "span.reaction",
+      "durationMs": 2400,
+      "delayMs": 0,
+      "endTimeMs": 2400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "forwards",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-qae6fq-rise var(--rise-ms) ease-out forwards",
+        "durationIsToken": false,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [
+      "svelte-qae6fq-rise on span.reaction: timing svelte-qae6fq-rise var(--rise-ms) ease-out forwards is not a var(--motion-*) token"
+    ],
+    "waiver": {
+      "match": "var(--rise-ms) ease-out forwards is not a var(--motion-*) token",
+      "reason": "the rise is RISE_MS in script, the number the release spacing is built on (tv/Reactions.svelte)"
+    },
+    "unchecked": [],
+    "summary": "tokens: var() tokens, plus 1 waived literal (the rise is RISE_MS in script, the number the release spacing is built on (tv/Reactions.svelte))"
+  },
+  "motionEndMs": 2400,
+  "seekFrames": 32,
+  "subject": {
+    "selector": ".reaction-lane",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [
+    {
+      "delayMs": 650,
+      "atMs": 985
+    }
+  ],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qae6fq-rise",
+        "target": "span.reaction",
+        "durationMs": 2400,
+        "delayMs": 0,
+        "endTimeMs": 2400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-qae6fq-rise var(--rise-ms) ease-out forwards",
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "droppedFrames": {
+      "median": 38,
+      "min": 37,
+      "max": 42
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 8
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 50
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 4,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qae6fq-fade",
+        "target": "span.reaction",
+        "durationMs": 2600,
+        "delayMs": 0,
+        "endTimeMs": 2600,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qae6fq-fade var(--fade-ms) ease-out forwards",
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qae6fq-fade",
+        "target": "span.reaction",
+        "durationMs": 2600,
+        "delayMs": 0,
+        "endTimeMs": 2600,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qae6fq-fade var(--fade-ms) ease-out forwards",
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qae6fq-fade",
+        "target": "span.reaction",
+        "durationMs": 2600,
+        "delayMs": 0,
+        "endTimeMs": 2600,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qae6fq-fade var(--fade-ms) ease-out forwards",
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qae6fq-fade",
+        "target": "span.reaction",
+        "durationMs": 2600,
+        "delayMs": 0,
+        "endTimeMs": 2600,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qae6fq-fade var(--fade-ms) ease-out forwards",
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "honoured": false,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 34
+  },
+  "realtime": {
+    "realtime": {
+      "throttle": 6,
+      "throttleRatio": 3,
+      "stall": null,
+      "windowMs": 7000,
+      "sampledFrames": 201,
+      "screencastFrames": 181,
+      "droppedFrames": 41,
+      "rafIntervals": 200,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 36.2,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": 214,
+        "each": [
+          {
+            "id": "#11",
+            "ms": 88
+          },
+          {
+            "id": "#12",
+            "ms": 62
+          },
+          {
+            "id": "#13",
+            "ms": 90
+          },
+          {
+            "id": "#14",
+            "ms": 107
+          },
+          {
+            "id": "#15",
+            "ms": 214
+          },
+          {
+            "id": "#16",
+            "ms": 79
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 374.2,
+        "each": [
+          {
+            "id": "#11",
+            "px": 374.2
+          },
+          {
+            "id": "#12",
+            "px": 364.1
+          },
+          {
+            "id": "#13",
+            "px": 374.2
+          },
+          {
+            "id": "#14",
+            "px": 374.2
+          },
+          {
+            "id": "#15",
+            "px": 374.2
+          },
+          {
+            "id": "#16",
+            "px": 374.2
+          }
+        ]
+      },
+      "line": "realtime 6×        overlap 0 frames · min gap 36.2 px · blank 0 · dropped 41/200 · first frame +214 ms",
+      "gif": {
+        "frames": 176,
+        "merged": 5,
+        "halved": false
+      }
+    },
+    "realtime-late": {
+      "throttle": 1,
+      "throttleRatio": null,
+      "stall": {
+        "ms": 400,
+        "at": "mount",
+        "atMs": 326
+      },
+      "windowMs": 7000,
+      "sampledFrames": 187,
+      "screencastFrames": 169,
+      "droppedFrames": 44,
+      "rafIntervals": 186,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 31.2,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": 451,
+        "each": [
+          {
+            "id": "#11",
+            "ms": 451
+          },
+          {
+            "id": "#12",
+            "ms": 155
+          },
+          {
+            "id": "#13",
+            "ms": 68
+          },
+          {
+            "id": "#14",
+            "ms": 48
+          },
+          {
+            "id": "#15",
+            "ms": 77
+          },
+          {
+            "id": "#16",
+            "ms": 59
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 376.7,
+        "each": [
+          {
+            "id": "#11",
+            "px": 376.7
+          },
+          {
+            "id": "#12",
+            "px": 376.7
+          },
+          {
+            "id": "#13",
+            "px": 371.6
+          },
+          {
+            "id": "#14",
+            "px": 376.7
+          },
+          {
+            "id": "#15",
+            "px": 374.2
+          },
+          {
+            "id": "#16",
+            "px": 374.2
+          }
+        ]
+      },
+      "line": "realtime-late 400  overlap 0 frames · min gap 31.2 px · blank 0 · dropped 44/186 · first frame +451 ms",
+      "gif": {
+        "frames": 163,
+        "merged": 6,
+        "halved": false
+      }
+    }
+  },
+  "timingsMs": {
+    "seekMs": 10482,
+    "encodeMs": 1115,
+    "liveMs": 9814,
+    "reducedMs": 3458,
+    "reducedEncodeMs": 500,
+    "realtimeMs": 8316,
+    "realtimeEncodeMs": 7298,
+    "realtime-lateMs": 8290,
+    "realtime-lateEncodeMs": 6067
+  },
+  "files": {
+    "clip.gif": 230499,
+    "clip-slow4x.gif": 230499,
+    "filmstrip.png": 118846,
+    "filmstrip-reduced.png": 78636,
+    "realtime.gif": 1200010,
+    "filmstrip-realtime.png": 208886,
+    "realtime-late.gif": 1119282,
+    "filmstrip-realtime-late.png": 217724
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "scenario": "tv-attract-phrase",
+  "what": "TV attract screen: the headline phrase rotating every 8 s: a cut, then phrase-fade (600 ms ease-out, a declared exception to the tokens)",
+  "capturedAt": "2026-11-23T10:36:30.210Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-177z3nv-phrase-fade",
+      "target": "div.phrase-line",
+      "durationMs": 600,
+      "delayMs": 0,
+      "endTimeMs": 600,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "0.6s ease-out 0s 1 normal none running svelte-177z3nv-phrase-fade | 0.6s | 0s",
+        "durationIsToken": false,
+        "literalTimings": [
+          "0.6s"
+        ],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [
+      "svelte-177z3nv-phrase-fade on div.phrase-line: literal timing 0.6s"
+    ],
+    "waiver": {
+      "match": "phrase-fade on div.phrase-line: literal timing 0.6s",
+      "reason": "a slower swap for a screen nobody is acting on (tv/+page.svelte)"
+    },
+    "unchecked": [],
+    "summary": "tokens: var() tokens, plus 1 waived literal (a slower swap for a screen nobody is acting on (tv/+page.svelte))"
+  },
+  "motionEndMs": 600,
+  "seekFrames": 21,
+  "seekObserved": {
+    "phraseBefore": "Volume beats talent.",
+    "phraseAfter": "Mics out.",
+    "changed": true,
+    "lineNodes": 1
+  },
+  "subject": {
+    "selector": ".phrase-line",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-177z3nv-phrase-fade",
+        "target": "div.phrase-line",
+        "durationMs": 600,
+        "delayMs": 0,
+        "endTimeMs": 600,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "0.6s ease-out 0s 1 normal none running svelte-177z3nv-phrase-fade | 0.6s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.6s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.fs-btn",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-slow) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "phraseBefore": "Volume beats talent.",
+      "phraseAfter": "Mics out.",
+      "changed": true,
+      "lineNodes": 1
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.7,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.fs-btn",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-slow) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "burstFrames": 11,
+    "observed": {
+      "phraseBefore": "Pick a banger.",
+      "phraseAfter": "Pick a banger.",
+      "changed": false,
+      "lineNodes": 1
+    }
+  },
+  "timingsMs": {
+    "seekMs": 11094,
+    "encodeMs": 2155,
+    "liveMs": 25841,
+    "reducedMs": 11196,
+    "reducedEncodeMs": 465
+  },
+  "files": {
+    "clip.gif": 641173,
+    "clip-slow4x.gif": 641173,
+    "filmstrip.png": 287410,
+    "filmstrip-reduced.png": 104397
+  }
+}
