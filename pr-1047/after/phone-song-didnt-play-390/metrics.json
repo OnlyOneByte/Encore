@@ -1,0 +1,154 @@
+{
+  "scenario": "phone-song-didnt-play-390",
+  "what": "Phone 390x844: \"Your song didn’t play\" rising over the dock on the Library tab as the TV fails Theo’s song, with Try again and Pick another (rise-in, --motion-base)",
+  "capturedAt": "2026-11-23T09:38:24.667Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.didnt-play.your-turn.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 18,
+  "seekObserved": {
+    "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+    "live": "Your song didn’t play, dont-stop-believin",
+    "youreUp": false
+  },
+  "subject": {
+    "selector": ".didnt-play",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.didnt-play.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 133.36299989968538,
+        "delayMs": 0,
+        "endTimeMs": 133.36299989968538,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+      "live": "Your song didn’t play, dont-stop-believin",
+      "youreUp": false
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 4,
+      "min": 1,
+      "max": 4
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 66.7,
+      "min": 66.7,
+      "max": 83.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 4,
+    "observed": {
+      "sheet": "Your song didn’t play dont-stop-believin Try again Pick another You keep your spot.",
+      "live": "Your song didn’t play, dont-stop-believin",
+      "youreUp": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12202,
+    "encodeMs": 1315,
+    "liveMs": 16498,
+    "reducedMs": 5767,
+    "reducedEncodeMs": 487
+  },
+  "files": {
+    "clip.gif": 445901,
+    "clip-slow4x.gif": 445901,
+    "filmstrip.png": 285099,
+    "filmstrip-reduced.png": 54845
+  }
+}
