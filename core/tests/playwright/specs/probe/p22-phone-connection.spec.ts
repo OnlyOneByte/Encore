@@ -223,11 +223,6 @@ for (const start of ['/', '/settings']) {
 			};
 			requestAnimationFrame(tick);
 			const seenAt: Record<string, number> = {};
-			// The dock's top edge with its "Reconnecting…" bar up: anything starting there or lower is the dock, even
-			// once it has been removed and the entry names no node.
-			const dockTop = (document.querySelector('.dock')?.getBoundingClientRect().top ?? innerHeight) - 30;
-			const isDock = (s: { node?: Element; previousRect: DOMRectReadOnly }) =>
-				s.node?.closest?.('.dock') || (!s.node?.isConnected && s.previousRect.y >= dockTop);
 			const look = () => {
 				for (const sel of ['.lost', '.cta-reason']) {
 					const el = document.querySelector(sel);
@@ -246,9 +241,7 @@ for (const start of ['/', '/settings']) {
 					hadRecentInput: boolean;
 					sources?: { node?: Element; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
 				}[]) {
-					// The dock's "Reconnecting…" bar comes and goes with the drop this test makes, as it does on main:
-					// that is the offline cue doing its job. What is measured is the join screen replacing the page.
-					if (e.hadRecentInput || (e.sources?.length && e.sources.every(isDock))) continue;
+					if (e.hadRecentInput) continue;
 					w.__cls += e.value;
 					for (const s of e.sources ?? [])
 						w.__moved.push(

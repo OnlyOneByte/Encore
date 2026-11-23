@@ -86,6 +86,44 @@ test('with two tabs, the one that taps Leave lands on the plain join screen; the
 	await context.close();
 });
 
+// The You pane's two calls, each in the one order that only it covers (proposal 20, r2 nit 1).
+test('the server closes the leaver socket before the Leave answers: still no lost line (beginLeave)', async ({
+	browser,
+	world
+}) => {
+	const context = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: world.baseURL });
+	const a = await context.newPage();
+	await world.joinAs(a, 'Maya');
+	let asked = 0;
+	a.on('request', (r) => void (r.url().endsWith('/api/me') && asked++));
+	// The Leave lands on the server, but its answer is held until the 4001 close and its /api/me 401 have come back.
+	await a.route('**/api/leave', async (route) => {
+		if (route.request().method() !== 'POST') return route.continue();
+		const response = await route.fetch();
+		const before = asked;
+		await expect.poll(() => asked, { timeout: 5_000 }).toBeGreaterThan(before);
+		await a.waitForTimeout(500);
+		await route.fulfill({ response });
+	});
+	await leaveFrom(a);
+	await leaverSeesPlainJoin(a);
+	await context.close();
+});
+
+test('the leaver whose /api/me never answers still lands on the join screen (left)', async ({ browser, world }) => {
+	const context = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: world.baseURL });
+	const a = await context.newPage();
+	await world.joinAs(a, 'Maya');
+	await a.goto('/settings/you');
+	// From here /api/me hangs, so the server's close can't settle this tab: only the You pane's own call can.
+	await a.route('**/api/me', () => {});
+	await a.getByRole('button', { name: 'Leave the room' }).click();
+	await a.getByRole('button', { name: 'Yes, leave' }).click();
+	await a.waitForURL((u) => u.pathname === '/');
+	await leaverSeesPlainJoin(a);
+	await context.close();
+});
+
 /** What the TV's stage says now, whitespace folded. */
 const tvText = async (tv: Page) => (await tv.locator('body').innerText()).replace(/\s+/g, ' ');
 
