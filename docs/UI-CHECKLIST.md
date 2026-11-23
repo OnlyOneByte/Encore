@@ -88,7 +88,10 @@ Answer each from `filmstrip.png`, `metrics.json` and the diff. A PR says which p
    code), so the live pass runs 3 times (`MOTION_LIVE_RUNS`) and records the **median and range** in
    `live.droppedFrames` and `live.longAnimationFrames` (each `{ median, min, max }`; no single-run value is kept). Run the row on `main` and on the branch,
    on the same box. A regression is the branch's **median above main's maximum**; anything inside main's range is
-   noise. A row with a TV playing in the same browser (`phone-on-deck-heads-up`) is the noisiest. These are headless
+   noise. `droppedFrames` counts intervals over 1.5x the run's OWN median interval (`live.frameIntervalP50Ms`), so a
+   tree that paints faster has a lower bar: when the two medians differ, judge by the absolute numbers,
+   `live.frameIntervalP95Ms` and `live.longAnimationFrames` (#1060). A row with a TV playing in the same browser
+   (`phone-on-deck-heads-up`) is the noisiest. These are headless
    numbers (see Limits), so compare them, never quote them as a phone's.
 10. **It is readable.** `clip.gif` is at most 1.5 MB and 4 s; `filmstrip.png` is at most 2000 px a side (crop with
     `stripClip`, shrink with `scale`).
