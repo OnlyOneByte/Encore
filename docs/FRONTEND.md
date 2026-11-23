@@ -1942,10 +1942,11 @@ chrome in the corners shows through it: the lower third and the progress line ar
 `layerShown`), or "Now singing Maya" is on screen twice, and the stage's own corner QR is hidden while `transient`
 holds the dimmed `.takeover-join` copy, or the two stack at full brightness in one box. Both hide by `visibility`,
 so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. Both
-cut out as the card comes up and come back as the layer's exit starts. The progress line fades back in on
-`--motion-base` (a cut under reduce); the lower third CUTS back in. Fading it re-rasterised its blurred shadow and
-stroke every frame. In #1060 that took the `tv-song-outro` live run from a median of about 7 dropped frames to about
-26, and `will-change: opacity` during the fade did not help.
+cut out as the card comes up. The progress line fades back in on `--motion-base` from the layer's exit START (a cut
+under reduce); it names nothing. The lower third CUTS back in only once the card's exit fade has ENDED
+(`cardPainted`), or for the fade's first frames it repeats the name the card is still showing. It is a cut, not a
+fade, because fading re-rasterises its blurred shadow and stroke every frame: on the `tv-song-outro` live run a fade
+(with `will-change: opacity`) took the p95 frame interval from main's 66.6 ms to 83.3 ms.
 
 The QR's 1.0 to 0.72 step is a CUT, at both ends of the card, on purpose. A fade needs both copies painted at once
 (the stage's under the takeover, the dimmed one above it), and that is two QRs in one box for the fade's length, the

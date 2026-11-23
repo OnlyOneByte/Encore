@@ -1,14 +1,5 @@
-// THE "NOW SINGING" CARD IS THE WHOLE STAGE (proposal 23).
-//
-// The card's scrim is transparent past 62% of its radius, so the stage's chrome showed through it: the lower third
-// named the singer a second time, the progress line ran along the edge, and the corner join QR was drawn twice in one
-// box at full brightness. On every handoff with the layer fully up: the lower third and the progress line are hidden,
-// and "Up next" stays. On EVERY stage frame, a TV reloaded mid-card included, exactly ONE join QR is painted, dimmed
-// while a takeover is up. When the layer's exit starts, the lower third cuts back in naming the new singer, and the
-// edge progress line fades back in under no-preference and cuts back under reduce.
-//
-// Every frame is read in the page (rAF), because the exit's first frame is the one that says whether the stage
-// waited for the card, and a sampler from the test side lands a round trip late.
+// The "Now singing" card is the whole stage (proposal 23): the rules are in docs/FRONTEND.md#the-full-screen-takeovers.
+// Every rAF frame is read in the page, because a sampler from the test side lands a round trip late.
 import { writeFileSync } from 'node:fs';
 import { test, expect } from '../../world/fixtures';
 import { readySong, queueReady } from '../../world/actors';
@@ -26,6 +17,9 @@ interface Frame {
 	/** A takeover's dimmed join copy is mounted. */
 	takeoverJoin: boolean;
 	cardName: string;
+	layerOpacity: number;
+	/** The card's name, composited up the tree (the layer's fade included); 0 with no card mounted. */
+	cardNameOpacity: number;
 	ltVisible: boolean;
 	ltName: string;
 	ltOpacity: number;
@@ -58,6 +52,7 @@ async function installRecorder(tv: Page): Promise<void> {
 			const shown = !!layer?.classList.contains('shown');
 			const progress = [...document.querySelectorAll('.edgebar, .topbar, .pill, .lower-third .card-row')];
 			const upnext = [...document.querySelectorAll('.upnext')];
+			const cardNameEl = document.querySelector('.state-next .up-name');
 			const f: Frame = {
 				at: Date.now(),
 				stage: !!lt,
@@ -65,6 +60,8 @@ async function installRecorder(tv: Page): Promise<void> {
 				shown,
 				takeoverJoin: !!document.querySelector('.takeover-join'),
 				cardName: shown ? words(document.querySelector('.state-next .up-name')) : '',
+				layerOpacity: layer ? Number(getComputedStyle(layer).opacity) : 0,
+				cardNameOpacity: cardNameEl ? composited(cardNameEl) : 0,
 				ltVisible: !!lt && painted(lt),
 				ltName: words(lt?.querySelector('.ls-name') ?? null),
 				ltOpacity: lt ? composited(lt) : 0,
@@ -154,13 +151,18 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 			);
 			// Theo's and Ana's: the reload ends Maya's page mid-card, and the reloaded TV does not put her card back (IN-P1).
 			expect(exits.length, 'card exits seen').toBeGreaterThanOrEqual(2);
+			// ONE copy of the name: no frame paints the card's name and the lower third together, the exit fade included.
+			const twice = all.filter((f) => f.ltVisible && f.cardNameOpacity > 0.1).map((f) => [f.at, f.cardNameOpacity]);
+			expect(twice, 'frames with the card name and the lower third both painted [at, name opacity]').toEqual([]);
 			for (const [prev, f] of exits) {
 				const at = `exit of "${prev!.cardName}" at ${f!.at}`;
-				// The lower third CUTS back in, in both modes: its shadowed text is too costly to fade (#1060).
+				// The lower third CUTS back in once the layer's fade has ended (its first painted frame after the exit), at
+				// full and with no transition, in both modes.
+				const back = all.find((g) => g.at >= f!.at && g.ltVisible);
 				expect(
-					[f!.ltVisible, f!.ltOpacity, f!.ltTransition],
-					`${at}: the lower third cuts back in as the card leaves`
-				).toEqual([true, 1, '0s']);
+					[back?.layerOpacity, back?.ltOpacity, back?.ltTransition],
+					`${at}: the lower third cuts back in after the card's fade`
+				).toEqual([0, 1, '0s']);
 				// The edge line, on the exit's own frame: the style recalc that drops `under-card` starts its fade, so
 				// under no-preference it is painted from below full; under reduce it is back at full. Read here, not
 				// mid-fade: under load rAF frames land further apart than the fade.

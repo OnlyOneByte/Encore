@@ -33,8 +33,10 @@
 		progressStyle: TvProgressStyle;
 		positionSec: number;
 		durationSec: number;
-		/** A takeover card is up (`layerShown`); see `.under-card`. */
+		/** A takeover card is up (`layerShown`): the progress line hides, and fades back in as it leaves. */
 		underCard: boolean;
+		/** The card's words are painted at all, its exit fade included: the lower third hides. */
+		cardPainted: boolean;
 		/** The next turn, when it is not the one on stage. */
 		next: { name: string; color: string | undefined; media: Media | null } | null;
 		/** The lower third's rendered height, on every resize; /tv turns it into `--tv-chrome-h`. */
@@ -52,6 +54,7 @@
 		positionSec,
 		durationSec,
 		underCard,
+		cardPainted,
 		next,
 		oncardsize,
 		onupnextsize
@@ -80,10 +83,8 @@
 	background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
 	name and the ResizeObserver binding stay.
 -->
-<!-- Hidden, not unmounted, under every takeover: the card is the whole screen, so the "Now singing" card never has
-	its name and song repeated down here, and under a Skipped notice the next singer is "Up next" and is named here
-	only once their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
-<div class={['lower-third', { 'under-card': underCard }]} bind:this={lowerThirdEl}>
+<!-- Hidden, not unmounted, while a card is painted: its name is never repeated here, and `--tv-chrome-h` stays. -->
+<div class={['lower-third', { 'under-card': cardPainted }]} bind:this={lowerThirdEl}>
 	<span class="ls-name"><span class="ls-dot" style="--singer: {color ?? 'var(--accent2)'}"></span>{name}</span>
 	<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
 	<span class="ls-song"
@@ -113,9 +114,7 @@
 {/if}
 
 <style>
-	/* A CUT both ways, back in as the layer's exit starts: an opacity fade re-rasterises the blurred shadow and stroke
-	   every frame, and on a headless 1080p run that took the outro from ~7 dropped frames to ~26, `will-change` and all
-	   (#1060). The edge line, cheap to fade, carries the motion. */
+	/* A cut, not a fade: fading re-rasterises the blurred shadow every frame (docs/FRONTEND.md). */
 	.lower-third.under-card {
 		visibility: hidden;
 	}

@@ -958,7 +958,7 @@ export async function captureMotion(browser: Browser, s: MotionScenario, outRoot
 		longAnimationFrames: median((r) => r.longAnimationFrames.count),
 		longAnimationFramesSupported: liveRuns[0].longAnimationFrames.supported,
 		// The bar `droppedFrames` is measured against (1.5x this), so two trees' counts can be compared at all: a run
-		// that paints faster has a lower bar and counts more "drops" (#1060).
+		// that paints faster has a lower bar and counts more "drops".
 		frameIntervalP50Ms: median((r) => r.frameIntervalsMs.p50),
 		frameIntervalP95Ms: median((r) => r.frameIntervalsMs.p95),
 		clsMax: Math.max(...liveRuns.map((r) => r.cls.total))
