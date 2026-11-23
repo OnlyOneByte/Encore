@@ -3,7 +3,7 @@
 // `routes/song/[mediaId]`, with a third variant on `routes/tv` — so no test could reach any of them. The sheet's
 // live controls are /queue's now-playing card today, and it is the third caller.
 import { test, expect } from 'bun:test';
-import { songFacts, keyShiftLabel } from '$lib/song-facts';
+import { songFacts, keyShiftLabel, tuneLine } from '$lib/song-facts';
 import type { SongProfile } from '$lib/contract';
 
 /** `keyTonic: 7` is G. Mirrors the fixture in tests/unit/contract/process/song-profile.test.ts. */
@@ -86,4 +86,16 @@ test('keyShiftLabel is ASCII, names the shift and never the key, and is silent a
 	expect(down).toBe('Key -2');
 	// The distinction from the phone's form, pinned: a real minus here would risk a tofu box mid-line.
 	expect(down).not.toContain('−');
+});
+
+// ── everyone else's Now card ─────────────────────────────────────────────────
+
+test('tuneLine: the key only while shifted, then the guide, in the phone dress', () => {
+	expect(tuneLine(2, 0, true)).toBe('Key +2 · Guide off');
+	expect(tuneLine(-3, 40, true)).toBe('Key −3 · Guide 40%');
+	expect(tuneLine(0, 0, true)).toBe('Guide off');
+	expect(tuneLine(0, 40, true)).toBe('Guide 40%');
+	// No guiding track: nothing to name, so only the key, or nothing at all.
+	expect(tuneLine(2, 40, false)).toBe('Key +2');
+	expect(tuneLine(0, 0, false)).toBe(null);
 });

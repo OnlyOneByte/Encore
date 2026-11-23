@@ -94,7 +94,10 @@ test('a seek naming an old song does not move the current one', () => {
 });
 
 test('a late key or guide tap does not land on the next singer’s song or their On deck preset', () => {
-	const { state, deps, send, toOrigin } = room();
+	const room0 = room();
+	const { state, send, toOrigin } = room0;
+	// Bob's own phone, so what refuses the late tap is the stale rule, not the singer-only one.
+	const deps = { ...room0.deps, actorSingerId: 'sB' };
 	state.applyQueueOp({ op: 'set-entry-prefs', id: 'bob', keyShift: -2, guideLevel: 0.2 });
 	handlePlayerCommand({ cmd: 'skip', entryId: 'alice' }, deps);
 	const bobStart = { keyShift: state.playback.keyShift, guideLevel: state.playback.guideLevel };
@@ -106,8 +109,8 @@ test('a late key or guide tap does not land on the next singer’s song or their
 		{ type: 'player:stale', cmd: 'key' },
 		{ type: 'player:stale', cmd: 'guide' }
 	]);
-	// Aimed at Bob's song, the key lands.
-	handlePlayerCommand({ cmd: 'key', semitones: 3, entryId: 'bob' }, deps);
+	// Aimed at Bob's song from Bob's phone, the key lands.
+	handlePlayerCommand({ cmd: 'key', semitones: 3, entryId: 'bob' }, { ...deps, actorSingerId: 'sB' });
 	expect(state.playback.keyShift).toBe(3);
 });
 

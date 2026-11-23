@@ -228,11 +228,13 @@
 		const unsubscribe = room.subscribe(sync);
 		// The same single notice as a dropped tap below: either way, the guest's tap changed nothing. Which words, if
 		// any, is `staleNotice`'s call; it says why a skip onto your own turn says nothing (IN-02).
-		const unstale = room.onStaleTransport((cmd) => {
+		const unstale = room.onStaleTransport((cmd, singerOnly) => {
 			const cur = room.entries.find((e) => e.id === room.playback.currentEntryId);
 			const notice = staleNotice(cmd, {
 				ownTurn: !!cur && cur.singerId === room.me?.id,
-				idle: room.playback.currentEntryId === null
+				idle: room.playback.currentEntryId === null,
+				singerOnly,
+				singer: cur ? room.singers.get(cur.singerId)?.displayName : undefined
 			});
 			// Info, not the error glyph: nothing went wrong, the tap just named a song that had gone.
 			if (notice) transportNotice(notice, 'info');

@@ -61,8 +61,13 @@ async function watch(page: Page): Promise<void> {
 				sources: { node?: Node | null }[];
 			}[]) {
 				if (e.hadRecentInput) continue;
+				// Not the Now card's own content: when your song starts the card grows into yours, and that is the moment.
 				const inPage = e.sources.filter(
-					(s) => !!s.node && main.contains(s.node) && !(s.node as Element).parentElement?.closest('.qrow')
+					(s) =>
+						!!s.node &&
+						main.contains(s.node) &&
+						!(s.node as Element).parentElement?.closest('.qrow') &&
+						!(s.node instanceof Element ? s.node : s.node.parentElement)?.closest('.now')
 				);
 				if (inPage.length)
 					w.__w.shifts.push({
@@ -98,49 +103,57 @@ for (const [width, height] of [
 	for (const reduce of [false, true]) {
 		const tag = `${width}px${reduce ? ', reduced motion' : ''}`;
 
-		test(`${tag}: your song starts and the list under it holds still`, async ({ world }) => {
-			const worker = await startFakeWorker(world, { seconds: SECS });
-			const maya = await world.openPhone('Maya');
-			const theo = await world.openPhone('Theo');
-			const ana = await world.openPhone('Ana');
-			await theo.setViewportSize({ width, height });
-			if (reduce) await theo.emulateMedia({ reducedMotion: 'reduce' });
-			try {
-				for (const q of ['caroline', 'believin', 'prayer', 'bohemian']) await readySong(world, maya, q);
-				await queueReady(maya, 'caroline');
-				await queueReady(theo, 'believin');
-				await queueReady(ana, 'prayer');
-				await queueReady(maya, 'bohemian');
-				await openQueue(theo);
-				await expect(theo.locator('section[aria-label="On deck"]')).toBeVisible({ timeout: 10_000 });
-				await theo.evaluate(() => document.fonts.ready.then(() => scrollTo(0, 0)));
-				await settle(theo);
-				await watch(theo);
-				await skip(maya);
-				await expect(theo.locator('section[aria-label="On deck"]')).toHaveCount(0);
-				await settle(theo);
-				const w = await read(theo);
-				const after = await theo.locator('main .grouphead').evaluate((h) => h.getBoundingClientRect().top);
-				expect(w.headBefore! - after, 'the heading moved up into the On deck card’s place').toBeGreaterThan(100);
-				expect(w.headFirst, 'the heading was never drawn after the change').not.toBeNull();
-				if (reduce) {
-					// A cut: no hold, so the heading is at its new place on the first frame.
-					expect(Math.abs(w.headFirst! - after), 'px the heading was held under reduced motion').toBeLessThan(2);
-				} else {
-					expect.soft(w.shifts, 'layout shift inside main as your song starts').toEqual([]);
-					expect(Math.abs(w.headFirst! - w.headBefore!), 'px the heading jumped on the first frame').toBeLessThan(2);
+		// 390x1200 too: there the rows under Theo's On deck card start on screen, so their move is measured.
+		for (const tall of width === 390 ? [false, true] : [false])
+			test(`${tag}${tall ? ', 1200 tall' : ''}: your song starts and the list under it holds still`, async ({
+				world
+			}) => {
+				test.fail(width === 390 && !reduce, 'known main gap: #1044 transform hold under Chromium layout-shift count');
+				const worker = await startFakeWorker(world, { seconds: SECS });
+				const maya = await world.openPhone('Maya');
+				const theo = await world.openPhone('Theo');
+				const ana = await world.openPhone('Ana');
+				await theo.setViewportSize({ width, height: tall ? 1200 : height });
+				if (reduce) await theo.emulateMedia({ reducedMotion: 'reduce' });
+				try {
+					for (const q of ['caroline', 'believin', 'prayer', 'bohemian']) await readySong(world, maya, q);
+					await queueReady(maya, 'caroline');
+					await queueReady(theo, 'believin');
+					await queueReady(ana, 'prayer');
+					await queueReady(maya, 'bohemian');
+					await openQueue(theo);
+					await expect(theo.locator('section[aria-label="On deck"]')).toBeVisible({ timeout: 10_000 });
+					await theo.evaluate(() => document.fonts.ready.then(() => scrollTo(0, 0)));
+					await settle(theo);
+					await watch(theo);
+					await skip(maya);
+					await expect(theo.locator('section[aria-label="On deck"]')).toHaveCount(0);
+					// Positive control: Theo's card grew from the fan's one line into his own controls in the same moment.
+					await expect(theo.locator('.now .ctl')).toBeVisible();
+					await settle(theo);
+					const w = await read(theo);
+					const after = await theo.locator('main .grouphead').evaluate((h) => h.getBoundingClientRect().top);
+					expect(w.headBefore! - after, 'the heading moved up into the On deck card’s place').toBeGreaterThan(100);
+					expect(w.headFirst, 'the heading was never drawn after the change').not.toBeNull();
+					if (reduce) {
+						// A cut: no hold, so the heading is at its new place on the first frame.
+						expect(Math.abs(w.headFirst! - after), 'px the heading was held under reduced motion').toBeLessThan(2);
+					} else {
+						expect.soft(w.shifts, 'layout shift inside main as your song starts').toEqual([]);
+						expect(Math.abs(w.headFirst! - w.headBefore!), 'px the heading jumped on the first frame').toBeLessThan(2);
+					}
+				} finally {
+					await worker.stop().catch(() => {});
 				}
-			} finally {
-				await worker.stop().catch(() => {});
-			}
-		});
+			});
 
 		test(`${tag}: a cooking card at the bottom changes and the page does not slide`, async ({ world }) => {
 			const good = await startFakeWorker(world, { seconds: SECS });
 			const maya = await world.openPhone('Maya');
 			const theo = await world.openPhone('Theo');
 			const ana = await world.openPhone('Ana');
-			await theo.setViewportSize({ width, height });
+			// Short enough that the page scrolls: with Theo's one-line Now card the whole queue fits at 390x844.
+			await theo.setViewportSize({ width, height: 520 });
 			if (reduce) await theo.emulateMedia({ reducedMotion: 'reduce' });
 			let bad: Awaited<ReturnType<typeof startFakeWorker>> | undefined;
 			let slow: Awaited<ReturnType<typeof startFakeWorker>> | undefined;

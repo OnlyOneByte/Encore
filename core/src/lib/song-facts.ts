@@ -61,3 +61,11 @@ export function songFacts(profile: SongProfile | null | undefined, keyShift: num
 export function keyShiftLabel(semitones: number): string | null {
 	return semitones ? `Key ${semitones > 0 ? '+' : '-'}${Math.abs(semitones)}` : null;
 }
+
+/** A fan's one line for the playing song, `Key +2 · Guide 40%`: the TV's wording in the phone's dress. See
+ *  docs/FRONTEND.md § The Now card. */
+export function tuneLine(keyShift: number, guidePct: number, guideAvailable: boolean): string | null {
+	const key = keyShift ? `Key ${keyShift > 0 ? '+' : '−'}${Math.abs(keyShift)}` : null;
+	const guide = guideAvailable ? (guidePct > 0 ? `Guide ${guidePct}%` : 'Guide off') : null;
+	return [key, guide].filter(Boolean).join(' · ') || null;
+}

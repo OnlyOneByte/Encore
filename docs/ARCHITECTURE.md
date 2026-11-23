@@ -887,6 +887,9 @@ Known and accepted, not an oversight:
 - **There is no operator identity.** The only auth axis is anonymous vs _any_ singer holding a session
   cookie, which any device on the LAN obtains by POSTing `/api/join` with a name. So a "joined singer"
   check is a liveness check, not an authorization one.
+- **Ownership is the one narrowing.** A singer's own entry is theirs: On deck moves and prefs, and the playing
+  song's `key` and `guide` (`realtime/player.ts`) are refused from any other socket, the sender alone
+  told why (`player:stale` with `singerOnly`). The transport (play, pause, skip, restart, seek) stays with everyone.
 - Consequently `/metrics`, `/api/metrics` and `/api/audit/*` ship **ungated**. They expose worker ids,
   resolved model/backend/device names, host details and terminal error strings — no singer identities
   and no media bytes. `PUT /api/settings` has the same property and higher stakes: any joined phone

@@ -31,7 +31,10 @@ test('a player:stale frame reaches the onStaleTransport handler', async () => {
 		fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response('no', { status: 404 })),
 		websocket: {
 			message(ws, raw) {
-				if (JSON.parse(String(raw)).type === 'hello') ws.send(JSON.stringify({ type: 'player:stale', cmd: 'guide' }));
+				if (JSON.parse(String(raw)).type !== 'hello') return;
+				ws.send(JSON.stringify({ type: 'player:stale', cmd: 'guide' }));
+				// A refusal on someone else's playing song rides the same frame, flagged.
+				ws.send(JSON.stringify({ type: 'player:stale', cmd: 'key', singerOnly: true }));
 			}
 		}
 	});
@@ -51,11 +54,17 @@ test('a player:stale frame reaches the onStaleTransport handler', async () => {
 	const link = new RoomLink();
 	restore.push(() => link.close());
 	// The handler is told WHICH command went stale: the phone words the notice per command.
-	const heard = new Promise<string>((resolve) => link.onStaleTransport((cmd) => resolve(`stale:${cmd}`)));
+	const got: string[] = [];
+	const heard = new Promise<string[]>((resolve) =>
+		link.onStaleTransport((cmd, singerOnly) => {
+			got.push(`stale:${cmd}:${singerOnly}`);
+			if (got.length === 2) resolve(got);
+		})
+	);
 	await link.connect();
-	const timeout = new Promise<string>((resolve) => setTimeout(() => resolve('nothing'), 3000));
+	const timeout = new Promise<string[]>((resolve) => setTimeout(() => resolve(got), 3000));
 	// Not `skip`, the one a hard-coded value would most likely name.
-	expect(await Promise.race([heard, timeout])).toBe('stale:guide');
+	expect(await Promise.race([heard, timeout])).toEqual(['stale:guide:false', 'stale:key:true']);
 });
 
 test('server.ts hands the player-command path its origin, so only the sender hears a stale tap', () => {

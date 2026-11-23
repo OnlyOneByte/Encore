@@ -57,7 +57,9 @@ test('play: the preset applies at start, and the NEXT entry starts reset', () =>
 test('advance on `ended`: a preset entry after a plain one gets its preset, not the previous reset', () => {
 	const { state, deps } = harness([entry('a', 'theo'), entry('b', 'maya', preset)]);
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handlePlayerCommand({ cmd: 'key', semitones: 3, entryId: 'a' }, deps); // Theo's live shift must not leak either
+	// Theo's live shift, from Theo's phone, must not leak either.
+	handlePlayerCommand({ cmd: 'key', semitones: 3, entryId: 'a' }, { ...deps, actorSingerId: 'theo' });
+	expect(state.playback.keyShift).toBe(3);
 	handleTelemetry({ positionSec: 100, ended: true, entryId: 'a' }, deps);
 	expect(state.playback).toMatchObject({ currentEntryId: 'b', keyShift: -2, guideLevel: 0.2 });
 });

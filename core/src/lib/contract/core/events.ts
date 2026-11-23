@@ -115,7 +115,8 @@ export type ServerEvent =
 	// TV-ONLY, published on `roomTvTopic`. `color` rides along so the TV draws the disc without a directory lookup.
 	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string }
 	// To the ORIGIN only: a transport command named a song that is no longer current, so nothing happened.
-	| { type: 'player:stale'; cmd: TargetedCommand['cmd'] }
+	// `singerOnly`: the song IS current, but its key and guide are its singer's and the sender is someone else.
+	| { type: 'player:stale'; cmd: TargetedCommand['cmd']; singerOnly?: true }
 	// To ONE TV socket, on connect and whenever its answer moves: `mine: false` is a copy, whose telemetry the server
 	// ignores; `tvOnline: false` means the seat's screen has no live socket right now. See server/rooms/tv-seat.ts.
 	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean };

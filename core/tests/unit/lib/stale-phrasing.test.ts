@@ -34,6 +34,17 @@ for (const cmd of CMDS) {
 	});
 }
 
+// A key or guide tap on someone else's playing song is refused, and the notice names whose song it is.
+test('singer-only refusal names the singer, per command', () => {
+	const at = { ownTurn: false, idle: false, singerOnly: true, singer: 'Maya' };
+	expect(staleNotice('key', at)).toBe(`Only Maya can change their${NB}key.`);
+	expect(staleNotice('guide', at)).toBe(`Only Maya can change their${NB}guide.`);
+	expect(staleNotice('key', { ...at, singer: undefined })).toBe(`Only the singer can change their${NB}key.`);
+	// Without the flag the stale words stand, and a room gone idle has no singer to name.
+	expect(staleNotice('key', { ...at, singerOnly: false })).toBe(ENDED);
+	expect(staleNotice('key', { ...at, idle: true })).toBe(ENDED);
+});
+
 test('guest copy: straight apostrophes, and the last two words never split', () => {
 	for (const cmd of CMDS) {
 		for (const ownTurn of [false, true]) {

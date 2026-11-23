@@ -841,6 +841,24 @@ it again. The cost is shared by all three: `me` is mirrored from the link, so th
 one frame on a cold load even for a joined guest, which is what the two older tabs have always done.
 Beating that wants a settled-state read on the link, applied to all three at once.
 
+### The Now card
+
+The top of `/queue` while a song plays. The playing song's key and guide belong to its singer (ARCHITECTURE.md §10),
+so only the singer's phone shows the keycaps, the Guide slider and the range bar. Every other phone reads the same facts
+as one line from `tuneLine` in `src/lib/song-facts.ts`: `Key +2 · Guide 40%`, the TV's wording in the phone's dress. The
+key part shows only while shifted, and a song with no guiding track names no guide. The line's slot is kept, blank,
+whenever the song can be tuned, so the singer's first tap fills it without moving anything on the other phones.
+
+A tap that the server refuses because the song is someone else's (an old tab still showing the keycaps) gets the stale
+notice "Only Maya can change their key." The phone knows names, not pronouns, so it says "their".
+
+When your own song starts, your card grows from the one line into your controls. Only transform and opacity animate,
+so nothing counts as a layout shift. The surface is three pieces: a top cap that stays put, a middle that scales on Y,
+and a bottom cap that translates with it, so the 12 px corners and the 1 px border stay true. The new controls fade in
+once there is room. It all runs on `--motion-base`, on the same clock as the `.below` settle, so the card's bottom edge
+and the list under it move together. There's no grow while the card is still arriving (the arrive's fade already shows
+it at its new size) and none under reduced motion, which is a cut.
+
 ### The Sing tab
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its
