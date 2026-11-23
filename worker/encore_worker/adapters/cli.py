@@ -395,7 +395,10 @@ def caption_argv(
         "--skip-download",
         "--write-auto-subs" if automatic else "--write-subs",
         "--sub-langs",
-        "en.*,en",
+        # YouTube's machine-translated `en-ar`, `en-fr`, … tracks are automatic-only, and yt-dlp matches
+        # case-insensitively, so `en.*` there was a dozen extra requests and a 429 on any one failed the call.
+        # Authored tracks are never translations, so `en.*` keeps their `en-CA`, `en-AU`, … variants.
+        "en,en-orig" if automatic else "en.*",
         "--sub-format",
         "vtt/srt/best",
         "-o",
@@ -467,13 +470,25 @@ class YtDlpCaptions:
 
     def fetch(self, source_uri: str, out_dir: str, *, automatic: bool) -> Sequence[Segment]:
         template = os.path.join(out_dir, "captions.%(ext)s")
+        failed: ToolFailed | None = None
         try:
             run(caption_argv(source_uri, template, self._bin, automatic=automatic), idle_sec=YTDLP_IDLE_SEC)
-        except ToolFailed:
-            return ()  # a video with no track of this kind is the common case
+        except ToolFailed as exc:
+            failed = exc
         path = find_caption_file(out_dir)
         if path is None:
-            return ()
+            return ()  # a video with no track of this kind is the common case
+        if failed is not None:
+            # yt-dlp exits non-zero when ANY requested track fails (a 429 on the second), even after it wrote
+            # the first. The written track is still good, so keep it and say what went wrong.
+            kind = "automatic" if automatic else "authored"
+            # -1 is ours (cancelled or stalled): yt-dlp did not exit, we stopped it.
+            how = f"exited {failed.code}" if failed.code >= 0 else "was stopped"
+            print(
+                f"[captions] yt-dlp {how} after writing {os.path.basename(path)}; "
+                f"keeping the {kind} track ({failed.output.strip()[-200:]})",
+                flush=True,
+            )
         with open(path, encoding="utf-8", errors="replace") as handle:
             return parse_vtt(handle.read())
 

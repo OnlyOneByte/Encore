@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 import signal
 import threading
@@ -61,6 +62,26 @@ def test_authored_and_automatic_tracks_are_different_requests() -> None:
 
     assert "--write-subs" in authored and "--write-auto-subs" not in authored
     assert "--write-auto-subs" in automatic and "--write-subs" not in automatic
+
+
+def _sub_langs(*, automatic: bool) -> str:
+    argv = caption_argv("u", "/tmp/c.%(ext)s", automatic=automatic)
+    return argv[argv.index("--sub-langs") + 1]
+
+
+def test_automatic_captions_ask_for_real_english_tracks_only() -> None:
+    """`en.*` matched YouTube's machine-translated `en-ar`, `en-fr`, … automatic tracks, and a 429 on any
+    of them failed the call that had already written the English one."""
+    langs = _sub_langs(automatic=True).split(",")
+    assert "en" in langs and "en-orig" in langs
+    assert not any("*" in lang or "." in lang for lang in langs), "a pattern also matches translations"
+
+
+def test_authored_captions_keep_regional_english_tracks() -> None:
+    """Translations are never authored tracks, so the authored call keeps a pattern: a video whose only
+    authored English is `en-CA` or `en-AU` must still yield it. yt-dlp matches case-insensitively."""
+    pattern = re.compile(_sub_langs(automatic=False), re.I)
+    assert all(pattern.fullmatch(lang) for lang in ("en", "en-CA", "en-AU", "en-IN", "en-GB"))
 
 
 def test_measurement_argv_writes_nothing() -> None:
@@ -168,6 +189,66 @@ def test_finds_the_caption_file_deterministically(tmp_path: Path) -> None:
     found = find_caption_file(str(tmp_path))
     assert found is not None
     assert found.endswith(".vtt"), "vtt is preferred over srt"
+
+
+def _fake_ytdlp(tmp_path: Path, *, writes: bool, code: int = 1) -> str:
+    """A yt-dlp that (optionally) writes the English track, then exits `code`: non-zero fails on a
+    translated track with a 429."""
+    (tmp_path / "en.vtt").write_text(VTT)
+    write = f'cp {tmp_path / "en.vtt"} "$(dirname "$out")/captions.en.vtt"' if writes else ":"
+    fail = "echo \"ERROR: Unable to download video subtitles for 'en-ar': HTTP Error 429\"\n" if code else ""
+    script = tmp_path / "yt-dlp"
+    script.write_text(
+        "#!/bin/sh\n"
+        'while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done\n'
+        f"{write}\n{fail}exit {code}\n"
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_a_caption_written_before_yt_dlp_fails_is_kept(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 429 on a later track made yt-dlp exit 1, and the English track it had already written was thrown
+    away, so align lost its last-resort evidence."""
+    out = tmp_path / "out"
+    out.mkdir()
+    cues = cli.YtDlpCaptions(_fake_ytdlp(tmp_path, writes=True)).fetch("u", str(out), automatic=True)
+    assert [c["text"] for c in cues] == ["Hello there", "second line wrapped"]
+    logged = capsys.readouterr().out
+    assert "exited 1 after writing captions.en.vtt" in logged and "429" in logged, "the failure is logged"
+
+
+def test_a_successful_caption_fetch_returns_its_cues_quietly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    cues = cli.YtDlpCaptions(_fake_ytdlp(tmp_path, writes=True, code=0)).fetch("u", str(out), automatic=False)
+    assert [c["text"] for c in cues] == ["Hello there", "second line wrapped"]
+    assert "[captions]" not in capsys.readouterr().out, "a clean exit logs no failure"
+
+
+def test_a_stopped_caption_run_is_not_logged_as_an_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cancelled or stalled run carries code -1: yt-dlp did not exit, we stopped it."""
+
+    def cancelled(argv: list[str], **_: object) -> str:
+        (tmp_path / "captions.en.vtt").write_text(VTT)
+        raise cli.ToolFailed(argv, -1, "cancelled")
+
+    monkeypatch.setattr(cli, "run", cancelled)
+    assert cli.YtDlpCaptions("yt-dlp").fetch("u", str(tmp_path), automatic=True)
+    logged = capsys.readouterr().out
+    assert "yt-dlp was stopped after writing captions.en.vtt" in logged and "exited" not in logged
+
+
+def test_a_failed_caption_call_that_wrote_nothing_is_a_miss(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    assert cli.YtDlpCaptions(_fake_ytdlp(tmp_path, writes=False)).fetch("u", str(out), automatic=False) == ()
 
 
 def test_no_caption_file_is_none_not_an_error(tmp_path: Path) -> None:
