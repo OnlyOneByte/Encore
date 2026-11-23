@@ -395,7 +395,9 @@ def caption_argv(
         "--skip-download",
         "--write-auto-subs" if automatic else "--write-subs",
         "--sub-langs",
-        "en.*,en",
+        # Real English tracks only: `en.*` also matched the machine-translated `en-ar`, `en-fr`, … tracks,
+        # a dozen extra requests per song, and a 429 on any one of them failed the call.
+        "en,en-orig,en-US,en-GB",
         "--sub-format",
         "vtt/srt/best",
         "-o",
@@ -467,13 +469,23 @@ class YtDlpCaptions:
 
     def fetch(self, source_uri: str, out_dir: str, *, automatic: bool) -> Sequence[Segment]:
         template = os.path.join(out_dir, "captions.%(ext)s")
+        failed: ToolFailed | None = None
         try:
             run(caption_argv(source_uri, template, self._bin, automatic=automatic), idle_sec=YTDLP_IDLE_SEC)
-        except ToolFailed:
-            return ()  # a video with no track of this kind is the common case
+        except ToolFailed as exc:
+            failed = exc
         path = find_caption_file(out_dir)
         if path is None:
-            return ()
+            return ()  # a video with no track of this kind is the common case
+        if failed is not None:
+            # yt-dlp exits non-zero when ANY requested track fails (a 429 on the second), even after it wrote
+            # the first. The written track is still good, so keep it and say what went wrong.
+            kind = "automatic" if automatic else "authored"
+            print(
+                f"[captions] yt-dlp exited {failed.code} after writing {os.path.basename(path)}; "
+                f"keeping the {kind} track ({failed.output.strip()[-200:]})",
+                flush=True,
+            )
         with open(path, encoding="utf-8", errors="replace") as handle:
             return parse_vtt(handle.read())
 
