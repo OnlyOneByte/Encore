@@ -15,8 +15,14 @@ import {
 	parseLinuxRoute,
 	parseMacRoute,
 	parseWindowsRoute,
+	readDefaultRoute,
+	runRouteCommand,
+	createRouteCache,
+	refreshDefaultRoute,
+	machineNetwork,
 	type DefaultRoute
 } from '$lib/server/public-origin';
+import { readFileSync } from 'node:fs';
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
 
 const req = (headers: Record<string, string> = {}) => new Request('https://ignored.example/tv', { headers });
@@ -318,6 +324,117 @@ test("each OS's default-route output is read for the lowest-metric default", () 
 	].join('\r\n');
 	expect(parseWindowsRoute(win)).toEqual({ address: '10.0.0.5' });
 	expect(parseWindowsRoute('Active Routes:\r\n  None\r\n')).toBeNull();
+});
+
+// The reviewer's full-tunnel VPN: Wi-Fi on 192.168.1.20 next to a VPN on 10.64.0.2 that holds the default route. Its
+// adapter name is on no list (Windows names it after the connection), so only "no gateway" tells it apart.
+test('a full-tunnel VPN holding the default route never outranks the home Wi-Fi', () => {
+	const winVpn = [
+		'Active Routes:',
+		'Network Destination        Netmask          Gateway       Interface  Metric',
+		'          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.20     35',
+		'          0.0.0.0          0.0.0.0         On-link        10.64.0.2      5'
+	].join('\r\n');
+	expect(parseWindowsRoute(winVpn)).toEqual({ address: '192.168.1.20' });
+	expect(parseWindowsRoute(winVpn.split('\r\n').slice(0, 2).concat(winVpn.split('\r\n')[3]!).join('\r\n'))).toBeNull();
+	for (const vpn of ['Mullvad', 'ProtonVPN', 'Ethernet 3', 'Local Area Connection* 12', 'OpenVPN TAP-Windows6']) {
+		const list = { 'Wi-Fi': [nic('192.168.1.20')], [vpn]: [nic('10.64.0.2')] };
+		expect(ips(list, parseWindowsRoute(winVpn))[0]).toBe('192.168.1.20');
+		// Only the VPN's route: unknown, so the ranked list still puts 192.168 first.
+		expect(ips(list, parseWindowsRoute('Active Routes:\r\n  0.0.0.0  0.0.0.0  On-link  10.64.0.2  5\r\n'))[0]).toBe(
+			'192.168.1.20'
+		);
+	}
+	const header = 'Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT';
+	for (const vpn of ['proton0', 'nordlynx', 'cscotun0', 'ppp0']) {
+		// NetworkManager's VPN default: no gateway, flags 0x1 (UP only), and a lower metric than Wi-Fi's.
+		const vpnRow = `${vpn}\t00000000\t00000000\t0001\t0\t0\t50\t00000000\t0\t0\t0`;
+		const wifiRow = 'wlan0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0';
+		const list = { wlan0: [nic('192.168.1.20')], [vpn]: [nic('10.64.0.2')] };
+		expect(parseLinuxRoute([header, vpnRow, wifiRow].join('\n'))).toEqual({ iface: 'wlan0' });
+		expect(parseLinuxRoute([header, vpnRow].join('\n'))).toBeNull();
+		expect(ips(list, parseLinuxRoute([header, vpnRow, wifiRow].join('\n')))[0]).toBe('192.168.1.20');
+		expect(ips(list, parseLinuxRoute([header, vpnRow].join('\n')))[0]).toBe('192.168.1.20');
+	}
+	// macOS: a default with no router address on its gateway line is not trusted.
+	expect(parseMacRoute('destination: default\n    gateway: utun3\n  interface: utun3\n')).toBeNull();
+	expect(parseMacRoute('destination: default\n  interface: ppp0\n')).toBeNull();
+});
+
+test('the route lookup: fixed full paths, and any failure or timeout is unknown', async () => {
+	const calls: string[][] = [];
+	const ok = (out: string) => async (cmd: string, args: string[]) => (calls.push([cmd, ...args]), out);
+	const mac = 'destination: default\n    gateway: 192.168.1.1\n  interface: en0\n';
+	expect(await readDefaultRoute('darwin', ok(mac))).toEqual({ iface: 'en0' });
+	const win = 'Active Routes:\r\n  0.0.0.0  0.0.0.0  192.168.1.1  192.168.1.20  35\r\n';
+	expect(await withEnv('SystemRoot', 'D:\\Win', () => readDefaultRoute('win32', ok(win)))).toEqual({
+		address: '192.168.1.20'
+	});
+	expect(calls).toEqual([
+		['/sbin/route', '-n', 'get', 'default'],
+		['D:\\Win\\System32\\route.exe', 'print', '-4', '0.0.0.0']
+	]);
+	const fail = async () => {
+		throw new Error('ENOENT');
+	};
+	expect(await readDefaultRoute('darwin', fail)).toBeNull();
+	expect(await readDefaultRoute('win32', fail)).toBeNull();
+	expect(await readDefaultRoute('aix', ok(mac))).toBeNull();
+	// A real child that ignores SIGTERM: killed by SIGKILL at the one-second cap, and the event loop never waits on it.
+	const started = performance.now();
+	let ticks = 0;
+	const tick = setInterval(() => ticks++, 50);
+	const hung = await readDefaultRoute('darwin', (_cmd, _args) =>
+		runRouteCommand('/bin/sh', ['-c', "trap '' TERM; exec sleep 10"])
+	);
+	clearInterval(tick);
+	expect(hung).toBeNull();
+	expect(performance.now() - started).toBeLessThan(4000);
+	expect(ticks).toBeGreaterThan(5);
+});
+
+test.if(process.platform === 'linux')('the real network carries the route read at startup', async () => {
+	await refreshDefaultRoute();
+	const expected = parseLinuxRoute(readFileSync('/proc/net/route', 'utf8'));
+	withEnv('ENCORE_TEST_INTERFACES', undefined, () =>
+		withEnv('HOST', undefined, () => expect(machineNetwork()?.route ?? null).toEqual(expected))
+	);
+});
+
+test('the route cache: null until the first read, kept 30 s, refreshed in the background, one read at a time', async () => {
+	let t = 0;
+	let reads = 0;
+	let answer: DefaultRoute | null = { iface: 'en0' };
+	let fail = false;
+	const cache = createRouteCache(
+		async () => {
+			reads++;
+			if (fail) throw new Error('boom');
+			return answer;
+		},
+		() => t
+	);
+	expect(cache.get()).toBeNull(); // nothing known yet: the caller falls back, never waits
+	expect(cache.get()).toBeNull();
+	expect(reads).toBe(1); // the second get joined the read already in flight
+	await cache.refresh();
+	expect(reads).toBe(1);
+	expect(cache.get()).toEqual({ iface: 'en0' });
+	t = 29_999;
+	expect(cache.get()).toEqual({ iface: 'en0' });
+	expect(reads).toBe(1);
+	answer = { iface: 'eth0' };
+	t = 30_000;
+	expect(cache.get()).toEqual({ iface: 'en0' }); // stale is served while the refresh runs
+	expect(reads).toBe(2);
+	await cache.refresh();
+	expect(reads).toBe(2);
+	expect(cache.get()).toEqual({ iface: 'eth0' });
+	fail = true;
+	t = 60_000;
+	cache.get();
+	await cache.refresh();
+	expect(cache.get()).toBeNull(); // a failed read is unknown, not the old route
 });
 
 test('a public, reserved, link-local, internal or IPv6 address is never advertised', () => {

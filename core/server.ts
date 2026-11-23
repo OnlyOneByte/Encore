@@ -30,7 +30,7 @@ import { createReactionLimiter, handleReaction } from './src/lib/server/realtime
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
-import { startupAddress } from './src/lib/server/public-origin';
+import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -355,6 +355,8 @@ setPublish(broadcast);
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 // The address phones should open, from the same pick as the TV's QR. `0.0.0.0` is not one, so it is only the fallback.
+// The route is read first (capped at one second) so the line already ranks the home network over a VM bridge.
+await refreshDefaultRoute();
 console.log(
 	`🎤 Encore on ${startupAddress() ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );

@@ -2,13 +2,15 @@
 // PROTOCOL_HEADER is unset, even on a plain LAN request, so a QR built from it opens on no phone. This
 // process only ever speaks plain HTTP itself, so believe a forwarding header when present, else say http.
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
+import { promisify } from 'node:util';
 import { getApp } from './app';
 import { normalizeJoinOrigin } from '../contract';
 
 type Interfaces = Record<string, NetworkInterfaceInfo[] | undefined>;
+const execFileAsync = promisify(execFile);
 
 /** Comma-separated when proxies chain. */
 const PROTO_HEADERS = ['x-forwarded-proto', 'x-forwarded-protocol'] as const;
@@ -124,8 +126,8 @@ const VIRTUAL_INTERFACE =
 	/^(docker|br-|veth|virbr|lxcbr|lxdbr|cni|flannel|bridge|vmnet|vboxnet|vnic|tailscale|utun|wg|tun|tap|zt|vEthernet|VirtualBox|VMware|ZeroTier)/i;
 
 /**
- * Home-network IPv4 addresses phones can open, best first. The interface carrying the default route comes first:
- * that is the network the box (and so the phones) are on, whatever a VM bridge beside it is called. Then, by range:
+ * Home-network IPv4 addresses phones can open, best first. The interface carrying the default route via a router
+ * comes first: that is the network the box (and so the phones) are on, whatever a VM bridge beside it is called. Then, by range:
  * 192.168.0.0/16, then 10.0.0.0/8, each in interface order. NEVER 172.16.0.0/12 (where Docker's and WSL2's NAT put
  * their addresses, which phones cannot reach), a known virtual interface, or any public address: this only ever
  * names an address on the home network.
@@ -147,53 +149,97 @@ export function lanAddresses(net: Network | null): string[] {
 	return [...new Set(found.map((a) => a.ip))];
 }
 
-/** `/proc/net/route`: the default route (destination and mask 0) with the lowest metric. */
+// Each parser keeps only a default route through a real next-hop gateway: home Wi-Fi and Ethernet always route via the
+// router, while a point-to-point VPN (WireGuard, Mullvad, ProtonVPN, AnyConnect, PPP) has none. A full-tunnel VPN
+// holding the route must not outrank the home network phones are on, whatever its adapter is called.
+
+/** `/proc/net/route`: the default route (destination and mask 0) via a gateway (RTF_GATEWAY), lowest metric. */
 export function parseLinuxRoute(text: string): DefaultRoute | null {
 	let best: { iface: string; metric: number } | null = null;
 	for (const line of text.trim().split('\n').slice(1)) {
-		const [iface, dest, , , , , metric, mask] = line.trim().split(/\s+/);
+		const [iface, dest, , flags, , , metric, mask] = line.trim().split(/\s+/);
 		if (!iface || dest !== '00000000' || mask !== '00000000') continue;
+		if ((parseInt(flags ?? '0', 16) & RTF_GATEWAY) === 0) continue;
 		if (!best || Number(metric) < best.metric) best = { iface, metric: Number(metric) };
 	}
 	return best && { iface: best.iface };
 }
 
-/** `route -n get default` on macOS: its `interface:` line. */
+const RTF_GATEWAY = 0x2;
+const IPV4 = String.raw`\d{1,3}(?:\.\d{1,3}){3}`;
+
+/** `route -n get default` on macOS: its `interface:` line, when a `gateway:` line names a router address. */
 export function parseMacRoute(text: string): DefaultRoute | null {
 	const iface = /^\s*interface:\s*(\S+)/m.exec(text)?.[1];
-	return iface ? { iface } : null;
+	const gateway = new RegExp(String.raw`^\s*gateway:\s*${IPV4}\s*$`, 'm').test(text);
+	return iface && gateway ? { iface } : null;
 }
 
-/** `route print -4 0.0.0.0` on Windows: the default with the lowest metric, as its interface address. The
- *  Persistent Routes section has no interface column, so it never matches. */
+/** `route print -4 0.0.0.0` on Windows: the default with the lowest metric, as its interface address. A gateway of
+ *  `On-link` (in any locale: it is not an address) is a point-to-point VPN. The Persistent Routes section has no
+ *  interface column, so it never matches. */
 export function parseWindowsRoute(text: string): DefaultRoute | null {
 	let best: { address: string; metric: number } | null = null;
-	for (const m of text.matchAll(/^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+\S+\s+(\d{1,3}(?:\.\d{1,3}){3})\s+(\d+)\s*$/gm)) {
+	const row = new RegExp(String.raw`^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+${IPV4}\s+(${IPV4})\s+(\d+)\s*$`, 'gm');
+	for (const m of text.matchAll(row)) {
 		if (!best || Number(m[2]) < best.metric) best = { address: m[1]!, metric: Number(m[2]) };
 	}
 	return best && { address: best.address };
 }
 
-const ROUTE_TTL_MS = 30_000;
-let routeCache: { at: number; route: DefaultRoute | null } | null = null;
+export type RouteRunner = (cmd: string, args: string[]) => Promise<string>;
 
-/** Fixed argv, no shell, one-second cap; any failure is "unknown", which falls back to the ranked list.
- *  shortcut: cached 30 s, because macOS and Windows spawn a process; a network change shows after that. */
-function readDefaultRoute(): DefaultRoute | null {
-	if (routeCache && Date.now() - routeCache.at < ROUTE_TTL_MS) return routeCache.route;
-	const run = (cmd: string, args: string[]) =>
-		execFileSync(cmd, args, { encoding: 'utf8', timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] });
-	let route: DefaultRoute | null = null;
+/** Fixed argv, no shell, never on the event loop. SIGKILL after one second, because a hung child can ignore SIGTERM. */
+export const runRouteCommand: RouteRunner = async (cmd, args) =>
+	(await execFileAsync(cmd, args, { encoding: 'utf8', timeout: 1000, killSignal: 'SIGKILL', windowsHide: true }))
+		.stdout;
+
+/** Each OS's default route; any failure is "unknown", which falls back to the ranked list. Both commands by full path:
+ *  Windows searches the current directory before PATH. */
+export async function readDefaultRoute(
+	platform: NodeJS.Platform = process.platform,
+	run: RouteRunner = runRouteCommand
+): Promise<DefaultRoute | null> {
 	try {
-		if (process.platform === 'linux') route = parseLinuxRoute(readFileSync('/proc/net/route', 'utf8'));
-		else if (process.platform === 'darwin') route = parseMacRoute(run('/sbin/route', ['-n', 'get', 'default']));
-		else if (process.platform === 'win32') route = parseWindowsRoute(run('route', ['print', '-4', '0.0.0.0']));
+		if (platform === 'linux') return parseLinuxRoute(await readFile('/proc/net/route', 'utf8'));
+		if (platform === 'darwin') return parseMacRoute(await run('/sbin/route', ['-n', 'get', 'default']));
+		if (platform === 'win32') {
+			const route = `${process.env.SystemRoot || 'C:\\Windows'}\\System32\\route.exe`;
+			return parseWindowsRoute(await run(route, ['print', '-4', '0.0.0.0']));
+		}
 	} catch {
-		route = null;
+		// Missing command, non-zero exit, timeout: all unknown.
 	}
-	routeCache = { at: Date.now(), route };
-	return route;
+	return null;
 }
+
+const ROUTE_TTL_MS = 30_000;
+
+/** The last route read, refreshed in the background so a request never waits on a child process. Null until the first
+ *  read lands, which falls back to the ranked list.
+ *  shortcut: re-read at most every 30 s, on demand; a network change shows on the next request after that. */
+export function createRouteCache(read: () => Promise<DefaultRoute | null> = readDefaultRoute, now = Date.now) {
+	let last: { at: number; route: DefaultRoute | null } | null = null;
+	let inFlight: Promise<void> | null = null;
+	const refresh = (): Promise<void> =>
+		(inFlight ??= read()
+			.catch(() => null)
+			.then((route) => {
+				last = { at: now(), route };
+			})
+			.finally(() => {
+				inFlight = null;
+			}));
+	const get = (): DefaultRoute | null => {
+		if (!last || now() - last.at >= ROUTE_TTL_MS) void refresh();
+		return last?.route ?? null;
+	};
+	return { get, refresh };
+}
+
+const defaultRoute = createRouteCache();
+/** server.ts awaits this once at startup, so the first QR and the startup line already know the route. */
+export const refreshDefaultRoute = () => defaultRoute.refresh();
 
 /**
  * The network this server answers on, or null when it listens on one address only (`HOST=127.0.0.1`), where no
@@ -202,7 +248,7 @@ function readDefaultRoute(): DefaultRoute | null {
  * interface with an unknown default route, because the probes' core binds 127.0.0.1 and has no LAN. It changes only
  * the advertised text, never what is reachable; never set it in a deployment.
  */
-function machineNetwork(): Network | null {
+export function machineNetwork(): Network | null {
 	const fake = process.env.ENCORE_TEST_INTERFACES;
 	if (fake) {
 		const interfaces = parseInterfaces(fake);
@@ -212,7 +258,7 @@ function machineNetwork(): Network | null {
 	}
 	const host = process.env.HOST?.trim();
 	if (host && host !== '0.0.0.0' && host !== '::') return null;
-	return { interfaces: networkInterfaces(), route: readDefaultRoute() };
+	return { interfaces: networkInterfaces(), route: defaultRoute.get() };
 }
 
 /** Well-formed JSON of the wrong shape is refused too, so `lanAddresses` never meets a non-array. */

@@ -86,8 +86,9 @@ A self-signed certificate also works in principle and is usually not worth it: t
 installed on the television.
 
 **Which address the localhost TV's QR shows.** With no join address saved and no `ENCORE_PUBLIC_ORIGIN`,
-it is this box's address on the interface that carries the default route, else its first 192.168.x, else
-10.x, always on `PORT` over plain http. It never shows a 172.16-31.x address (Docker's and WSL2's NAT), so
+it is this box's address on the interface whose default route goes through a router, else its first
+192.168.x, else 10.x, always on `PORT` over plain http. A full-tunnel VPN's default route has no router, so it
+never outranks the home network. It never shows a 172.16-31.x address (Docker's and WSL2's NAT), so
 a home network on that range gets the "Phones can't open this address" warning: type the address in
 Settings -> This machine, or pick it from the choices there. Behind a tunnel or proxy, set
 `ENCORE_PUBLIC_ORIGIN`. A tunnel that rewrites `Host` to localhost (`ngrok --host-header=rewrite`) looks
