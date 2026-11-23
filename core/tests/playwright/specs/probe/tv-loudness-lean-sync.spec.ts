@@ -56,6 +56,7 @@ test('the TV pulls a loud outlier down against the library median carried on a l
 	const phone = await world.openPhone('Level');
 	await openBrowseFromHome(phone);
 
+	await world.becomeHost(phone);
 	const res = await phone.request.put(`${world.baseURL}/api/settings/room`, {
 		data: { loudnessNormalization: true }
 	});

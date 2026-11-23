@@ -18,14 +18,19 @@
 	import type { Snippet } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Alert from '$lib/components/ui/alert';
+	import * as Card from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
 	import type { SettingsScope } from '$lib/settings-scopes';
 
 	let {
 		scope,
 		back,
 		failed = false,
+		locked = null,
 		children
 	}: {
+		/** Set for anyone but the host: the controls read but do not move, and this names what the host link looks like. */
+		locked?: { hostLink: string } | null;
 		/** Which of the three scopes this route is, read from `$lib/settings-scopes` — the list's one home. */
 		scope: SettingsScope;
 		/** This scope's ONE door, named. A real anchor, never `history.back()`, so the route stays shareable. */
@@ -54,7 +59,21 @@
 			</Alert.Root>
 		{/if}
 
-		<div class="panel">
+		{#if locked}
+			<Card.Root id="host-only" class="host-only">
+				<Card.Header>
+					<Card.Title role="heading" aria-level={2}>Only the host can change these</Card.Title>
+					<Card.Description>Host: open the link Encore showed when it started, on this phone.</Card.Description>
+				</Card.Header>
+				<Card.Content>
+					<code>{locked.hostLink}</code>
+					<Button variant="outline" size="block" href="/host">I have the host key</Button>
+				</Card.Content>
+			</Card.Root>
+		{/if}
+
+		<!-- `inert`, so a guest cannot move a control the server would refuse; the card above says why. -->
+		<div class="panel" inert={locked !== null}>
 			{@render children()}
 		</div>
 	</main>
@@ -147,6 +166,24 @@
 	   track grew from 254px to 295, the document scrolled sideways to 345, and the `internal` badge and the
 	   disclosure's state readout were carried out past the right edge with it — three offenders, one cause. */
 	main :global([data-slot='field-description']) {
+		overflow-wrap: anywhere;
+	}
+
+	/* The one lit card on a locked scope, ringed in the accent as the mock draws it, one section rung above the cards. */
+	main :global(.host-only) {
+		box-shadow: inset 0 0 0 2px var(--accent);
+		margin-bottom: var(--space-5xl);
+	}
+	main :global(.host-only code) {
+		display: block;
+		padding: var(--space-sm);
+		border-radius: var(--radius-sm);
+		background: var(--bg);
+		font:
+			600 var(--ph-text-xs) / var(--lh-snug) ui-monospace,
+			SFMono-Regular,
+			Menlo,
+			monospace;
 		overflow-wrap: anywhere;
 	}
 

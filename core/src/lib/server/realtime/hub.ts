@@ -105,8 +105,8 @@ const ENTRY_OP_GATE = {
  *  2. `toIdx` shape next — a non-integer is refused rather than silently clamped to 0 by `moveToIndex`;
  *  3. OWNERSHIP SHORT-CIRCUITS BEFORE `can()`. The `-any` capabilities mean "someone else's entry", so
  *     asking for one on your own song would refuse a singer their own turn the moment `can()` narrows to a
- *     host role. `can()` ignores its capability today, which is exactly why this cannot be caught by a test
- *     of behaviour: every capability resolves the same, so the ORDER is the only thing carrying the rule.
+ *     host role. Every queue capability resolves the same for a singer today, so the ORDER is what carries
+ *     the rule, not a test of behaviour.
  *  4. ON DECK IS HELD, last, and keyed on the HELD entry's owner, not the moved one's: a reorder by anyone but Theo may
  *     not move Theo's On deck entry or land a row in front of it — Ana's own song included (proposal 14,
  *     `heldOnDeck`). Theo keeps every move he has. Removal is not a reorder and is not held.

@@ -1664,7 +1664,9 @@ longer in the room's catalog, so it fetches the row from `/api/audit/<mediaId>` 
 audit screen reads — rather than reading the room. It still subscribes to the link for the live key shift,
 which is the one fact the stored row cannot know, so the range readout agrees with what the television is
 sounding. A singable song may have no measured range (that needs a vocals stem); the page says so rather
-than drawing an empty strip. Lyrics here are quick-select among the ranker's candidates only.
+than drawing an empty strip. Lyrics here are quick-select among the ranker's candidates only, and only for
+the host: a re-pick changes the song for every room, so a guest is not offered it
+([the host key](SERVER.md#the-host-key)).
 
 ### Stats
 
@@ -1677,9 +1679,9 @@ the server was off", which the page states rather than resolving.
 
 ### Metrics
 
-`/metrics` is the internal processing dashboard. It is ungated, so it is linked ONLY from the Server tab of
-settings — from the remote or the television it would advertise worker ids, model names, host details and
-error strings to every device in the room. What it promises: durations reported as rates wherever a rate is
+`/metrics` is the internal processing dashboard, and the host's: anyone else is sent to `/host`
+([the host key](SERVER.md#the-host-key)). It is linked ONLY from the Server tab of settings, so the remote
+and the television never advertise a door most of the room cannot open. What it promises: durations reported as rates wherever a rate is
 meaningful (raw seconds do not compare across songs of different lengths), a sample size beside every
 average with small ones labelled, worker state first (with none connected, every timing below is history
 rather than live state), and failed runs excluded from the averages.

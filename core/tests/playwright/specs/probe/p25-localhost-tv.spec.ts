@@ -66,6 +66,8 @@ test('a TV opened at localhost advertises the home-network address, and Settings
 	await expect(tv.getByText(UNREACHABLE_JOIN)).toHaveCount(0);
 	await shot(tv, 'tv-lobby-1920');
 
+	// Only the host picks the join address: a guest reads this scope locked.
+	await world.becomeHost(phone);
 	await phone.goto('/settings/server');
 	await expect(phone).toHaveURL(/\/settings\/server$/);
 	const use20 = phone.getByRole('button', { name: `Use ${lan}` });

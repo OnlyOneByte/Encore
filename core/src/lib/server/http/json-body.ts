@@ -2,17 +2,24 @@
 // malformed body to nothing, coerce a field to a string or treat it as absent" — three of them refusing an
 // absent `mediaId` with the same 400. One definition, so the degrade rule cannot drift between them.
 
+import { error } from '@sveltejs/kit';
+import { isJsonBody } from './same-origin';
+
+/** Refuse (415) a body that is not `application/json`, a missing Content-Type included, so a route never depends
+ *  on hooks.server.ts alone to keep a cross-site form or no-cors post out. */
+export function requireJsonType(request: Request): void {
+	if (!request.headers.get('content-type') || !isJsonBody(request)) error(415, 'send application/json');
+}
+
 /**
- * A JSON request body as a bag of fields. An UNPARSEABLE body degrades to `{}`, so a malformed request takes
- * the caller's own required-field 400 rather than escaping the handler as a 500.
- *
- * A body that is valid JSON but NOT an object (`null`, `[]`, `4`) is returned as parsed, so the caller's
- * first field read throws and SvelteKit answers 500 where 400 is the honest status. That gap predates this
- * helper and is left exactly as it was, because closing it changes a wire status — but it is now one edit
- * here rather than four.
+ * A JSON request body as a bag of fields. An UNPARSEABLE body, or valid JSON that is not an object (`null`,
+ * `[]`, `4`), degrades to `{}`, so a malformed request takes the caller's own required-field 400 rather than
+ * escaping the handler as a 500.
  */
 export async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
-	return await request.json().catch(() => ({}));
+	requireJsonType(request);
+	const body: unknown = await request.json().catch(() => ({}));
+	return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
 /** A string field, or `''` when absent or of another type — the shape a required-field 400 check wants. */

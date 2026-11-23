@@ -185,18 +185,19 @@ of failed processes on specific videos is not a broken install.
 
 ## Security
 
-> ⚠️ **Encore has no operator identity. Treat it as trusted-LAN-only software.**
+> ⚠️ **Treat Encore as trusted-LAN-only software.**
 >
-> - Any device that can reach the port can join as a singer, and **any joined phone can `PUT
->   /api/settings`** — which includes the separator engine and which Whisper weights the fleet loads —
->   and can delete a song from the library for good (`/admin`).
+> - Any device that can reach the port can join as a singer. **Settings, `/metrics`, `/admin`, song
+>   deletes and a song's lyrics re-pick are the host's**: open the `Host link:` core prints at startup (`docker compose logs core`) on
+>   your phone, or set `ENCORE_ADMIN_TOKEN` and open `http://<this machine>:3000/host#k=<that value>`. A new
+>   link is made at every start, so a lost one is a restart away.
+> - It is plain HTTP: anyone watching an open Wi-Fi can copy a cookie, the host's included. Put it behind an
+>   HTTPS reverse proxy when guests aren't trusted.
 > - **Set `ENCORE_WORKER_TOKEN`.** Without it, `role=worker` WebSocket upgrades are unauthenticated:
 >   anything that can reach the port can register as a worker and start receiving job assignments.
 >   Core logs one loud warning at startup when it is unset. The token travels in **cleartext**, as the
 >   `token=` query of a plain `ws://` URL: it keeps stray LAN devices out, not anyone who can watch
 >   the LAN's traffic. It is for a trusted LAN only.
-> - `/metrics` and `/api/audit/*` are **ungated** — they expose worker ids, host details, model names,
->   file paths and error strings (no singer identities and no media bytes).
 >
 > Bind to a trusted interface or put it behind a gateway. Run natively, `HOST=127.0.0.1` keeps it off the
 > network entirely. **Under Docker, `HOST` and `PORT` do nothing**: compose sets `PORT=3000`, passes no
@@ -274,6 +275,7 @@ one of them.
 | ------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PORT`                   | `3000`       | HTTP + WS port                                                                                                                                                                                                                                                                                                                                            |
 | `HOST`                   | `0.0.0.0`    | bind address (use `127.0.0.1` to keep it off the network)                                                                                                                                                                                                                                                                                                 |
+| `ENCORE_ADMIN_TOKEN`     | unset        | a fixed host key, at least 24 characters (core refuses to start with a shorter one); the host link is then `/host#k=<value>`. Unset means core makes a new key at every start and prints the host link — see Security                                                                                                                                                                                     |
 | `ENCORE_WORKER_TOKEN`    | unset        | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. **Unset means worker registration is unauthenticated** — see Security                                                                                                                                                                                |
 | `ENCORE_PUBLIC_ORIGIN`   | unset        | address the TV's join QR advertises, e.g. `http://192.168.1.20:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`). This is the _boot-time_ declaration; **Joining** in `/settings/server` overrides it at runtime with no restart |
 | `DATA_DIR`               | `./data`     | SQLite (WAL) location — created if missing                                                                                                                                                                                                                                                                                                                |

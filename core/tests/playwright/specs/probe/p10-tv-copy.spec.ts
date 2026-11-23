@@ -654,6 +654,7 @@ for (const c of SWAP_CASES) {
 			const bo = await world.openPhone('Bo');
 			await openBrowseFromHome(bo);
 			// No "Now singing" card, so the lower-third names the song on screen from the swap on.
+			await world.becomeHost(phone);
 			const res = await phone.request.put('/api/settings/room', { data: { songIntroEnabled: false } });
 			expect(res.ok()).toBe(true);
 			const tv = await openScreen(browser, world, 1920, 1080, { real: true, dropEnded: c.dropOldEnded });

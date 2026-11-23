@@ -123,7 +123,7 @@ test('updateProfile changes name and colour and keeps the session token', () => 
 	const updated = app.singers.updateProfile(dana.id, 'Dana B', SINGER_COLORS[3]);
 	expect(updated?.displayName).toBe('Dana B');
 	expect(updated?.color).toBe(SINGER_COLORS[3]);
-	expect(updated?.sessionToken).toBe(dana.sessionToken);
+	expect(app.singers.bySessionToken(dana.sessionToken)?.id).toBe(dana.id);
 	expect(app.singers.bySessionToken(dana.sessionToken)?.displayName).toBe('Dana B');
 });
 

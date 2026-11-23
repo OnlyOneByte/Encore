@@ -101,14 +101,15 @@ test('CLAIM 6 the lobby renders every roster chip unoccluded, and its join URL n
 	 * because a loopback origin renders the operator notice instead of the join panel, which is a different
 	 * screen. The old gate declared it with ENCORE_PUBLIC_ORIGIN at boot; the `world` fixture owns core's env,
 	 * so it is declared here through the `joinOrigin` SETTING, which outranks the env var by design
-	 * (src/lib/server/public-origin.ts). The write needs a joined singer, and that singer is the analogue of the
+	 * (src/lib/server/public-origin.ts). The write needs the host key. The joined singer is the analogue of the
 	 * phone-flow singer the old drive carried — which is exactly why every chip count below is a FLOOR (>=).
 	 */
 	const port = new URL(world.baseURL).port;
 	const joinResponse = await tv.request.post('/api/join', {
 		data: { displayName: 'GateOrigin', color: CHIP_COLOR }
 	});
-	expect(joinResponse.ok(), `could not join to authorise the joinOrigin write: ${joinResponse.status()}`).toBe(true);
+	expect(joinResponse.ok(), `could not join: ${joinResponse.status()}`).toBe(true);
+	await world.becomeHost(tv);
 	const settingsResponse = await tv.request.put('/api/settings', {
 		data: { joinOrigin: `http://192.168.1.20:${port}` }
 	});

@@ -151,7 +151,13 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 		/* THREE SETTINGS SURFACES, one per scope ROUTE, where this used to be one `goto` plus two clicks on an in-page
 			tab strip — and the middle of those three clicked the tab it was already on, so the YOU scope's controls
 			(the name field, the colour ring and the destructive confirm) were swept NOWHERE. They are swept here.
-			`/settings` IS the room scope. */
+			`/settings` IS the room scope. The host's door is swept as a guest sees it first, then this phone becomes
+			the host, because a guest reads the room and machine scopes inert. */
+		await page.context().clearCookies({ name: 'encore_host' });
+		await surface('/host', async () => {
+			await page.goto('/host');
+		});
+		await world.becomeHost(page);
 		await surface('/settings', async () => {
 			await page.goto('/settings');
 		});

@@ -15,16 +15,11 @@
 // server. A core per test makes that dead code — and a test that has to undo itself cannot be read in
 // isolation.
 //
-// SECTION 7 IS NOT A CHECK, AND IS PORTED ANYWAY — READ THIS BEFORE BELIEVING THE TEST NAMES. p9's security
-// section is written INVERTED: `add(observed ? 'HIGH' : 'PASS', …)`, i.e. it reports a FINDING when the
-// condition holds, and its own comment says it "report[s] the state observed rather than an opinion". Every one
-// of those five states is documented-intentional in the source it cites (`capabilities.can()` returns true for
-// any singerId — every joined singer is a host; /api/metrics and /api/audit are "documented as intentional";
-// a role=worker upgrade is ungated unless ENCORE_WORKER_TOKEN is set, and core WARNS about it on boot). A
-// Playwright spec has one channel, not six severities, so these are ported as CHARACTERISATION tests: they
-// assert the observed blast radius, with the finding text kept verbatim. If the repo ever gates one of these,
-// the test goes red and THAT IS THE SIGNAL — a narrowed blast radius — not a regression. The alternative was
-// five permanently-red tests asserting against a deliberate design.
+// SECTION 7 IS THE BLAST RADIUS. p9's security section reported the guest-is-a-host findings; proposal 30 closed
+// them, so they are asserted CLOSED here: a joined guest cannot write settings or read /api/metrics, a page on
+// another site cannot write or open a socket, and the one surface still open by design — a role=worker socket
+// with no ENCORE_WORKER_TOKEN set — is characterised as before. Every settings write elsewhere goes through the
+// host key (`hostCookie`), which is what the boot link hands the host.
 //
 // WHAT IS DROPPED, NAMED. (1) p9's `EXPECTED_ENV_ORIGIN` arm — "clearing joinOrigin falls back to
 // ENCORE_PUBLIC_ORIGIN" — was an INFO whenever the harness did not export that variable, which it never did,
@@ -34,7 +29,9 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, startObservingWorker } from '../../world/workers';
+import { TEST_HOST_KEY } from '../../world/core';
 import { WebSocket } from 'ws';
+import { request as httpRequest } from 'node:http';
 import type { World } from '../../world/fixtures';
 import type { EffectiveSettings, RoomSettings } from '$lib/contract';
 
@@ -50,11 +47,14 @@ interface ApiOptions {
 	body?: unknown;
 	/** A RAW body, for the malformed-JSON case, which must not be stringified. */
 	raw?: string;
+	/** An Origin header, for the request a page on another site would send. */
+	origin?: string;
 }
 
 async function api(baseURL: string, method: string, path: string, opts: ApiOptions = {}): Promise<ApiResult> {
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
 	if (opts.cookie) headers.Cookie = opts.cookie;
+	if (opts.origin) headers.Origin = opts.origin;
 	const res = await fetch(`${baseURL}${path}`, {
 		method,
 		headers,
@@ -72,8 +72,15 @@ async function api(baseURL: string, method: string, path: string, opts: ApiOptio
 	return { status: res.status, text, body: parsed, setCookie: res.headers.get('set-cookie') };
 }
 
-/** Join over HTTP and keep the session cookie. Every settings write needs one: an anonymous PUT is 401, which
- *  section 1 is about. */
+/** The host session, from the key the test core boots with. Every settings write needs it; section 1 is about
+ *  who is refused without it. */
+async function hostCookie(baseURL: string): Promise<string> {
+	const r = await api(baseURL, 'POST', '/api/host', { body: { key: TEST_HOST_KEY } });
+	if (r.status !== 200) throw new Error(`POST /api/host: HTTP ${r.status} ${r.text}`);
+	return (r.setCookie ?? '').split(';')[0]!.trim();
+}
+
+/** Join over HTTP and keep the session cookie: a singer's socket hears the room, and /api/process needs one. */
 async function joinAs(baseURL: string, displayName: string): Promise<string> {
 	const r = await api(baseURL, 'POST', '/api/join', { body: { displayName, color: '#7c5cff' } });
 	if (r.status !== 200) throw new Error(`join failed for ${displayName}: HTTP ${r.status} ${r.text}`);
@@ -166,13 +173,19 @@ async function rawLocalSong(world: World, query: string): Promise<SongRow> {
 
 // ── 1. the auth boundary ─────────────────────────────────────────────────────────────────────────────────
 
-test('anonymous PUTs are refused on both settings scopes', async ({ world }) => {
-	const global = await api(world.baseURL, 'PUT', '/api/settings', { body: { syncMode: 'lines' } });
-	expect(global.status, 'anonymous PUT /api/settings must be refused — routes/api/settings/+server.ts').toBe(401);
-	const room = await api(world.baseURL, 'PUT', '/api/settings/room', { body: { queueOrder: 'fcfs' } });
-	expect(room.status, 'anonymous PUT /api/settings/room must be refused — routes/api/settings/room/+server.ts').toBe(
-		401
-	);
+test('anonymous and guest PUTs are refused on both settings scopes', async ({ world }) => {
+	const guest = await joinAs(world.baseURL, 'GuestProbe');
+	for (const [who, cookie] of [
+		['anonymous', null],
+		['a joined guest', guest]
+	] as const) {
+		const global = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { syncMode: 'lines' } });
+		expect(global.status, `${who} PUT /api/settings must be refused — routes/api/settings/+server.ts`).toBe(403);
+		const room = await api(world.baseURL, 'PUT', '/api/settings/room', { cookie, body: { queueOrder: 'fcfs' } });
+		expect(room.status, `${who} PUT /api/settings/room must be refused — routes/api/settings/room/+server.ts`).toBe(
+			403
+		);
+	}
 });
 
 // ── 2. persistence ───────────────────────────────────────────────────────────────────────────────────────
@@ -226,7 +239,7 @@ const ROOM_ID_BY_FIELD: Record<keyof typeof ROOM_WRITE, string> = {
 // readings of it. The follow-up GET then depends on both scopes' writes, which is why it cannot be its own
 // test either.
 test('every settings control round-trips, and a follow-up GET proves SQLite rather than memory', async ({ world }) => {
-	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const cookie = await hostCookie(world.baseURL);
 
 	const joinOrigin = 'http://phones.example:8080';
 	const patch1 = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { joinOrigin } });
@@ -262,7 +275,7 @@ test('every settings control round-trips, and a follow-up GET proves SQLite rath
 // survive its neighbour's junk — which is only visible if every case is measured against ONE baseline taken
 // before any of them ran. Each case names itself in its own message.
 test('garbage in a settings write degrades to the current value, per field', async ({ world }) => {
-	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const cookie = await hostCookie(world.baseURL);
 	const baseline = await getSettings(world.baseURL);
 
 	const cases: { scope: 'global' | 'room'; body: Record<string, unknown>; field: string; expected: unknown }[] = [
@@ -313,7 +326,7 @@ test('garbage in a settings write degrades to the current value, per field', asy
 });
 
 test('a malformed or exotic JSON body is refused without a 500', async ({ world }) => {
-	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const cookie = await hostCookie(world.baseURL);
 
 	const malformed = await api(world.baseURL, 'PUT', '/api/settings', { cookie, raw: 'not-json' });
 	expect(malformed.status, 'a malformed JSON body must 400 rather than 500 — routes/api/settings/+server.ts').toBe(400);
@@ -343,7 +356,7 @@ function extractJoinUrl(html: string): string | null {
 }
 
 test('a runtime joinOrigin write moves the address /tv serves, with no restart', async ({ world }) => {
-	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const cookie = await hostCookie(world.baseURL);
 	const target = 'http://runtime-fix.example:1234';
 	await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { joinOrigin: target } });
 
@@ -364,7 +377,8 @@ test('a room-scope write fans out to every connected phone, carrying the same ef
 	const alice = await openPhoneWs(world.baseURL, aliceCookie);
 	const bob = await openPhoneWs(world.baseURL, bobCookie);
 	try {
-		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie: aliceCookie, body: { tvProgressStyle: 'off' } });
+		const host = await hostCookie(world.baseURL);
+		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie: host, body: { tvProgressStyle: 'off' } });
 
 		const aliceFrame = await awaitFrame(alice, 'settings:changed', 'alice (the writer)');
 		const bobFrame = await awaitFrame(bob, 'settings:changed', 'bob (the other phone)');
@@ -386,7 +400,8 @@ test('a global-scope write also fans out via settings:changed', async ({ world }
 	const alice = await openPhoneWs(world.baseURL, aliceCookie);
 	const bob = await openPhoneWs(world.baseURL, bobCookie);
 	try {
-		await api(world.baseURL, 'PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'small' } });
+		const host = await hostCookie(world.baseURL);
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie: host, body: { asrModel: 'small' } });
 
 		const aliceFrame = await awaitFrame(alice, 'settings:changed', 'alice (the writer)');
 		const bobFrame = await awaitFrame(bob, 'settings:changed', 'bob (the other phone)');
@@ -408,7 +423,8 @@ test('a room house-rule change fans out', async ({ world }) => {
 		// broadcast queue:patch — without it every client stays on the old order until a song is added or
 		// removed. An EMPTY queue makes reorder() return null and no queue:patch fires: correct, not a defect,
 		// which is why only settings:changed is asserted and the other is reported.
-		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie, body: { queueOrder: 'shuffle' } });
+		const host = await hostCookie(world.baseURL);
+		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie: host, body: { queueOrder: 'shuffle' } });
 		await awaitFrame(alice, 'settings:changed', 'alice');
 		const alsoQueuePatch = alice.events.some((e) => e?.type === 'queue:patch');
 		expect(
@@ -437,7 +453,8 @@ test('the lyrics-engine settings reach job:assign live, and a change between pro
 	const chain = await startFakeWorker(world, { capabilities: ['fetch', 'stems'] });
 	const observer = await startObservingWorker(world);
 	try {
-		await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { asrModel: 'medium', syncMode: 'lines' } });
+		const host = await hostCookie(world.baseURL);
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie: host, body: { asrModel: 'medium', syncMode: 'lines' } });
 		const startA = await api(world.baseURL, 'POST', '/api/process', { cookie, body: { mediaId: songA.id } });
 		expect(startA.status, `/api/process refused "${songA.title}": ${startA.text}`).toBe(200);
 
@@ -449,7 +466,7 @@ test('the lyrics-engine settings reach job:assign live, and a change between pro
 		).toEqual({ asrModel: 'medium', syncMode: 'lines' });
 
 		// A SECOND process with CHANGED settings proves the read is LIVE rather than captured at boot.
-		await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie: host, body: { asrModel: 'tiny', syncMode: 'forced' } });
 		const startB = await api(world.baseURL, 'POST', '/api/process', { cookie, body: { mediaId: songB.id } });
 		expect(startB.status, `/api/process refused "${songB.title}": ${startB.text}`).toBe(200);
 
@@ -465,41 +482,59 @@ test('the lyrics-engine settings reach job:assign live, and a change between pro
 	}
 });
 
-// ── 7. the blast radius (characterisation — see the header) ──────────────────────────────────────────────
+// ── 7. the blast radius ──────────────────────────────────────────────────────────────────────────────────
 
-test('ANY joined singer holds operator authority over both settings scopes', async ({ world }) => {
+test('a joined guest holds no operator authority over either settings scope', async ({ world }) => {
 	const guest = await joinAs(world.baseURL, 'CarolProbe');
 
-	// p9, verbatim: "ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint (1550M
-	// weights)". capabilities.can() returns true for any singerId, so every phone on the LAN is a host.
+	// p9's finding was "ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint". Closed.
 	const model = await api(world.baseURL, 'PUT', '/api/settings', { cookie: guest, body: { asrModel: 'large-v3' } });
-	expect(
-		[model.status, model.body?.global?.asrModel],
-		'a guest cookie can set the deployment-wide ASR checkpoint — server/capabilities.ts:can()'
-	).toEqual([200, 'large-v3']);
+	expect(model.status, 'a guest cookie cannot set the ASR checkpoint — server/capabilities.ts:can()').toBe(403);
 
-	// p9, verbatim: "ANY joined singer can retarget the join QR to an attacker origin — party phishing vector
-	// for later joiners". Note the stored value drops the default port, which is the normalizer at work.
+	// And "ANY joined singer can retarget the join QR to an attacker origin". Closed: the QR keeps its address.
 	const origin = await api(world.baseURL, 'PUT', '/api/settings', {
 		cookie: guest,
 		body: { joinOrigin: 'http://evil.example:80' }
 	});
-	expect(
-		origin.body?.global?.joinOrigin,
-		'a guest cookie can retarget the join QR; the TV re-renders on the next request, with no restart'
-	).toBe('http://evil.example');
+	expect(origin.status, 'a guest cookie cannot retarget the join QR').toBe(403);
+	expect((await getSettings(world.baseURL)).global.joinOrigin).toBe('');
 });
 
-test('three operator surfaces are ungated by design', async ({ world }) => {
-	// (a) /api/metrics reveals worker ids, model names and error strings. Documented as intentional.
-	const metrics = await api(world.baseURL, 'GET', '/api/metrics');
-	expect(metrics.status, '/api/metrics is UNGATED — routes/api/metrics/+server.ts').toBe(200);
+test('a page on another site can neither write with the host cookie nor open a socket', async ({ world }) => {
+	const host = await hostCookie(world.baseURL);
+	const csrf = await api(world.baseURL, 'PUT', '/api/settings', {
+		cookie: host,
+		origin: 'http://evil.example',
+		body: { joinOrigin: 'http://evil.example' }
+	});
+	expect(csrf.status, 'a cross-site PUT carrying the host cookie — src/hooks.server.ts').toBe(403);
 
-	// (b) /api/audit/[mediaId], same reasoning: per-song attempt history and errors. Any indexed media will do —
-	// awaited rather than searched for once, because the library scan finishes after /health answers.
+	const guest = await joinAs(world.baseURL, 'DanProbe');
+	const ws = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=phone`, {
+		headers: { Cookie: guest, Origin: 'http://evil.example' }
+	});
+	const status = await new Promise<number | 'open'>((resolve) => {
+		ws.once('open', () => resolve('open'));
+		ws.once('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+		ws.once('error', () => {});
+	});
+	ws.close();
+	expect(status, 'a cross-site WebSocket carrying a guest cookie — server.ts').toBe(403);
+});
+
+test('the operator JSON is the host only, and the worker socket is open by design without a token', async ({
+	world
+}) => {
+	// (a) /api/metrics reveals worker ids, model names and error strings: the host's.
+	const metrics = await api(world.baseURL, 'GET', '/api/metrics');
+	expect(metrics.status, '/api/metrics refuses a cookieless caller — src/hooks.server.ts').toBe(403);
+
+	// (b) /api/audit/[mediaId]: the attempt history and its errors are the host's; anyone gets the catalog row.
 	const someone = await world.awaitDemoTrack('caroline');
 	const audit = await api(world.baseURL, 'GET', `/api/audit/${encodeURIComponent(someone.id)}`);
-	expect(audit.status, `/api/audit/${someone.id} is UNGATED — routes/api/audit/[mediaId]/+server.ts`).toBe(200);
+	expect(Object.keys(audit.body ?? {}), `/api/audit/${someone.id} — routes/api/audit/[mediaId]/+server.ts`).toEqual([
+		'media'
+	]);
 
 	// (c) a role=worker socket opens with NO token unless ENCORE_WORKER_TOKEN is set — and it carries dispatch
 	// authority. `world` boots core without one, and core WARNS about exactly this on boot.
@@ -516,4 +551,155 @@ test('three operator surfaces are ungated by design', async ({ world }) => {
 		'a role=worker socket is accepted without a token — dispatch authority on the LAN. Set ' +
 			'ENCORE_WORKER_TOKEN to gate it (server.ts refuses the upgrade with 401 when it is set).'
 	).toBe(true);
+});
+
+/** A request with the path sent byte for byte: `fetch` would resolve `..` and `.` before it left. */
+function rawRequest(
+	baseURL: string,
+	method: string,
+	path: string,
+	headers: Record<string, string>,
+	body?: string
+): Promise<{ status: number; text: string }> {
+	const { hostname, port } = new URL(baseURL);
+	return new Promise((resolve, reject) => {
+		const req = httpRequest({ hostname, port, method, path, headers }, (res) => {
+			let text = '';
+			res.on('data', (d: Buffer) => (text += d.toString()));
+			res.on('end', () => resolve({ status: res.statusCode ?? 0, text }));
+		});
+		req.on('error', reject);
+		if (body !== undefined) req.write(body);
+		req.end();
+	});
+}
+
+// Every spelling of a gated path a browser or a client can send: percent-encoded letters and slashes, double
+// encoding, mixed case, a trailing slash, an empty segment and dot segments.
+const METRICS_SPELLINGS = [
+	'/api/metrics',
+	'/api/%6Detrics',
+	'/%61pi/metrics',
+	'/api/metric%73',
+	'/api/%6detrics',
+	'/API/metrics',
+	'/api/metrics/',
+	'/api//metrics',
+	'/api/./metrics',
+	'/api/x/../metrics',
+	'/api%2Fmetrics',
+	'/api/%256Detrics',
+	'/api/metrics?format=csv'
+];
+const PAGE_SPELLINGS = [
+	'/metrics',
+	'/%6Detrics',
+	'/metrics/',
+	'/%61dmin',
+	'/admin/',
+	'/x/../admin',
+	'/metrics/%2E%2E/admin'
+];
+
+test('no spelling of a gated path reaches it without the host key', async ({ world }) => {
+	const guest = await joinAs(world.baseURL, 'EncodedProbe');
+	const host = await hostCookie(world.baseURL);
+	for (const [who, cookie] of [
+		['cookieless', ''],
+		['a guest', guest]
+	] as const) {
+		const headers: Record<string, string> = cookie ? { cookie } : {};
+		for (const path of METRICS_SPELLINGS) {
+			const r = await rawRequest(world.baseURL, 'GET', path, headers);
+			expect(r.status, `${who} GET ${path} — ${r.text.slice(0, 80)}`).not.toBe(200);
+			expect(r.text, `${who} GET ${path} leaked the metrics`).not.toContain('"workers"');
+		}
+		for (const path of PAGE_SPELLINGS) {
+			const r = await rawRequest(world.baseURL, 'GET', path, headers);
+			expect(r.status, `${who} GET ${path}`).not.toBe(200);
+		}
+	}
+	// The host still gets the real thing, so the refusals above are the gate and not a broken route.
+	expect((await rawRequest(world.baseURL, 'GET', '/api/%6Detrics', { cookie: host })).status).toBe(200);
+});
+
+test('no spelling of a mutating path lets another site, or a no-cors post, act with a cookie', async ({ world }) => {
+	const guest = await joinAs(world.baseURL, 'CsrfProbe');
+	const host = await hostCookie(world.baseURL);
+	const both = `${guest}; ${host}`;
+	const otherPort = `http://127.0.0.1:${Number(new URL(world.baseURL).port) + 1}`;
+	const ours = world.baseURL;
+	const routes: [string, string, string][] = [
+		['POST', '/api/leave', '{}'],
+		['POST', '/api/delete-media', '{"mediaId":"nope"}'],
+		['POST', '/api/lyrics-reselect', '{"mediaId":"nope","text":"x"}'],
+		['POST', '/api/join', '{"displayName":"Evil","color":"#ff0000"}'],
+		['PUT', '/api/settings', '{"joinOrigin":"http://evil.example"}'],
+		['PUT', '/api/settings/room', '{"queueOrder":"fcfs"}'],
+		['DELETE', '/api/host', ''],
+		['PATCH', '/api/me', '{"displayName":"Evil"}']
+	];
+	for (const [method, path, body] of routes) {
+		const spellings = [
+			path,
+			path.replace('/api/', '/%61pi/'),
+			path.replace('/api/', '/API/'),
+			`${path}/`,
+			`/x/..${path}`
+		];
+		for (const p of spellings) {
+			const cross = await rawRequest(
+				world.baseURL,
+				method,
+				p,
+				{ cookie: both, origin: otherPort, 'content-type': 'application/json' },
+				body
+			);
+			// SvelteKit answers a trailing slash with a 308 before any hook, and the followed request is checked here.
+			const refusedOr308 = (refusal: number) => (p.endsWith('/') ? [refusal, 308] : [refusal]);
+			expect(refusedOr308(403), `${method} ${p} from another port`).toContain(cross.status);
+			if (!body) continue;
+			// fetch(url, { mode: 'no-cors', body: new Blob([json]) }) sends a body with no Content-Type.
+			const noCors = await rawRequest(world.baseURL, method, p, { cookie: both, origin: ours }, body);
+			expect(refusedOr308(415), `${method} ${p} with no Content-Type`).toContain(noCors.status);
+		}
+	}
+	// None of it landed: the guest is still joined and the join address is untouched.
+	expect((await api(world.baseURL, 'GET', '/api/me', { cookie: guest })).status).toBe(200);
+	expect((await getSettings(world.baseURL)).global.joinOrigin).toBe('');
+});
+
+/** Every write that changes the machine or a library song for every room. A guest runs the party, not these. */
+const HOST_ONLY_WRITES: [string, string, (mediaId: string) => string][] = [
+	['PUT', '/api/settings', () => '{"joinOrigin":"http://evil.example"}'],
+	['PUT', '/api/settings/room', () => '{"queueOrder":"fcfs"}'],
+	['POST', '/api/delete-media', (id) => JSON.stringify({ mediaId: id })],
+	['POST', '/api/lyrics-reselect', (id) => JSON.stringify({ mediaId: id, text: 'not the words' })],
+	['DELETE', '/api/host', () => '']
+];
+
+test('every host-only write refuses a guest and a cookieless caller, in every spelling', async ({ world }) => {
+	const guest = await joinAs(world.baseURL, 'HostOnlyProbe');
+	const song = await world.awaitDemoTrack('caroline');
+	for (const [method, path, body] of HOST_ONLY_WRITES) {
+		for (const p of [path, path.replace('/api/', '/%61pi/'), `/x/..${path}`]) {
+			for (const [who, cookie] of [
+				['cookieless', ''],
+				['a guest', guest]
+			] as const) {
+				const headers: Record<string, string> = { origin: world.baseURL, 'content-type': 'application/json' };
+				if (cookie) headers.cookie = cookie;
+				const r = await rawRequest(world.baseURL, method, p, headers, body(song.id) || undefined);
+				expect(r.status, `${who} ${method} ${p} — ${r.text.slice(0, 80)}`).toBe(403);
+			}
+		}
+	}
+	// The song is still in the library, with no re-time queued.
+	const search = (await (await fetch(`${world.baseURL}/api/search?q=caroline`)).json()) as {
+		ready?: { id: string }[];
+		processing?: { id: string }[];
+		results?: { id: string }[];
+	};
+	const all = [...(search.ready ?? []), ...(search.processing ?? []), ...(search.results ?? [])];
+	expect(all.some((m) => m.id === song.id)).toBe(true);
 });

@@ -2,17 +2,18 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
-import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { can } from '$lib/server/capabilities';
+import { isHost } from '$lib/server/host-gate';
+import { requireJsonType } from '$lib/server/http/json-body';
 import { mediaFor } from '$lib/server/realtime/hub';
 import { emitNowPlaying } from '$lib/server/realtime/player';
 import type { RoomSettings } from '$lib/contract';
 
 export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	const app = getApp();
-	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
-	// Routed through can() rather than an inline truthiness check so the room-settings gate moves with every other capability the day one of them narrows.
-	if (!can({ singerId: singer?.id }, 'settings:write-room')) return json({ error: 'join first' }, { status: 401 });
+	if (!can({ host: isHost(cookies) }, 'settings:write-room'))
+		return json({ error: 'only the host can change these' }, { status: 403 });
+	requireJsonType(request);
 
 	// `?roomId=` names the room explicitly; an omitted param falls back to the LIVE room (app.activeRoomId), never a literal default — a param-less client (the phone settings page fetches this bare) would otherwise write to a room no reader is looking at. Read from the query string, not the body, so the JSON payload stays a pure Partial<RoomSettings> for the normalizer.
 	const roomId = url.searchParams.get('roomId') ?? app.activeRoomId;

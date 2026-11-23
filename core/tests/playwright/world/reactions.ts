@@ -4,6 +4,7 @@
 import { expect, type Page } from '@playwright/test';
 import { SEL } from './selectors';
 import { startFakeWorker } from './workers';
+import { TEST_HOST_KEY } from './core';
 import { openBrowseFromHome } from './actors';
 import type { World } from './fixtures';
 
@@ -44,7 +45,10 @@ function recordReacted(page: Page): string[] {
 	return got;
 }
 
+/** A room setting, written as the host: the page's context is unlocked first. */
 export async function putRoom(page: Page, body: Record<string, unknown>): Promise<void> {
+	const host = await page.request.post('/api/host', { data: { key: TEST_HOST_KEY } });
+	if (!host.ok()) throw new Error(`POST /api/host -> ${host.status()}`);
 	const res = await page.request.put('/api/settings/room', { data: body });
 	if (!res.ok()) throw new Error(`PUT /api/settings/room ${JSON.stringify(body)} -> ${res.status()}`);
 }

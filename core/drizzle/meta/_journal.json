@@ -64,6 +64,13 @@
       "when": 1795477843460,
       "tag": "0008_kept_original",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795487295182,
+      "tag": "0009_host_sessions",
+      "breakpoints": true
     }
   ]
 }

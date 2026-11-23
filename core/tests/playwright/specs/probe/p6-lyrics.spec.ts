@@ -96,6 +96,7 @@ interface Stage {
 async function lyricsStage(world: World): Promise<Stage> {
 	const worker = await startFakeWorker(world);
 	const phone = await world.openPhone('P6Phone');
+	await world.becomeHost(phone);
 	const first = await processWithLyrics(world, phone, SONGS[0]);
 	await processWithLyrics(world, phone, SONGS[1]);
 	for (const q of SONGS) await queueReady(phone, q);
@@ -121,8 +122,7 @@ async function lyricsStage(world: World): Promise<Stage> {
 }
 
 async function putRoom(page: Page, body: Record<string, unknown>): Promise<void> {
-	// Through the PHONE's request context: room settings ride the singer session, and a write from the test
-	// process would be refused as unjoined.
+	// Through the PHONE's request context, which holds the host session the stage unlocked.
 	const res = await page.request.put('/api/settings/room', { data: body });
 	if (!res.ok()) throw new Error(`PUT /api/settings/room ${JSON.stringify(body)} -> ${res.status()}`);
 }

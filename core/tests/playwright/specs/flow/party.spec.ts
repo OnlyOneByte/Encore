@@ -14,7 +14,7 @@
 // ENCORE_PUBLIC_ORIGIN, and the world fixture exposes no per-test core env. Measured while porting: with the
 // notice on screen the three readings are UNCHANGED (44.0024px / 84.01px / 96px), because the notice now sits
 // beside a QR that still renders rather than replacing the typed join block. The precondition is kept because it
-// costs three HTTP calls and restores the screen the old flow measured — not because these numbers depend on it.
+// costs two HTTP calls and restores the screen the old flow measured — not because these numbers depend on it.
 //
 // SINGER NAMES ARE UNIQUE PER ROOM: the singers table is append-only, so a reused name is refused with 409 and
 // the join page simply stays put, which looks exactly like a broken flow.
@@ -24,6 +24,7 @@ import { SEL } from '../../world/selectors';
 import { openBrowseFromHome, openQueue, isJoined } from '../../world/actors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
+import { TEST_HOST_KEY } from '../../world/core';
 
 // A real multi-character term: the remote does not search on a single character, so 'a' returns nothing and looks
 // exactly like a broken UI.
@@ -93,18 +94,16 @@ async function awaitDemoTrack(baseURL: string, timeout = 30_000): Promise<Search
 /**
  * Declare a ROUTABLE join address for this room, through the product's own settings surface.
  *
- * `PUT /api/settings` needs a joined singer, and a joined singer would send the TV to the lobby — so the setter
- * joins, writes, and LEAVES, which forgets it and leaves the room empty for the attract screen. No socket is ever
- * held, so this singer is never even `here`.
+ * `PUT /api/settings` needs the host key, and the host need not join, so the room stays empty for the attract screen.
  */
 async function declareRoutableJoinOrigin(baseURL: string, origin: string): Promise<void> {
-	const join = await fetch(`${baseURL}/api/join`, {
+	const host = await fetch(`${baseURL}/api/host`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ displayName: 'OriginSetter', color: '#8b5cf6' })
+		body: JSON.stringify({ key: TEST_HOST_KEY })
 	});
-	expect(join.ok, `could not join to declare the join origin: ${join.status} ${await join.text()}`).toBe(true);
-	const cookie = (join.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+	expect(host.ok, `could not unlock the host key: ${host.status} ${await host.text()}`).toBe(true);
+	const cookie = (host.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 
 	const put = await fetch(`${baseURL}/api/settings`, {
 		method: 'PUT',
@@ -112,9 +111,6 @@ async function declareRoutableJoinOrigin(baseURL: string, origin: string): Promi
 		body: JSON.stringify({ joinOrigin: origin })
 	});
 	expect(put.ok, `could not set joinOrigin=${origin}: ${put.status} ${await put.text()}`).toBe(true);
-
-	const leave = await fetch(`${baseURL}/api/leave`, { method: 'POST', headers: { cookie } });
-	expect(leave.ok, `the origin setter could not leave: ${leave.status} ${await leave.text()}`).toBe(true);
 }
 
 /** Every trimmed text a selector resolves to, as the old driver's `texts()` read them. */

@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startCore, type Core } from './core';
+import { startCore, TEST_HOST_KEY, type Core } from './core';
 import { DEMO_LIBRARY, seedDemoLibrary, type DemoTrack as SeedTrack } from './seed';
 import { SEL } from './selectors';
 
@@ -45,6 +45,10 @@ export interface World {
 	openTv(): Promise<Page>;
 	/** A joined phone on its own context, so its session cookie is its own. */
 	openPhone(name: string, options?: JoinOptions): Promise<Page>;
+	/** Make this page's context the host, as opening the boot link does. Settings writes, /metrics and /admin need it. */
+	becomeHost(page: Page): Promise<void>;
+	/** A GET from the test process, as the host: /api/metrics answers no one else. */
+	hostGet(path: string): Promise<Response>;
 	/**
 	 * Wait until the seeded library is INDEXED and hand back one track.
 	 *
@@ -112,6 +116,7 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 				`room is EMPTY, so something joined before this fixture did.\n\n${core.log()}`
 		).toMatch(/^[A-Z0-9]{6}$/);
 
+		let hostCookie = '';
 		const joinAs: World['joinAs'] = async (page, name, { stop } = {}) => {
 			// `?room=` lands on the IDENTITY pane. A bare goto('/') lands on the six-box CODE pane, where the
 			// name field does not exist — the single most common way a flow times out against nothing.
@@ -142,6 +147,22 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 				const page = await newPage(browser, { width: 390, height: 844 });
 				await joinAs(page, name, options);
 				return page;
+			},
+			becomeHost: async (page) => {
+				const res = await page.request.post('/api/host', { data: { key: TEST_HOST_KEY } });
+				expect(res.status(), `POST /api/host with the test key\n\n${core.log()}`).toBe(200);
+			},
+			hostGet: async (path) => {
+				if (!hostCookie) {
+					const res = await fetch(`${core.baseURL}/api/host`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ key: TEST_HOST_KEY })
+					});
+					expect(res.status, `POST /api/host with the test key\n\n${core.log()}`).toBe(200);
+					hostCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]!;
+				}
+				return fetch(`${core.baseURL}${path}`, { headers: { cookie: hostCookie } });
 			},
 			awaitDemoTrack: async (match = 'caroline') => {
 				const deadline = Date.now() + 30_000;

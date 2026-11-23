@@ -307,11 +307,9 @@ only when an unrelated event called `dispatch()` (`XR-JOB-11`).
 8. **A durable server-side failure record on the song.** The mechanism is the client scar
    (`process-scars.ts`); `XR-JOB-09` requires its _scope_ to be stated rather than its mechanism
    reopened.
-9. **Authentication on the audit and metrics surfaces.** Recorded as a finding rather than written as
-   a row, because it belongs to an auth section and not to this one: `GET /api/audit/[mediaId]` states
-   in its own header that it is "Ungated, same as /api/metrics", and both expose worker ids, model
-   names and raw error strings (for audit, `audit/[mediaId]/audit-shape.ts`) — to an un-joined caller, which is a wider audience than
-   `can()`'s "any joined singer" policy (`capabilities.ts`). `XR-API-11` carries it.
+9. **Authentication on the audit and metrics surfaces.** Closed by proposal 30: `/api/metrics` and the
+   attempt history on `GET /api/audit/[mediaId]` are the host's (`docs/SERVER.md#the-host-key`); anyone
+   else gets the song's catalog row from audit and nothing from metrics. `XR-API-11` carried it.
 10. **Multi-room job scoping.** Jobs are keyed by media and never by room, which is correct — a processed
     instrumental is a deployment-wide asset. The room-scoped half of the state layer
     (`persistence.ts`) is already threaded and documented. Not a jobs question.

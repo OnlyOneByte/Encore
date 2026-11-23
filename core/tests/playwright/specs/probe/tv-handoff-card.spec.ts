@@ -102,6 +102,7 @@ for (const intro of [
 			const song = { Maya: TRACKS.caroline, Theo: TRACKS.believin };
 			for (const t of Object.values(song)) await processTrack(maya, world.baseURL, t);
 			if (!intro.on) {
+				await world.becomeHost(maya);
 				const res = await maya.request.put('/api/settings/room', { data: { songIntroEnabled: false } });
 				expect(res.ok(), `could not turn the intro off: ${res.status()}`).toBe(true);
 			}

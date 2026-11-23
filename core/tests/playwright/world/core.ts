@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 /** This file is tests/playwright/world/, so three levels up is the repo root. */
 export const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 
+/** The host key every test core boots with, so a spec can unlock settings and the operator pages (`World.becomeHost`). */
+export const TEST_HOST_KEY = 'playwright-host-key-not-a-secret';
+
 /** An OS-assigned free port. Asking the kernel beats picking a number: parallel workers cannot collide. */
 export async function freePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
@@ -75,6 +78,7 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 				// Boot passes that reach the network or the worker; a test opts in when it wants them.
 				ENCORE_LYRICS_BACKFILL: '0',
 				ENCORE_VOCALS_BACKFILL: '0',
+				ENCORE_ADMIN_TOKEN: TEST_HOST_KEY,
 				...env
 			}
 		});

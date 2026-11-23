@@ -55,6 +55,8 @@
 			 * reader must fall back to the built-in engine lists rather than showing an empty picker.
 			 */
 			offeredModels?: OfferedModel[];
+			/** Null for the host; anyone else reads this scope without moving it. */
+			locked: { hostLink: string } | null;
 		};
 	}
 	let { data }: Props = $props();
@@ -185,6 +187,7 @@
 	scope={SETTINGS_SCOPES.server}
 	back={{ href: SETTINGS_SCOPES.room.href, label: 'Back to the party settings' }}
 	failed={writes.failed}
+	locked={data.locked}
 >
 	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and why no card repeats the scope. -->
 	<Card.Root id="karaoke">

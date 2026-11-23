@@ -53,6 +53,8 @@
 	interface Props {
 		data: {
 			settings: EffectiveSettings;
+			/** Null for the host; anyone else reads this scope without moving it. */
+			locked: { hostLink: string } | null;
 		};
 	}
 	let { data }: Props = $props();
@@ -106,7 +108,12 @@
 </script>
 
 <!-- Back to the Sing tab, which holds this scope's one door: the gear in its topbar. -->
-<SettingsScope scope={SETTINGS_SCOPES.room} back={{ href: '/', label: 'Back to the remote' }} failed={writes.failed}>
+<SettingsScope
+	scope={SETTINGS_SCOPES.room}
+	back={{ href: '/', label: 'Back to the remote' }}
+	failed={writes.failed}
+	locked={data.locked}
+>
 	<!-- `Card.Title` renders a <div>, so every styled card title here was a visual heading with no heading SEMANTICS,
 		and the whole outline was its h1. Screen-reader users navigate a long dashboard by heading, so
 		`role="heading" aria-level={2}` is added at each call site rather than re-vendoring the primitive, which

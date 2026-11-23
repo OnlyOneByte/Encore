@@ -2,6 +2,7 @@
 
 import { AuthoritativeState } from './state/store';
 import { SingerRepository } from './singers/repository';
+import { HostKey } from './host-key';
 import { RoomRepository } from './rooms/repository';
 import { PresenceTracker } from './realtime/presence';
 import { PlayTracker, bumpPlay } from './media/plays';
@@ -70,6 +71,7 @@ export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
+	hostKey: HostKey;
 	rooms: RoomRepository;
 	/** Where a bare `/join` lands, and the room the TV QR advertises; an explicit code resolves via {@link rooms}. */
 	activeRoomId: string;
@@ -163,6 +165,9 @@ export function getApp(): EncoreApp {
 	// Settings BEFORE authoritative state: state's ordering reads settings live via a getter, since the room can change algorithm mid-party.
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
+	singers.hashLegacyTokens();
+	const hostKey = new HostKey(db, process.env.ENCORE_ADMIN_TOKEN);
+	hostKey.pruneExpired(Date.now());
 	const rooms = new RoomRepository(db);
 	// Minted on first boot, reused after — gives the QR a code and a bare `/join` a room.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
@@ -574,6 +579,7 @@ export function getApp(): EncoreApp {
 		db,
 		state,
 		singers,
+		hostKey,
 		rooms,
 		activeRoomId,
 		presence: new PresenceTracker(),

@@ -21,7 +21,7 @@ const VIEWPORTS = [
 ];
 
 async function metrics(world: World): Promise<SpeedBody> {
-	return (await (await fetch(`${world.baseURL}/api/metrics`)).json()) as SpeedBody;
+	return (await (await world.hostGet('/api/metrics')).json()) as SpeedBody;
 }
 
 interface AuditBody {
@@ -30,7 +30,8 @@ interface AuditBody {
 
 /** The song's chain is over: its align ended ready, or (`failed`) a step failed so no align will run. */
 async function settled(world: World, mediaId: string, end: 'align-ready' | 'failed'): Promise<boolean> {
-	const audit = (await (await fetch(`${world.baseURL}/api/audit/${mediaId}`)).json()) as AuditBody;
+	// The attempt history is the host's; anyone else gets the media row alone.
+	const audit = (await (await world.hostGet(`/api/audit/${mediaId}`)).json()) as AuditBody;
 	const attempts = audit.processes.flatMap((p) => p.attempts);
 	return end === 'failed'
 		? attempts.some((a) => a.outcome === 'failed')
@@ -84,7 +85,7 @@ test('the speed page counts only songs that reached ready, and names what went w
 		['studio-mac', 'mps', 10, 2]
 	]);
 
-	const csv = await fetch(`${world.baseURL}/api/metrics?format=csv`);
+	const csv = await world.hostGet('/api/metrics?format=csv');
 	expect(csv.headers.get('content-type')).toContain('text/csv');
 	const lines = (await csv.text()).trimEnd().split('\r\n');
 	expect(lines[0]).toMatch(/^id,jobId,mediaId,processingId,jobType,/);
@@ -94,7 +95,8 @@ test('the speed page counts only songs that reached ready, and names what went w
 	const idle = await startFakeWorker(world, { workerId: 'studio-mac', profile: mac });
 	try {
 		for (const vp of VIEWPORTS) {
-			const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+			const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, baseURL: world.baseURL });
+			await world.becomeHost(page);
 			await page.goto(`${world.baseURL}/metrics`);
 			await expect(page.getByRole('heading', { name: 'Pick to ready, typical song' })).toBeVisible();
 			await expect(page.getByText('Vocal removal came out silent')).toBeVisible();

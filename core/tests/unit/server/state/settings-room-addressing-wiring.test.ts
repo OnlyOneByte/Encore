@@ -26,6 +26,7 @@ function installApp(db: ReturnType<typeof migratedDb>, activeRoomId: string): En
 		rooms: new RoomRepository(db),
 		activeRoomId,
 		singers: new SingerRepository(db),
+		hostKey: { isHost: () => true },
 		presence: new PresenceTracker(),
 		state: new AuthoritativeState(),
 		settings: new SettingsRepository(db),

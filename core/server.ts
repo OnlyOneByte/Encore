@@ -32,6 +32,8 @@ import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat
 import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
+import { fromOurOrigin } from './src/lib/server/http/same-origin';
+import { adminTokenProblem } from './src/lib/server/host-key';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -43,6 +45,13 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 // When set, a role=worker upgrade must present a matching `token` query param or get 401 — otherwise any
 // LAN device could register as a worker and fabricate job completions. Unset means unauthenticated.
 const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
+
+// Refused before anything boots: a short fixed key is the one host key a LAN guest could guess.
+const adminTokenRefusal = adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN);
+if (adminTokenRefusal) {
+	console.error(`[core] ${adminTokenRefusal}`);
+	process.exit(1);
+}
 
 // The SAME authoritative state instance the SvelteKit /api routes use.
 const app = getApp();
@@ -162,6 +171,8 @@ const server = Bun.serve<SocketData>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
+			// CORS does not cover a WebSocket, so a page on another site could otherwise open one with this phone's cookie.
+			if (!fromOurOrigin(req, url)) return new Response('websocket from another site refused', { status: 403 });
 			// role=worker carries dispatch authority: refuse with 401 rather than upgrading it.
 			if (role === 'worker' && WORKER_TOKEN && !workerTokenMatches(url.searchParams.get('token'), WORKER_TOKEN)) {
 				return new Response('unauthorized worker', { status: 401 });
@@ -394,6 +405,20 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 await refreshDefaultRoute();
 console.log(
 	`🎤 Encore on ${startupAddress() ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
+);
+
+// The only place the minted host key is ever written. It rides in the fragment, which no browser sends to a server.
+// A specific bind is the only address that answers, unless a join address is declared (a proxy in front).
+const boundOrigin = ['0.0.0.0', '::', ''].includes(HOST)
+	? null
+	: `http://${HOST.includes(':') ? `[${HOST}]` : HOST}:${PORT}`;
+const declaredOrigin = app.settings.getGlobal().joinOrigin || process.env.ENCORE_PUBLIC_ORIGIN?.trim();
+const hostLink = `${(boundOrigin && !declaredOrigin ? boundOrigin : startupAddress()) ?? boundOrigin ?? `http://localhost:${PORT}`}/host#k=`;
+const bootKey = app.hostKey.takeBootKey();
+console.log(
+	bootKey
+		? `[core] Host link: ${hostLink}${bootKey}  (open it on the host's phone to unlock Settings; a new one is made at every start)`
+		: `[core] Host link: ${hostLink}<your ENCORE_ADMIN_TOKEN>`
 );
 
 // Loud, so an open box is not silently exposed.

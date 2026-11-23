@@ -1,18 +1,30 @@
-// The capability gate. Every joined singer is a host today; the value is that the decision lives in ONE
-// function, so narrowing it later is an edit there and nowhere else.
+// The capability gate. A joined singer runs the party; only the host runs the machine.
 import { test, expect } from 'bun:test';
 import { can, type Capability } from '$lib/server/capabilities';
 
-const ALL: Capability[] = [
-	'player:control',
-	'queue:remove-any',
-	'queue:reorder-any',
+const PARTY: Capability[] = ['player:control', 'queue:remove-any', 'queue:reorder-any'];
+const HOST: Capability[] = [
 	'settings:write-room',
-	'settings:write-global'
+	'settings:write-global',
+	'operator:read',
+	'media:delete',
+	'media:edit'
 ];
+const ALL = [...PARTY, ...HOST];
 
-test('a joined singer holds every capability today', () => {
-	for (const cap of ALL) expect(can({ singerId: 's1' }, cap)).toBe(true);
+test('a joined singer holds every party capability', () => {
+	for (const cap of PARTY) expect(can({ singerId: 's1' }, cap)).toBe(true);
+});
+
+test('a joined singer holds no host capability', () => {
+	for (const cap of HOST) expect(can({ singerId: 's1' }, cap)).toBe(false);
+});
+
+test('the host holds every host capability, joined or not', () => {
+	for (const cap of HOST) {
+		expect(can({ host: true }, cap)).toBe(true);
+		expect(can({ host: true, singerId: 's1' }, cap)).toBe(true);
+	}
 });
 
 test('a socket that never joined holds none', () => {
@@ -26,12 +38,12 @@ test('a missing or empty actor is refused rather than treated as trusted', () =>
 		expect(can(undefined, cap)).toBe(false);
 		expect(can({}, cap)).toBe(false);
 		expect(can({ singerId: '' }, cap)).toBe(false);
+		expect(can({ host: false, singerId: 's1' }, cap)).toBe(PARTY.includes(cap));
 	}
 });
 
-// The five authority rulings are each "any joined singer is a host". Pinning each to the capability that enforces
-// it means a flip of can() — narrowing any capability to a host role — reds the test naming it. Queue-depth caps
-// are a validateCommand concern rather than a capability, and are guarded in the queue add-arm tests.
+// The party rulings are each "any joined singer may". Pinning each to the capability that enforces it means narrowing
+// one reds the test naming it. Queue-depth caps are a validateCommand concern and are guarded in the queue add-arm tests.
 const anySinger = { singerId: 'guest-1' };
 
 test('Q1 — skip stays open to any joined singer (player:control)', () => {
@@ -42,9 +54,9 @@ test('Q2 — live guide/pitch/range controls stay open to anyone (player:control
 	expect(can(anySinger, 'player:control')).toBe(true);
 });
 
-test('Q3 — deployment-scoped settings stay open to any joined singer (settings:write-global)', () => {
-	expect(can(anySinger, 'settings:write-global')).toBe(true);
-	expect(can(anySinger, 'settings:write-room')).toBe(true);
+test('Q3 — settings, both scopes, are the host only (proposal 30)', () => {
+	expect(can(anySinger, 'settings:write-global')).toBe(false);
+	expect(can(anySinger, 'settings:write-room')).toBe(false);
 });
 
 test('Q4 — cross-singer reorder stays open to everyone (queue:reorder-any)', () => {

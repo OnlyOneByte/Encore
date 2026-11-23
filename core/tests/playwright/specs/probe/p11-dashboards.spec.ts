@@ -1,5 +1,5 @@
 // P11 — THE THREE READ-ONLY DASHBOARDS AGAINST REAL DATA: /stats + /api/stats (public, aggregate-only),
-// /metrics + /api/metrics (internal, ungated) and /metrics/<id> + /api/audit/<id>.
+// /metrics + /api/metrics (the host's) and /metrics/<id> + /api/audit/<id>.
 //
 // IT COUNTS EVERYTHING ITSELF. The probe drives the shape a real server sees — several successful processes,
 // one FAILED, one RETRIED, and some PLAYS — then compares each dashboard against its OWN arithmetic rather
@@ -29,11 +29,12 @@
 //     DEGRADATION of the declared-cost columns. The rtFactor is reported in this spec's message instead.
 //
 // PROMOTED FROM NON-BLOCKING. The old probe exited 1 only on CRITICAL or HIGH, so four of its claims — the
-// /stats trend line, the "no fetch step for a LOCAL source" check, and the ungated posture of /api/metrics and
+// /stats trend line, the "no fetch step for a LOCAL source" check, and the posture of /api/metrics and
 // /api/audit — could fail without failing the probe. They hold today and are asserted here.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
+import { TEST_HOST_KEY } from '../../world/core';
 import { openBrowseFromHome, openQueue } from '../../world/actors';
 import type { World } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
@@ -88,10 +89,24 @@ interface AuditBody {
 
 // ── the wire ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** /api/stats, /api/metrics and /api/audit/<id> are UNAUTHENTICATED by design, so the test process reads them
- *  directly — which is also exactly the no-cookie request the posture test below is about. */
+/** The test process reads the dashboards' JSON directly, as the host: /api/metrics and the /api/audit history
+ *  are the host's, and /api/stats does not care. */
+const hostCookies = new Map<string, string>();
+async function hostCookie(baseURL: string): Promise<string> {
+	const known = hostCookies.get(baseURL);
+	if (known) return known;
+	const res = await fetch(`${baseURL}/api/host`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ key: TEST_HOST_KEY })
+	});
+	if (!res.ok) throw new Error(`POST /api/host → ${res.status} ${await res.text()}`);
+	const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]!;
+	hostCookies.set(baseURL, cookie);
+	return cookie;
+}
 async function jget<T>(baseURL: string, path: string): Promise<T> {
-	const res = await fetch(`${baseURL}${path}`);
+	const res = await fetch(`${baseURL}${path}`, { headers: { cookie: await hostCookie(baseURL) } });
 	if (!res.ok) throw new Error(`GET ${path} → ${res.status} ${await res.text()}`);
 	return (await res.json()) as T;
 }
@@ -414,6 +429,11 @@ async function shoot(
 		`${file} came out suspiciously small: ${png.byteLength} bytes for ${url} at ${size.width}px`
 	).toBeGreaterThan(MIN_SHOT_BYTES);
 }
+
+// The `page` that opens /metrics is the host's: the operator pages send anyone else to /host.
+test.beforeEach(async ({ world, page }) => {
+	await world.becomeHost(page);
+});
 
 // ── 1 · every number on the three dashboards, against one drive ──────────────────────────────────────────
 
@@ -767,11 +787,11 @@ test('/api/stats is aggregate-only — no singer identity in the payload', async
 	}
 });
 
-test('/api/metrics and /api/audit are ungated, as documented', async ({ world }) => {
-	// A no-cookie 200 is CORRECT here — both endpoints are unauthenticated deliberately and temporarily, and
-	// what they expose (worker ids, model and backend names, host details, per-attempt terminal error strings)
-	// is the finding worth recording rather than a bug to fix in the test. A 401/403 means either the header
-	// comment in src/routes/api/metrics/+server.ts is now wrong or a real gate was added silently.
+test('/api/metrics and the /api/audit history are the host only, and a guest phone is refused too', async ({
+	world
+}) => {
+	// What they expose (worker ids, model and backend names, host details, per-attempt terminal error strings) is
+	// the host's. A guest still gets the song's catalog row from /api/audit, because the song page reads it.
 	const worker = await startFakeWorker(world, { slowMs: 100 });
 	try {
 		const phone = await world.openPhone('P11-posture-b');
@@ -784,26 +804,23 @@ test('/api/metrics and /api/audit are ungated, as documented', async ({ world })
 			watch.close();
 		}
 
-		// From the TEST PROCESS, which holds no session cookie of any kind.
-		const metricsRes = await fetch(`${world.baseURL}/api/metrics`);
-		const auditRes = await fetch(`${world.baseURL}/api/audit/${caroline.id}`);
-		expect(
-			{ metrics: metricsRes.status, audit: auditRes.status },
-			`both endpoints must answer 200 without a cookie. See src/routes/api/metrics/+server.ts and ` +
-				`src/routes/api/audit/[mediaId]/+server.ts — the decision recorded there is to bind the server to a ` +
-				`trusted interface or add a token, not to gate these routes.`
-		).toEqual({ metrics: 200, audit: 200 });
-
-		// Named so the exposure is on the record, as the old probe's evidence lines were.
-		const metricsBody = (await metricsRes.json()) as MetricsBody;
-		const auditBody = (await auditRes.json()) as AuditBody;
-		const errors = auditBody.processes.flatMap((p) => p.attempts.map((a) => a.error)).filter(Boolean);
-		test.info().annotations.push({
-			type: 'exposed-ungated',
-			description:
-				`worker ids ${JSON.stringify(metricsBody.workers.map((w) => w.workerId))}; ` +
-				`model/backend names, host details; per-attempt error strings ${JSON.stringify(errors.slice(0, 2))}`
-		});
+		// From the TEST PROCESS with no cookie, then from a JOINED GUEST's own session.
+		for (const [who, get] of [
+			['no cookie', (path: string) => fetch(`${world.baseURL}${path}`)],
+			[
+				'a guest phone',
+				async (path: string) => {
+					const r = await phone.request.get(path);
+					return { status: r.status(), json: () => r.json() };
+				}
+			]
+		] as const) {
+			const metricsRes = await get('/api/metrics');
+			expect(metricsRes.status, `${who}: /api/metrics — src/hooks.server.ts`).toBe(403);
+			const audit = (await (await get(`/api/audit/${caroline.id}`)).json()) as Record<string, unknown>;
+			expect(Object.keys(audit), `${who}: /api/audit — src/routes/api/audit/[mediaId]/+server.ts`).toEqual(['media']);
+		}
+		expect((await jget<AuditBody>(world.baseURL, `/api/audit/${caroline.id}`)).processes.length).toBeGreaterThan(0);
 	} finally {
 		await worker.stop();
 	}

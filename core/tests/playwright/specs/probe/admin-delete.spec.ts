@@ -57,7 +57,8 @@ test('the admin list offers a Delete that arms a confirm', async ({ world, page 
 		const phone = await world.openPhone('Admin-Probe');
 		const song = await processToReady(phone, 'caroline');
 
-		// ANONYMOUS: /admin carries no join gate and an operator arrives with no session.
+		// THE HOST, not joined: /admin carries no join gate, only the host gate.
+		await world.becomeHost(page);
 		await page.setViewportSize(OPERATOR_VIEWPORT);
 		await page.goto('/admin');
 
@@ -110,6 +111,7 @@ test('the armed prompt is dismissible, and no exit drops focus to <body>', async
 		await processToReady(phone, 'caroline');
 		await processToReady(phone, 'believin');
 
+		await world.becomeHost(page);
 		await page.setViewportSize(OPERATOR_VIEWPORT);
 		await page.goto('/admin');
 		const arm = page.locator(SEL.adminDelete);
