@@ -37,7 +37,7 @@ services:
     init: true
     build:
       args:
-        TORCH_EXTRA: cu128
+        TORCH_EXTRA: ${ENCORE_TORCH_EXTRA:-cu128}
     deploy:
       resources:
         reservations:

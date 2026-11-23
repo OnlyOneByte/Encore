@@ -377,7 +377,15 @@ ENCORE_CORE_URL=ws://localhost:3000/ws?role=worker uv run python -m encore_worke
 ```
 
 `dev.sh` at the repo root runs the core and the worker together, and `docker/compose.yaml` runs the worker
-image (`docker/worker.Dockerfile`) against `ws://core:3000/ws?role=worker`.
+image (`docker/worker.Dockerfile`) against `ws://core:3000/ws?role=worker`. `dev.sh` installs `cu128` torch by
+itself on Linux x86_64 when `nvidia-smi -L` sees a GPU, else `cpu`; `ENCORE_TORCH_EXTRA=cpu|cu128` overrides it,
+and also the `cu128` that `./dev.sh compose --cuda` builds by default. Linux aarch64 with NVIDIA (GH200, DGX
+Spark) stays `cpu` by choice, because the lock carries `cu128` wheels for x86_64 only.
+
+YouTube needs two things outside `dev.sh` and the image, which set both up: [deno](https://deno.com) on PATH,
+and the line `--remote-components ejs:github` in a yt-dlp config (`~/.config/yt-dlp/config`, or copy
+`docker/yt-dlp.conf` there). Without them every YouTube song fails with "Requested format is not available",
+and the worker prints a warning at boot.
 
 A box with no capabilities still connects and says so rather than exiting. A process that vanishes leaves
 an operator guessing, and the core simply routes nothing to it.

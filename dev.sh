@@ -540,7 +540,26 @@ VENV="$WORKER_DIR/.venv"
 # Apple Silicon; `romanize` + `nonlatin` are the non-Latin lane's 49 MB, in the DEFAULT install since W10 so
 # a CJK sheet is readable and routable in a room rather than only in a test (docs/arch/04-alignment.md
 # §9.2, §11.2). They stay EXTRAS, so `uv sync --only-group dev` still installs neither.
-WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra cpu"
+#
+# The torch wheels: ENCORE_TORCH_EXTRA wins (`cpu` or `cu128`, the same name the Docker build arg takes).
+# Unset, CUDA wheels on Linux x86_64 when `nvidia-smi -L` sees a GPU, else CPU. CPU wheels on an NVIDIA box
+# run every song at CPU speed with only `accelerator=cpu` in the worker log to say so. Linux aarch64 with
+# NVIDIA (GH200, DGX Spark) stays CPU by choice: the lock carries cu128 wheels for x86_64 only. The timeout
+# is for a wedged driver, which can hang `nvidia-smi` for minutes.
+torch_extra() {
+	if [ -n "${ENCORE_TORCH_EXTRA:-}" ]; then
+		case "$ENCORE_TORCH_EXTRA" in
+		cpu | cu128) echo "$ENCORE_TORCH_EXTRA" ;;
+		*) echo "ENCORE_TORCH_EXTRA=$ENCORE_TORCH_EXTRA: expected cpu or cu128" >&2 && return 1 ;;
+		esac
+	elif [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] && timeout 10 nvidia-smi -L >/dev/null 2>&1; then
+		echo cu128
+	else
+		echo cpu
+	fi
+}
+TORCH_EXTRA="$(torch_extra)"
+WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra $TORCH_EXTRA"
 WORKER_EXTRAS="$WORKER_EXTRAS --extra romanize --extra nonlatin"
 
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
@@ -550,7 +569,7 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 		echo "  # core alone needs none of this: bash dev.sh --core-only" >&2
 		exit 1
 	fi
-	say "syncing worker deps from worker/uv.lock (multi-GB on a cold cache: torch + whisperx + demucs)"
+	say "syncing worker deps from worker/uv.lock with $TORCH_EXTRA torch (multi-GB on a cold cache; ENCORE_TORCH_EXTRA)"
 	# shellcheck disable=SC2086 # WORKER_EXTRAS is a deliberate word list
 	(cd "$WORKER_DIR" && uv sync --frozen $WORKER_EXTRAS)
 fi
