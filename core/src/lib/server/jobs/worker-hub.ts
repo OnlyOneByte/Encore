@@ -143,26 +143,36 @@ const PROFILE_NAME = /^[a-z0-9][a-z0-9_:.-]{0,31}$/i;
 /** A resolved fact (`htdemucs`, `bs-roformer-1297`, `large-v3`): stored verbatim, so bounded. */
 const FACT_MAX = 128;
 
+const isProfileName = (v: unknown): v is string => typeof v === 'string' && PROFILE_NAME.test(v);
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 4096;
+
 /** The well-shaped part of a hello's profile. A bad field is DROPPED rather than refusing the frame: the
  *  profile is a diagnostic, and a diagnostic must never fail a handshake. */
-export function workerProfile(msg: { backend?: unknown; device?: unknown; threads?: unknown }): WorkerProfile {
+export function workerProfile(
+	msg: Partial<Record<'backend' | 'device' | 'threads' | 'demucsJobs', unknown>>
+): WorkerProfile {
 	const out: WorkerProfile = {};
-	if (typeof msg.backend === 'string' && PROFILE_NAME.test(msg.backend)) out.backend = msg.backend;
-	if (typeof msg.device === 'string' && PROFILE_NAME.test(msg.device)) out.device = msg.device;
-	if (typeof msg.threads === 'number' && Number.isInteger(msg.threads) && msg.threads >= 1 && msg.threads <= 4096)
-		out.threads = msg.threads;
+	if (isProfileName(msg.backend)) out.backend = msg.backend;
+	if (isProfileName(msg.device)) out.device = msg.device;
+	if (isCount(msg.threads)) out.threads = msg.threads;
+	if (isCount(msg.demucsJobs)) out.demucsJobs = msg.demucsJobs;
 	return out;
 }
 
 /** The string facts of a completion that are actually strings. Anything else (a null, an object, a number)
- *  is dropped, so it can neither blank what dispatch already recorded nor land in a text column unchecked. */
+ *  is dropped, so it can neither blank what dispatch already recorded nor land in a text column unchecked.
+ *  `backend` and `device` are held to hello's `PROFILE_NAME`, since they overwrite what hello stamped. */
 export function resolvedFacts(facts: unknown): AttemptFacts {
 	if (!facts || typeof facts !== 'object' || Array.isArray(facts)) return {};
 	const f = facts as Record<string, unknown>;
 	const out: AttemptFacts = {};
-	for (const k of ['engine', 'model', 'backend', 'device', 'asrModel', 'syncMode'] as const) {
+	for (const k of ['engine', 'model', 'asrModel', 'syncMode'] as const) {
 		const v = f[k];
 		if (typeof v === 'string' && v.length > 0 && v.length <= FACT_MAX) out[k] = v;
+	}
+	for (const k of ['backend', 'device'] as const) {
+		const v = f[k];
+		if (isProfileName(v)) out[k] = v;
 	}
 	return out;
 }

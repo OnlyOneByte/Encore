@@ -686,8 +686,11 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   process answers confidently wrong. Written at assign time from the dispatched params, then overwritten by
   the worker's own reported resolution. `backend`, `device` and `threads` are the assigned worker's profile
   from its `worker:hello` (`WorkerProfile`, shape-checked by `workerProfile`), stamped at assign so a failed
-  or abandoned attempt still records what it ran on. A completion fact that is not a bounded string is
-  dropped (`resolvedFacts`), so a `null` cannot blank what assign wrote.
+  or abandoned attempt still records what it ran on. `threads` is torch's in-process count (alignment, the
+  song profile, diarization), not the demucs subprocess's or whisperx's. An align completion overwrites
+  `device` with its transcriber's (`cpu` on a Mac, where separation runs on `mps`). A completion fact that
+  is not a bounded string is dropped (`resolvedFacts`), and a completion `backend` or `device` must be a
+  name hello would accept, so a `null` cannot blank what assign wrote and no path lands in those columns.
 - **`audioSec` is snapshotted onto the attempt**, not joined from `media`, because a media row's duration
   can be re-annotated later and would silently rewrite historical rates. Every reported cost is a rate.
 - **The named lifecycle helpers are the only supported way to touch a job row.** Writing a status directly

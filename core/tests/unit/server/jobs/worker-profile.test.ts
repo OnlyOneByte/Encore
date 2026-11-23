@@ -108,14 +108,57 @@ test('completion facts keep only bounded strings', () => {
 	expect(resolvedFacts(['engine'])).toEqual({});
 });
 
+test('a completion backend or device is held to the same names hello is', () => {
+	expect(resolvedFacts({ device: 'cpu', backend: 'mlx' })).toEqual({ device: 'cpu', backend: 'mlx' });
+	expect(resolvedFacts({ device: '/home/someone/.venv', backend: '<script>x</script>' })).toEqual({});
+	expect(resolvedFacts({ device: 'box.local lan', backend: 'x'.repeat(40) })).toEqual({});
+});
+
+test('an align completion can say its transcriber ran on cpu over the stamped mps', () => {
+	const { hub, jobs, attempts } = harness();
+	jobs.enqueue('m1', 'align', 0, T0);
+	hub.handle(hello({ capabilities: ['align'], device: 'mps', backend: 'mlx' }));
+	const jobId = jobs.listByStatus('assigned')[0].id;
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '',
+		facts: { device: 'cpu', asrModel: 'small' }
+	} as never);
+	const [a] = attempts.byMedia('m1');
+	expect([a.device, a.backend]).toEqual(['cpu', 'mlx']);
+});
+
+test('demucsJobs is a count like threads', () => {
+	expect(workerProfile({ demucsJobs: 4 })).toEqual({ demucsJobs: 4 });
+	expect(workerProfile({ demucsJobs: '4' })).toEqual({});
+	expect(workerProfile({ demucsJobs: 0 })).toEqual({});
+});
+
 test('/metrics lists what a worker resolved before what it measured', () => {
-	expect(workerFacts(PROFILE, { cpuCount: 8 })).toEqual([
+	expect(workerFacts({ ...PROFILE, demucsJobs: 2 }, { cpuCount: 8 })).toEqual([
 		['hardware', 'cuda:0'],
 		['runtime', 'torch'],
-		['threads', '16'],
+		['torch threads', '16'],
+		['demucs jobs', '2'],
 		['cpus', '8']
 	]);
 	expect(workerFacts(null, null)).toEqual([]);
+});
+
+test('/metrics says the device once: a resolved device hides the host accelerator', () => {
+	const host = { accelerator: 'cuda', deviceName: 'NVIDIA RTX 4070' };
+	expect(workerFacts({ device: 'cuda' }, host)).toEqual([
+		['hardware', 'cuda'],
+		['gpu', 'NVIDIA RTX 4070']
+	]);
+	// An older worker sends no profile, so the host's accelerator is all there is.
+	expect(workerFacts(null, host)).toEqual([
+		['accelerator', 'cuda'],
+		['gpu', 'NVIDIA RTX 4070']
+	]);
 });
 
 test('the per-song audit shows the threads an attempt ran with', () => {

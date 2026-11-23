@@ -84,6 +84,9 @@ class Hello:
     #: stamps all three on every attempt this worker is assigned. Names and a count, never a host or path.
     device: str | None = None
     threads: int | None = None
+    #: How many tracks torch demucs separates at once (its `-j`). Core accepts it in `WorkerProfile`.
+    #: TODO(#1051): set it from #1051's `jobs.count` in `__main__.main` once that lands; None until then.
+    demucs_jobs: int | None = None
     host: dict[str, Any] | None = None
 
     def to_wire(self) -> dict[str, object]:
@@ -96,6 +99,7 @@ class Hello:
             backend=self.backend,
             device=self.device,
             threads=self.threads,
+            demucsJobs=self.demucs_jobs,
             host=self.host,
         )
 

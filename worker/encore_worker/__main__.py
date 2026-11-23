@@ -417,15 +417,18 @@ def _lyrics_artifacts(
     return {"lyrics": lyrics}
 
 
-def _align_facts(job: JobRef, config: Config, outcome: AlignOutcome) -> dict[str, Any]:
+def _align_facts(
+    job: JobRef, config: Config, outcome: AlignOutcome, *, device: str | None = None
+) -> dict[str, Any]:
     """What an align job RAN, for core's attempt row (`ResolvedFacts`, `reportFacts`).
 
     `asrModel` and `syncMode` are the RESOLVED values, the ones `steps.api` resolved for the steps: core
     records the request at dispatch and lets these overwrite it, so a checkpoint this worker would not load,
-    or a pin aligned under `lines`, is reported as what ran rather than as what was asked. No backend or
-    device: those are the process's, sent once in hello and stamped by core on every attempt.
+    or a pin aligned under `lines`, is reported as what ran rather than as what was asked. No backend (hello
+    sends it). `device` is the TRANSCRIBER's, overwriting the stamped torch one: `cpu` on a Mac's `mps`.
     """
     return {
+        **({"device": ml.transcriber_device(device)} if device else {}),
         "noLyrics": outcome.no_lyrics,
         "asrModel": asr_model_of(job, config.asr_model),
         # What RAN: `lines` on a stemless song is aligned (`workflows.align._sync_mode_note`). A record
@@ -496,7 +499,12 @@ def _stems_completion(
 
 
 def _align_completion(
-    job: JobRef, config: Config, outcome: AlignOutcome, *, now_ms: int | None = None
+    job: JobRef,
+    config: Config,
+    outcome: AlignOutcome,
+    *,
+    now_ms: int | None = None,
+    device: str | None = None,
 ) -> f.Complete:
     """The `job:complete` an align job sends — the frame core's `setMediaLyrics` reads.
 
@@ -516,7 +524,7 @@ def _align_completion(
             ),
             pinned=pin_of(job) is not None,
         ),
-        facts=_align_facts(job, config, outcome),
+        facts=_align_facts(job, config, outcome, device=device),
         trail=tuple(dict(entry) for entry in outcome.trail),
     )
 
@@ -649,7 +657,7 @@ async def _dispatch(
             # As for stems: a refusal is not a completion. Sent as one, core settled the lyrics gate as
             # "align ran and found no lyrics" for a job nobody finished.
             return f.Failed(config.worker_id, job.job_id, aligned.why, retryable=True)
-        return _align_completion(job, config, aligned)
+        return _align_completion(job, config, aligned, device=client.device)
 
     if assign.action in ("stems", "stems-upgrade"):
         return _stems_completion(job, config, await durable.stems(job), separator)

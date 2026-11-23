@@ -69,6 +69,26 @@ def test_completion_facts_send_no_null_backend() -> None:
     assert "backend" not in frame.facts
 
 
+@pytest.mark.parametrize(("torch_device", "ran_on"), [("mps", "cpu"), ("cuda", "cuda"), ("cpu", "cpu")])
+def test_an_align_job_reports_the_device_its_transcriber_ran_on(torch_device: str, ran_on: str) -> None:
+    """On a Mac the process is `mps` but whisperx runs on `cpu`; the align row must say `cpu`."""
+    from encore_worker import __main__ as entry
+
+    async def aligned(job: JobRef) -> AlignOutcome:
+        return AlignOutcome(published=None, why="")
+
+    async def dispatch() -> f.Complete | f.Failed:
+        assign = SimpleNamespace(action="align")
+        client = SimpleNamespace(device=torch_device)
+        return await entry._dispatch(assign, JOB, Config(), None, None, client, None)  # type: ignore[arg-type]
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(durable, "align", aligned)
+        frame = asyncio.run(dispatch())
+    assert isinstance(frame, f.Complete) and frame.facts is not None
+    assert frame.facts["device"] == ran_on
+
+
 class _Client:
     wired: dict[str, Any] = {}
 
