@@ -253,6 +253,7 @@ LICENSE  CREDITS.md   ← PolyForm Noncommercial 1.0.0; third-party material (co
 | [`UI-TENETS.md`](docs/UI-TENETS.md)       | the seven UI tenets in priority order, and the speed budget for each moment     |
 | [`UI-DESIGN.md`](docs/UI-DESIGN.md)       | the visual rules: control contrast, the spacing and type ladders, one look each |
 | [`UI-CHECKLIST.md`](docs/UI-CHECKLIST.md) | what a UI PR is checked against: the motion frames and the tenet checks         |
+| [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) | how a change is written up, documented and reviewed                             |
 | [`arch/`](docs/arch/README.md)            | subsystem contracts as numbered requirements a machine can often check          |
 | [`deploy/`](docs/deploy/README.md)        | getting a secure context, and the WSL2 case that breaks it                      |
 | [`benchmarks/`](docs/benchmarks/)         | the stem-separation and forced-alignment measurements, and how to rerun them    |
@@ -355,7 +356,8 @@ and the turn itself: On deck, the "Now singing" handoff with You're up, room rea
 room.
 
 **Next:** hot-titles persistence, and accounts + multi-room. Open work is tracked in
-[GitHub issues](https://github.com/OnlyOneByte/Encore/issues).
+[GitHub issues](https://github.com/OnlyOneByte/Encore/issues), and
+[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) says how a change is written up, documented and reviewed.
 
 ## Dev notes
 
