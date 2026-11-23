@@ -709,9 +709,9 @@ and its `fetch` job dying 120 s later for want of a connected worker.
   with its retry; the only thing `media:status` can say is `'failed'`, which takes that retry away and
   claims a process ran. The missing witness was the OPERATOR's: a boot census plus a per-pass warning when
   a turn newly dies, on the reaper's existing `onTick` (core keeps exactly two periodic timers).
-- **Two consecutive passes, not a grace constant.** The one false-positive window is between `queue()` and
-  `process()` inside `processAndQueue` (measured at 3–21 ms), and requiring the same song twice closes it
-  with no number to defend. A server-side `addedAt` grace would also be sound, since the hub re-stamps
+- **Two consecutive passes, not a grace constant.** `processAndQueue` starts the job before it adds the
+  turn, so Sing leaves no window where a turn exists and no job does; the grace stays for a tab still
+  running the old queue-first code, and requiring the same song twice closes that with no number to defend. A server-side `addedAt` grace would also be sound, since the hub re-stamps
   `addedAt` from the room's own clock; the same comparison on a CLIENT is cross-clock and is not.
 
 ### Idempotency and the process cap

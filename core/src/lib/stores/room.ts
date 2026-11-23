@@ -624,8 +624,11 @@ export class RoomLink {
 	 * is what keeps the card off `queueCardKind`'s stalled arm during the window before the first broadcast.
 	 *
 	 * THE NOTICE GOES THROUGH `#fail`, not a toast — this class holds no opinion about how a failure is shown, and
-	 * the root layout routes `onError` to `toast.error` on every surface. */
-	async requestProcess(mediaId: string): Promise<void> {
+	 * the root layout routes `onError` to `toast.error` on every surface.
+	 *
+	 * RESOLVES TRUE ONLY WHEN THE PROCESS STARTED (or the stems were already on disk): Sing adds its turn on true
+	 * alone, so a refused tap books no turn nothing is working on. */
+	async requestProcess(mediaId: string): Promise<boolean> {
 		this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
 		this.#processInFlight.add(mediaId);
 		try {
@@ -636,10 +639,9 @@ export class RoomLink {
 			});
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
-				/* THE ROLLBACK IS THE OPTIMISTIC MARK, NEVER THE TURN. A refusal here leaves the entry standing on
-				   purpose: the add rides the offline-tolerant `QueueStore` and is resent on resync, so rolling the
-				   turn back on a transient refusal would delete a turn the guest genuinely asked for. What the guest
-				   is left holding is exactly the state the stalled card exists to name. */
+				/* THE ROLLBACK IS THE OPTIMISTIC MARK, NEVER THE TURN. A first Sing has no turn yet (it adds one only
+				   on true); a retry off a stalled card keeps the turn it already holds, which is exactly the state the
+				   stalled card exists to name. */
 				this.clearMediaStatus(mediaId);
 				if (res.status === 409 && body.error === 'unknown media') {
 					// ONE notice per tap: the same tap's add is refused too. Silent when that refusal already said it,
@@ -649,13 +651,15 @@ export class RoomLink {
 					);
 					this.#songGone(mediaId, !this.#toldWhileProcessing.has(mediaId) && !tappedAdd);
 				} else this.#fail(body.error ?? 'Could not start process');
-				return;
+				return false;
 			}
 			// The stems were already on disk (processed on an earlier night) — nothing to wait for.
 			if (body.alreadyReady) void this.refreshLibrary();
+			return true;
 		} catch {
 			this.clearMediaStatus(mediaId);
 			this.#fail("Couldn't start that.");
+			return false;
 		} finally {
 			this.#processInFlight.delete(mediaId);
 			this.#toldWhileProcessing.delete(mediaId);

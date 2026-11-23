@@ -6,23 +6,33 @@
  * adding a turn, so a singer whose song could not be made keeps their spot. */
 export const REPLACE_PARAM = 'replace';
 
-export interface ProcessAndQueueSteps<T> {
-	/** Add the turn. Runs FIRST — see the ordering note below. */
-	queue: () => T;
-	/** Request separation. Runs SECOND, so it inherits the priority of the turn just added. */
-	process: () => T;
+export interface ProcessAndQueueSteps {
+	/** The song tapped. A second Sing on it while its process is still in flight is ignored: one turn per tap. */
+	mediaId: string;
+	/** Songs whose process is in flight, owned by the caller so it outlives one call. */
+	inFlight: Set<string>;
+	/** Request separation. Runs FIRST — see the ordering note below. Resolves true only when the process started. */
+	process: () => Promise<boolean>;
+	/** Add the turn. Runs SECOND, and only if the process started: a turn nothing is working on is a dead end. */
+	queue: () => void;
 	/** The singer ALREADY holds a queued turn, so the queue step is skipped and only the process runs — both steps
 	 * would leave them holding two queued turns of one song, which the one-turn-per-song rule forbids. Skipping the
 	 * queue step costs the process no priority: priority comes from the rotation position of the turns pointing at it. */
 	hasQueuedTurn?: boolean;
 }
 
-/** QUEUE, THEN PROCESS — an ordering requirement, not a style: the job's priority is derived from the rotation
- * position of the queue entries pointing at that media, so process-first files the job at the bottom of the queue,
- * behind the lyrics backfill, with a singer waiting. Returned as an array, so a caller can tell a retry from a tap. */
-export function processAndQueue<T>(steps: ProcessAndQueueSteps<T>): T[] {
-	if (steps.hasQueuedTurn) return [steps.process()];
-	const queued = steps.queue();
-	const processed = steps.process();
-	return [queued, processed];
+/** PROCESS, THEN QUEUE — an ordering requirement, not a style. The process POST marks the song `queued` and
+ * broadcasts its first `media:status` before it answers, so the add that follows reaches every phone already
+ * carrying a song being made: no phone, live or just reloaded, ever reads the new turn as a dead one ("Couldn't
+ * make karaoke") for the round trip between the two. The job's priority is not lost by filing it first: the hub's
+ * `onEntryAdded` reprioritise pulls it up to the new turn's rotation position when the add lands. */
+export async function processAndQueue(steps: ProcessAndQueueSteps): Promise<void> {
+	if (steps.inFlight.has(steps.mediaId)) return;
+	steps.inFlight.add(steps.mediaId);
+	try {
+		const started = await steps.process();
+		if (started && !steps.hasQueuedTurn) steps.queue();
+	} finally {
+		steps.inFlight.delete(steps.mediaId);
+	}
 }

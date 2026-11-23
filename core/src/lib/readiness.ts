@@ -73,16 +73,10 @@ export function queueCardKind(
 	   /queue — so no entry argument is needed to say it. And it cannot libel a turn nobody asked to process,
 	   because no UI path creates a bare turn on an unacquired media: SongRow renders its `+` only when `onmake` is
 	   undefined, i.e. when `canProcess` is false.
-	   NO AGE GATE, NO FIRST-SEEN MAP, NO CONSTANT, and the token rule is what settles that rather than taste. This
-	   arm cannot tell a turn whose process half never landed (permanent) from the one-round-trip window on ANOTHER
-	   guest's phone between the `queue:patch` carrying the add and the `media:status` the subsequent /api/process
-	   POST produces (transient).
-	   shortcut: with a maker present the card follows the room's verdict (ruling 38) and says "Couldn't make
-	   karaoke" in the danger look, so during that window another guest's fresh pick can flash it for one frame before
-	   "Making karaoke…". Telling the window from a dead turn needs the server's word (or an age gate, below), which is
-	   a design call; upgrade if the flash is seen off a LAN. (The TAPPING
-	   phone sees no flash at all: `processAndQueue` runs the queue step then the process step, and the process step
-	   sets a live `queued` status BEFORE it awaits, so that phone holds one in the same tick as the add.)
+	   NO AGE GATE, NO FIRST-SEEN MAP, NO CONSTANT, and none is needed: a fresh pick never passes through this arm.
+	   `processAndQueue` sends the add only after the /api/process POST answered, and that POST marks the media
+	   `queued` before it answers, so the `queue:patch` carrying the turn already reads as processing on every phone,
+	   live or just reloaded. A turn that reaches this arm is a dead one by construction.
 	   A CLIENT-SIDE age gate would also be a new lie rather than a guard: `addedAt` is a SERVER stamp, and
 	   comparing it against the device's `Date.now()` is cross-clock and skew-unsafe. */
 	return 'stalled';

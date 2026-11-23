@@ -26,7 +26,7 @@ const jsonRes = (body: unknown, status: number) =>
 async function ask(
 	impl: (url: string) => Promise<Response>,
 	mediaId = 'm1'
-): Promise<{ link: RoomLink; said: string[]; urls: string[] }> {
+): Promise<{ link: RoomLink; said: string[]; urls: string[]; started: boolean }> {
 	const real = globalThis.fetch;
 	const urls: string[] = [];
 	globalThis.fetch = asFetch((url) => {
@@ -37,8 +37,8 @@ async function ask(
 	const said: string[] = [];
 	const stop = link.onError((m) => said.push(m));
 	try {
-		await link.requestProcess(mediaId);
-		return { link, said, urls };
+		const started = await link.requestProcess(mediaId);
+		return { link, said, urls, started };
 	} finally {
 		stop();
 		globalThis.fetch = real;
@@ -63,9 +63,15 @@ test('the optimistic mark is set BEFORE the request is awaited', async () => {
 
 test("a refusal rolls the MARK back and says the server's own words", async () => {
 	// The cap refusal shape: /api/process answers 409 with a sentence phrased for a phone to print.
-	const { link, said } = await ask(() => jsonRes({ error: 'You already have 2 songs processing.' }, 409));
+	const { link, said, started } = await ask(() => jsonRes({ error: 'You already have 2 songs processing.' }, 409));
 	expect(link.mediaStatus.has('m1')).toBe(false);
 	expect(said).toEqual(['You already have 2 songs processing.']);
+	expect(started).toBe(false); // so Sing books no turn
+});
+
+test('an unknown-media refusal answers false too', async () => {
+	const { started } = await ask(() => jsonRes({ error: 'unknown media' }, 409));
+	expect(started).toBe(false);
 });
 
 test('a refusal rolls back NOTHING ELSE — the turn is not the mark', async () => {
@@ -83,25 +89,28 @@ test('a refusal rolls back NOTHING ELSE — the turn is not the mark', async () 
 test('a dropped request is a refusal too, with the generic sentence', async () => {
 	// A thrown fetch (phone off the LAN mid-tap) reaches the same rollback: the status map must not keep a mark
 	// for a request that never arrived, or the row cooks forever with nothing behind it.
-	const { link, said } = await ask(() => Promise.reject(new TypeError('Failed to fetch')));
+	const { link, said, started } = await ask(() => Promise.reject(new TypeError('Failed to fetch')));
 	expect(link.mediaStatus.has('m1')).toBe(false);
 	expect(said).toEqual(["Couldn't start that."]);
+	expect(started).toBe(false);
 });
 
 test('an accepted request KEEPS the mark and says nothing', async () => {
 	// The mark is what the row draws its bar from until the first `media:status` arrives, so clearing it on success
 	// would blink the card back through the stalled arm — the exact flash the before-the-await ordering prevents.
-	const { link, said, urls } = await ask(() => jsonRes({ ok: true }, 200));
+	const { link, said, urls, started } = await ask(() => jsonRes({ ok: true }, 200));
 	expect(link.mediaStatus.get('m1')).toEqual({ status: 'queued', pct: 0 });
 	expect(said).toEqual([]);
 	expect(urls).toEqual(['/api/process']);
+	expect(started).toBe(true); // so Sing adds the turn
 });
 
 test('stems already on disk re-reads the library, so the row goes ready without a worker', async () => {
 	/* `alreadyReady` is the "processed on an earlier night" answer: there is no job to broadcast progress for, so
 	   without the re-read the row would sit on its optimistic `queued` mark until something else refreshed. */
-	const { urls } = await ask((url) =>
+	const { urls, started } = await ask((url) =>
 		url === '/api/process' ? jsonRes({ alreadyReady: true }, 200) : jsonRes({ library: [], tags: {} }, 200)
 	);
 	expect(urls).toContain('/api/library');
+	expect(started).toBe(true); // a ready song still gets its turn
 });
