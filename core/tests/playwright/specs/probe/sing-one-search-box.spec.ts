@@ -1,10 +1,14 @@
 // THE SING TAB IS ONE SEARCH BOX (proposal 21). The Music / Everything / YouTube / Library menu under the field is
-// gone: its choices returned the same rows and "Library" meant everything anyone had searched for. Three claims:
+// gone: its choices returned the same rows and "Library" meant everything anyone had searched for. Five claims:
 //   1. At 390x844 and 320x568 the find row is the field alone: no `<select>` in the column, and the row is one
 //      control tall, so the content below it starts where the menu used to.
 //   2. `Not it? Search everything` is the one way wider, and it lasts for ONE query: its tap re-runs the query
 //      with `source=all`, and the next keystroke, or a clear, goes back to the route's default (no `source`).
-//   3. The narrowing filter is still reachable off-screen: `/?source=local` sends `source=local`.
+//   3. The narrowing filter is still reachable off-screen: `/?source=local` sends `source=local`, and the widen is
+//      still offered there, so a shared narrowed link is never a search with no way wider.
+//   4. The widen removes the button it was tapped on, so focus moves to the widened results' first heading and
+//      the live region says the search went wider; focus never falls to <body>.
+//   5. The topbar is one row at 320 and 390 with a long name: the name ellipsises, the wordmark and gear stay whole.
 // Requests are read off the wire the page sends, not inferred from the rows, because the rows mostly match.
 //
 // `SING_BOX_SHOTS=<dir>` writes the idle screen at both widths and the results before and after the widen.
@@ -99,4 +103,48 @@ test('/?source= narrows off-screen, for testing one source', async ({ world }) =
 	await page.locator(SEL.search).fill(track.title);
 	expect(await sent, 'the URL filter passes through').toBe('local');
 	await expect(page.locator(SEL.songRow).first()).toBeVisible({ timeout: 20_000 });
+	const widen = page.getByRole('button', WIDEN);
+	await expect(widen, 'a narrowed link still offers the way wider').toBeVisible({ timeout: 20_000 });
+	const wide = nextSearch(page, track.title);
+	await widen.click();
+	expect(await wide, 'and it widens past the URL filter').toBe('all');
 });
+
+test('the widen hands focus to the widened results and says so', async ({ world }) => {
+	const track = await world.awaitDemoTrack('caroline');
+	const page = await world.openPhone('Maya');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await openBrowseFromHome(page);
+	await page.locator(SEL.search).fill(track.title);
+	const widen = page.getByRole('button', WIDEN);
+	await widen.waitFor({ timeout: 30_000 });
+	await widen.focus();
+	await page.keyboard.press('Enter');
+	const firstHead = page.locator('main h2.grouphead').first();
+	await expect(firstHead, 'focus lands on the first group heading').toBeFocused({ timeout: 30_000 });
+	await expect(page.locator('.sr-live'), 'the live region says it went wider').toHaveText(/^Searched everything: /);
+});
+
+for (const width of [320, 390]) {
+	test(`the topbar is one row at ${width} with a long name`, async ({ world }) => {
+		const page = await world.openPhone('Alexandria');
+		await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+		await page.goto('/');
+		await openBrowseFromHome(page);
+		const brand = (await page.locator('.topbar .brand').boundingBox())!;
+		const cluster = (await page.locator('.topbar .me-cluster').boundingBox())!;
+		const gear = (await page.getByRole('link', { name: 'Settings' }).boundingBox())!;
+		const dot = (await page.locator('.topbar .me-dot').boundingBox())!;
+		expect(cluster.y, 'the name, avatar and gear stay on the wordmark row').toBeLessThan(brand.y + brand.height);
+		expect(gear.x + gear.width, 'the gear stays on screen').toBeLessThanOrEqual(width);
+		expect(dot.x + dot.width, 'the avatar is left of the gear').toBeLessThanOrEqual(gear.x);
+		const name = await page.locator('.topbar .me-name').evaluate((el) => ({
+			clipped: el.scrollWidth > el.clientWidth,
+			ellipsis: getComputedStyle(el).textOverflow === 'ellipsis'
+		}));
+		if (name.clipped) expect(name.ellipsis, 'a clipped name ends in an ellipsis').toBe(true);
+		const wordmark = await page.locator('.topbar .brand').evaluate((el) => el.scrollWidth <= el.clientWidth);
+		expect(wordmark, 'the wordmark is never cut').toBe(true);
+		await shoot(page, `topbar-${width}`);
+	});
+}
