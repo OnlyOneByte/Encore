@@ -251,7 +251,7 @@ export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
  * returns `[]` before reaching this function when no query is active, so the union was unreachable and the catalog,
  * status and classifier arguments could not be read. Nor is there another surface wanting it — /queue's own
  * processing group is derived from QUEUE ENTRIES, which is the narrower set on purpose, and `processAndQueue` adds
- * the turn alongside the process so a cooking song is in practice a queued song. What that trades away is recorded
+ * the turn right after the process, and only if it started, so a cooking song is in practice a queued song. What that trades away is recorded
  * at the caller: a media processing with no queue entry is visible only while a query matches it. */
 export function processingGroupIds(processingResults: Media[]): Set<string> {
 	return new Set(processingResults.map((m) => m.id));

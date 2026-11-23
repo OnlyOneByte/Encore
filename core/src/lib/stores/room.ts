@@ -644,8 +644,9 @@ export class RoomLink {
 				   stalled card exists to name. */
 				this.clearMediaStatus(mediaId);
 				if (res.status === 409 && body.error === 'unknown media') {
-					// ONE notice per tap: the same tap's add is refused too. Silent when that refusal already said it,
-					// or will (the add is still pending); otherwise this is the tap's only refusal, so say it.
+					// ONE notice per tap. Sing adds no turn until this POST answers, so this is usually the tap's only
+					// refusal; stay silent only when an add of this song is still pending (a socket refusal will say it)
+					// or one was refused while this POST was out.
 					const tappedAdd = this.entries.some(
 						(e) => e.mediaId === mediaId && this.queue?.pendingKindById.get(e.id) === 'add'
 					);

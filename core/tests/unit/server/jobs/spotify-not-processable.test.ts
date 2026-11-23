@@ -2,8 +2,8 @@
 // Enforcing that inside `requestProcess` alone was TOO LATE while Sing was queue-first — `processState` answered
 // 'processable', the phone offered Sing, and the turn was taken before the refusal landed. Sing is process-first now
 // and books no turn on a refusal, but the affordance gate is still the first line. Such a turn sat in the rotation
-// with nothing that could make it ready and no failure event, because no job was ever enqueued to fail. So the refusal must be visible at `processState`, the designated answer. Reachable only with
-// SPOTIFY_CLIENT_ID/SECRET set; these tests construct the materialized media such a box persists on every query.
+// with nothing that could make it ready and no failure event, because no job was ever enqueued to fail. So the
+// refusal must be visible at `processState`, the designated answer. Reachable only with SPOTIFY_CLIENT_ID/SECRET set; these tests construct the materialized media such a box persists on every query.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { requestProcess, processState, type ProcessDeps } from '$lib/server/jobs/process';

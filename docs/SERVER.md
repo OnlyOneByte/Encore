@@ -711,8 +711,8 @@ and its `fetch` job dying 120 s later for want of a connected worker.
   a turn newly dies, on the reaper's existing `onTick` (core keeps exactly two periodic timers).
 - **Two consecutive passes, not a grace constant.** `processAndQueue` starts the job before it adds the
   turn, so Sing leaves no window where a turn exists and no job does; the grace stays for a tab still
-  running the old queue-first code, and requiring the same song twice closes that with no number to defend. A server-side `addedAt` grace would also be sound, since the hub re-stamps
-  `addedAt` from the room's own clock; the same comparison on a CLIENT is cross-clock and is not.
+  running the old queue-first code, and requiring the same song twice closes that with no number to defend.
+  A server-side `addedAt` grace would also be sound, since the hub re-stamps `addedAt` from the room's own clock; the same comparison on a CLIENT is cross-clock and is not.
 
 ### Idempotency and the process cap
 
