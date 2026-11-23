@@ -109,9 +109,9 @@ export type ServerEvent =
 	| { type: 'room:reacted'; singerId: string; kind: ReactionKind; color: string }
 	// To the ORIGIN only: a transport command named a song that is no longer current, so nothing happened.
 	| { type: 'player:stale'; cmd: TargetedCommand['cmd'] }
-	// To ONE TV socket, on connect and whenever the room's seat moves: `mine: false` is a copy, whose telemetry the
-	// server ignores. See server/rooms/tv-seat.ts.
-	| { type: 'tv:seat'; mine: boolean };
+	// To ONE TV socket, on connect and whenever its answer moves: `mine: false` is a copy, whose telemetry the server
+	// ignores; `tvOnline: false` means the seat's screen has no live socket right now. See server/rooms/tv-seat.ts.
+	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean };
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.

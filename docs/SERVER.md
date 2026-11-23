@@ -506,8 +506,10 @@ copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds i
 | A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and the old holder becomes a copy |
 | A socket with no cookie | Never holds the seat and cannot claim it |
 
-Each TV socket hears `tv:seat { mine }` on connect and whenever its answer changes. `rooms.tv_seat` stores
-a SHA-256 of the cookie, never the cookie itself.
+Each TV socket hears `tv:seat { mine, tvOnline }` on connect and whenever either changes. `tvOnline` is
+whether the seat's screen has a live socket, so while the TV is gone a copy says "The TV is reconnecting..."
+instead of "Another screen is the TV". It is one boolean and changes nothing about who may hold or claim the
+seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
 
 **The seat is an identity, not an auth gate.** Only the cookie's shape is checked, so a planted or known
 `encore_tv` value (cookies are not port-scoped) counts as the same screen as its holder. That buys nothing a

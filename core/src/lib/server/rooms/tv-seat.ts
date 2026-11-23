@@ -39,8 +39,9 @@ export function tvIdOf(cookieHeader: string | null): string | undefined {
 	return v ? createHash('sha256').update(v).digest('base64url') : undefined;
 }
 
-/** A socket's new answer to "am I the TV?", for `tv:seat`. */
-export type SeatNotice = { key: number; mine: boolean };
+/** A socket's new answer to "am I the TV?, and is the TV here?", for `tv:seat`. `tvOnline`: the seat's screen has a
+ *  live socket, so a copy can say "The TV is reconnecting..." instead of pointing at a screen that is gone. */
+export type SeatNotice = { key: number; mine: boolean; tvOnline: boolean };
 
 type Seat = {
 	/** The screen that holds the seat, or null when it is free. Persisted, so a core restart hands it back. */
@@ -106,15 +107,24 @@ export class TvSeats {
 		s.holderSeenAt = this.#store.now();
 	}
 
-	/** Runs `change` and returns a notice for each socket whose answer moved. A new socket is not in `before`, so it
-	 *  is always told. Every `mine: false` comes FIRST: the caller sends in this order, so on a seat move the old TV
-	 *  is told to go silent before the new one is told to play, never the other way round (the audio is sacred). */
+	/** Runs `change` and returns a notice for each socket whose answer (`mine` or `tvOnline`) moved. A new socket is not
+	 *  in `before`, so it is always told. Every `mine: false` comes FIRST: the caller sends in this order, so on a seat
+	 *  move the old TV is told to go silent before the new one is told to play, never the other way round (the audio
+	 *  is sacred). */
 	#diff(s: Seat, change: () => void): SeatNotice[] {
-		const before = new Map(s.sockets.map((x) => [x.key, x.key === s.holderSocket]));
+		const answer = (key: number): SeatNotice => ({
+			key,
+			mine: key === s.holderSocket,
+			tvOnline: s.holderSocket !== null
+		});
+		const before = new Map(s.sockets.map((x) => [x.key, answer(x.key)]));
 		change();
 		const moved = s.sockets
-			.map((x) => ({ key: x.key, mine: x.key === s.holderSocket }))
-			.filter((n) => before.get(n.key) !== n.mine);
+			.map((x) => answer(x.key))
+			.filter((n) => {
+				const was = before.get(n.key);
+				return was?.mine !== n.mine || was.tvOnline !== n.tvOnline;
+			});
 		return [...moved.filter((n) => !n.mine), ...moved.filter((n) => n.mine)];
 	}
 

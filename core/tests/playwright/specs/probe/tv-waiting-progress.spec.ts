@@ -23,7 +23,7 @@ test('the waiting bar is the live figure, or hidden, and the title never moves',
 			const m = JSON.parse(String(raw)) as { type?: string };
 			if (m.type !== 'hello') return;
 			const singers = [{ id: 's1', displayName: 'Maya', color: '#ff5cae' }];
-			ws.send(JSON.stringify({ type: 'tv:seat', mine: true }));
+			ws.send(JSON.stringify({ type: 'tv:seat', mine: true, tvOnline: true }));
 			ws.send(JSON.stringify({ type: 'queue:sync', rev: 5, entries: [ENTRY], media: [MEDIA], singers }));
 			ws.send(JSON.stringify({ type: 'nowplaying:changed', current: ENTRY, upNext: null }));
 		});
