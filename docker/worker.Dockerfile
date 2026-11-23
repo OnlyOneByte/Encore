@@ -15,7 +15,7 @@ WORKDIR /app/worker
 # KEPT EVEN THOUGH THE `ffmpeg` EXTRA BELOW BUNDLES ONE, and the two serve different callers.
 # `host.ffmpeg` prefers the bundled static build, so that is what encodes every stem — which is the point:
 # one pinned build instead of bookworm's 5.1 versus whatever Homebrew has. Not one version everywhere: the
-# linux-aarch64 wheel ships 7.0.2, others 7.1. This apt package stays for anything that shells `ffmpeg`
+# Linux wheels (x86_64 and aarch64) ship 7.0.2, macOS arm64 7.1. This apt package stays for anything that shells `ffmpeg`
 # BY NAME rather than through our config: whisperx's `load_audio` does, and yt-dlp would if a format ever
 # needed merging.
 RUN apt-get update \

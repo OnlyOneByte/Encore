@@ -469,8 +469,8 @@ Resolution order, and each step earns its place:
 
 1. **`ENCORE_FFMPEG_BIN`** — an explicit operator choice. Always wins: someone who built ffmpeg with NVENC,
    VideoToolbox or a patched libopus has a reason, and no heuristic should second-guess it.
-2. **the bundled binary** — `imageio-ffmpeg`'s static FFmpeg, shipped per platform in the wheel (7.1, but
-   7.0.2 in the linux-aarch64 wheel).
+2. **the bundled binary** — `imageio-ffmpeg`'s static FFmpeg, shipped per platform in the wheel (7.0.2 on
+   Linux, both x86_64 and aarch64; 7.1 on macOS arm64; Windows and macOS x86_64 unverified).
    Pinned, so the FLAC this worker publishes is reproducible on a machine that has no ffmpeg at all and on
    one whose distro ships 4.4.
 3. **`ffmpeg` on PATH** — the last resort, for platforms with no wheel (musl/Alpine, BSD, ppc64le).

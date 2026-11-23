@@ -386,5 +386,5 @@ an operator guessing, and the core simply routes nothing to it.
 | Platform | Supported | Notes |
 | --- | --- | --- |
 | macOS, Apple Silicon | native (`bash dev.sh`), or Docker on CPU | Docker has no GPU on a Mac (no Metal in the VM), so a native run is the fast one |
-| Linux x86_64 / aarch64 | native or Docker | NVIDIA in Docker: `./dev.sh compose --cuda` |
+| Linux x86_64 / aarch64 | native or Docker | NVIDIA in Docker: `./dev.sh compose --cuda`. A native aarch64 install of the `ml` extra is unverified (`torchcodec` has no linux-aarch64 wheel); Docker is the tested path there |
 | Windows | WSL2 + Docker only (`docs/deploy/WSL2.md`) | Native Windows is NOT supported: cancel and timeout use `os.killpg`, which Windows lacks, and `dev.sh` is bash |
