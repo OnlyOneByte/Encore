@@ -8,9 +8,7 @@ export interface BoundSocket {
 	close(code?: number, reason?: string): void;
 }
 
-/** The close code for "this socket's singer left the room". The phone treats every close alike: it reconnects
- *  and asks /api/me again, which is what settles it. */
-export const LEFT_CLOSE_CODE = 4001;
+import { LEFT_CLOSE_CODE } from '../../contract';
 
 export class SingerSockets<S extends BoundSocket> {
 	#bySinger = new Map<string, Set<S>>();

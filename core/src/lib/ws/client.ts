@@ -9,7 +9,7 @@ export interface MinimalSocket {
 	send(data: string): void;
 	close(): void;
 	onopen: (() => void) | null;
-	onclose: (() => void) | null;
+	onclose: ((ev?: { code?: number }) => void) | null;
 	onmessage: ((ev: { data: string }) => void) | null;
 	/** OPTIONAL: a real socket always has it, and `canSend` treats an absent readyState as sendable, so this
 	 * lets a test double EXPRESS a non-open state without forcing every double to. */
@@ -22,8 +22,9 @@ export interface WsClientOptions {
 	onEvent: (e: ServerEvent) => void; // server events for the store to apply
 	getLastRev: () => number; // store's current rev (for hello + gap detection)
 	onResyncNeeded?: () => void; // fired when a gap is detected (store may also resync on sync)
-	/** Fired on every connected-state edge, so the UI can show an offline cue. */
-	onConnectionChange?: (connected: boolean) => void;
+	/** Fired on every connected-state edge, so the UI can show an offline cue. A drop the server closed on purpose
+	 *  carries its close code. */
+	onConnectionChange?: (connected: boolean, closeCode?: number) => void;
 	heartbeatMs?: number;
 	/** How long a heartbeat may go unanswered before this socket is presumed dead. The server answers every `hello`
 	 * with a `queue:sync`, so silence past this window means the socket is gone though it never fired `close`. */
@@ -131,8 +132,8 @@ export class WsClient {
 			this.#beat();
 		};
 		sock.onmessage = (ev) => this.#onMessage(ev.data);
-		sock.onclose = () => {
-			this.#setConnected(false);
+		sock.onclose = (ev) => {
+			this.#setConnected(false, ev?.code);
 			this.#clearTimers();
 			if (!this.#closedByUs) this.#scheduleReconnect();
 		};
@@ -210,10 +211,10 @@ export class WsClient {
 		this.#reconnectTimer = this.#opt.setTimeoutFn(() => this.#dial(), delay);
 	}
 
-	#setConnected(next: boolean): void {
+	#setConnected(next: boolean, closeCode?: number): void {
 		if (this.connected === next) return;
 		this.connected = next;
-		this.#opt.onConnectionChange?.(next);
+		this.#opt.onConnectionChange?.(next, closeCode);
 	}
 
 	#clearTimers(): void {

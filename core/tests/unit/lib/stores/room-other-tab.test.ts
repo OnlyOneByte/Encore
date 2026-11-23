@@ -30,10 +30,11 @@ type Answer = typeof MAYA | 401;
 /** A phone tab joined as Maya. `answer` is what every /api/me AFTER the first says. */
 async function tab(first: Answer = MAYA) {
 	let answer: Answer = MAYA;
+	const open = new Set<{ close(code?: number): void }>();
 	const server = Bun.serve({
 		port: 0,
 		fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response('no', { status: 404 })),
-		websocket: { message() {} }
+		websocket: { open: (ws) => void open.add(ws), close: (ws) => void open.delete(ws), message() {} }
 	});
 	restore.push(() => server.stop(true));
 	const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
@@ -49,8 +50,13 @@ async function tab(first: Answer = MAYA) {
 	const link = new RoomLink();
 	restore.push(() => link.close());
 	let replacements = 0;
-	link.subscribe(() => void (link.replacedBy && replacements++));
+	let wentOffline = false;
+	link.subscribe(() => {
+		if (link.replacedBy) replacements++;
+		if (link.offline) wentOffline = true;
+	});
 	await link.connect();
+	for (let i = 0; i < 40 && !link.connected; i++) await Bun.sleep(25);
 	// Another tab of the same browser.
 	const other = new BroadcastChannel('encore-session');
 	restore.push(() => other.close());
@@ -63,7 +69,12 @@ async function tab(first: Answer = MAYA) {
 			doc.visibilityState = state;
 			doc.dispatchEvent(new Event('visibilitychange'));
 		},
-		replacements: () => replacements
+		replacements: () => replacements,
+		wentOffline: () => wentOffline,
+		/** The server closes every socket of this tab, with `code`. */
+		kick: (code?: number) => {
+			for (const ws of [...open]) ws.close(code);
+		}
 	};
 }
 
@@ -174,6 +185,25 @@ test('a new singer that lands after the link was closed changes nothing', async 
 	await Bun.sleep(100);
 	expect(t.asked()).toBe(2);
 	expect(t.link.replacedBy, 'a closed link would reload the page').toBeNull();
+});
+
+test('a socket closed because the singer left is the join screen, never "Reconnecting…"', async () => {
+	// No channel message: a tab that was frozen in the background gets only the server's close when it thaws.
+	const t = await tab();
+	expect(t.link.connected).toBe(true);
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.lostName).toBe('Maya');
+	expect(t.wentOffline(), 'a session that ended read as a dropped link').toBe(false);
+});
+
+test('any other close is still a dropped link', async () => {
+	const t = await tab();
+	t.kick(1001);
+	await Bun.sleep(30);
+	expect(t.wentOffline()).toBe(true);
 });
 
 test('the tab that joined or left tells the others', async () => {

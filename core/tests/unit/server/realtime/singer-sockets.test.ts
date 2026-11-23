@@ -1,10 +1,10 @@
 // A Leave reaches every socket of the leaver (proposal 20). Two tabs of one phone share the cookie, so they hold two
 // sockets as the same singer; leaving from one used to leave the other queuing songs as a guest who had gone home.
 import { test, expect } from 'bun:test';
-import { SingerSockets, LEFT_CLOSE_CODE, type BoundSocket } from '$lib/server/realtime/singer-sockets';
+import { SingerSockets, type BoundSocket } from '$lib/server/realtime/singer-sockets';
 import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { EMPTY_SONG_PROFILE, ulid, type ClientCommand, type Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE, LEFT_CLOSE_CODE, ulid, type ClientCommand, type Media } from '$lib/contract';
 
 type Fake = BoundSocket & { closed: number | null };
 const sock = (role: string, singerId?: string): Fake => ({

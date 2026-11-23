@@ -111,6 +111,33 @@ test('a tab that heard nothing catches up on a reconnect and when it comes to th
 	await context.close();
 });
 
+test('a tab frozen in the background while the other one left comes back to the join screen, not an error', async ({
+	browser,
+	world
+}) => {
+	const { context, a, b } = await twoTabs(browser, world, 'Maya', 390);
+	// Anything "Reconnecting…" or an error toast ever painted in tab A, from here on.
+	await a.evaluate(() => {
+		const w = window as unknown as { __seen: string[] };
+		w.__seen = [];
+		new MutationObserver(() => {
+			const t = document.body.innerText;
+			for (const s of ['Reconnecting', "Couldn't", 'error'])
+				if (t.includes(s) && !w.__seen.includes(s)) w.__seen.push(s);
+		}).observe(document, { childList: true, subtree: true, characterData: true });
+	});
+	const cdp = await context.newCDPSession(a);
+	await cdp.send('Page.setWebLifecycleState', { state: 'frozen' });
+	await leaveFrom(b);
+	await b.waitForTimeout(2_000);
+	await cdp.send('Page.setWebLifecycleState', { state: 'active' });
+	await expect(a.getByText(LOST)).toBeVisible({ timeout: 2_000 });
+	expect(await a.locator(SEL.dock).count()).toBe(0);
+	expect(await a.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual([]);
+	await shot(a, 'phone-tab-thawed-390');
+	await context.close();
+});
+
 /** Open a raw socket from a page of `ctx` (so it carries that context's cookie), send `frames`, and report what came back. */
 async function rawSocket(ctx: BrowserContext, frames: unknown[]) {
 	const page = await ctx.newPage();

@@ -7,6 +7,7 @@
 
 import {
 	DEFAULT_EFFECTIVE_SETTINGS,
+	LEFT_CLOSE_CODE,
 	heldEntryId,
 	mediaStagePosition,
 	singHistoryFrom,
@@ -281,7 +282,12 @@ export class RoomLink {
 		this.#ws = new WsClient({
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 			getLastRev: () => this.queue?.rev ?? 0,
-			onConnectionChange: (c) => {
+			onConnectionChange: (c, closeCode) => {
+				// The server closed it because this singer left from another tab: not a dropped link, so no
+				// "Reconnecting…", and the ask goes out now rather than after the reconnect. A tab frozen in the
+				// background gets the close when it thaws, and lands on the join screen the same way.
+				const left = closeCode === LEFT_CLOSE_CODE;
+				if (left) void this.#recheckMe();
 				if (c && this.#wasConnected) {
 					// A socket that comes BACK is when a lost session shows: the server upgrades a phone with no valid
 					// session to an anonymous spectator, so the dot goes green and every tap is refused. One /api/me asks.
@@ -297,7 +303,7 @@ export class RoomLink {
 				if (c) this.playbackSynced = false;
 				this.connected = c;
 				// The socket reports no drop before its first connect, so this is a real drop, never the handshake.
-				this.offline = !c;
+				this.offline = !c && !left;
 				this.#emit();
 			},
 			onEvent: (e: ServerEvent) => this.#onServerEvent(e)
