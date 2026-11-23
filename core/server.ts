@@ -29,6 +29,7 @@ import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from 
 import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
+import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
 
@@ -54,6 +55,8 @@ type SocketData = {
 	role: string;
 	workerId?: string;
 	singerId?: string;
+	/** The cookie's token, re-checked at open: a Leave can land between the upgrade and the open. */
+	sessionToken?: string;
 	roomId?: string;
 	tvId?: string;
 	tvKey?: number;
@@ -90,6 +93,10 @@ function announceSeat(notices: SeatNotice[]): void {
 		tvSockets.get(n.key)?.send(JSON.stringify(e));
 	}
 }
+// A Leave reaches every socket of the leaver, not just the tab that asked (src/lib/server/realtime/singer-sockets.ts).
+const singerSockets = new SingerSockets<import('bun').ServerWebSocket<SocketData>>();
+app.releaseSinger = (singerId) => singerSockets.release(singerId);
+
 /** Is this socket THE room's TV (it holds the seat)? A copy is not, and nothing it sends moves the room. */
 function seated(ws: import('bun').ServerWebSocket<SocketData>): boolean {
 	return ws.data.tvKey !== undefined && tvSeats.holds(ws.data.roomId!, ws.data.tvKey);
@@ -162,13 +169,14 @@ const server = Bun.serve<SocketData>({
 			// Resolved from the session cookie at upgrade, NEVER a client claim; no singerId is an anonymous
 			// spectator. A TV binds via its join code instead. Mutations stay gated per command either way.
 			// See docs/SERVER.md#sessions-and-cookies.
-			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
+			const sessionToken = readSessionToken(req.headers.get('cookie'));
+			const me = app.singers.bySessionToken(sessionToken);
 			const roomId =
 				role === 'tv'
 					? tvRoomId(url.searchParams.get('room'), (code) => app.rooms.byCode(code), app.activeRoomId)
 					: me?.roomId;
 			const tvId = role === 'tv' ? tvIdOf(req.headers.get('cookie')) : undefined;
-			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId, tvId } }))
+			if (server.upgrade(req, { data: { role, singerId: me?.id, sessionToken, roomId, tvId } }))
 				return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
@@ -199,6 +207,10 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
+			// A Leave that landed after the upgrade ended this token, so the socket opens as a spectator.
+			if (ws.data.singerId && app.singers.bySessionToken(ws.data.sessionToken)?.id !== ws.data.singerId)
+				ws.data.singerId = undefined;
+			singerSockets.add(ws);
 			// Own room topic only: isolation is between rooms, not against a viewer of the room this box
 			// serves. An unscoped spectator defaults to the served room.
 			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));
@@ -341,8 +353,9 @@ const server = Bun.serve<SocketData>({
 				tvSockets.delete(ws.data.tvKey);
 				announceSeat(tvSeats.disconnect(ws.data.roomId!, ws.data.tvKey));
 			}
+			singerSockets.remove(ws);
 			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
-			// `gone` is the sweep's job.
+			// `gone` is the sweep's job. A socket released by a Leave has no singer by now, so it marks nothing.
 			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId, app.now())) refreshMembership();
 		}
 	}

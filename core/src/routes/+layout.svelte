@@ -114,6 +114,8 @@
 
 	onMount(() => {
 		const sync = () => {
+			// Another tab joined as someone new: this phone is them now, so it starts over at `/` as them (proposal 20).
+			if (room.replacedBy) return void location.assign(resolve('/'));
 			me = room.me?.id ?? null;
 			const entry = room.entries.find((e) => e.id === room.playback.currentEntryId);
 			const media = entry ? room.mediaCatalog.get(entry.mediaId) : undefined;

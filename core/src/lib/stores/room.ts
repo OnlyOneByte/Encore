@@ -29,6 +29,9 @@ import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
+/** The channel this browser's tabs tell each other on when a join or a leave lands. */
+const SESSION_CHANNEL = 'encore-session';
+
 /** Live process progress for one song, as the room broadcasts it. */
 export interface LiveMediaStatus {
 	status: MediaStatus;
@@ -69,6 +72,9 @@ export class RoomLink {
 	lostName: string | null = null;
 	/** Their colour then, so joining again keeps it and their songs on the TV do not change colour. */
 	lostColor: string | null = null;
+	/** Another tab of this browser joined as someone new, so this phone is THEM now. The layout reloads, since every
+	 * store on the page is keyed to `me` and a reload is the one tested path to a page that is. */
+	replacedBy: PublicSinger | null = null;
 	/** False until the first `playback:state`, which `hello` sends right after `queue:sync`: until then `playback`
 	 *  is this default, not the room's, so a reader cannot tell "nothing playing" from "not told yet". False again
 	 *  from each socket open until that hello's `playback:state`: in between, `entries` can already be the new list
@@ -137,6 +143,17 @@ export class RoomLink {
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 	/** The socket has been up once, so the next `connected` edge is a RE-connect that may have missed frames. */
 	#wasConnected = false;
+	/** This browser's other tabs. They share one session cookie, so a join or a leave in one changes who all of them are. */
+	#session: BroadcastChannel | undefined;
+	/** Unbinds the channel and the visibility listener; set while they are bound. */
+	#unlisten: (() => void) | undefined;
+	/** A re-check is out; a reason to ask that arrives meanwhile asks once more after it, never alongside it. */
+	#rechecking = false;
+	#recheckAgain = false;
+	/** A tab coming back to the front asks too: a browser that froze it in the background never delivered the message. */
+	#onVisible = () => {
+		if (document.visibilityState === 'visible') void this.#recheckMe();
+	};
 
 	/** Notified after every change to the fields above. Returns a disposer. */
 	subscribe(fn: () => void): () => void {
@@ -211,6 +228,17 @@ export class RoomLink {
 		const me = await this.#askMe();
 		if (!me) return; // closed while asking
 		this.placeholder = false;
+		// Bound once there is an answer to compare with: while still asking, the ask itself wakes on the page coming back.
+		const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(SESSION_CHANNEL);
+		if (channel) channel.onmessage = () => void this.#recheckMe();
+		this.#session = channel;
+		const doc = typeof document === 'undefined' ? undefined : document;
+		doc?.addEventListener('visibilitychange', this.#onVisible);
+		this.#unlisten = () => {
+			channel?.close();
+			this.#session = undefined;
+			doc?.removeEventListener('visibilitychange', this.#onVisible);
+		};
 		if (me === 'not-joined') {
 			// Unjoined: `/` is the landing page, so the route renders its JoinLanding state — no store and no socket.
 			this.#state = 'guest';
@@ -375,26 +403,56 @@ export class RoomLink {
 		}
 	}
 
-	/** After a reconnect: is this phone still in the room? Only a 401 says no — anything else proves nothing, and the
-	 * socket being up says the party is there. A no settles the phone as `not-joined` and drops the socket, so the tabs
-	 * show the join screen with the name filled in. Never a silent rejoin: a session only goes when someone left on
-	 * purpose or the room was reset, and rejoining would undo a Leave. */
+	/** After a reconnect, a word from another tab, or the tab coming back to the front: who is this phone now? A 401
+	 * settles a joined phone as `not-joined` and drops the socket, so the tabs show the join screen with the name filled
+	 * in. Never a silent rejoin: a session only goes when someone left on purpose or the room was reset, and rejoining
+	 * would undo a Leave. A DIFFERENT singer means another tab joined as someone new, and the cookie is theirs now: that
+	 * is `replacedBy`, and the layout reloads. Anything else proves nothing. */
 	async #recheckMe(): Promise<void> {
-		if ((await this.#me()) !== 'not-joined' || this.#state !== 'live') return;
-		this.lostName = this.me?.displayName ?? null;
-		this.lostColor = this.me?.color ?? null;
-		this.me = null;
-		this.status = 'not-joined';
-		this.close();
-		this.#emit();
+		if (this.#rechecking) return void (this.#recheckAgain = true);
+		this.#rechecking = true;
+		const answer = await this.#me();
+		this.#rechecking = false;
+		if (this.#recheckAgain) {
+			this.#recheckAgain = false;
+			return this.#recheckMe();
+		}
+		if (answer === 'not-joined') {
+			if (this.#state !== 'live') return;
+			this.lostName = this.me?.displayName ?? null;
+			this.lostColor = this.me?.color ?? null;
+			this.me = null;
+			this.status = 'not-joined';
+			// `guest`, not `closed`: still listening, so this tab follows when another one joins.
+			this.#state = 'guest';
+			this.#dropSocket();
+			this.#emit();
+			return;
+		}
+		const following = this.#state === 'live' || this.#state === 'guest';
+		if (answer && answer.id !== this.me?.id && following && !this.replacedBy) {
+			this.replacedBy = answer;
+			this.#emit();
+		}
+	}
+
+	/** Tell this browser's other tabs that a join or a leave just landed here, so they ask who they are now. */
+	sessionChanged(): void {
+		this.#session?.postMessage('changed');
+	}
+
+	#dropSocket(): void {
+		clearTimeout(this.#unreachableTimer);
+		this.#ws?.close();
+		this.#ws = undefined;
 	}
 
 	/** Drop the socket. The layout owns this, so it runs when the app unmounts — not on navigation. */
 	close(): void {
 		this.#state = 'closed';
-		clearTimeout(this.#unreachableTimer);
-		this.#ws?.close();
-		this.#ws = undefined;
+		this.#dropSocket();
+		this.#unlisten?.();
+		this.#unlisten = undefined;
 	}
 
 	/** Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. It lives on the link because the

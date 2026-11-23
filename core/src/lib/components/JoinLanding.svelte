@@ -165,6 +165,8 @@
 				submitting = false;
 				return;
 			}
+			// The cookie is this browser's, so its other tabs are this singer now too.
+			room.sessionChanged();
 			// `safeNextPath` is what keeps `?next=` from becoming an open redirect.
 			const dest = safeNextPath(page.url.searchParams.get('next'));
 			await goto(dest);

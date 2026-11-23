@@ -57,6 +57,12 @@ export class SingerRepository {
 		return this.byId(id);
 	}
 
+	/** End this singer's session: the token is replaced by one nobody holds, so the old cookie, wherever a copy of it
+	 *  is (another tab's socket reconnecting, a saved request), resolves to no one. The row stays for the sing history. */
+	endSession(id: string): void {
+		this.#db.update(singers).set({ sessionToken: mintSessionToken() }).where(eq(singers.id, id)).run();
+	}
+
 	/** Stamp that this singer has STARTED a song — drives `least-recently-sung` ordering. Records only that they sang and when, never what, matching the privacy line the `plays` table draws (no singer id there). Idempotent: called from the one place a song becomes current. */
 	markSang(singerId: string, now: number): void {
 		this.#db.update(singers).set({ lastSungAt: now }).where(eq(singers.id, singerId)).run();

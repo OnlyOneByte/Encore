@@ -15,6 +15,7 @@
 	import * as Field from '$lib/components/ui/field';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { leaveCostSentence, type LeaveCost } from '$lib/phrasing/leave-cost-sentence';
+	import { room } from '$lib/stores/room';
 	import type { PublicSinger } from '$lib/contract';
 
 	interface Props {
@@ -164,6 +165,8 @@
 			leaving = false;
 			return;
 		}
+		// The cookie was this browser's, so its other tabs have left too.
+		room.sessionChanged();
 		/* `/` AND NEVER `closeTo`: the cookie is gone, so the landing page is the only honest destination — a reload, or
 		   a `?next=` pointing at any other surface, would 401 into the same place after a flash of an empty page. */
 		await goto('/');

@@ -22,6 +22,10 @@ export const POST: RequestHandler = async ({ cookies }) => {
 	if (!me) return json({ error: 'join first' }, { status: 401 });
 
 	const result = doLeave(app, me.id);
+	// The session ends on the SERVER, not only in this tab's cookie jar: the token stops resolving, and every socket
+	// opened with it (this phone's other tabs) stops acting as them and is closed, so no tab keeps queuing as a guest who left.
+	app.singers.endSession(me.id);
+	app.releaseSinger?.(me.id);
 	// Clear with the SAME attributes the join set — a delete must match to apply, or reopening the page silently rehydrates them as the same singer and the leave looks like it did not take.
 	cookies.delete(SESSION_COOKIE, { path: '/' });
 	// Announced separately from the queue patches, since a client with no songs removed gets no patch to infer this from.
