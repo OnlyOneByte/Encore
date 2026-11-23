@@ -81,7 +81,7 @@ ml = [
     "cmudict==1.1.1",
     "pyphen==0.17.2",
 ]
-# The Apple-Silicon separation backend. NOT a Python import: `host/backends.py` gates on
+# The Apple-Silicon separation backend. NOT a Python import: `host/hardware.py` gates on
 # `find_spec("demucs_mlx")` and the engine shells out to the `demucs-mlx` CLI by name, so this extra
 # exists to put that binary on PATH rather than to be imported. Pulls NO torch in its default install
 # (torch appears only in its own `convert` extra), so it cannot move the pin the alignment stack uses.
@@ -141,8 +141,10 @@ audiosep = [
 #     network fetch is precisely the portability failure being removed here.
 #   * `ffmpeg-binaries` has no linux-aarch64 wheel, so it cannot serve an ARM server or a CI runner.
 # imageio-ffmpeg 0.6.0 ships real wheels for macos arm64/x86_64, manylinux2014 x86_64/aarch64 and win, at
-# 20-31 MB, BSD-2. Verified its binary is a full FFmpeg 7.1 carrying every codec and filter this worker
-# uses: flac, opus, aac, vorbis, pcm_s16le, pcm_s24le, and the amix/join/volume/loudnorm filters.
+# 20-31 MB, BSD-2. The version differs per wheel: 7.0.2 on Linux (both x86_64 and aarch64), 7.1 on
+# macOS arm64, measured from the wheels; Windows and macOS x86_64 are unverified. Verified a full FFmpeg
+# carrying every codec and filter this worker uses: flac, opus, aac, vorbis, pcm_s16le, pcm_s24le, and the
+# amix/join/volume/loudnorm filters.
 ffmpeg = [
     "imageio-ffmpeg==0.6.0",
 ]
