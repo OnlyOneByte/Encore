@@ -925,7 +925,7 @@ is NOT closed: leading brand / trailing account is a desktop header form, the cl
 into `/settings` in the same corner every other route puts it, and the hairline is what makes that split read as the
 two ends of one surface rather than as two things floating in page. `PageHeader` is not the precedent for it — that
 component left-packs `.back-slot` then `h1` with `gap: var(--space-md)` and has no trailing slot. Nor is the gap a
-constant: `.me-cluster` is `margin-left: auto`, so its size is a function of the singer's display name — measured
+constant: `.me-cluster` packs to the far edge, so its size is a function of the singer's display name — measured
 80px at 390×844 and 770px at 1440×900 with the eight-character name `Theodora`. The name is part of the reading: a
 narrower eight characters opens the gap further, so a figure quoted without its name cannot be reproduced.
 

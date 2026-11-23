@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import type { QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
@@ -126,9 +126,20 @@
 	   rather than a performer. `Not it? Search everything` (`widened`) adds ytsearch back for an upload no
 	   catalog lists, for the query it was tapped on; the next keystroke goes back to the default.
 	   `?source=` on this page's own URL passes straight through as the narrowing filter, off-screen, so a test
-	   or a host trying one source (`/?source=local`) can still narrow without a control a guest has to read. */
+	   or a host trying one source (`/?source=local`) can still narrow without a control a guest has to read.
+	   The widen still shows under a narrowed URL, so a shared `/?source=local` link is never a search with no way
+	   wider; only `source=all` hides it, because there is nothing wider than all. */
 	const urlSource = $derived(page.url.searchParams.get('source') ?? '');
 	let widened = $state(false);
+	/** The widened answer's count, described on the element the widen focuses. Empty once a newer search starts. */
+	let widenCount = $state('');
+	let widenTarget: HTMLElement | null = null;
+	/** Drops the count and its `aria-describedby`, so the attribute never points at nothing. */
+	function clearWidenCount() {
+		widenCount = '';
+		widenTarget?.removeAttribute('aria-describedby');
+		widenTarget = null;
+	}
 	const searchSource = $derived(widened ? 'all' : urlSource);
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
@@ -185,6 +196,7 @@
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
 		widened = false;
+		clearWidenCount();
 		const q = query.trim();
 		if (!q) {
 			clearResults();
@@ -192,18 +204,43 @@
 			inflight?.abort();
 			return;
 		}
-		debounceTimer = setTimeout(() => runSearch(q), 150);
+		debounceTimer = setTimeout(announce, 150, q);
+	}
+
+	/** Runs the search and reads its answer out: every path but the widen, which ties it to the focus it moves. */
+	async function announce(q: string) {
+		const msg = await runSearch(q);
+		if (msg) liveMsg = msg;
 	}
 
 	/* One tap from the narrowed default to the full fan-out, re-running the query it is already holding.
 	   Offered beside results, not only when there are none — see the note at its render site. */
-	function widenSearch() {
+	async function widenSearch() {
 		// The pending keystroke's timer is cancelled first, or one widen fires two full searches:
 		// this one now, and the debounced one 150 ms later — two resolver fan-outs for one query.
 		clearTimeout(debounceTimer);
 		widened = true;
 		const q = query.trim();
-		if (q) runSearch(q);
+		if (!q) return;
+		const msg = await runSearch(q);
+		// Aborted (superseded, or the page unmounted while it was in the air) or the field has left the page: the
+		// heading query below would otherwise run against whatever route the guest went to.
+		if (!msg || !queryEl?.isConnected) return;
+		/* THE TAP REMOVES ITS OWN BUTTON, so focus would fall to <body> and a keyboard or switch user starts over at
+		   the top. It goes to the first group heading of the widened answer, or back to the field when there is no
+		   group (a failure or nothing found). Not if the guest has typed since: the next keystroke clears `widened`,
+		   and stealing focus from the field they are typing in is worse than losing it. */
+		if (!widened || query.trim() !== q) {
+			liveMsg = msg;
+			return;
+		}
+		/* The count is the focus target's description, read as focus lands. A live update queued before a focus move
+		   is often dropped. `clearWidenCount` runs on the next search, so nothing stale is left to read. */
+		widenCount = msg;
+		await tick();
+		widenTarget = document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl;
+		widenTarget?.setAttribute('aria-describedby', 'widen-count');
+		widenTarget?.focus();
 	}
 
 	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
@@ -214,7 +251,9 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
-	async function runSearch(q: string) {
+	/** The sentence to announce for this query's answer, or `undefined` when a newer search or an unmount aborted it.
+	 * It does not set `liveMsg` itself, because the widen gives the count to the element it focuses instead. */
+	async function runSearch(q: string): Promise<string | undefined> {
 		inflight?.abort();
 		const ctrl = new AbortController();
 		inflight = ctrl;
@@ -226,6 +265,7 @@
 		   already has a gate waiting for exactly this state. */
 		clearResults();
 		searchFailed = false;
+		clearWidenCount();
 		try {
 			// The default is the route's own, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
@@ -251,10 +291,13 @@
 			   below is `aria-atomic`, so a fast typist's superseded searches replace rather than queue.
 			   SC 4.1.3's own understanding document uses "search returned N results" as its example. */
 			const found = readyResults.length + rawResults.length + processingResults.length;
-			liveMsg =
-				found === 0
+			// Prefixed after a widen, so the same count for the same query still reads as news.
+			return (
+				(widened ? 'Searched everything: ' : '') +
+				(found === 0
 					? `No songs found for ${q}`
-					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`;
+					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`)
+			);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				/* `clearResults()` STAYS. Keeping the previous query's rows was considered and is worse — it puts
@@ -266,7 +309,7 @@
 				showError("Couldn't reach the server.");
 				// The toast is visual only, and it is also 4 seconds against a permanent screen. Both audiences now
 				// get the same sentence, where the pill said "Reconnecting…" and the copy said "Nothing matches".
-				liveMsg = "Couldn't reach the server — your search didn't run.";
+				return "Couldn't reach the server — your search didn't run.";
 			}
 		} finally {
 			if (inflight === ctrl) searching = false;
@@ -479,7 +522,8 @@
 						answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
 				{#if processingRows.length}
 					<!-- A heading is a claim about what follows: "Making karaoke…" only while some row really is being made. -->
-					<h2 class="grouphead">
+					<!-- `tabindex="-1"` on every group heading: the widen moves focus to the first one. -->
+					<h2 class="grouphead" tabindex="-1">
 						{processingGroupHeading(
 							processingRows.map((c) => displayReadiness(c.media, liveOf(c.id)) === 'processing' && !c.unservable)
 						)}
@@ -514,7 +558,7 @@
 
 				<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
 				{#if readyResults.length}
-					<h2 class="grouphead">Ready to sing</h2>
+					<h2 class="grouphead" tabindex="-1">Ready to sing</h2>
 					{#each readyView.shown as m (m.id)}
 						<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 					{/each}
@@ -532,7 +576,7 @@
 				{/if}
 
 				{#if rawRows.length}
-					<h2 class="grouphead">Needs karaoke</h2>
+					<h2 class="grouphead" tabindex="-1">Needs karaoke</h2>
 					{#each rawView.shown as m (m.id)}
 						{@const r = readinessFor(m)}
 						<SongRow
@@ -576,7 +620,7 @@
 						 inside the zero-state would be unreachable exactly when it is needed — the default returns
 						 twelve confident wrong rows and no hint that a wider net exists. It sits after the rows, low
 						 in the column, because most searches do not need it. -->
-				{#if !searching && !searchSource && (rawRows.length || readyResults.length)}
+				{#if !searching && searchSource !== 'all' && (rawRows.length || readyResults.length)}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" onclick={widenSearch}>
 							<Icon name="search" /> Not it? Search everything
@@ -593,7 +637,7 @@
 							<Empty.Description>Couldn't reach the server — your search didn't run.</Empty.Description>
 						</Empty.Header>
 						<div class="showall-row">
-							<Button variant="secondary" size="tap" onclick={() => runSearch(query.trim())}>
+							<Button variant="secondary" size="tap" onclick={() => announce(query.trim())}>
 								<Icon name="restart" /> Try again
 							</Button>
 						</div>
@@ -672,6 +716,7 @@
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
 
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+{#if widenCount}<p id="widen-count" hidden>{widenCount}</p>{/if}
 
 <style>
 	/* Reserves the dock's MEASURED height so the last row stays reachable, with a fallback for the first frame. No
@@ -932,17 +977,28 @@
 	.topbar {
 		display: flex;
 		/* WRAPS, for the same reason `.find-row` does: at 320px with the root at 32px the wordmark alone takes most of
-		   the line, and `.me-cluster`'s `margin-left: auto` then pushed the identity dot to right=341.3 in a 320px
-		   viewport — off-screen, clipped rather than reflowed. Wrapping lets the cluster take its own line instead.
+		   the line, and the far-edge cluster was pushed to right=341.3 in a 320px viewport — off-screen, clipped
+		   rather than reflowed. Wrapping lets the cluster take its own line instead, and ONLY then: see `.me-cluster`.
 		   `align-items: center` stays correct once wrapped: each line centres its own items. */
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-md);
 		padding: var(--space-2xl) var(--space-2xl) var(--space-sm);
 	}
+	/* A ZERO BASIS AND AN EXPLICIT FLOOR, so the wrap above is decided by the smallest the cluster can be, not by
+	   the full name. With `auto` the line broke on the name's max-content width, so at 320 any name of 6+
+	   characters dropped the whole cluster under the wordmark and the name's ellipsis never got to act. The floor
+	   is written out because `min-width: auto` would be the name's min-content, which for one unbroken word is the
+	   whole word again. It sums the cluster's fixed parts: the name's 4ch floor, the identity button's inline
+	   padding and border, its gap, the 22px dot, this gap, and the 44px gear less its -10px margin. In `ch` and rem
+	   tokens, so it grows with text zoom and the 200% case at 320 still wraps.
+	   shortcut: the sum restates the parts below; `sing-one-search-box`'s topbar probe catches it drifting (at 390
+	   with the root at 32px, a floor short by 4ch slides the dot under the gear, which its no-overlap check fails).
+	   `justify-content: flex-end` does what `margin-left: auto` did, keeping the cluster on the far edge. */
 	.me-cluster {
-		margin-left: auto;
-		min-width: 0;
+		flex: 1 1 0;
+		min-width: calc(4ch + 2 * var(--space-xs) + 2px + 2 * var(--space-sm) + 22px + var(--tap) - 10px);
+		justify-content: flex-end;
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm);
@@ -953,7 +1009,7 @@
 	/* THE HEADER BECOMES A BAND AT --bp-md, and only there. On a phone the wordmark and the identity cluster sit about
 	   a --space rung apart and need no boundary; on a desktop column they are most of the viewport apart, and with
 	   nothing painted under them they read as two things adrift rather than as one header. THE GAP IS NAME-DEPENDENT,
-	   so no constant here is a property of the layout: `.me-cluster` is `margin-left: auto`, so the distance is the
+	   so no constant here is a property of the layout: `.me-cluster` packs to the far edge, so the distance is the
 	   content box less the wordmark less the cluster, and the cluster's width is the singer's display name. Read
 	   with the eight-character name `Theodora` it is 80px at 390x844 and 770px at 1440x900 — the same order as the
 	   ~777px of docs/UI-DESIGN-REVIEW.md#5. THE NAME IS PART OF THE READING, not noise around it: a narrower eight
