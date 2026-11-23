@@ -421,9 +421,9 @@ above) on the exact commit, with no new failures against `main`. A UI change als
 frames, and `bun run ui:review` GIFs for anything that moves.
 
 [`.github/workflows/`](.github/workflows/) holds four workflow definitions: `ci.yml` (core) and
-`ci-worker.yml` (worker) on pull requests, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. They
-exist but are **not a gate**: they still trigger, but the repository has no Actions minutes (by the owner's
-choice), so they fail within seconds. A red or missing check on a PR is not a verdict on it.
+`ci-worker.yml` (worker) on pull requests, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. They run
+on every PR, a fork's included, with a read-only token and no secrets. They are not required checks: the
+local gate run above is still the bar.
 
 ## License
 
