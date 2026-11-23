@@ -669,6 +669,28 @@ class WhisperXAligner:
             return tuple(dict(s) for s in segments)
 
 
+#: Gated on Hugging Face: loading it needs a token whose account accepted its terms, or a cached copy.
+DIARIZE_CHECKPOINT = "pyannote/speaker-diarization-3.1"
+
+
+def diarizer_blocked(checkpoint: str = DIARIZE_CHECKPOINT) -> str | None:
+    """Why the diarizer cannot load on this box, or None. Checked ONCE at boot and without importing pyannote.
+
+    With no token and no cached copy every load fails, and a failed load is not cached, so each align job paid
+    the attempt again while the box advertised `diarize`. A token that is present but not accepted still
+    fails per job, which is the old behaviour.
+    """
+    try:
+        import huggingface_hub  # noqa: PLC0415 - lazy by design; see the module docstring
+    except ImportError:
+        return None
+    if huggingface_hub.get_token():
+        return None
+    if isinstance(huggingface_hub.try_to_load_from_cache(checkpoint, "config.yaml"), str):
+        return None
+    return f"{checkpoint} is gated on Hugging Face and this box has no token or cached copy: set HF_TOKEN"
+
+
 class PyannoteDiarizer:
     """`Diarizer` over pyannote. Optional throughout: a failure degrades, never fails a job.
 
@@ -676,7 +698,7 @@ class PyannoteDiarizer:
     makes the `diarize` capability honest (docs/arch/05-worker.md §5).
     """
 
-    def __init__(self, *, device: str = "cpu", checkpoint: str = "pyannote/speaker-diarization-3.1") -> None:
+    def __init__(self, *, device: str = "cpu", checkpoint: str = DIARIZE_CHECKPOINT) -> None:
         self._device = device
         self._checkpoint = checkpoint
 

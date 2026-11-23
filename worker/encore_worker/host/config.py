@@ -122,6 +122,9 @@ class Config:
     #: Where zoo checkpoints are cached; `from_env` derives it from XDG_CACHE_HOME. Deliberately not `/tmp`
     #: — see `_default_zoo_dir`.
     zoo_model_dir: str = ""
+    #: The yt-dlp config files this worker's yt-dlp reads, for the boot check that YouTube can work
+    #: (`hardware.youtube_gap`); `from_env` derives them from XDG_CONFIG_HOME and HOME.
+    ytdlp_config_paths: tuple[str, ...] = ()
     keepalive_sec: float = KEEPALIVE_SEC
     job_ceiling_sec: float = JOB_CEILING_SEC
     #: The container published stems are written in — CORE'S DECISION, announced at handshake. Not the
@@ -202,6 +205,7 @@ class Config:
             ytdlp_bin=text("ENCORE_YTDLP_BIN", "yt-dlp"),
             mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
             zoo_model_dir=text("ENCORE_ZOO_MODEL_DIR", _default_zoo_dir(src)),
+            ytdlp_config_paths=_ytdlp_config_paths(src),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),
             job_ceiling_sec=_positive_float(src, "ENCORE_JOB_CEILING_SEC", JOB_CEILING_SEC),
             # A FALLBACK only: core announces the live value at handshake and that wins. This exists so a
@@ -241,6 +245,21 @@ def _default_zoo_dir(src: Mapping[str, str]) -> str:
         src.get("HOME", "").strip() or os.path.expanduser("~"), ".cache"
     )
     return os.path.join(base, "encore-worker", "separator-models")
+
+
+def _ytdlp_config_paths(src: Mapping[str, str]) -> tuple[str, ...]:
+    """The config files yt-dlp reads on Linux and macOS, in its own lookup order (yt-dlp README,
+    "Configuration"). dev.sh points XDG_CONFIG_HOME at its own; the image uses /etc/yt-dlp.conf."""
+    home = src.get("HOME", "").strip() or os.path.expanduser("~")
+    xdg = src.get("XDG_CONFIG_HOME", "").strip() or os.path.join(home, ".config")
+    return (
+        os.path.join(xdg, "yt-dlp", "config"),
+        os.path.join(xdg, "yt-dlp.conf"),
+        os.path.join(home, "yt-dlp.conf"),
+        os.path.join(home, ".yt-dlp", "config"),
+        "/etc/yt-dlp.conf",
+        "/etc/yt-dlp/config",
+    )
 
 
 def _positive_int(src: Mapping[str, str], key: str, fallback: int) -> int:

@@ -166,6 +166,10 @@ async def main() -> None:
         ytdlp=config.ytdlp_bin,
         ffmpeg=config.ffmpeg_bin,
     )
+    # Checked ONCE here rather than failed once per align job (`ml.diarizer_blocked`).
+    diarize_off = ml.diarizer_blocked() if "diarize" in caps else None
+    if diarize_off:
+        caps = caps - {"diarize"}
 
     print(
         f"[worker] {config.worker_id} on {report.platform} ({report.machine}); "
@@ -178,7 +182,10 @@ async def main() -> None:
     # line says what `build_adapters` resolves below — and refuses an uncalibrated name before any work.
     print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
     print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
-    print(f"[worker] non-Latin routes {_routes_described(config)}", flush=True)
+    if diarize_off:
+        print(f"[worker] diarize off: {diarize_off}", flush=True)
+    if "fetch:ytdlp" in caps and (gap := hardware.youtube_gap(config.ytdlp_config_paths)):
+        print(f"[worker] WARNING: YouTube downloads will fail without {gap}", flush=True)
     if not caps:
         # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which beats a
         # process that exits and leaves an operator wondering where the worker went.
@@ -186,6 +193,8 @@ async def main() -> None:
 
     dbos = _launch_dbos(config)
     adapters = build_adapters(config, device=device)
+    if diarize_off:
+        adapters.diarizer = None
     # The STARTUP fallback, used only when a job names no engine of its own. No `model` here on purpose:
     # there is no job to read one from, so each engine takes its own default.
     separator = separate.build_separator(
@@ -270,12 +279,25 @@ async def main() -> None:
     # The SECOND reclaim mechanism, not redundant with `settled` above: it reaches the two leaks a run-end
     # hook cannot (a crash, and retries exhausting unseen). See docs/arch/05-worker.md §4.
     sweeper = asyncio.create_task(_sweep_scratch(config))
+    # Off the loop and AFTER the dial starts: describing the routes imports torch, transformers and whisperx
+    # (5.5 s on a warm CPU box), and nothing the handshake needs waits on a log line.
+    routes = asyncio.create_task(asyncio.to_thread(_print_routes, config))
     try:
         await client.serve_forever()
     finally:
-        sweeper.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await sweeper
+        for task in (sweeper, routes):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+def _print_routes(config: Config) -> None:
+    """The startup line for the per-language stage-2 table. `nonlatin_routes_for` already refused a bad arm
+    in `build_adapters`, before the dial, so a failure here is only a log line's."""
+    try:
+        print(f"[worker] non-Latin routes {_routes_described(config)}", flush=True)
+    except Exception as exc:  # noqa: BLE001 - a log line must not take the worker down
+        print(f"[worker] non-Latin routes not described ({type(exc).__name__}: {exc})", flush=True)
 
 
 def _launch_dbos(config: Config) -> Any:

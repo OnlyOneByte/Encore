@@ -365,6 +365,7 @@ module = [
     "demucs.*",
     "docx2txt",
     "fugashi",
+    "huggingface_hub",
     "imageio_ffmpeg",
     "lingua",
     "opencc",
