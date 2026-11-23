@@ -1,0 +1,305 @@
+{
+  "scenario": "phone-restart-rest-320",
+  "what": "Phone 320x844: the song ends on a waiting line — Restart and the Cheer key fade out in place (opacity, --motion-base) and the line runs over their slots; the transport and the dock do not move (CLS 0)",
+  "capturedAt": "2026-11-23T15:26:20.192Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.restart.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.restart.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "tp": {
+      "x": 120,
+      "w": 188
+    },
+    "dock": {
+      "y": 754,
+      "h": 90
+    },
+    "restartInert": true,
+    "text": "Can't make new karaoke right now"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.restart.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.restart.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 333.35400003697725,
+        "delayMs": 0,
+        "endTimeMs": 333.35400003697725,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "tp": {
+        "x": 120,
+        "w": 188
+      },
+      "dock": {
+        "y": 754,
+        "h": 90
+      },
+      "restartInert": true,
+      "text": "Can't make new karaoke right now"
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 2
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 0,
+      "max": 6
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 83.3,
+      "min": 50,
+      "max": 133.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 4,
+    "observed": {
+      "tp": {
+        "x": 120,
+        "w": 188
+      },
+      "dock": {
+        "y": 754,
+        "h": 90
+      },
+      "restartInert": true,
+      "text": "Can't make new karaoke right now"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 14004,
+    "encodeMs": 1117,
+    "liveMs": 14312,
+    "reducedMs": 4964,
+    "reducedEncodeMs": 449
+  },
+  "files": {
+    "clip.gif": 148803,
+    "clip-slow4x.gif": 148803,
+    "filmstrip.png": 71371,
+    "filmstrip-reduced.png": 30591
+  }
+}

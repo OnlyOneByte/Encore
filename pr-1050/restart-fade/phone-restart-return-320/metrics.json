@@ -1,0 +1,282 @@
+{
+  "scenario": "phone-restart-return-320",
+  "what": "Phone 320x844: from the waiting line a song starts — Restart and the Cheer key fade back in place (opacity, --motion-base); the transport and the dock do not move (CLS 0)",
+  "capturedAt": "2026-11-23T15:28:24.076Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.restart",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.restart",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.cheer-key",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.cheer-key",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "tp": {
+      "x": 120,
+      "w": 188
+    },
+    "dock": {
+      "y": 754,
+      "h": 90
+    },
+    "restartInert": false,
+    "text": "Maya · dont-stop-believin"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.restart",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.restart",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "tp": {
+        "x": 120,
+        "w": 188
+      },
+      "dock": {
+        "y": 754,
+        "h": 90
+      },
+      "restartInert": false,
+      "text": "Maya · dont-stop-believin"
+    },
+    "droppedFrames": {
+      "median": 6,
+      "min": 4,
+      "max": 6
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 2,
+      "max": 5
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 66.6,
+      "min": 50.1,
+      "max": 100
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 2,
+    "observed": {
+      "tp": {
+        "x": 120,
+        "w": 188
+      },
+      "dock": {
+        "y": 754,
+        "h": 90
+      },
+      "restartInert": false,
+      "text": "Maya · dont-stop-believin"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 20548,
+    "encodeMs": 1312,
+    "liveMs": 26062,
+    "reducedMs": 9553,
+    "reducedEncodeMs": 1096
+  },
+  "files": {
+    "clip.gif": 143010,
+    "clip-slow4x.gif": 143010,
+    "filmstrip.png": 67345,
+    "filmstrip-reduced.png": 27585
+  }
+}
