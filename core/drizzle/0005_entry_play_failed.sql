@@ -1,0 +1,1 @@
+ALTER TABLE `queue_entries` ADD `play_failed` integer DEFAULT false NOT NULL;

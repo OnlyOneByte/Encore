@@ -20,6 +20,8 @@ export type QueueOp =
 	// PREFS do not: `keyShift` is the NEW song's remembered key (absolute, as in `set-entry-prefs`) and the guide
 	// goes back to the room default, or the new song would start in a key the singer chose for the dead one.
 	| { op: 'replace-media'; id: string; mediaId: string; keyShift: number }
+	// SERVER-OWNED, like `status`: the TV reported the playing song failed. Back to `queued` in the SAME slot, held.
+	| { op: 'play-failed'; id: string }
 	| { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
@@ -70,6 +72,9 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			break;
 		case 'status':
 			next = entries.map((e) => (e.id === op.id ? { ...e, status: op.status } : e));
+			break;
+		case 'play-failed':
+			next = entries.map((e) => (e.id === op.id ? { ...e, status: 'queued' as const, playFailed: true } : e));
 			break;
 		case 'set-entry-prefs':
 			next = entries.map((e) => (e.id === op.id ? { ...e, keyShift: op.keyShift, guideLevel: op.guideLevel } : e));

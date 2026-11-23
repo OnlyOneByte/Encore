@@ -7,6 +7,7 @@ import type { QueueEntry } from '$lib/contract';
 
 export type Slot = 'A' | 'B';
 export type TvState = 'attract' | 'loading' | 'playing' | 'interstitial' | 'waiting';
+export type EndStatus = 'ended' | 'failed';
 
 export interface SlotAssignment {
 	visible: Slot;
@@ -23,6 +24,8 @@ export class GaplessController {
 	// The entry `onEnded` moved past, until a server frame does too. Until then a frame naming it predates the TV's own
 	// `ended`: a phone command made the server re-send its old pair (#1001).
 	#endedFrom: string | null = null;
+	// How `#endedFrom` ended, so a re-send repeats what the TV said: a song that wouldn't play is not a song sung.
+	#endedStatus: EndStatus = 'ended';
 	// The intro card went up over a visible slot that was still LOADING (a skip, a missed preload), so the hold must end
 	// back in `loading` unless the slot reported ready meanwhile, or the stage plays over an element with nothing in it.
 	#introOverLoad = false;
@@ -41,6 +44,10 @@ export class GaplessController {
 	}
 	get state(): TvState {
 		return this.#state;
+	}
+	/** How the entry `isBehind` names ended: the status to re-send for it. */
+	get endedStatus(): EndStatus {
+		return this.#endedStatus;
 	}
 
 	assignment(): SlotAssignment {
@@ -119,10 +126,13 @@ export class GaplessController {
 	 * No upNext -> attract; hidden warmed it -> SWAP (gapless); else loading (missed the preload window). Returns the new
 	 * state for the caller to render; the interstitial hold is the page's timer.
 	 */
-	onEnded(upNext: QueueEntry | null): TvState {
+	onEnded(upNext: QueueEntry | null, status: EndStatus = 'ended'): TvState {
 		// The FIRST entry ended in this window, kept until a server frame clears it: when song 2 errors before the server's
-		// frame lands, this runs again, and the server's stale frames still name song 1.
-		this.#endedFrom ??= this.#current;
+		// frame lands, this runs again, and the server's stale frames still name song 1. Its status goes with it.
+		if (this.#endedFrom === null) {
+			this.#endedFrom = this.#current;
+			this.#endedStatus = status;
+		}
 		if (!upNext) {
 			this.#current = null;
 			this.#state = 'attract';

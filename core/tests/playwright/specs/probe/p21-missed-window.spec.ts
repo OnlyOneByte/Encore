@@ -1,6 +1,6 @@
 // P21 — THE MISSED PRELOAD WINDOW. When song 2's pre-warm is not ready at song 1's end, the TV loads song 2 into the
 // visible slot right away, one server frame AHEAD of the server. Two things must hold in that frame:
-//   · a song 2 that will not play still advances the room. Its error sends a second `ended`, which must name song 2 —
+//   · a song 2 that will not play still advances the room. Its error sends a `failed`, which must name song 2 —
 //     the entry its slot held. Stamped with the page's `current` (still song 1) the server drops it as stale and the
 //     room parks on a dead song forever.
 //   · the song-intro card comes up with song 2's audio, not a round trip later when the server's frame lands.
@@ -31,7 +31,7 @@ const matcherFor = (m: ReadyMedia) => (src: string) =>
 	src.includes(m.id) || (!!m.instrumentalRef && src.includes(m.instrumentalRef));
 
 /**
- * Delay every outgoing `ended` telemetry frame by `ms`, so the server learns of the end late. Logs each (and one that
+ * Delay every outgoing `ended` (or `failed`) telemetry frame by `ms`, so the server learns of the end late. Logs each (and one that
  * finds its socket closed, so it is lost), the server's frames, and media errors and seeks. Keeps the socket for a test
  * that drops it.
  */
@@ -42,7 +42,8 @@ async function holdEnded(tv: Page, ms: number) {
 		const send = WebSocket.prototype.send;
 		WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
 			(window as unknown as { probeWs?: WebSocket }).probeWs = this;
-			if (typeof data === 'string' && data.includes('"status":"ended"')) {
+			// `failed` is an end too (a song that won't play): held with `ended`, as one socket keeps their order.
+			if (typeof data === 'string' && /"status":"(ended|failed)"/.test(data)) {
 				const src = `entryId=${JSON.parse(data).entryId}`;
 				log()?.push({ ev: 'ws-ended', src, t: performance.now() });
 				setTimeout(() => {
@@ -330,6 +331,13 @@ for (const shape of ['dead', 'remove', 'reconnect'] as const) {
 			if (shape === 'dead') await sendPlayerCommand(alice, { cmd: 'background', style: null });
 			if (shape === 'remove') await queueOp(bob, { op: 'remove', id: s2Entry });
 			if (shape === 'reconnect') await tv.evaluate(() => (window as unknown as { probeWs: WebSocket }).probeWs.close());
+			if (shape === 'dead') {
+				// The notice names song 2's singer, and has no "Up next" line: in this window `upNext` IS the skipped song.
+				const n = tv.locator(SEL.stateError);
+				await n.waitFor({ timeout: 5000 });
+				await expect(n).toContainText(/song wouldn't play/);
+				expect(await n.innerText()).not.toContain('Up next');
+			}
 			await tv.waitForTimeout(holdMs + (shape === 'reconnect' ? 6000 : 3000));
 			const log = await readMediaLog(tv);
 			const t = (await timeline()).join('\n  ');

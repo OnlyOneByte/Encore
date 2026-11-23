@@ -8,7 +8,8 @@ import {
 	type PlayerCommand,
 	type QueueEntry,
 	type PlaybackState,
-	type ServerEvent
+	type ServerEvent,
+	SKIP_NOTICE_MS
 } from '../../contract';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation';
 import { entryResolves } from '../state/store';
@@ -99,17 +100,70 @@ export function reconcileOnReady(deps: HubDeps): void {
 	emitNowPlaying(deps);
 }
 
-/** Advance to the next playable entry (held-slot aware). Returns the new current (or null). */
-function advance(deps: HubDeps): QueueEntry | null {
+/**
+ * The song that starts after a FAILED one waits for the TV's Skipped notice to clear: the room is told whose song did
+ * not play, then the next singer's card and song start together. A real pause, so every phone shows the truth and the
+ * TV's watchdog does not count it, and keyed on the ROOM's state so two rooms never share one. Lifted by the TV's
+ * `resume` telemetry, or by anyone's play/pause/skip, which outranks it.
+ */
+const heldForNotice = new WeakMap<object, string>();
+/** Past the notice, how long the server waits for the TV's `resume` before starting the song itself: a TV that lost
+ *  the frame (a reload, a socket drop) must not leave the room paused for good. A released hold leaves its timer to find
+ *  nothing held. A TV that reconnects INSIDE the hold shows its "Now singing" card silent until this fires (at most
+ *  ~2 s), because only the TV that raised the notice sends `resume`. */
+export const HOLD_FALLBACK_MS = SKIP_NOTICE_MS + 2000;
+/** The fallback came while NO TV was connected: the song stays paused (nobody could hear it, and no phone is told
+ *  "You're up" for it) until a TV says hello, and then starts from 0 with that TV's card. */
+const fallbackDue = new WeakSet<object>();
+
+/** The held song starts: by the TV's `resume`, or by the fallback. Only the song that was held, only once. */
+function startHeld(deps: HubDeps, id: string): void {
+	const { state } = deps;
+	if (heldForNotice.get(state) !== id || state.playback.currentEntryId !== id) return;
+	heldForNotice.delete(state);
+	fallbackDue.delete(state);
+	state.setPlayback({ isPlaying: true });
+	deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
+}
+
+/** The fallback's own rule: start the held song only where a TV can play it. Absent `tvConnected` reads as one. */
+function fallBack(deps: HubDeps, id: string): void {
+	if (heldForNotice.get(deps.state) !== id) return;
+	if (deps.tvConnected?.() === false) fallbackDue.add(deps.state);
+	else startHeld(deps, id);
+}
+
+/** A TV said hello. If the hold outlived its fallback with no TV to play it, this TV is the one: start it now. */
+export function onTvHello(deps: HubDeps): void {
+	const id = heldForNotice.get(deps.state);
+	if (id && fallbackDue.has(deps.state)) startHeld(deps, id);
+}
+
+/** Advance to the next playable entry (held-slot aware). Returns the new current (or null). A FAILED song is not
+ *  sung: its entry goes back to `queued` in the slot it already holds, and `nextPlayable` skips it from there. */
+function advance(deps: HubDeps, outcome: 'done' | 'failed' = 'done'): QueueEntry | null {
 	const { state } = deps;
 	const cur = state.playback.currentEntryId;
-	if (cur) state.applyQueueOp({ op: 'status', id: cur, status: 'done' });
+	// shortcut: the failed singer keeps the `lastSungAt` stamp their start wrote, so under least-recently-sung their
+	// NEXT add lands as if they had sung; un-stamp it if a room on that order reports it.
+	if (cur)
+		state.applyQueueOp(
+			outcome === 'failed' ? { op: 'play-failed', id: cur } : { op: 'status', id: cur, status: 'done' }
+		);
 	const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 	if (next) beginSinging(deps, next);
+	const hold = outcome === 'failed' && !!next;
+	heldForNotice.delete(state);
+	fallbackDue.delete(state);
+	if (hold) {
+		const id = next.id;
+		heldForNotice.set(state, id);
+		setTimeout(() => fallBack(deps, id), HOLD_FALLBACK_MS);
+	}
 	state.setPlayback({
 		...(next ? songStart(next) : EPHEMERAL_RESET),
 		currentEntryId: next?.id ?? null,
-		isPlaying: !!next
+		isPlaying: !!next && !hold
 	});
 	// Only when something ACTUALLY changed — an unchanged snapshot just makes clients redo work.
 	if (cur || next) publishQueue(deps);
@@ -133,6 +187,10 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps, sendToOri
 		sendToOrigin?.({ type: 'player:stale', cmd: cmd.cmd });
 		return;
 	}
+	// A person took the transport, so the notice's hold is no longer the server's to lift. Key, guide and background
+	// leave it: they change the song, not whether it plays.
+	if (cmd.cmd === 'play' || cmd.cmd === 'pause' || cmd.cmd === 'skip' || cmd.cmd === 'restart')
+		heldForNotice.delete(state);
 	switch (cmd.cmd) {
 		case 'play': {
 			if (!state.playback.currentEntryId) {
@@ -202,6 +260,10 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps, sendToOri
 export interface TvTelemetry {
 	positionSec: number;
 	ended?: boolean;
+	/** The TV could not play the song. Moves the room on like `ended`, under the same entryId rule, but keeps the turn. */
+	failed?: boolean;
+	/** The TV's Skipped notice has cleared: start the song a failure held. Names that song, or does nothing. */
+	resume?: boolean;
 	/** Optional for a position frame. REQUIRED for `ended`, which is ignored without it. When present, a frame
 	 *  naming an entry that is no longer currentEntryId is stale and ignored, so one bad track cannot consume
 	 *  the next singer's turn. */
@@ -219,16 +281,20 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 	// A frame naming an entry that is no longer currentEntryId is stale: act on NOTHING it says, or
 	// `ended` double-advances and position seeks using the old song's playhead.
 	if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
-	if (t.ended) {
-		// `ended` must name the entry that ended: an id-less one would skip whoever is current.
+	if (t.resume) {
+		if (t.entryId !== undefined) startHeld(deps, t.entryId);
+		return;
+	}
+	if (t.ended || t.failed) {
+		// Both must name the entry they are about: an id-less one would skip whoever is current.
 		if (t.entryId === undefined) {
 			if (!warnedIdlessEnded) {
 				warnedIdlessEnded = true;
-				console.warn('[telemetry] ignored an ended with no entryId; is a TV running a stale page?');
+				console.warn('[telemetry] ignored an ended or failed with no entryId; is a TV running a stale page?');
 			}
 			return;
 		}
-		advance(deps);
+		advance(deps, t.failed ? 'failed' : 'done');
 		deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		emitNowPlaying(deps);
 		return;

@@ -6,10 +6,10 @@ eighty-two files bigger, and it is the `shadcn-svelte` copy-in target — see th
 Two directories called `ui` at different depths, meaning opposite things, is the single most
 confusing thing in this tree. Read them this way:
 
-| Directory | Whose | May be reorganised |
-|---|---|---|
+| Directory                | Whose                                          | May be reorganised |
+| ------------------------ | ---------------------------------------------- | ------------------ |
 | `src/lib/components/ui/` | **vendored** — `shadcn-svelte add` writes here | **No.** See below. |
-| `src/lib/ui/` | **authored** — Encore's own | Yes |
+| `src/lib/ui/`            | **authored** — Encore's own                    | Yes                |
 
 Neither name predicts its contents, so the rule has to be written down rather than inferred. It is
 also stated §4 and in `docs/LAYOUT.md` §1.

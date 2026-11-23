@@ -222,4 +222,10 @@ export class TvSeats {
 	holds(roomId: string, key: number): boolean {
 		return this.#rooms.get(roomId)?.holderSocket === key;
 	}
+
+	/** Whether the seat's screen has a live socket: THE TV, the one that can play a song, fail it and release a hold.
+	 *  A copy alone does not count, since its frames are dropped and it could never report a song that won't play. */
+	hasLiveHolder(roomId: string): boolean {
+		return (this.#rooms.get(roomId)?.holderSocket ?? null) !== null;
+	}
 }

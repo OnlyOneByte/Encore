@@ -158,6 +158,22 @@ Rotation lives in `src/lib/contract/queue/rotation.ts`, the policies in
   one singer's songs among slots that singer already holds, so it can never jump another singer — a
   cross-singer move must be `move-to-index`, gated on `queue:reorder-any`. Counting a playing entry in
   either index space makes every index one short.
+- **A song the TV cannot play is not sung.** `tv:telemetry` with `status: 'failed'` advances the room exactly
+  as `ended` does, under the same entryId rule, but the server-owned `play-failed` op puts the entry back to
+  `queued` with `playFailed` in the slot it already held. `nextPlayable` and `upNextAfter` skip it — the same
+  held-slot rule as a song still processing — and the phone's `nextPlayableEntryId` mirrors that, so no screen
+  crowns a turn the TV will pass over. Nothing moves it, which is the whole of "a failed song keeps its spot". The next
+  song starts PAUSED behind the TV's Skipped notice; the TV's `resume` telemetry, naming that song, starts it, and a
+  play/pause/skip/restart from a phone outranks the hold (key, guide and background do not touch it). A TV that loses
+  the `resume` frame (a reload, a socket drop) never sends it, so the server starts the held turn itself after
+  `HOLD_FALLBACK_MS` (the shared `SKIP_NOTICE_MS` plus 2 s), and only while THE TV is connected (`tvConnected`: the
+  seat has a live socket, `TvSeats.hasLiveHolder`). A copy does not count, since its frames are dropped and it could
+  never report that song failing. With no seated TV the room stays paused at 0 and no phone is told "You're up"; the
+  seat's next hello (or a copy's `tv:claim`) starts it, from 0, with its own card, so the TV and every phone start
+  together. A copy PROMOTED when the seat's grace runs out does not start it; a play from a phone does. The timer only acts on the
+  song still held, so a lifted hold leaves it nothing to do. **A TV that comes back INSIDE the hold shows its "Now
+  singing" card silent for up to ~2 s:** only the TV that raised the notice sends `resume`, so the returning one waits
+  out the fallback, by design.
 - **`DEFAULT_QUEUE_ORDER` is what an unconfigured room does**, so changing it re-orders every existing room
   that never chose. An unknown or de-whitelisted id degrades to it rather than throwing.
 

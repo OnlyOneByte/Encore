@@ -14,9 +14,29 @@ import {
 	keyboardMoveTarget,
 	rowShift,
 	liveSeq,
+	rowNumbers,
 	modeInvalidation,
 	orderKept
 } from '$lib/reorder-mode';
+
+test('rowNumbers: a held turn takes no number, every other row counts from 1 as the TV will play them', () => {
+	// UI review r2 of #994: Theo held, then Bo's cooking card, then Cy's ready song read "⚠, 2, 2" — two rows said 2 and
+	// none said 1, because only the ready-row branch skipped the held turn. One source numbers every kind of row.
+	const [, bo, cy] = rowNumbers([true, false, false], -1, -1);
+	expect([bo, cy]).toEqual([1, 2]);
+	expect(rowNumbers([false, true, false, true, false], -1, -1).filter((_, i) => i % 2 === 0)).toEqual([1, 2, 3]);
+	expect(rowNumbers([false, false, false], -1, -1)).toEqual([1, 2, 3]);
+});
+
+test('rowNumbers: mid-drag past a held row, the numbers follow the LIVE order', () => {
+	// Drag Ann (row 0) down past the held row to the bottom: live order is held, Bo, Ann. Held takes no number.
+	const n = rowNumbers([false, true, false], 0, 2);
+	expect([n[0], n[2]]).toEqual([2, 1]);
+	// Dragging the other way: Bo (row 2) up to the top, ahead of the held turn.
+	const up = rowNumbers([false, true, false], 2, 0);
+	expect([up[0], up[2]]).toEqual([2, 1]);
+});
+
 import { at } from '$test';
 
 const PAGE = at('src/routes/queue/+page.svelte');
@@ -261,6 +281,22 @@ test('orderKept: rows that only came or went keep the order; a reorder of the ro
 	// A move, even one hidden among an add and a removal, is the live sort's.
 	expect(orderKept(['a', 'b', 'c'], ['b', 'a', 'c'])).toBe(false);
 	expect(orderKept(['a', 'b', 'c'], ['c', 'x', 'a'])).toBe(false);
+});
+
+test('rowNumbers: the moved row’s number, which the keyboard move announces, skips a held turn above it', () => {
+	// Code review r4 of #994: [held Theo, Ana, Bo], Bo nudges up. The row shows 1; the raw index said "2nd".
+	expect(rowNumbers([true, false, false], 2, 1)[2]).toBe(1);
+	expect(rowNumbers([false, false, false], 2, 1)[2]).toBe(2);
+});
+
+test('wiring · every queue row kind, and the keyboard move’s announcement, take their number from rowNumbers', () => {
+	// SOURCE PINS: the cooking card used to pass its raw position, so behind a held turn it read one higher than the
+	// ready rows around it (UI review r2), and the spoken position used the raw index (code review r4).
+	const src = readFileSync(PAGE, 'utf8');
+	expect(src.match(/seq=\{seqs\[i\]!\}/g), 'the ready row AND the Making karaoke card').toHaveLength(2);
+	const nudge = src.split('function nudge(')[1]?.split('\n\t}\n')[0] ?? '';
+	expect(nudge).toContain('rowNumbers(');
+	expect(nudge).toContain('liveMsg = `Moved to ${ordinal(shown)} in the queue.`;');
 });
 
 test('non-vacuity · the Queue tab imports and calls every predicate asserted here', () => {

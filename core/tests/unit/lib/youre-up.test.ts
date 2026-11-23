@@ -11,7 +11,7 @@ const entry = (id: string, singerId: string): QueueEntry => ({
 	addedAt: 1
 });
 const entries = [entry('maya-1', 'maya'), entry('theo-1', 'theo')];
-const base = { entries, meId: 'theo', positionSec: 0 };
+const base = { entries, meId: 'theo', positionSec: 0, isPlaying: true };
 
 test('the room moving on to MY song at its start is my turn', () => {
 	expect(youreUpTurn({ ...base, previousId: 'maya-1', currentId: 'theo-1' })?.id).toBe('theo-1');
@@ -28,6 +28,13 @@ test('someone else’s song, no change, no room or no me: nothing to say', () =>
 
 test('a phone reloaded in the middle of its own song is not told it is up', () => {
 	expect(youreUpTurn({ ...base, positionSec: 42, previousId: null, currentId: 'theo-1' })).toBeNull();
+});
+
+test('a turn held behind the TV’s Skipped notice is announced when it starts playing, with the TV card', () => {
+	// The failed song's advance lands paused: nothing yet.
+	expect(youreUpTurn({ ...base, isPlaying: false, previousId: 'maya-1', currentId: 'theo-1' })).toBeNull();
+	// The notice clears and the room plays from 0: now. The layout keeps `previousId` on the last PLAYING turn.
+	expect(youreUpTurn({ ...base, previousId: 'maya-1', currentId: 'theo-1' })?.id).toBe('theo-1');
 });
 
 test('it holds as long as the TV card, and still shows when the card is off', () => {

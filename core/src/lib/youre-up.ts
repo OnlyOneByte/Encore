@@ -8,6 +8,9 @@ export interface YoureUpInput {
 	currentId: string | null;
 	/** The room's playhead as of the frame that made `currentId` current. */
 	positionSec: number;
+	/** Whether the room is playing. A song held behind the TV's Skipped notice starts PAUSED, and the sheet waits for
+	 *  it to play, so it rises with the TV's card instead of ending before it. */
+	isPlaying: boolean;
 	entries: readonly QueueEntry[];
 	meId: string | null;
 }
@@ -18,8 +21,8 @@ export interface YoureUpInput {
  * only frame whose playhead is 0 (`songStart` resets it), so the playhead is what tells the two apart.
  */
 export function youreUpTurn(input: YoureUpInput): QueueEntry | null {
-	const { previousId, currentId, positionSec, entries, meId } = input;
-	if (!meId || !currentId || currentId === previousId || positionSec >= 1) return null;
+	const { previousId, currentId, positionSec, isPlaying, entries, meId } = input;
+	if (!meId || !currentId || currentId === previousId || positionSec >= 1 || !isPlaying) return null;
 	const entry = entries.find((e) => e.id === currentId);
 	return entry && entry.singerId === meId ? entry : null;
 }

@@ -133,6 +133,10 @@ export type PlayerCommand =
 /** The commands that name the song they were pressed on; the server drops one naming a song that has gone. */
 export type TargetedCommand = Extract<PlayerCommand, { entryId: string }>;
 
+/** How long the TV's Skipped notice stands. SHARED because the server holds the next song for it: the TV releases the
+ *  hold with `tv:telemetry` `resume` when the notice clears, and the server releases it itself if that never comes. */
+export const SKIP_NOTICE_MS = 4000;
+
 export type ClientEvent =
 	| { type: 'queue:command'; command: ClientCommand }
 	| { type: 'player:command'; command: PlayerCommand }

@@ -17,3 +17,5 @@ export function deckBumpNotice(onDeck: string, youreNext: boolean): string {
 }
 /** The phone's own word for the moment the room's current song becomes yours. */
 export const YOURE_UP = 'You’re up';
+/** A turn the TV could not play, held in its slot until the singer acts (proposal 11). */
+export const DIDNT_PLAY = 'Didn’t play';

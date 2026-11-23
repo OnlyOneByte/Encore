@@ -32,8 +32,8 @@ export function nextPlayable(
 	const ordered = reseq(entries, ordering).filter((e) => e.status === 'queued');
 	const held: QueueEntry[] = [];
 	for (const e of ordered) {
-		if (isEntryReady(e, mediaById)) return { next: e, held };
-		held.push(e); // processing — hold its slot, try the next singer
+		if (!e.playFailed && isEntryReady(e, mediaById)) return { next: e, held };
+		held.push(e); // processing, or its song failed on the TV — hold its slot, try the next singer
 	}
 	return { next: null, held };
 }
@@ -73,5 +73,5 @@ export function upNextAfter(
 	ordering: Ordering = {}
 ): QueueEntry | null {
 	const ordered = reseq(entries, ordering).filter((e) => e.status === 'queued' && e.id !== currentId);
-	return ordered.find((e) => isEntryReady(e, mediaById)) ?? null;
+	return ordered.find((e) => !e.playFailed && isEntryReady(e, mediaById)) ?? null;
 }

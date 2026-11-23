@@ -61,11 +61,10 @@ test('UI-05: a short name shows whole beside a long title, and a long name leave
 });
 
 /**
- * A TV whose every play() STARTS (so the element is not paused) and is reported refused 1.5 s later, as a decode
- * refusal is: TvPlayer's "the room is silent" arm. Late, because an immediate rejection is wiped by the slot's own
- * `onready`. LOOPED, so the 8 s fixture track cannot end mid-test and move the room on by itself.
+ * A TV whose every play() STARTS (so the element advances) and is reported refused 1.5 s later, as a decode refusal
+ * is. LOOPED, so the 8 s fixture track cannot end mid-test and move the room on by itself.
  */
-async function failingTv(world: World): Promise<Page> {
+async function refusedButPlayingTv(world: World): Promise<Page> {
 	const tv = await world.openTv();
 	await tv.evaluate(() => {
 		const orig = HTMLMediaElement.prototype.play;
@@ -80,52 +79,25 @@ async function failingTv(world: World): Promise<Page> {
 	return tv;
 }
 
-const skip = (phone: Page) => phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-
-test('UI-06/07: the won’t-play overlay names no browser error, and the next song does not open under it', async ({
+// UI-06/07 asserted the "This song won't play" overlay. Proposal 11 retired it: a song that really won't play moves
+// the room on (probe/wont-play.spec.ts covers its copy, the next song and the lobby). What stays is the false
+// positive the overlay used to raise: a refused play() over an element that IS advancing is a song that is playing.
+test('UI-06: a play() refused while the song still advances is not a failure — nobody is skipped', async ({
 	world
 }) => {
 	const worker = await startFakeWorker(world);
 	try {
 		const theo = await world.openPhone('Theo');
-		const maya = await world.openPhone('Maya');
 		await readySong(world, theo, 'believin');
 		await readySong(world, theo, 'caroline');
-		const tv = await failingTv(world);
+		const tv = await refusedButPlayingTv(world);
 		await queueReady(theo, 'believin');
-
-		const overlay = tv.locator('.silent-room');
-		await expect(overlay).toBeVisible({ timeout: 30_000 });
-		// The TV's copy is ASCII (the 03:26:59Z ruling, and the TV's own ASCII guard), so the straight apostrophe.
-		await expect(overlay).toHaveText(/won't play/);
-		await expect(overlay).not.toContainText('Error');
-
-		// The next song's audio never arrives, so its slot never reports ready: only the change of song can clear the
-		// failure. Hung from before Maya queues, so the hidden slot cannot pre-warm it either.
-		await tv.route('**/*', (route) => (route.request().resourceType() === 'media' ? undefined : route.fallback()));
-		await queueReady(maya, 'caroline');
-		await expect(theo.locator(SEL.npStripWho)).toHaveText('Theo');
-		await skip(theo);
-		await expect(theo.locator(SEL.npStripWho)).toHaveText('Maya');
-		await expect(tv.locator(SEL.lobby)).toBeHidden();
-		await expect(overlay).toBeHidden();
-	} finally {
-		await worker.stop();
-	}
-});
-
-test('UI-06: a failure on the last song never sits over the lobby’s join QR', async ({ world }) => {
-	const worker = await startFakeWorker(world);
-	try {
-		const maya = await world.openPhone('Maya');
-		await readySong(world, maya, 'believin');
-		const tv = await failingTv(world);
-		await queueReady(maya, 'believin');
-		const overlay = tv.locator('.silent-room');
-		await expect(overlay).toBeVisible({ timeout: 30_000 });
-		await skip(maya);
-		await expect(tv.locator(SEL.lobby)).toBeVisible({ timeout: 30_000 });
-		await expect(overlay).toBeHidden();
+		await queueReady(theo, 'caroline');
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 30_000 });
+		await tv.waitForTimeout(12_000); // past the watchdog's 8 s
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await expect(tv.locator(SEL.stateError)).toBeHidden();
+		await expect(tv.locator(SEL.autoplayHint)).toBeHidden();
 	} finally {
 		await worker.stop();
 	}

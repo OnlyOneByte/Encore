@@ -549,6 +549,89 @@ function tvCopyOffline(width: number, height: number): Make {
 	};
 }
 
+/** A song that won't play (proposal 11): Maya skips, Theo's file is dead on this TV, and the "Skipped" takeover names
+ *  whose song it was and who replaces it, then hands to Ana's "Now singing" card. It moves as #1018's handoff layer
+ *  does: the layer fades in with the notice, and at the hand-off the scrim stays up while only the lines rise. Each run
+ *  drains the room, and Theo takes his held turn off with the queue's ✕ so he can queue the song again. */
+function songFailed(toCard: boolean): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		let theoMedia = '';
+		const skipToNotice = async (page: Page) => {
+			await ph!.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await expect(page.locator(SEL.stateError)).toBeVisible({ timeout: 5_000 });
+		};
+		return {
+			name: toCard ? 'tv-song-failed-to-card' : 'tv-song-failed',
+			what: toCard
+				? 'TV 1920x1080: the hand-off as the Skipped notice clears to Ana’s "Now singing" card: the scrim stays up and only the new lines rise (--motion-slow)'
+				: 'TV 1920x1080: "Skipped · Theo’s song wouldn’t play · Up next - Ana" the moment a dead file comes up: the layer fades in and the lines rise (--motion-slow)',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 1_500,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world);
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					for (const q of ['caroline', 'believin', 'prayer']) await readySong(world, ph.maya, q);
+					theoMedia = (await world.awaitDemoTrack('believin')).id;
+				}
+				await openQueue(ph.theo);
+				const held = ph.theo.locator(SEL.queueRemove);
+				while ((await held.count()) > 0) {
+					await held.first().click();
+					await ph.theo.waitForTimeout(300);
+				}
+				await ph.theo.goto('/');
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 1920, height: 1080 },
+					baseURL: world.baseURL
+				});
+				// The room's screen (#990's seat): a cookieless TV is a copy, and its `failed` frame moves nothing.
+				await ctx.addCookies([world.tvCookie]);
+				const page = await ctx.newPage();
+				await page.route(`**/*${theoMedia}*`, (r) => r.fulfill({ status: 404, body: '' }));
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await mayaThenTheo(ph);
+				await queueReady(ph.ana, 'prayer');
+				await expect(page.locator(SEL.stateNext)).toBeHidden({ timeout: 10_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				if (toCard) await skipToNotice(page);
+				return page;
+			},
+			// The notice row fires the skip; the hand-off row is already on the notice and its trigger is the card arriving.
+			trigger: async (page) => {
+				if (!toCard) return skipToNotice(page);
+				await expect(page.locator(SEL.stateNext, { hasText: 'Ana' })).toBeVisible({ timeout: 6_000 });
+				// Stop the page's wall clock with its timers: #1018's early exit is also checked against `Date.now()` when the
+				// slot reports ready (`leadExitIfDue`), which `holdTimers` cannot hold, and the seek run's slow real time made
+				// it due under the card's rise. In real time the card stands its whole hold.
+				await page.evaluate(() => {
+					const frozen = Date.now();
+					Date.now = () => frozen;
+				});
+			},
+			only: toCard ? '.takeover-layer, .state-next, .state-next *' : '.takeover-layer, .state-error, .state-error *',
+			subject: toCard ? '.state-next' : '.state-error',
+			// Both takeovers clear on a wall-clock timer (the notice's 4 s, the card's hold), which must not fire between
+			// seeked frames and take the subject away.
+			holdTimers: true,
+			observe: (page) =>
+				page.evaluate(() => ({
+					notice: document.querySelector('.state-error')?.textContent?.trim() ?? null,
+					card: document.querySelector('.state-next')?.textContent?.trim() ?? null
+				}))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
 	'tv-copy-offline': tvCopyOffline(1920, 1080),
 	'tv-copy-offline-390': tvCopyOffline(390, 844),
@@ -615,6 +698,8 @@ const SCENARIOS: Record<string, Make> = {
 			subject: SEL.npStrip
 		}
 	),
+	'tv-song-failed': songFailed(false),
+	'tv-song-failed-to-card': songFailed(true),
 	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
 	 *  drains the room and starts again from Maya's song. */
 	'phone-youre-up': (browser, world, cleanup) => {
