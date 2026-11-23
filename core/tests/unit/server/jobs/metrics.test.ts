@@ -37,6 +37,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		model: null,
 		backend: null,
 		device: null,
+		threads: null,
 		asrModel: null,
 		syncMode: null,
 		audioSec: null,

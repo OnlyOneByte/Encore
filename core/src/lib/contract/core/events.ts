@@ -202,6 +202,12 @@ export type WorkerMessage =
 			concurrency: number;
 			version: string;
 			host?: WorkerHost;
+			/** The worker's resolved profile. UNTRUSTED like the rest of the frame: `#onHello` keeps only the
+			 *  well-shaped fields (`workerProfile`). */
+			backend?: unknown;
+			device?: unknown;
+			threads?: unknown;
+			demucsJobs?: unknown;
 	  }
 	| {
 			/**
@@ -282,6 +288,23 @@ export interface ResolvedFacts {
 	device?: string;
 	asrModel?: string;
 	syncMode?: string;
+}
+
+/** What a worker RESOLVED for itself at boot. Stamped on every attempt the worker is assigned, so each
+ *  `job_attempts` row says which hardware path it ran on. Names and counts only — never a hostname or a path. */
+export interface WorkerProfile {
+	/** The separator backend: `torch` or `mlx`. */
+	backend?: string;
+	/** The torch device (`cpu`, `cuda`, `mps`). An align job's completion overwrites it on its own row with
+	 *  the device its transcriber ran on, which is `cpu` on a Mac. */
+	device?: string;
+	/** torch's intra-op threads in the worker process: what in-process torch work uses (alignment, the song
+	 *  profile, diarization). NOT stems, which torch demucs runs in its own subprocess, nor whisperx, which
+	 *  sets its own. */
+	threads?: number;
+	/** How many tracks torch demucs separates at once (its `-j`), the knob that does move stems speed.
+	 *  Shown on /metrics only; the worker sends none until #1051 lands. */
+	demucsJobs?: number;
 }
 
 /** The SPLIT the core cannot see: only the worker observes a stage transition. */

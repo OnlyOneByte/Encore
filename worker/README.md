@@ -253,7 +253,7 @@ modes, capabilities) are in `protocol/vocabulary.py` and mirror the core's TypeS
 
 | Frame | Direction | Carries |
 | --- | --- | --- |
-| `worker:hello` | worker → core | worker id, capabilities, concurrency, version, host info. Also the separator backend and `ENCORE_DEVICE` (absent when auto-detected), which core's contract drops |
+| `worker:hello` | worker → core | worker id, capabilities, concurrency, version, host info. Also the resolved profile, the separator backend, the torch device and torch's thread count, which core stamps on every attempt it assigns this worker |
 | `worker:catalogue` | worker → core | the selectable separation models, sent after `hello` because enumerating them is slow; repeats the full capability set |
 | `worker:heartbeat` | worker → core | free slots and the running job ids: on connect, and at the interval `welcome` names |
 | `job:accept` | worker → core | the job was taken |

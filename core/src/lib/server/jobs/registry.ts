@@ -1,7 +1,7 @@
 // In-memory only, rebuilt from worker reconnects, never persisted. A dropped worker's in-flight
 // jobs are reclaimed by the reaper via lease expiry, not by anything in this file.
 
-import type { SeparatorOffer, WorkerHost } from '../../contract';
+import type { SeparatorOffer, WorkerHost, WorkerProfile } from '../../contract';
 
 export interface WorkerSession {
 	workerId: string;
@@ -12,6 +12,8 @@ export interface WorkerSession {
 	lastSeen: number; // epoch ms of the last hello/heartbeat (liveness)
 	/** Host info reported at handshake; optional since older workers send none. Lets a reader tell a slow GPU stems run from a shared-core one. */
 	host?: WorkerHost;
+	/** What the worker resolved at boot, already shape-checked (`workerProfile`). Stamped on each attempt it is assigned. */
+	profile?: WorkerProfile;
 	/**
 	 * Selectable separation models, from the follow-up `worker:catalogue` frame. Absent until that arrives
 	 * (a few seconds after joining) and on any worker that offers none — so every reader must treat an empty
@@ -32,7 +34,8 @@ export class WorkerRegistry {
 		concurrency: number,
 		version: string,
 		now: number,
-		host?: WorkerHost
+		host?: WorkerHost,
+		profile?: WorkerProfile
 	): WorkerSession {
 		const session: WorkerSession = {
 			workerId,
@@ -41,7 +44,8 @@ export class WorkerRegistry {
 			version,
 			slotsFree: concurrency,
 			lastSeen: now,
-			...(host ? { host } : {})
+			...(host ? { host } : {}),
+			...(profile ? { profile } : {})
 		};
 		this.#workers.set(workerId, session);
 		return session;

@@ -58,6 +58,7 @@ export interface MetricsFixture {
 		capabilities: string[];
 		slotsFree: number;
 		host: Record<string, string | number | boolean>;
+		profile: { backend?: string; device?: string; threads?: number } | null;
 	}[];
 }
 
@@ -182,6 +183,7 @@ export const METRICS_FIXTURE: MetricsFixture = {
 			workerId: 'stems-1',
 			capabilities: ['fetch:ytdlp', 'stems:demucs', 'align:whisperx'],
 			slotsFree: 1,
+			profile: { backend: 'torch', device: 'cuda', threads: 16 },
 			host: {
 				accelerator: 'cuda',
 				deviceName: 'NVIDIA RTX 4070',

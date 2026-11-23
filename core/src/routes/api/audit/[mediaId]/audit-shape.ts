@@ -20,6 +20,7 @@ export interface AuditAttempt {
 		model: string | null;
 		backend: string | null;
 		device: string | null;
+		threads: string | null;
 		asrModel: string | null;
 		syncMode: string | null;
 	};
@@ -82,6 +83,8 @@ export function toAudit(a: JobAttempt): AuditAttempt {
 			model: a.model,
 			backend: a.backend,
 			device: a.device,
+			// A string like its siblings, because the page prints this bag as label/value text.
+			threads: a.threads == null ? null : String(a.threads),
 			asrModel: a.asrModel,
 			syncMode: a.syncMode
 		},

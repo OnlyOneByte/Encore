@@ -419,6 +419,16 @@ const FRAMES: Frame[] = [
 		setup: openMetrics
 	},
 	{
+		name: 'metrics-narrow-tail',
+		what: 'the foot on a phone: the worker’s resolved profile and host facts wrapping in a narrow column',
+		surface: 'anon',
+		viewport: METRICS_NARROW,
+		setup: async (page) => {
+			await openMetrics(page);
+			await scrollToFraction(page, 1);
+		}
+	},
+	{
 		name: 'stats',
 		what: 'the public page: library size, most-sung, top artists, sings per day',
 		surface: 'anon',

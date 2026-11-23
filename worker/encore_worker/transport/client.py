@@ -61,6 +61,10 @@ class Client:
     run_job: RunJob
     capabilities: frozenset[str]
     backend: str | None = None
+    #: The RESOLVED torch device (`__main__.device_for`), not `ENCORE_DEVICE`; core stamps it on each attempt.
+    device: str | None = None
+    #: torch's intra-op threads (`hardware.Report.threads`), stamped on every attempt beside the device.
+    threads: int | None = None
     #: `Hello.host`, what `hardware.probe()` measured. Diagnostic only, so None simply omits it.
     host: dict[str, object] | None = None
 
@@ -191,7 +195,8 @@ class Client:
             concurrency=self.config.concurrency,
             version=self.config.version,
             backend=self.backend,
-            device=self.config.device,
+            device=self.device,
+            threads=self.threads,
             host=self.host,
         )
 

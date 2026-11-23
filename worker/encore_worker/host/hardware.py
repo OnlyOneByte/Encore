@@ -27,6 +27,8 @@ class Report:
     apple_silicon: bool = False
     torch_version: str | None = None
     device_name: str | None = None
+    #: torch's intra-op thread count in this process (`torch.get_num_threads`); None without torch.
+    threads: int | None = None
 
     @property
     def cuda(self) -> bool:
@@ -89,6 +91,11 @@ def probe() -> Report:
             device_name = "Apple GPU"
     except Exception:  # noqa: BLE001 - probing a driver can fail on a misconfigured box
         accelerator = "cpu"
+    threads: int | None
+    try:
+        threads = int(torch.get_num_threads())
+    except Exception:  # noqa: BLE001 - a diagnostic, never a reason to fail the probe
+        threads = None
 
     return Report(
         machine=base.machine,
@@ -98,6 +105,7 @@ def probe() -> Report:
         apple_silicon=base.apple_silicon,
         torch_version=str(getattr(torch, "__version__", "")) or None,
         device_name=device_name,
+        threads=threads,
     )
 
 

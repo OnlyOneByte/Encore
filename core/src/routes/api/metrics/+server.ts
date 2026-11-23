@@ -67,7 +67,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			capabilities: w.capabilities,
 			concurrency: w.concurrency,
 			slotsFree: w.slotsFree,
-			host: w.host ?? null
+			host: w.host ?? null,
+			profile: w.profile ?? null
 		}))
 	});
 };

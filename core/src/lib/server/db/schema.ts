@@ -271,6 +271,7 @@ export const jobAttempts = sqliteTable(
 		model: text('model'),
 		backend: text('backend'),
 		device: text('device'),
+		threads: integer('threads'),
 		asrModel: text('asr_model'),
 		syncMode: text('sync_mode'),
 		// Snapshotted song length, so every cost can be reported as a rate rather than raw seconds.

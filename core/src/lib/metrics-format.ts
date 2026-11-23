@@ -135,6 +135,7 @@ const FACT_LABELS: Record<string, string> = {
 	model: 'model',
 	backend: 'runtime',
 	device: 'hardware',
+	threads: 'torch threads',
 	asrModel: 'speech model',
 	syncMode: 'timing'
 };
@@ -161,7 +162,7 @@ export const score = (n: number | null): string => (n === null ? '—' : n.toFix
 /** `host` is an OPEN BAG, so an unexpected or absent key is skipped rather than thrown on. */
 const HOST_LABELS: Record<string, string> = {
 	accelerator: 'accelerator',
-	deviceName: 'device',
+	deviceName: 'gpu',
 	cpuCount: 'cpus',
 	platform: 'platform',
 	python: 'python',
@@ -169,8 +170,31 @@ const HOST_LABELS: Record<string, string> = {
 	contained: 'contained'
 };
 export function hostFacts(host: Record<string, unknown>): [string, string][] {
-	return Object.entries(HOST_LABELS)
-		.map(([key, label]): [string, string] => [label, host[key] == null ? '' : String(host[key])])
+	return labelled(HOST_LABELS, host);
+}
+
+/** The worker's resolved profile, in the same words the attempt rows use (`FACT_LABELS`). */
+const PROFILE_LABELS: Record<string, string> = {
+	device: 'hardware',
+	backend: 'runtime',
+	threads: 'torch threads',
+	demucsJobs: 'demucs jobs'
+};
+
+/** One worker's fact list: what it RESOLVED first, then what it measured about the box. A resolved device
+ *  hides the host's `accelerator`, which would only say the same thing again under another name. */
+export function workerFacts(
+	profile: Record<string, unknown> | null,
+	host: Record<string, unknown> | null
+): [string, string][] {
+	const box = { ...host };
+	if (profile?.device != null) delete box.accelerator;
+	return [...labelled(PROFILE_LABELS, profile ?? {}), ...labelled(HOST_LABELS, box)];
+}
+
+function labelled(labels: Record<string, string>, bag: Record<string, unknown>): [string, string][] {
+	return Object.entries(labels)
+		.map(([key, label]): [string, string] => [label, bag[key] == null ? '' : String(bag[key])])
 		.filter(([, value]) => value !== '');
 }
 

@@ -6,13 +6,13 @@
 	import {
 		count,
 		dur,
-		hostFacts,
 		pct,
 		separatorLabel,
 		slowestStepType,
 		stageLabel,
 		stepLabel,
-		vsClaimed
+		vsClaimed,
+		workerFacts
 	} from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
@@ -76,7 +76,13 @@
 			workMs: number;
 			steps: number;
 		}[];
-		workers: { workerId: string; capabilities: string[]; slotsFree: number; host: Record<string, unknown> | null }[];
+		workers: {
+			workerId: string;
+			capabilities: string[];
+			slotsFree: number;
+			host: Record<string, unknown> | null;
+			profile: Record<string, unknown> | null;
+		}[];
 	}
 
 	let metrics = $state<Metrics | null>(null);
@@ -417,7 +423,7 @@
 								<div class="worker">
 									<strong>{w.workerId}</strong>
 									<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
-									{#if w.host}<FactList facts={hostFacts(w.host)} />{/if}
+									{#if w.host || w.profile}<FactList facts={workerFacts(w.profile, w.host)} />{/if}
 								</div>
 							{/each}
 						{/if}

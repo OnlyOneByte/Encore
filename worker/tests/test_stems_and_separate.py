@@ -8,6 +8,7 @@ comment in the source explaining what breaks without them; these assert it.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -575,6 +576,7 @@ async def test_a_genuine_no_lyrics_align_still_completes(monkeypatch: pytest.Mon
     monkeypatch.setattr(durable, "align", nothing_found)
     cfg = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
     assign = f.Assign(job_id="j1", media_id="m1", action="align")
-    frame = await main._dispatch(assign, JOB, cfg, None, None, None, None)  # type: ignore[arg-type]
+    client = SimpleNamespace(device=None)
+    frame = await main._dispatch(assign, JOB, cfg, None, None, client, None)  # type: ignore[arg-type]
     assert isinstance(frame, f.Complete)
     assert frame.media_uri == ""
