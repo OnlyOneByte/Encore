@@ -12,7 +12,10 @@
 //       object stops being reachable. Dry-run unless --apply; the push is pinned to the commit it read.
 //
 // Both work in a THROWAWAY clone of origin under the OS temp dir, removed at the end, so the clone you run them
-// from never fetches the branch: an opt-out clone (docs/UI-CHECKLIST.md) stays opted out.
+// from never fetches the branch: an opt-out clone (docs/UI-CHECKLIST.md) stays opted out. That clone has no
+// local config, so every commit in it carries the user.name/user.email from the LOCAL config of the clone you
+// run them from, pinned through GIT_AUTHOR_*/GIT_COMMITTER_* and checked before the push. Only a GitHub noreply
+// email is accepted: the branch is public.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,13 +31,51 @@ const PRUNE_AT_BYTES = 200 * 1024 * 1024;
 const SEGMENT = /^(?!\.{1,2}$)[\w.-]+$/;
 
 class Refused extends Error {}
-const git = (args: string[], cwd?: string, input?: string) =>
-	execFileSync('git', args, { cwd, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+const git = (args: string[], cwd?: string, input?: string, env?: Record<string, string>) =>
+	execFileSync('git', args, {
+		cwd,
+		input,
+		env: { ...process.env, ...env },
+		encoding: 'utf8',
+		stdio: ['pipe', 'pipe', 'pipe']
+	}).trim();
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 const segment = (what: string, value: string) => {
 	if (!SEGMENT.test(value)) throw new Refused(`${what} "${value}" must be one plain name (letters, digits, . _ -)`);
 	return value;
 };
+
+type Who = { name: string; email: string; env: Record<string, string> };
+
+/** This clone's LOCAL user.name/user.email (never the global ones), as the env that pins a commit to them:
+ *  GIT_AUTHOR_* / GIT_COMMITTER_* outrank author.*, committer.* and user.* from every config scope. */
+function identity(): Who {
+	const read = (key: string) => {
+		try {
+			return git(['config', '--local', key]);
+		} catch {
+			return '';
+		}
+	};
+	const [name, email] = [read('user.name'), read('user.email')];
+	if (!name || !/^[^@\s]+@users\.noreply\.github\.com$/.test(email))
+		throw new Refused(
+			`commits here are public, so they need a GitHub noreply identity, but this clone's local one is ` +
+				`"${name} <${email}>": set user.name and user.email (the users.noreply.github.com one) in this clone`
+		);
+	const env = { GIT_AUTHOR_NAME: name, GIT_AUTHOR_EMAIL: email, GIT_COMMITTER_NAME: name, GIT_COMMITTER_EMAIL: email };
+	return { name, email, env };
+}
+
+/** Last line of defence before a push: the commit about to go public names exactly `who`, as author and committer. */
+function assertIdentity(rev: string, clone: string, who: Who) {
+	const got = git(['log', '-1', '--format=%an%x00%ae%x00%cn%x00%ce', rev], clone).split('\0');
+	const want = [who.name, who.email, who.name, who.email];
+	if (got.join('\0') !== want.join('\0'))
+		throw new Refused(
+			`${rev.slice(0, 8)} was written as "${got[0]} <${got[1]}>" / "${got[2]} <${got[3]}>"; not pushed`
+		);
+}
 
 /** The remote tip, read without downloading anything. Null when the branch does not exist yet. */
 function remoteTip(url: string): string | null {
@@ -122,6 +163,7 @@ function publish(args: string[], url: string) {
 			const size = statSync(path).size;
 			if (size > MAX_FILE_BYTES) throw new Refused(overCap(`${row}/${file}`, size));
 		}
+	const who = identity();
 
 	const tipBytes = inScratchClone(url, { bare: false, depth: 1 }, (clone) => {
 		for (const row of picked) {
@@ -131,7 +173,8 @@ function publish(args: string[], url: string) {
 			for (const file of [gif, strip, 'metrics.json']) cpSync(join(out, row, file), join(dest, file));
 		}
 		git(['add', '--all'], clone);
-		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone);
+		git(['commit', '--quiet', '-m', `media: PR #${pr} (${dir})`], clone, undefined, who.env);
+		assertIdentity('HEAD', clone, who);
 		push(['origin', `HEAD:refs/heads/${BRANCH}`], clone);
 		return git(['ls-tree', '-r', '-l', '--full-tree', 'HEAD'], clone)
 			.split('\n')
@@ -175,6 +218,7 @@ function parseKeep(args: string[]): { keep: string[]; keepNone: boolean; apply: 
 function prune(args: string[], url: string) {
 	const { keep, keepNone, apply } = parseKeep(args);
 	if (!remoteTip(url)) throw new Refused(`origin has no ${BRANCH} branch; nothing to prune`);
+	const who = identity();
 	inScratchClone(url, { bare: true }, (clone) => {
 		const ref = `refs/heads/${BRANCH}`;
 		const tip = git(['rev-parse', ref], clone);
@@ -196,7 +240,9 @@ function prune(args: string[], url: string) {
 
 		const tree = git(['mktree'], clone, kept.map((e) => e + '\n').join(''));
 		const label = keepDirs.join(' ') || 'nothing';
-		const root = git(['commit-tree', tree, '-m', `media: re-rooted from ${tip.slice(0, 8)}, kept ${label}`], clone);
+		const msg = `media: re-rooted from ${tip.slice(0, 8)}, kept ${label}`;
+		const root = git(['commit-tree', tree, '-m', msg], clone, undefined, who.env);
+		assertIdentity(root, clone, who);
 		// Pinned to the tip just read, so a publish that landed in between is refused rather than overwritten.
 		push([`--force-with-lease=${ref}:${tip}`, 'origin', `${root}:${ref}`], clone);
 		const after = Number(git(['rev-list', '--objects', '--disk-usage', root], clone));
