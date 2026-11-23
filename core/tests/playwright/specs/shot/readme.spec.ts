@@ -1,6 +1,9 @@
 // THE README FRAMES. One room driven end to end, so the screenshots in README.md show the app as it ships:
-// a phone joining, a TV lobby with its QR, a queue with somebody on deck, and the TV handing over a turn.
-// Run `README_SHOTS_OUT=../docs/screenshots bun run pw:shot readme.spec.ts` to refresh them.
+// a phone joining, a TV lobby with its QR, a queue with somebody on deck, and the TV after it hands over a turn.
+// Run `README_SHOTS_OUT=../docs/screenshots bun run pw:shot readme.spec.ts` to refresh them, inside
+// `mcr.microsoft.com/playwright:v1.56.1-noble` (docs/E2E.md): the app's system font stack changes every frame elsewhere.
+// Then shrink the two TV frames to a 256-colour palette, which keeps the QR and text crisp:
+// `for f in tv-lobby tv-up-next; do convert $f.png -strip -dither FloydSteinberg -colors 256 PNG8:$f.png; done`
 //
 // EVERY VALUE ON SCREEN IS A FIXTURE: the room code is minted per run, the join address is the same LAN-shaped
 // one `frames.spec.ts` uses, the singers are the names the other shot specs use, and the songs are TheFatRat's
@@ -40,17 +43,6 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 		}
 	}
 
-	// The join pane a scanned QR lands on, filled in.
-	const anon = await browser.newContext({ baseURL: world.baseURL, viewport: { width: 390, height: 844 } });
-	const join_ = await anon.newPage();
-	await join_.emulateMedia({ reducedMotion: 'reduce' });
-	await join_.goto(`/?room=${encodeURIComponent(world.code)}`);
-	await join_.locator(SEL.nameInput).fill('Maya');
-	await join_.locator(SEL.colourRing).press('End');
-	await expect(join_.getByRole('button', { name: SEL.submit })).toBeEnabled();
-	await shootPhone(join_, 'phone-join', SEL.nameInput);
-	await anon.close();
-
 	const worker = await startFakeWorker(world);
 	try {
 		const tv = await world.openTv();
@@ -59,8 +51,21 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 		await theo.goto('/settings/server');
 		await theo.locator(SEL.setting('join-origin')).fill('http://192.168.7.42:3000');
 		await theo.locator(SEL.setting('join-origin')).blur();
-		const maya = await world.openPhone('Maya', { stop: 'End' });
 		const ana = await world.openPhone('Ana');
+
+		// The join pane a scanned QR lands on, filled in: Maya joining the room Theo and Ana are already in.
+		const anon = await browser.newContext({ baseURL: world.baseURL, viewport: { width: 390, height: 844 } });
+		const joinPage = await anon.newPage();
+		await joinPage.emulateMedia({ reducedMotion: 'reduce' });
+		await joinPage.goto(`/?room=${encodeURIComponent(world.code)}`);
+		await expect(joinPage.getByText('Theo and Ana are here.')).toBeVisible();
+		await joinPage.locator(SEL.nameInput).fill('Maya');
+		await joinPage.locator(SEL.colourRing).press('End');
+		await expect(joinPage.getByRole('button', { name: SEL.submit })).toBeEnabled();
+		await shootPhone(joinPage, 'phone-join', SEL.nameInput);
+		await anon.close();
+
+		const maya = await world.openPhone('Maya', { stop: 'End' });
 		await expect(tv.locator(SEL.lobby)).toBeVisible();
 		await expect(tv.locator(SEL.qrImage)).toBeVisible();
 		await expect(tv.locator(SEL.lobbyStripPerson)).toHaveCount(3);
@@ -81,9 +86,12 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 		await expect(deck).toBeVisible();
 		await shootPhone(maya, 'phone-queue', SEL.queueNowCard);
 
-		// Theo's turn ends; the TV hands the stage to Maya.
+		// Theo's turn ends; the TV hands the stage to Maya. Shot once her card has gone: the card's scrim is clear at
+		// the edges, so over it the lower third names her a second time.
 		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(tv.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
+		await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 30_000 });
+		await expect(tv.locator(SEL.nowNameScoped)).toHaveText('Maya');
 		await shoot(tv, 'tv-up-next');
 	} finally {
 		await worker.stop();

@@ -4,9 +4,9 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-| The TV, waiting for a pick | The TV, handing over a turn |
+| The TV, waiting for a pick | The TV, mid-song |
 |---|---|
-| ![The TV lobby: a join QR, the room code, and the three singers in the room](docs/screenshots/tv-lobby.png) | ![The TV's Now singing card for Maya, with Ana up next](docs/screenshots/tv-up-next.png) |
+| ![The TV lobby: a join QR, the room code, and the three singers in the room](docs/screenshots/tv-lobby.png) | ![The TV during Maya's song: her lyrics, her name and song, and Ana up next](docs/screenshots/tv-up-next.png) |
 
 | Joining from a phone | The queue, with you on deck |
 |---|---|
