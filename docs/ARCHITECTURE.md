@@ -322,7 +322,7 @@ Also contractual, and easy to break by accident because the layers live in three
 Two consequences worth stating, because both were live defects:
 
 - **Nothing above 0 may paint an opaque background.** `TvPlayer`'s `<video>` used to carry its own
-  `background: an earlier change`, which — since a process song has no video track and `object-fit: contain`
+  `background: #000`, which — since a process song has no video track and `object-fit: contain`
   letterboxes — painted the whole screen black and hid layer 0 completely. It is `transparent` now;
   `.tv`'s own black is the floor.
 - **The background is shown for the whole playing BAND, not just `screen === 'playing'`.** It is gated
@@ -334,7 +334,7 @@ Two consequences worth stating, because both were live defects:
 
 `stageBackgroundCss` resolves a style to a CSS `background` string, which is enough for every colour
 option. The `visualizer` style is the exception: a drawing loop is not expressible as a CSS value, so
-that case returns `an earlier change` — the **floor** — and a `<canvas>` mounts **inside the same `.stage-bg`
+that case returns `#000` — the **floor** — and a `<canvas>` mounts **inside the same `.stage-bg`
 layer**, not beside it. One layer, one visibility gate, one crossfade; a sibling element would have to
 be kept in agreement with this one about when to show.
 
