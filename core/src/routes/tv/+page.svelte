@@ -905,7 +905,7 @@
 			progressStyle={tvProgressStyle}
 			positionSec={positionSec}
 			durationSec={durationSec}
-			underNotice={transient === 'error'}
+			underCard={layerShown}
 			next={upNext && upNext.id !== current?.id
 				? { name: singerName(upNext.singerId), color: singers.get(upNext.singerId)?.color, media: mediaOf(upNext) }
 				: null}
@@ -916,15 +916,18 @@
 			<Reactions bind:this={reactions} />
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner). A copy gives that corner to
-		     "Make this the TV": the guests join from the real TV's QR. -->
+		     "Make this the TV": the guests join from the real TV's QR. Hidden while `.takeover-join` holds the dimmed
+		     copy, or the two stack in one box at full brightness; `visibility`, so the lane's measured box stays. -->
 		{#if !isCopy}
-			<JoinBadge
-				qrDataUrl={data.qrDataUrl}
-				joinUrl={data.joinUrl}
-				placement="corner"
-				roomCode={data.roomCode}
-				bind:cornerEl={cornerEl}
-			/>
+			<div class={['stage-join', { 'under-card': !!transient }]}>
+				<JoinBadge
+					qrDataUrl={data.qrDataUrl}
+					joinUrl={data.joinUrl}
+					placement="corner"
+					roomCode={data.roomCode}
+					bind:cornerEl={cornerEl}
+				/>
+			</div>
 		{/if}
 	{/if}
 
@@ -1068,6 +1071,13 @@
 	}
 	/* Above the takeover, so it is never painted over. The composited --ink-dim run inside it still clears 3:1 at
 	   this opacity and the --tv-small size. */
+	/* `contents`, so the corner card keeps the stage as its containing block; `visibility` inherits into it. */
+	.stage-join {
+		display: contents;
+	}
+	.stage-join.under-card {
+		visibility: hidden;
+	}
 	.takeover-join {
 		position: absolute;
 		inset: 0;

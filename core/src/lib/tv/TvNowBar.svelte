@@ -33,8 +33,8 @@
 		progressStyle: TvProgressStyle;
 		positionSec: number;
 		durationSec: number;
-		/** A Skipped notice is up; see `.under-notice`. */
-		underNotice: boolean;
+		/** A takeover card is up (`layerShown`); see `.under-card`. */
+		underCard: boolean;
 		/** The next turn, when it is not the one on stage. */
 		next: { name: string; color: string | undefined; media: Media | null } | null;
 		/** The lower third's rendered height, on every resize; /tv turns it into `--tv-chrome-h`. */
@@ -51,7 +51,7 @@
 		progressStyle,
 		positionSec,
 		durationSec,
-		underNotice,
+		underCard,
 		next,
 		oncardsize,
 		onupnextsize
@@ -80,9 +80,10 @@
 	background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
 	name and the ResizeObserver binding stay.
 -->
-<!-- Hidden, not unmounted, under a Skipped notice: the next singer is "Up next" there and is named here only once
-	their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
-<div class={['lower-third', { 'under-notice': underNotice }]} bind:this={lowerThirdEl}>
+<!-- Hidden, not unmounted, under every takeover: the card is the whole screen, so the "Now singing" card never has
+	its name and song repeated down here, and under a Skipped notice the next singer is "Up next" and is named here
+	only once their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
+<div class={['lower-third', { 'under-card': underCard }]} bind:this={lowerThirdEl}>
 	<span class="ls-name"><span class="ls-dot" style="--singer: {color ?? 'var(--accent2)'}"></span>{name}</span>
 	<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
 	<span class="ls-song"
@@ -98,7 +99,7 @@
 	{/if}
 </div>
 {#if progressStyle !== 'card'}
-	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} />
+	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
 {/if}
 <!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. -->
 {#if next}
@@ -112,8 +113,16 @@
 {/if}
 
 <style>
-	.lower-third.under-notice {
+	/* Cuts out as the card comes up and fades back in as the layer's exit starts, on the layer's own curve, so the
+	   card's words hand over to the stage's in one motion. OPT-IN under no-preference: reduced, it cuts back. */
+	.lower-third.under-card {
 		visibility: hidden;
+		opacity: 0;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.lower-third {
+			transition: opacity var(--motion-base) ease;
+		}
 	}
 	.lower-third {
 		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */

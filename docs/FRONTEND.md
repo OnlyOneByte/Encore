@@ -1937,6 +1937,14 @@ hold's last moment without advancing. A hold too short to fit the fade-in, a 600
 (the room allows 500 ms) is not led: its card leaves at the hold's end. Under `prefers-reduced-motion: reduce` both cut
 at the hold's end.
 
+While the layer is up, the card is the whole stage. The scrim is transparent past 62% of its radius, so the stage
+chrome in the corners shows through it: the lower third and the progress line are hidden (`underCard`, from
+`layerShown`), or "Now singing Maya" is on screen twice, and the stage's own corner QR is hidden while `transient`
+holds the dimmed `.takeover-join` copy, or the two stack at full brightness in one box. Both hide by `visibility`,
+so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. The
+lower third and progress line cut out as the card comes up and fade back in on `--motion-base` as the layer's exit
+starts, so the card's words hand over to the stage's in one motion; under reduce they cut back.
+
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
 `paint-order: stroke fill`. A shadow tuned against
