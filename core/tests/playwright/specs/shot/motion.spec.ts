@@ -801,8 +801,8 @@ function restartRest(width: number, back: boolean): Make {
 				await queueReady(ph.maya, 'caroline');
 				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
 				// The seeded file, not a remote hit; with no worker its karaoke is never made.
+				await ph.theo.goto('/?source=local');
 				await openBrowseFromHome(ph.theo);
-				await ph.theo.locator(SEL.searchSource).first().selectOption('local');
 				await ph.theo.locator(SEL.search).fill('bohemian');
 				await ph.theo.locator(SEL.songRow, { hasText: 'bohemian' }).locator(SEL.singAction).first().click();
 				// His turn is in, or the skip would empty the room ("Nothing playing") instead of leaving the waiting line.
