@@ -153,20 +153,24 @@
 	async function leaveRoom() {
 		leaving = true;
 		leaveRefusal = '';
+		// The server closes this tab's socket as part of the leave; the link must read that as this leave, not a lost session.
+		const undoLeave = room.beginLeave();
 		try {
 			const res = await fetch('/api/leave', { method: 'POST' });
 			if (!res.ok) {
+				undoLeave();
 				leaveRefusal = LEAVE_REFUSAL;
 				leaving = false;
 				return;
 			}
 		} catch {
+			undoLeave();
 			leaveRefusal = LEAVE_REFUSAL;
 			leaving = false;
 			return;
 		}
-		// The cookie was this browser's, so its other tabs have left too.
-		room.sessionChanged();
+		// The plain join screen here, and the cookie was this browser's, so its other tabs are told they left too.
+		room.left();
 		/* `/` AND NEVER `closeTo`: the cookie is gone, so the landing page is the only honest destination — a reload, or
 		   a `?next=` pointing at any other surface, would 401 into the same place after a flash of an empty page. */
 		await goto('/');

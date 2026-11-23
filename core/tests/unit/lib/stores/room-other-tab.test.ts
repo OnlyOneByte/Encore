@@ -199,6 +199,57 @@ test('a socket closed because the singer left is the join screen, never "Reconne
 	expect(t.wentOffline(), 'a session that ended read as a dropped link').toBe(false);
 });
 
+test("the tab that taps Leave: the server's close lands first, and it is still no lost line", async () => {
+	const t = await tab();
+	t.link.beginLeave();
+	t.answer(401);
+	t.kick(4001); // before the Leave's own response
+	await Bun.sleep(150);
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.lostName, 'a guest who left on purpose was told they were removed').toBeNull();
+	t.link.left();
+	expect(t.link.lostName).toBeNull();
+	expect(t.wentOffline()).toBe(false);
+});
+
+test("the tab that taps Leave: left() settles it plainly and tells the others; the server's close then changes nothing", async () => {
+	const t = await tab();
+	const heard: unknown[] = [];
+	const other = new BroadcastChannel('encore-session');
+	restore.push(() => other.close());
+	other.onmessage = (e) => heard.push(e.data);
+	t.link.beginLeave();
+	t.link.left();
+	expect(t.link.status).toBe('not-joined');
+	expect(t.link.me).toBeNull();
+	expect(t.link.lostName).toBeNull();
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.lostName).toBeNull();
+	expect(t.asked(), 'the dropped link answered a close it no longer has').toBe(1);
+	expect(heard).toHaveLength(1);
+});
+
+test('a Leave that failed is undone: a session lost later is a lost session again', async () => {
+	const t = await tab();
+	t.link.beginLeave()();
+	t.answer(401);
+	t.kick(4001);
+	await Bun.sleep(150);
+	expect(t.link.lostName).toBe('Maya');
+});
+
+test('a tab that just joined and moved on without a reload does not read itself as someone new', async () => {
+	const t = await tab(401);
+	t.link.sessionChanged(THEO.id);
+	t.answer(THEO);
+	t.show('visible');
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.replacedBy, 'its ?next= destination would be lost to a reload').toBeNull();
+});
+
 test('any other close is still a dropped link', async () => {
 	const t = await tab();
 	t.kick(1001);

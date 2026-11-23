@@ -56,9 +56,10 @@ async function leaverSeesPlainJoin(tab: Page): Promise<void> {
 	await expect(tab.locator(SEL.joinColumn).first()).toBeVisible();
 	for (const wait of [0, 2_000]) {
 		await tab.waitForTimeout(wait);
-		expect((await tab.locator('.lost').allTextContents()).join('').trim(), 'the leaver was told they were removed').toBe(
-			''
-		);
+		expect(
+			(await tab.locator('.lost').allTextContents()).join('').trim(),
+			'the leaver was told they were removed'
+		).toBe('');
 		expect(await tab.getByText(LOST).count()).toBe(0);
 		expect(await tab.locator(SEL.dock).count(), 'the dock outlived the leave').toBe(0);
 	}

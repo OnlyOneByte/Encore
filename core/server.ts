@@ -208,9 +208,7 @@ const server = Bun.serve<SocketData>({
 			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
 			// A Leave that landed after the upgrade ended this token, so the socket opens as a spectator.
-			if (ws.data.singerId && app.singers.bySessionToken(ws.data.sessionToken)?.id !== ws.data.singerId)
-				ws.data.singerId = undefined;
-			singerSockets.add(ws);
+			singerSockets.bindAtOpen(ws, (token) => app.singers.bySessionToken(token));
 			// Own room topic only: isolation is between rooms, not against a viewer of the room this box
 			// serves. An unscoped spectator defaults to the served room.
 			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));

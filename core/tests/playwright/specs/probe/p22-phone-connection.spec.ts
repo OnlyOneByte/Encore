@@ -11,7 +11,8 @@
 //   3. None of it shifts the layout: CLS 0 for a guest who never joined, a joined phone, and a blip's recovery.
 //   4. A phone whose session is gone is told so. Its socket reconnected as an anonymous spectator: the dot went
 //      green, the dock stayed, and every tap was refused with nothing saying why. A reconnect asks /api/me again now,
-//      and a 401 is the join screen with "You're not in the room any more" and the old name filled in.
+//      and so does the close the server sends when the session ends from another tab (proposal 20). A 401 is the
+//      join screen with "You're not in the room any more" and the old name filled in.
 //
 // WHY WATCHERS AND NOT POLLS: every defect here is a FLASH or a state the phone moves through, and a poll can step
 // over one. An init script's MutationObserver and layout-shift observer see every frame the page ever had.
@@ -195,9 +196,7 @@ test('a cold load of /queue never says "Nothing queued yet" over a queue with so
 
 // `/` has a join screen of its own; `/settings` does not, so the phone is taken to `/` to be told.
 for (const start of ['/', '/settings']) {
-	test(`a phone whose session goes mid-party on ${start} is told so on reconnect, with its name kept`, async ({
-		world
-	}) => {
+	test(`a phone whose session goes mid-party on ${start} is told so at once, with its name kept`, async ({ world }) => {
 		const phone = await world.openPhone('P22Gone');
 		await openBrowseFromHome(phone);
 		if (start !== '/') await phone.goto(start);
@@ -259,14 +258,10 @@ for (const start of ['/', '/settings']) {
 			}).observe({ type: 'layout-shift' });
 		});
 
-		// Leave from another tab: the same cookie jar, so the server forgets the singer and clears the cookie. This
-		// page's socket stays bound to the old singer until it drops, which is the window the defect lived in.
+		// Leave from another tab: the same cookie jar, so the server ends the session and clears the cookie. The
+		// server then closes this page's socket too (proposal 20), and the phone asks /api/me at once. Before #996 the
+		// socket came back as a spectator instead: green, dock up, every tap refused.
 		expect((await phone.context().request.post('/api/leave')).status()).toBe(200);
-		await phone.context().setOffline(true);
-		await expect(phone.getByText('Reconnecting…')).toBeVisible({ timeout: 30_000 });
-		await phone.context().setOffline(false);
-
-		// Before the fix the socket came back as a spectator: green, dock up, every tap refused.
 		await expect(phone.getByText("You're not in the room any more. Join again to sing.")).toBeVisible({
 			timeout: 15_000
 		});

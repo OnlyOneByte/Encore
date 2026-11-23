@@ -151,6 +151,10 @@ export class RoomLink {
 	/** A re-check is out; a reason to ask that arrives meanwhile asks once more after it, never alongside it. */
 	#rechecking = false;
 	#recheckAgain = false;
+	/** Set between `beginLeave()` and `left()`: this tab's own Leave is in flight. */
+	#leaving = false;
+	/** Who this tab just joined as, while `me` is still unset (see `sessionChanged`). */
+	#joinedAs: string | undefined;
 	/** A tab coming back to the front asks too: a browser that froze it in the background never delivered the message. */
 	#onVisible = () => {
 		if (document.visibilityState === 'visible') void this.#recheckMe();
@@ -425,8 +429,9 @@ export class RoomLink {
 		}
 		if (answer === 'not-joined') {
 			if (this.#state !== 'live') return;
-			this.lostName = this.me?.displayName ?? null;
-			this.lostColor = this.me?.color ?? null;
+			// This tab's own leave is not a lost session: no name to offer back, and no line saying they were removed.
+			this.lostName = this.#leaving ? null : (this.me?.displayName ?? null);
+			this.lostColor = this.#leaving ? null : (this.me?.color ?? null);
 			this.me = null;
 			this.status = 'not-joined';
 			// `guest`, not `closed`: still listening, so this tab follows when another one joins.
@@ -436,15 +441,41 @@ export class RoomLink {
 			return;
 		}
 		const following = this.#state === 'live' || this.#state === 'guest';
-		if (answer && answer.id !== this.me?.id && following && !this.replacedBy) {
+		const self = this.me?.id ?? this.#joinedAs;
+		if (answer && answer.id !== self && following && !this.replacedBy) {
 			this.replacedBy = answer;
 			this.#emit();
 		}
 	}
 
-	/** Tell this browser's other tabs that a join or a leave just landed here, so they ask who they are now. */
-	sessionChanged(): void {
+	/** Tell this browser's other tabs that a join or a leave just landed here, so they ask who they are now. `joinedAs`
+	 *  is who THIS tab just joined as, so its own re-check does not read that singer as someone new (a join that
+	 *  navigates to `?next=` without a reload leaves `me` unset). */
+	sessionChanged(joinedAs?: string): void {
+		if (joinedAs) this.#joinedAs = joinedAs;
 		this.#session?.postMessage('changed');
+	}
+
+	/** This tab is leaving on purpose. The server closes this tab's socket too (4001), possibly before the Leave's own
+	 *  response lands, so until `left()` or the returned undo, a session that ends is this tab's own leave, not news.
+	 *  The undo is for a leave that failed. */
+	beginLeave(): () => void {
+		this.#leaving = true;
+		return () => void (this.#leaving = false);
+	}
+
+	/** The Leave landed. This tab goes to the plain join screen: no "You're not in the room any more", which is for a tab
+	 *  that did not choose it. The socket goes now, so the server's close finds nothing to answer, and the other tabs are told. */
+	left(): void {
+		this.#leaving = false;
+		this.me = null;
+		this.lostName = null;
+		this.lostColor = null;
+		this.status = 'not-joined';
+		if (this.#state === 'live') this.#state = 'guest';
+		this.#dropSocket();
+		this.sessionChanged();
+		this.#emit();
 	}
 
 	#dropSocket(): void {

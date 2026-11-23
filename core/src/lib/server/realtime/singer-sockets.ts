@@ -2,16 +2,24 @@
 // singer is fixed at upgrade from the cookie (server.ts), and the tabs of one phone share that cookie, so a guest
 // with two tabs holds two sockets as the same singer. See docs/SERVER.md#sessions-and-cookies.
 
+import { LEFT_CLOSE_CODE } from '../../contract';
+
 /** The part of a Bun socket this needs, so a test can pass a plain object. */
 export interface BoundSocket {
-	data: { role: string; singerId?: string };
+	data: { role: string; singerId?: string; sessionToken?: string };
 	close(code?: number, reason?: string): void;
 }
 
-import { LEFT_CLOSE_CODE } from '../../contract';
-
 export class SingerSockets<S extends BoundSocket> {
 	#bySinger = new Map<string, Set<S>>();
+
+	/** At open: the singer was read from the cookie at upgrade, and a Leave can land between the upgrade and the open.
+	 *  Its `endSession` already replaced the token, so a token that no longer names this singer opens a spectator;
+	 *  otherwise the socket is tracked, so a later Leave reaches it. `lookup` is the singers table. */
+	bindAtOpen(ws: S, lookup: (token: string | undefined) => { id: string } | null): void {
+		if (ws.data.singerId && lookup(ws.data.sessionToken)?.id !== ws.data.singerId) ws.data.singerId = undefined;
+		this.add(ws);
+	}
 
 	add(ws: S): void {
 		const id = ws.data.singerId;

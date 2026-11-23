@@ -4,6 +4,8 @@ import { test, expect } from 'bun:test';
 import { SingerSockets, type BoundSocket } from '$lib/server/realtime/singer-sockets';
 import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { migratedDb } from '$lib/server/db/test-db';
 import { EMPTY_SONG_PROFILE, LEFT_CLOSE_CODE, ulid, type ClientCommand, type Media } from '$lib/contract';
 
 type Fake = BoundSocket & { closed: number | null };
@@ -57,6 +59,36 @@ test('a leave closes every phone socket of that singer, and a frame on one is re
 	expect(tabB.closed).toBe(LEFT_CLOSE_CODE);
 	// An add already on the wire is handled before the close lands: it acts as nobody now.
 	expect(addOn(tabA)).toBe('join the room first');
+});
+
+/** A socket as server.ts upgrades it: the singer and the token are both read from the cookie, before the open. */
+function upgradedAs(singers: SingerRepository, token: string): Fake {
+	const ws = sock('phone', singers.bySessionToken(token)?.id);
+	ws.data.sessionToken = token;
+	return ws;
+}
+
+test('a Leave that lands between the upgrade and the open: the socket opens as nobody, and is not tracked', () => {
+	const singers = new SingerRepository(migratedDb());
+	const maya = singers.create('Maya', '#a78bfa', 1, 'room');
+	const reg = new SingerSockets<Fake>();
+	const ws = upgradedAs(singers, maya.sessionToken);
+	expect(ws.data.singerId).toBe(maya.id);
+	singers.endSession(maya.id); // the Leave, in between
+	reg.bindAtOpen(ws, (t) => singers.bySessionToken(t));
+	expect(ws.data.singerId).toBeUndefined();
+	expect(addOn(ws)).toBe('join the room first');
+});
+
+test('a socket that opens with a live token stays bound, and a later Leave reaches it', () => {
+	const singers = new SingerRepository(migratedDb());
+	const maya = singers.create('maya', '#a78bfa', 1, 'room');
+	const reg = new SingerSockets<Fake>();
+	const ws = upgradedAs(singers, maya.sessionToken);
+	reg.bindAtOpen(ws, (t) => singers.bySessionToken(t));
+	expect(ws.data.singerId).toBe(maya.id);
+	reg.release(maya.id);
+	expect(ws.closed).toBe(LEFT_CLOSE_CODE);
 });
 
 test("another singer's sockets are untouched", () => {
