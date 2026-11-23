@@ -1,0 +1,80 @@
+{
+  "scenario": "phone-tab-adopted-320",
+  "what": "Phone 320: another tab joined as someone new, so this one comes back as them (header name changes)",
+  "capturedAt": "2026-11-23T16:46:52.175Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "lost": false,
+    "me": "Theo7"
+  },
+  "subject": {
+    "selector": ".me-name",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "lost": false,
+      "me": "Theo9"
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 22,
+    "observed": {
+      "lost": false,
+      "me": "Theo15"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 4362,
+    "encodeMs": 488,
+    "liveMs": 12750,
+    "reducedMs": 2974,
+    "reducedEncodeMs": 694
+  },
+  "files": {
+    "clip.gif": 23384,
+    "clip-slow4x.gif": 23384,
+    "filmstrip.png": 103848,
+    "filmstrip-reduced.png": 229702
+  }
+}
