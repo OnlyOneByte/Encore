@@ -64,7 +64,7 @@ test('the documented announcement on `/` still has a changed stage to report', (
 	   `processMedia` on `/` is now a haptic plus `room.requestProcess(mediaId)`, and the set lives inside that
 	   method — still BEFORE the await, which is the property this reasoning rests on. Pinned in both places, since
 	   either half going missing silences the transition this test is about. */
-	expect(home).toContain('await room.requestProcess(mediaId);');
+	expect(home).toContain('return room.requestProcess(mediaId);');
 	expect(roomStore).toContain("this.setMediaStatus(mediaId, { status: 'queued', pct: 0 });");
 	expect(home).toContain('const ids = processingGroupIds(processingResults);');
 	expect(home).toMatch(/processingResults = j\.processing \?\? \[\];/);

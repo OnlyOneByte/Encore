@@ -1,9 +1,9 @@
 // Spotify is a SEARCH / metadata source only: its bytes are never pulled, so no process can run for one of its hits.
-// Enforcing that inside `requestProcess` alone is TOO LATE — `processState` still answers 'processable', the phone offers
-// Sing, and `processAndQueue` takes the singer's turn (queue first, process second, by design) before the refusal lands.
-// The turn then sits in the rotation with nothing that could make it ready and no failure event, because no job was ever
-// enqueued to fail. So the refusal must be visible at `processState`, the designated answer. Reachable only with
-// SPOTIFY_CLIENT_ID/SECRET set; these tests construct the materialized media such a box persists on every query.
+// Enforcing that inside `requestProcess` alone was TOO LATE while Sing was queue-first — `processState` answered
+// 'processable', the phone offered Sing, and the turn was taken before the refusal landed. Sing is process-first now
+// and books no turn on a refusal, but the affordance gate is still the first line. Such a turn sat in the rotation
+// with nothing that could make it ready and no failure event, because no job was ever enqueued to fail. So the
+// refusal must be visible at `processState`, the designated answer. Reachable only with SPOTIFY_CLIENT_ID/SECRET set; these tests construct the materialized media such a box persists on every query.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { requestProcess, processState, type ProcessDeps } from '$lib/server/jobs/process';
@@ -84,8 +84,18 @@ test('requestProcess still refuses, and now refuses OFF THE STATE', () => {
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
 });
 
-test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', () => {
-	// End-to-end through the REAL pieces the phone uses: the affordance gate `canProcess`, the queue-first
+/** The page's shape: `process` resolves whether the process started, and the add runs only on true. */
+function sing(d: ReturnType<typeof deps>, entryId: string, mediaId: string): Promise<void> {
+	return processAndQueue({
+		mediaId,
+		inFlight: new Set(),
+		process: async () => requestProcess(mediaId, d) !== null,
+		queue: () => void d.state.applyQueueOp({ op: 'add', entry: entry(entryId, mediaId) })
+	});
+}
+
+test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', async () => {
+	// End-to-end through the REAL pieces the phone uses: the affordance gate `canProcess`, the process-first
 	// `processAndQueue`, the authoritative state and rotation. Asserted as a DIFFERENCE between the two rows
 	// deliberately: a `canProcess` that cannot see the media withholds BOTH affordances, so `expect(spOffered).toBe(false)`
 	// alone would pass for the wrong reason. The claim is that a metadata-only hit is told apart from a YouTube upload.
@@ -104,13 +114,7 @@ test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', (
 
 	// The `if` IS the production shape: `onmake` is only wired when canProcess says so, so a false verdict
 	// means the tap is unreachable.
-	if (spOffered) {
-		// The page's shape: both steps are void, so the process's return is discarded.
-		processAndQueue<void>({
-			queue: () => void d.state.applyQueueOp({ op: 'add', entry: entry('q1', 'sp1') }),
-			process: () => void requestProcess('sp1', d)
-		});
-	}
+	if (spOffered) await sing(d, 'q1', 'sp1');
 
 	// No turn taken, so nothing for rotation to hold. With the affordance offered this reads
 	// { next: null, held: ['q1'] }: a turn skipped on every pass that no event can ever make ready,
@@ -121,7 +125,17 @@ test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', (
 	expect(next).toBeNull();
 });
 
-test('CONTROL: the same tap on a YouTube row DOES take the turn and start the process', () => {
+test('a Sing that reaches a refused process anyway (a stale phone) still books no turn', async () => {
+	// Behind the affordance gate: a phone that drew Sing before the gate existed. Queue-first left a turn here that
+	// rotation held forever; process-first asks first and adds nothing on the refusal.
+	const d = deps();
+	d.mediaById.set('sp1', spotifyMedia());
+	await sing(d, 'q1', 'sp1');
+	expect(d.state.entries).toHaveLength(0);
+	expect(nextPlayable(d.state.entries, d.mediaById).held).toHaveLength(0);
+});
+
+test('CONTROL: the same tap on a YouTube row DOES take the turn and start the process', async () => {
 	// The ordinary path must stay open: same harness, one field different, which is what proves the arm
 	// above discriminates on `source` rather than on the harness refusing to do anything.
 	const d = deps();
@@ -130,13 +144,7 @@ test('CONTROL: the same tap on a YouTube row DOES take the turn and start the pr
 
 	const offered = canProcess(yt, readinessOf(yt));
 	expect(offered).toBe(true);
-	if (offered) {
-		// The page's shape: both steps are void, so the process's return is discarded.
-		processAndQueue<void>({
-			queue: () => void d.state.applyQueueOp({ op: 'add', entry: entry('q1', 'yt1') }),
-			process: () => void requestProcess('yt1', d)
-		});
-	}
+	if (offered) await sing(d, 'q1', 'yt1');
 
 	expect(d.state.entries).toHaveLength(1);
 	expect(yt.stemStatus).toBe('queued');

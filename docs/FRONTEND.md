@@ -529,8 +529,10 @@ because a `class:` directive is not valid on a component. Their common contracts
   element at the pointer it is what `elementFromPoint` returns instead of the drop slot beneath, and a release
   on a legal target commits nothing.
 - **`SongRow` offers ONE primary action.** A turn with no process is held and skipped by the rotation forever; a
-  process with no turn gives the singer nothing. `src/lib/process-and-queue.ts` runs both, in that order,
-  because the job's priority is derived from the rotation position of the turns pointing at that media.
+  process with no turn gives the singer nothing. `src/lib/process-and-queue.ts` runs both: the process first,
+  then the add, and the add only if the process started. The POST marks the song `queued` before it answers, so
+  every other phone reads the new turn as "Making karaoke…" from its first frame. The job's priority comes from
+  the hub's `onEntryAdded` reprioritise when the add lands.
 
 ### Charts, fields and the rest
 

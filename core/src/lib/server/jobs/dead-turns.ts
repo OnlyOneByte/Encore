@@ -135,10 +135,10 @@ export function deadTurns(
 /**
  * The memory a PERIODIC caller needs: two sets, no clock, no constant.
  *
- * TWO CONSECUTIVE PASSES BEFORE A MEDIA COUNTS AS NEWLY DEAD. The reader's one false-positive window in
- * normal operation is between `queue()` and `process()` inside `processAndQueue` — the entry exists, no job
- * has been enqueued yet — measured at 3–21 ms for 29 of 33 observed taps. Requiring the same media on two
- * consecutive passes closes it with no number to defend, which is the `#unservableSince` discipline in
+ * TWO CONSECUTIVE PASSES BEFORE A MEDIA COUNTS AS NEWLY DEAD. `processAndQueue` starts the job before it
+ * adds the turn, so Sing leaves no window where the entry exists and no job does. The grace stays because it
+ * is cheap and covers a tab still running the old queue-first code. Requiring the same media on two
+ * consecutive passes closes that with no number to defend, which is the `#unservableSince` discipline in
  * worker-hub minus its TTL. (A server-side `addedAt` grace would also be sound, since the hub re-stamps
  * `addedAt` from the room's own clock at `nextAddedAt()`. It needs a constant; this does not. The same
  * grace on the CLIENT would not be sound at all: there `addedAt` is a server stamp compared against the

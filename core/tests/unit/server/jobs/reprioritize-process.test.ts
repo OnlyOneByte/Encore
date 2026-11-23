@@ -11,7 +11,7 @@ import { planAssignments } from '$lib/server/jobs/dispatch';
 import { reprioritizeProcessForMedia } from '$lib/server/jobs/reprioritize-process';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { NO_QUEUE_PRIORITY } from '$lib/server/jobs/process';
+import { NO_QUEUE_PRIORITY, soonestSeqFor } from '$lib/server/jobs/process';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand, type ServerEvent } from '$lib/contract';
 import type { WorkerSession } from '$lib/server/jobs/registry';
 
@@ -144,4 +144,35 @@ test('reprioritizeProcessForMedia is a no-op when the process already sits at it
 	expect(changed).toBe(false); // soonest turn (5) is WORSE than current (2) → nothing to do
 	expect(jobs.byId(healthy.id)!.priority).toBe(2);
 	expect(kicked).toBe(0);
+});
+
+// ── Sing is process-first (`processAndQueue`), so this seam is what gives its job the singer's priority ──
+const turn = (over: Partial<QueueEntry> = {}): QueueEntry => ({
+	id: 'e1',
+	mediaId: 'm1',
+	singerId: 's1',
+	status: 'queued',
+	rotationSeq: 3,
+	addedAt: 0,
+	...over
+});
+
+test('an add pulls a process filed at NO_QUEUE_PRIORITY up to the turn (Sing files the process first)', () => {
+	const jobs = makeRepo();
+	const sung = jobs.enqueue('m-starved', 'stems', NO_QUEUE_PRIORITY, T0); // the POST, before any turn exists
+	const { deps, dispatched } = harness(jobs);
+	handleQueueCommand(addCmd('e-sung', 'm-starved'), deps); // the add that follows the POST's answer
+	expect(jobs.byId(sung.id)!.priority).toBe(0); // the new turn's rotationSeq
+	expect(dispatched()).toBe(1);
+});
+
+test('a process with no turn yet files at NO_QUEUE_PRIORITY; a turn lends its rotation position', () => {
+	expect(soonestSeqFor('m1', [])).toBe(NO_QUEUE_PRIORITY);
+	expect(soonestSeqFor('m1', [turn()])).toBe(3);
+	// The SOONEST turn wins when several singers want the same song — the process serves whoever is up first.
+	expect(soonestSeqFor('m1', [turn({ rotationSeq: 7 }), turn({ id: 'e2', rotationSeq: 2 })])).toBe(2);
+});
+
+test('a turn for a DIFFERENT song does not lend its priority', () => {
+	expect(soonestSeqFor('m1', [turn({ mediaId: 'other' })])).toBe(NO_QUEUE_PRIORITY);
 });

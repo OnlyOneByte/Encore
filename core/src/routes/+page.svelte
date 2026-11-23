@@ -296,8 +296,8 @@
 	   "this one is already being made" and stops a second tap on the app's one compound action.
 	   WITHOUT a query there is no group at all, and this guard is the whole reason `processingGroupIds` no longer
 	   takes a catalog: the union it used to build without a query is a statement about the LIBRARY rather than about
-	   anything on this tab — and /queue now draws every queued song that is still cooking. `processAndQueue` always
-	   adds the turn alongside the process, so a processing song is in practice always a queued song and /queue is
+	   anything on this tab — and /queue now draws every queued song that is still cooking. `processAndQueue` adds the
+	   turn right after the process, and only if it started, so a processing song is in practice always a queued song and /queue is
 	   where it belongs. What that trades away, recorded because it is real: a media processing with NO queue entry
 	   (an admin-side process, or an entry removed mid-cook) is now visible only while a query matches it, because
 	   /library serves `listReady()` and paints every row ready. */
@@ -368,10 +368,14 @@
 		liveMsg = `Added ${room.titleOf(mediaId)} to the queue`;
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
+	// Plain, not reactive: nothing renders from it, it only drops a second tap while the first one's POST is out.
+	const singing = new Set<string>();
 	function singThis(mediaId: string) {
-		processAndQueue({
+		void processAndQueue({
+			mediaId,
+			inFlight: singing,
+			process: () => processMedia(mediaId),
 			queue: () => addSong(mediaId),
-			process: () => void processMedia(mediaId),
 			hasQueuedTurn: inMyQueue(mediaId)
 		});
 	}
@@ -381,9 +385,9 @@
 	 * optimistic set, the rollback-the-mark-not-the-turn rule and the refusal notice are the correctness of that
 	 * call, and a second copy of the three is how they drift. What stays here is the haptic, which is a DOM read
 	 * the link may not make, and the refusal lands on the root layout's `room.onError` toast. */
-	async function processMedia(mediaId: string) {
+	async function processMedia(mediaId: string): Promise<boolean> {
 		if (navigator.vibrate) navigator.vibrate(12);
-		await room.requestProcess(mediaId);
+		return room.requestProcess(mediaId);
 	}
 
 	function showError(msg: string) {
