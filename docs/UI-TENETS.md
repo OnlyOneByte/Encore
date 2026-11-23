@@ -115,8 +115,8 @@ phone.
 - **Checks:**
   - The smallest TV type tier is at least **27 px** at 1920×1080, and nothing goes under 24 px (`gate:measured`
     CLAIM 5, a spec in `core/tests/playwright/specs/gate/`). The lyric line is 3.121 rem, about **91 px**.
-  - Chrome stays inside `--tv-safe-x` / `--tv-safe-y` (48 px / 5vw, 40 px / 6vh) for overscan. A human check,
-    from the 1920×1080 frame.
+  - Chrome stays inside `--tv-safe-x` / `--tv-safe-y` (48 px / 5vw, 40 px / 6vh) for overscan (`gate:measured`
+    CLAIM 15 at 1920×1080, the empty room and a song; other states from the 1920×1080 frame).
   - The plain-ASCII guard (`core/tests/unit/lib/tv/stage-words.test.ts`) covers every string the TV can render.
   - Rule of thumb for distance: text about 1/200 of the viewing distance tall, so about 15 mm at 3 m. 27 px is
     about 13 mm on a 43" 1080p set and 17 mm on a 55". **Small TVs are at the edge**, so the floor must not go
@@ -147,18 +147,30 @@ under a guest's thumb).
 
 Each target is for **the slowest phone people bring**, which the measurement approximates as headless Chromium at
 CPU 4× on localhost. Wi-Fi adds a round trip that is not measured here. "Today" is `main` at `91865dfe`, median
-(min–max) in ms. No row is a gate yet: a PR reports the rows it touches, measured on `main` and on the branch.
+(min–max) in ms.
+
+**Which rows are gated.** `gate:measured` (`core/tests/playwright/specs/gate/measured-speed-*.spec.ts`) holds the
+best of 5 reps at **CPU 1×** for the rows below marked **gated**: open `/` cold and open the QR (1000 ms, their target, but
+held at 1×: the target is set at 4×, so a green CLAIM 9 does not mean the 4× target is met), reload a
+joined phone and a joined phone opening `/queue` (500 ms), TV `/tv` cold (1000 ms) (CLAIM 9), and tap Sing (+)
+(CLAIM 10, ≤ 100 ms, with the dock tabs, On deck's key and Try again). The **4× column is reported, never gated**:
+printed in the gate output and attached to the run, and checked on a quiet machine or by the reviewer's A/B run,
+because a throttled page on a shared, loaded box swings 2–3× between runs. The CSS and JS each route ships is gated too
+(CLAIM 13, gzipped; `/` 20.4 + 129.0 KB, `/queue` 21.6 + 143.9 KB, `/tv` 20.2 + 132.0 KB today, with about 3%
+headroom); a PR that shrinks a route lowers its budget in the same PR. Every other row is reported by the PR that
+touches it, measured on `main` and on the branch.
 
 | Moment                                              | Target                                    | Today (1×)       | Today (4×)    | Notes                                                                      |
 | --------------------------------------------------- | ----------------------------------------- | ---------------- | ------------- | -------------------------------------------------------------------------- |
-| Open from the QR (`/?room=CODE`) → name field ready | ≤ 1000 ms at 4×                           | 205 (170–245)    | 673 (646–797) | CLS 0                                                                      |
-| Open `/` cold → code box ready                      | ≤ 1000 ms at 4×                           | 176 (160–448)    | 684 (608–708) |                                                                            |
-| Reload a joined phone → Sing box ready              | ≤ 500 ms                                  | 127 (84–154)     | –             |                                                                            |
-| TV `/tv` cold → room code and QR                    | ≤ 1000 ms                                 | 112 (100–160)    | –             | LCP 784 ms is the attract phrase's ruled 600 ms fade                       |
+| Open from the QR (`/?room=CODE`) → name field ready | ≤ 1000 ms at 4×                           | 205 (170–245)    | 673 (646–797) | CLS 0. **Gated** at 1× to 500 ms; 4× reported                              |
+| Open `/` cold → code box ready                      | ≤ 1000 ms at 4×                           | 176 (160–448)    | 684 (608–708) | **Gated** at 1× to 500 ms; 4× reported                                     |
+| Reload a joined phone → Sing box ready              | ≤ 500 ms                                  | 127 (84–154)     | –             | **Gated**                                                                  |
+| A joined phone opens `/queue` → heading ready       | ≤ 500 ms                                  | 164 (156–196)    | –             | **Gated**                                                                  |
+| TV `/tv` cold → room code and QR                    | ≤ 1000 ms                                 | 112 (100–160)    | –             | **Gated**. LCP 784 ms is the attract phrase's ruled 600 ms fade            |
 | Join: tap Start singing → Sing box ready            | ≤ 300 ms                                  | 136 (105–149)    | –             | dock at 162 ms                                                             |
 | Search: last keystroke → first library result       | ≤ 300 ms                                  | 205 (175–259)    | 275 (214–279) | 150 ms of that is the debounce in `core/src/routes/+page.svelte`           |
 | Search: default sources (catalog and YouTube)       | ≤ 1000 ms on real Wi-Fi                   | **unmeasured**   | –             | 188 (179–277) with the resolvers stubbed; real network unmeasured          |
-| Tap Sing (+) → button reads "queued"                | ≤ 100 ms                                  | 40 (31–82)       | 33            | optimistic                                                                 |
+| Tap Sing (+) → button reads "queued"                | ≤ 100 ms                                  | 40 (31–82)       | 33            | optimistic. **Gated** at 1×; 4× reported                                   |
 | Tap Sing → row on your own `/queue`                 | ≤ 300 ms                                  | 114 (109–148)    | 196           |                                                                            |
 | Tap Sing → TV "Up next"                             | ≤ 250 ms                                  | 46               | 37            |                                                                            |
 | Tap Sing → row on another phone's `/queue`          | ≤ 250 ms                                  | 134              | 119           | in the DOM at about 11 ms; about 120 ms is the row-hold animation          |

@@ -105,20 +105,35 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 ### Speed (tenets 1 and 2)
 
 - **S1.** Tap to first visible change is at most 100 ms, at CPU 1× and 4×, for every control the PR touches.
-  Not automated yet; a gate candidate.
-- **S2.** The PR's moments stay inside the [speed budget](UI-TENETS.md#speed-budget). Measure on `main` and on the
-  branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule). Measured by hand
-  (the browser's Performance panel or a throwaway Playwright timing) until a speed probe is committed.
+  **Automated** at 1× for Sing (+), the dock tabs, On deck's key and Try again (`gate:measured` CLAIM 10, the best
+  of 5 taps). The 4× numbers are printed and attached to the run but **not gated**: on a shared, loaded box a
+  throttled page swings 2–3× between runs, so they are checked on a quiet machine or by the reviewer's A/B run
+  (main and branch, same box). A control the gate does not tap is the reviewer's.
+- **S2.** The PR's moments stay inside the [speed budget](UI-TENETS.md#speed-budget). The rows marked gated in
+  that table are **automated** (`gate:measured` CLAIM 9, 10 and 13). For any other row, measure on `main` and on
+  the branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule).
 - **S3.** No spinner or skeleton is on screen for less than 300 ms: it is never painted, or it stays at least
-  300 ms (`PENDING_GRACE_MS` is the pattern). Not automated yet; a gate candidate.
+  300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. **Automated** (`gate:measured`
+  CLAIM 12) on cold loads, the Sing search and a slow or lost `/api/me` (words not before 3 s; the 4 s upper bound
+  races, #1093, and is the reviewer's). Today's breaks are expected failures that a fix flips, one per cause:
+  "Finding the room…" on the QR link (#1089), "Loading the queue…" on `/queue` (#1090), and on a Sing search **two**:
+  the "Searching…" skeleton rows (#1091) and the search field's own "Searching" spinner (#1126).
 - **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
   table with the owner's ruling. Read from the diff.
 
 ### Stillness (tenet 3)
 
 - **M1.** Nothing runs longer than `--motion-slow` (400 ms), and no content is held at opacity 0 for longer than
-  `--motion-base` (250 ms), beyond the ruled exceptions in tenet 3. This tightens motion check 3. Read from
-  `metrics.json`'s `declared[].durationMs`; making `ui:review` fail above 400 ms is a gate candidate.
+  `--motion-base` (250 ms), beyond the ruled exceptions in tenet 3. This tightens motion check 3. **Automated**
+  for the phone's search, add, tab and On deck moments (`gate:measured` CLAIM 14, declared duration plus delay of
+  every animation that runs; loops and the strip's `--motion-tick` progress fill are not motion). The `/queue` Now
+  card's 500 ms `arrive` is an expected failure a fix flips (#1092). For other motion, read `metrics.json`'s
+  `declared[].durationMs`.
+- **M2.** CLS 0 on the cold loads and the phone moments above, counting **every** shift, the ones within 500 ms of
+  the tap that caused them included (a tap does not license a jump). **Automated** (`gate:measured` CLAIM 11).
+  Stepping the On deck key shifts the card today (`OnDeckCard.svelte`'s facts line and RangeBar's `left:`), an
+  expected failure a fix flips (#1127). Other state changes
+  are `dock-cls` and `queue-now-cls` (probes) and the reviewer's.
 
 ### Glance (tenet 4)
 
@@ -138,9 +153,10 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 
 ### TV (tenet 6)
 
-- **V1.** The TV type floor, the safe area and plain ASCII hold. Automated for the type floor (`gate:measured`
-  CLAIM 5) and plain ASCII (the guard in `core/tests/unit/lib/tv/stage-words.test.ts`); the safe area is a human
-  check, from the 1920×1080 frame (the cheers lane is checked by the `reactions-lane` probe).
+- **V1.** The TV type floor, the safe area and plain ASCII hold. **Automated** for the type floor (`gate:measured`
+  CLAIM 5), the safe area at 1920×1080 in the empty room and during a song (CLAIM 15) and plain ASCII (the guard in
+  `core/tests/unit/lib/tv/stage-words.test.ts`). A TV state CLAIM 15 does not reach (the handoff card, a failure
+  notice) is checked from its 1920×1080 frame; the cheers lane is the `reactions-lane` probe.
 - **V2.** One copy of each fact on the stage. A human check, from the 1920×1080 frame.
 
 ### Fun (tenet 7)
@@ -158,7 +174,7 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 Every PR answers this section, UI or not, as "Docs 1/1".
 
 - **D1.** The docs the PR makes stale are updated in the same PR, and no new comment runs past a one- or two-line
-  *why* or carries history ([CONTRIBUTING](CONTRIBUTING.md#comments)). A human check, from the diff.
+  _why_ or carries history ([CONTRIBUTING](CONTRIBUTING.md#comments)). A human check, from the diff.
 
 ## Putting the GIF in the PR
 

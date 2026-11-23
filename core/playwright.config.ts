@@ -46,7 +46,18 @@ export default defineConfig({
 			testDir: './tests/playwright/specs/gate',
 			// Measures what a real layout engine resolved, at a fixed 1080p — its claims are in CSS pixels.
 			use: { viewport: { width: 1920, height: 1080 } },
+			testIgnore: /measured-speed-.*\.spec\.ts/,
 			timeout: 180_000
+		},
+		{
+			// The speed budget's claims (CLAIM 9-14), part of `gate:measured`. They time things, so they run ALONE:
+			// one worker, after `gate` is done, rather than racing the gate's own four workers for the CPU.
+			name: 'gate-speed',
+			testDir: './tests/playwright/specs/gate',
+			testMatch: /measured-speed-.*\.spec\.ts/,
+			dependencies: ['gate'],
+			workers: 1,
+			timeout: 300_000
 		},
 		{ name: 'flow', testDir: './tests/playwright/specs/flow', timeout: 240_000 },
 		{ name: 'probe', testDir: './tests/playwright/specs/probe' },

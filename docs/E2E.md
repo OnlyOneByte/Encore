@@ -7,14 +7,15 @@
 
 ## Gates
 
-Four projects, because there are four kinds of artifact:
+Four kinds of artifact; the gate's timing half runs as its own project:
 
-| Project | Must it fail a build?                                    | What it holds                                                               |
-| ------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `gate`  | **Yes** — leg 8 of `bun run gates`, and a step in CI     | 8 specs: CLAIM 1-7 on real resolved geometry, plus the register's own shape |
-| `flow`  | `fuzz.spec.ts` runs in CI on its known seeds (see below) | long multi-client scenarios: party, playback, lobby, fuzz                   |
-| `probe` | no — run when you want the answer; nightly in CI         | one subject per spec                                                        |
-| `shot`  | **cannot** — a screenshot cannot fail a build            | frames, each driven INTO its state                                          |
+| Project      | Must it fail a build?                                    | What it holds                                                                                                                  |
+| ------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `gate`       | **Yes** — leg 8 of `bun run gates`, and a step in CI     | CLAIM 1-8 and 15 on real resolved geometry, plus the register's own shape                                                      |
+| `gate-speed` | **Yes** — the rest of `gate:measured`                    | the speed budget, CLAIM 9-14 (`measured-speed-*`): one worker, after `gate`, so the timings do not race the gate's own workers |
+| `flow`       | `fuzz.spec.ts` runs in CI on its known seeds (see below) | long multi-client scenarios: party, playback, lobby, fuzz                                                                      |
+| `probe`      | no — run when you want the answer; nightly in CI         | one subject per spec                                                                                                           |
+| `shot`       | **cannot** — a screenshot cannot fail a build            | frames, each driven INTO its state                                                                                             |
 
 CI is `.github/workflows/ci.yml` (`gate:measured`, then `--project=flow fuzz.spec.ts`) on every pull request
 that touches more than `worker/**` and the worker/nightly workflow files (its `paths-ignore`), and
@@ -31,6 +32,63 @@ top-aligned gate, so an equality-only check passes on a broken tree.
 
 `specs/gate/measured-design-register.ts` holds the control register and the measured numbers the gate specs
 read, including the quarantine entries; each entry carries its reason in the file.
+
+## Speed gate
+
+CLAIM 9-15 hold the [speed budget](UI-TENETS.md#speed-budget) and the TV safe area. The specs are
+`specs/gate/measured-speed-{load,taps,waits}.spec.ts` (`gate-speed`) and `measured-tv-safe-area.spec.ts` (`gate`);
+the measurer is `specs/gate/speed-measure.ts`.
+
+| Claim | What                                                                               | Budget                                  |
+| ----- | ---------------------------------------------------------------------------------- | --------------------------------------- |
+| 9     | a cold load paints its primary control                                             | the budget table's row, at 1×           |
+| 10    | tap to first visible change: Sing (+), dock tab, On deck key, Try again            | 100 ms at 1×                            |
+| 11    | layout shift on cold loads and the phone session                                   | CLS 0                                   |
+| 12    | no indicator on screen for under 300 ms; a lost party not called lost before 3 s   | 300 ms grace; ≥ 3 s                     |
+| 13    | CSS and JS each route ships, gzipped                                               | today's bytes + about 3%, ratchets down |
+| 14    | phone motion, declared duration plus delay                                         | 400 ms (`--motion-slow`)                |
+| 15    | TV chrome inside `--tv-safe-x` / `--tv-safe-y` at 1920×1080, empty room and a song | 0 elements outside                      |
+
+**Times are taken in the page, never in Node.** A tap is `performance.timeOrigin + event.timeStamp` of the real
+`pointerdown`; the change is the first DOM mutation inside the control's own region, stamped at the next frame (rAF,
+then one `MessageChannel` hop). A Node-side clock would add a CDP round trip that grows with host load. A cold load is
+a fresh browser context per rep (empty HTTP cache, only the cookies the row needs), timed from navigation start to the
+frame that shows the primary control, and never earlier than first contentful paint.
+
+**A timing claim holds the best of N.** Host load only adds time, so the fastest rep is the product's own cost, while
+a regression the product made slows every rep. The median is printed beside it. The `gate-speed` project runs on one
+worker after `gate` (`dependencies`), so the timings never race the gate's own workers.
+
+**The 4× rows are reported, never gated.** CDP CPU throttling at 4× on the measured page is the tenets' stand-in for
+the slowest phone, but on a shared, loaded box a throttled page swings 2–3× between runs on identical code. The 4×
+numbers are printed in the gate output and attached to the run (`speed-*.txt`), and are checked on a quiet machine or
+by the reviewer's A/B run (main and branch, same box).
+
+**What counts.**
+
+- _Layout shift:_ every entry, the ones within 500 ms of input included. CLS proper drops those, but tenet 3 is
+  "nothing moves that you didn't move", and a tap's own consequence jumping is what it rules out. A navigation starts
+  a new record, so the session test reads its state before each `goto`.
+- _Indicators:_ the `Spinner` ring, `SkeletonRows`, anything `aria-busy`, and a button or status line whose text is a
+  loading word ("Loading…", "Searching…", "Finding the room…", "Joining…"). They are polled every 8 ms beside a
+  MutationObserver, because an opacity step fires no mutation. One still on screen when the watch ends is not a flash.
+- _Motion:_ every animation and transition `document.getAnimations()` reports, by its declared timing, so a loaded host
+  reads the same numbers. Loops (a spinner, a shimmer) are indicators, and the strip's progress fill moves on
+  `--motion-tick` by design; neither counts.
+- _Bytes:_ each `stylesheet` and `script` response from the server, gzipped in the test, so the number is the build's
+  and not the server's choice of encoding. A budget only ratchets down; raising one needs the owner's ruling.
+- _TV safe area:_ every visible text-bearing element, image, button and icon under `.tv`. The backdrop, the visualiser
+  and the lyric reel are the stage, not chrome; the reel's lines take their margin from their own padding and their
+  position is not checked (CLAIM 5 covers their size only). The "no lyrics" status words are chrome and are checked. A
+  canary word placed in the band proves the reader catches one.
+
+**Known breaks.** A claim main fails today, by a named cause, is its own test. It runs its setup normally, then calls
+`knownBreak('<cause>, #<issue>')` (`test.fail`) right before its one assertion, so a broken setup is still red and only
+the claim can be the expected failure. Fixing the cause turns it "Expected to fail, but passed"; the fixing PR deletes
+the call. Each cause has its own test, so a fix flips only its own: today #1089 (QR "Finding the room…"), #1090
+(`/queue` "Loading the queue…"), #1091 (the "Searching…" skeleton), #1126 (the search field's spinner), #1092 (the Now
+card's 500 ms `arrive`) and #1127 (an On deck key step shifts the card). The lost party's 4 s upper bound is not
+gated: room.ts's timer races the request timeout (#1093).
 
 ## The `world` fixture
 
