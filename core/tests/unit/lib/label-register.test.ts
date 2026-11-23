@@ -190,8 +190,9 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 		'routes/queue/+page.svelte .now-eyebrow',
 		'routes/song/[mediaId]/+page.svelte .lab'
 	]);
-	// The television's rows are unchanged by the phone rebuild, and this is their only guard.
-	expect(onTvLadder.sort()).toEqual(['lib/tv/TvProgress.svelte .pill .lab', 'routes/tv/+page.svelte .phrase-kick']);
+	// The television's rows are unchanged by the phone rebuild, and this is their only guard. `.phrase-kick` moved
+	// with attract into TvAttract (proposal 09, the split).
+	expect(onTvLadder.sort()).toEqual(['lib/tv/TvAttract.svelte .phrase-kick', 'lib/tv/TvProgress.svelte .pill .lab']);
 
 	// The song page renders no field label at all, so its row cannot be one wearing the section register.
 	expect(strip(read('src/routes/song/[mediaId]/+page.svelte'))).not.toMatch(/<Field\.Label|class="control-label"/);

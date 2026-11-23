@@ -182,9 +182,11 @@ describe('the element-advancing signal is wired from the master element to the g
 	});
 
 	it('sets masterAdvancing from onplayingchange on BOTH player slots', () => {
-		// Two slots (visible + hidden pre-warm); each must report, or the signal goes stale across a swap.
+		// Two slots (visible + hidden pre-warm); each must report, or the signal goes stale across a swap. Both are the
+		// ONE player in the `{#each}` over A and B.
 		const wires = [...route.matchAll(/onplayingchange=\{\(\w+\)\s*=>\s*\(masterAdvancing\s*=\s*\w+\)\}/g)];
-		expect(wires.length).toBe(2);
+		expect(wires.length).toBe(1);
+		expect(route).toMatch(/const SLOTS: Slot\[\] = \['A', 'B'\];[\s\S]*\{#each SLOTS as slot \(slot\)\}\s*<TvPlayer\b/);
 	});
 
 	it("TvPlayer reports the MASTER element's own play/pause, gated on active+visible", () => {
@@ -263,12 +265,16 @@ describe('waitingProgress', () => {
 	});
 
 	it("the TV page passes the song's liveStatus, never a literal stage", () => {
-		const page = readFileSync(join(import.meta.dir, '../../../../src/routes/tv/+page.svelte'), 'utf8');
-		expect(page).not.toMatch(/processStep\(\s*['"]/);
-		expect(page).toMatch(/waitingProgress\(current \? liveStatus\.get\(current\.mediaId\) : undefined\)/);
+		const src = (f: string) => readFileSync(join(import.meta.dir, '../../../../src', f), 'utf8');
+		const page = src('routes/tv/+page.svelte');
+		// The waiting card is drawn by TvTakeover, from the page's own `current` and `liveStatus`.
+		const card = src('lib/tv/TvTakeover.svelte');
+		for (const f of [page, card]) expect(f).not.toMatch(/processStep\(\s*['"]/);
+		expect(page).toMatch(/current=\{current\}\s+liveStatus=\{liveStatus\}/);
+		expect(card).toMatch(/waitingProgress\(current \? liveStatus\.get\(current\.mediaId\) : undefined\)/);
 		// The bar draws that figure, and the slot hides whenever there is none.
-		expect(page).toMatch(/<div class="process-bar"><i style="width: \{proc\?\.pct \?\? 0\}%"><\/i><\/div>/);
-		expect(page).toMatch(/class=\{\{ 'process-slot': true, unknown: !proc \}\}/);
+		expect(card).toMatch(/<div class="process-bar"><i style="width: \{proc\?\.pct \?\? 0\}%"><\/i><\/div>/);
+		expect(card).toMatch(/class=\{\{ 'process-slot': true, unknown: !proc \}\}/);
 		// The figure is only real while every `media:status` lands in that map.
 		expect(page).toMatch(/liveStatus = new Map\(liveStatus\)\.set\(e\.mediaId, e\);/);
 	});

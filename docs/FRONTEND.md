@@ -1577,7 +1577,10 @@ the ones an innocent edit breaks.
 
 `src/routes/tv/+page.svelte` owns one monotonic z-scale, higher = closer to the viewer. Two unrelated
 layers sharing a tier leaves paint order to DOM order, so a reorder silently pushes a transient behind
-the chrome.
+the chrome. The route keeps the socket, the gapless control and the screen choice; its layers are drawn by
+`src/lib/tv/TvAttract.svelte` (attract), `TvNowBar.svelte` (lower-third, progress, up next, and the two
+measured heights behind `--tv-chrome-h` and `--tv-upnext-h`), `TvTakeover.svelte` (the transient overlays) and
+`TvAudioNotice.svelte` (the autoplay and key taps), mounted in the same DOM order as before.
 
 | tier  | layer                                                                                             |
 | ----- | ------------------------------------------------------------------------------------------------- |

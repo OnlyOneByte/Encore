@@ -240,12 +240,14 @@ test("each TV slot stamps its ended, failed and position frames with the entry I
 	// After a natural end the TV plays `upNext` one server frame early, so `current` still names the song that ended. A
 	// song 2 that then fails stamped as song 1 is dropped as stale and parks the room (p21-dead-next-song); song 2's
 	// position stamped as song 1 lands on the wrong entry.
+	// Both slots are ONE `{#each}` over A and B, so the wiring below holds for each.
 	const src = read('src/routes/tv/+page.svelte');
-	for (const slot of ['A', 'B']) {
-		expect(src).toContain(`onended={() => onVisibleEnded(slotEntryId.${slot})}`);
-		expect(src).toContain(`onfailed={() => onVisibleFailed(slotEntryId.${slot})}`);
-		expect(src).toContain(`sendTelemetry('playing', slotEntryId.${slot}, s)`);
-	}
+	expect(src).toContain("const SLOTS: Slot[] = ['A', 'B'];");
+	expect(src).toContain('{#each SLOTS as slot (slot)}');
+	expect(src.match(/<TvPlayer\b/g)).toHaveLength(1);
+	expect(src).toContain('onended={() => onVisibleEnded(slotEntryId[slot])}');
+	expect(src).toContain('onfailed={() => onVisibleFailed(slotEntryId[slot])}');
+	expect(src).toContain("sendTelemetry('playing', slotEntryId[slot], s)");
 });
 
 test('a dropped id-less ended warns once per process, not once per frame', async () => {
