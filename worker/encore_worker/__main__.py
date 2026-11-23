@@ -159,7 +159,7 @@ def device_for(config: Config, report: hardware.Report) -> str:
 async def main() -> None:
     config = Config.from_env()
     report = hardware.probe()
-    backend = hardware.resolve_backend(config.backend, report=report)
+    backend = hardware.resolve_backend(config.backend, report=report, mlx_bin=config.mlx_bin)
     device = device_for(config, report)
     jobs = hardware.resolve_demucs_jobs(config.demucs_jobs, device=device)
     caps = hardware.capabilities(

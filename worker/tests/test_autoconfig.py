@@ -29,9 +29,69 @@ from encore_worker.workflows import durable
 
 @pytest.mark.parametrize(("cores", "expected"), [(32, 8), (64, 8), (16, 4), (8, 2), (4, 1), (2, 1), (1, 1)])
 def test_cpu_demucs_jobs_scale_with_cores_up_to_the_cap(cores: int, expected: int) -> None:
-    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores)
+    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores, avail_gb=123.0)
     assert picked.count == expected
     assert f"{cores} cores" in picked.why, "the startup line says what it picked from"
+
+
+@pytest.mark.parametrize(
+    ("cores", "avail_gb", "expected", "bound"),
+    [
+        (32, 123.0, 8, "capped"),  # this host: the speedup is unchanged
+        (32, 6.1, 2, "RAM-bound"),  # an 8 GB box, about 6 GB of it free
+        (32, 3.5, 1, "RAM-bound"),  # a 4 GB container: below the reserve still runs one job
+        (8, 123.0, 2, "core-bound"),
+    ],
+)
+def test_cpu_demucs_jobs_never_outgrow_free_ram(
+    cores: int, avail_gb: float, expected: int, bound: str
+) -> None:
+    """`-j 8` peaks at about 6 GB; picked in a 4 GB container, the separation is OOM-killed every retry."""
+    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores, avail_gb=avail_gb)
+    assert picked.count == expected
+    assert bound in picked.why, "the startup line names the limit that bound the pick"
+    assert f"{avail_gb:.1f} GB free" in picked.why
+
+
+def _cgroup(root: Path, files: dict[str, str]) -> str:
+    for name, body in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(body + "\n")
+    return str(root)
+
+
+def test_a_cgroup_cpu_quota_caps_the_cores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`docker --cpus 4` on a 32-core host: the affinity mask still shows 32."""
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "v2", {"cpu.max": "400000 100000"})) == 4
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "none", {"cpu.max": "max 100000"})) == 32
+    v1 = {"cpu/cpu.cfs_quota_us": "200000", "cpu/cpu.cfs_period_us": "100000"}
+    assert hardware.cpu_count(root=_cgroup(tmp_path / "v1", v1)) == 2
+    assert hardware.cpu_count(root=str(tmp_path / "absent")) == 32
+
+
+def test_a_cgroup_memory_limit_bounds_the_free_ram(tmp_path: Path) -> None:
+    """A 4 GB container on a 123 GB host has about 3.5 GB to give, not 120."""
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(f"MemTotal: {128 << 20} kB\nMemAvailable: {123 << 20} kB\n")
+    v2 = _cgroup(tmp_path / "v2", {"memory.max": str(4 << 30), "memory.current": str(512 << 20)})
+    assert hardware.memory_available_gb(root=v2, meminfo=str(meminfo)) == pytest.approx(3.5)
+    v1 = {"memory/memory.limit_in_bytes": str(4 << 30), "memory/memory.usage_in_bytes": str(1 << 30)}
+    assert hardware.memory_available_gb(root=_cgroup(tmp_path / "v1", v1), meminfo=str(meminfo)) == 3.0
+    unlimited = _cgroup(tmp_path / "max", {"memory.max": "max", "memory.current": "1"})
+    assert hardware.memory_available_gb(root=unlimited, meminfo=str(meminfo)) == pytest.approx(123.0)
+    v1_none = _cgroup(tmp_path / "v1n", {"memory/memory.limit_in_bytes": "9223372036854771712"})
+    assert hardware.memory_available_gb(root=v1_none, meminfo=str(meminfo)) == pytest.approx(123.0)
+
+
+def test_the_auto_jobs_read_the_cgroup_when_not_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The `--cpus 4 --memory 4g` container the review measured: one job, not the host's eight."""
+    root = _cgroup(tmp_path, {"cpu.max": "400000 100000", "memory.max": str(4 << 30), "memory.current": "0"})
+    monkeypatch.setattr(hardware, "CGROUP_ROOT", root)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
+    picked = hardware.resolve_demucs_jobs(None, device="cpu")
+    assert picked.count == 1
+    assert "4 cores" in picked.why
 
 
 @pytest.mark.parametrize("device", ["cuda", "mps"])
@@ -130,6 +190,19 @@ def test_mlx_stems_needs_the_binary_not_just_the_module(monkeypatch: pytest.Monk
     without = hardware.capabilities(backend="mlx", mlx_bin="/nowhere/demucs-mlx")
     assert "stems" not in without
     assert "stems" in hardware.capabilities(backend="mlx", mlx_bin="/venv/bin/demucs-mlx")
+
+
+def test_auto_falls_back_to_torch_when_the_mlx_cli_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The module without its CLI used to pick mlx and then advertise no stems, with torch on MPS right there.
+    An explicit mlx still means mlx."""
+    mac = hardware.Report(machine="arm64", python="3", platform="macOS", apple_silicon=True)
+    monkeypatch.setattr(hardware, "module_available", lambda name: True)
+    monkeypatch.setattr(hardware, "binary_available", lambda name: name != "/nowhere/demucs-mlx")
+
+    missing = hardware.resolve_backend(None, report=mac, mlx_bin="/nowhere/demucs-mlx")
+    assert (missing.name, "demucs-mlx not found" in missing.why) == ("torch", True)
+    assert hardware.resolve_backend(None, report=mac, mlx_bin="/venv/bin/demucs-mlx").name == "mlx"
+    assert hardware.resolve_backend("mlx", report=mac, mlx_bin="/nowhere/demucs-mlx").name == "mlx"
 
 
 def test_the_default_mlx_bin_is_the_one_beside_the_interpreter(

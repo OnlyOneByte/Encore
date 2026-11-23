@@ -109,14 +109,19 @@ class Backend:
     why: str
 
 
-def resolve_backend(configured: str | None, *, report: Report | None = None) -> Backend:
+def resolve_backend(
+    configured: str | None, *, report: Report | None = None, mlx_bin: str = "demucs-mlx"
+) -> Backend:
     """Which separator implementation will run. An EXPLICIT setting always wins, even where the box cannot
-    honour it (docs/arch/05-worker.md §9.1)."""
+    honour it (docs/arch/05-worker.md §9.1). Auto only picks mlx when the CLI it runs is there, so a missing
+    one falls back to torch rather than to no stems at all."""
     if configured:
         return Backend(configured, f"explicitly configured {configured}")
     box = report if report is not None else probe()
     if box.apple_silicon and module_available("demucs_mlx"):
-        return Backend("mlx", "auto-selected mlx (Apple Silicon, demucs_mlx present)")
+        if binary_available(mlx_bin):
+            return Backend("mlx", "auto-selected mlx (Apple Silicon, demucs_mlx present)")
+        return Backend("torch", f"auto-selected torch (demucs-mlx not found: {mlx_bin})")
     return Backend("torch", "auto-selected torch")
 
 
@@ -134,27 +139,114 @@ class Jobs:
 DEMUCS_JOBS_CAP = 8
 
 
-def cpu_count() -> int:
-    """Cores this process may run on: the affinity mask where the OS has one, so a cpuset counts."""
+#: RAM held back before any extra job: demucs's own base (about 1.8 GB at 4 min of audio, growing with length)
+#: plus the worker's resident align/diarize models. Then each job past that costs `DEMUCS_JOB_GB`: measured
+#: 0.53 GB (`-j 1` 2.31 GB, `-j 4` 3.89 GB, `-j 8` 6.05 GB peak RSS, 240 s), plus headroom.
+DEMUCS_RESERVE_GB = 4.0
+DEMUCS_JOB_GB = 0.75
+
+CGROUP_ROOT = "/sys/fs/cgroup"
+_GB = 1024**3
+
+
+def _read(path: str) -> str | None:
     try:
-        return len(os.sched_getaffinity(0))
+        with open(path, encoding="ascii") as f:
+            return f.read().strip()
+    except (OSError, ValueError):
+        return None
+
+
+def _cgroup_cpus(root: str) -> int | None:
+    """The CPU quota as whole cores (cgroup v2 `cpu.max`, then v1 cfs), or None when there is none."""
+    quota: str | None = None
+    period: str | None = None
+    v2 = _read(f"{root}/cpu.max")
+    if v2:
+        quota, _, period = v2.partition(" ")
+    else:
+        quota, period = _read(f"{root}/cpu/cpu.cfs_quota_us"), _read(f"{root}/cpu/cpu.cfs_period_us")
+    try:
+        q, p = int(quota or ""), int(period or "")
+    except ValueError:  # "max", missing, or junk: no quota
+        return None
+    return max(1, q // p) if q > 0 and p > 0 else None
+
+
+def cpu_count(*, root: str | None = None) -> int:
+    """Cores this process may run on: the affinity mask where the OS has one, so a cpuset counts, and no more
+    than a cgroup CPU quota (`docker --cpus`) allows."""
+    try:
+        n = len(os.sched_getaffinity(0))
     except AttributeError:  # macOS and Windows have no affinity call
-        return os.cpu_count() or 1
+        n = os.cpu_count() or 1
+    quota = _cgroup_cpus(root or CGROUP_ROOT)
+    return min(n, quota) if quota else n
 
 
-def resolve_demucs_jobs(configured: int | None, *, device: str, cores: int | None = None) -> Jobs:
+def _cgroup_free_bytes(root: str) -> int | None:
+    """Room left under a cgroup memory limit (v2 `memory.max`, then v1), or None when there is no limit."""
+    for limit, used in (
+        ("memory.max", "memory.current"),
+        ("memory/memory.limit_in_bytes", "memory/memory.usage_in_bytes"),
+    ):
+        try:
+            cap = int(_read(f"{root}/{limit}") or "")
+        except ValueError:  # "max", missing, or junk
+            continue
+        if cap >= 1 << 60:  # v1 writes "no limit" as a page-rounded INT64_MAX
+            return None
+        try:
+            return max(0, cap - int(_read(f"{root}/{used}") or "0"))
+        except ValueError:
+            return cap
+    return None
+
+
+def _host_free_bytes(meminfo: str) -> int | None:
+    """`MemAvailable` on Linux; physical RAM where there is no /proc (macOS), which is all it needs since an
+    Apple GPU never takes the CPU `-j` branch."""
+    text = _read(meminfo)
+    if text is not None:
+        for line in text.splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 1024
+        return None
+    try:
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def memory_available_gb(*, root: str | None = None, meminfo: str = "/proc/meminfo") -> float | None:
+    """RAM this process can still take, in GB: the smaller of the host's and its cgroup's. None if unknown."""
+    free = (_host_free_bytes(meminfo), _cgroup_free_bytes(root or CGROUP_ROOT))
+    known = [b for b in free if b is not None]
+    return min(known) / _GB if known else None
+
+
+def resolve_demucs_jobs(
+    configured: int | None, *, device: str, cores: int | None = None, avail_gb: float | None = None
+) -> Jobs:
     """How many chunks torch demucs separates at once. An explicit setting wins on every device.
 
     Only CPU gets more than one: demucs runs `-j` as a thread pool on CPU alone. A quarter of the cores each,
-    because every chunk already runs torch's own intra-op threads.
+    because every chunk already runs torch's own intra-op threads, and no more than free RAM holds, because a
+    pick that gets the separation OOM-killed fails the song on every retry.
     """
     if configured:
         return Jobs(configured, f"explicitly configured {configured} (ENCORE_DEMUCS_JOBS)")
     if device != "cpu":
         return Jobs(1, f"auto 1 ({device}: demucs runs -j on CPU only)")
     n = cores if cores is not None else cpu_count()
-    picked = max(1, min(DEMUCS_JOBS_CAP, n // 4))
-    return Jobs(picked, f"auto {picked} (cpu, {n} cores: min({DEMUCS_JOBS_CAP}, cores // 4))")
+    gb = avail_gb if avail_gb is not None else memory_available_gb()
+    bounds = {"capped": DEMUCS_JOBS_CAP, "core-bound": n // 4}
+    if gb is not None:
+        bounds["RAM-bound"] = int((gb - DEMUCS_RESERVE_GB) // DEMUCS_JOB_GB)
+    bound = min(bounds, key=lambda k: bounds[k])
+    picked = max(1, bounds[bound])
+    free = f"{gb:.1f} GB free" if gb is not None else "RAM unknown"
+    return Jobs(picked, f"auto {picked} (cpu, {n} cores, {free}: {bound})")
 
 
 def capabilities(
