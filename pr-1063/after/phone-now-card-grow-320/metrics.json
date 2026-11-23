@@ -1,0 +1,457 @@
+{
+  "scenario": "phone-now-card-grow-320",
+  "what": "Phone 320x844: /queue as Theo’s own song starts — his Now card grows from the one-line view into his key and guide controls, revealed downward (clip-path, --motion-base) while the list under it glides into place; a cut under reduced motion",
+  "capturedAt": "2026-11-23T16:41:46.300Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-grow-a",
+      "target": "div.now",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "clipPath"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "svelte-qegr5c-grow-a var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.youre-up.your-turn.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-settle-b",
+      "target": "div.below",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-qegr5c-settle-b var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "hold-b",
+      "target": "h2.grouphead",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "hold-b var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "hold-b",
+      "target": "div[data-slot=item].qrow.card.list-row",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "0.22s | 0s | hold-b var(--motion-base) ease-out",
+        "durationIsToken": false,
+        "literalTimings": [
+          "0.22s"
+        ],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "hold-b",
+      "target": "div[data-slot=item].qrow.card.list-row",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "0.22s | 0s | hold-b var(--motion-base) ease-out",
+        "durationIsToken": false,
+        "literalTimings": [
+          "0.22s"
+        ],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [
+      "hold-b on div[data-slot=item].qrow.card.list-row: literal timing 0.22s",
+      "hold-b on div[data-slot=item].qrow.card.list-row: literal timing 0.22s"
+    ],
+    "waiver": {
+      "match": "literal timing 0.22s",
+      "reason": "QueueRow’s .pop-in entrance, outranked by the hold"
+    },
+    "unchecked": [],
+    "summary": "tokens: var() tokens, plus 1 waived literal (QueueRow’s .pop-in entrance, outranked by the hold)"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "deck": false,
+    "headTop": 511.796875
+  },
+  "subject": {
+    "selector": ".now",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-settle-b",
+        "target": "div.below",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-qegr5c-settle-b var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "hold-b",
+        "target": "h2.grouphead",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "hold-b var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "hold-b",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s | 0s | hold-b var(--motion-base) ease-out",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "hold-b",
+        "target": "div[data-slot=item].qrow.card.list-row",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.22s | 0s | hold-b var(--motion-base) ease-out",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.22s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-grow-a",
+        "target": "div.now",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "clipPath"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qegr5c-grow-a var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.youre-up.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) cubic-bezier(.2, .9, .3, 1.3)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-6mz4zz-seq-roll",
+        "target": "span.n",
+        "durationMs": 180,
+        "delayMs": 0,
+        "endTimeMs": 180,
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "0.18s cubic-bezier(0.32, 0.72, 0, 1) 0s 1 normal none running svelte-6mz4zz-seq-roll | 0.18s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.18s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "deck": false,
+      "headTop": 515.087646484375
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 2
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 2,
+      "max": 3
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 50,
+      "max": 100
+    },
+    "clsMax": 0.0232
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 4,
+    "observed": {
+      "deck": false,
+      "headTop": 511.796875
+    }
+  },
+  "timingsMs": {
+    "seekMs": 21356,
+    "encodeMs": 1504,
+    "liveMs": 30679,
+    "reducedMs": 11908,
+    "reducedEncodeMs": 706
+  },
+  "files": {
+    "clip.gif": 188854,
+    "clip-slow4x.gif": 188854,
+    "filmstrip.png": 264903,
+    "filmstrip-reduced.png": 117800
+  }
+}
