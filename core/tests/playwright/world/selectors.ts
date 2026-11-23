@@ -160,11 +160,9 @@ export const SEL = {
 	search: 'input[aria-label="Search a song or artist"]',
 	/** Mark, field, spinner and clear control, in normal flow: neither docked nor sticky. */
 	findBox: '.findbox',
-	/** WHERE `search` looks: `music` (the default fan-out), `everything`, `youtube`, `local`. By the
-	 *  aria-label and not `[data-slot='native-select']`, which resolves against /settings' selects too.
-	 *  A spec that needs a query to match NOTHING must narrow this to `local` first — the default reaches
-	 *  YouTube Music, which fuzzy-matches, so no string is reliably empty against it. */
-	searchSource: 'select[aria-label="Where to search"]',
+	/* WHERE `search` looks has no control on screen (proposal 21): a spec narrows by loading the Sing tab as
+	   `/?source=local`. A spec that needs a query to match NOTHING, or the seeded fixture as the first row, must
+	   do that first — the default reaches YouTube Music, which fuzzy-matches, so no string is reliably empty. */
 	/** Empties the query, which lands the Sing tab on its idle state. It no longer restores a queue-and-library
 	 *  view — those are tabs — so a spec asserting rows after a clear is asserting the old architecture. */
 	clearSearch: '[aria-label="Clear the search"]',

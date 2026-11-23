@@ -29,6 +29,8 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
 const CUTS = new Set([
+	'phone-sing-widen-390',
+	'phone-sing-widen-320',
 	'phone-reorder-held-390',
 	'phone-reorder-held-320',
 	'phone-cheers-return',
@@ -455,7 +457,7 @@ function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): Mot
 			if (!maya) {
 				maya = await world.openPhone(`Motion${++joins}`);
 				const track = await world.awaitDemoTrack();
-				await maya.locator(SEL.searchSource).first().selectOption('local');
+				await maya.goto('/?source=local');
 				await maya.locator(SEL.search).fill(track.title);
 				await maya.locator(SEL.songRow).first().locator(SEL.singAction).click();
 			}
@@ -698,7 +700,59 @@ function songDidntPlay(width: number): Make {
 	};
 }
 
+/** The Sing tab's one way wider (proposal 21): `Not it? Search everything` under a default answer re-runs the query
+ *  with `source=all`. A CUT: the rows give way to `Searching…` and come back, and the find row above them, the
+ *  field alone now, does not move. The page's searches are answered from the local index (`source=local`), because
+ *  five runs of two live YouTube lookups each overran the row's budget; the page still sends its own default and
+ *  `all` requests, and the probe sing-one-search-box reads those off the wire. */
+function singWiden(width: number): Make {
+	return (browser, world) => {
+		let maya: Page | undefined;
+		return {
+			name: `phone-sing-widen-${width}`,
+			what: `Phone ${width}x844: "Not it? Search everything" under a default answer — the rows are replaced by the wider search's, a cut; the field alone above them does not move (rows from the local index)`,
+			stepMs: 16,
+			scale: 1,
+			columns: 6,
+			open: async (opts) => {
+				maya ??= await world.openPhone(`Widen${++joins}`);
+				const track = await world.awaitDemoTrack();
+				const page = await asSinger(browser, world, opts, maya, width);
+				await page.route('**/api/search?*', (r) => {
+					const u = new URL(r.request().url());
+					u.searchParams.set('source', 'local');
+					return r.continue({ url: u.toString() });
+				});
+				await page.goto('/');
+				await openBrowseFromHome(page);
+				await page.locator(SEL.search).fill(track.title);
+				await page.getByRole('button', { name: /Not it\? Search everything/ }).waitFor({ timeout: 30_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await page.getByRole('button', { name: /Not it\? Search everything/ }).click();
+			},
+			only: '.find-row, .find-row *',
+			subject: '.find-row',
+			observe: (page) =>
+				page.evaluate(
+					(row) => ({
+						findRow: document.querySelector('.find-row')?.getBoundingClientRect().toJSON() ?? null,
+						rows: document.querySelectorAll(row).length,
+						widenOffered: [...document.querySelectorAll('button')].some((b) =>
+							/Search everything/.test(b.textContent ?? '')
+						)
+					}),
+					SEL.songRow
+				)
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'phone-sing-widen-390': singWiden(390),
+	'phone-sing-widen-320': singWiden(320),
 	'phone-song-didnt-play-390': songDidntPlay(390),
 	'phone-song-didnt-play-320': songDidntPlay(320),
 	'tv-copy-offline': tvCopyOffline(1920, 1080),

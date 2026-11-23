@@ -844,7 +844,7 @@ Beating that wants a settled-state read on the link, applied to all three at onc
 ### The Sing tab
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its
-own wordmark — the topbar is for joined singers only). Joined, it is four things: the search field, the scope picker,
+own wordmark — the topbar is for joined singers only). Joined, it is three things: the search field,
 the result groups, and one idle state. The rotation and the library rows it used to carry are the other two tabs now.
 
 `searchActive` (a non-empty query) is still the SOLE switch, and it now switches between the idle state and the
@@ -913,10 +913,7 @@ visible only while a query matches it, because `/library` serves `listReady()` a
 
 Two rulings make the wide column a layout rather than a stretched phone. **The field carries
 `max-width: var(--measure-prose)`** on both `/` and `/library` — unconditionally, because a `max-width` only ever
-takes space back and the cap cannot bite until the ROW reaches 692px (560 + this row's `--space-md` gap + the
-picker's 122px). Re-measured with the library door gone: the findbox is 284px at a 767px viewport and 560px at 768,
-because `--max-w` steps 480 → 760 there and the row steps 416 → 696 with it — so the cap binds exactly AT `--bp-md`
-and never between two widths. At 1440×900 the uncapped slot would be ~884px of caret to chase, well over a measure,
+takes space back. At 1440×900 the uncapped slot would be ~884px of caret to chase, well over a measure,
 with the placeholder adrift from the mark that labels it. `/library`'s twin is capped the same way at 768 (696 → 560)
 but from `--bp-lg` up it is bounded by the ROW GRID instead — see the library page's wide head.
 
@@ -932,21 +929,13 @@ constant: `.me-cluster` is `margin-left: auto`, so its size is a function of the
 80px at 390×844 and 770px at 1440×900 with the eight-character name `Theodora`. The name is part of the reading: a
 narrower eight characters opens the gap further, so a figure quoted without its name cannot be reproduced.
 
-Left alone for a harder reason, with the alternative built first: what the measure cap does NOT do is make the find
-row spend the column. At 1440×900 `.find-row` is 1016px (212 → 1228) and its two controls occupy 212 → 904, so 324px
-of row trails the picker empty under a hairline that spans the whole content box. Right-aligning `.source-slot`
-(`margin-left: auto` at `--bp-lg`) was tried and measured: it puts the scope picker at 1106 → 1228, 334px from the
-trailing edge of the field whose scope it sets, and reads as an orphaned control rather than as two ends of one
-surface. The topbar's split works because each end carries a whole thing — a wordmark, an identity cluster — and a
-`<select>` divorced from its field is not one. So the row stays a LEADING-ANCHORED CLUSTER, of TWO now rather than
-three: the field's leading edge sits on 212, where every row, eyebrow and empty state below it starts, and the picker
-stays within one `--space-md` of it. `/library`'s head could do better than that because it has a second thing to put
-in the width; this row does not. Below `--bp-sm` the picker takes its own line instead, and that arm is load-bearing
-rather than tidy: measured at 320px with it defeated, the search input's content box is 68px idle, 14px once a query
-puts the clear control in the row, and **zero** while the search is in flight and the spinner sits beside the clear.
-The three states are listed separately because they differ, and because the 14 was briefly attributed to "mid-search",
-which is the state that reads zero. With the arm, the input is 200px idle, 146px settled and 121px with the spinner up,
-and `.find-row` is 124px tall.
+**The find row is the field alone.** It used to share the row with a scope picker (Music / Everything / YouTube /
+Library), which proposal 21 removed: its choices returned the same rows, "Library" meant everything anyone had
+searched for, and it had no label on screen. `Not it? Search everything` under the results is the one way wider, and
+it lasts for the query it was tapped on — the next keystroke or a clear goes back to the default. The narrowing
+filter is still reachable off-screen as `/?source=<source>`, which the page passes through to `/api/search`; the gate
+specs load `/?source=local` so their first row is the seeded fixture. The field's leading edge sits on 212 at
+1440×900, where every row, eyebrow and empty state below it starts, and the measure cap keeps it at 560.
 
 **The wide-viewport void, re-measured on the corpus this tree runs on.** A desktop pixel reading of this page is
 worthless without the catalog it was taken against, and a READY row is the rare thing in every catalog here:
