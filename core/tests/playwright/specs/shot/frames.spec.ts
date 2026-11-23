@@ -28,7 +28,7 @@ import { SEL } from '../../world/selectors';
 import { openQueue } from '../../world/actors';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
-import { METRICS_FIXTURE, METRICS_READY_TEXT } from './metrics-fixture';
+import { METRICS_FIXTURE, METRICS_FIXTURE_NOW, METRICS_READY_TEXT } from './metrics-fixture';
 
 interface Viewport {
 	width: number;
@@ -147,6 +147,8 @@ async function fitToContent(page: Page, { min = 600, max = 2000, pad = 40 } = {}
  * defeated by the page holding its own reference to fetch.
  */
 async function stubMetrics(page: Page): Promise<void> {
+	// "Last seen" is relative to now, so the frame pins now to the fixture's own instant.
+	await page.clock.setFixedTime(METRICS_FIXTURE_NOW);
 	await page.route('**/api/metrics', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(METRICS_FIXTURE) })
 	);

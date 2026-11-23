@@ -85,7 +85,8 @@ export interface MetricsFixture {
  *  stubbed fetch has landed, so it is a positive ready signal rather than the absence of "Loading…". */
 export const METRICS_READY_TEXT = '47 attempts in the last 7 days, across 19 finished songs.';
 
-const FIXTURE_NOW = Date.UTC(2026, 10, 21, 20, 0);
+/** The instant the frames pin the page's clock to, so "last seen" never drifts with the calendar. */
+export const METRICS_FIXTURE_NOW = Date.UTC(2026, 10, 21, 20, 0);
 
 export const METRICS_FIXTURE: MetricsFixture = {
 	// One fast machine and one provisional slow one, and an `other` failure so its message line renders.
@@ -121,19 +122,25 @@ export const METRICS_FIXTURE: MetricsFixture = {
 		}
 	],
 	failures: [
-		{ cause: 'rate-limited', songs: 3, attempts: 4, lastSeenAt: FIXTURE_NOW - 3_600_000, lastError: 'HTTP Error 429' },
+		{
+			cause: 'rate-limited',
+			songs: 3,
+			attempts: 4,
+			lastSeenAt: METRICS_FIXTURE_NOW - 3_600_000,
+			lastError: 'HTTP Error 429'
+		},
 		{
 			cause: 'silent',
 			songs: 1,
 			attempts: 1,
-			lastSeenAt: FIXTURE_NOW - 7_200_000,
+			lastSeenAt: METRICS_FIXTURE_NOW - 7_200_000,
 			lastError: 'instrumental measures as digital silence'
 		},
 		{
 			cause: 'other',
 			songs: 1,
 			attempts: 1,
-			lastSeenAt: FIXTURE_NOW - 86_400_000,
+			lastSeenAt: METRICS_FIXTURE_NOW - 86_400_000,
 			lastError: 'ffmpeg exited 1: Invalid data found when processing input'
 		}
 	],

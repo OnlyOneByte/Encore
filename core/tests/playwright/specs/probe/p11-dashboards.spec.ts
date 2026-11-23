@@ -658,6 +658,7 @@ test('/metrics uses operator vocabulary and right-aligns its numeric columns', a
 					inTables: [...document.querySelectorAll(dashCardTable)].map((t) => t.textContent).join('\n'),
 					stageLabels: staged?.textContent ?? '',
 					headerCount: headers.length,
+					tableCount: document.querySelectorAll('table').length,
 					headerTexts: headers.map((th) => (th.textContent ?? '').trim()),
 					rightAligned: headers.filter((th) => getComputedStyle(th).textAlign === 'right').length
 				};
@@ -693,14 +694,14 @@ test('/metrics uses operator vocabulary and right-aligns its numeric columns', a
 				`harness-artefact bar labels were found. stageLabels=${reading.stageLabels.slice(0, 200)}`
 		).toBe(true);
 
-		// Column 0 of each table is the name column and is left-aligned; on each of the three tables every other
-		// column should be right, so a reader can run an eye down a column and compare.
-		const shouldBeRight = Math.max(0, reading.headerCount - 3);
+		// Column 0 of each table is the name column and is left-aligned; on every table every other column should
+		// be right, so a reader can run an eye down a column and compare.
+		const shouldBeRight = Math.max(0, reading.headerCount - reading.tableCount);
 		expect(
 			reading.rightAligned,
 			`/metrics numeric column alignment is broken — a scan-down comparison is not possible. ` +
 				`right-aligned=${reading.rightAligned}, total th=${reading.headerCount}, ` +
-				`name columns subtracted=3 (one per table)`
+				`name columns subtracted=${reading.tableCount} (one per table)`
 		).toBeGreaterThanOrEqual(shouldBeRight);
 
 		for (const size of SHOT_SIZES) await shoot(page, '/metrics', 'metrics', size, testInfo);
@@ -884,6 +885,9 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 function emptyMetricsBody(sample: Partial<MetricsSample> = {}, workers: unknown[] = []) {
 	return {
 		sample: { attempts: 0, total: 0, windowDays: 7, clipped: false, processes: 0, provisional: false, ...sample },
+		speed: { n: 0, p50Multiple: null, p90Multiple: null, p50AudioSec: null, provisional: true },
+		devices: [],
+		failures: [],
 		steps: [],
 		e2e: { n: 0, meanMs: null, p50Ms: null, p95Ms: null },
 		models: [],
