@@ -564,11 +564,14 @@ export class WorkerHub {
 		const ledger = this.#d.attempts;
 		const open = ledger?.openFor(job.id);
 		if (!ledger || open?.startedAt == null || open.workerId == null) return null;
-		// Narrower than the ETA's sample, because this one kills: only this worker's runs of this exact engine and
-		// model. Another box's speed, or demucs-mlx's for torch demucs, would stop a healthy run.
-		const own = ledger
-			.recentReady(job.jobType, ETA_WINDOW)
-			.filter((r) => r.workerId === open.workerId && r.engine === open.engine && r.model === open.model);
+		// Narrower than the ETA's sample, because this one kills: only this worker's runs, so another box's speed
+		// can't stop a healthy run. Matched by engine family, as the ETA is: the open attempt holds the request
+		// ('demucs', 'audiosep') and history holds what the worker reported ('demucs-mlx', 'audiosep:<token>').
+		const own = sameEngine(
+			ledger.recentReady(job.jobType, ETA_WINDOW).filter((r) => r.workerId === open.workerId),
+			open.engine,
+			open.model
+		);
 		const rate = workPerAudioSec(own.slice(0, ETA_SAMPLE));
 		const audioSec = open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec;
 		if (rate == null || audioSec == null || !(audioSec > 0)) return null;

@@ -1315,10 +1315,12 @@ function seedRun(
 	h.attempts.closed(id, outcome, T0 - 400_000 + sec * 1000);
 }
 
-/** A running stems job on m1 (200 s of audio, started at T0) that asked for `engine`/`model`. */
-function runningOn(h: ReturnType<typeof harness>, engine: string, model: string) {
-	const jobId = running(h);
-	h.attempts.reportFacts(jobId, { engine, model });
+/** A running stems job on m1 (200 s of audio, started at T0) that asked for `engine`/`model`. The open attempt
+ *  holds the REQUEST, as dispatch's `assigned` writes it ('demucs', 'audiosep'); the worker's reported name
+ *  ('demucs-mlx', 'audiosep:<token>') only lands on completion, so it belongs in `seedRun` history. */
+function runningOn(h: ReturnType<typeof harness>, engine: string, model: string, worker = 'w1') {
+	const jobId = running(h, worker);
+	h.attempts.assigned(jobId, worker, { engine, model }, T0);
 	return jobId;
 }
 
@@ -1451,21 +1453,34 @@ test('with no history for the engine, a long step keeps running: no guessed limi
 test("another worker's fast run sets no limit: a CPU box is not held to a GPU's speed", () => {
 	const h = harness();
 	const jobId = runningOn(h, 'demucs', 'htdemucs');
-	seedRun(h, 'gpu', 'stems', 10, { engine: 'demucs', model: 'htdemucs', worker: 'w-gpu' }); // 0.1 s/s elsewhere
+	// 0.1 s/s on another box, under the same engine family: only the worker filter keeps it off this run.
+	seedRun(h, 'gpu', 'stems', 10, { engine: 'demucs-mlx', model: 'htdemucs', worker: 'w-gpu' });
 	h.setClock(T0 + 3600_000);
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
 	expect(h.jobs.byId(jobId)!.status).toBe('running');
 	expect(revokesOf(h)).toEqual([]);
 });
 
-test("demucs-mlx's speed sets no limit for torch demucs, even on the same worker", () => {
+test("a Mac worker's hung demucs run is stopped by its own demucs-mlx history", () => {
 	const h = harness();
+	// Asked for 'demucs'; a worker with backend mlx runs and reports 'demucs-mlx', so that is its history.
 	const jobId = runningOn(h, 'demucs', 'htdemucs');
-	seedRun(h, 'mlx', 'stems', 10, { engine: 'demucs-mlx', model: 'htdemucs' }); // the same family, another engine
+	seedRun(h, 'mlx', 'stems', 50, { engine: 'demucs-mlx', model: 'htdemucs' }); // 0.5 s/s: 100 s, bound 600 s
 	h.setClock(T0 + 3600_000);
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
-	expect(h.jobs.byId(jobId)!.status).toBe('running');
-	expect(revokesOf(h)).toEqual([]);
+	expect(h.jobs.byId(jobId)!.status).toBe('failed');
+	expect(revokesOf(h)).toEqual([{ type: 'job:revoked', jobId, reason: 'failed' }]);
+});
+
+test("a hung zoo run is stopped by the same worker's history under the reported name", () => {
+	const h = harness();
+	// Asked for 'audiosep' + token; the worker reports 'audiosep:<token>'.
+	const jobId = runningOn(h, 'audiosep', 'tok');
+	seedRun(h, 'zoo', 'stems', 50, { engine: 'audiosep:tok', model: 'tok' });
+	h.setClock(T0 + 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('failed');
+	expect(revokesOf(h)).toEqual([{ type: 'job:revoked', jobId, reason: 'failed' }]);
 });
 
 test('an align step is never called hung: only separations are bounded', () => {
