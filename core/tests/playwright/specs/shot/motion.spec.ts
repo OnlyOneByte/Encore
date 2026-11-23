@@ -73,6 +73,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-restart-rest-320': HELD_LIBRARY,
 	'phone-restart-return-390': HELD_LIBRARY,
 	'phone-restart-return-320': HELD_LIBRARY,
+	'phone-now-card-grow-390': HELD_LIBRARY,
+	'phone-now-card-grow-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
@@ -431,6 +433,19 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 				}))
 		};
 	};
+}
+
+/** The same moment, about the CARD: as Theo's own song starts, his one-line card grows into his controls while the
+ *  list under it glides (docs/FRONTEND.md § The Now card). A cut under reduced motion. */
+function nowCardGrow(width: number): Make {
+	return (browser, world, cleanup) => ({
+		...queueYourSong(width)(browser, world, cleanup),
+		name: `phone-now-card-grow-${width}`,
+		what: `Phone ${width}x844: /queue as Theo’s own song starts — his Now card grows from the one-line view into his key and guide controls: its surface scales down from the old height (transform) and the controls fade in (opacity), on --motion-base, while the list under it glides into place; a cut under reduced motion`,
+		subject: SEL.queueNowCard,
+		// The card's children and `.below` too: the surface, the fades and the settle are all part of this one move.
+		only: '.now, .now > *, .now-surface > *, main > .below, main .grouphead, main .qrow, .youre-up'
+	});
 }
 
 /** Theo's /queue at one phone width as his own song starts (proposal 18): his On deck card goes (a cut) and the
@@ -919,6 +934,8 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-queue-card-leave': queueCard('leave'),
 	'phone-queue-your-song-390': queueYourSong(390),
 	'phone-queue-your-song-320': queueYourSong(320),
+	'phone-now-card-grow-390': nowCardGrow(390),
+	'phone-now-card-grow-320': nowCardGrow(320),
 	'phone-dock-your-song-390': dockYourSong(390),
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),

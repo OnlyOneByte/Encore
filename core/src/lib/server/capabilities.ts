@@ -4,7 +4,8 @@
 // gating it later — a host role, a token, a first-joiner rule — is an edit HERE and nowhere else.
 
 export type Capability =
-	/** Pause, resume, skip, restart, seek, key-shift the current song. */
+	/** Pause, resume, skip, restart, seek the current song. Not its key or guide: those are its singer's alone, an
+	 *  ownership rule like On deck's rather than a capability (realtime/player.ts). */
 	| 'player:control'
 	/** Remove someone else's queue entry. */
 	| 'queue:remove-any'

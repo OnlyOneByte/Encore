@@ -191,6 +191,15 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps, sendToOri
 		sendToOrigin?.({ type: 'player:stale', cmd: cmd.cmd });
 		return;
 	}
+	// The playing song's key and guide are its singer's (ARCHITECTURE.md §10): anyone else's change does nothing, and
+	// only the sender hears why. An entry that does not resolve falls through to the no-ops below.
+	if (cmd.cmd === 'key' || cmd.cmd === 'guide') {
+		const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
+		if (cur && cur.singerId !== deps.actorSingerId) {
+			sendToOrigin?.({ type: 'player:stale', cmd: cmd.cmd, singerOnly: true });
+			return;
+		}
+	}
 	// A person took the transport, so the notice's hold is no longer the server's to lift. Key, guide and background
 	// leave it: they change the song, not whether it plays.
 	if (cmd.cmd === 'play' || cmd.cmd === 'pause' || cmd.cmd === 'skip' || cmd.cmd === 'restart')

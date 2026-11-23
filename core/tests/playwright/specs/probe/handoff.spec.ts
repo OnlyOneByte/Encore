@@ -135,162 +135,170 @@ test('a stale skip through the strip changes nothing and tells THAT phone the so
 	}
 });
 
-test('a guide drag begun on the last song does not carry onto the next singer’s song', async ({ world }) => {
-	// Review r2, 974-M1 (its R3). A skip goes straight from Maya's entry to Theo's, so `nowEntry` is never null in
-	// between: the rest of Ana's drag was re-sent under Theo's id (0.6, then 0.9 on release).
+// The three draft probes below run on one singer's two turns in a row: only that phone tunes both songs. Theo skips,
+// and his one line for the playing song is the room's level read on another phone.
+
+test('a guide drag begun on the last song does not carry onto the next song', async ({ world }) => {
+	// A skip goes straight from one entry to the next, so `nowEntry` is never null in
+	// between: the rest of the drag was re-sent under the next entry's id (0.6, then 0.9 on release).
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
-		const { maya, theo, ana } = await keyGuideRoom(world);
-		await theo.getByRole('link', { name: 'Queue' }).click();
-		const slider = ana.locator('.now [role="slider"]').first();
+		const { maya, theo } = await keyGuideRoom(world);
+		const slider = maya.locator('.now [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
-		const track = (await ana.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const track = (await maya.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
 		const y = box.y + box.height / 2;
-		await ana.mouse.move(box.x + box.width / 2, y);
-		await ana.mouse.down();
-		await ana.mouse.move(track.x + track.width * 0.6, y, { steps: 4 });
+		await maya.mouse.move(box.x + box.width / 2, y);
+		await maya.mouse.down();
+		await maya.mouse.move(track.x + track.width * 0.6, y, { steps: 4 });
 
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana.waitForTimeout(200);
-		const theoStart = (await serverPlayback(world.baseURL)).state;
-		// Ana's readout is the ROOM's level for Theo's song, the same as Theo's own phone shows: neither the draft from
-		// Maya's song nor the rest of the stale drag may show on Theo's card.
-		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await maya.waitForTimeout(200);
+		const nextStart = (await serverPlayback(world.baseURL)).state;
+		// Maya's readout is the ROOM's level for her next song, the same as Theo's line shows: neither the draft from
+		// caroline nor the rest of the stale drag may show on the believin card.
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		const readouts = async () => [
-			await slider.getAttribute('aria-valuenow'),
-			await theoSlider.getAttribute('aria-valuenow')
-		];
-		const same = ([a, t]: (string | null)[]) => a !== null && a === t;
+		const readouts = async () => [await slider.getAttribute('aria-valuenow'), await roomGuide(theo)];
+		const same = ([m, t]: (string | null)[]) => m !== null && m === t;
 		await expect
-			.poll(async () => same(await readouts()), { message: 'Ana kept the last song’s draft on Theo’s card' })
+			.poll(async () => same(await readouts()), { message: 'Maya kept the last song’s draft on her next card' })
 			.toBe(true);
-		await ana.mouse.move(track.x + track.width * 0.9, y, { steps: 4 });
-		await ana.waitForTimeout(300);
-		expect(same(await readouts()), `the stale drag moved Theo’s card on Ana’s phone: ${await readouts()}`).toBe(true);
-		await ana.mouse.up();
-		await ana.waitForTimeout(800);
+		await maya.mouse.move(track.x + track.width * 0.9, y, { steps: 4 });
+		await maya.waitForTimeout(300);
+		expect(same(await readouts()), `the stale drag moved the next card on Maya’s phone: ${await readouts()}`).toBe(
+			true
+		);
+		await maya.mouse.up();
+		await maya.waitForTimeout(800);
 		const after = (await serverPlayback(world.baseURL)).state;
-		expect(after.currentEntryId).toBe(theoStart.currentEntryId);
-		expect(after.guideLevel, 'a drag begun on Maya’s song changed Theo’s guide').toBe(theoStart.guideLevel);
-		// The rest of the drag named Maya's song, so the server dropped it and said so to Ana.
-		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
+		expect(after.currentEntryId).toBe(nextStart.currentEntryId);
+		expect(after.guideLevel, 'a drag begun on caroline changed believin’s guide').toBe(nextStart.guideLevel);
+		// The rest of the drag named caroline, so the server dropped it and said so to Maya.
+		await expect(maya.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
 		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}
 });
 
-test('a guide draft the room never agreed with is not shown on the next singer’s card', async ({ world }) => {
-	// The song-change reset is the only thing that clears a guide draft the server dropped: Ana drags on the song
-	// her phone still shows after Maya's skip, the server drops it as stale, so no echo ever agrees with her draft.
+test('a guide draft the room never agreed with is not shown on the next card', async ({ world }) => {
+	// The song-change reset is the only thing that clears a guide draft the server dropped: Maya drags on the song
+	// her phone still shows after Theo's skip, the server drops it as stale, so no echo ever agrees with her draft.
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
-		const { maya, theo, ana } = await keyGuideRoom(world, true);
-		await theo.getByRole('link', { name: 'Queue' }).click();
-		const slider = ana.locator('.now [role="slider"]').first();
+		const { maya, theo } = await keyGuideRoom(world, true);
+		const slider = maya.locator('.now [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
-		const track = (await ana.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const track = (await maya.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
 		const y = box.y + box.height / 2;
 		await hold!(true);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana.mouse.move(box.x + box.width / 2, y);
-		await ana.mouse.down();
-		await ana.mouse.move(track.x + track.width * 0.7, y, { steps: 4 });
-		await ana.mouse.up();
-		await ana.waitForTimeout(300);
-		await hold!(false);
-		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		const theoSlider = theo.locator('.now [role="slider"]').first();
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		const readouts = async () => [
-			await slider.getAttribute('aria-valuenow'),
-			await theoSlider.getAttribute('aria-valuenow')
-		];
+		await maya.mouse.move(box.x + box.width / 2, y);
+		await maya.mouse.down();
+		await maya.mouse.move(track.x + track.width * 0.7, y, { steps: 4 });
+		await maya.mouse.up();
+		await maya.waitForTimeout(300);
+		await hold!(false);
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect
 			.poll(
 				async () => {
-					const [a, t] = await readouts();
-					return a !== null && a === t;
+					const [m, t] = [await slider.getAttribute('aria-valuenow'), await roomGuide(theo)];
+					return m !== null && m === t;
 				},
-				{ message: 'Ana’s dropped draft from Maya’s song stayed on Theo’s card' }
+				{ message: 'Maya’s dropped draft from caroline stayed on her believin card' }
 			)
 			.toBe(true);
-		await expect(ana.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
+		await expect(maya.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
 	} finally {
 		await worker.stop();
 	}
 });
 
-test('a key draft from the last song is not shown, or stepped from, on the next singer’s card', async ({ world }) => {
-	// Review r2, 974-M1 (its R2). Ana's +1 on Maya's song is dropped as stale, so the room never agrees with her draft
-	// and nothing cleared it: Theo's card read "+1" on Ana's phone, and her next "+" sent +2 over Theo's preset.
+test('a key draft from the last song is not shown, or stepped from, on the next card', async ({ world }) => {
+	// A +1 on the last song is dropped as stale, so the room never agrees with the draft
+	// and nothing cleared it: the next card read "+1", and the next "+" sent +2 over that song's preset.
 	const worker = await startFakeWorker(world);
 	try {
-		const { maya, theo, ana } = await keyGuideRoom(world, true);
+		const { maya, theo } = await keyGuideRoom(world, true);
 		const keyLabel = (p: Page) => p.locator('.now .ctl .control-label').first().innerText();
 		await hold!(true);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana
+		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await maya
 			.getByRole('button', { name: /^Raise .+ by one semitone$/ })
 			.first()
 			.click();
-		await ana.waitForTimeout(300);
+		await maya.waitForTimeout(300);
 		await hold!(false);
-		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana.waitForTimeout(300);
-		const theoStart = (await serverPlayback(world.baseURL)).state;
-		await theo.getByRole('link', { name: 'Queue' }).click();
-		await expect(theo.locator('.now .ctl')).toBeVisible();
-		expect(await keyLabel(ana)).toBe(await keyLabel(theo));
-		// The next tap steps from the ROOM's key for Theo's song, not from the dead draft.
-		await ana
+		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		await maya.waitForTimeout(300);
+		const nextStart = (await serverPlayback(world.baseURL)).state;
+		await expect(maya.locator('.now .ctl')).toBeVisible();
+		expect(shiftOf(await keyLabel(maya))).toBe(nextStart.keyShift);
+		expect(shiftOf(await roomTune(theo))).toBe(nextStart.keyShift);
+		// The next tap steps from the ROOM's key for believin, not from the dead draft.
+		await maya
 			.getByRole('button', { name: /^Raise .+ by one semitone$/ })
 			.first()
 			.click();
-		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift).toBe(theoStart.keyShift + 1);
+		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift).toBe(nextStart.keyShift + 1);
 	} finally {
 		await worker.stop();
 	}
 });
 
-/** Holds or releases Ana's INCOMING socket frames; set up by `keyGuideRoom(world, true)`. */
+/** Holds or releases Maya's INCOMING socket frames; set up by `keyGuideRoom(world, true)`. */
 let hold: ((on: boolean) => Promise<void>) | null = null;
 
-/** Maya singing, Theo next, Ana on the Queue tab watching Maya's card. */
-async function keyGuideRoom(world: World, holdable = false): Promise<{ maya: Page; theo: Page; ana: Page }> {
+/** Theo's one line for the playing song, or '' when it names nothing. */
+const roomTune = async (p: Page) =>
+	(await p.locator(SEL.queueNowTune).count()) ? await p.locator(SEL.queueNowTune).innerText() : '';
+/** The room's guide level as Theo's line names it, in the slider's `aria-valuenow` terms: "Guide off" is "0". */
+const roomGuide = async (p: Page) => {
+	const m = /Guide (off|(\d+)%)/.exec(await roomTune(p));
+	return m ? (m[2] ?? '0') : null;
+};
+/** The shift a key label or line names, `Key · +1`, `Key +1` or `Key −2`; 0 when it names none. */
+const shiftOf = (s: string) => {
+	const m = /Key(?: ·)? ([+−-])(\d+)/.exec(s);
+	return m ? (m[1] === '+' ? 1 : -1) * Number(m[2]) : 0;
+};
+
+/** Maya singing caroline with her believin next, both on Maya's Queue tab; Theo, a guest, on his. */
+async function keyGuideRoom(world: World, holdable = false): Promise<{ maya: Page; theo: Page }> {
 	const maya = await world.openPhone('Maya');
 	const theo = await world.openPhone('Theo');
-	const ana = await world.openPhone('Ana');
 	for (const q of ['caroline', 'believin']) await readySong(world, maya, q);
 	const tv = await world.openTv();
 	await queueReady(maya, 'caroline');
 	await expect(tv.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
-	await queueReady(theo, 'believin');
+	await queueReady(maya, 'believin');
 	if (holdable) {
 		let held = false;
 		const queue: (string | Buffer)[] = [];
-		let toAna: ((m: string | Buffer) => void) | null = null;
-		await ana.routeWebSocket(/\/ws/, (ws) => {
+		let toMaya: ((m: string | Buffer) => void) | null = null;
+		await maya.routeWebSocket(/\/ws/, (ws) => {
 			const server = ws.connectToServer();
-			toAna = (m) => ws.send(m);
+			toMaya = (m) => ws.send(m);
 			server.onMessage((m) => (held ? queue.push(m) : ws.send(m)));
 			ws.onMessage((m) => server.send(m));
 		});
-		await ana.reload();
+		await maya.reload();
 		hold = async (on) => {
 			held = on;
-			if (!on) for (const m of queue.splice(0)) toAna!(m);
+			if (!on) for (const m of queue.splice(0)) toMaya!(m);
 		};
 	}
-	await ana.getByRole('link', { name: 'Queue' }).click();
-	await expect(ana.locator('.now .ctl')).toBeVisible();
-	return { maya, theo, ana };
+	await maya.getByRole('link', { name: 'Queue' }).click();
+	await expect(maya.locator('.now .ctl')).toBeVisible();
+	await theo.getByRole('link', { name: 'Queue' }).click();
+	await expect(theo.locator(SEL.queueNowCard)).toBeVisible();
+	return { maya, theo };
 }
 
 test('a natural end hands over with no failure flash over the Now singing card', async ({ world }) => {

@@ -31,6 +31,8 @@ function harness() {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
+		// The singer's own phone: the playing song's key is its singer's alone (singer-owns-key.test.ts).
+		actorSingerId: 's1',
 		// m-file is a processed song; m-unprocessed has no instrumental; m-processing is still separating
 		mediaById: new Map<string, Media>([
 			[

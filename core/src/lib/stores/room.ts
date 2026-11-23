@@ -137,7 +137,7 @@ export class RoomLink {
 	#unreachableTimer: ReturnType<typeof setTimeout> | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string, kind: 'error' | 'info', id?: string) => void>();
-	#staleHandlers = new Set<(cmd: TargetedCommand['cmd']) => void>();
+	#staleHandlers = new Set<(cmd: TargetedCommand['cmd'], singerOnly: boolean) => void>();
 	/** Ids whose live status is only a scar's stand-in, with nothing heard from the server since. The server's own
 	 * word (a live event, or /api/library's seed) replaces it: a scar is this device's memory of an attempt, and
 	 * a Try again after the TTL left it saying "failed" over a job the server calls in flight and unservable. */
@@ -176,8 +176,9 @@ export class RoomLink {
 		return () => this.#errorHandlers.delete(fn);
 	}
 	/** THIS phone's skip, restart, seek, key or guide named a song that had already ended, so the server did nothing.
-	 *  Hands over WHICH command, because what to say differs (`$lib/phrasing/stale-phrasing`). Returns a disposer. */
-	onStaleTransport(fn: (cmd: TargetedCommand['cmd']) => void): () => void {
+	 *  Hands over WHICH command, because what to say differs (`$lib/phrasing/stale-phrasing`). Returns a disposer.
+	 *  `singerOnly`: not stale but refused, a key or guide change on someone else's song. */
+	onStaleTransport(fn: (cmd: TargetedCommand['cmd'], singerOnly: boolean) => void): () => void {
 		this.#staleHandlers.add(fn);
 		return () => this.#staleHandlers.delete(fn);
 	}
@@ -583,7 +584,7 @@ export class RoomLink {
 			this.playback = e.state;
 			this.playbackSynced = true;
 		}
-		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn(e.cmd);
+		if (e.type === 'player:stale') for (const fn of this.#staleHandlers) fn(e.cmd, e.singerOnly === true);
 		// The WHOLE event, not four unpacked fields: the failure arm needs `requestedBy` as well, and a fifth
 		// positional argument on a five-line signature is how the next one gets dropped on the way in.
 		if (e.type === 'media:status') this.#onMediaStatus(e);

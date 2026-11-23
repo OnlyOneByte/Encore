@@ -1,7 +1,5 @@
-// YOUR CARD COMES TO YOU, at 320x568 where no dock height is enough: the Now card alone reaches
-// y 506, so Theo's On deck heads-up card starts at 514, under the dock's top edge (475), and his failed card's × is
-// off screen. When either needs him, /queue scrolls that card up once so its first control lies between the sticky
-// header's bottom and the dock's top. A touch in the 3 s before means the guest is driving: no scroll.
+// YOUR CARD COMES TO YOU: at 320x400 Theo's On deck card and failed card's × start under the dock, and /queue scrolls
+// the one that needs him up into reach, once. A touch in the 3 s before means the guest is driving: no scroll.
 import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { SEL } from '../../world/selectors';
@@ -31,7 +29,7 @@ async function theoOnDeck(world: Parameters<Parameters<typeof test>[2]>[0]['worl
 	const worker = await startFakeWorker(world, { seconds: SECS });
 	const maya = await world.openPhone('Maya');
 	const theo = await world.openPhone('Theo');
-	await theo.setViewportSize({ width: 320, height: 568 });
+	await theo.setViewportSize({ width: 320, height: 400 });
 	await readySong(world, maya, 'caroline');
 	await readySong(world, maya, 'believin');
 	await world.openTv();
@@ -43,7 +41,7 @@ async function theoOnDeck(world: Parameters<Parameters<typeof test>[2]>[0]['worl
 	return { worker, maya, theo };
 }
 
-test('320x568: the heads-up card comes up so its key clears the dock', async ({ world }) => {
+test('320x400: the heads-up card comes up so its key clears the dock', async ({ world }) => {
 	const { worker, maya, theo } = await theoOnDeck(world);
 	try {
 		expect(reachable(await reach(theo, '.deck')), 'positive control: the card starts under the dock').toBe(false);
@@ -63,7 +61,7 @@ test('320x568: the heads-up card comes up so its key clears the dock', async ({ 
 	}
 });
 
-test('320x568: a touch in the 3 s before the heads-up keeps the page where the guest has it', async ({ world }) => {
+test('320x400: a touch in the 3 s before the heads-up keeps the page where the guest has it', async ({ world }) => {
 	const { worker, theo } = await theoOnDeck(world);
 	try {
 		// A real wheel of nothing, every second until the heads-up: input that moves no pixel.
@@ -81,7 +79,7 @@ test('320x568: a touch in the 3 s before the heads-up keeps the page where the g
 	}
 });
 
-test('320x568: under reduced motion the card comes up in one jump, not a glide', async ({ world }) => {
+test('320x400: under reduced motion the card comes up in one jump, not a glide', async ({ world }) => {
 	const { worker, theo } = await theoOnDeck(world);
 	try {
 		await theo.emulateMedia({ reducedMotion: 'reduce' });
@@ -111,13 +109,13 @@ test('320x568: under reduced motion the card comes up in one jump, not a glide',
 	}
 });
 
-test('320x568: opening Queue by its tab while you are up next brings the card up', async ({ world }) => {
+test('320x400: opening Queue by its tab while you are up next brings the card up', async ({ world }) => {
 	// The tap that opens /queue lands on the PREVIOUS page, before /queue's input listeners exist, so it is not
 	// "the guest driving": being buzzed and then opening Queue is the path that most needs the card.
 	const { worker, theo } = await theoOnDeck(world);
 	const watch = await theo.context().newPage();
 	try {
-		await watch.setViewportSize({ width: 320, height: 568 });
+		await watch.setViewportSize({ width: 320, height: 400 });
 		await watch.goto('/queue');
 		await theo.getByRole('link', { name: 'Library', exact: true }).click();
 		await theo.waitForURL(/\/library$/);
@@ -133,7 +131,7 @@ test('320x568: opening Queue by its tab while you are up next brings the card up
 	}
 });
 
-test('320x568: a reload during your heads-up brings the card up (the phone woke from sleep)', async ({ world }) => {
+test('320x400: a reload during your heads-up brings the card up (the phone woke from sleep)', async ({ world }) => {
 	// A hard load: the page mounts after SvelteKit's first navigation has finished, so `afterNavigate`
 	// never fires for it. A browser that discarded the tab while the phone slept does exactly this.
 	const { worker, theo } = await theoOnDeck(world);
@@ -153,7 +151,7 @@ test('320x568: a reload during your heads-up brings the card up (the phone woke 
 	}
 });
 
-test('320x568: a hold animating the card as it turns heads-up is waited out, so the card still lands right', async ({
+test('320x400: a hold animating the card as it turns heads-up is waited out, so the card still lands right', async ({
 	world
 }) => {
 	// The shape of a settle animation: something holds the card away from its layout position with a transform, in the
@@ -197,12 +195,12 @@ test('320x568: a hold animating the card as it turns heads-up is waited out, so 
 	}
 });
 
-test('320x568: your song that cannot be made comes up so its × clears the dock', async ({ world }) => {
-	// Theo has ONLY the failing song, so no heads-up competes for the scroll. Maya's Now card fills the screen above it.
+test('320x400: your song that cannot be made comes up so its × clears the dock', async ({ world }) => {
+	// Theo has ONLY the failing song, so no heads-up competes for the scroll. Maya's Now card and the short screen put it under the dock.
 	const worker = await startFakeWorker(world, { seconds: SECS });
 	const maya = await world.openPhone('Maya');
 	const theo = await world.openPhone('Theo');
-	await theo.setViewportSize({ width: 320, height: 568 });
+	await theo.setViewportSize({ width: 320, height: 400 });
 	await readySong(world, maya, 'caroline');
 	await world.openTv();
 	await queueReady(maya, 'caroline');

@@ -131,6 +131,8 @@ export const SEL = {
 	   The live-controls card above the queue list, which holds what the sheet's expanded body held. */
 	/** The now-playing card. Rendered only with a current entry, like the strip's `hasSong` branch. */
 	queueNowCard: '.now',
+	/** Everyone-but-the-singer's one line for the playing song's key and guide, in place of the controls. */
+	queueNowTune: '.now [data-now-tune]',
 	queueElapsed: '.clock .elapsed',
 	queueRemain: '.clock .remain',
 	/** The remove button on a QueueRow or ProcessingCard, by test id: its accessible name carries the song title

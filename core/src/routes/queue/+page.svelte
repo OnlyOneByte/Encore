@@ -48,7 +48,7 @@
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
 	import { keyStepName } from '$lib/phrasing/row-action-names';
-	import { songFacts } from '$lib/song-facts';
+	import { songFacts, tuneLine } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
@@ -213,6 +213,9 @@
 	);
 
 	const facts = $derived(songFacts(profile, keyShift));
+	// Only the singer's phone tunes the playing song; every other phone reads it as one line.
+	const nowMine = $derived(!!nowEntry && nowEntry.singerId === me?.id);
+	const nowTune = $derived(tuneLine(playback.keyShift, guideServerPct, guideEnabled));
 
 	/* Once a second, not a frame. BOTH READS STAY INSIDE THE EFFECT: a resume re-delivers an equal `positionSec`,
 	   and writing an equal primitive notifies nothing, so a separate anchor effect would never re-run — the
@@ -642,6 +645,8 @@
 	   pruned from the stylesheet as unused. The turn alternates so a second ease restarts without replacing the
 	   subtree, which would drop focus and a drag. */
 	let settle = $state<{ dy: number; turn: 'a' | 'b' } | null>(null);
+	let grow = $state<{ scale: number; lift: number; turn: 'a' | 'b' } | null>(null);
+	let nowEl = $state<HTMLElement | undefined>(undefined);
 	let nowArrived = $state(false);
 	const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
 	let settleFor: string | null | undefined;
@@ -659,11 +664,36 @@
 			return;
 		}
 		if (id === settleFor) return;
-		if (settleFor === null) nowArrived = !untrack(() => reducedMotion.current);
+		const hadCard = settleFor !== null;
+		// A card that ARRIVES fades in, with no grow left over from an earlier song.
+		if (!hadCard) {
+			nowArrived = !untrack(() => reducedMotion.current);
+			grow = null;
+		}
 		settleFor = id;
-		const dy = belowTopWas - below.getBoundingClientRect().top;
-		if (dy !== 0) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
+		// Both reads are drawn tops under the same running settle, if any, so this is how far the card moved `.below`.
+		const moved = belowTopWas - below.getBoundingClientRect().top;
+		settleFrom(belowTopWas);
+		// No grow while the card is still arriving (its fade already shows the new size) or under reduced motion.
+		const h = nowEl?.getBoundingClientRect().height ?? 0;
+		// The card's height outside the middle piece, which is all that scales.
+		const caps = (nowEl?.querySelector<HTMLElement>('.mid')?.offsetTop ?? 0) * 2;
+		if (hadCard && id !== null && moved < 0 && h + moved > caps && !nowArrived && !untrack(() => reducedMotion.current))
+			grow = {
+				scale: (h + moved - caps) / (h - caps),
+				lift: moved,
+				turn: untrack(() => grow)?.turn === 'a' ? 'b' : 'a'
+			};
 	});
+	/* `.below` eased from where it is drawn now, so a running settle's remaining offset carries over; also called when
+	   the holds inside restart, because two eases started a patch apart sum to a dip. */
+	function settleFrom(drawnWas: number): void {
+		if (!below) return;
+		for (const a of below.getAnimations())
+			if (a instanceof CSSAnimation && a.animationName.includes('settle-')) a.cancel();
+		const dy = drawnWas - below.getBoundingClientRect().top;
+		if (Math.abs(dy) >= 0.5) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
+	}
 
 	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (proposal 18). The hold above moves `.below` as one box, and nothing
 	   held what is inside it: when your own song starts, your On deck card leaves and the heading and rows under it
@@ -690,6 +720,9 @@
 	let holds = $state<Record<string, { dy: number; turn: 'a' | 'b' }>>({});
 	let topsWas: Record<string, number | undefined> | null = null;
 	let scrollWas = 0;
+	// `.below`'s drawn top before the patch, and the song the last patch saw: a song change settles the box itself.
+	let boxWas: number | undefined;
+	let holdsNowWas: string | null = null;
 	// The keys of the rows in the DOM, in order: `queued` is already the next list when the pre effect reads.
 	let rowKeys: string[] = [];
 	let holdArmed = false;
@@ -709,12 +742,15 @@
 		void holdKey;
 		scrollWas = window.scrollY;
 		const box = untrack(() => below);
+		boxWas = box?.getBoundingClientRect().top;
 		topsWas = box ? Object.fromEntries(blocksOf(box).map(([k, el]) => [k, topIn(box, el)])) : null;
 	});
 	$effect(() => {
-		void nowId;
+		const id = nowId;
 		void holdKey;
 		const ready = queueSynced && playbackSynced;
+		const sameSong = id === holdsNowWas;
+		holdsNowWas = id;
 		untrack(() => {
 			const was = topsWas;
 			topsWas = null;
@@ -734,6 +770,13 @@
 				if (Math.abs(dy) >= 0.5) next[k] = { dy, turn: holds[k]?.turn === 'a' ? 'b' : 'a' };
 			}
 			holds = next;
+			// A settle still easing from the last song change restarts with the holds; a song change in this patch already did.
+			if (
+				sameSong &&
+				boxWas !== undefined &&
+				below.getAnimations().some((a) => a instanceof CSSAnimation && a.animationName.includes('settle-'))
+			)
+				settleFrom(boxWas);
 		});
 		holdArmed = ready;
 	});
@@ -794,12 +837,22 @@
 			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
 			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
 			<div
+				bind:this={nowEl}
 				class="now"
 				class:arrive={nowArrived}
+				data-grow={grow?.turn}
+				style:--grow-scale={grow?.scale}
+				style:--grow-lift={grow ? `${grow.lift}px` : undefined}
 				onanimationend={(ev) => {
-					if (ev.target === ev.currentTarget) nowArrived = false;
+					// The surface's grow ends the grow; the card's own end is the arrive. A fading child is neither.
+					const t = ev.target as Element;
+					if (t.parentElement?.classList.contains('now-surface') && ev.animationName.includes('grow-')) grow = null;
+					else if (ev.target === ev.currentTarget) nowArrived = false;
 				}}
 			>
+				<span class="now-surface" aria-hidden="true"
+					><span class="cap-top"></span><span class="mid"></span><span class="cap-bot"></span></span
+				>
 				<p class="now-eyebrow">{NOW_SINGING}</p>
 				<h2 class="now-title">{nowTitle}</h2>
 				<p class="now-by">
@@ -820,49 +873,59 @@
 					</p>
 				{/if}
 
-				{#if facts.keyOriginal}
-					<p class="facts">
-						<span class="k-orig">{facts.keyOriginal}</span>
-						{#if facts.keyShifted}
-							<span class="k-arrow"><Icon name="arrow-right" /></span>
-							<span class="k-sound">{facts.keySounding}</span>
-						{/if}
-						{#if facts.rangeText}<span class="k-range"> · {facts.rangeText}</span>{/if}
-					</p>
-				{/if}
+				<!-- Only the singer tunes their song, so everyone else reads it as one line (docs/FRONTEND.md § The Now card). -->
+				{#if !nowMine}
+					<!-- Kept while the song can be tuned, so the singer's first tap moves nothing on this phone. -->
+					{#if keyShiftEnabled || guideEnabled}
+						<p class="facts" data-now-tune>
+							{#if nowTune}{nowTune}{:else}&nbsp;{/if}
+						</p>
+					{/if}
+				{:else}
+					{#if facts.keyOriginal}
+						<p class="facts">
+							<span class="k-orig">{facts.keyOriginal}</span>
+							{#if facts.keyShifted}
+								<span class="k-arrow"><Icon name="arrow-right" /></span>
+								<span class="k-sound">{facts.keySounding}</span>
+							{/if}
+							{#if facts.rangeText}<span class="k-range"> · {facts.rangeText}</span>{/if}
+						</p>
+					{/if}
 
-				<!-- KEY SHIFT. The accessible names carry the DIRECTION: `Icon` is aria-hidden, so both keycaps otherwise
-				compute to the bare word "semitone" and a screen-reader user cannot tell which one lowers the key — on
-				the app's signature control.
-				THE LABEL IS app.css's `.control-label`, NOT a local class, and this card is why that matters: the
-				GuidingTrack row below renders a real `[data-slot='field-label']`, so two field labels sit on one
-				surface here and a drift between them is visible the way settings' You card made one visible. This span
-				used to be `.ctl-lab`, re-declaring three of the shared rule's four properties and dropping the fourth
-				(`line-height`), which is precisely the drift `.control-label` was factored to stop. A plain `<span>`
-				rather than the primitive because the row labels TWO keycaps, and `<label for>` points at one. -->
-				<div class="ctl">
-					<span class="control-label">{facts.keyLabel}</span>
-					<div class="keys">
-						<Button
-							size="tap"
-							variant="keycap"
-							disabled={!keyShiftEnabled || keyShift <= -KEY_LIMIT}
-							aria-label={keyStepName(-1, nowTitle)}
-							onclick={() => stepKey(-1)}><Icon name="minus" /></Button
-						>
-						<Button
-							size="tap"
-							variant="keycap"
-							disabled={!keyShiftEnabled || keyShift >= KEY_LIMIT}
-							aria-label={keyStepName(1, nowTitle)}
-							onclick={() => stepKey(1)}><Icon name="plus" /></Button
-						>
+					<!-- KEY SHIFT. The accessible names carry the DIRECTION: `Icon` is aria-hidden, so both keycaps otherwise
+					compute to the bare word "semitone" and a screen-reader user cannot tell which one lowers the key — on
+					the app's signature control.
+					THE LABEL IS app.css's `.control-label`, NOT a local class, and this card is why that matters: the
+					GuidingTrack row below renders a real `[data-slot='field-label']`, so two field labels sit on one
+					surface here and a drift between them is visible the way settings' You card made one visible. This span
+					used to be `.ctl-lab`, re-declaring three of the shared rule's four properties and dropping the fourth
+					(`line-height`), which is precisely the drift `.control-label` was factored to stop. A plain `<span>`
+					rather than the primitive because the row labels TWO keycaps, and `<label for>` points at one. -->
+					<div class="ctl">
+						<span class="control-label">{facts.keyLabel}</span>
+						<div class="keys">
+							<Button
+								size="tap"
+								variant="keycap"
+								disabled={!keyShiftEnabled || keyShift <= -KEY_LIMIT}
+								aria-label={keyStepName(-1, nowTitle)}
+								onclick={() => stepKey(-1)}><Icon name="minus" /></Button
+							>
+							<Button
+								size="tap"
+								variant="keycap"
+								disabled={!keyShiftEnabled || keyShift >= KEY_LIMIT}
+								aria-label={keyStepName(1, nowTitle)}
+								onclick={() => stepKey(1)}><Icon name="plus" /></Button
+							>
+						</div>
 					</div>
-				</div>
 
-				<GuidingTrack pct={guidePct} available={guideEnabled} oninput={guideInput} oncommit={guideCommit} />
+					<GuidingTrack pct={guidePct} available={guideEnabled} oninput={guideInput} oncommit={guideCommit} />
 
-				<RangeBar profile={profile} keyShift={keyShift} />
+					<RangeBar profile={profile} keyShift={keyShift} />
+				{/if}
 
 				<!-- THE DOOR TO /song/[mediaId], AND CURRENTLY THE ONLY ONE. The deleted drawer held the only `href` to that
 				route in the tree, so removing it orphaned the page: `LyricsReselect` has one importer, `room.reselectLyrics`
@@ -1076,16 +1139,50 @@
 	}
 
 	.now {
+		position: relative;
+		isolation: isolate;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
 		padding: var(--space-2xl);
+	}
+	/* The card's surface in three pieces, so a grow scales only the plain middle and the corners stay true. */
+	.now-surface {
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+	}
+	.now-surface > span {
+		position: absolute;
+		left: 0;
+		right: 0;
 		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
 		background: var(--card-tint);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 var(--edge-hi);
+	}
+	.now-surface > .cap-top {
+		top: 0;
+		height: var(--radius-sm);
+		border-bottom: 0;
+		border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+		box-shadow: inset 0 1px 0 var(--edge-hi);
+	}
+	/* 1px under each cap, so no hairline shows at a fractional seam. */
+	.now-surface > .mid {
+		top: calc(var(--radius-sm) - 1px);
+		bottom: calc(var(--radius-sm) - 1px);
+		border-block: 0;
+		box-shadow: var(--shadow-sm);
+		/* The shadow shows at the sides only, or it draws a line across each seam. */
+		clip-path: inset(0 -4px);
+		transform-origin: top;
+	}
+	.now-surface > .cap-bot {
+		bottom: 0;
+		height: var(--radius-sm);
+		border-top: 0;
+		border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+		box-shadow: var(--shadow-sm);
+		clip-path: inset(0 -4px -4px);
 	}
 
 	/* Everything under the card, in one box so one transform can hold it still. Same column rhythm as `main`. */
@@ -1108,6 +1205,58 @@
 		   starts with the settle, rather than one whose start event fires a --motion-base later. */
 		.now.arrive {
 			animation: arrive calc(var(--motion-base) * 2) ease-out;
+		}
+		/* The grow, on the settle's clock so the card's bottom edge moves with the list (docs/FRONTEND.md § The Now card). */
+		.now[data-grow='a'] > .now-surface > .mid {
+			animation: grow-a var(--motion-base) ease-out;
+		}
+		.now[data-grow='b'] > .now-surface > .mid {
+			animation: grow-b var(--motion-base) ease-out;
+		}
+		.now[data-grow='a'] > .now-surface > .cap-bot {
+			animation: grow-cap-a var(--motion-base) ease-out;
+		}
+		.now[data-grow='b'] > .now-surface > .cap-bot {
+			animation: grow-cap-b var(--motion-base) ease-out;
+		}
+		.now[data-grow='a'] > :global(:not(.now-surface, .now-eyebrow, .now-title, .now-by, .clock)) {
+			animation: grow-fade-a var(--motion-base) ease-out;
+		}
+		.now[data-grow='b'] > :global(:not(.now-surface, .now-eyebrow, .now-title, .now-by, .clock)) {
+			animation: grow-fade-b var(--motion-base) ease-out;
+		}
+	}
+	/* Pairs of identical names, as settle-a/b above: writing the other one restarts the grow. */
+	@keyframes grow-a {
+		from {
+			transform: scaleY(var(--grow-scale));
+		}
+	}
+	@keyframes grow-b {
+		from {
+			transform: scaleY(var(--grow-scale));
+		}
+	}
+	@keyframes grow-cap-a {
+		from {
+			transform: translateY(var(--grow-lift));
+		}
+	}
+	@keyframes grow-cap-b {
+		from {
+			transform: translateY(var(--grow-lift));
+		}
+	}
+	@keyframes grow-fade-a {
+		from,
+		60% {
+			opacity: 0;
+		}
+	}
+	@keyframes grow-fade-b {
+		from,
+		60% {
+			opacity: 0;
 		}
 	}
 	@keyframes settle-a {

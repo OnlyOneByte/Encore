@@ -22,8 +22,11 @@ const STALE: Record<TargetedCommand['cmd'], string> = {
  *  and "You're up" says the rest (integration-1, IN-02). Every other stale command is still told, own turn or not. */
 export function staleNotice(
 	cmd: TargetedCommand['cmd'],
-	{ ownTurn, idle }: { ownTurn: boolean; idle: boolean }
+	{ ownTurn, idle, singerOnly, singer }: { ownTurn: boolean; idle: boolean; singerOnly?: boolean; singer?: string }
 ): string | null {
+	// Refused, not stale: someone else's song. "their", because the phone knows a name, never a pronoun.
+	if (singerOnly && !idle)
+		return `Only ${singer || 'the singer'} can change their\xa0${cmd === 'guide' ? 'guide' : 'key'}.`;
 	if (idle) return ENDED;
 	if (cmd === 'skip' && ownTurn) return null;
 	return STALE[cmd];

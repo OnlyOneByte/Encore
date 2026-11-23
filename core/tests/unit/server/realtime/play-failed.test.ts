@@ -196,7 +196,8 @@ test('the TV lifts the hold when its notice clears, and only for the song it hel
 test('a phone that takes the transport during the hold outranks it; a key change does not', () => {
 	const { state, deps } = room();
 	handleTelemetry({ entryId: 'theo', positionSec: 0, failed: true }, deps);
-	handlePlayerCommand({ cmd: 'key', semitones: 1, entryId: 'ana' }, deps);
+	// Ana's own phone, or the singer-only rule would refuse the tap before the hold ever saw it.
+	handlePlayerCommand({ cmd: 'key', semitones: 1, entryId: 'ana' }, { ...deps, actorSingerId: 'ana' });
 	handleTelemetry({ entryId: 'ana', positionSec: 0, resume: true }, deps);
 	expect(state.playback.isPlaying).toBe(true); // the key tap left the hold for the TV to lift
 	const second = room();
