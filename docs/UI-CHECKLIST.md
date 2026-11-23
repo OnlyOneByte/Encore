@@ -3,7 +3,8 @@
 A UI PR's reviewer checks it against this list. It has two parts: the [motion checks](#motion-checks), answered
 from the frames `bun run ui:review` records, and the [tenet checks](#tenet-checks), which hold a change to the
 [UI tenets](UI-TENETS.md): speed, stillness, one glance, one truth, the TV stage, fun and access. A PR answers the
-sections it touches and says which lines passed, as "Motion 11/11, Speed 4/4".
+sections it touches and says which lines passed, as "Motion 11/11, Speed 4/4". The [docs check](#docs) applies to
+every PR, UI or not.
 
 A static screenshot cannot see motion. The leave confirm drew itself half its own size up and to the left for its
 whole 120 ms opening and then snapped to the centre (#964). CLS was 0, no frame dropped, and reduced motion hid it.
@@ -151,6 +152,13 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 - **A1.** Tap targets are at least 44 px, focus shows a ring of at least 2 px, and a live region is mounted before
   its text arrives. Automated for the tap floor and the ring (`gate:measured` CLAIM 1 and CLAIM 4); the live-region
   order is not automated yet and is a gate candidate.
+
+## Docs
+
+Every PR answers this section, UI or not, as "Docs 1/1".
+
+- **D1.** The docs the PR makes stale are updated in the same PR, and no new comment runs past a one- or two-line
+  *why* or carries history ([CONTRIBUTING](CONTRIBUTING.md#comments)). A human check, from the diff.
 
 ## Putting the GIF in the PR
 
