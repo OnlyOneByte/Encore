@@ -865,7 +865,7 @@ const SCENARIOS: Record<string, Make> = {
 		subject: '.phrase-line',
 		literalsAllowed: {
 			match: 'phrase-fade on div.phrase-line: literal timing 0.6s',
-			reason: 'a slower swap for a screen nobody is acting on (tv/+page.svelte)'
+			reason: 'a slower swap for a screen nobody is acting on (tv/TvAttract.svelte)'
 		},
 		observe: (page) =>
 			page.evaluate(() => ({

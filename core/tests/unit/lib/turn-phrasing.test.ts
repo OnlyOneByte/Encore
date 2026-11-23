@@ -15,7 +15,14 @@ function strip(source: string): string {
 		.replace(/\/\/.*$/gm, '');
 }
 
-const SURFACES = ['src/routes/tv/+page.svelte', 'src/routes/queue/+page.svelte', 'src/lib/components/YoureUp.svelte'];
+// The TV's turn labels are drawn by TvNowBar ("Up next") and TvTakeover (the handoff card), not the page itself.
+const SURFACES = [
+	'src/routes/tv/+page.svelte',
+	'src/lib/tv/TvNowBar.svelte',
+	'src/lib/tv/TvTakeover.svelte',
+	'src/routes/queue/+page.svelte',
+	'src/lib/components/YoureUp.svelte'
+];
 
 test('the turn labels are spelled once, in turn-phrasing', () => {
 	expect(NOW_SINGING).toBe('Now singing');

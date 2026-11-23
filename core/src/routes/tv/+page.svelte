@@ -3,15 +3,16 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, SKIP_NOTICE_MS } from '$lib/contract';
-	import { keyShiftLabel } from '$lib/song-facts';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, SKIP_NOTICE_MS } from '$lib/contract';
 	import { GaplessController, type EndStatus, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
-	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import Reactions from '$lib/tv/Reactions.svelte';
-	import Icon from '$lib/ui/Icon.svelte';
+	import TvAttract from '$lib/tv/TvAttract.svelte';
+	import TvNowBar, { observeBlockSize } from '$lib/tv/TvNowBar.svelte';
+	import TvTakeover, { type TakeoverKind } from '$lib/tv/TvTakeover.svelte';
+	import TvAudioNotice from '$lib/tv/TvAudioNotice.svelte';
 	import {
 		effectiveGuideLevel,
 		hueOfColor,
@@ -31,13 +32,11 @@
 		lobbyOverdue,
 		statusOverdue,
 		isUnreachableJoinOrigin,
-		lyricsAdvancing,
-		waitingProgress,
-		PROCESS_STEPS
+		lyricsAdvancing
 	} from '$lib/tv/screen';
 	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
-	import { processStageLabelAscii, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
+	import { stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
 	import { waitingTurns } from '$lib/readiness';
 	import {
@@ -148,8 +147,8 @@
 		}).gain;
 	}
 	// Parallel to slotMedia — the two can differ, since the hidden slot pre-warms `upNext`.
-	const masterLevelA = $derived(resolveMasterLevel(slotMedia.A));
-	const masterLevelB = $derived(resolveMasterLevel(slotMedia.B));
+	const masterLevel = $derived({ A: resolveMasterLevel(slotMedia.A), B: resolveMasterLevel(slotMedia.B) });
+	const SLOTS: Slot[] = ['A', 'B'];
 
 	// The TV runs unattended for hours, so WsClient's watchdog for a socket that stops answering without firing `close`
 	// matters most here.
@@ -538,39 +537,13 @@
 		return () => ws?.close();
 	});
 
-	/**
-	 * ONE observer shape for both measured bands. `borderBoxSize` is the full rendered box the reel must clear;
-	 * `offsetHeight` is the fallback where that form is unsupported. Returns the `$effect` cleanup, or `undefined`
-	 * when there is nothing to observe — the caller's effect tracks the binding by passing it in.
-	 */
-	function observeBlockSize(el: HTMLElement | undefined, set: (px: number) => void): (() => void) | undefined {
-		if (!el || typeof ResizeObserver === 'undefined') return;
-		const ro = new ResizeObserver((entries) => {
-			for (const e of entries) {
-				const box = e.borderBoxSize?.[0]?.blockSize;
-				set(typeof box === 'number' ? box : el.offsetHeight);
-			}
-		});
-		ro.observe(el);
-		return () => ro.disconnect();
-	}
-
-	// MEASURED, not predicted: this card grows with its content, so a static sum UNDER-counts and covers the sung line.
-	// The phone's dock is the same finding on the other surface — see the `--dock-h` note in src/routes/+layout.svelte,
-	// where a token-arithmetic height was tried and came to 102px against a rendered 91.
-	let lowerThirdEl = $state<HTMLElement | undefined>();
+	// The lower third's and "Up next"'s rendered heights, MEASURED by TvNowBar and handed back here.
 	let measuredCardPx = $state<number | null>(null);
-	$effect(() => observeBlockSize(lowerThirdEl, (px) => (measuredCardPx = px)));
+	let measuredUpnextPx = $state<number | null>(null);
 	// Null before the first measure -> undefined style -> app.css's static fallback stands.
 	const chromeBandStyle = $derived(
 		measuredCardPx === null ? undefined : `--tv-chrome-h: calc(var(--tv-safe-y) + ${Math.ceil(measuredCardPx)}px)`
 	);
-
-	// Same for "Up next": `.fs-btn` shares its z-tier and right edge and must clear the whole block, which GROWS when
-	// the next title wraps.
-	let upnextEl = $state<HTMLElement | undefined>();
-	let measuredUpnextPx = $state<number | null>(null);
-	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
 	// And the corner join card, which the reaction lane stands directly above: it is NOT part of the chrome band (the
 	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller. A copy
 	// has no card: its corner holds "Make this the TV", so that is the corner measured. Two refs, not one shared
@@ -686,8 +659,6 @@
 	});
 
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
-	/** `Key -2` while shifted, nothing at 0. Never the key's NAME: see `keyShiftLabel`. */
-	const keyLine = $derived(keyShiftLabel(keyShift));
 	// The override wins when set; `null` defers to the room.
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
 	const stageBg = $derived(
@@ -697,9 +668,6 @@
 	// `isPlaying` alone stays true through a phone pause and an autoplay refusal — the room silent while the reel
 	// sweeps on wall-clock. VISIBILITY still rides `lyricsActive`.
 	const lyricsPlaying = $derived(lyricsAdvancing(screen, tvState, isPlaying, masterAdvancing));
-	// Canonical title/artist when a confident parse produced them, NEVER the uploader. Artist is null when
-	// there is nothing trustworthy, and the markup omits the line rather than inventing one.
-	const nowPlayingDisplay = $derived(songDisplay(mediaOf(current)));
 	// Null for a pre-candidate artifact — unknown provenance, asserted as neither verified nor not.
 	const lyricsProvenance = $derived.by(() => {
 		const m = mediaOf(current);
@@ -719,7 +687,7 @@
 	// ONE derived value, because as independent `{#if}` blocks at one z-index with `inset: 0` and non-exclusive
 	// conditions two full-screen panels paint over each other. `loading` is the FALLBACK for a missed preload,
 	// where `screen` derives `playing` over a not-yet-loaded element.
-	const transient = $derived.by(() => {
+	const transient = $derived.by((): TakeoverKind | null => {
 		if (skipNotice) return 'error';
 		if (tvState === 'waiting') return 'waiting';
 		if (tvState === 'interstitial' && introEntry) return 'next';
@@ -841,82 +809,48 @@
 			<VisualizerStage variant={tvVisualizer} hue={tvBackgroundHue} playing={!isAttract} />
 		{/if}
 	</div>
-	<TvPlayer
-		media={slotMedia.A}
-		entryId={slotEntryId.A}
-		visible={visible === 'A' && !isAttract}
-		active={visible === 'A'}
-		playing={isPlaying}
-		seekSec={seekSec}
-		seekRev={seekRev}
-		keyShift={keyShift}
-		guideLevel={seatMine ? guideLevel : 0}
-		masterLevel={seatMine ? masterLevelA : 0}
-		silent={!seatMine}
-		onready={() => {
-			ctl.onVisibleReady();
-			tvState = ctl.state;
-			onFirstSongReady();
-			leadExitIfDue();
-		}}
-		onprewarmed={() => {
-			// `slotEntryId`, NOT `slotMedia.id`. GaplessController compares this against `#warmingId`, which it
-			// sets from `upNext.id` — an ENTRY id — and its own field comment says so. `snapshot(m)` returns
-			// `{...m}`, so `slotMedia.A.id` is the MEDIA id and never matched: `#readyId` stayed unset,
-			// `isNextReady()` was permanently false, and every song change took the cold-load branch and threw
-			// away the slot it had just pre-warmed. Measured cost: ~740ms of dead air at each boundary.
-			ctl.onHiddenReady(slotEntryId.A ?? '');
-			tvState = ctl.state;
-		}}
-		onended={() => onVisibleEnded(slotEntryId.A)}
-		onfailed={() => onVisibleFailed(slotEntryId.A)}
-		onposition={(s, d) => {
-			positionSec = s;
-			durationSec = d;
-			sendTelemetry('playing', slotEntryId.A, s);
-		}}
-		onautoplayblocked={() => (autoplayBlocked = true)}
-		onpitchblocked={() => (pitchBlocked = true)}
-		onpitchrouted={() => (pitchBlocked = false)}
-		onautoplayrecovered={() => (autoplayBlocked = false)}
-		onplayingchange={(p) => (masterAdvancing = p)}
-	/>
-	<TvPlayer
-		media={slotMedia.B}
-		entryId={slotEntryId.B}
-		visible={visible === 'B' && !isAttract}
-		active={visible === 'B'}
-		playing={isPlaying}
-		seekSec={seekSec}
-		seekRev={seekRev}
-		keyShift={keyShift}
-		guideLevel={seatMine ? guideLevel : 0}
-		masterLevel={seatMine ? masterLevelB : 0}
-		silent={!seatMine}
-		onready={() => {
-			ctl.onVisibleReady();
-			tvState = ctl.state;
-			onFirstSongReady();
-			leadExitIfDue();
-		}}
-		onprewarmed={() => {
-			// See slot A: an ENTRY id, because that is what `#warmingId` holds.
-			ctl.onHiddenReady(slotEntryId.B ?? '');
-			tvState = ctl.state;
-		}}
-		onended={() => onVisibleEnded(slotEntryId.B)}
-		onfailed={() => onVisibleFailed(slotEntryId.B)}
-		onposition={(s, d) => {
-			positionSec = s;
-			durationSec = d;
-			sendTelemetry('playing', slotEntryId.B, s);
-		}}
-		onautoplayblocked={() => (autoplayBlocked = true)}
-		onpitchblocked={() => (pitchBlocked = true)}
-		onpitchrouted={() => (pitchBlocked = false)}
-		onautoplayrecovered={() => (autoplayBlocked = false)}
-		onplayingchange={(p) => (masterAdvancing = p)}
-	/>
+	{#each SLOTS as slot (slot)}
+		<TvPlayer
+			media={slotMedia[slot]}
+			entryId={slotEntryId[slot]}
+			visible={visible === slot && !isAttract}
+			active={visible === slot}
+			playing={isPlaying}
+			seekSec={seekSec}
+			seekRev={seekRev}
+			keyShift={keyShift}
+			guideLevel={seatMine ? guideLevel : 0}
+			masterLevel={seatMine ? masterLevel[slot] : 0}
+			silent={!seatMine}
+			onready={() => {
+				ctl.onVisibleReady();
+				tvState = ctl.state;
+				onFirstSongReady();
+				leadExitIfDue();
+			}}
+			onprewarmed={() => {
+				// `slotEntryId`, NOT `slotMedia.id`. GaplessController compares this against `#warmingId`, which it
+				// sets from `upNext.id` — an ENTRY id — and its own field comment says so. `snapshot(m)` returns
+				// `{...m}`, so `slotMedia[slot].id` is the MEDIA id and never matched: `#readyId` stayed unset,
+				// `isNextReady()` was permanently false, and every song change took the cold-load branch and threw
+				// away the slot it had just pre-warmed. Measured cost: ~740ms of dead air at each boundary.
+				ctl.onHiddenReady(slotEntryId[slot] ?? '');
+				tvState = ctl.state;
+			}}
+			onended={() => onVisibleEnded(slotEntryId[slot])}
+			onfailed={() => onVisibleFailed(slotEntryId[slot])}
+			onposition={(s, d) => {
+				positionSec = s;
+				durationSec = d;
+				sendTelemetry('playing', slotEntryId[slot], s);
+			}}
+			onautoplayblocked={() => (autoplayBlocked = true)}
+			onpitchblocked={() => (pitchBlocked = true)}
+			onpitchrouted={() => (pitchBlocked = false)}
+			onautoplayrecovered={() => (autoplayBlocked = false)}
+			onplayingchange={(p) => (masterAdvancing = p)}
+		/>
+	{/each}
 
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
@@ -936,40 +870,14 @@
 	/>
 
 	{#if screen === 'attract'}
-		<!-- NOBODY HAS JOINED. See docs/FRONTEND.md#the-attract-and-lobby-idles. -->
-		<div class="attract">
-			<div class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></div>
-			<div class="asplit-l">
-				<!-- `Karaoke` never rotates: it is what tells a stranger what they are looking at. -->
-				<div class="phrase-kick">Karaoke</div>
-				<div class="phrase-box">
-					{#key attractPhrase}
-						<div class="phrase-line">{attractPhrase}</div>
-					{/key}
-				</div>
-			</div>
-			<div class="asplit-r">
-				<!-- QR first: scanning types nothing, so it is the fast path and owns the top of the panel. -->
-				<JoinBadge
-					qrDataUrl={data.qrDataUrl}
-					joinUrl={data.joinUrl}
-					placement="hero"
-					size="var(--tv-attract-qr)"
-					unreachable={joinUnreachable}
-				/>
-				<!-- The typed path, BROKEN across the type ladder: one long sentence at ten feet is the failure mode. -->
-				<div class="join-text">
-					<div class="jt-step">Go to</div>
-					<div class="jt-url">{attractJoinUrl}</div>
-					{#if data.roomCode}
-						<div class="jt-step jt-code-step">and enter room code</div>
-						<!-- THE LARGEST ELEMENT ON THE SCREEN (--tv-code): it is the thing being transcribed. -->
-						<div class="jt-code">{data.roomCode}</div>
-					{/if}
-					<div class="jt-or">or scan the QR code</div>
-				</div>
-			</div>
-		</div>
+		<TvAttract
+			qrDataUrl={data.qrDataUrl}
+			joinUrl={data.joinUrl}
+			joinLabel={attractJoinUrl}
+			roomCode={data.roomCode}
+			unreachable={joinUnreachable}
+			phrase={attractPhrase}
+		/>
 	{:else if screen === 'lobby'}
 		<!-- People ARE here, nothing queued — name them and say what we're waiting for -->
 		<TvLobby
@@ -985,49 +893,21 @@
 			join={isCopy ? copyChip : undefined}
 		/>
 	{:else}
-		<!--
-			WHO IS SINGING — bottom-left, plain TEXT rather than a card: a filled panel over the room's chosen
-			background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
-			name and the ResizeObserver binding stay.
-		-->
-		<!-- Hidden, not unmounted, under a Skipped notice: the next singer is "Up next" there and is named here only once
-			their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
-		<div class={['lower-third', { 'under-notice': transient === 'error' }]} bind:this={lowerThirdEl}>
-			<span class="ls-name"
-				><span class="ls-dot" style="--singer: {currentSingerColor ?? 'var(--accent2)'}"></span>{singerName(
-					current?.singerId
-				)}</span
-			>
-			<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
-			<span class="ls-song"
-				>{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="ls-artist"
-						>{'\u00a0- '}{nowPlayingDisplay.artist}</span
-					>{/if}</span
-			>
-			<!-- No key NAME and no lyric SOURCE: the room cannot act on either. The singer reads both on the phone, and
-				the reel's amber tint alone says the words are a guess. -->
-			{#if keyLine}
-				<span class="ls-key">{keyLine}</span>
-			{/if}
-			{#if tvProgressStyle === 'card'}
-				<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
-			{/if}
-		</div>
-		{#if tvProgressStyle !== 'card'}
-			<TvProgress style={tvProgressStyle} elapsedSec={positionSec} durationSec={durationSec} />
-		{/if}
-		<!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. -->
-		{#if upNext && upNext.id !== current?.id}
-			{@const nextMedia = mediaOf(upNext)}
-			<div class="upnext" bind:this={upnextEl}>
-				<span class="un-label">{UP_NEXT}</span>
-				<span class="un-name"
-					><span class="un-dot" style="--singer: {singers.get(upNext.singerId)?.color ?? 'var(--ink-dim)'}"
-					></span>{singerName(upNext.singerId)}</span
-				>
-				<span class="un-song">{songDisplay(nextMedia).title}</span>
-			</div>
-		{/if}
+		<TvNowBar
+			name={singerName(current?.singerId)}
+			color={currentSingerColor}
+			media={mediaOf(current)}
+			keyShift={keyShift}
+			progressStyle={tvProgressStyle}
+			positionSec={positionSec}
+			durationSec={durationSec}
+			underNotice={transient === 'error'}
+			next={upNext && upNext.id !== current?.id
+				? { name: singerName(upNext.singerId), color: singers.get(upNext.singerId)?.color, media: mediaOf(upNext) }
+				: null}
+			oncardsize={(px) => (measuredCardPx = px)}
+			onupnextsize={(px) => (measuredUpnextPx = px)}
+		/>
 		{#if settings.room.tvReactions}
 			<Reactions bind:this={reactions} />
 		{/if}
@@ -1044,12 +924,18 @@
 		{/if}
 	{/if}
 
-	<!-- Transient states, ONE at a time, in ONE layer that stays mounted so it can fade out as well as in. See
-		docs/FRONTEND.md#the-full-screen-takeovers. -->
-	<div
-		class={['takeover-layer', { shown: layerShown }]}
-		aria-hidden={!layerShown}
-		bind:this={takeoverLayer}
+	<TvTakeover
+		shown={layerShown}
+		cardWords={cardWords}
+		handoff={handoff}
+		cardKind={cardKind}
+		notice={skipNotice || heldNotice}
+		skipNext={skipNext}
+		current={current}
+		liveStatus={liveStatus}
+		mediaOf={mediaOf}
+		singerName={singerName}
+		bind:layer={takeoverLayer}
 		ontransitionend={(e) => {
 			// Not on `transitioncancel`: Chromium fires it on every mid-flight reversal of the fade-in, while the reversed
 			// fade is still running. A fade that never ran is the deferred no-fade check's.
@@ -1057,53 +943,7 @@
 			if (!transient) heldKind = null;
 			else if (cardLeaving && !layerShown) cardGone = true;
 		}}
-	>
-		{#key cardWords}
-			{#if handoff}
-				{@const d = songDisplay(mediaOf(handoff.entry))}
-				<div class="interstitial takeover state-next">
-					<div class="up-label">{handoff.label}</div>
-					<div class="up-name hero-name">{singerName(handoff.entry.singerId)}</div>
-					<div class="up-song">
-						{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
-					</div>
-				</div>
-			{:else if cardKind === 'error'}
-				<!-- Names what is GOING and what REPLACES it in one breath, so the room never wonders whose turn it is. -->
-				<div class="interstitial takeover state-error" role="alert">
-					<div class="state-mark"><Icon name="warning" /></div>
-					<div class="up-label">Skipped</div>
-					<div class="up-song">{skipNotice || heldNotice}</div>
-					{#if skipNext}
-						<div class="up-replaces">
-							{UP_NEXT} - {singerName(skipNext.singerId)} - {songDisplay(mediaOf(skipNext)).title}
-						</div>
-					{/if}
-				</div>
-			{:else if cardKind === 'waiting'}
-				<!-- A WAIT, not a failure: a bounded 3-step progress makes it read as finite, in words from
-				     process-phrasing (the ONE guest-facing vocabulary, shared with the phone). The bar and the step are the
-				     song's `liveStatus`, the phone's own figure; with none held for it, neither is drawn. -->
-				{@const processMedia = mediaOf(current)}
-				{@const proc = waitingProgress(current ? liveStatus.get(current.mediaId) : undefined)}
-				<div class="interstitial takeover state-waiting">
-					<div class="state-mark"><Icon name="flame" /></div>
-					<div class="up-label">{processStageLabelAscii('queued')}</div>
-					<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
-					<!-- Always laid out, hidden with no figure, so the centred title holds still when a status arrives or goes. -->
-					<div class={{ 'process-slot': true, unknown: !proc }} aria-hidden={proc ? undefined : 'true'}>
-						<div class="process-bar"><i style="width: {proc?.pct ?? 0}%"></i></div>
-						<div class="process-steps">
-							{#each PROCESS_STEPS as label, i (label)}
-								<span class={{ 'step-current': i === proc?.index, 'step-done': !!proc && i < proc.index }}>{label}</span
-								>
-							{/each}
-						</div>
-					</div>
-				</div>
-			{/if}
-		{/key}
-	</div>
+	/>
 
 	<!--
 		THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed, in the same slot as during playback: a song change is
@@ -1115,47 +955,12 @@
 		</div>
 	{/if}
 
-	<!--
-		ALSO GATED ON `!isAttract`: the latch's only writers are per-slot props, so when the room DRAINS both players
-		unmount and neither can fire again, leaving the scrim over an empty lobby for good above the join QR. Gating
-		the RENDER rather than clearing the latch is deliberate — the block is still real.
-	-->
-	{#if autoplayBlocked && !isAttract}
-		<button
-			type="button"
-			class="autoplay-hint"
-			onclick={() => {
-				// FREE RIDER: this tap is a real gesture in the TV's own document, so it carries the activation
-				// `requestFullscreen()` needs. Best-effort, and it never blocks the music recovery, which TvPlayer's
-				// own gesture listener performs.
-				toggleFullscreen();
-				autoplayBlocked = false;
-			}}
-			aria-label="Tap anywhere to start the music"
-		>
-			<span class="ah-mark"><Icon name="play" /></span>
-			<span class="ah-head">Tap anywhere to <span class="grad-text">start the music</span></span>
-		</button>
-	{/if}
-
-	<!--
-		A BUTTON, because the tap IS the remedy: it authorises WebAudio for the document and TvPlayer's always-armed
-		listener re-drives the pending shift on the same gesture.
-	-->
-	{#if pitchBlocked && !autoplayBlocked && !isAttract}
-		<button
-			type="button"
-			class="pitch-hint"
-			onclick={() => {
-				// The click IS the activation. Clearing optimistically is safe: if the retry does not route, the next
-				// pitch effect pass raises it again.
-				pitchBlocked = false;
-			}}
-			aria-label="Tap to let this TV change the key"
-		>
-			<span class="ph-head">Tap to <span class="grad-text">change the key</span></span>
-		</button>
-	{/if}
+	<TvAudioNotice
+		bind:autoplayBlocked={autoplayBlocked}
+		bind:pitchBlocked={pitchBlocked}
+		isAttract={isAttract}
+		onfullscreen={toggleFullscreen}
+	/>
 
 	<!--
 		The mark is an INLINE SVG, not a codepoint: a functional control must not have its drawing picked by the platform,
@@ -1232,131 +1037,6 @@
 	.stage-bg.shown {
 		opacity: 1;
 	}
-	.attract {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-tv-screen);
-		background: radial-gradient(80% 60% at 30% 30%, var(--stage-glow) 0%, var(--bg) 70%);
-	}
-	/* Its offset from the edge is what proves the stage chrome clears the overscan region — the e2e stageBrand
-	   anchor reads this. */
-	.brand {
-		position: absolute;
-		top: var(--tv-safe-y);
-		left: var(--tv-safe-x);
-		font-weight: 800;
-		font-size: var(--tv-name);
-		display: inline-flex;
-		align-items: center;
-		gap: var(--tv-space-lg);
-	}
-	.asplit-l {
-		position: absolute;
-		left: var(--tv-safe-x);
-		top: 0;
-		bottom: 0;
-		width: var(--tv-attract-left);
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-	}
-	.phrase-kick {
-		font-size: var(--tv-name);
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--accent-ink);
-	}
-	/* FIXED height, so a one- and a two-line phrase never move the label above it. The 1.03 here is the same
-	   line-height `.phrase-line` sets, and the two MUST agree or the box no longer holds whole lines. */
-	.phrase-box {
-		height: calc(var(--tv-phrase) * 1.03 * var(--tv-phrase-lines));
-		margin-top: 2vh;
-		display: grid;
-		align-content: center;
-		overflow: hidden;
-	}
-	.phrase-line {
-		font-size: var(--tv-phrase);
-		font-weight: 900;
-		line-height: 1.03;
-	}
-	/* A CUT, THEN A FADE-IN, replayed by the `{#key attractPhrase}` remount: the old line unmounts at once and the
-	   new one fades in over 600 ms. Not a crossfade. 600 ms is a deliberate exception to the motion tokens: a slower
-	   swap for a screen nobody is acting on. A CSS animation, NEVER a Svelte transition directive, which never
-	   consults the media query. Under `reduce` this does not apply AND the clock is off. */
-	@media (prefers-reduced-motion: no-preference) {
-		.phrase-box .phrase-line {
-			animation: phrase-fade 0.6s ease-out;
-		}
-	}
-	@keyframes phrase-fade {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-	.asplit-r {
-		position: absolute;
-		right: 0;
-		top: 0;
-		bottom: 0;
-		width: var(--tv-attract-right);
-		background: var(--bg2);
-		border-left: 2px solid var(--line);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 3.2vh;
-		/* Right/top/bottom are real screen edges and take the overscan token; the LEFT edge is the interior 2px
-		   border, so it takes a plain gutter. Charging --tv-safe-x on both sides clips the join address. */
-		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--tv-space-4xl);
-		text-align: center;
-		overflow: hidden;
-	}
-	.join-text {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		width: 100%;
-		min-width: 0;
-	}
-	.jt-step {
-		font-size: var(--tv-body);
-		color: var(--ink-dim);
-		line-height: 1.3;
-	}
-	.jt-code-step {
-		margin-top: 1.6vh;
-	}
-	.jt-url {
-		/* An address is ONE unbreakable token: no overflow-wrap, because SHRINKING beats breaking. What makes it FIT
-		   is --tv-attract-right, sized from a measured 23-char address plus the overscan padding. */
-		font-size: var(--tv-name);
-		font-weight: 800;
-		font-variant-numeric: tabular-nums;
-		line-height: var(--lh-tight);
-	}
-	.jt-code {
-		font-size: var(--tv-code);
-		font-weight: 900;
-		letter-spacing: 0.11em;
-		/* Tracking adds its space after the LAST glyph too, so a centred shrink-to-fit box is half a letter-space
-		   wider than the glyphs. The padding must always equal the letter-spacing above it. */
-		padding-left: 0.11em;
-		color: var(--accent-ink);
-		line-height: var(--lh-none);
-		font-variant-numeric: tabular-nums;
-		margin-top: 0.6vh;
-	}
-	.jt-or {
-		font-size: var(--tv-small);
-		color: var(--ink-dim);
-		margin-top: 1.8vh;
-	}
 	/* ONE TV PER ROOM: a copy's chip, bottom-right, in the corner the join QR has on the real TV. */
 	.copy-slot {
 		position: absolute;
@@ -1381,294 +1061,6 @@
 			top: auto;
 			bottom: var(--tv-safe-y);
 		}
-	}
-	.lower-third.under-notice {
-		visibility: hidden;
-	}
-	.lower-third {
-		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */
-		position: absolute;
-		left: var(--tv-safe-x);
-		bottom: var(--tv-safe-y);
-		z-index: var(--z-tv-card);
-		display: flex;
-		flex-direction: column;
-		max-width: 46vw;
-		gap: var(--tv-space-3xs);
-		/* The STROKE is load-bearing, not decoration: a shadow tuned against black disappears against a bright field
-		   of similar luminance (the singer name measured 1.10:1 on white). `paint-order: stroke fill` draws the
-		   outline BEHIND the glyph; the default eats the thin parts. Width in `em`, so 720p and 4K read the same. */
-		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
-		-webkit-text-stroke: 0.04em var(--scrim-strong);
-		paint-order: stroke fill;
-	}
-	/* A DOT rather than a fill: the singer's identity at a size that cannot compete with the words. */
-	.ls-dot {
-		display: inline-block;
-		width: 0.52em;
-		height: 0.52em;
-		border-radius: 50%;
-		margin-right: 0.42em;
-		vertical-align: baseline;
-		/* --singer as a custom property, never interpolated into `background`: color-mix needs the property to derive the
-		   halo, and concatenating alpha onto the value only works for 6-digit hex. */
-		background: var(--singer);
-	}
-	.ls-name {
-		font-size: var(--tv-name);
-		font-weight: 800;
-		line-height: 1.05;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	/* Two lines, or an UNPARSED long raw title grows the block upward without bound. `-webkit-line-clamp` needs
-	   the -webkit box display and hidden overflow beside it to take effect at all. */
-	.ls-song {
-		font-size: var(--tv-body);
-		font-weight: 600;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		overflow: hidden;
-	}
-	/* As an INLINE span inside .ls-song it must NOT carry white-space/overflow of its own: the overflow pair is
-	   inert on an inline element, while `nowrap` DOES apply and hard-clips a long credit mid-word. */
-	.ls-artist {
-		font-size: var(--tv-body);
-		color: var(--ink-dim);
-		font-weight: 500;
-	}
-	.ls-key {
-		font-size: var(--tv-label);
-		/* One ink, not --ink-dim plus an 0.82 subtree alpha: the pair composited to a value no contrast check on
-		   either half could see. Folded into the colour, where it is readable as the value it actually is. */
-		color: color-mix(in srgb, var(--ink-dim) 82%, transparent);
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		margin-top: var(--tv-space-3xs);
-	}
-
-	/* Offset below the connection dot with a vh term, so the clearance scales instead of being right only at 1080p. */
-	.upnext {
-		position: absolute;
-		right: var(--tv-safe-x);
-		top: calc(var(--tv-safe-y) + 2.6vh);
-		z-index: var(--z-tv-card);
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		/* The tightest rung of the TV ladder, not a flat 1px: 1px between three lines whose type is 58px at 4K is
-		   not a gap, it is a collision. */
-		gap: var(--tv-space-3xs);
-		max-width: 32vw;
-		text-align: right;
-		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
-	}
-	.un-label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		font-weight: 700;
-	}
-	.un-name {
-		font-size: var(--tv-body);
-		font-weight: 800;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 32vw;
-	}
-	.un-dot {
-		display: inline-block;
-		width: 0.5em;
-		height: 0.5em;
-		border-radius: 50%;
-		margin-right: 0.4em;
-		background: var(--singer);
-	}
-	.un-song {
-		font-size: var(--tv-label);
-		color: var(--ink-dim);
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 32vw;
-	}
-	/* Mounted for the whole stage, so it can fade OUT: invisible and inert until a takeover is up. Only opacity and
-	   transform move, and only for `no-preference`; under reduce the card cuts in and out. The exit is the player
-	   slots' crossfade (TvPlayer, `--motion-base` ease), so the card leaves as the song arrives. */
-	.takeover-layer {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-tv-interstitial);
-		opacity: 0;
-		pointer-events: none;
-	}
-	.takeover-layer.shown {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	@media (prefers-reduced-motion: no-preference) {
-		.takeover-layer {
-			transition: opacity var(--motion-base) ease;
-		}
-		.takeover-layer.shown {
-			transition: opacity var(--motion-slow) ease-out;
-		}
-		/* The lines, not the scrim: a change of words re-mounts them (`{#key cardWords}`), so they rise in again
-		   while the layer stays up. */
-		.takeover-layer.shown .interstitial > * {
-			animation: card-rise var(--motion-slow) ease-out both;
-		}
-	}
-	@keyframes card-rise {
-		from {
-			opacity: 0;
-			transform: translateY(var(--tv-space-4xl));
-		}
-	}
-	.interstitial {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-tv-interstitial);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--tv-space-lg);
-		/* A SCRIM, not a wash: an opaque wash blanks the room's chosen backdrop for every song change — the exact
-		   black flash the background layer's visibility band exists to avoid, undone one layer up. */
-		background: radial-gradient(
-			70% 55% at 50% 50%,
-			color-mix(in srgb, var(--bg) 88%, transparent) 0%,
-			color-mix(in srgb, var(--bg) 62%, transparent) 62%,
-			transparent 100%
-		);
-		padding: var(--tv-safe-y) var(--tv-safe-x);
-		text-align: center;
-	}
-	.up-label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-	}
-	.up-name {
-		font-size: var(--tv-hero);
-		font-weight: 900;
-		line-height: 1.02;
-	}
-	.up-song {
-		font-size: var(--tv-name);
-	}
-	.up-artist-inline {
-		color: var(--ink-dim);
-	}
-	/* Large enough to be the first thing read, since it is what distinguishes these states. */
-	.state-mark {
-		font-size: var(--tv-hero);
-		line-height: var(--lh-none);
-		margin-bottom: var(--tv-space-2xs);
-	}
-
-	/* Colour is NEVER the only carrier: each takeover also keeps its own eyebrow, and error/processing a mark. */
-	.takeover {
-		align-items: flex-start;
-		justify-content: center;
-		text-align: left;
-		padding-left: var(--tv-safe-x);
-		border-left: var(--tv-takeover-border) solid transparent;
-	}
-	/* --accent as a NON-TEXT border/fill, which is what it is certified for; the text is --ink / --accent2. */
-	.state-next.takeover {
-		border-left-color: var(--accent);
-		background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%);
-	}
-	.hero-name {
-		font-size: var(--tv-takeover-name);
-		font-weight: 900;
-		line-height: 1.02;
-	}
-	.state-next .up-song {
-		color: var(--accent2);
-		margin-top: 1.4vh;
-	}
-
-	.state-error.takeover {
-		border-left-color: var(--danger);
-		background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 14%, transparent), transparent 55%);
-	}
-	.state-error .state-mark {
-		color: var(--danger);
-	}
-	.state-error .up-label {
-		color: var(--danger-ink);
-	}
-	.state-error .up-song {
-		color: var(--danger-ink);
-	}
-	.up-replaces {
-		font-size: var(--tv-name);
-		color: var(--ink-dim);
-		margin-top: 1.4vh;
-	}
-
-	.state-waiting.takeover {
-		border-left-color: var(--warn);
-		background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, transparent), transparent 55%);
-	}
-	.state-waiting .state-mark {
-		color: var(--warn);
-	}
-	.state-waiting .up-label {
-		color: var(--warn);
-	}
-	.state-waiting .up-song {
-		color: var(--ink);
-	}
-	.hero-song {
-		font-size: var(--tv-hero);
-		font-weight: 900;
-		line-height: 1.04;
-		margin-top: 1vh;
-	}
-	/* `contents`, so the bar and steps stay the takeover's own flex items; `visibility` inherits into both. */
-	.process-slot {
-		display: contents;
-	}
-	.process-slot.unknown {
-		visibility: hidden;
-	}
-	.process-bar {
-		width: var(--tv-process-bar-w);
-		height: var(--tv-process-bar-h);
-		border-radius: var(--radius-pill);
-		background: var(--track-bg);
-		margin-top: 3vh;
-		overflow: hidden;
-	}
-	.process-bar i {
-		display: block;
-		height: 100%;
-		background: var(--warn);
-	}
-	.process-steps {
-		display: flex;
-		gap: var(--tv-space-4xl);
-		margin-top: 2vh;
-		font-size: var(--tv-small);
-		color: var(--ink-dim);
-	}
-	.process-steps .step-current {
-		color: var(--warn);
-		font-weight: 700;
-	}
-	.process-steps .step-done {
-		color: var(--ink);
 	}
 	/* Above the takeover, so it is never painted over. The composited --ink-dim run inside it still clears 3:1 at
 	   this opacity and the --tv-small size. */
@@ -1733,75 +1125,5 @@
 		display: block;
 		width: clamp(22px, 3vmin, 48px);
 		height: clamp(22px, 3vmin, 48px);
-	}
-	/* Full-screen, so a tap ANYWHERE authorises playback. A <button>, not a <div>: it is keyboard-focusable, and a
-	   keydown is one of the gestures TvPlayer listens for. */
-	.autoplay-hint {
-		position: absolute;
-		inset: 0;
-		z-index: var(--z-tv-affordance);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2.2vh;
-		padding: var(--tv-safe-y) var(--tv-safe-x);
-		border: 0;
-		cursor: pointer;
-		color: var(--ink);
-		text-align: center;
-		background: color-mix(in srgb, var(--bg) 82%, transparent);
-		backdrop-filter: blur(6px);
-		-webkit-backdrop-filter: blur(6px);
-	}
-
-	/* Deliberately NOT `inset: 0` like the affordance above: that one covers the stage because the room is silent,
-	   while here the song plays fine and only the transpose is stuck. Sized off the TV type ladder rather than a
-	   viewport term, because the `.tv` root is already vh-scaled. */
-	.pitch-hint {
-		position: absolute;
-		top: var(--tv-safe-y);
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: var(--z-tv-interstitial);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.3em;
-		min-height: var(--tap);
-		max-width: 60vw;
-		padding: 0.7em 1.4em;
-		border: 0;
-		border-radius: var(--radius-pill);
-		cursor: pointer;
-		color: var(--ink);
-		text-align: center;
-		background: color-mix(in srgb, var(--bg) 88%, transparent);
-		backdrop-filter: blur(6px);
-		-webkit-backdrop-filter: blur(6px);
-	}
-	.ph-head {
-		font-size: var(--tv-body);
-		font-weight: 650;
-		line-height: var(--lh-snug);
-	}
-	.ah-mark {
-		display: grid;
-		place-items: center;
-		/* BOX AND GLYPH ON ONE LADDER. As `clamp(64px, 12vmin, 160px)` the circle stopped growing at 160px while the
-		   rem glyph inside it did not: at 4K the 2.881rem glyph is 168px in a 160px circle, so the mark overflowed
-		   its own background. 4.4rem is the size that circle already had at 1080p (128px against 129.6px) and at
-		   720p (88px against 86.4px), and it holds the 0.65 glyph-to-box ratio at every resolution and --ui-scale. */
-		width: 4.4rem;
-		height: 4.4rem;
-		border-radius: 50%;
-		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		font-size: 2.881rem;
-	}
-	.ah-head {
-		font-size: var(--tv-hero);
-		font-weight: 800;
-		line-height: var(--lh-tight);
-		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 </style>
