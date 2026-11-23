@@ -68,6 +68,18 @@ def test_encore_torch_extra_wins_over_the_pick(tmp_path: Path, pinned: str) -> N
     assert torch_extra(tmp_path, system="Linux", machine="x86_64", gpu=True, env=pinned) == pinned
 
 
+def test_an_unknown_torch_extra_is_refused_by_name(tmp_path: Path) -> None:
+    """Otherwise it dies deep inside `uv sync` with "Extra `x` is not defined"."""
+    with pytest.raises(subprocess.CalledProcessError) as failed:
+        torch_extra(tmp_path, system="Linux", machine="x86_64", gpu=True, env="cuda")
+    assert "ENCORE_TORCH_EXTRA=cuda: expected cpu or cu128" in failed.value.stderr
+
+
+def test_the_gpu_probe_cannot_hang_dev_sh() -> None:
+    """A wedged driver can hang `nvidia-smi` for minutes, and dev.sh with it."""
+    assert "timeout 10 nvidia-smi -L" in (REPO / "dev.sh").read_text()
+
+
 def test_dev_sh_installs_the_picked_wheel_not_a_hardcoded_cpu() -> None:
     extras = re.search(r'^WORKER_EXTRAS="(.*)"$', (REPO / "dev.sh").read_text(), re.M)
     assert extras
@@ -107,6 +119,9 @@ def test_youtube_gap_names_what_is_missing(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(hardware, "binary_available", lambda name: name == "deno")
     assert hardware.youtube_gap((str(conf),)) is None
     assert "remote-components" in (hardware.youtube_gap((str(tmp_path / "none"),)) or "")
+    commented = tmp_path / "commented"
+    commented.write_text("# --remote-components ejs:github\n")
+    assert "remote-components" in (hardware.youtube_gap((str(commented),)) or ""), "a comment sets nothing"
 
     monkeypatch.setattr(hardware, "binary_available", lambda name: False)
     assert "deno" in (hardware.youtube_gap((str(conf),)) or "")

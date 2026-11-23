@@ -68,7 +68,8 @@ const CONTAINER_OWNED: Record<'core' | 'worker', string[]> = {
 		'ENCORE_MLX_BIN',
 		'ENCORE_WORKER_VERSION',
 		'HOME', // the zoo dir's fallback base, set by the image
-		'XDG_CACHE_HOME'
+		'XDG_CACHE_HOME',
+		'XDG_CONFIG_HOME' // yt-dlp config lookup; the image uses /etc/yt-dlp.conf
 	]
 };
 

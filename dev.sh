@@ -543,11 +543,16 @@ VENV="$WORKER_DIR/.venv"
 #
 # The torch wheels: ENCORE_TORCH_EXTRA wins (`cpu` or `cu128`, the same name the Docker build arg takes).
 # Unset, CUDA wheels on Linux x86_64 when `nvidia-smi -L` sees a GPU, else CPU. CPU wheels on an NVIDIA box
-# run every song at CPU speed with only `accelerator=cpu` in the worker log to say so.
+# run every song at CPU speed with only `accelerator=cpu` in the worker log to say so. Linux aarch64 with
+# NVIDIA (GH200, DGX Spark) stays CPU by choice: the lock carries cu128 wheels for x86_64 only. The timeout
+# is for a wedged driver, which can hang `nvidia-smi` for minutes.
 torch_extra() {
 	if [ -n "${ENCORE_TORCH_EXTRA:-}" ]; then
-		echo "$ENCORE_TORCH_EXTRA"
-	elif [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] && nvidia-smi -L >/dev/null 2>&1; then
+		case "$ENCORE_TORCH_EXTRA" in
+		cpu | cu128) echo "$ENCORE_TORCH_EXTRA" ;;
+		*) echo "ENCORE_TORCH_EXTRA=$ENCORE_TORCH_EXTRA: expected cpu or cu128" >&2 && return 1 ;;
+		esac
+	elif [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] && timeout 10 nvidia-smi -L >/dev/null 2>&1; then
 		echo cu128
 	else
 		echo cpu

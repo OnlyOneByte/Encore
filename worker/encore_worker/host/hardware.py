@@ -119,30 +119,6 @@ def resolve_backend(configured: str | None, *, report: Report | None = None) -> 
     return Backend("torch", "auto-selected torch")
 
 
-def youtube_gap(config_paths: tuple[str, ...], *, deno: str = "deno") -> str | None:
-    """What yt-dlp is missing to download from YouTube, or None. A warning, not a capability gate: other
-    sites still work, and `fetch:ytdlp` is about the binary.
-
-    YouTube needs deno to solve its player challenge, and `--remote-components ejs:github` to fetch the
-    solver. dev.sh and the image set both up (`docker/yt-dlp.conf`); a native boot outside them has neither,
-    and every YouTube song fails with "Requested format is not available".
-    """
-    missing = []
-    if not binary_available(deno):
-        missing.append("deno on PATH")
-    if not any(_mentions(path, "remote-components") for path in config_paths):
-        missing.append(f"--remote-components ejs:github in a yt-dlp config ({', '.join(config_paths)})")
-    return " and ".join(missing) or None
-
-
-def _mentions(path: str, text: str) -> bool:
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return text in fh.read()
-    except OSError:
-        return False
-
-
 def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg") -> frozenset[str]:
     """What this box can PROVE it can do, so core only routes work it can finish.
 
@@ -180,3 +156,28 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     if module_available("audio_separator"):
         caps.add("stems:audiosep")
     return frozenset(caps)
+
+
+def youtube_gap(config_paths: tuple[str, ...], *, deno: str = "deno") -> str | None:
+    """What yt-dlp is missing to download from YouTube, or None. A warning, not a capability gate: other
+    sites still work, and `fetch:ytdlp` is about the binary.
+
+    YouTube needs deno to solve its player challenge, and `--remote-components ejs:github` to fetch the
+    solver. dev.sh and the image set both up (`docker/yt-dlp.conf`); a native boot outside them has neither,
+    and every YouTube song fails with "Requested format is not available".
+    """
+    missing = []
+    if not binary_available(deno):
+        missing.append("deno on PATH")
+    if not any(_mentions(path, "remote-components") for path in config_paths):
+        missing.append(f"--remote-components ejs:github in a yt-dlp config ({', '.join(config_paths)})")
+    return " and ".join(missing) or None
+
+
+def _mentions(path: str, text: str) -> bool:
+    """Does an uncommented line of this config name `text`? A `# --remote-components ...` sets nothing."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return any(text in line for line in fh if not line.lstrip().startswith("#"))
+    except (OSError, UnicodeDecodeError):
+        return False
