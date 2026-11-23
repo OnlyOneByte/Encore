@@ -10,8 +10,10 @@
 		style: TvProgressStyle;
 		elapsedSec: number;
 		durationSec: number;
+		/** A takeover card is up: the self-positioned styles hide with the lower third (`card` inherits it). */
+		underCard?: boolean;
 	}
-	let { style, elapsedSec, durationSec }: Props = $props();
+	let { style, elapsedSec, durationSec, underCard = false }: Props = $props();
 
 	const progress = $derived(progressFraction(elapsedSec, durationSec));
 </script>
@@ -24,12 +26,15 @@
 			<span class="t">{formatRemainingAscii(elapsedSec, durationSec)}</span>
 		</span>
 	{:else if style === 'corner'}
-		<div class="topbar"><i style="transform:scaleX({progress})"></i></div>
+		<div class={['topbar', { 'under-card': underCard }]}><i style="transform:scaleX({progress})"></i></div>
 		<!-- Top-LEFT, because top-right is the connection dot / Up-next / fullscreen column and the bottom is the
 		     lower-third's. -->
-		<div class="pill"><span class="lab">left</span> {formatRemainingAscii(elapsedSec, durationSec).slice(1)}</div>
+		<div class={['pill', { 'under-card': underCard }]}>
+			<span class="lab">left</span>
+			{formatRemainingAscii(elapsedSec, durationSec).slice(1)}
+		</div>
 	{:else if style === 'edge'}
-		<div class="edgebar"><i style="transform:scaleX({progress})"></i></div>
+		<div class={['edgebar', { 'under-card': underCard }]}><i style="transform:scaleX({progress})"></i></div>
 	{/if}
 {/if}
 
@@ -53,6 +58,17 @@
 		.edgebar > i {
 			transition: transform var(--motion-tick) linear;
 		}
+		.topbar,
+		.pill,
+		.edgebar {
+			transition: opacity var(--motion-base) ease;
+		}
+	}
+	/* Hidden under the card with the lower third (TvNowBar `.under-card`), but FADED back in as it leaves: a flat
+	   gradient bar is cheap to fade, where the lower third's shadowed text is not. */
+	.under-card {
+		visibility: hidden;
+		opacity: 0;
 	}
 
 	.card-row {

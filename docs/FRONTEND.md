@@ -1937,6 +1937,23 @@ hold's last moment without advancing. A hold too short to fit the fade-in, a 600
 (the room allows 500 ms) is not led: its card leaves at the hold's end. Under `prefers-reduced-motion: reduce` both cut
 at the hold's end.
 
+While the layer is up, the card is the whole stage. The scrim is transparent past 62% of its radius, so the stage
+chrome in the corners shows through it: the lower third and the progress line are hidden (`underCard`, from
+`layerShown`), or "Now singing Maya" is on screen twice, and the stage's own corner QR is hidden while `transient`
+holds the dimmed `.takeover-join` copy, or the two stack at full brightness in one box. Both hide by `visibility`,
+so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. Both
+cut out as the card comes up. The progress line fades back in on `--motion-base` from the layer's exit START (a cut
+under reduce); it names nothing. The lower third CUTS back in only once the card's exit fade has ENDED
+(`cardPainted`), or for the fade's first frames it repeats the name the card is still showing. It is a cut, not a
+fade, because fading re-rasterises its blurred shadow and stroke every frame: on the `tv-song-outro` live run a fade
+(with `will-change: opacity`) took the p95 frame interval from main's 66.6 ms to 83.3 ms.
+
+The QR's 1.0 to 0.72 step is a CUT, at both ends of the card, on purpose. A fade needs both copies painted at once
+(the stage's under the takeover, the dimmed one above it), and that is two QRs in one box for the fade's length, the
+bug this rule removes. Dimming the stage's own copy in place does not work either: it sits under the takeover layer,
+and the scrim is still about half up at that corner. The step is the same white tile at 72%, in a slot that does not
+move.
+
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
 `paint-order: stroke fill`. A shadow tuned against

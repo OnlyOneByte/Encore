@@ -743,6 +743,9 @@
 	// Up, unless the intro card is already fading out ahead of its hold's end (`cardLeaving`).
 	// Reduced motion switched on mid-lead puts the card back until the hold's end, where it cuts out as on main.
 	const layerShown = $derived(!!transient && !(cardLeaving && !prefersReducedMotion && transient === 'next'));
+	// The card's words are painted at all: up, or still fading out (a led exit until `cardGone`, any other until the
+	// held card drops). The lower third waits for this, so the room never reads one name twice.
+	const cardPainted = $derived(transient ? layerShown || !cardGone : heldKind !== null);
 	// "Now singing" and the missed-preload card are ONE card: the same words for the same entry, so `next` -> `loading`
 	// changes nothing on screen. `loading` is the MISSED-PRELOAD path, held until the visible player reports ready (a
 	// song IS coming), and names `stageEntry`, the entry the visible player is loading toward. Either way "Up next" only
@@ -905,7 +908,8 @@
 			progressStyle={tvProgressStyle}
 			positionSec={positionSec}
 			durationSec={durationSec}
-			underNotice={transient === 'error'}
+			underCard={layerShown}
+			cardPainted={cardPainted}
 			next={upNext && upNext.id !== current?.id
 				? { name: singerName(upNext.singerId), color: singers.get(upNext.singerId)?.color, media: mediaOf(upNext) }
 				: null}
@@ -917,14 +921,17 @@
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner). A copy gives that corner to
 		     "Make this the TV": the guests join from the real TV's QR. -->
+		<!-- Hidden while `.takeover-join` shows the dimmed copy; `visibility` keeps the lane's box. -->
 		{#if !isCopy}
-			<JoinBadge
-				qrDataUrl={data.qrDataUrl}
-				joinUrl={data.joinUrl}
-				placement="corner"
-				roomCode={data.roomCode}
-				bind:cornerEl={cornerEl}
-			/>
+			<div class={['stage-join', { 'under-card': !!transient }]}>
+				<JoinBadge
+					qrDataUrl={data.qrDataUrl}
+					joinUrl={data.joinUrl}
+					placement="corner"
+					roomCode={data.roomCode}
+					bind:cornerEl={cornerEl}
+				/>
+			</div>
 		{/if}
 	{/if}
 
@@ -1065,6 +1072,13 @@
 			top: auto;
 			bottom: var(--tv-safe-y);
 		}
+	}
+	/* `contents`, so the corner card keeps the stage as its containing block; `visibility` inherits into it. */
+	.stage-join {
+		display: contents;
+	}
+	.stage-join.under-card {
+		visibility: hidden;
 	}
 	/* Above the takeover, so it is never painted over. The composited --ink-dim run inside it still clears 3:1 at
 	   this opacity and the --tv-small size. */

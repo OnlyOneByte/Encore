@@ -33,8 +33,10 @@
 		progressStyle: TvProgressStyle;
 		positionSec: number;
 		durationSec: number;
-		/** A Skipped notice is up; see `.under-notice`. */
-		underNotice: boolean;
+		/** A takeover card is up (`layerShown`): the progress line hides, and fades back in as it leaves. */
+		underCard: boolean;
+		/** The card's words are painted at all, its exit fade included: the lower third hides. */
+		cardPainted: boolean;
 		/** The next turn, when it is not the one on stage. */
 		next: { name: string; color: string | undefined; media: Media | null } | null;
 		/** The lower third's rendered height, on every resize; /tv turns it into `--tv-chrome-h`. */
@@ -51,7 +53,8 @@
 		progressStyle,
 		positionSec,
 		durationSec,
-		underNotice,
+		underCard,
+		cardPainted,
 		next,
 		oncardsize,
 		onupnextsize
@@ -80,9 +83,8 @@
 	background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
 	name and the ResizeObserver binding stay.
 -->
-<!-- Hidden, not unmounted, under a Skipped notice: the next singer is "Up next" there and is named here only once
-	their card is up. `visibility` keeps the box, so the measured `--tv-chrome-h` does not move. -->
-<div class={['lower-third', { 'under-notice': underNotice }]} bind:this={lowerThirdEl}>
+<!-- Hidden, not unmounted, while a card is painted: its name is never repeated here, and `--tv-chrome-h` stays. -->
+<div class={['lower-third', { 'under-card': cardPainted }]} bind:this={lowerThirdEl}>
 	<span class="ls-name"><span class="ls-dot" style="--singer: {color ?? 'var(--accent2)'}"></span>{name}</span>
 	<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
 	<span class="ls-song"
@@ -98,7 +100,7 @@
 	{/if}
 </div>
 {#if progressStyle !== 'card'}
-	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} />
+	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
 {/if}
 <!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. -->
 {#if next}
@@ -112,7 +114,8 @@
 {/if}
 
 <style>
-	.lower-third.under-notice {
+	/* A cut, not a fade: fading re-rasterises the blurred shadow every frame (docs/FRONTEND.md). */
+	.lower-third.under-card {
 		visibility: hidden;
 	}
 	.lower-third {
