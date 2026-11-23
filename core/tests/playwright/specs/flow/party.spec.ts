@@ -274,11 +274,11 @@ test('a queued song reaches both phones in one rotation, and skip advances it', 
 
 		// THE DEMO ROW BY NAME, not whichever action is first on screen: the same term returns a dozen YouTube rows
 		// on a box with a network, and queueing one of those needs a `fetch:ytdlp` worker this flow does not run.
-		// Then by ROLE + ACCESSIBLE NAME, covering both arms — `Sing this …` when the song still needs processing,
-		// `Add a turn` when it is already ready.
+		// Then by ROLE + ACCESSIBLE NAME, covering both arms — `Sing <song> …` when the song still needs processing,
+		// `Add a turn for <song>` when it is already ready.
 		const demoRow = maya.locator(SEL.songRow).filter({ hasText: demo.title });
 		await demoRow
-			.getByRole('button', { name: /^(Sing this|Add a turn)/ })
+			.getByRole('button', { name: /^(Sing |Add a turn)/ })
 			.first()
 			.click();
 
@@ -374,7 +374,7 @@ test('with nothing playable, the TV explains itself instead of going blank', asy
 	await maya
 		.locator(SEL.songRow)
 		.filter({ hasText: demo.title })
-		.getByRole('button', { name: /^(Sing this|Add a turn)/ })
+		.getByRole('button', { name: /^(Sing |Add a turn)/ })
 		.first()
 		.click();
 	// ONTO /queue, not back to home: with no worker the pick stays queued, and a queued row is on the Queue tab.

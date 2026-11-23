@@ -5,6 +5,7 @@
 	import { untrack } from 'svelte';
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel, STALLED_TURN_LABEL } from '$lib/phrasing/process-phrasing';
+	import { songRef } from '$lib/phrasing/row-action-names';
 	import { type MediaStatus } from '$lib/contract';
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -169,20 +170,22 @@
 
 	// The buttons are bare marks, so these labels are the whole announcement, and the process label names its COST.
 	// `onmake` WITH `inQueue` is the retry state — the singer already holds a turn and its process died — so it needs
-	// its own words: "Sing this" would promise a turn the action does not take.
+	// its own words: "Sing this" would promise a turn the action does not take. Every label names the song as the row
+	// shows it, because a results list is the same button once per row — see $lib/phrasing/row-action-names.
 	const retryProcess = $derived(!!onmake && inQueue);
+	const song = $derived(songRef(title, byline));
 	const actionLabel = $derived(
 		retryProcess
-			? 'Try making the karaoke again — you already have a turn for this song'
+			? `Try making the karaoke again for ${song} — you already have a turn for this song`
 			: onmake
-				? 'Sing this — strips the vocals first, takes about a minute'
+				? `Sing ${song} — strips the vocals first, takes about a minute`
 				: // Announced BEFORE the inQueue branch because it is the stronger fact: this song can never be
 					// sung here, so "Already in the queue" would be both wrong and beside the point.
 					!processable
-					? "Can't sing this one — it's a name match only. Search for the song to make karaoke."
+					? `Can't sing ${song} — it's a name match only. Search for the song to make karaoke.`
 					: inQueue
-						? 'Already in the queue'
-						: 'Add a turn'
+						? `${song} is already in the queue`
+						: `Add a turn for ${song}`
 	);
 </script>
 

@@ -33,8 +33,8 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 		const deck = maya.locator('section[aria-label="On deck"]');
 		await expect(deck).toBeVisible();
 		await expect(deck).toContainText('Not yet — let Ana go first');
-		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
-		await deck.getByRole('button', { name: 'Lower by one semitone' }).click();
+		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
+		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
 		await expect(deck).toContainText('Key · −2');
 		await expect(deck).toContainText("You're next");
 		// The key is said once on this screen: the card's "A minor → G minor", not again on Maya's queued row.

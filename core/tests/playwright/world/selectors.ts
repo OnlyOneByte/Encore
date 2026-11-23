@@ -133,10 +133,11 @@ export const SEL = {
 	queueNowCard: '.now',
 	queueElapsed: '.clock .elapsed',
 	queueRemain: '.clock .remain',
-	/** QueueRow's own accessible name, lower-case as the markup spells it. The only way to drive the dock from the
+	/** The remove button on a QueueRow or ProcessingCard, by test id: its accessible name carries the song title
+	 *  (`removeTurnName`), so it is no longer one string. The only way to drive the dock from the
 	 *  strip-PRESENT state back to ABSENT, which is half of the measured gate's cross-state claim: measured exactly
 	 *  one on /queue with one entry, and clicking it drops --dock-h from 91px to 46px at 390x844. */
-	queueRemove: '[aria-label="remove from queue"]',
+	queueRemove: '[data-testid="queue-remove"]',
 	/** The drag handle, by the `data-grip` attribute the route publishes the ENTRY ID into — the same attribute
 	 *  `focusGrip` re-finds a moved row by, so it is a contract and not a convenience. BOTH row kinds carry it:
 	 *  the cooking card went without one for the whole life of the three-tab rebuild (the route passed

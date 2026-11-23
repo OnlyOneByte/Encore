@@ -9,6 +9,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { keyStepName } from '$lib/phrasing/row-action-names';
 
 	interface Props {
 		title: string;
@@ -72,14 +73,14 @@
 				size="tap"
 				variant="keycap"
 				disabled={keyShift <= -MAX_KEY_SHIFT}
-				aria-label="Lower by one semitone"
+				aria-label={keyStepName(-1, title)}
 				onclick={() => onkey(keyShift - 1)}><Icon name="minus" /></Button
 			>
 			<Button
 				size="tap"
 				variant="keycap"
 				disabled={keyShift >= MAX_KEY_SHIFT}
-				aria-label="Raise by one semitone"
+				aria-label={keyStepName(1, title)}
 				onclick={() => onkey(keyShift + 1)}><Icon name="plus" /></Button
 			>
 		</div>

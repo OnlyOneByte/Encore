@@ -3,6 +3,7 @@
 	import { SINGER_COLORS } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 	import * as Item from '$lib/components/ui/item';
+	import { pickAnotherName, removeTurnName, reorderName, tryAgainName } from '$lib/phrasing/row-action-names';
 	interface Props {
 		seq: number; // 1-based display position
 		title: string;
@@ -126,7 +127,7 @@
 						variant="ghost"
 						size="icon"
 						press="grab"
-						aria-label="Reorder — drag, or use arrow keys"
+						aria-label={reorderName(title)}
 						aria-keyshortcuts="ArrowUp ArrowDown"
 						aria-disabled={pending ? 'true' : undefined}
 						data-grip={gripId}
@@ -177,7 +178,8 @@
 							variant="outline"
 							size="icon"
 							press="accent2"
-							aria-label="remove from queue"
+							aria-label={removeTurnName(title)}
+							data-testid="queue-remove"
 							onclick={() => onremove?.()}><Icon name="close" /></Button
 						>
 					{/if}
@@ -187,11 +189,21 @@
 				<!-- The dead processing card's pair (ProcessingCard `.next`), in its own row because a guest has to read them. -->
 				<div class="next">
 					{#if onretry}
-						<Button size="tap" variant="secondary" data-testid="row-retry" onclick={onretry}>Try again</Button>
+						<Button
+							size="tap"
+							variant="secondary"
+							data-testid="row-retry"
+							aria-label={tryAgainName(title)}
+							onclick={onretry}>Try again</Button
+						>
 					{/if}
 					{#if pickAnotherHref}
-						<Button size="tap" variant="secondary" data-testid="row-pick-another" href={pickAnotherHref}
-							>Pick another</Button
+						<Button
+							size="tap"
+							variant="secondary"
+							data-testid="row-pick-another"
+							aria-label={pickAnotherName(title)}
+							href={pickAnotherHref}>Pick another</Button
 						>
 					{/if}
 				</div>

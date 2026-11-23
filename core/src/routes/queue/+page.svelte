@@ -47,6 +47,7 @@
 	} from '$lib/reorder-mode';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
+	import { keyStepName } from '$lib/phrasing/row-action-names';
 	import { songFacts } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
@@ -158,6 +159,7 @@
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
 	const nowDisplay = $derived(songDisplay(nowMedia));
+	const nowTitle = $derived(nowDisplay.title || nowMedia?.title || 'Untitled');
 	const nowDurationSec = $derived(nowMedia?.durationSec ?? 0);
 	const nowSinger = $derived(nowEntry ? singers.get(nowEntry.singerId) : undefined);
 
@@ -799,7 +801,7 @@
 				}}
 			>
 				<p class="now-eyebrow">{NOW_SINGING}</p>
-				<h2 class="now-title">{nowDisplay.title || nowMedia?.title || 'Untitled'}</h2>
+				<h2 class="now-title">{nowTitle}</h2>
 				<p class="now-by">
 					<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
 					{nowSinger?.displayName ?? 'Someone'}
@@ -845,14 +847,14 @@
 							size="tap"
 							variant="keycap"
 							disabled={!keyShiftEnabled || keyShift <= -KEY_LIMIT}
-							aria-label="Lower by one semitone"
+							aria-label={keyStepName(-1, nowTitle)}
 							onclick={() => stepKey(-1)}><Icon name="minus" /></Button
 						>
 						<Button
 							size="tap"
 							variant="keycap"
 							disabled={!keyShiftEnabled || keyShift >= KEY_LIMIT}
-							aria-label="Raise by one semitone"
+							aria-label={keyStepName(1, nowTitle)}
 							onclick={() => stepKey(1)}><Icon name="plus" /></Button
 						>
 					</div>
