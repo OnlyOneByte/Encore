@@ -193,7 +193,7 @@
 				<!-- With no song there is nothing to restart, and the waiting line runs on over this slot as over the
 					Cheer key's: resting in place, so the key comes back at the handoff without moving anything. -->
 				<button
-					class="btn"
+					class="btn restart"
 					class:resting={!hasSong}
 					onclick={onrestart}
 					disabled={!hasSong}
@@ -394,8 +394,10 @@
 		.fill {
 			transition: transform var(--motion-tick) linear;
 		}
-		/* Resting is a fade in place, so it touches no layout. */
-		.btn {
+		/* Resting is a fade in place, so it touches no layout. Only the two keys that rest carry it, so a later
+		   opacity change on Play or Skip does not fade by accident. */
+		.cheer-key,
+		.restart {
 			transition:
 				opacity var(--motion-base) ease-out,
 				visibility var(--motion-base);

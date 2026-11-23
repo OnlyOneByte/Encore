@@ -65,6 +65,10 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-reorder-held-320': HELD_LIBRARY,
 	'phone-queue-your-song-390': HELD_LIBRARY,
 	'phone-queue-your-song-320': HELD_LIBRARY,
+	'phone-restart-rest-390': HELD_LIBRARY,
+	'phone-restart-rest-320': HELD_LIBRARY,
+	'phone-restart-return-390': HELD_LIBRARY,
+	'phone-restart-return-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
@@ -750,9 +754,108 @@ function singWiden(width: number): Make {
 	};
 }
 
+/** Restart resting in place (#1050) on Theo's phone at one width, as the strip goes between a song and a waiting line:
+ *  `rest`, Ana skips Maya's caroline and Theo's unmakeable song (no worker) leaves "Can't make new karaoke right now";
+ *  `return`, from that line Maya's believin starts. The key fades (opacity, --motion-base) and keeps its slot, so the
+ *  transport box and the dock hold still (CLS 0, `observe`). Each run takes Theo's turn off with the queue's ✕, drains
+ *  the room and queues both again. */
+function restartRest(width: number, back: boolean): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		const restart = `${SEL.npTransport}.restart`;
+		const toWaiting = async (page: Page) => {
+			await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await page.locator(`${restart}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
+		};
+		return {
+			name: `phone-restart-${back ? 'return' : 'rest'}-${width}`,
+			what: back
+				? `Phone ${width}x844: from the waiting line a song starts — Restart and the Cheer key fade back in place (opacity, --motion-base); the transport and the dock do not move (CLS 0)`
+				: `Phone ${width}x844: the song ends on a waiting line — Restart and the Cheer key fade out in place (opacity, --motion-base) and the line runs over their slots; the transport and the dock do not move (CLS 0)`,
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world, { seconds: HELD_SECS });
+					cleanup(() => worker.stop());
+					ph = {
+						maya: await world.openPhone('Maya'),
+						theo: await world.openPhone('Theo'),
+						ana: await world.openPhone('Ana')
+					};
+					await readySong(world, ph.maya, 'caroline');
+					await readySong(world, ph.maya, 'believin');
+					await world.openTv();
+					// No maker from here on, so Theo's song can never be made and his turn holds the waiting line.
+					await worker.stop();
+				}
+				await openQueue(ph.theo);
+				const held = ph.theo.locator(SEL.queueRemove);
+				while ((await held.count()) > 0) {
+					await held.first().click();
+					await ph.theo.waitForTimeout(300);
+				}
+				await ph.theo.goto('/');
+				await drain(ph.ana);
+				await queueReady(ph.maya, 'caroline');
+				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+				// The seeded file, not a remote hit; with no worker its karaoke is never made.
+				await openBrowseFromHome(ph.theo);
+				await ph.theo.locator(SEL.searchSource).first().selectOption('local');
+				await ph.theo.locator(SEL.search).fill('bohemian');
+				await ph.theo.locator(SEL.songRow, { hasText: 'bohemian' }).locator(SEL.singAction).first().click();
+				// His turn is in, or the skip would empty the room ("Nothing playing") instead of leaving the waiting line.
+				await openQueue(ph.theo);
+				await expect(held).toHaveCount(1, { timeout: 10_000 });
+				await ph.theo.goto('/');
+				await expect(ph.theo.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+				await ph.ana.waitForTimeout(SETTLE_MS + 250);
+				const page = await asSinger(browser, world, opts, ph.theo, width);
+				await page.goto('/');
+				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
+				if (back) {
+					await toWaiting(page);
+					await expect(page.locator(SEL.npStripStatus)).toBeVisible();
+					await page.waitForTimeout(1_000);
+				}
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: back
+				? async (page) => {
+						await queueReady(ph!.maya, 'believin');
+						await page.locator(`${restart}:not([inert])`).waitFor({ state: 'attached', timeout: 10_000 });
+					}
+				: toWaiting,
+			// The Cheer key too: Theo is a fan, so it rests in the same moment, and a seek run that froze its fade drew the
+			// line over a still-visible key.
+			only: '.dock .cheer-key, .dock .restart',
+			// The strip, not the key: the key fades to opacity 0 by design, while the strip keeps its place.
+			subject: SEL.npStrip,
+			stripClip: async () => ({ x: 0, y: 664, width, height: 180 }),
+			observe: (page) =>
+				page.evaluate(() => {
+					const tp = document.querySelector('.dock .tp')!.getBoundingClientRect();
+					const dock = document.querySelector('.dock')!.getBoundingClientRect();
+					return {
+						tp: { x: tp.x, w: tp.width },
+						dock: { y: dock.y, h: dock.height },
+						restartInert: document.querySelector('.dock .restart')?.hasAttribute('inert') ?? null,
+						text: document.querySelector('.dock .strip .meta')?.textContent?.trim() ?? null
+					};
+				})
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
 	'phone-sing-widen-390': singWiden(390),
 	'phone-sing-widen-320': singWiden(320),
+	'phone-restart-rest-390': restartRest(390, false),
+	'phone-restart-rest-320': restartRest(320, false),
+	'phone-restart-return-390': restartRest(390, true),
+	'phone-restart-return-320': restartRest(320, true),
 	'phone-song-didnt-play-390': songDidntPlay(390),
 	'phone-song-didnt-play-320': songDidntPlay(320),
 	'tv-copy-offline': tvCopyOffline(1920, 1080),

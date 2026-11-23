@@ -126,8 +126,9 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 
 	media.stemStatus = 'queued'; // rotation holds this slot until the instrumental exists
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	// A FINISHED fetch left the audio on disk, so Try again after a failed separation starts at stems. Enqueueing
-	// `fetch` again handed back that finished job: no stems job was made, and the line below marked the song ready.
+	// The fetch step already ran, so the next step is stems: Try again after a failed separation starts there. (Stems
+	// downloads from the source again into its own work dir, so it never reads the fetch's file.) Enqueueing `fetch`
+	// again handed back that finished job: no stems job was made, and the line below marked the song ready.
 	const fetched = deps.jobs.findLive(mediaId, 'fetch')?.status === 'ready';
 	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) && !fetched ? 'fetch' : 'stems';
 	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now(), undefined, singerId);
