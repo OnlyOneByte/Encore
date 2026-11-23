@@ -283,7 +283,7 @@
 					aria-label={actionLabel}
 					title={retryProcess
 						? 'Try the karaoke again — you keep the turn you already have'
-						: 'Strips the vocals first, about a minute — you keep your place in line'}
+						: 'Take a turn — strips the vocals first, about a minute. You keep your place in line.'}
 					onclick={() => onmake?.()}
 				>
 					<Icon name="sparkle" />
