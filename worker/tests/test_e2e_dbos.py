@@ -667,7 +667,9 @@ async def test_a_retryable_fault_that_exhausts_its_retries_fails_the_job_as_itse
     from encore_worker.workflows.dbos_align import DbosAlignSteps
 
     class DownFetcher:
-        def fetch(self, source_uri: str, out_dir: str, *, on_progress: object = None) -> str:
+        def fetch(
+            self, source_uri: str, out_dir: str, *, on_progress: object = None, with_captions: bool = False
+        ) -> str:
             raise InfraFault("the host answered 503")
 
     impl, _ = build(tmp_path, fetcher=DownFetcher(), aligner=CountingAligner())

@@ -84,6 +84,12 @@ const KNOWN_AUDIO_EXTS = ['webm', 'opus', 'm4a', 'mp4', 'mp3', 'wav'] as const;
 export function candidateAudioRefs(mediaId: string): string[] {
 	return [...new Set(KNOWN_AUDIO_EXTS.map((ext) => audioKey(mediaId, ext)))];
 }
+
+/** `uri` as a kept-original ref for `mediaId`, or null. One check for the worker's report and the sidecar's. */
+export function keptOriginalRef(mediaId: string, uri: string | null | undefined): string | null {
+	const ref = toRelativeKey(uri);
+	return ref && candidateAudioRefs(mediaId).includes(ref) ? ref : null;
+}
 /**
  * Both lossless FLAC, matching the worker's INSTRUMENTAL_EXT/VOCALS_EXT — a mismatch silently 404s a ref
  * the DB says exists. Songs from an earlier policy keep their own refs and still play; AAC→FLAC

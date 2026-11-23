@@ -25,6 +25,7 @@ import {
 	ffmpegTranscoder,
 	planEviction,
 	evictDerived,
+	forgetEvicted,
 	derivedBytesOf,
 	transcodeDiagnostics
 } from './media/retention';
@@ -400,13 +401,7 @@ export function getApp(): EncoreApp {
 					const live = mediaById.get(id);
 					if (!live) continue;
 					freed += evictDerived(live).bytes;
-					live.instrumentalRef = undefined;
-					live.vocalsRef = undefined;
-					// The mix IS those two stems in one file — evicting them evicts it.
-					live.guideMixRef = undefined;
-					live.lyricsRef = undefined;
-					live.lyricsCandidates = [];
-					live.stemStatus = 'none';
+					forgetEvicted(live);
 					mediaRepo.upsert(live);
 					// upsert fires sidecarFromMedia, whose `?? prev` would RESTORE the refs just cleared — see clearArtifacts.
 					await clearArtifacts(id);

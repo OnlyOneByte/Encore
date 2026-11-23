@@ -295,7 +295,7 @@ one of them.
 | `ENCORE_AUDIO_DIR`    | `$MEDIA_DIR/audio`   | raw originals — **not regenerable; back this up**                                                                                                                                  |
 | `ENCORE_DERIVED_DIR`  | `$MEDIA_DIR/derived` | stems, the guide mix, lyrics, thumbs — safe to delete                                                                                                                              |
 | `ENCORE_META_DIR`     | `$MEDIA_DIR/meta`    | sidecar records — the authoritative library index                                                                                                                                  |
-| `ENCORE_MEDIA_MAX_GB` | unset                | soft cap; evicts `derived/` LRU-first. Unset = never delete. Every song's guide mix costs about as much again as its stems, so size the cap for that — eviction is whole-song |
+| `ENCORE_MEDIA_MAX_GB` | unset                | soft cap; evicts `derived/` LRU-first, with a YouTube song's kept original (about 4 MB; it downloads again). Unset = never delete. Every song's guide mix costs about as much again as its stems, so size the cap for that — eviction is whole-song |
 
 **Object store** (only when `MEDIA_STORE=object`) — `S3_BUCKET` (required), `S3_ENDPOINT`,
 `S3_REGION`, `S3_PREFIX`. Credentials come from the standard `AWS_*` env vars, which `Bun.S3Client`

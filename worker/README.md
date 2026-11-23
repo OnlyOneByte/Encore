@@ -124,6 +124,7 @@ The align params, each read by one pure function in `steps/api.py`:
 | `syncMode` | `forced` (the default) or `lines`. `lines` publishes no word timing: each text's only attempt is its own line timings through the gated LINE_SYNC rung (04-alignment.md §5.3). It is honoured only where there is a vocals stem, and never for a pin |
 | `asrModel` | The whisper checkpoint the ASR fallback loads: one of `host.config.ASR_MODELS`, else the worker's default, with the fallback on the trail |
 | `language` | The job's language when a text does not carry its own; `en` if neither does |
+| `fetcher=local` + `remoteUri` + `originalBytes` | The song's original, kept by its fetch job, is the `sourceUri` store ref; the caption tracks that job kept are read from the store and yt-dlp is not called. A worker whose file is missing (another machine) or not `originalBytes` long (empty, truncated) downloads, and fetches captions, from `remoteUri` |
 
 **A pinned job never falls back.** Only the accepted attempt is placed at the pinned ref. A pin that
 cannot be timed publishes nothing: no other text and no ASR, so the lyrics the core already holds stay as

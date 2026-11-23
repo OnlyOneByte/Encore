@@ -865,6 +865,18 @@ executes it.** The full axis list is in `docs/ARCHITECTURE.md` §7.
   device that turns out unavailable must RAISE at worker startup rather than silently downgrading.
 - **A job DECLARES its fetcher; nothing infers one from a URI's shape.** The worker parses the declaration
   at its boundary, so an unknown value fails before a byte moves.
+- **A song is downloaded once.** The fetch job's one yt-dlp call brings the audio and every `en.*` caption
+  track, and keeps the audio at `audio/<id>.<ext>` and one track per kind at
+  `derived/captions/<kind>/<id>.captions.<ext>`. The kind is read from the info JSON (`subtitles` is
+  authored, `automatic_captions` is machine). Authored is any `en.*`, `en` first. Machine is `en-orig`, or
+  `en` only when `en-orig` exists, because without it machine `en` is a translation. Core records the audio
+  ref and its size as `media.originalRef` / `originalBytes` (only an `audio/` ref at a known ext with a
+  positive size; an older worker's scratch path is ignored). Every later job for that song (stems,
+  stems-upgrade, align) is sent `fetcher=local`, that ref as `sourceUri`, `originalBytes`, and the watch URL
+  as `remoteUri`. A worker downloads from `remoteUri` instead when the kept file is missing or not that
+  size. Align reads the kept caption tracks and never calls yt-dlp when the original is usable. Under
+  `ENCORE_MEDIA_MAX_GB` the kept original is evicted with the song's derived files, and later jobs use the
+  watch URL again.
 - **Capabilities are proven by a probe and matched on the action PREFIX.** Both axes namespace their tokens
   (`stems:roformer`, `fetch:ytdlp`), so a literal comparison rejects work the worker can genuinely run — and
   that refusal is invisible, because the core keeps the job `assigned` and the song sits at 0%. A token with

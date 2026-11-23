@@ -9,6 +9,7 @@ import {
 } from '$lib/contract';
 import {
 	assignParams,
+	assignSourceUri,
 	followUps,
 	hasCapableWorker,
 	planAssignments,
@@ -119,6 +120,42 @@ test('the process is fetch -> stems -> align, and ends there', () => {
 
 test('align does not chain further — no infinite pipeline', () => {
 	expect(followUps('align')).toEqual([]);
+});
+
+// One download per song (proposal 27): every stage after fetch reads the download fetch kept.
+
+test('after a kept download, stems, an upgrade and align read it locally, with the watch URL as fallback', () => {
+	const kept = media({ originalRef: 'audio/m1.webm', originalBytes: 4_050_000 });
+	for (const type of ['stems', 'stems-upgrade', 'align'] as const) {
+		const p = assignParams(type, kept);
+		expect(p.fetcher).toBe('local');
+		expect(p.remoteUri).toBe('https://www.youtube.com/watch?v=vid');
+		expect(p.originalBytes).toBe(4_050_000);
+		expect(assignSourceUri(type, kept)).toBe('audio/m1.webm');
+	}
+});
+
+test('a kept ref with no recorded size is not trusted: the watch URL, as before', () => {
+	const unsized = media({ originalRef: 'audio/m1.webm' });
+	expect(assignParams('stems', unsized).fetcher).toBe('ytdlp');
+	expect(assignSourceUri('stems', unsized)).toBe('https://www.youtube.com/watch?v=vid');
+});
+
+test('a fetch always downloads, and a song with no kept download is sent its watch URL as before', () => {
+	const kept = media({ originalRef: 'audio/m1.webm', originalBytes: 4_050_000 });
+	expect(assignParams('fetch', kept).fetcher).toBe('ytdlp');
+	expect(assignSourceUri('fetch', kept)).toBe('https://www.youtube.com/watch?v=vid');
+	const legacy = assignParams('align', media());
+	expect(legacy.fetcher).toBe('ytdlp');
+	expect(legacy.remoteUri).toBeUndefined();
+	expect(assignSourceUri('align', media())).toBe('https://www.youtube.com/watch?v=vid');
+});
+
+test('a library file is unchanged: local, no fallback URL', () => {
+	const lib = media({ source: 'local', sourceRef: 'library/song.flac' });
+	expect(assignParams('stems', lib)).toMatchObject({ fetcher: 'local' });
+	expect(assignParams('stems', lib).remoteUri).toBeUndefined();
+	expect(assignSourceUri('stems', lib)).toBe('library/song.flac');
 });
 
 // The artist credit tells two RECORDINGS of one song apart. A lyrics provider holds a record per

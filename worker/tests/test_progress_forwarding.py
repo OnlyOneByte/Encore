@@ -103,9 +103,18 @@ async def test_the_in_process_zoo_gets_no_sink_so_its_clock_is_never_sent_as_pro
 class Fetcher:
     def __init__(self) -> None:
         self.got_sink = False
+        self.with_captions = False
 
-    def fetch(self, source_uri: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> str:
+    def fetch(
+        self,
+        source_uri: str,
+        out_dir: str,
+        *,
+        on_progress: ProgressSink | None = None,
+        with_captions: bool = False,
+    ) -> str:
         self.got_sink = on_progress is not None
+        self.with_captions = with_captions
         if on_progress is not None:
             for pct in (10, 60, 100):
                 on_progress(pct)
@@ -115,9 +124,12 @@ class Fetcher:
 async def test_a_fetch_job_forwards_its_download_percentage(tmp_path: Path) -> None:
     reporter, fetcher = Reporter(), Fetcher()
     audio = AlignStepsImpl(config=CFG, adapters=Adapters(fetcher=fetcher), reporter=reporter)
-    await FetchStepsImpl(config=CFG, audio=audio, reporter=reporter).acquire_audio(_job(tmp_path))
+    store = LocalArtifactStore(Roots.under(str(tmp_path / "media")))
+    steps = FetchStepsImpl(config=CFG, audio=audio, reporter=reporter, store=store)
+    await steps.acquire_audio(_job(tmp_path))
     await _settle()
     assert reporter.progress_frames == [(Stage.DOWNLOADING, p) for p in (10, 60, 100)]
+    assert fetcher.with_captions, "the fetch job's download brings the captions in the same call"
 
 
 async def test_a_download_inside_a_later_job_does_not_drag_its_bar_back(tmp_path: Path) -> None:

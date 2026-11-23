@@ -41,6 +41,11 @@ export interface Media {
 	 *  decide what plays. Optional, not 0, so a row omits the chip. */
 	viewCount?: number;
 	stemStatus: StemStatus;
+	/** The download a fetch job kept (`audio/<id>.<ext>`), which stems and align read instead of the watch URL.
+	 *  Absent on a library file and on a song fetched before downloads were kept. */
+	originalRef?: string;
+	/** `originalRef`'s size at fetch, always set with it. */
+	originalBytes?: number;
 	/** What the TV loads. Set when a stems job completes. */
 	instrumentalRef?: string;
 	/** So an upgrade can compare ranks and never install a worse one.

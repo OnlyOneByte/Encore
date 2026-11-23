@@ -16,7 +16,7 @@ import type {
 	WorkerProfile
 } from '../../contract';
 import { publishStemFormat } from '../media/paths';
-import { sourceUriFor, resolveProcessSeparator } from '../../contract';
+import { resolveProcessSeparator } from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
 import type { AttemptFacts, AttemptLedger } from './attempts';
@@ -24,6 +24,7 @@ import { WorkerRegistry, type WorkerSession } from './registry';
 import {
 	planAssignments,
 	assignParams,
+	assignSourceUri,
 	followUps,
 	requiredCapability,
 	separatorFor,
@@ -35,6 +36,7 @@ import {
 import {
 	markMediaReady,
 	setMediaLyrics,
+	setMediaOriginal,
 	setMediaVocals,
 	setMediaGuideMix,
 	setMediaSongProfile,
@@ -797,6 +799,10 @@ export class WorkerHub {
 				setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
 			}
 		}
+		// Before cleanJobWork below: the kept download lives under `audio/`, not the scratch dir it deletes.
+		if (job.jobType === 'fetch') {
+			setMediaOriginal(job.mediaId, msg.mediaUri, msg.artifacts?.original?.bytes, this.#d.mediaById);
+		}
 		applyAnnotation(job.mediaId, this.#d.mediaById, msg.artifacts?.annotation);
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
 		// The gate is satisfied by align having RUN, not by it having found words. After setMediaLyrics,
@@ -925,7 +931,7 @@ export class WorkerHub {
 				processingId: job.processingId, // the trace id across a chained fetch→stems→align run
 				mediaId: job.mediaId,
 				jobType: job.jobType,
-				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.global.defaultFetcher) : '',
+				sourceUri: assignSourceUri(pending.jobType, media, this.#d.getSettings?.()?.global.defaultFetcher),
 				params
 			});
 		}
