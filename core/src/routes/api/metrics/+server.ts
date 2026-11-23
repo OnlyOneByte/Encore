@@ -4,7 +4,20 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { clampDays, songDisplay } from '$lib/contract';
-import { e2e, isAnecdote, perAsrModel, perProcess, perModel, perStage, perStep } from '$lib/server/jobs/metrics';
+import {
+	attemptsCsv,
+	e2e,
+	failures,
+	isAnecdote,
+	perAsrModel,
+	perDevice,
+	perProcess,
+	perModel,
+	perStage,
+	perStep,
+	readySongs,
+	speed
+} from '$lib/server/jobs/metrics';
 
 const DEFAULT_LIMIT = 2000;
 const DAY_MS = 86_400_000;
@@ -25,7 +38,18 @@ export const GET: RequestHandler = async ({ url }) => {
 	const windowStart = app.now() - windowDays * DAY_MS;
 	// EVERY sealed attempt in the window, not just successful ones — a failure rate is part of how a step performs (the rollup itself refuses to average a failure into a duration). `limit` is a hard backstop so a pathological window can never load the whole table into memory.
 	const attempts = app.attempts.finishedSince(windowStart, limit);
+	if (url.searchParams.get('format') === 'csv') {
+		// A capped export says so in its name: it holds the newest `limit` attempts, not the whole window.
+		const capped = attempts.length >= limit ? `-newest-${limit}` : '';
+		return new Response(attemptsCsv(attempts), {
+			headers: {
+				'content-type': 'text/csv; charset=utf-8',
+				'content-disposition': `attachment; filename="encore-attempts-${windowDays}d${capped}.csv"`
+			}
+		});
+	}
 	const totalFinished = app.attempts.countFinished();
+	const { songs, noLength, badClock } = readySongs(attempts, windowStart);
 
 	const steps = perStep(attempts);
 	const overall = e2e(attempts, windowStart);
@@ -47,6 +71,10 @@ export const GET: RequestHandler = async ({ url }) => {
 			processes: overall.n,
 			provisional: isAnecdote(overall.n)
 		},
+		// Pick to ready ÷ song length over songs that reached ready; failures are only in `failures`.
+		speed: { ...speed(songs), noLength, badClock, provisional: isAnecdote(songs.length) },
+		devices: perDevice(songs).map((d) => ({ ...d, provisional: isAnecdote(d.n) })),
+		failures: failures(attempts),
 		steps: steps.map((s) => ({ ...s, provisional: isAnecdote(s.n) })),
 		e2e: overall,
 		// Measured cost per separator model, beside the rtFactor the whitelist claims: `ratioToDeclared`

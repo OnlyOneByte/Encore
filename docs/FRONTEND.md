@@ -1548,6 +1548,13 @@ meaningful (raw seconds do not compare across songs of different lengths), a sam
 average with small ones labelled, worker state first (with none connected, every timing below is history
 rather than live state), and failed runs excluded from the averages.
 
+It opens with the host speed page ([SERVER.md](SERVER.md#the-host-speed-page)). The headline is the page's one
+lit surface: pick to ready as a multiple of song length ("0.62x"), the one place the page says a multiple,
+because that is how goal 2 states it. Then come three cards: by machine, where each machine's time goes,
+and what went wrong with the CSV link. The by-machine table puts "runs on" and the few-runs badge under the
+worker name and has no scroller, so its multiples fit at 320 without sideways scrolling. Each bar segment
+also prints its time, so colour is never the only signal.
+
 `/metrics/<mediaId>` is the per-song audit log, grouped by `processingId` rather than flattened: one media
 id can carry several runs, and a flat attempt list blends them. It states why the published lyric won, and
 distinguishes "a baseline judged it" from "no baseline could, so metadata ordering stood" — the second is

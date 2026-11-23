@@ -198,6 +198,56 @@ function labelled(labels: Record<string, string>, bag: Record<string, unknown>):
 		.filter(([, value]) => value !== '');
 }
 
+/** Pick to ready as a multiple of the song's length, the way goal 2 states it ("0.62x"). */
+export const times = (v: number | null): string => (v === null ? '—' : `${v.toFixed(2)}x`);
+
+/** "of the song's own length · 2m 24s for a 3m 52s song", the headline's second line. */
+export function typicalSong(multiple: number | null, audioSec: number | null): string {
+	const base = "of the song's own length";
+	if (multiple === null || audioSec === null) return base;
+	return `${base} · ${dur(multiple * audioSec * 1000)} for a ${dur(audioSec * 1000)} song`;
+}
+
+/** Songs that reached ready but could not be timed, said rather than silently dropped. '' when there are none. */
+export function unmeasured(noLength: number, badClock: number): string {
+	const parts: string[] = [];
+	if (noLength) parts.push(`${count(noLength, 'song')} had no known length`);
+	if (badClock) parts.push(`${count(badClock, 'song')} finished before it started (the clock jumped back)`);
+	return parts.length ? `Not counted: ${parts.join('; ')}.` : '';
+}
+
+const DEVICE_LABELS: Record<string, string> = { cuda: 'NVIDIA GPU', mps: 'Apple GPU', cpu: 'CPU' };
+
+/** "Apple GPU · 10 threads"; an older row with no device says so rather than guessing. */
+export function runsOn(device: string | null, threads: number | null): string {
+	const parts = [device ? (DEVICE_LABELS[device] ?? device) : 'not recorded'];
+	if (threads != null) parts.push(count(threads, 'thread'));
+	return parts.join(' · ');
+}
+
+const CAUSE_LABELS: Record<string, string> = {
+	'rate-limited': 'YouTube said too many requests',
+	removed: 'Video removed or private',
+	hung: 'Stopped: took far longer than usual',
+	'worker-lost': 'Worker stopped answering',
+	silent: 'Vocal removal came out silent',
+	'out-of-memory': 'Ran out of memory',
+	other: 'Something else'
+};
+export const causeLabel = (cause: string): string => CAUSE_LABELS[cause] ?? cause;
+
+/** "Sat 11:48 pm" in the viewer's zone, or "Nov 12 11:48 pm" past six days, where a weekday would repeat. */
+export function lastSeen(ms: number, now = Date.now(), timeZone?: string): string {
+	const d = new Date(ms);
+	const recent = now - ms < 6 * 86_400_000;
+	const day = d.toLocaleDateString(
+		'en-US',
+		recent ? { weekday: 'short', timeZone } : { month: 'short', day: 'numeric', timeZone }
+	);
+	const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).toLowerCase();
+	return `${day} ${time}`;
+}
+
 /** Which step is the bottleneck. Marked in the table because comparing mixed units down a column is arithmetic,
  *  not a glance. `null` for an empty set — there is no slowest step among none. */
 export function slowestStepType(steps: readonly { jobType: string; meanMs: number | null }[]): string | null {

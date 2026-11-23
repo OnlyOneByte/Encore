@@ -12,7 +12,26 @@
 // It lives beside the spec rather than in `world/` because it is data for four frames, not something a
 // second spec could want: a fixture in the world reads as a fact about the app.
 
+interface SpeedFixture {
+	n: number;
+	p50Multiple: number;
+	p90Multiple: number;
+	p50AudioSec: number;
+	provisional: boolean;
+}
+
 export interface MetricsFixture {
+	speed: SpeedFixture & { noLength: number; badClock: number };
+	devices: (SpeedFixture & {
+		workerId: string;
+		device: string;
+		threads: number;
+		meanWaitMs: number;
+		meanFetchMs: number;
+		meanStemsMs: number;
+		meanAlignMs: number;
+	})[];
+	failures: { cause: string; songs: number; attempts: number; lastSeenAt: number; lastError: string | null }[];
 	sample: {
 		attempts: number;
 		total: number;
@@ -66,7 +85,66 @@ export interface MetricsFixture {
  *  stubbed fetch has landed, so it is a positive ready signal rather than the absence of "Loading…". */
 export const METRICS_READY_TEXT = '47 attempts in the last 7 days, across 19 finished songs.';
 
+/** The instant the frames pin the page's clock to, so "last seen" never drifts with the calendar. */
+export const METRICS_FIXTURE_NOW = Date.UTC(2026, 10, 21, 20, 0);
+
 export const METRICS_FIXTURE: MetricsFixture = {
+	// One fast machine and one provisional slow one, an `other` failure so its message line renders, and an
+	// untimed song so the "Not counted" line does.
+	speed: { n: 19, p50Multiple: 0.62, p90Multiple: 1.1, p50AudioSec: 232, noLength: 1, badClock: 0, provisional: false },
+	devices: [
+		{
+			workerId: 'stems-1',
+			device: 'cuda',
+			threads: 16,
+			n: 14,
+			p50Multiple: 0.31,
+			p90Multiple: 0.48,
+			p50AudioSec: 228,
+			provisional: false,
+			meanWaitMs: 4_300,
+			meanFetchMs: 10_100,
+			meanStemsMs: 31_700,
+			meanAlignMs: 25_900
+		},
+		{
+			workerId: 'den-pc',
+			device: 'cpu',
+			threads: 8,
+			n: 5,
+			p50Multiple: 0.88,
+			p90Multiple: 1.3,
+			p50AudioSec: 241,
+			provisional: true,
+			meanWaitMs: 36_700,
+			meanFetchMs: 10_200,
+			meanStemsMs: 95_900,
+			meanAlignMs: 61_200
+		}
+	],
+	failures: [
+		{
+			cause: 'rate-limited',
+			songs: 3,
+			attempts: 4,
+			lastSeenAt: METRICS_FIXTURE_NOW - 3_600_000,
+			lastError: 'HTTP Error 429'
+		},
+		{
+			cause: 'silent',
+			songs: 1,
+			attempts: 1,
+			lastSeenAt: METRICS_FIXTURE_NOW - 7_200_000,
+			lastError: 'instrumental measures as digital silence'
+		},
+		{
+			cause: 'other',
+			songs: 1,
+			attempts: 1,
+			lastSeenAt: METRICS_FIXTURE_NOW - 86_400_000,
+			lastError: 'ffmpeg exited 1: Invalid data found when processing input'
+		}
+	],
 	// `clipped: true` and a `total` above `attempts` light the two caveat sentences the page grew for the dropped
 	// server fields, per this file's rule that the fixture lights every branch the page has.
 	sample: { attempts: 47, total: 1_240, windowDays: 7, clipped: true, processes: 19, provisional: false },

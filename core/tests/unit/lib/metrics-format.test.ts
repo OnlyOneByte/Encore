@@ -1,7 +1,39 @@
 // The operator metrics formatters. `dur` must round BEFORE splitting into units: rounding after prints
 // 119_600ms as "1m 60s" and 59_960ms as "60.0s", neither of which is a time.
 import { test, expect } from 'bun:test';
-import { dur, stepLabel, stageLabel, localStamp, pct, vsClaimed } from '$lib/metrics-format';
+import {
+	dur,
+	stepLabel,
+	stageLabel,
+	lastSeen,
+	localStamp,
+	pct,
+	runsOn,
+	times,
+	typicalSong,
+	unmeasured,
+	vsClaimed
+} from '$lib/metrics-format';
+
+test('the speed page says multiples, machines and "when" in words', () => {
+	expect(times(0.6249)).toBe('0.62x');
+	expect(times(null)).toBe('—');
+	expect(runsOn('mps', 10)).toBe('Apple GPU · 10 threads');
+	expect(runsOn(null, null)).toBe('not recorded');
+	const sat = Date.UTC(2026, 10, 21, 23, 48); // Sat Nov 21, 11:48 pm UTC
+	expect(lastSeen(sat, sat + 86_400_000, 'UTC')).toBe('Sat 11:48 pm');
+	expect(lastSeen(sat, sat + 9 * 86_400_000, 'UTC')).toBe('Nov 21 11:48 pm');
+	expect(typicalSong(0.62, 232)).toBe("of the song's own length · 2m 24s for a 3m 52s song");
+	expect(typicalSong(0.62, null)).toBe("of the song's own length");
+});
+
+test('ready songs that could not be timed are said, never dropped silently', () => {
+	expect(unmeasured(0, 0)).toBe('');
+	expect(unmeasured(2, 0)).toBe('Not counted: 2 songs had no known length.');
+	expect(unmeasured(1, 1)).toBe(
+		'Not counted: 1 song had no known length; 1 song finished before it started (the clock jumped back).'
+	);
+});
 
 test('a rate reads as a percentage of the song, and an unmeasured one is not 0%', () => {
 	// The percent form needs no caption: 15% of the song's length.

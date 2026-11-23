@@ -55,7 +55,7 @@ import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
-import { AttemptLedger } from './jobs/attempts';
+import { ATTEMPT_PRUNE_EVERY_MS, ATTEMPT_RETENTION_MS, AttemptLedger } from './jobs/attempts';
 import { PlayLog } from './media/play-log';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
@@ -555,6 +555,7 @@ export function getApp(): EncoreApp {
 		);
 	};
 
+	let lastAttemptPrune = 0;
 	// A lease expiry may have changed capacity, so redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
@@ -563,6 +564,11 @@ export function getApp(): EncoreApp {
 		onTick: () => {
 			workerHub.dispatch();
 			sweepDeadTurns();
+			const now = app.now();
+			if (now - lastAttemptPrune >= ATTEMPT_PRUNE_EVERY_MS) {
+				lastAttemptPrune = now;
+				attempts.pruneFinishedBefore(now - ATTEMPT_RETENTION_MS);
+			}
 		},
 		// A reaper-killed process reaches terminal `failed` without the worker reporting it, so it never hits worker-hub's onFailed. The SAME shared epilogue must run here, or the phone stays pinned on the processing percentage forever.
 		// THE SINKS COME FROM THE HUB, not a bag built here. This call site used to pass `{ broadcast, mediaById }` and no `persist`, so a reaper-killed process settled its stem gate IN MEMORY ONLY while the stored row kept saying 'queued' — and `hydrateMediaCatalog` then won at the next boot, resurrecting the stranding the settle exists to prevent (repaired only incidentally, one boot later still, by `reconcileStrandedGates`). `TerminalFailureDeps.persist` is optional in the TYPE and required for durability, which is exactly the mistake a second assembly site invites; `WorkerHub.terminalFailureSinks()` is the one bag.

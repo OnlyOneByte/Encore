@@ -575,50 +575,34 @@ test('the dashboards agree with a drive of four processes and four plays', async
 
 // ── 2 · metrics and audit must agree on which processes completed ────────────────────────────────────────
 
-// KNOWN LIVE DEFECT, annotated rather than weakened. The two surfaces disagree on what a retried process IS:
-// audit's processOutcome ignores 'abandoned' and reads 'ready', while metrics' perProcess needs EVERY attempt
-// 'ready' — `complete = sealed.length === list.length && sealed.every(a => a.outcome === 'ready')` — so one
-// abandoned attempt makes complete false. The audit page reports the song as done; the operator dashboard
-// silently drops it from every average and from the top-10 list, biasing the fleet's reported end-to-end
-// downward and omitting exactly the retried outliers a person opened the page to find.
-// REMOVE THE ANNOTATION once perProcess counts a retried-then-completed process as complete.
-test.fail(
-	'metrics and audit agree on which processes completed, including retried ones',
-	{
-		annotation: {
-			type: 'known-defect',
-			description:
-				"metrics' perProcess requires every attempt to be 'ready', so a retried process is dropped from " +
-				"slowestProcesses and e2e while audit's processOutcome reports it 'ready'."
-		}
-	},
-	async ({ world }) => {
-		test.setTimeout(DRIVE_TIMEOUT_MS);
-		const phone = await world.openPhone('P11-agree');
-		const { caroline, dontstop, prayer } = await driveFourProcesses(world, phone);
+// A retried song is done on both surfaces: perProcess reads each job's LAST attempt (`pickReachedReady`), as
+// audit's processOutcome does, so an abandoned attempt no longer drops it from e2e and the top-10 list.
+test('metrics and audit agree on which processes completed, including retried ones', async ({ world }) => {
+	test.setTimeout(DRIVE_TIMEOUT_MS);
+	const phone = await world.openPhone('P11-agree');
+	const { caroline, dontstop, prayer } = await driveFourProcesses(world, phone);
 
-		const metrics = await jget<MetricsBody>(world.baseURL, '/api/metrics');
-		const ids = new Set(metrics.slowestProcesses.map((c) => c.processingId));
-		const idOf = async (media: Media): Promise<string | undefined> =>
-			(await jget<AuditBody>(world.baseURL, `/api/audit/${media.id}`)).processes[0]?.processingId;
-		const carolineId = await idOf(caroline);
-		const dontstopId = await idOf(dontstop);
-		const prayerId = await idOf(prayer);
+	const metrics = await jget<MetricsBody>(world.baseURL, '/api/metrics');
+	const ids = new Set(metrics.slowestProcesses.map((c) => c.processingId));
+	const idOf = async (media: Media): Promise<string | undefined> =>
+		(await jget<AuditBody>(world.baseURL, `/api/audit/${media.id}`)).processes[0]?.processingId;
+	const carolineId = await idOf(caroline);
+	const dontstopId = await idOf(dontstop);
+	const prayerId = await idOf(prayer);
 
-		expect(
-			{
-				caroline: ids.has(String(carolineId)),
-				dontstop: ids.has(String(dontstopId)),
-				prayer: ids.has(String(prayerId))
-			},
-			`the retried process (prayer, processingId=${prayerId}) completed successfully after one abandoned ` +
-				`attempt, so it must be counted alongside the two happy-path ones. ` +
-				`slowestProcesses=[${[...ids].join(', ')}] (${ids.size} processes), /api/metrics.e2e.n=${metrics.e2e.n} ` +
-				`(expected 3). See src/lib/server/jobs/metrics.ts perProcess and ` +
-				`src/routes/api/audit/[mediaId]/audit-shape.ts processOutcome, which ignores "abandoned".`
-		).toEqual({ caroline: true, dontstop: true, prayer: true });
-	}
-);
+	expect(
+		{
+			caroline: ids.has(String(carolineId)),
+			dontstop: ids.has(String(dontstopId)),
+			prayer: ids.has(String(prayerId))
+		},
+		`the retried process (prayer, processingId=${prayerId}) completed successfully after one abandoned ` +
+			`attempt, so it must be counted alongside the two happy-path ones. ` +
+			`slowestProcesses=[${[...ids].join(', ')}] (${ids.size} processes), /api/metrics.e2e.n=${metrics.e2e.n} ` +
+			`(expected 3). See src/lib/server/jobs/metrics.ts perProcess and ` +
+			`src/routes/api/audit/[mediaId]/audit-shape.ts processOutcome, which ignores "abandoned".`
+	).toEqual({ caroline: true, dontstop: true, prayer: true });
+});
 
 // ── 3 · /metrics speaks to an operator ───────────────────────────────────────────────────────────────────
 
@@ -658,6 +642,7 @@ test('/metrics uses operator vocabulary and right-aligns its numeric columns', a
 					inTables: [...document.querySelectorAll(dashCardTable)].map((t) => t.textContent).join('\n'),
 					stageLabels: staged?.textContent ?? '',
 					headerCount: headers.length,
+					tableCount: document.querySelectorAll('table').length,
 					headerTexts: headers.map((th) => (th.textContent ?? '').trim()),
 					rightAligned: headers.filter((th) => getComputedStyle(th).textAlign === 'right').length
 				};
@@ -693,14 +678,14 @@ test('/metrics uses operator vocabulary and right-aligns its numeric columns', a
 				`harness-artefact bar labels were found. stageLabels=${reading.stageLabels.slice(0, 200)}`
 		).toBe(true);
 
-		// Column 0 of each table is the name column and is left-aligned; on each of the three tables every other
-		// column should be right, so a reader can run an eye down a column and compare.
-		const shouldBeRight = Math.max(0, reading.headerCount - 3);
+		// Column 0 of each table is the name column and is left-aligned; on every table every other column should
+		// be right, so a reader can run an eye down a column and compare.
+		const shouldBeRight = Math.max(0, reading.headerCount - reading.tableCount);
 		expect(
 			reading.rightAligned,
 			`/metrics numeric column alignment is broken — a scan-down comparison is not possible. ` +
 				`right-aligned=${reading.rightAligned}, total th=${reading.headerCount}, ` +
-				`name columns subtracted=3 (one per table)`
+				`name columns subtracted=${reading.tableCount} (one per table)`
 		).toBeGreaterThanOrEqual(shouldBeRight);
 
 		for (const size of SHOT_SIZES) await shoot(page, '/metrics', 'metrics', size, testInfo);
@@ -884,6 +869,17 @@ test('the /stats page shows the same numbers /api/stats reports', async ({ world
 function emptyMetricsBody(sample: Partial<MetricsSample> = {}, workers: unknown[] = []) {
 	return {
 		sample: { attempts: 0, total: 0, windowDays: 7, clipped: false, processes: 0, provisional: false, ...sample },
+		speed: {
+			n: 0,
+			p50Multiple: null,
+			p90Multiple: null,
+			p50AudioSec: null,
+			noLength: 0,
+			badClock: 0,
+			provisional: true
+		},
+		devices: [],
+		failures: [],
 		steps: [],
 		e2e: { n: 0, meanMs: null, p50Ms: null, p95Ms: null },
 		models: [],
