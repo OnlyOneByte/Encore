@@ -257,7 +257,10 @@ test('Docker, WSL2, VM and VPN adapters are never advertised: 172.16/12 or a kno
 		{ 'VirtualBox Host-Only Network': [nic('192.168.56.1')], 'VMware Network Adapter VMnet8': [nic('192.168.8.1')] },
 		{ vnic0: [nic('10.211.55.2')], lxcbr0: [nic('10.0.3.1')], lxdbr0: [nic('10.155.1.1')] },
 		{ wg0: [nic('10.8.0.2')], tun0: [nic('10.9.0.2')], tap0: [nic('192.168.7.1')], ztabcdef: [nic('10.147.17.5')] },
-		{ 'ZeroTier One [8056c2e21c]': [nic('10.147.17.5')], cni0: [nic('10.42.0.1')], 'flannel.1': [nic('10.42.0.0')] }
+		{ 'ZeroTier One [8056c2e21c]': [nic('10.147.17.5')], cni0: [nic('10.42.0.1')], 'flannel.1': [nic('10.42.0.0')] },
+		// macOS L2TP and IKEv2, which route through their own gateway.
+		{ ppp0: [nic('10.64.0.2')] },
+		{ ipsec0: [nic('10.64.0.2')] }
 	];
 	for (const list of cases) {
 		expect(ips(list)).toEqual([]);

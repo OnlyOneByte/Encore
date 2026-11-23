@@ -123,7 +123,7 @@ export type DefaultRoute = { iface?: string; address?: string };
 /** A backstop for when the default route is unknown: Docker, libvirt, LXC, VM host-only and bridge, VPN and
  *  Hyper-V/WSL adapters. Their addresses are on a network the phones are not. Never complete, so it is not the rule. */
 const VIRTUAL_INTERFACE =
-	/^(docker|br-|veth|virbr|lxcbr|lxdbr|cni|flannel|bridge|vmnet|vboxnet|vnic|tailscale|utun|wg|tun|tap|zt|vEthernet|VirtualBox|VMware|ZeroTier)/i;
+	/^(docker|br-|veth|virbr|lxcbr|lxdbr|cni|flannel|bridge|vmnet|vboxnet|vnic|tailscale|utun|wg|tun|tap|zt|ppp|ipsec|vEthernet|VirtualBox|VMware|ZeroTier)/i;
 
 /**
  * Home-network IPv4 addresses phones can open, best first. The interface carrying the default route via a router
@@ -149,9 +149,7 @@ export function lanAddresses(net: Network | null): string[] {
 	return [...new Set(found.map((a) => a.ip))];
 }
 
-// Each parser keeps only a default route through a real next-hop gateway: home Wi-Fi and Ethernet always route via the
-// router, while a point-to-point VPN (WireGuard, Mullvad, ProtonVPN, AnyConnect, PPP) has none. A full-tunnel VPN
-// holding the route must not outrank the home network phones are on, whatever its adapter is called.
+// Parsers keep only defaults through a gateway: home networks route via a router, point-to-point VPNs have none.
 
 /** `/proc/net/route`: the default route (destination and mask 0) via a gateway (RTF_GATEWAY), lowest metric. */
 export function parseLinuxRoute(text: string): DefaultRoute | null {
@@ -175,9 +173,8 @@ export function parseMacRoute(text: string): DefaultRoute | null {
 	return iface && gateway ? { iface } : null;
 }
 
-/** `route print -4 0.0.0.0` on Windows: the default with the lowest metric, as its interface address. A gateway of
- *  `On-link` (in any locale: it is not an address) is a point-to-point VPN. The Persistent Routes section has no
- *  interface column, so it never matches. */
+/** `route print -4 0.0.0.0` on Windows: the lowest-metric default, as its interface address. `On-link` is not an
+ *  address in any locale, and Persistent Routes has no interface column, so neither matches. */
 export function parseWindowsRoute(text: string): DefaultRoute | null {
 	let best: { address: string; metric: number } | null = null;
 	const row = new RegExp(String.raw`^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+${IPV4}\s+(${IPV4})\s+(\d+)\s*$`, 'gm');
@@ -194,8 +191,7 @@ export const runRouteCommand: RouteRunner = async (cmd, args) =>
 	(await execFileAsync(cmd, args, { encoding: 'utf8', timeout: 1000, killSignal: 'SIGKILL', windowsHide: true }))
 		.stdout;
 
-/** Each OS's default route; any failure is "unknown", which falls back to the ranked list. Both commands by full path:
- *  Windows searches the current directory before PATH. */
+/** Any failure is "unknown". Commands by full path, because Windows searches the current directory before PATH. */
 export async function readDefaultRoute(
 	platform: NodeJS.Platform = process.platform,
 	run: RouteRunner = runRouteCommand
@@ -208,15 +204,14 @@ export async function readDefaultRoute(
 			return parseWindowsRoute(await run(route, ['print', '-4', '0.0.0.0']));
 		}
 	} catch {
-		// Missing command, non-zero exit, timeout: all unknown.
+		// Falls through to null.
 	}
 	return null;
 }
 
 const ROUTE_TTL_MS = 30_000;
 
-/** The last route read, refreshed in the background so a request never waits on a child process. Null until the first
- *  read lands, which falls back to the ranked list.
+/** Refreshed in the background, so a request never waits on a child process.
  *  shortcut: re-read at most every 30 s, on demand; a network change shows on the next request after that. */
 export function createRouteCache(read: () => Promise<DefaultRoute | null> = readDefaultRoute, now = Date.now) {
 	let last: { at: number; route: DefaultRoute | null } | null = null;
@@ -238,7 +233,6 @@ export function createRouteCache(read: () => Promise<DefaultRoute | null> = read
 }
 
 const defaultRoute = createRouteCache();
-/** server.ts awaits this once at startup, so the first QR and the startup line already know the route. */
 export const refreshDefaultRoute = () => defaultRoute.refresh();
 
 /**
