@@ -26,7 +26,7 @@ import {
 } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
-import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
+import { nextPlayableEntryId, waitingTurns, type MakerVerdicts } from '$lib/readiness';
 import { activeScars, clearScar, recordScar } from '$lib/stores/process-scars';
 import { RECONNECT_BACKOFF_MS, WsClient } from '$lib/ws/client';
 
@@ -118,14 +118,18 @@ export class RoomLink {
 	entries: QueueEntry[] = [];
 	/** What each row is still waiting on, republished on every store emit. */
 	pendingKind = new Map<string, 'add' | 'move'>();
+	/** Whether anything connected can make karaoke, and fetch a search result (`queue:sync`). True until the server
+	 *  says otherwise, which it does only after its 10 s grace. */
+	verdicts: MakerVerdicts = { canMake: true, canFetch: true };
 
-	/** The room's queue is stuck because no worker can make anything: the verdict the TV and the strip say as
-	 *  "Can't make new karaoke right now", for a surface that must then not promise to make one. */
+	/** No worker can make anything: the verdict the TV and the strip say as "Can't make new karaoke right now", for a
+	 *  surface that must then not promise to make one. True from the room's `canMake`, before any turn has died. */
 	get noMaker(): boolean {
 		return waitingTurns(
 			this.entries.filter((e) => e.status === 'queued'),
 			(id) => this.mediaCatalog.get(id),
-			(id) => this.mediaStatus.get(id)
+			(id) => this.mediaStatus.get(id),
+			this.verdicts.canMake
 		).noMaker;
 	}
 
@@ -546,6 +550,12 @@ export class RoomLink {
 			if (e.media) this.mediaCatalog = new Map([...this.mediaCatalog, ...e.media.map((m) => [m.id, m] as const)]);
 			// An omitted list means "no info", not "nobody is away" — do not blank what we have.
 			if (e.away) this.awaySingers = new Set(e.away);
+			// Each OMITTED field keeps what we have, as the server's "no info".
+			if (e.canMake !== undefined || e.canFetch !== undefined)
+				this.verdicts = {
+					canMake: e.canMake ?? this.verdicts.canMake,
+					canFetch: e.canFetch ?? this.verdicts.canFetch
+				};
 			queueMicrotask(() => this.queue?.resendPending());
 		}
 		if (e.type === 'singer:presence') this.awaySingers = new Set(e.away);

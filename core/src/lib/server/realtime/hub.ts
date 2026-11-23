@@ -47,6 +47,8 @@ export interface HubDeps {
 	getSettings?: () => EffectiveSettings;
 	/** Optional: whether anything connected can make karaoke (`WorkerHub.canMake`), for the sync. */
 	canMake?: () => boolean;
+	/** Optional: whether anything connected can fetch a search result (`WorkerHub.canFetch`), for the sync. */
+	canFetch?: () => boolean;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
 	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
 	/** Stamp that a singer STARTED a song. MUST land BEFORE the reseq/broadcast that follow. Separate
@@ -318,7 +320,7 @@ export function orderingOf(deps: Pick<HubDeps, 'getSettings' | 'listSingers'>): 
  *  the library is `/api/library`'s job, and only its loudness levels ride along. */
 export function syncEvent(
 	state: AuthoritativeState,
-	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings' | 'canMake'>
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings' | 'canMake' | 'canFetch'>
 ): Extract<ServerEvent, { type: 'queue:sync' }> {
 	return {
 		type: 'queue:sync',
@@ -330,6 +332,7 @@ export function syncEvent(
 		online: deps?.listOnline?.(),
 		away: deps?.listAway?.(),
 		settings: deps?.getSettings?.(),
-		canMake: deps?.canMake?.()
+		canMake: deps?.canMake?.(),
+		canFetch: deps?.canFetch?.()
 	};
 }

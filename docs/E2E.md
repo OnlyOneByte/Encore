@@ -226,7 +226,9 @@ stepped moves — a handler reading pointer deltas needs real events.
 `world/workers.ts`: `startFakeWorker(world, opts)` connects over the worker protocol, claims
 `fetch`/`stems`/`align` jobs and publishes real audio; `startObservingWorker` claims nothing, so a spec
 can READ the params core dispatches without completing the job. It runs in-process, which buys typed
-fault options instead of env strings and the assign record directly readable.
+fault options instead of env strings and the assign record directly readable. By default it advertises a full
+worker, `['fetch:ytdlp', 'stems', 'align']`, so the room's `canMake` and `canFetch` are both true; a spec that
+wants an uploads-only box passes `capabilities: ['stems', 'align']`.
 
 ### Fault injection
 

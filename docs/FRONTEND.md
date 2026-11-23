@@ -855,8 +855,18 @@ and two of those three terms no longer exist here. There is still no browse mode
 no history entry for a search, so Back always means leave the room — and clearing the field now lands on the idle
 state rather than restoring a second view.
 
-With a query, in order: `Making karaoke…`, `Ready to sing`, `Needs karaoke`, the widen escape hatch, then at most one
-zero-state. Every heading is gated on having rows, because a group heading is a claim about what follows it. The
+With a query, in order: `Making karaoke…`, `Ready to sing`, `Needs karaoke`, `Can't make this one right now` /
+`Can't make these right now`, the widen escape hatch, then at most one zero-state. Every heading is gated on having
+rows, because a group heading is a claim about what follows it.
+
+**What can be made now decides the last two groups (proposal 24).** An unmade or failed row whose song nothing
+connected can make goes to `Can't make…`, with no button: `makeableNow` reads the room's `canMake` and `canFetch`
+(`queue:sync`) and asks `needsFetch` per source, so a library upload needs only a maker and a search result also
+needs a fetcher. The row keeps the button's empty box, so a maker dropping mid-search shifts nothing. With no ready
+match, `See all ready songs` (a link to `/library`) comes LAST, after the `Can't make…` rows and the widen: arriving
+mid-search it must push nothing from under a thumb on its way to Sing. The idle line `Find any song and we'll make
+the karaoke track for it.` needs both verdicts, because it promises search results; an uploads-only box reads `Only
+ready songs can play right now.` although its unready uploads still offer Sing, which is rare and intended. The
 escape hatch (`Not it? Search everything`) is deliberately NOT gated on an empty result: YouTube Music's `songs`
 filter never returns nothing, so a widen offered only inside the zero-state would be unreachable exactly when it is
 needed. The zero-state's way out is a LINK to `/library` printing the library count, not a `clearSearch()` — clearing
@@ -867,13 +877,13 @@ away, read `1 song`. `showAllCount` carries a bare number, so agreement is the c
 
 **EACH RESULT GROUP IS WINDOWED, and the window is a DOOR rather than a cap.** `/` imports `LIBRARY_PAGE` (60) and
 `libraryWindow` from `library-browse.ts` — the same arithmetic and the same `Show N more` + `N left` control
-`/library` ships — and gives each of the three groups its OWN counter, because one shared counter would let a long
+`/library` ships — and gives each of the four groups its OWN counter, because one shared counter would let a long
 `Needs karaoke` tail decide how many ready songs a guest can see. Nothing is unreachable: /api/search still answers
 with every hit, every row it sent is behind a tap, and the group headings, the widen gate and the zero-state keep
 reading the FULL lists. That last clause is the trap, not a detail — `accountedFor`/`unaccounted` decide which group
 OWNS a song and `showsNoRows` decides whether the search found anything at all, so pointing either at `.shown` would
 make a 200-row answer whose first sixty happened to be ready print `Nothing matches “…”` under sixty visible rows.
-The windows reset in `clearResults()` and only there, which is the seam where all three groups are already dropped:
+The windows reset in `clearResults()` and only there, which is the seam where all four groups are already dropped:
 reset on the keystroke instead and a guest watches revealed rows collapse before the next answer exists. WHY: only
 the resolvers are bounded (`PER_SOURCE_LIMIT = 12`); `partitionSearch`'s catalog arm walks the whole persisted
 catalog, and /api/search materialises AND persists every hit, so this column was sized by the install's LIFETIME

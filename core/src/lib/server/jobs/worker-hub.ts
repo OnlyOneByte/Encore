@@ -76,6 +76,9 @@ export const MAKER_GRACE_MS = 10_000;
  *  by `unservable`, as before. */
 const MAKES_KARAOKE: readonly JobType[] = ['stems', 'align'];
 
+/** The two room verdicts `queue:sync` carries, each a boolean with its own grace clock. */
+type MakerVerdict = 'canMake' | 'canFetch';
+
 /** How the TTL's failure names its cause in `jobs.error`, read back by /api/library so a client that loads after
  *  the failure still says "no maker" rather than "that song didn't work". */
 export const UNSERVABLE_ERROR_PREFIX = 'no connected worker advertised capability';
@@ -131,8 +134,8 @@ export interface WorkerHubDeps {
 	/** The room's queue, read when what the fleet offers changes: whose "no maker" that change just flipped. REQUIRED,
 	 *  so a construction that forgets it fails typecheck: nothing else would notice, the re-tell would just go quiet. */
 	queueEntries: () => readonly { status: string; mediaId: string }[];
-	/** Fired when `canMake()` flips, so app.ts can re-send the room its `queue:sync`. */
-	onCanMakeChange?: () => void;
+	/** Fired when `canMake()` or `canFetch()` flips, so app.ts can re-send the room its `queue:sync`. */
+	onMakerChange?: () => void;
 }
 
 /** Validates an inbound frame BEFORE anything reads a field off it. This family carries DISPATCH
@@ -268,21 +271,22 @@ export class WorkerHub {
 	#unservableSince = new Map<string, number>();
 	/** Per-job decision trails from `job:state`, bounded. Flushed to the attempt ledger on completion. */
 	#trails = new Map<string, Array<Record<string, unknown>>>();
-	/** What the room was last told by `canMake()`. TRUE at boot, inside the grace: after a core restart the worker
-	 *  redials within seconds, and starting false flashed "can't make" on the TV until its hello landed. A box with no
-	 *  worker says so once the grace runs out. */
-	#canMake = true;
-	/** Armed while the fleet lacks a maker and the room still reads `canMake` true (MAKER_GRACE_MS). */
-	#makerGrace: ReturnType<typeof setTimeout> | null = null;
+	/** What the room was last told by `canMake()` and `canFetch()`. TRUE at boot, inside the grace: after a core restart
+	 *  the worker redials within seconds, and starting false flashed "can't make" on the TV until its hello landed. A
+	 *  box with no worker says so once the grace runs out. */
+	#verdict: Record<MakerVerdict, boolean> = { canMake: true, canFetch: true };
+	/** Armed while the fleet lacks one and the room still reads it true (MAKER_GRACE_MS). */
+	#grace: Record<MakerVerdict, ReturnType<typeof setTimeout> | null> = { canMake: null, canFetch: null };
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
 		// Slot release is EVENT-keyed and covers REJECT/COMPLETE only; FAIL releases explicitly at its
 		// own call site (#onFailed). See docs/SERVER.md#idempotency-and-the-process-cap.
 		this.#d.jobs.setSlotReleaseHook((workerId) => this.#d.registry.releaseSlot(workerId));
-		// Boot counts as a loss: nothing is connected yet. Armed directly, not via #reviewCanMake, because app.ts's
+		// Boot counts as a loss: nothing is connected yet. Armed directly, not via #reviewVerdicts, because app.ts's
 		// settings sink is not wired until the hub is constructed.
-		this.#armMakerGrace();
+		this.#armGrace('canMake');
+		this.#armGrace('canFetch');
 	}
 
 	/** The room's downward-only quality ceiling resolved INTO `defaultEngine`/`defaultModel`, because
@@ -435,34 +439,49 @@ export class WorkerHub {
 	 * the refusal it predicts. Only a boolean leaves the hub: no worker ids, hosts or counts ride `queue:sync`.
 	 */
 	canMake(): boolean {
-		return this.#canMake;
+		return this.#verdict.canMake;
 	}
 
-	/** Moves `canMake` toward what the fleet offers now: true at once, false only after MAKER_GRACE_MS without one. */
-	#reviewCanMake(offered: Set<string>): void {
+	/** Whether anything connected can FETCH a search result (the room's fetcher, as dispatch routes `fetch`). A box
+	 *  with no yt-dlp still makes library uploads, so this is its own boolean, with the same grace. */
+	canFetch(): boolean {
+		return this.#verdict.canFetch;
+	}
+
+	/** Moves each verdict toward what the fleet offers now: true at once, false only after MAKER_GRACE_MS without. */
+	#reviewVerdicts(offered: Set<string>): void {
 		const settings = this.#processSettings();
-		const now = MAKES_KARAOKE.every((step) => offered.has(requiredCapability(step, settings)));
-		if (now) {
-			if (this.#makerGrace) clearTimeout(this.#makerGrace);
-			this.#makerGrace = null;
-			this.#setCanMake(true);
-		} else if (this.#canMake && !this.#makerGrace) this.#armMakerGrace();
+		this.#review(
+			'canMake',
+			MAKES_KARAOKE.every((step) => offered.has(requiredCapability(step, settings)))
+		);
+		this.#review('canFetch', offered.has(requiredCapability('fetch', settings)));
 	}
 
-	/** Counts from the LOSS: a later fleet change still without a maker neither restarts nor adds a clock. */
-	#armMakerGrace(): void {
-		this.#makerGrace = setTimeout(() => {
-			this.#makerGrace = null;
-			this.#setCanMake(false);
+	#review(key: MakerVerdict, now: boolean): void {
+		const grace = this.#grace[key];
+		if (now) {
+			if (grace) clearTimeout(grace);
+			this.#grace[key] = null;
+			this.#setVerdict(key, true);
+		} else if (this.#verdict[key] && !grace) this.#armGrace(key);
+	}
+
+	/** Counts from the LOSS: a later fleet change still without one neither restarts nor adds a clock. */
+	#armGrace(key: MakerVerdict): void {
+		const grace = setTimeout(() => {
+			this.#grace[key] = null;
+			this.#setVerdict(key, false);
 		}, MAKER_GRACE_MS);
 		// A hub in a test or a short-lived script must not keep the process alive for the grace.
-		this.#makerGrace.unref?.();
+		grace.unref?.();
+		this.#grace[key] = grace;
 	}
 
-	#setCanMake(value: boolean): void {
-		if (value === this.#canMake) return;
-		this.#canMake = value;
-		this.#d.onCanMakeChange?.();
+	#setVerdict(key: MakerVerdict, value: boolean): void {
+		if (value === this.#verdict[key]) return;
+		this.#verdict[key] = value;
+		this.#d.onMakerChange?.();
 	}
 
 	/**
@@ -486,7 +505,7 @@ export class WorkerHub {
 	 */
 	#retellOnFleetChange(before: Set<string>): void {
 		const after = this.#offered();
-		this.#reviewCanMake(after);
+		this.#reviewVerdicts(after);
 		if (after.size === before.size && [...after].every((c) => before.has(c))) return;
 		const entries = this.#d.queueEntries();
 		const was = new Set(this.noMakerMedia(entries, before));

@@ -81,6 +81,9 @@ export type ServerEvent =
 			// Whether any connected worker can make karaoke at the room's quality (`WorkerHub.canMake`, after a 10 s grace
 			// on loss). A boolean only: no worker ids, hosts or counts. OMITTED means "no info", so a client keeps its own.
 			canMake?: boolean;
+			// Whether any connected worker can FETCH a search result (`WorkerHub.canFetch`, same grace). A library upload
+			// needs no fetch, so a box with no yt-dlp can make while this is false. A boolean only, like `canMake`.
+			canFetch?: boolean;
 	  }
 	| { type: 'playback:state'; state: PlaybackState; rev: number }
 	| { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }

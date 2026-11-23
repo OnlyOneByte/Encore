@@ -690,6 +690,8 @@ body {
 	color: var(--ink-dim);
 	font-weight: 700;
 	margin: var(--space-5xl) var(--space-2xs) var(--space-sm);
+	/* A heading that wraps at 320 wraps evenly, never one word alone ("Can't make these right / now"). */
+	text-wrap: balance;
 }
 
 /* GRADIENT-FILLED GLYPHS, the one sanctioned use of --grad on text (see the token: it is DECORATION and carries no

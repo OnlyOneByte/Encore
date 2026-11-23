@@ -90,10 +90,8 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	 *  replace each other's socket. Defaults to a per-call counter. */
 	workerId?: string;
 	/**
-	 * What the worker ADVERTISES, which is what dispatch routes by. The default matches the old worker's.
-	 * Note the routing is by RESOLVED capability, not bare job type: a `fetch` for a YouTube source is
-	 * routed as `fetch:ytdlp` and a roformer-capped room routes stems as `stems:roformer`, so a spec
-	 * exercising either must widen this. A local library file needs no fetch at all.
+	 * What the worker ADVERTISES, which dispatch routes by. The default is a full worker's (a bare `fetch` routes
+	 * nothing); an uploads-only box is `['stems', 'align']`, a roformer-capped room needs `stems:roformer`.
 	 */
 	capabilities?: string[];
 	concurrency?: number;
@@ -171,7 +169,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOptions = {}): Promise<FakeWorker> {
 	const {
 		workerId = `fake-worker-${++seq}`,
-		capabilities = ['fetch', 'stems', 'align'],
+		capabilities = ['fetch:ytdlp', 'stems', 'align'],
 		concurrency = 1,
 		token,
 		claim = 'all',

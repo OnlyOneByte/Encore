@@ -14,8 +14,11 @@ const MAKER = [requiredCapability('stems'), requiredCapability('align')];
 
 function fleet(settings?: EffectiveSettings) {
 	const registry = new WorkerRegistry();
+	// Counts the room being told `canMake` moved; a `canFetch` move fires the same hook and is read off `told`.
 	let flips = 0;
-	const hub = new WorkerHub({
+	let last = true;
+	const told: { canMake: boolean; canFetch: boolean }[] = [];
+	const hub: WorkerHub = new WorkerHub({
 		jobs: new JobRepository(migratedDb()),
 		registry,
 		mediaById: new Map(),
@@ -24,12 +27,16 @@ function fleet(settings?: EffectiveSettings) {
 		getSettings: settings ? () => settings : undefined,
 		now: () => 0,
 		queueEntries: () => [],
-		onCanMakeChange: () => flips++
+		onMakerChange: () => {
+			told.push({ canMake: hub.canMake(), canFetch: hub.canFetch() });
+			if (hub.canMake() !== last) flips++;
+			last = hub.canMake();
+		}
 	});
 	const join = (workerId: string, capabilities = MAKER) =>
 		hub.handle({ type: 'worker:hello', workerId, capabilities, concurrency: 1, version: '1' });
 	const leave = (workerId: string) => hub.workerLeft(() => registry.remove(workerId));
-	return { hub, join, leave, flips: () => flips };
+	return { hub, join, leave, flips: () => flips, told };
 }
 
 /** Run `body` on a fake clock, restoring the real one whatever happens. */
@@ -159,10 +166,64 @@ test("a worker that cannot run the room's quality does not count", () =>
 		expect(capable.hub.canMake()).toBe(true);
 	}));
 
-test('the sync carries the verdict as one boolean, and nothing about the workers', () => {
-	const ev = syncEvent(new AuthoritativeState(), { mediaById: new Map(), canMake: () => false });
+test('the sync carries each verdict as one boolean, and nothing about the workers', () => {
+	const ev = syncEvent(new AuthoritativeState(), {
+		mediaById: new Map(),
+		canMake: () => false,
+		canFetch: () => false
+	});
 	expect(ev.canMake).toBe(false);
+	expect(ev.canFetch).toBe(false);
 	expect(Object.keys(ev).filter((k) => /worker|host/i.test(k))).toEqual([]);
-	// A caller that cannot know omits it, which a client reads as "no info".
-	expect(syncEvent(new AuthoritativeState(), { mediaById: new Map() }).canMake).toBeUndefined();
+	// A caller that cannot know omits them, which a client reads as "no info".
+	const bare = syncEvent(new AuthoritativeState(), { mediaById: new Map() });
+	expect([bare.canMake, bare.canFetch]).toEqual([undefined, undefined]);
 });
+
+// Proposal 24, PR 2: an uploads-only box (no yt-dlp) makes library files but cannot fetch a search result.
+const FETCH = requiredCapability('fetch');
+
+test('an uploads-only worker can make but not fetch, after the same grace', () =>
+	withFakeTimers(() => {
+		const { hub, join, told } = fleet();
+		join('uploads', MAKER);
+		jest.advanceTimersByTime(MAKER_GRACE_MS - 1);
+		expect(hub.canFetch()).toBe(true);
+		jest.advanceTimersByTime(1);
+		expect([hub.canMake(), hub.canFetch()]).toEqual([true, false]);
+		expect(told).toEqual([{ canMake: true, canFetch: false }]);
+	}));
+
+test('a fetcher joining turns canFetch on at once; one leaving turns it off only after the grace', () =>
+	withFakeTimers(() => {
+		const { hub, join, leave, told } = fleet();
+		join('full', [...MAKER, FETCH]);
+		jest.advanceTimersByTime(MAKER_GRACE_MS * 2);
+		expect(told).toEqual([]); // inside the boot grace: nothing was ever told
+		leave('full');
+		join('uploads', MAKER);
+		jest.advanceTimersByTime(MAKER_GRACE_MS - 1);
+		expect(hub.canFetch()).toBe(true);
+		jest.advanceTimersByTime(1);
+		expect([hub.canMake(), hub.canFetch()]).toEqual([true, false]);
+		join('fetcher', [FETCH]);
+		expect(hub.canFetch()).toBe(true);
+	}));
+
+test('canFetch has the boot grace too: an uploads-only worker joining later is never told it can fetch', () =>
+	withFakeTimers(() => {
+		const { hub, join } = fleet();
+		jest.advanceTimersByTime(MAKER_GRACE_MS);
+		expect(hub.canFetch()).toBe(false);
+		join('uploads', MAKER);
+		expect([hub.canMake(), hub.canFetch()]).toEqual([true, false]);
+	}));
+
+test("canFetch routes by the room's fetcher, as dispatch does", () =>
+	withFakeTimers(() => {
+		const bareFetch = fleet();
+		bareFetch.join('w1', [...MAKER, 'fetch']); // the old worker's bare token routes nothing
+		jest.advanceTimersByTime(MAKER_GRACE_MS);
+		expect(bareFetch.hub.canFetch()).toBe(false);
+		expect(FETCH).toBe('fetch:ytdlp');
+	}));
