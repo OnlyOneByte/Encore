@@ -194,7 +194,13 @@
 			inflight?.abort();
 			return;
 		}
-		debounceTimer = setTimeout(() => runSearch(q), 150);
+		debounceTimer = setTimeout(announce, 150, q);
+	}
+
+	/** Runs the search and reads its answer out: every path but the widen, which reads it after moving focus. */
+	async function announce(q: string) {
+		const msg = await runSearch(q);
+		if (msg) liveMsg = msg;
 	}
 
 	/* One tap from the narrowed default to the full fan-out, re-running the query it is already holding.
@@ -206,14 +212,25 @@
 		widened = true;
 		const q = query.trim();
 		if (!q) return;
-		await runSearch(q);
+		const msg = await runSearch(q);
+		// Aborted (superseded, or the page unmounted while it was in the air) or the field has left the page: the
+		// heading query below would otherwise run against whatever route the guest went to.
+		if (!msg || !queryEl?.isConnected) return;
 		/* THE TAP REMOVES ITS OWN BUTTON, so focus would fall to <body> and a keyboard or switch user starts over at
 		   the top. It goes to the first group heading of the widened answer, or back to the field when there is no
 		   group (a failure or nothing found). Not if the guest has typed since: the next keystroke clears `widened`,
 		   and stealing focus from the field they are typing in is worse than losing it. */
-		if (!widened || query.trim() !== q) return;
+		if (!widened || query.trim() !== q) {
+			liveMsg = msg;
+			return;
+		}
 		await tick();
-		(document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl)?.focus();
+		(document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl).focus();
+		/* SPOKEN AFTER THE FOCUS MOVE, not before: screen readers announce the newly focused heading and commonly drop
+		   polite speech queued just ahead of a focus change, so the count would be cut by "Needs karaoke, heading".
+		   100 ms rather than the next frame, because the reader's own focus handling is not tied to our frames.
+		   shortcut: the delay is not verified on a real screen reader; check VoiceOver iOS and NVDA when one is to hand. */
+		setTimeout(() => (liveMsg = msg), 100);
 	}
 
 	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
@@ -224,7 +241,9 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
-	async function runSearch(q: string) {
+	/** The sentence to announce for this query's answer, or `undefined` when a newer search or an unmount aborted it.
+	 * It does not set `liveMsg` itself, because the widen announces only after it has moved focus. */
+	async function runSearch(q: string): Promise<string | undefined> {
 		inflight?.abort();
 		const ctrl = new AbortController();
 		inflight = ctrl;
@@ -262,11 +281,12 @@
 			   SC 4.1.3's own understanding document uses "search returned N results" as its example. */
 			const found = readyResults.length + rawResults.length + processingResults.length;
 			// Prefixed after a widen, so the same count for the same query still reads as news.
-			liveMsg =
+			return (
 				(widened ? 'Searched everything: ' : '') +
 				(found === 0
 					? `No songs found for ${q}`
-					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`);
+					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`)
+			);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				/* `clearResults()` STAYS. Keeping the previous query's rows was considered and is worse — it puts
@@ -278,7 +298,7 @@
 				showError("Couldn't reach the server.");
 				// The toast is visual only, and it is also 4 seconds against a permanent screen. Both audiences now
 				// get the same sentence, where the pill said "Reconnecting…" and the copy said "Nothing matches".
-				liveMsg = "Couldn't reach the server — your search didn't run.";
+				return "Couldn't reach the server — your search didn't run.";
 			}
 		} finally {
 			if (inflight === ctrl) searching = false;
@@ -606,7 +626,7 @@
 							<Empty.Description>Couldn't reach the server — your search didn't run.</Empty.Description>
 						</Empty.Header>
 						<div class="showall-row">
-							<Button variant="secondary" size="tap" onclick={() => runSearch(query.trim())}>
+							<Button variant="secondary" size="tap" onclick={() => announce(query.trim())}>
 								<Icon name="restart" /> Try again
 							</Button>
 						</div>
@@ -960,7 +980,8 @@
 	   whole word again. It sums the cluster's fixed parts: the name's 4ch floor, the identity button's inline
 	   padding and border, its gap, the 22px dot, this gap, and the 44px gear less its -10px margin. In `ch` and rem
 	   tokens, so it grows with text zoom and the 200% case at 320 still wraps.
-	   shortcut: the sum restates the parts below; `sing-one-search-box`'s topbar probe catches it drifting.
+	   shortcut: the sum restates the parts below; `sing-one-search-box`'s topbar probe catches it drifting (at 390
+	   with the root at 32px, a floor short by 4ch slides the dot under the gear, which its no-overlap check fails).
 	   `justify-content: flex-end` does what `margin-left: auto` did, keeping the cluster on the far edge. */
 	.me-cluster {
 		flex: 1 1 0;
