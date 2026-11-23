@@ -41,7 +41,8 @@
 		ordinal,
 		modeInvalidation,
 		rowShift,
-		liveSeq
+		liveSeq,
+		orderKept
 	} from '$lib/reorder-mode';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
@@ -646,6 +647,108 @@
 		if (dy !== 0) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
 	});
 
+	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (proposal 18). The hold above moves `.below` as one box, and nothing
+	   held what is inside it: when your own song starts, your On deck card leaves and the heading and rows under it
+	   jumped up by its height (356 px), then your row left the list 12 ms later and the rows under it jumped again. A
+	   cooking card changing state moved every row under it the same way. So the same move, one level down: each block's
+	   DRAWN top inside `.below` is read before the patch, and after it every block that survived and moved is held there
+	   by `data-hold` and eased home on --motion-base (app.css). A block that left is a cut; one that arrived just
+	   appears. The drawn top, so a second patch mid-ease starts from where the block is on screen: its running hold is
+	   cancelled first, so the read after the patch is its new slot. Under reduced motion the CSS does nothing: a cut.
+	   `$effect.pre`, never a ResizeObserver: the proposal's prototype measured one firing a frame after the jump painted.
+	   Never during a drag (the live sort owns those rows), never for a reorder (the rows would cross each other), and
+	   never at the first sync or a reconnect, on the gate above: `holdArmed` is that gate as of the last patch.
+	   Rows are keyed by entry and by component, since a card turning into a row is a new element. */
+	const rowKinds = $derived(queued.map((e) => queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))));
+	const rowKey = (id: string, kind: string | undefined) => `${id}:${kind === 'plain' ? 'row' : 'card'}`;
+	// Everything that can change a block's height or the list's membership, as one primitive: an equal emit runs nothing.
+	const holdKey = $derived(
+		[deckEntry?.id, deckHeadsUp, noMaker]
+			.concat(
+				queued.map((e, i) => `${e.id}:${rowKinds[i]}:${mediaStatus.get(e.mediaId)?.status}:${pendingKind.get(e.id)}`)
+			)
+			.join('|')
+	);
+	let holds = $state<Record<string, { dy: number; turn: 'a' | 'b' }>>({});
+	let topsWas: Record<string, number | undefined> | null = null;
+	let scrollWas = 0;
+	// The keys of the rows in the DOM, in order: `queued` is already the next list when the pre effect reads.
+	let rowKeys: string[] = [];
+	let holdArmed = false;
+	// Plain pairs, read and dropped within one patch: nothing here is reactive.
+	function blocksOf(box: HTMLElement): [string, Element][] {
+		const els: [string, Element][] = [];
+		for (const k of ['grouphead', 'reorder-note']) {
+			const el = box.querySelector(`:scope > .${k}`);
+			if (el) els.push([k, el]);
+		}
+		box.querySelectorAll('.qrow').forEach((el, i) => rowKeys[i] && els.push([rowKeys[i], el]));
+		return els;
+	}
+	const topIn = (box: HTMLElement, el: Element) => el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+	$effect.pre(() => {
+		void nowId;
+		void holdKey;
+		scrollWas = window.scrollY;
+		const box = untrack(() => below);
+		topsWas = box ? Object.fromEntries(blocksOf(box).map(([k, el]) => [k, topIn(box, el)])) : null;
+	});
+	$effect(() => {
+		void nowId;
+		void holdKey;
+		const ready = queueSynced && playbackSynced;
+		untrack(() => {
+			const was = topsWas;
+			topsWas = null;
+			const prev = rowKeys;
+			rowKeys = queued.map((e, i) => rowKey(e.id, rowKinds[i]));
+			if (!was) return;
+			keepPage(scrollWas);
+			if (!below || !holdArmed || !ready || dragging || !orderKept(idsOf(prev), idsOf(rowKeys))) return;
+			const next: typeof holds = {};
+			for (const [k, el] of blocksOf(below)) {
+				if (holds[k]) next[k] = holds[k];
+				const old = was[k];
+				if (old === undefined) continue;
+				for (const a of el.getAnimations())
+					if (a instanceof CSSAnimation && a.animationName.startsWith('hold-')) a.cancel();
+				const dy = old - topIn(below, el);
+				if (Math.abs(dy) >= 0.5) next[k] = { dy, turn: holds[k]?.turn === 'a' ? 'b' : 'a' };
+			}
+			holds = next;
+		});
+		holdArmed = ready;
+	});
+	const idsOf = (keys: string[]) => keys.map((k) => k.slice(0, k.lastIndexOf(':')));
+
+	/* A PAGE THAT GOT SHORTER AT THE BOTTOM KEEPS ITS HEIGHT. A guest scrolled to the bottom when a card got shorter
+	   (failed 137 → making 109 → ready 69 px) saw the whole column slide down twice, because the browser clamps the
+	   scroll to the shorter page, and CLS never counted it. So when a patch would clamp, `main` keeps a `min-height`
+	   that leaves the scroll where it was, and it drops once the guest scrolls up past the extra space (`keptMax`, the
+	   page's own maximum then) or the next patch no longer needs it. Not motion, so reduced motion keeps it too.
+	   Written onto the node, not rendered: it has to be measured and the scroll put back in this same frame. `main`'s
+	   other inline property is a `style:` directive for that reason, which Svelte writes one property at a time. */
+	let page = $state<HTMLElement | undefined>(undefined);
+	let keptMax: number | null = null;
+	function keepPage(y: number): void {
+		if (!page) return;
+		page.style.minHeight = '';
+		const max = document.documentElement.scrollHeight - window.innerHeight;
+		keptMax = y > max + 1 ? max : null;
+		if (keptMax === null) return;
+		page.style.minHeight = `${page.offsetHeight + y - max}px`;
+		if (window.scrollY !== y) window.scrollTo({ top: y, behavior: 'instant' });
+	}
+	$effect(() => {
+		const release = () => {
+			if (keptMax === null || window.scrollY > keptMax) return;
+			keptMax = null;
+			if (page) page.style.minHeight = '';
+		};
+		window.addEventListener('scroll', release, { passive: true });
+		return () => window.removeEventListener('scroll', release);
+	});
+
 	/** "Pick another, keep your spot": search on the Sing tab, where the chosen song replaces this turn's. */
 	const pickAnotherHref = (entryId: string) => `${resolve('/')}?${REPLACE_PARAM}=${encodeURIComponent(entryId)}`;
 
@@ -671,7 +774,7 @@
 
 	<!-- `--row-h` is the dragged row's measured height, published for the neighbours' transform to read: a
 	shifted row slides by exactly one row rather than by a guess. Measured once at press time and 0 otherwise. -->
-	<main style="--row-h:{rowH}px">
+	<main bind:this={page} style:--row-h="{rowH}px">
 		{#if nowEntry}
 			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
 			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
@@ -786,10 +889,22 @@
 			{/if}
 
 			{#if queued.length}
-				<h2 class="grouphead">Queued</h2>
+				<h2
+					class="grouphead"
+					data-hold={holds.grouphead?.turn}
+					style:--hold-from={holds.grouphead ? `${holds.grouphead.dy}px` : undefined}
+				>
+					Queued
+				</h2>
 				<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
 				{#if reorderNote}
-					<p class={['reorder-note', { held: noteIsHold }]}>{reorderNote}</p>
+					<p
+						class={['reorder-note', { held: noteIsHold }]}
+						data-hold={holds['reorder-note']?.turn}
+						style:--hold-from={holds['reorder-note'] ? `${holds['reorder-note'].dy}px` : undefined}
+					>
+						{reorderNote}
+					</p>
 				{/if}
 				<!-- ONE LIST OVER `queued`, SWITCHING CARD KIND PER ROW — never two sections split by readiness, which is
 			what this page shipped first and what broke reordering. The reorder arithmetic is ONE INDEX SPACE: `i`,
@@ -855,6 +970,7 @@
 							dragY={movingId === e.id && dragging ? dragY : 0}
 							reorderable={gripsVisible}
 							shift={rowShift(i, dragFrom, dragTo)}
+							hold={holds[rowKey(e.id, card)]}
 							ongripdown={(ev) => onGripPointerDown(e, ev)}
 							onnudge={(delta) => nudge(e.id, delta)}
 						/>
@@ -880,6 +996,7 @@
 							moving={movingId === e.id && dragging}
 							dragY={movingId === e.id && dragging ? dragY : 0}
 							shift={rowShift(i, dragFrom, dragTo)}
+							hold={holds[rowKey(e.id, card)]}
 							ongripdown={(ev) => onGripPointerDown(e, ev)}
 							onnudge={(delta) => nudge(e.id, delta)}
 							onremove={() => store?.removeEntry(e.id)}

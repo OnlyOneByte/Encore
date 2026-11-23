@@ -14,7 +14,8 @@ import {
 	keyboardMoveTarget,
 	rowShift,
 	liveSeq,
-	modeInvalidation
+	modeInvalidation,
+	orderKept
 } from '$lib/reorder-mode';
 import { at } from '$test';
 
@@ -251,6 +252,17 @@ test('the three specific reasons outrank the generic one, because they describe 
 	);
 });
 
+test('orderKept: rows that only came or went keep the order; a reorder of the rows both lists hold does not', () => {
+	// Your song starts (your row leaves), a song is added, a card turns into a row: the hold eases these.
+	expect(orderKept(['a', 'b', 'c'], ['b', 'c'])).toBe(true);
+	expect(orderKept(['a', 'b'], ['a', 'b', 'x'])).toBe(true);
+	expect(orderKept(['a', 'b', 'c'], ['x', 'a', 'c'])).toBe(true);
+	expect(orderKept([], ['a'])).toBe(true);
+	// A move, even one hidden among an add and a removal, is the live sort's.
+	expect(orderKept(['a', 'b', 'c'], ['b', 'a', 'c'])).toBe(false);
+	expect(orderKept(['a', 'b', 'c'], ['c', 'x', 'a'])).toBe(false);
+});
+
 test('non-vacuity · the Queue tab imports and calls every predicate asserted here', () => {
 	// Without this, all of the above could pass against a module no surface had left. Each name is checked as a
 	// CALL, not just an import — and it is pointed at /queue, which is where the rows are.
@@ -262,7 +274,8 @@ test('non-vacuity · the Queue tab imports and calls every predicate asserted he
 		'keyboardMoveTarget(',
 		'rowShift(',
 		'ordinal(',
-		'modeInvalidation('
+		'modeInvalidation(',
+		'orderKept('
 	]) {
 		expect(src).toContain(fn);
 	}

@@ -36,6 +36,8 @@
 		/** A keyboard step from the grip: -1 for Arrow Up, +1 for Arrow Down. */
 		onnudge?: (delta: number) => void;
 		onremove?: () => void;
+		/** The list's hold (app.css `[data-hold]`): `dy` px from where the row was drawn before a patch moved it. */
+		hold?: { dy: number; turn: 'a' | 'b' };
 	}
 	let {
 		seq,
@@ -57,7 +59,8 @@
 		ongripdown,
 		gripId,
 		onremove,
-		onnudge
+		onnudge,
+		hold
 	}: Props = $props();
 
 	/** One expression for both unconfirmed states, so a pending MOVE cannot drift back into the add path's word. */
@@ -88,7 +91,8 @@
 		<div
 			{...props}
 			class={['qrow', 'card', 'list-row', 'pop-in', { mine, up, pending, moving, shifted: shift !== 0 }]}
-			style="--drag-y:{dragY}px; --row-shift:{shift}"
+			data-hold={hold?.turn}
+			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-from:{hold?.dy ?? 0}px"
 		>
 			<Item.Media>
 				<!-- THE GRIP LEADS THE ROW, as a handle rather than a fourth action on it. `press="grab"` is not styling: that
