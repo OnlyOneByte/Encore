@@ -120,7 +120,16 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 				).size;
 			// Every singer's card has come and gone.
 			await expect.poll(cardsSeen, { timeout: 120_000 }).toBe(3);
-			await expect.poll(async () => (await frames(tv)).at(-1)?.shown, { timeout: 30_000 }).toBe(false);
+			// Past the last card's exit FADE, not just its start, so the frame the lower third returns is recorded.
+			await expect
+				.poll(
+					async () => {
+						const last = (await frames(tv)).at(-1);
+						return !!last && !last.shown && last.layerOpacity === 0 && last.ltVisible;
+					},
+					{ timeout: 30_000 }
+				)
+				.toBe(true);
 			segments.push(await frames(tv));
 			const all = segments.flat();
 			writeFileSync(test.info().outputPath('frames.json'), JSON.stringify(segments, null, 1));
@@ -163,9 +172,7 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 					[back?.layerOpacity, back?.ltOpacity, back?.ltTransition],
 					`${at}: the lower third cuts back in after the card's fade`
 				).toEqual([0, 1, '0s']);
-				// The edge line, on the exit's own frame: the style recalc that drops `under-card` starts its fade, so
-				// under no-preference it is painted from below full; under reduce it is back at full. Read here, not
-				// mid-fade: under load rAF frames land further apart than the fade.
+				// The edge line on the exit's own frame (its fade starts there; later frames may land past it under load).
 				if (motion === 'reduce') expect(f!.edgeOpacity, `${at}: the edge line cuts back under reduce`).toBe(1);
 				else expect(f!.edgeOpacity, `${at}: the edge line fades in`).toBeLessThan(1);
 				// Within two seconds (a loaded host paints far apart) the stage names the singer the card named.
