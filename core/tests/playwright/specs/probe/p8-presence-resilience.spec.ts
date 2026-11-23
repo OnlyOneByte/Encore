@@ -42,7 +42,8 @@
 // cannot, so the condition is checked earlier and louder than a probe step could.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, openQueue } from '../../world/actors';
+import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { startFakeWorker } from '../../world/workers';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
@@ -485,16 +486,24 @@ test('a severed phone shows as AWAY, keeps its queued song, and returns as here'
 
 // ── 5. an optimistic op taken while severed ──────────────────────────────────────────────────────────────
 
+// A READY song, so the tap is the plain add (`song-add`), the one op that still rides the socket alone. Sing on an
+// unmade song sends `/api/process` first and adds the turn only if it started (src/lib/process-and-queue.ts), so
+// an offline Sing gives "Couldn't start that." and no row by design — fresh-pick-every-phone covers that path.
+// The witness puts another ready song ON STAGE first: in an idle room the resent add would start playing at once
+// and leave the queue rows, reading as a lost add.
 test('a queue-add taken while the socket is severed reconciles on reconnect', async ({ browser, world }) => {
+	const worker = await startFakeWorker(world);
 	const [origin, witness] = await openGuests(browser, world, ['Gio', 'Cai']);
 	try {
+		for (const q of ['caroline', SEARCH_TERM]) await readySong(world, origin!.page, q);
+		await queueReady(witness!.page, 'caroline');
 		const before = await queueRows(witness!.page);
 
 		// SEARCH WHILE ONLINE: going offline blocks the HTTP request too, so the row must be up first.
 		await toSingTab(origin!.page);
 		await origin!.page.locator(SEL.search).fill(SEARCH_TERM);
-		const action = origin!.page.locator(SEL.songRow).first().locator(SEL.addOrSing).first();
-		await expect(action, `no actionable row for "${SEARCH_TERM}" before the offline test`).toBeVisible();
+		const action = origin!.page.locator(SEL.songRow, { hasText: SEARCH_TERM }).locator(SEL.addAction).first();
+		await expect(action, `no ready add row for "${SEARCH_TERM}" before the offline test`).toBeVisible();
 
 		const beforeConnects = await connectCount(origin!.page);
 		expect(await dropSocket(origin!.page), 'could not sever the origin phone: no socket to drop').toBe(true);
@@ -542,6 +551,7 @@ test('a queue-add taken while the socket is severed reconciles on reconnect', as
 		).toBe(before + 1);
 	} finally {
 		for (const g of [origin, witness]) await g?.context.close();
+		await worker.stop();
 	}
 });
 
