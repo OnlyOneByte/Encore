@@ -30,6 +30,7 @@ import { createReactionLimiter, handleReaction } from './src/lib/server/realtime
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
+import { startupAddress } from './src/lib/server/public-origin';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -353,8 +354,9 @@ setPublish(broadcast);
 
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
+// The address phones should open, from the same pick as the TV's QR. `0.0.0.0` is not one, so it is only the fallback.
 console.log(
-	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
+	`🎤 Encore on ${startupAddress(PORT) ?? `http://${HOST}:${PORT}`} (open /tv on the TV)  (ws:/ws · health:/health${DEV_HARNESS ? ' · harness:/harness' : ''} · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );
 
 // Loud, so an open box is not silently exposed.

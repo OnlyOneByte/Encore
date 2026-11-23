@@ -70,7 +70,7 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 > `https://` or the `localhost` family. The buttons still move and the sounding-key label still updates;
 > the audio just never changes, and nothing is logged. The guiding track does not use the worklet, so it
 > is unaffected, and so are phones (they run no audio DSP). If the display is driven by the
-> Encore host, open `http://localhost:3000/tv` on it and you are done. Otherwise see
+> Encore host, open `http://localhost:3000/tv` on it; the QR shows its home-network address. Otherwise see
 > **[`docs/deploy/README.md`](docs/deploy/README.md)** for the four ways to get a secure context,
 > cheapest first.
 

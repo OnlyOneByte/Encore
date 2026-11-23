@@ -10,7 +10,7 @@
 	import SelectField from '$lib/ui/SelectField.svelte';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { isUnreachableJoinOrigin } from '$lib/tv/screen';
-	import { UNREACHABLE_JOIN } from '$lib/tv/join-address';
+	import { UNREACHABLE_JOIN, joinAddressLabel } from '$lib/tv/join-address';
 	import { createSettingsWrites } from '$lib/settings-writes.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
@@ -41,8 +41,11 @@
 	interface Props {
 		data: {
 			settings: EffectiveSettings;
-			/** What an empty join address resolves to — env var, else the address this page was opened at. */
+			/** What an empty join address resolves to — env var, else the address this page was opened at
+			 *  (its home-network address when that is loopback). */
 			joinOriginFallback: string;
+			/** This box's home-network addresses, best first. Absent on an older server. */
+			joinCandidates?: string[];
 			/** Whether this phone reached the server over https. Only the server can answer this. */
 			requestIsHttps: boolean;
 			/**
@@ -166,6 +169,13 @@
 		if (normalized === settings.global.joinOrigin) return;
 		onglobal({ joinOrigin: normalized });
 	}
+
+	// The stored address is not offered again: a "Use" that changes nothing is a dead tap.
+	const joinChoices = $derived((data.joinCandidates ?? []).filter((c) => c !== settings.global.joinOrigin));
+	function useJoinOrigin(origin: string) {
+		joinDraft = origin;
+		commitJoinOrigin();
+	}
 </script>
 
 <!-- Back to the room scope, which holds this page's one door. -->
@@ -266,6 +276,15 @@
 			<Card.Title role="heading" aria-level={2}>Joining</Card.Title>
 		</Card.Header>
 		<Card.Content>
+			{#if joinChoices.length}
+				<div class="choices">
+					{#each joinChoices as origin (origin)}
+						<Button variant="outline" size="tap" onclick={() => useJoinOrigin(origin)}
+							>Use {joinAddressLabel(origin)}</Button
+						>
+					{/each}
+				</div>
+			{/if}
 			<Field.Label for="join-origin">Join address</Field.Label>
 			<Input
 				id="join-origin"
@@ -388,6 +407,14 @@
 		margin: var(--space-xs) 0 0;
 		font-size: var(--ph-text-xs);
 		color: var(--danger-ink);
+	}
+
+	/* The one-tap join addresses, above the field they fill. Wraps, so two long IPs fold at 320px. */
+	.choices {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-sm);
 	}
 
 	/* States what is behind the door, so it does not have to be opened to be read. */
