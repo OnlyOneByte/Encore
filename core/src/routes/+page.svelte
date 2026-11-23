@@ -131,6 +131,8 @@
 	   wider; only `source=all` hides it, because there is nothing wider than all. */
 	const urlSource = $derived(page.url.searchParams.get('source') ?? '');
 	let widened = $state(false);
+	/** The widened answer's count, described on the element the widen focuses. Empty once a newer search starts. */
+	let widenCount = $state('');
 	const searchSource = $derived(widened ? 'all' : urlSource);
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
@@ -187,6 +189,7 @@
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
 		widened = false;
+		widenCount = '';
 		const q = query.trim();
 		if (!q) {
 			clearResults();
@@ -197,7 +200,7 @@
 		debounceTimer = setTimeout(announce, 150, q);
 	}
 
-	/** Runs the search and reads its answer out: every path but the widen, which reads it after moving focus. */
+	/** Runs the search and reads its answer out: every path but the widen, which ties it to the focus it moves. */
 	async function announce(q: string) {
 		const msg = await runSearch(q);
 		if (msg) liveMsg = msg;
@@ -224,13 +227,13 @@
 			liveMsg = msg;
 			return;
 		}
+		/* The count is the focus target's description, read as focus lands. A live update queued before a focus move
+		   is often dropped. `widenCount` clears with the next search, so nothing stale is left to read. */
+		widenCount = msg;
 		await tick();
-		(document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl).focus();
-		/* SPOKEN AFTER THE FOCUS MOVE, not before: screen readers announce the newly focused heading and commonly drop
-		   polite speech queued just ahead of a focus change, so the count would be cut by "Needs karaoke, heading".
-		   100 ms rather than the next frame, because the reader's own focus handling is not tied to our frames.
-		   shortcut: the delay is not verified on a real screen reader; check VoiceOver iOS and NVDA when one is to hand. */
-		setTimeout(() => (liveMsg = msg), 100);
+		const target = document.querySelector<HTMLElement>('main h2.grouphead') ?? queryEl;
+		target?.setAttribute('aria-describedby', 'widen-count');
+		target?.focus();
 	}
 
 	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
@@ -242,7 +245,7 @@
 	}
 
 	/** The sentence to announce for this query's answer, or `undefined` when a newer search or an unmount aborted it.
-	 * It does not set `liveMsg` itself, because the widen announces only after it has moved focus. */
+	 * It does not set `liveMsg` itself, because the widen gives the count to the element it focuses instead. */
 	async function runSearch(q: string): Promise<string | undefined> {
 		inflight?.abort();
 		const ctrl = new AbortController();
@@ -255,6 +258,7 @@
 		   already has a gate waiting for exactly this state. */
 		clearResults();
 		searchFailed = false;
+		widenCount = '';
 		try {
 			// The default is the route's own, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
@@ -705,6 +709,7 @@
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
 
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+{#if widenCount}<p id="widen-count" hidden>{widenCount}</p>{/if}
 
 <style>
 	/* Reserves the dock's MEASURED height so the last row stays reachable, with a fallback for the first frame. No

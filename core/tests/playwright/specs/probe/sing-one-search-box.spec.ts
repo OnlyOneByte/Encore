@@ -7,7 +7,8 @@
 //   3. The narrowing filter is still reachable off-screen: `/?source=local` sends `source=local`, and the widen is
 //      still offered there, so a shared narrowed link is never a search with no way wider.
 //   4. The widen removes the button it was tapped on, so focus moves to the widened results' first heading and
-//      the live region says the search went wider; focus never falls to <body>.
+//      that heading's description carries the widened count, which goes with the next search; focus never falls
+//      to <body>.
 //   5. The topbar is one row at 320 and 390 with a long name: the name ellipsises, the wordmark and gear stay whole.
 //      At 200% text it may wrap, but at both sizes the wordmark, name, avatar and gear never overlap.
 //   6. A widen still in the air when the guest leaves the page moves no focus on the page they went to.
@@ -120,11 +121,62 @@ test('the widen hands focus to the widened results and says so', async ({ world 
 	await page.locator(SEL.search).fill(track.title);
 	const widen = page.getByRole('button', WIDEN);
 	await widen.waitFor({ timeout: 30_000 });
+	// What the focused element's description reads at the moment focus lands, not later.
+	await page.evaluate(() => {
+		const w = window as unknown as { described: string[] };
+		w.described = [];
+		document.addEventListener('focusin', (e) => {
+			const id = (e.target as HTMLElement).getAttribute('aria-describedby');
+			w.described.push((id && document.getElementById(id)?.textContent) || '');
+		});
+	});
 	await widen.focus();
 	await page.keyboard.press('Enter');
 	const firstHead = page.locator('main h2.grouphead').first();
 	await expect(firstHead, 'focus lands on the first group heading').toBeFocused({ timeout: 30_000 });
-	await expect(page.locator('.sr-live'), 'the live region says it went wider').toHaveText(/^Searched everything: /);
+	await expect(firstHead, 'the heading carries the count').toHaveAccessibleDescription(/^Searched everything: /);
+	const described = await page.evaluate(() => (window as unknown as { described: string[] }).described);
+	expect(described.at(-1), 'the count is there as focus lands').toMatch(/^Searched everything: /);
+	await expect(page.locator('.sr-live'), 'and is not queued as speech too').not.toHaveText(/Searched everything/);
+});
+
+test('a clear right after the widen leaves no widened count behind', async ({ world }) => {
+	const track = await world.awaitDemoTrack('caroline');
+	const page = await world.openPhone('Maya');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await openBrowseFromHome(page);
+	await page.locator(SEL.search).fill(track.title);
+	const widen = page.getByRole('button', WIDEN);
+	await widen.waitFor({ timeout: 30_000 });
+	// Taps the field's clear 20 ms after focus lands on the widened heading, logging the live region throughout.
+	await page.evaluate(() => {
+		const w = window as unknown as { liveLog: string[] };
+		w.liveLog = [];
+		const live = document.querySelector('.sr-live')!;
+		new MutationObserver(() => w.liveLog.push(`live ${live.textContent}`)).observe(live, {
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+		document.addEventListener('focusin', (e) => {
+			if (!(e.target as HTMLElement).matches('h2.grouphead') || w.liveLog.includes('CLEARED')) return;
+			setTimeout(() => {
+				document.querySelector<HTMLElement>('button[aria-label="Clear the search"]')?.click();
+				w.liveLog.push('CLEARED');
+			}, 20);
+		});
+	});
+	await widen.click();
+	await page.waitForFunction(() => (window as unknown as { liveLog: string[] }).liveLog.includes('CLEARED'));
+	await expect(page.locator(SEL.search)).toHaveValue('');
+	await page.waitForTimeout(500);
+	const log = await page.evaluate(() => (window as unknown as { liveLog: string[] }).liveLog);
+	const after = log.slice(log.indexOf('CLEARED') + 1);
+	expect(
+		after.filter((l) => /Searched everything/.test(l)),
+		'no stale count'
+	).toEqual([]);
+	await expect(page.locator('#widen-count'), 'the count goes with the answer').toHaveCount(0);
 });
 
 test('a widen in the air when the guest leaves moves no focus on the next page', async ({ world }) => {
