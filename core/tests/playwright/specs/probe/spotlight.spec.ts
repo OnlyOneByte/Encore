@@ -6,6 +6,9 @@ import { startGallery, type Gallery } from '../../world/gallery';
 import { contrastRatio } from '$lib/contract/presentation/colors';
 import { PENDING_GRACE_MS } from '$lib/stores/room';
 
+// One worker, so one `vite dev` serves the file: fullyParallel would boot one per worker.
+test.describe.configure({ mode: 'serial' });
+
 let gallery: Gallery;
 test.beforeAll(async () => {
 	test.setTimeout(90_000);
@@ -95,33 +98,99 @@ test('a 150 ms wait paints no spinner; a 900 ms one paints at the grace and hold
 	expect(last).toBeLessThan(900 + 200);
 });
 
-test('a Guide tap presses its segment in the next frame; a dropped send and a custom level press none', async ({
+const checked = (where: Locator) => where.getByRole('radio', { checked: true }).allTextContents();
+/** Which segments are in the tab order, as their labels. */
+const tabStops = (where: Locator) =>
+	where.getByRole('radio').evaluateAll((rs) => rs.filter((r) => r.tabIndex === 0).map((r) => r.textContent));
+
+test('a Guide tap checks its segment in the next frame; a dropped send and a custom level check none', async ({
 	page
 }) => {
 	await open(page);
 	const plain = page.getByTestId('guide-plain');
-	const pressed = (where: Locator) => where.locator('button[aria-pressed="true"]').allTextContents();
-	expect(await pressed(plain)).toEqual(['Off']);
-	const ms = await plain.getByRole('button', { name: 'Low' }).evaluate(
+	await expect(plain.getByRole('radiogroup', { name: 'Guide' })).toBeVisible();
+	expect(await checked(plain)).toEqual(['Off']);
+	const ms = await plain.getByRole('radio', { name: 'Low' }).evaluate(
 		(b) =>
 			new Promise<number>((resolve) => {
 				const t0 = performance.now();
 				b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 				const tick = () =>
-					b.getAttribute('aria-pressed') === 'true' ? resolve(performance.now() - t0) : requestAnimationFrame(tick);
+					b.getAttribute('aria-checked') === 'true' ? resolve(performance.now() - t0) : requestAnimationFrame(tick);
 				tick();
 			})
 	);
 	expect(ms).toBeLessThanOrEqual(100);
-	expect(await pressed(plain)).toEqual(['Low']);
+	expect(await checked(plain)).toEqual(['Low']);
 
 	const dropped = page.getByTestId('guide-dropped');
-	await dropped.getByRole('button', { name: 'Full' }).click();
-	expect(await pressed(dropped)).toEqual(['Low']);
-	expect(await pressed(page.getByTestId('guide-custom'))).toEqual([]);
+	await dropped.getByRole('radio', { name: 'Full' }).click();
+	expect(await checked(dropped)).toEqual(['Low']);
+	const custom = page.getByTestId('guide-custom');
+	expect(await checked(custom)).toEqual([]);
+	// A level no segment claims still leaves one way in: the first segment.
+	expect(await tabStops(custom)).toEqual(['Off']);
 
-	for (const box of await plain.locator('button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect())))
+	for (const box of await plain.getByRole('radio').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect())))
 		expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+});
+
+test('the Guide radio group is one tab stop, and arrows, Home and End move and select', async ({ page }) => {
+	await open(page);
+	const plain = page.getByTestId('guide-plain');
+	expect(await tabStops(plain)).toEqual(['Off']);
+	await page.getByTestId('guide-dropped').getByRole('radio', { name: 'Low' }).focus();
+	// Shift+Tab from the next group lands on this group's checked segment, never on the other two.
+	await page.keyboard.press('Shift+Tab');
+	await expect(plain.getByRole('radio', { name: 'Off' })).toBeFocused();
+	const step = async (key: string, want: string) => {
+		await page.keyboard.press(key);
+		await expect(plain.getByRole('radio', { name: want })).toBeFocused();
+		expect(await checked(plain)).toEqual([want]);
+		expect(await tabStops(plain)).toEqual([want]);
+	};
+	await step('ArrowRight', 'Low');
+	await step('ArrowDown', 'Full');
+	await step('ArrowRight', 'Off'); // wraps
+	await step('ArrowLeft', 'Full'); // wraps back
+	await step('ArrowUp', 'Low');
+	await step('Home', 'Off');
+	await step('End', 'Full');
+});
+
+test('a pick the room leaves unchanged drops back to the truth', async ({ page }) => {
+	await open(page);
+	const unchanged = page.getByTestId('guide-unchanged');
+	await unchanged.getByRole('radio', { name: 'Full' }).click();
+	expect(await checked(unchanged)).toEqual(['Full']);
+	await expect.poll(() => checked(unchanged), { timeout: 5_000 }).toEqual(['Off']);
+});
+
+test('a focused segment on a lit card rings in on_fill, keeps its pill, and clears 3:1', async ({ page }) => {
+	await open(page);
+	const seg = page.getByTestId('spot-on-deck').getByRole('radio', { name: 'Low' });
+	await seg.focus();
+	await page.keyboard.press('ArrowLeft'); // a keyboard focus, so :focus-visible matches
+	const ring = await page.evaluate(() => {
+		const el = document.activeElement as HTMLElement;
+		const rgb = (c: string) => {
+			const ctx = document.createElement('canvas').getContext('2d')!;
+			ctx.fillStyle = c;
+			return ctx.fillStyle as string;
+		};
+		const card = el.closest('.spotlight')!;
+		return {
+			outline: rgb(getComputedStyle(el).outlineColor),
+			width: getComputedStyle(el).outlineWidth,
+			fill: rgb(getComputedStyle(card.querySelector('.fill')!).backgroundColor),
+			ink: rgb(getComputedStyle(card).color),
+			radius: getComputedStyle(el).borderTopLeftRadius
+		};
+	});
+	expect(ring.width).toBe('2px');
+	expect(ring.outline).toBe(ring.ink);
+	expect(contrastRatio(ring.outline, ring.fill)).toBeGreaterThanOrEqual(3);
+	expect(ring.radius).toBe('999px');
 });
 
 test('lit, idle, error and light cards put AA ink on what they paint', async ({ page }) => {

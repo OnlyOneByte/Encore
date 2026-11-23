@@ -968,15 +968,15 @@ function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: 
 			},
 			trigger: async (page) => {
 				if (ROW.button) await page.getByTestId(ROW.button).click();
-				else await page.getByTestId('guide-plain').getByRole('button', { name: 'Low' }).click();
+				else await page.getByTestId('guide-plain').getByRole('radio', { name: 'Low' }).click();
 			},
 			only: ROW.only,
 			subject: ROW.subject,
 			observe: (page) =>
 				page.evaluate(() => ({
 					handoff: document.querySelector('[data-testid="spot-handoff"] .spotlight')?.getAttribute('data-moment'),
-					guide: [...document.querySelectorAll('[data-testid="guide-plain"] button')].map(
-						(b) => `${b.textContent}:${b.getAttribute('aria-pressed')}`
+					guide: [...document.querySelectorAll('[data-testid="guide-plain"] [role="radio"]')].map(
+						(b) => `${b.textContent}:${b.getAttribute('aria-checked')}`
 					)
 				}))
 		};

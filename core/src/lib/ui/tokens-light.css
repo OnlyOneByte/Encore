@@ -1,0 +1,22 @@
+/* The light theme's roles. Not in the root stylesheet: no shipped screen sets data-theme yet, so only the dev story
+   imports this; the step that ships light moves it into tokens.css. */
+[data-theme='light'] {
+	--role-ground: #f7f7fb;
+	--role-raise: #ffffff;
+	--role-rule: #e1e1ea;
+	--role-ink: #15151f;
+	--role-ink-dim: #5a5a72;
+	--role-control: #7a7a96;
+	--role-accent: #6446de;
+	--role-on-accent: #ffffff;
+	--role-accent-ink: #5536cf;
+	--role-focus: #6a4bdb;
+	--role-danger: #b42318;
+	--role-danger-surface: #fdecea;
+	--role-danger-line: #f1b5ae;
+	--role-ok: #0e7a5a;
+	--role-warn: #9a5b00;
+	--spot: var(--role-accent);
+	--on-spot: var(--role-on-accent);
+	color-scheme: light;
+}

@@ -342,7 +342,9 @@ The old names stay until then.
 **Colour roles.** In the dark theme every role but `--role-raise` aliases a name `app.css` already declares, so
 moving a rule onto its role changes no pixel. That way round, not the other: the palette generator and the
 contrast guards read `app.css`'s literal hexes. The light theme is opt-in through `data-theme="light"`, and only
-the dev story sets it. `spotlight-tokens.test.ts` holds every pair below at WCAG AA in both themes.
+the dev story sets it. Its block lives in `src/lib/ui/tokens-light.css`, which only that story imports, so the root
+stylesheet doesn't carry it; the step that ships light moves it into `tokens.css`. `spotlight-tokens.test.ts` holds
+every pair below at WCAG AA in both themes.
 
 | Role                    | Dark aliases     | Light     | Use it for                                                      |
 | ----------------------- | ---------------- | --------- | --------------------------------------------------------------- |
@@ -594,9 +596,16 @@ because a `class:` directive is not valid on a component. Their common contracts
 
 `src/lib/ui/Spotlight.svelte` is the redesign's one lit surface. A screen has at most one, and it holds the next
 thing to do. No screen uses it yet. Its story is `/components/spotlight` (dev-only), filmed by the `spotlight-*`
-rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). The `spotlight` probe holds four
-things on the same story: only transform and opacity move, the spinner obeys the grace, a Guide tap presses in the
-next frame, and every card's ink clears AA.
+rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Each `vite dev`
+gets its own cache dir (`ENCORE_VITE_CACHE_DIR`, unset in normal use), so parallel workers never race one
+dependency optimiser. The `spotlight` probe runs serially on one server and holds these on the same story:
+- only transform and opacity move;
+- the spinner obeys the grace;
+- a Guide tap checks in the next frame;
+- the radio group's keyboard;
+- a pick the room ignores drops back;
+- the focus ring on a lit card;
+- every card's ink clears AA.
 
 - **`moment`**:
   - `idle`: the raise surface, ringed in `--spot`.
@@ -614,12 +623,21 @@ next frame, and every card's ink clears AA.
   here moved `cn()` into a chunk of its own and cost every shipped route about 6 KB of gzipped JS (CLAIM 13).
 
 `src/lib/ui/GuideSegments.svelte` is Guide as Off / Low / Full (an owner ruling; the song page keeps the slider for
-fine control). Levels are in `src/lib/guide-preset.ts`. Low is 0.3, the owner's accepted default, and it is tunable there:
-change `GUIDE_PRESETS` and `guide-preset.test.ts` together. A level the
-slider set between presets presses no segment, rather than the nearest one. A tap presses its segment in the same
-frame. When `onpick` returns false (the command never reached the wire), the press drops again, the rule
-`guide-send.ts` states for the slider. A pressed segment is filled in `currentColor` and its label is inked in
-`--seg-ink`, which the Spotlight sets to its own surface.
+fine control).
+
+- **Levels** are in `src/lib/guide-preset.ts`. Low is 0.3, the owner's accepted default, and it is tunable there:
+  change `GUIDE_PRESETS` and `guide-preset.test.ts` together. A level the slider set between presets checks no
+  segment, rather than the nearest one.
+- **It is an APG radio group:** `role="radiogroup"`, `role="radio"` with `aria-checked`, and one tab stop (the
+  checked segment, or the first when none is). The arrow keys move and select, wrapping, and Home and End jump to the
+  ends. Each segment is a 44 px target.
+- **A pick shows in the same frame.** The room's answer replaces it. If `onpick` returns false (the command never
+  reached the wire), the pick drops at once, the rule `guide-send.ts` states for the slider. If the room keeps its
+  level and so sends no change, the pick drops after `PRESS_HOLD_MS` (3 s).
+- **Paint.** A checked segment is filled in `currentColor` and its label inked in `--seg-ink`, which the Spotlight
+  sets to its own surface. The focus ring keeps the pill's radius and takes `--seg-focus`. A lit card sets that to
+  `--on-spot`, which is certified on the fill, so the ring clears 3:1 on all 48 singer colours. Elsewhere it is
+  `--role-focus`.
 
 ### Charts, fields and the rest
 

@@ -87,6 +87,8 @@
 		color: var(--on-spot);
 		box-shadow: none;
 		--seg-ink: var(--spot);
+		/* on_fill is certified on its fill, so the focus ring clears 3:1 on every singer colour. */
+		--seg-focus: var(--on-spot);
 	}
 	.lit .fill {
 		opacity: 1;

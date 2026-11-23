@@ -1,6 +1,6 @@
 import { clampGuideLevel } from '$lib/contract/lyrics/guide-level';
 
-// shortcut: Low's 0.3 is a default, not an owner ruling; change it here when one lands.
+// Low 0.3 is the owner's accepted default and tunable here; change guide-preset.test.ts with it.
 export const GUIDE_PRESETS = [
 	{ id: 'off', label: 'Off', level: 0 },
 	{ id: 'low', label: 'Low', level: 0.3 },

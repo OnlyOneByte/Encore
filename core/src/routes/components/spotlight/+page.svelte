@@ -2,6 +2,7 @@
 	import Spotlight from '$lib/ui/Spotlight.svelte';
 	import GuideSegments from '$lib/ui/GuideSegments.svelte';
 	import { PALETTE_STOPS } from '$lib/contract/presentation/player-palette';
+	import '$lib/ui/tokens-light.css';
 
 	// Fixture data, a person's chosen colour: one warm stop, one cool, so both ink kinds are on screen.
 	const THEO = PALETTE_STOPS[0]!.fill;
@@ -67,6 +68,10 @@
 	<div class="row plain" data-testid="guide-dropped">
 		<span>Guide, link down</span>
 		<GuideSegments level={dropped} onpick={() => false} />
+	</div>
+	<div class="row plain" data-testid="guide-unchanged">
+		<span>Guide, room keeps Off</span>
+		<GuideSegments level={0} onpick={() => true} />
 	</div>
 	<div class="row plain" data-testid="guide-custom">
 		<span>Guide at 60%</span>

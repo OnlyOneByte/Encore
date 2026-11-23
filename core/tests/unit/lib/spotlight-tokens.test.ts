@@ -7,6 +7,7 @@ import { PALETTE_STOPS } from '$lib/contract/presentation/player-palette';
 // The Spotlight tokens (redesign step 2): roles hold WCAG AA in both themes, and every rung has a caller.
 const appCss = readFileSync(at('src/app.css'), 'utf8');
 const tokens = readFileSync(at('src/tokens.css'), 'utf8');
+const lightCss = readFileSync(at('src/lib/ui/tokens-light.css'), 'utf8');
 
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
 
@@ -16,7 +17,7 @@ function decls(block: string): Map<string, string> {
 }
 const rootBlock = (css: string) => /:root\s*\{([\s\S]*?)\n\}/.exec(css)![1]!;
 const dark = new Map([...decls(rootBlock(appCss)), ...decls(rootBlock(tokens))]);
-const light = new Map([...dark, ...decls(/\[data-theme='light'\]\s*\{([\s\S]*?)\n\}/.exec(tokens)![1]!)]);
+const light = new Map([...dark, ...decls(/\[data-theme='light'\]\s*\{([\s\S]*?)\n\}/.exec(lightCss)![1]!)]);
 
 /** Follow `var(--x)` to a hex, the way the cascade does for a custom property declared on one element. */
 function hex(theme: Map<string, string>, name: string): string {
@@ -127,6 +128,31 @@ test('the queue’s motion is tokens now, at the values it had as literals', () 
 	expect(left).toEqual([]);
 });
 
-test('app.css imports the tokens', () => {
+test('app.css imports the tokens, and the unshipped light theme stays out of the root stylesheet', () => {
 	expect(appCss).toContain("@import './tokens.css';");
+	expect(tokens).not.toContain('data-theme');
+	expect(readFileSync(at('src/routes/components/spotlight/+page.svelte'), 'utf8')).toContain(
+		"import '$lib/ui/tokens-light.css';"
+	);
+});
+
+test('a focused Guide segment keeps its pill and a 3:1 ring on every surface the card can paint', () => {
+	// On a lit card the ring is the stop's on_fill; on idle and error it is the focus role (WCAG 1.4.11, 2.4.11).
+	const lit = PALETTE_STOPS.map((s) => [s.name, contrastRatio(s.on_fill, s.fill)] as const).filter(
+		([, r]) => r < NON_TEXT
+	);
+	expect(PALETTE_STOPS).toHaveLength(48);
+	expect(lit).toEqual([]);
+	for (const theme of [dark, light]) {
+		expect(contrastRatio(hex(theme, '--on-spot'), hex(theme, '--spot'))).toBeGreaterThanOrEqual(NON_TEXT);
+		for (const bg of ['--role-raise', '--role-danger-surface', '--role-ground'])
+			expect(contrastRatio(hex(theme, '--role-focus'), hex(theme, bg))).toBeGreaterThanOrEqual(NON_TEXT);
+	}
+	const seg = strip(readFileSync(at('src/lib/ui/GuideSegments.svelte'), 'utf8'));
+	expect(seg).toMatch(
+		/button:focus-visible \{\s*outline-color: var\(--seg-focus, var\(--role-focus\)\);\s*border-radius: var\(--round-pill\);/
+	);
+	expect(strip(readFileSync(at('src/lib/ui/Spotlight.svelte'), 'utf8'))).toMatch(
+		/\.lit \{[^}]*--seg-focus: var\(--on-spot\);/
+	);
 });

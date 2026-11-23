@@ -25,7 +25,14 @@ export async function startGallery(path = '/components/spotlight'): Promise<Gall
 		cwd: repoRoot,
 		stdio: ['ignore', 'pipe', 'pipe'],
 		detached: true,
-		env: { ...process.env, DATA_DIR: dir, MEDIA_DIR: dir, ENCORE_EPHEMERAL: '1' }
+		// Its own vite cache: parallel workers sharing node_modules/.vite collide on a cold optimise (ENOTEMPTY).
+		env: {
+			...process.env,
+			DATA_DIR: dir,
+			MEDIA_DIR: dir,
+			ENCORE_EPHEMERAL: '1',
+			ENCORE_VITE_CACHE_DIR: join(dir, 'vite')
+		}
 	});
 	proc.stdout?.on('data', (d: Buffer) => (output += d.toString()));
 	proc.stderr?.on('data', (d: Buffer) => (output += d.toString()));
