@@ -126,7 +126,11 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 
 	media.stemStatus = 'queued'; // rotation holds this slot until the instrumental exists
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) ? 'fetch' : 'stems';
+	// The fetch step already ran, so the next step is stems: Try again after a failed separation starts there. (Stems
+	// downloads from the source again into its own work dir, so it never reads the fetch's file.) Enqueueing `fetch`
+	// again handed back that finished job: no stems job was made, and the line below marked the song ready.
+	const fetched = deps.jobs.findLive(mediaId, 'fetch')?.status === 'ready';
+	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) && !fetched ? 'fetch' : 'stems';
 	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now(), undefined, singerId);
 	// A `ready` job still occupies the dedup slot, so enqueue can hand one back for a media whose ready flags
 	// were lost — and leaving that `queued` against a job that will never run again deadlocks rotation.

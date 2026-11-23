@@ -190,7 +190,16 @@
 				>
 					<span class="pic"><ReactionGlyph kind="clap" /></span>
 				</button>
-				<button class="btn" onclick={onrestart} disabled={!hasSong} aria-label="Restart">
+				<!-- With no song there is nothing to restart, and the waiting line runs on over this slot as over the
+					Cheer key's: resting in place, so the key comes back at the handoff without moving anything. -->
+				<button
+					class="btn restart"
+					class:resting={!hasSong}
+					onclick={onrestart}
+					disabled={!hasSong}
+					inert={!hasSong}
+					aria-label="Restart"
+				>
 					<Icon name="restart" />
 				</button>
 				<button
@@ -305,11 +314,13 @@
 	   out in it ("Your song didn't work. Try again or pick another."), and on Sing and Library it is the singer's only
 	   notice, so an ellipsis cut the remedy off at 390 and both at 320. Two lines of this size and leading fit inside
 	   the strip's one tap floor, so the dock does not grow.
-	   IT RUNS ON OVER THE CHEER KEY'S SLOT, which is empty here: this line shows only with no song, when nobody can be
-	   cheered and the key is hidden and inert in place. Without that width the sentence took three lines at 320. The
-	   negative margin widens the line's box and moves nothing else, so the dock keeps its shape across the handoff. */
+	   IT RUNS ON OVER THE CHEER AND RESTART SLOTS, which are empty here: this line shows only with no song, when nobody
+	   can be cheered and nothing restarted, so both keys are hidden and inert in place. With the Cheer slot alone the
+	   line was 146px at 320, and the failure sentence took three lines in every common sans (Arial metrics included),
+	   not only in a wide fallback. The negative margin widens the line's box and moves nothing else, so the dock keeps
+	   its shape across the handoff. */
 	.status {
-		margin-inline-end: calc(-1 * (var(--tap) + var(--space-2xs)));
+		margin-inline-end: calc(-2 * (var(--tap) + var(--space-2xs)));
 		min-width: 4ch;
 		overflow: hidden;
 		display: -webkit-box;
@@ -365,8 +376,9 @@
 	}
 
 	/* `visibility` too, so the hidden key is not hit-tested or found by a locator; it switches at the END of the fade
-	   out and at the start of the fade in, which is how a `visibility` transition interpolates. */
-	.cheer-key.resting {
+	   out and at the start of the fade in, which is how a `visibility` transition interpolates. The Cheer key and,
+	   with no song, Restart. */
+	.btn.resting {
 		opacity: 0;
 		visibility: hidden;
 	}
@@ -382,8 +394,10 @@
 		.fill {
 			transition: transform var(--motion-tick) linear;
 		}
-		/* Resting is a fade in place, so it touches no layout. */
-		.cheer-key {
+		/* Resting is a fade in place, so it touches no layout. Only the two keys that rest carry it, so a later
+		   opacity change on Play or Skip does not fade by accident. */
+		.cheer-key,
+		.restart {
 			transition:
 				opacity var(--motion-base) ease-out,
 				visibility var(--motion-base);
