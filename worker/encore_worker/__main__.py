@@ -161,15 +161,18 @@ async def main() -> None:
     report = hardware.probe()
     backend = hardware.resolve_backend(config.backend, report=report)
     device = device_for(config, report)
+    jobs = hardware.resolve_demucs_jobs(config.demucs_jobs, device=device)
     caps = hardware.capabilities(
         backend=backend.name,
         ytdlp=config.ytdlp_bin,
         ffmpeg=config.ffmpeg_bin,
+        mlx_bin=config.mlx_bin,
     )
 
     print(
         f"[worker] {config.worker_id} on {report.platform} ({report.machine}); "
         f"accelerator={report.accelerator} device={device} backend={backend.name} ({backend.why}); "
+        f"demucs -j {jobs.count} ({jobs.why}); "
         f"capabilities={','.join(sorted(caps)) or 'NONE'}",
         flush=True,
     )
@@ -194,6 +197,7 @@ async def main() -> None:
         mlx_bin=config.mlx_bin,
         ffmpeg_bin=config.ffmpeg_bin,
         zoo_model_dir=config.zoo_model_dir,
+        demucs_jobs=jobs.count,
     )
 
     def settled(job_id: str, resumable: bool) -> None:
@@ -250,6 +254,7 @@ async def main() -> None:
                 engine=job.param_str("engine"),
                 model=job.param_str("model"),
                 zoo_model_dir=config.zoo_model_dir,
+                demucs_jobs=jobs.count,
             )
             or separator
         )

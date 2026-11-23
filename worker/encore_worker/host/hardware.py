@@ -9,6 +9,7 @@ and §9.1.
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 import shutil
 from dataclasses import dataclass
@@ -119,7 +120,46 @@ def resolve_backend(configured: str | None, *, report: Report | None = None) -> 
     return Backend("torch", "auto-selected torch")
 
 
-def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg") -> frozenset[str]:
+@dataclass(frozen=True, slots=True)
+class Jobs:
+    """torch demucs `-j`, and `why`, for the startup line like `Backend`."""
+
+    count: int
+    why: str
+
+
+#: The auto `-j` ceiling. Measured on a 32-core aarch64 box, 240 s of audio: `-j 1` 126.7 s, `-j 4` 68.5 s,
+#: `-j 8` 61.8 s. demucs `-j` is a CPU thread pool, so on a GPU it changes nothing.
+#: shortcut: capped at 8 because peak RSS above that is unmeasured; raise it after a measured RSS row.
+DEMUCS_JOBS_CAP = 8
+
+
+def cpu_count() -> int:
+    """Cores this process may run on: the affinity mask where the OS has one, so a cpuset counts."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:  # macOS and Windows have no affinity call
+        return os.cpu_count() or 1
+
+
+def resolve_demucs_jobs(configured: int | None, *, device: str, cores: int | None = None) -> Jobs:
+    """How many chunks torch demucs separates at once. An explicit setting wins on every device.
+
+    Only CPU gets more than one: demucs runs `-j` as a thread pool on CPU alone. A quarter of the cores each,
+    because every chunk already runs torch's own intra-op threads.
+    """
+    if configured:
+        return Jobs(configured, f"explicitly configured {configured} (ENCORE_DEMUCS_JOBS)")
+    if device != "cpu":
+        return Jobs(1, f"auto 1 ({device}: demucs runs -j on CPU only)")
+    n = cores if cores is not None else cpu_count()
+    picked = max(1, min(DEMUCS_JOBS_CAP, n // 4))
+    return Jobs(picked, f"auto {picked} (cpu, {n} cores: min({DEMUCS_JOBS_CAP}, cores // 4))")
+
+
+def capabilities(
+    *, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg", mlx_bin: str = "demucs-mlx"
+) -> frozenset[str]:
     """What this box can PROVE it can do, so core only routes work it can finish.
 
     Every gate below is chosen to prove the last thing that could still be missing, and the table of what
@@ -141,7 +181,8 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     if not binary_available(ffmpeg):
         return frozenset(caps)
 
-    has_engine = module_available("demucs_mlx") if backend == "mlx" else module_available("demucs")
+    # The mlx engine runs as a CLI, so it is gated on the binary `build_separator` will exec, not the module.
+    has_engine = binary_available(mlx_bin) if backend == "mlx" else module_available("demucs")
     if has_engine:
         caps.add("stems")
     # Gated on the CLI and not the module, which was a real bug (docs/arch/05-worker.md §9.1).

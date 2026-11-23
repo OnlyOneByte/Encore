@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -113,6 +114,9 @@ class Config:
     dbos_db: str = "encore-worker.sqlite"
     backend: str | None = None
     device: str | None = None
+    #: torch demucs `-j` (`ENCORE_DEMUCS_JOBS`); unset means `hardware.resolve_demucs_jobs` picks from the
+    #: device and the cores.
+    demucs_jobs: int | None = None
     asr_model: str = "base"
     #: A bare name as the dataclass default, but `from_env` resolves a real path through `host.ffmpeg`. Left
     #: bare so a `Config()` built in a test does not need the `ffmpeg` extra installed.
@@ -195,12 +199,13 @@ class Config:
             dbos_db=dbos_db,
             backend=backend,
             device=optional("ENCORE_DEVICE"),
+            demucs_jobs=_positive_int(src, "ENCORE_DEMUCS_JOBS", 0) or None,
             asr_model=asr,
             # RESOLVED, not read: unset means "pick the best available" (`host.ffmpeg`). `optional` so an
             # empty string reads as unset rather than as a request to exec "".
             ffmpeg_bin=ffmpeg.resolve(optional("ENCORE_FFMPEG_BIN")),
             ytdlp_bin=text("ENCORE_YTDLP_BIN", "yt-dlp"),
-            mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
+            mlx_bin=text("ENCORE_MLX_BIN", _beside_python("demucs-mlx")),
             zoo_model_dir=text("ENCORE_ZOO_MODEL_DIR", _default_zoo_dir(src)),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),
             job_ceiling_sec=_positive_float(src, "ENCORE_JOB_CEILING_SEC", JOB_CEILING_SEC),
@@ -228,6 +233,16 @@ def _default_worker_id(dbos_db: str) -> str:
     """
     seed = f"{uuid.getnode():012x}:{os.path.abspath(dbos_db)}"
     return f"worker-{hashlib.sha256(seed.encode()).hexdigest()[:6]}"
+
+
+def _beside_python(name: str) -> str:
+    """`name` from this interpreter's own `bin/` when it is installed there, else the bare name for PATH.
+
+    A worker started as `.venv/bin/python -m encore_worker` (systemd, launchd) has no venv on PATH, so the
+    bare name would miss the console script the same install put next to the interpreter.
+    """
+    beside = os.path.join(os.path.dirname(sys.executable), name)
+    return beside if os.access(beside, os.X_OK) else name
 
 
 def _default_zoo_dir(src: Mapping[str, str]) -> str:
