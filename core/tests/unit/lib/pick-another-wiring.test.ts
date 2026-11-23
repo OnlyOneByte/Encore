@@ -51,8 +51,9 @@ test('with no maker, the idle Sing tab drops the promise to make karaoke for any
 		"{status === 'not-joined' ? 'Encore' : replacing ? 'Pick another · Encore' : 'Sing · Encore'}"
 	);
 	// Neither line until the verdict is known (library read + first queue sync), both in one reserved cell.
-	expect(home).toMatch(/<span class:shown=\{verdictKnown && !noMaker\}\s*>Find any song and we'll make/);
-	expect(home).toMatch(/<span class:shown=\{verdictKnown && noMaker\}\s*>Only ready songs can play right now\./);
+	// `onlyReady` is no maker OR no fetcher (proposal 24): the promise is about search results.
+	expect(home).toMatch(/<span class:shown=\{verdictKnown && !onlyReady\}\s*>Find any song and we'll make/);
+	expect(home).toMatch(/<span class:shown=\{verdictKnown && onlyReady\}\s*>Only ready songs can play right now\./);
 	expect(home).toContain('verdictKnown = room.libraryLoaded && (room.queue?.synced ?? false);');
 });
 

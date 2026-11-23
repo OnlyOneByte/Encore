@@ -44,7 +44,10 @@ test('each group renders its WINDOW, never the full list', () => {
 	// let the long `Needs karaoke` tail decide how many ready songs a guest can see.
 	expect(home).toContain('const processingView = $derived(libraryWindow(processingRows, revealedProcessing));');
 	expect(home).toContain('const readyView = $derived(libraryWindow(readyResults, revealedReady));');
-	expect(home).toContain('const rawView = $derived(libraryWindow(rawRows, revealedRaw));');
+	// The unmade rows split by what can be made now (proposal 24), each half windowed on its own counter.
+	expect(home).toContain('const rawView = $derived(libraryWindow(makeRows, revealedRaw));');
+	expect(home).toContain('const cantView = $derived(libraryWindow(cantRows, revealedCant));');
+	expect(home).toContain('{#each cantView.shown as m (m.id)}');
 });
 
 test('the window resets with the ROWS — in clearResults, and nowhere else', () => {
@@ -130,7 +133,8 @@ test('de-duplication and the zero-state read the FULL lists, not the windows', (
 	// Same for the group headings and the widen gate: a heading is a claim about the GROUP, and the widen is
 	// offered because the query returned rows, not because sixty of them are painted.
 	expect(home).toContain('{#if readyResults.length}');
-	expect(home).toContain('{#if rawRows.length}');
+	expect(home).toContain('{#if makeRows.length}');
+	expect(home).toContain('{#if cantRows.length}');
 	expect(home).toContain('{#if processingRows.length}');
 	expect(home).toContain('(rawRows.length || readyResults.length)');
 });

@@ -210,6 +210,15 @@ test('a fetcher joining turns canFetch on at once; one leaving turns it off only
 		expect(hub.canFetch()).toBe(true);
 	}));
 
+test('canFetch has the boot grace too: an uploads-only worker joining later is never told it can fetch', () =>
+	withFakeTimers(() => {
+		const { hub, join } = fleet();
+		jest.advanceTimersByTime(MAKER_GRACE_MS);
+		expect(hub.canFetch()).toBe(false);
+		join('uploads', MAKER);
+		expect([hub.canMake(), hub.canFetch()]).toEqual([true, false]);
+	}));
+
 test("canFetch routes by the room's fetcher, as dispatch does", () =>
 	withFakeTimers(() => {
 		const bareFetch = fleet();

@@ -320,10 +320,7 @@ export function orderingOf(deps: Pick<HubDeps, 'getSettings' | 'listSingers'>): 
  *  the library is `/api/library`'s job, and only its loudness levels ride along. */
 export function syncEvent(
 	state: AuthoritativeState,
-	deps?: Pick<
-		HubDeps,
-		'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings' | 'canMake' | 'canFetch'
-	>
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings' | 'canMake' | 'canFetch'>
 ): Extract<ServerEvent, { type: 'queue:sync' }> {
 	return {
 		type: 'queue:sync',
