@@ -113,16 +113,11 @@
 {/if}
 
 <style>
-	/* Cuts out as the card comes up and fades back in as the layer's exit starts, on the layer's own curve, so the
-	   card's words hand over to the stage's in one motion. OPT-IN under no-preference: reduced, it cuts back. */
+	/* A CUT both ways, back in as the layer's exit starts: an opacity fade re-rasterises the blurred shadow and stroke
+	   every frame, and on a headless 1080p run that took the outro from ~7 dropped frames to ~26, `will-change` and all
+	   (#1060). The edge line, cheap to fade, carries the motion. */
 	.lower-third.under-card {
 		visibility: hidden;
-		opacity: 0;
-	}
-	@media (prefers-reduced-motion: no-preference) {
-		.lower-third {
-			transition: opacity var(--motion-base) ease;
-		}
 	}
 	.lower-third {
 		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */

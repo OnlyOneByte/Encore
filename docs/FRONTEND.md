@@ -1941,9 +1941,17 @@ While the layer is up, the card is the whole stage. The scrim is transparent pas
 chrome in the corners shows through it: the lower third and the progress line are hidden (`underCard`, from
 `layerShown`), or "Now singing Maya" is on screen twice, and the stage's own corner QR is hidden while `transient`
 holds the dimmed `.takeover-join` copy, or the two stack at full brightness in one box. Both hide by `visibility`,
-so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. The
-lower third and progress line cut out as the card comes up and fade back in on `--motion-base` as the layer's exit
-starts, so the card's words hand over to the stage's in one motion; under reduce they cut back.
+so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. Both
+cut out as the card comes up and come back as the layer's exit starts. The progress line fades back in on
+`--motion-base` (a cut under reduce); the lower third CUTS back in. Fading it re-rasterised its blurred shadow and
+stroke every frame. In #1060 that took the `tv-song-outro` live run from a median of about 7 dropped frames to about
+26, and `will-change: opacity` during the fade did not help.
+
+The QR's 1.0 to 0.72 step is a CUT, at both ends of the card, on purpose. A fade needs both copies painted at once
+(the stage's under the takeover, the dimmed one above it), and that is two QRs in one box for the fade's length, the
+bug this rule removes. Dimming the stage's own copy in place does not work either: it sits under the takeover layer,
+and the scrim is still about half up at that corner. The step is the same white tile at 72%, in a slot that does not
+move.
 
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with

@@ -3,8 +3,9 @@
 // The card's scrim is transparent past 62% of its radius, so the stage's chrome showed through it: the lower third
 // named the singer a second time, the progress line ran along the edge, and the corner join QR was drawn twice in one
 // box at full brightness. On every handoff with the layer fully up: the lower third and the progress line are hidden,
-// exactly ONE join QR is visible, dimmed, and "Up next" stays. When the layer's exit starts, the lower third is back,
-// naming the new singer, fading in with the layer under no-preference and cutting back under reduce.
+// and "Up next" stays. On EVERY stage frame, a TV reloaded mid-card included, exactly ONE join QR is painted, dimmed
+// while a takeover is up. When the layer's exit starts, the lower third cuts back in naming the new singer, and the
+// edge progress line fades back in under no-preference and cuts back under reduce.
 //
 // Every frame is read in the page (rAF), because the exit's first frame is the one that says whether the stage
 // waited for the card, and a sampler from the test side lands a round trip late.
@@ -17,9 +18,13 @@ import type { Page } from '@playwright/test';
 
 interface Frame {
 	at: number;
+	/** The stage is on screen (its lower third is mounted), so its join QR must be. */
+	stage: boolean;
 	/** The layer has `shown` and its fade-in has finished. */
 	up: boolean;
 	shown: boolean;
+	/** A takeover's dimmed join copy is mounted. */
+	takeoverJoin: boolean;
 	cardName: string;
 	ltVisible: boolean;
 	ltName: string;
@@ -55,8 +60,10 @@ async function installRecorder(tv: Page): Promise<void> {
 			const upnext = [...document.querySelectorAll('.upnext')];
 			const f: Frame = {
 				at: Date.now(),
+				stage: !!lt,
 				up: shown && !!layer && getComputedStyle(layer).opacity === '1',
 				shown,
+				takeoverJoin: !!document.querySelector('.takeover-join'),
 				cardName: shown ? words(document.querySelector('.state-next .up-name')) : '',
 				ltVisible: !!lt && painted(lt),
 				ltName: words(lt?.querySelector('.ls-name') ?? null),
@@ -99,55 +106,69 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 			await queueReady(theo, 'believin');
 			await queueReady(ana, 'bohemian');
 
+			// A TV reloaded 600 ms into the first card: the recorder starts again with the page, so each page's frames
+			// are a segment of their own and an exit is never read across the reload.
+			const segments: Frame[][] = [];
+			await expect.poll(async () => (await frames(tv)).some((f) => f.up && f.cardName), { timeout: 60_000 }).toBe(true);
+			await tv.waitForTimeout(600);
+			segments.push(await frames(tv));
+			await tv.reload();
+			await tapStage(tv);
+			const cardsSeen = async () =>
+				new Set(
+					[...segments, await frames(tv)]
+						.flat()
+						.filter((f) => f.up && f.cardName)
+						.map((f) => f.cardName)
+				).size;
 			// Every singer's card has come and gone.
-			await expect
-				.poll(async () => new Set((await frames(tv)).filter((f) => f.up && f.cardName).map((f) => f.cardName)).size, {
-					timeout: 120_000
-				})
-				.toBe(3);
+			await expect.poll(cardsSeen, { timeout: 120_000 }).toBe(3);
 			await expect.poll(async () => (await frames(tv)).at(-1)?.shown, { timeout: 30_000 }).toBe(false);
-			const all = await frames(tv);
-			writeFileSync(test.info().outputPath('frames.json'), JSON.stringify(all, null, 1));
+			segments.push(await frames(tv));
+			const all = segments.flat();
+			writeFileSync(test.info().outputPath('frames.json'), JSON.stringify(segments, null, 1));
 
 			const held = all.filter((f) => f.up && f.cardName);
 			for (const f of held) {
 				const at = `card "${f.cardName}" at ${f.at}`;
 				expect(f.ltVisible, `${at}: the lower third repeats the card`).toBe(false);
 				expect(f.progressVisible, `${at}: the progress line runs under the card`).toBe(0);
-				expect(f.corners.length, `${at}: join QRs painted`).toBe(1);
-				expect(f.corners[0]!, `${at}: the join QR is dimmed`).toBeLessThanOrEqual(0.72);
 				expect(f.upnext[1], `${at}: "Up next" stays`).toBe(f.upnext[0]);
 			}
 			expect(
 				held.some((f) => f.upnext[0] > 0),
 				'no card was up with an "Up next" behind it'
 			).toBe(true);
-			// Never two QRs, the card's exit fade included: the dimmed copy and the stage's hand over in one frame.
-			const doubled = all.filter((f) => f.corners.length > 1).map((f) => f.at);
-			expect(doubled, 'frames with two join QRs painted').toEqual([]);
+			// ONE QR on every stage frame, the exit fade and the reload included: never two stacked, never none, and
+			// dimmed whenever a takeover's copy is the one up.
+			const badCount = all.filter((f) => f.stage && f.corners.length !== 1).map((f) => [f.at, f.corners.length]);
+			expect(badCount, 'stage frames without exactly one join QR [at, count]').toEqual([]);
+			const undimmed = all.filter((f) => f.takeoverJoin && f.corners.some((o) => o > 0.72)).map((f) => f.at);
+			expect(undimmed, 'frames with a takeover up and the join QR not dimmed').toEqual([]);
 
-			// The layer's exit: the first frame each card's layer drops `shown`.
-			const exits = all.filter((f, i) => i > 0 && !f.shown && all[i - 1]!.shown && all[i - 1]!.cardName);
-			expect(exits.length, 'card exits seen').toBeGreaterThanOrEqual(3);
-			for (const f of exits) {
-				const prev = all[all.indexOf(f) - 1]!;
-				const at = `exit of "${prev.cardName}" at ${f.at}`;
-				expect(f.ltVisible, `${at}: the lower third is back as the card leaves`).toBe(true);
-				// The exit's own frame: the style recalc that drops `under-card` is the one that starts the fade, so under
-				// no-preference the lower third and the edge line are painted from below full opacity; under reduce they
-				// cut straight back to full. Read here, not mid-fade: under load rAF frames land further apart than the fade.
-				const fromBelow = [f.ltOpacity < 1, f.edgeOpacity < 1];
-				if (motion === 'reduce') {
-					expect(f.ltTransition, `${at}: reduced motion cuts back`).toBe('0s');
-					expect(fromBelow, `${at}: [lower third, edge line] fading under reduce`).toEqual([false, false]);
-				} else {
-					expect(f.ltTransition, `${at}: the lower third fades in with the layer`).not.toBe('0s');
-					expect(fromBelow, `${at}: [lower third, edge line] fading in`).toEqual([true, true]);
-				}
-				// Within two seconds (a loaded host paints far apart) the stage names the singer the card named, at full.
-				const settled = all.filter((g) => g.at >= f.at && g.at <= f.at + 2_000 && g.ltName).at(-1);
-				expect(settled?.ltName ?? '', `${at}: the lower third names the new singer`).toContain(prev.cardName);
-				expect(settled?.ltOpacity ?? 0, `${at}: the lower third is back at full strength`).toBe(1);
+			// The layer's exit: the first frame each card's layer drops `shown`, within one page.
+			const exits = segments.flatMap((seg) =>
+				seg.flatMap((f, i) =>
+					i > 0 && !f.shown && seg[i - 1]!.shown && seg[i - 1]!.cardName ? [[seg[i - 1]!, f]] : []
+				)
+			);
+			// Theo's and Ana's: the reload ends Maya's page mid-card, and the reloaded TV does not put her card back (IN-P1).
+			expect(exits.length, 'card exits seen').toBeGreaterThanOrEqual(2);
+			for (const [prev, f] of exits) {
+				const at = `exit of "${prev!.cardName}" at ${f!.at}`;
+				// The lower third CUTS back in, in both modes: its shadowed text is too costly to fade (#1060).
+				expect(
+					[f!.ltVisible, f!.ltOpacity, f!.ltTransition],
+					`${at}: the lower third cuts back in as the card leaves`
+				).toEqual([true, 1, '0s']);
+				// The edge line, on the exit's own frame: the style recalc that drops `under-card` starts its fade, so
+				// under no-preference it is painted from below full; under reduce it is back at full. Read here, not
+				// mid-fade: under load rAF frames land further apart than the fade.
+				if (motion === 'reduce') expect(f!.edgeOpacity, `${at}: the edge line cuts back under reduce`).toBe(1);
+				else expect(f!.edgeOpacity, `${at}: the edge line fades in`).toBeLessThan(1);
+				// Within two seconds (a loaded host paints far apart) the stage names the singer the card named.
+				const settled = all.filter((g) => g.at >= f!.at && g.at <= f!.at + 2_000 && g.ltName).at(-1);
+				expect(settled?.ltName ?? '', `${at}: the lower third names the new singer`).toContain(prev!.cardName);
 			}
 		} finally {
 			await worker.stop();

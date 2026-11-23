@@ -1069,8 +1069,6 @@
 			bottom: var(--tv-safe-y);
 		}
 	}
-	/* Above the takeover, so it is never painted over. The composited --ink-dim run inside it still clears 3:1 at
-	   this opacity and the --tv-small size. */
 	/* `contents`, so the corner card keeps the stage as its containing block; `visibility` inherits into it. */
 	.stage-join {
 		display: contents;
@@ -1078,6 +1076,8 @@
 	.stage-join.under-card {
 		visibility: hidden;
 	}
+	/* Above the takeover, so it is never painted over. The composited --ink-dim run inside it still clears 3:1 at
+	   this opacity and the --tv-small size. */
 	.takeover-join {
 		position: absolute;
 		inset: 0;

@@ -64,7 +64,8 @@
 			transition: opacity var(--motion-base) ease;
 		}
 	}
-	/* The lower third's rule (TvNowBar `.under-card`): cut out under the card, faded back in as it leaves. */
+	/* Hidden under the card with the lower third (TvNowBar `.under-card`), but FADED back in as it leaves: a flat
+	   gradient bar is cheap to fade, where the lower third's shadowed text is not. */
 	.under-card {
 		visibility: hidden;
 		opacity: 0;
