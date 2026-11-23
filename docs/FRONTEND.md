@@ -610,7 +610,8 @@ next frame, and every card's ink clears AA.
   the headline, which pops from `scale(.92)` over `--motion-slow`. The fill is already lit, and a flood restarting
   from 0 blinked the card dark (seen in the ui:review filmstrip). Reduced motion cuts.
 - **`busy`** shows a spinner only through `src/lib/ui/grace.ts`: nothing for a wait under `PENDING_GRACE_MS`, and
-  once shown it stays at least that long (tenet 2).
+  once shown it stays at least that long (tenet 2). The ring is its own, not `ui/spinner`. Importing that one from
+  here moved `cn()` into a chunk of its own and cost every shipped route about 6 KB of gzipped JS (CLAIM 13).
 
 `src/lib/ui/GuideSegments.svelte` is Guide as Off / Low / Full (an owner ruling; the song page keeps the slider for
 fine control). Levels are in `src/lib/guide-preset.ts`. Low is 0.3, a default rather than a ruling. A level the

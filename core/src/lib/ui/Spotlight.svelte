@@ -4,7 +4,6 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Spinner } from '$lib/components/ui/spinner';
 	import { nearestPaletteStop } from '$lib/contract/presentation/player-palette';
 	import { createGrace } from '$lib/ui/grace';
 
@@ -51,7 +50,8 @@
 	{#if meta || showBusy}
 		<p class="meta">
 			{#if meta}<span>{meta}</span>{/if}
-			{#if showBusy}<Spinner aria-label={busyLabel} />{/if}
+			<!-- Not ui/spinner: importing it from here split cn() into its own chunk, +6 KB gz JS on every route. -->
+			{#if showBusy}<span class="busy" role="status" aria-label={busyLabel} data-slot="spinner"></span>{/if}
 		</p>
 	{/if}
 	<h2 class="title">{title}</h2>
@@ -117,8 +117,12 @@
 	.error .meta span {
 		opacity: 1;
 	}
-	.meta :global([data-slot='spinner']) {
-		border-color: color-mix(in srgb, currentColor 30%, transparent);
+	.busy {
+		width: 15px;
+		height: 15px;
+		flex: none;
+		border-radius: 50%;
+		border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
 		border-top-color: currentColor;
 	}
 	.title {
@@ -148,6 +152,14 @@
 		/* No flood: from On deck the fill is already lit, and a fresh mount fades in with spot-in. */
 		.your-turn .title {
 			animation: spot-pop var(--motion-slow) var(--ease-out);
+		}
+		.busy {
+			animation: spot-spin var(--motion-tick) linear infinite;
+		}
+	}
+	@keyframes spot-spin {
+		to {
+			transform: rotate(360deg);
 		}
 	}
 	@keyframes spot-in {
