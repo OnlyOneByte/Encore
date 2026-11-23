@@ -164,6 +164,18 @@ test('a closed link stops listening', async () => {
 	expect(t.link.replacedBy).toBeNull();
 });
 
+test('a new singer that lands after the link was closed changes nothing', async () => {
+	// The ask is out when the layout unmounts, and its answer comes back after.
+	const t = await tab();
+	t.answer(THEO);
+	t.post();
+	await Bun.sleep(10);
+	t.link.close();
+	await Bun.sleep(100);
+	expect(t.asked()).toBe(2);
+	expect(t.link.replacedBy, 'a closed link would reload the page').toBeNull();
+});
+
 test('the tab that joined or left tells the others', async () => {
 	const t = await tab();
 	const heard: unknown[] = [];
