@@ -535,7 +535,7 @@ fi
 WORKER_DIR="$ROOT/worker"
 VENV="$WORKER_DIR/.venv"
 
-# The extras a dev box needs. `ffmpeg` bundles a static FFmpeg 7.1 so publication does not depend on what
+# The extras a dev box needs. `ffmpeg` bundles a static FFmpeg 7.x so publication does not depend on what
 # Homebrew installed; `audiosep` is the ~135-model zoo; `mlx` is marker-gated and installs nothing off
 # Apple Silicon; `romanize` + `nonlatin` are the non-Latin lane's 49 MB, in the DEFAULT install since W10 so
 # a CJK sheet is readable and routable in a room rather than only in a test (docs/arch/04-alignment.md

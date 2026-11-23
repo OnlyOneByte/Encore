@@ -141,8 +141,8 @@ audiosep = [
 #     network fetch is precisely the portability failure being removed here.
 #   * `ffmpeg-binaries` has no linux-aarch64 wheel, so it cannot serve an ARM server or a CI runner.
 # imageio-ffmpeg 0.6.0 ships real wheels for macos arm64/x86_64, manylinux2014 x86_64/aarch64 and win, at
-# 20-31 MB, BSD-2. Verified its binary is a full FFmpeg 7.1 carrying every codec and filter this worker
-# uses: flac, opus, aac, vorbis, pcm_s16le, pcm_s24le, and the amix/join/volume/loudnorm filters.
+# 20-31 MB, BSD-2. The version differs per wheel: 7.1 where it was first verified, 7.0.2 in the
+# linux-aarch64 wheel (measured). Verified a full FFmpeg carrying every codec and filter this worker uses: flac, opus, aac, vorbis, pcm_s16le, pcm_s24le, and the amix/join/volume/loudnorm filters.
 ffmpeg = [
     "imageio-ffmpeg==0.6.0",
 ]

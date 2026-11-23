@@ -298,7 +298,7 @@ and the accepted values. A flag reads anything but `1`, `true`, `yes` or `on` as
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
 | `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Separation and alignment are both GPU-bound |
 | `ENCORE_MEDIA_DIR` | `/media` | the shared media volume (core's `job:assign` names none) |
-| `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box |
+| `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box. A relative path is relative to the working directory, and the derived worker id hashes its absolute path, so starting from another directory gives a new state file and a new id |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
 | `ENCORE_DEVICE` | auto | the compute device, overriding the hardware probe |
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
@@ -380,3 +380,11 @@ image (`docker/worker.Dockerfile`) against `ws://core:3000/ws?role=worker`.
 
 A box with no capabilities still connects and says so rather than exiting. A process that vanishes leaves
 an operator guessing, and the core simply routes nothing to it.
+
+### Where it runs
+
+| Platform | Supported | Notes |
+| --- | --- | --- |
+| macOS, Apple Silicon | native (`bash dev.sh`), or Docker on CPU | Docker has no GPU on a Mac (no Metal in the VM), so a native run is the fast one |
+| Linux x86_64 / aarch64 | native or Docker | NVIDIA in Docker: `./dev.sh compose --cuda` |
+| Windows | WSL2 + Docker only (`docs/deploy/WSL2.md`) | Native Windows is NOT supported: cancel and timeout use `os.killpg`, which Windows lacks, and `dev.sh` is bash |

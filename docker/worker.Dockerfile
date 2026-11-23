@@ -13,10 +13,11 @@ WORKDIR /app/worker
 # connect, advertise nothing, and look broken.
 #
 # KEPT EVEN THOUGH THE `ffmpeg` EXTRA BELOW BUNDLES ONE, and the two serve different callers.
-# `host.ffmpeg` prefers the bundled static 7.1, so that is what encodes every stem — which is the point:
-# a container and a developer's Mac then produce byte-identical FLAC instead of bookworm's 5.1 versus
-# whatever Homebrew has. This apt package stays for anything that shells `ffmpeg` BY NAME rather than
-# through our config, which no current path does but yt-dlp would if a format ever needed merging.
+# `host.ffmpeg` prefers the bundled static build, so that is what encodes every stem — which is the point:
+# one pinned build instead of bookworm's 5.1 versus whatever Homebrew has. Not one version everywhere: the
+# linux-aarch64 wheel ships 7.0.2, others 7.1. This apt package stays for anything that shells `ffmpeg`
+# BY NAME rather than through our config: whisperx's `load_audio` does, and yt-dlp would if a format ever
+# needed merging.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
