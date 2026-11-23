@@ -575,50 +575,34 @@ test('the dashboards agree with a drive of four processes and four plays', async
 
 // ── 2 · metrics and audit must agree on which processes completed ────────────────────────────────────────
 
-// KNOWN LIVE DEFECT, annotated rather than weakened. The two surfaces disagree on what a retried process IS:
-// audit's processOutcome ignores 'abandoned' and reads 'ready', while metrics' perProcess needs EVERY attempt
-// 'ready' — `complete = sealed.length === list.length && sealed.every(a => a.outcome === 'ready')` — so one
-// abandoned attempt makes complete false. The audit page reports the song as done; the operator dashboard
-// silently drops it from every average and from the top-10 list, biasing the fleet's reported end-to-end
-// downward and omitting exactly the retried outliers a person opened the page to find.
-// REMOVE THE ANNOTATION once perProcess counts a retried-then-completed process as complete.
-test.fail(
-	'metrics and audit agree on which processes completed, including retried ones',
-	{
-		annotation: {
-			type: 'known-defect',
-			description:
-				"metrics' perProcess requires every attempt to be 'ready', so a retried process is dropped from " +
-				"slowestProcesses and e2e while audit's processOutcome reports it 'ready'."
-		}
-	},
-	async ({ world }) => {
-		test.setTimeout(DRIVE_TIMEOUT_MS);
-		const phone = await world.openPhone('P11-agree');
-		const { caroline, dontstop, prayer } = await driveFourProcesses(world, phone);
+// A retried song is done on both surfaces: perProcess reads each job's LAST attempt (`pickReachedReady`), as
+// audit's processOutcome does, so an abandoned attempt no longer drops it from e2e and the top-10 list.
+test('metrics and audit agree on which processes completed, including retried ones', async ({ world }) => {
+	test.setTimeout(DRIVE_TIMEOUT_MS);
+	const phone = await world.openPhone('P11-agree');
+	const { caroline, dontstop, prayer } = await driveFourProcesses(world, phone);
 
-		const metrics = await jget<MetricsBody>(world.baseURL, '/api/metrics');
-		const ids = new Set(metrics.slowestProcesses.map((c) => c.processingId));
-		const idOf = async (media: Media): Promise<string | undefined> =>
-			(await jget<AuditBody>(world.baseURL, `/api/audit/${media.id}`)).processes[0]?.processingId;
-		const carolineId = await idOf(caroline);
-		const dontstopId = await idOf(dontstop);
-		const prayerId = await idOf(prayer);
+	const metrics = await jget<MetricsBody>(world.baseURL, '/api/metrics');
+	const ids = new Set(metrics.slowestProcesses.map((c) => c.processingId));
+	const idOf = async (media: Media): Promise<string | undefined> =>
+		(await jget<AuditBody>(world.baseURL, `/api/audit/${media.id}`)).processes[0]?.processingId;
+	const carolineId = await idOf(caroline);
+	const dontstopId = await idOf(dontstop);
+	const prayerId = await idOf(prayer);
 
-		expect(
-			{
-				caroline: ids.has(String(carolineId)),
-				dontstop: ids.has(String(dontstopId)),
-				prayer: ids.has(String(prayerId))
-			},
-			`the retried process (prayer, processingId=${prayerId}) completed successfully after one abandoned ` +
-				`attempt, so it must be counted alongside the two happy-path ones. ` +
-				`slowestProcesses=[${[...ids].join(', ')}] (${ids.size} processes), /api/metrics.e2e.n=${metrics.e2e.n} ` +
-				`(expected 3). See src/lib/server/jobs/metrics.ts perProcess and ` +
-				`src/routes/api/audit/[mediaId]/audit-shape.ts processOutcome, which ignores "abandoned".`
-		).toEqual({ caroline: true, dontstop: true, prayer: true });
-	}
-);
+	expect(
+		{
+			caroline: ids.has(String(carolineId)),
+			dontstop: ids.has(String(dontstopId)),
+			prayer: ids.has(String(prayerId))
+		},
+		`the retried process (prayer, processingId=${prayerId}) completed successfully after one abandoned ` +
+			`attempt, so it must be counted alongside the two happy-path ones. ` +
+			`slowestProcesses=[${[...ids].join(', ')}] (${ids.size} processes), /api/metrics.e2e.n=${metrics.e2e.n} ` +
+			`(expected 3). See src/lib/server/jobs/metrics.ts perProcess and ` +
+			`src/routes/api/audit/[mediaId]/audit-shape.ts processOutcome, which ignores "abandoned".`
+	).toEqual({ caroline: true, dontstop: true, prayer: true });
+});
 
 // ── 3 · /metrics speaks to an operator ───────────────────────────────────────────────────────────────────
 
