@@ -1,3 +1,8 @@
+<script lang="ts" module>
+	/** Which takeover is up, ONE at a time: /tv's `transient`. */
+	export type TakeoverKind = 'error' | 'waiting' | 'next' | 'loading';
+</script>
+
 <script lang="ts">
 	import type { TransitionEventHandler } from 'svelte/elements';
 	import { songDisplay, type Media, type QueueEntry, type ServerEvent } from '$lib/contract';
@@ -13,7 +18,7 @@
 		/** What the card SAYS; a change re-mounts the lines. */
 		cardWords: string | null;
 		handoff: { entry: QueueEntry; label: string } | null;
-		cardKind: string | null;
+		cardKind: TakeoverKind | null;
 		/** The Skipped notice's words, held through its fade. */
 		notice: string;
 		skipNext: QueueEntry | null;
@@ -51,7 +56,7 @@
 				<div class="up-label">{handoff.label}</div>
 				<div class="up-name hero-name">{singerName(handoff.entry.singerId)}</div>
 				<div class="up-song">
-					{d.title}{#if d.artist}<span class="up-artist-inline">{'\u{a0}- '}{d.artist}</span>{/if}
+					{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0- '}{d.artist}</span>{/if}
 				</div>
 			</div>
 		{:else if cardKind === 'error'}

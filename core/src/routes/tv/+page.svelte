@@ -11,7 +11,7 @@
 	import Reactions from '$lib/tv/Reactions.svelte';
 	import TvAttract from '$lib/tv/TvAttract.svelte';
 	import TvNowBar, { observeBlockSize } from '$lib/tv/TvNowBar.svelte';
-	import TvTakeover from '$lib/tv/TvTakeover.svelte';
+	import TvTakeover, { type TakeoverKind } from '$lib/tv/TvTakeover.svelte';
 	import TvAudioNotice from '$lib/tv/TvAudioNotice.svelte';
 	import {
 		effectiveGuideLevel,
@@ -687,7 +687,7 @@
 	// ONE derived value, because as independent `{#if}` blocks at one z-index with `inset: 0` and non-exclusive
 	// conditions two full-screen panels paint over each other. `loading` is the FALLBACK for a missed preload,
 	// where `screen` derives `playing` over a not-yet-loaded element.
-	const transient = $derived.by(() => {
+	const transient = $derived.by((): TakeoverKind | null => {
 		if (skipNotice) return 'error';
 		if (tvState === 'waiting') return 'waiting';
 		if (tvState === 'interstitial' && introEntry) return 'next';
