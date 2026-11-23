@@ -114,8 +114,7 @@ class Config:
     dbos_db: str = "encore-worker.sqlite"
     backend: str | None = None
     device: str | None = None
-    #: torch demucs `-j` (`ENCORE_DEMUCS_JOBS`); unset means `hardware.resolve_demucs_jobs` picks from the
-    #: device and the cores.
+    #: torch demucs `-j` (`ENCORE_DEMUCS_JOBS`); unset means 1 (`hardware.DEMUCS_JOBS_UNSAFE`).
     demucs_jobs: int | None = None
     asr_model: str = "base"
     #: A bare name as the dataclass default, but `from_env` resolves a real path through `host.ffmpeg`. Left

@@ -1,7 +1,7 @@
 """Settings the worker picks for itself, and the env override that beats each pick.
 
-Demucs `-j` from the cores, the engines run from THIS install rather than PATH, and the two publish encodes
-at once.
+Demucs `-j` (one: more returned silent stems), the engines run from THIS install rather than PATH, and the
+two publish encodes at once.
 """
 
 from __future__ import annotations
@@ -27,82 +27,28 @@ from encore_worker.workflows import durable
 # ── AC-01: demucs -j ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("cores", "expected"), [(32, 8), (64, 8), (16, 4), (8, 2), (4, 1), (2, 1), (1, 1)])
-def test_cpu_demucs_jobs_scale_with_cores_up_to_the_cap(cores: int, expected: int) -> None:
-    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores, avail_gb=123.0)
-    assert picked.count == expected
-    assert f"{cores} cores" in picked.why, "the startup line says what it picked from"
-
-
-@pytest.mark.parametrize(
-    ("cores", "avail_gb", "expected", "bound"),
-    [
-        (32, 123.0, 8, "capped"),  # this host: the speedup is unchanged
-        (32, 6.1, 2, "RAM-bound"),  # an 8 GB box, about 6 GB of it free
-        (32, 3.5, 1, "RAM-bound"),  # a 4 GB container: below the reserve still runs one job
-        (8, 123.0, 2, "core-bound"),
-    ],
-)
-def test_cpu_demucs_jobs_never_outgrow_free_ram(
-    cores: int, avail_gb: float, expected: int, bound: str
-) -> None:
-    """`-j 8` peaks at about 6 GB; picked in a 4 GB container, the separation is OOM-killed every retry."""
-    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores, avail_gb=avail_gb)
-    assert picked.count == expected
-    assert bound in picked.why, "the startup line names the limit that bound the pick"
-    assert f"{avail_gb:.1f} GB free" in picked.why
-
-
-def _cgroup(root: Path, files: dict[str, str]) -> str:
-    for name, body in files.items():
-        (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text(body + "\n")
-    return str(root)
-
-
-def test_a_cgroup_cpu_quota_caps_the_cores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`docker --cpus 4` on a 32-core host: the affinity mask still shows 32."""
-    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
-    assert hardware.cpu_count(root=_cgroup(tmp_path / "v2", {"cpu.max": "400000 100000"})) == 4
-    assert hardware.cpu_count(root=_cgroup(tmp_path / "none", {"cpu.max": "max 100000"})) == 32
-    v1 = {"cpu/cpu.cfs_quota_us": "200000", "cpu/cpu.cfs_period_us": "100000"}
-    assert hardware.cpu_count(root=_cgroup(tmp_path / "v1", v1)) == 2
-    assert hardware.cpu_count(root=str(tmp_path / "absent")) == 32
-
-
-def test_a_cgroup_memory_limit_bounds_the_free_ram(tmp_path: Path) -> None:
-    """A 4 GB container on a 123 GB host has about 3.5 GB to give, not 120."""
-    meminfo = tmp_path / "meminfo"
-    meminfo.write_text(f"MemTotal: {128 << 20} kB\nMemAvailable: {123 << 20} kB\n")
-    v2 = _cgroup(tmp_path / "v2", {"memory.max": str(4 << 30), "memory.current": str(512 << 20)})
-    assert hardware.memory_available_gb(root=v2, meminfo=str(meminfo)) == pytest.approx(3.5)
-    v1 = {"memory/memory.limit_in_bytes": str(4 << 30), "memory/memory.usage_in_bytes": str(1 << 30)}
-    assert hardware.memory_available_gb(root=_cgroup(tmp_path / "v1", v1), meminfo=str(meminfo)) == 3.0
-    unlimited = _cgroup(tmp_path / "max", {"memory.max": "max", "memory.current": "1"})
-    assert hardware.memory_available_gb(root=unlimited, meminfo=str(meminfo)) == pytest.approx(123.0)
-    v1_none = _cgroup(tmp_path / "v1n", {"memory/memory.limit_in_bytes": "9223372036854771712"})
-    assert hardware.memory_available_gb(root=v1_none, meminfo=str(meminfo)) == pytest.approx(123.0)
-
-
-def test_the_auto_jobs_read_the_cgroup_when_not_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The `--cpus 4 --memory 4g` container the review measured: one job, not the host's eight."""
-    root = _cgroup(tmp_path, {"cpu.max": "400000 100000", "memory.max": str(4 << 30), "memory.current": "0"})
-    monkeypatch.setattr(hardware, "CGROUP_ROOT", root)
+def test_a_big_cpu_box_still_runs_one_demucs_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`-j 8` on 32 cores returned NaN chunks, so MAYDAY and Fly Away came back as silent stems."""
     monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
     picked = hardware.resolve_demucs_jobs(None, device="cpu")
     assert picked.count == 1
-    assert "4 cores" in picked.why
+    assert "NaN" in picked.why, "the startup line says why the box is not using its cores"
+
+
+def test_an_explicit_cpu_demucs_jobs_is_warned_about() -> None:
+    assert hardware.DEMUCS_JOBS_UNSAFE in hardware.resolve_demucs_jobs(8, device="cpu").why
+    assert hardware.DEMUCS_JOBS_UNSAFE not in hardware.resolve_demucs_jobs(1, device="cpu").why
 
 
 @pytest.mark.parametrize("device", ["cuda", "mps"])
 def test_an_accelerator_keeps_one_demucs_job(device: str) -> None:
     """demucs only pools `-j` on CPU, so more on a GPU would be a number that changes nothing."""
-    assert hardware.resolve_demucs_jobs(None, device=device, cores=32).count == 1
+    assert hardware.resolve_demucs_jobs(None, device=device).count == 1
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_an_explicit_demucs_jobs_wins_on_every_device(device: str) -> None:
-    picked = hardware.resolve_demucs_jobs(3, device=device, cores=32)
+    picked = hardware.resolve_demucs_jobs(3, device=device)
     assert picked.count == 3
     assert "ENCORE_DEMUCS_JOBS" in picked.why
 
