@@ -545,30 +545,31 @@ export class WorkerHub {
 		const ledger = this.#d.attempts;
 		const open = ledger?.openFor(job.id);
 		if (!ledger || open?.startedAt == null) return null;
+		// Read wide, then matched, so another engine's runs cannot crowd this one's out of the sample.
+		const current = sameEngine(ledger.recentReady(job.jobType, ETA_WINDOW), open.engine, open.model);
 		return etaSec({
 			audioSec: open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec,
 			elapsedSec: (this.#d.now() - open.startedAt) / 1000,
-			current: this.#currentRate(job, open),
+			current: workPerAudioSec(current.slice(0, ETA_SAMPLE)),
 			later: laterSteps(job.jobType).map((type) => workPerAudioSec(ledger.recentReady(type, ETA_SAMPLE)))
 		});
 	}
 
-	/** The running step's seconds of work per audio second, from runs on its own engine family and model. */
-	#currentRate(job: Job, open: { engine: string | null; model: string | null }): number | null {
-		const ledger = this.#d.attempts;
-		if (!ledger) return null;
-		// Read wide, then matched, so another engine's runs cannot crowd this one's out of the sample.
-		const current = sameEngine(ledger.recentReady(job.jobType, ETA_WINDOW), open.engine, open.model);
-		return workPerAudioSec(current.slice(0, ETA_SAMPLE));
-	}
-
-	/** Seconds the open attempt has run once that is past `overrunAfterSec` of its step's estimate, else null.
-	 *  Null with no history or no length too: an unmeasured step keeps today's bounds (the worker's own wall
-	 *  clock, then the job ceiling), never a guessed one. */
+	/** Seconds the open SEPARATION attempt has run once that is past `overrunAfterSec` of its estimate, else
+	 *  null. Null with no history or no length too: an unmeasured step keeps today's bounds (the worker's own
+	 *  wall clock, then the job ceiling), never a guessed one. */
 	#hungSec(job: Job): number | null {
-		const open = this.#d.attempts?.openFor(job.id);
-		if (open?.startedAt == null) return null;
-		const rate = this.#currentRate(job, open);
+		// Separations only: fetch has its own silence limit, and align's history mixes every ASR model and sync mode.
+		if (!separatorFor(job.jobType)) return null;
+		const ledger = this.#d.attempts;
+		const open = ledger?.openFor(job.id);
+		if (!ledger || open?.startedAt == null || open.workerId == null) return null;
+		// Narrower than the ETA's sample, because this one kills: only this worker's runs of this exact engine and
+		// model. Another box's speed, or demucs-mlx's for torch demucs, would stop a healthy run.
+		const own = ledger
+			.recentReady(job.jobType, ETA_WINDOW)
+			.filter((r) => r.workerId === open.workerId && r.engine === open.engine && r.model === open.model);
+		const rate = workPerAudioSec(own.slice(0, ETA_SAMPLE));
 		const audioSec = open.audioSec ?? this.#d.mediaById.get(job.mediaId)?.durationSec;
 		if (rate == null || audioSec == null || !(audioSec > 0)) return null;
 		const elapsedSec = (this.#d.now() - open.startedAt) / 1000;

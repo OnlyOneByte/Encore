@@ -1296,16 +1296,21 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 
 // ── the ETA on media:status (proposal 05) ────────────────────────────────────────────────────────
 
-/** One finished run in the ledger: `sec` seconds of work on 100 s of audio, by `engine`/`model`. */
+/** One finished run in the ledger: `sec` seconds of work on 100 s of audio, by `engine`/`model` on `worker`. */
 function seedRun(
 	h: ReturnType<typeof harness>,
 	id: string,
 	jobType: 'stems' | 'align',
 	sec: number,
-	{ engine = null as string | null, model = null as string | null, outcome = 'ready' as 'ready' | 'failed' } = {}
+	{
+		engine = null as string | null,
+		model = null as string | null,
+		outcome = 'ready' as 'ready' | 'failed',
+		worker = 'w1'
+	} = {}
 ) {
 	h.attempts.open({ id, mediaId: 'm2', processingId: 'p-old', jobType }, T0 - 500_000);
-	h.attempts.assigned(id, 'w1', { audioSec: 100, engine, model }, T0 - 500_000);
+	h.attempts.assigned(id, worker, { audioSec: 100, engine, model }, T0 - 500_000);
 	h.attempts.started(id, T0 - 400_000);
 	h.attempts.closed(id, outcome, T0 - 400_000 + sec * 1000);
 }
@@ -1441,6 +1446,62 @@ test('with no history for the engine, a long step keeps running: no guessed limi
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
 	expect(h.jobs.byId(jobId)!.status).toBe('running');
 	expect(revokesOf(h)).toEqual([]);
+});
+
+test("another worker's fast run sets no limit: a CPU box is not held to a GPU's speed", () => {
+	const h = harness();
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'gpu', 'stems', 10, { engine: 'demucs', model: 'htdemucs', worker: 'w-gpu' }); // 0.1 s/s elsewhere
+	h.setClock(T0 + 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
+test("demucs-mlx's speed sets no limit for torch demucs, even on the same worker", () => {
+	const h = harness();
+	const jobId = runningOn(h, 'demucs', 'htdemucs');
+	seedRun(h, 'mlx', 'stems', 10, { engine: 'demucs-mlx', model: 'htdemucs' }); // the same family, another engine
+	h.setClock(T0 + 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
+test('an align step is never called hung: only separations are bounded', () => {
+	const h = harness();
+	const job = h.jobs.enqueue('m1', 'align', 0, T0);
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	seedRun(h, 'a', 'align', 10); // 0.1 s/s: 20 s expected, so 3× and ten minutes are long past
+	h.setClock(T0 + 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId: job.id, stage: 'aligning', pct: 30 });
+	expect(h.jobs.byId(job.id)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
+test('a song of unknown length (durationSec 0) gets no limit', () => {
+	const h = harness();
+	h.mediaById.set('m1', media('m1', { durationSec: 0 })); // ytmusic stores 0 when it cannot read the length
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	seedRun(h, 'r', 'stems', 400, { engine: 'roformer', model: 'bs-1' });
+	h.setClock(T0 + 5 * 3600_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 30 });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(revokesOf(h)).toEqual([]);
+});
+
+test('a late complete from the worker cannot revive a step stopped as hung', () => {
+	const h = harness();
+	const jobId = runningOn(h, 'roformer', 'bs-1');
+	seedRun(h, 'r', 'stems', 400, { engine: 'roformer', model: 'bs-1' });
+	h.setClock(T0 + 2_401_000);
+	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId, stage: 'separating', pct: 40 });
+	const broadcasts = h.broadcasts.length;
+	h.hub.handle({ type: 'job:complete', workerId: 'w1', jobId, mediaUri: 'media/m1-instrumental.mp3' });
+	expect(h.jobs.byId(jobId)!.status).toBe('failed');
+	expect(h.readied).toEqual([]);
+	expect(h.broadcasts.length).toBe(broadcasts);
 });
 
 test('a figure that falls within a stage is ignored; the bar never runs back', () => {
