@@ -4,9 +4,19 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-Every surface has a capture recipe in [`core/tests/playwright/specs/shot/frames.spec.ts`](core/tests/playwright/specs/shot/frames.spec.ts), which drives the
-real app into each state and writes the frame set under `core/tests/playwright/.artifacts/` (`bun run pw:shot`). The frames themselves are generated
-rather than committed, so regenerate them locally when you want to look. Design and rationale live in
+| The TV, waiting for a pick | The TV, handing over a turn |
+|---|---|
+| ![The TV lobby: a join QR, the room code, and the three singers in the room](docs/screenshots/tv-lobby.png) | ![The TV's Now singing card for Maya, with Ana up next](docs/screenshots/tv-up-next.png) |
+
+| Joining from a phone | The queue, with you on deck |
+|---|---|
+| <img src="docs/screenshots/phone-join-390.png" width="300" alt="The phone join screen: a name and a colour ring"> | <img src="docs/screenshots/phone-queue-390.png" width="300" alt="The phone Queue tab: Theo singing, and Maya's You're next card"> |
+
+These frames come from [`core/tests/playwright/specs/shot/readme.spec.ts`](core/tests/playwright/specs/shot/readme.spec.ts), with 320 px
+phone variants beside them in [`docs/screenshots/`](docs/screenshots/). Every other surface has a capture recipe in
+[`core/tests/playwright/specs/shot/frames.spec.ts`](core/tests/playwright/specs/shot/frames.spec.ts), which drives the
+real app into each state and writes the frame set under `core/tests/playwright/.artifacts/` (`bun run pw:shot`). Those
+frames are generated rather than committed, so regenerate them locally when you want to look. Design and rationale live in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
