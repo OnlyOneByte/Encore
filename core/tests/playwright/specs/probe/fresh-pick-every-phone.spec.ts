@@ -3,10 +3,10 @@
 // animation frame from document start. No frame may show the new turn as dead: a `.failed` or `.stalled` card,
 // "Couldn't make karaoke", or a strip or lobby saying the song "didn't work". The third pick holds Maya's
 // /api/process for 1.5 s, the way a slow phone link would; queue-first Sing showed the danger card with a working
-// Try again for that whole time. A second test picks with NO maker connected, whose first frame must be the honest
-// "Can't make this one right now".
+// Try again for that whole time. A refused Sing must book no turn at all. A last test picks with NO maker connected
+// (POST held too), whose first frame must be the honest "Can't make this one right now".
 //
-// `FRESH_PICK_SHOTS=<dir>` writes every watcher at 700 ms into the held pick, pass or fail.
+// `FRESH_PICK_SHOTS=<dir>` writes every watcher at 700 ms into the held pick and once it settles, pass or fail.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { openBrowseFromHome, openQueue } from '../../world/actors';
@@ -184,6 +184,11 @@ test('fresh pick with no maker: the first frame is the honest "Can\'t make this 
 	await watch(theo, '/queue');
 	await openQueue(theo);
 	const sing = await singOn(maya, 'sweet caroline', /caroline/i);
+	// Held like the slow pick above: on a LAN the queue-first window here is a few frames and a run can miss it.
+	await maya.route('**/api/process', async (r) => {
+		await new Promise((res) => setTimeout(res, 1_500));
+		await r.continue();
+	});
 	const tap = Date.now();
 	await sing.click();
 	await expect(theo.locator(SEL.stalledTurn).filter({ hasText: /caroline/i })).toContainText(STALLED_TURN_LABEL, {
