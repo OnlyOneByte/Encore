@@ -608,6 +608,24 @@ async def test_a_duet_rewrite_that_fails_midway_leaves_the_old_document(
     assert sorted(p.name for p in path.parent.iterdir()) == [path.name]
 
 
+async def test_a_duet_rewrite_keeps_the_document_readable_by_core(tmp_path: Path) -> None:
+    """Core may run as another user, so the rewrite keeps the file's mode rather than mkstemp's 0600."""
+    _, doc, turns = _DOCUMENTS[0]
+    ref = f"derived/lyrics/{MEDIA}-lrclib-word.json"
+    path = tmp_path / ref
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    path.chmod(0o644)
+    before = path.read_bytes()
+    impl = AlignStepsImpl(config=CONFIG, adapters=Adapters(diarizer=_Turns(turns)), reporter=Reporter())
+    record = TimedDoc(ref=ref, timing=TIMING_WORD, confidence="high", report=CLEAN, tier=Tier.CANDIDATE)
+    job = JobRef(job_id="j-diarize", media_id=MEDIA, media_dir=str(tmp_path))
+    await impl.diarize(job, AudioRef(path=str(tmp_path / "mix.wav"), duration_sec=60.0), record)
+
+    assert path.read_bytes() != before  # the duet was written, so this is the replaced file
+    assert path.stat().st_mode & 0o777 == 0o644
+
+
 if __name__ == "__main__":
     path = _fixture_path()
     path.write_text(dump(asyncio.run(build())), encoding="utf-8")
