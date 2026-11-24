@@ -26,7 +26,7 @@
 
 	let draft = $state<GuidePresetId | null>(null);
 	let hold: ReturnType<typeof setTimeout> | undefined;
-	const buttons: HTMLButtonElement[] = [];
+	const buttons = $state<HTMLButtonElement[]>([]);
 
 	// The room's answer replaces the draft, whichever way it went.
 	$effect(() => {

@@ -15,6 +15,11 @@ test.beforeAll(async () => {
 	gallery = await startGallery();
 });
 test.afterAll(async () => gallery?.stop());
+test.afterEach(async ({ page }, info) => {
+	if (info.status === info.expectedStatus) return;
+	await info.attach('vite.log', { body: gallery?.log() ?? '' });
+	await info.attach('page.txt', { body: `${page.url()}\n${await page.content().catch(() => '')}` });
+});
 
 async function open(page: Page, reducedMotion: 'reduce' | 'no-preference' = 'no-preference') {
 	await page.emulateMedia({ reducedMotion });

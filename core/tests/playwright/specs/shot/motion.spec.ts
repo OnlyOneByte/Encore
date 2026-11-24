@@ -920,6 +920,9 @@ function restartRest(width: number, back: boolean): Make {
 	};
 }
 
+/** The one `vite dev` every story row shares; the rows run serially in one worker (see their describe below). */
+let storyGallery: Promise<Gallery> | undefined;
+
 /** The Spotlight story (`/components/spotlight`, dev-only, so on `vite dev`): its entrance, the On deck to You're up
  *  handoff, and a Guide segment tap, which is a cut. Only transform and opacity may move (tenet 3). */
 function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: number; height: number }): Make {
@@ -945,8 +948,7 @@ function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: 
 			subject: '[data-testid="guide-plain"] .segments'
 		}
 	}[kind];
-	return (browser, _world, cleanup) => {
-		let gallery: Promise<Gallery> | undefined;
+	return (browser) => {
 		return {
 			name: `spotlight-${kind}-${at}`,
 			what: `${tv ? 'TV 1920x1080' : `Phone ${viewport.width}x${viewport.height}`}: ${ROW.what}`,
@@ -954,13 +956,10 @@ function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: 
 			scale: tv ? 0.5 : 1,
 			columns: 6,
 			open: async (opts) => {
-				if (!gallery) {
-					gallery = startGallery();
-					cleanup(async () => (await gallery!).stop());
-				}
+				storyGallery ??= startGallery();
 				const ctx = await browser.newContext({ ...opts, viewport });
 				const page = await ctx.newPage();
-				await (await gallery).open(page, '/components/spotlight', ROW.subject);
+				await (await storyGallery).open(page, '/components/spotlight', ROW.subject);
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				// Past the cards' own mount entrance, so the trigger's motion is the only one caught.
 				await page.waitForTimeout(600);
@@ -1655,7 +1654,7 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 	};
 }
 
-for (const [name, make] of Object.entries(SCENARIOS)) {
+function register(name: string, make: Make) {
 	// An anonymous describe per row, so a row's `test.use` reaches its own test and no other.
 	test.describe(() => {
 		// The tuple form: Playwright reads any array whose second item is an object as `[value, options]`.
@@ -1715,3 +1714,13 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 		});
 	});
 }
+
+const isStory = (name: string) => name.startsWith('spotlight-');
+// shortcut: one `vite dev` at a time keeps the story rows from reloading each other's pages (they share
+// `.svelte-kit/`). Running the `spotlight` probe in the same invocation still starts a second one.
+test.describe('spotlight story', () => {
+	test.describe.configure({ mode: 'serial' });
+	test.afterAll(async () => (await storyGallery)?.stop());
+	for (const [name, make] of Object.entries(SCENARIOS)) if (isStory(name)) register(name, make);
+});
+for (const [name, make] of Object.entries(SCENARIOS)) if (!isStory(name)) register(name, make);

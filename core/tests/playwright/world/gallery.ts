@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Page } from '@playwright/test';
+import type { Frame, Page } from '@playwright/test';
 import { freePort, repoRoot } from './core';
 
 export interface Gallery {
@@ -12,6 +12,8 @@ export interface Gallery {
 	/** Go to `path` and wait for `ready`. The first visit loads twice: vite's dependency optimizer reloads the page
 	 *  once when the client first asks for a module it had not bundled, which would destroy a test's context. */
 	open(page: Page, path: string, ready: string): Promise<void>;
+	/** Everything `vite dev` printed, for a failing test to attach. */
+	log(): string;
 	stop(): Promise<void>;
 }
 
@@ -25,7 +27,8 @@ export async function startGallery(path = '/components/spotlight'): Promise<Gall
 		cwd: repoRoot,
 		stdio: ['ignore', 'pipe', 'pipe'],
 		detached: true,
-		// Its own vite cache: parallel workers sharing node_modules/.vite collide on a cold optimise (ENOTEMPTY).
+		// Its own vite cache and SvelteKit output: shared, parallel instances collide on a cold optimise (ENOTEMPTY)
+		// and reload each other's pages when one rewrites the generated files.
 		env: {
 			...process.env,
 			DATA_DIR: dir,
@@ -67,13 +70,19 @@ export async function startGallery(path = '/components/spotlight'): Promise<Gall
 	}
 	let warm = false;
 	const open = async (page: Page, to: string, ready: string) => {
-		if (!warm) {
+		// Under load the optimiser's reload can land seconds late, so settle until a 3 s window passes with none.
+		for (let i = 0; !warm && i < 6; i++) {
+			let reloads = 0;
+			const seen = (f: Frame) => void (f === page.mainFrame() && reloads++);
 			await page.goto(baseURL + to, { waitUntil: 'networkidle' });
-			await page.waitForTimeout(1_500);
-			warm = true;
+			page.on('framenavigated', seen);
+			await page.waitForTimeout(3_000);
+			page.off('framenavigated', seen);
+			warm = reloads === 0;
 		}
-		await page.goto(baseURL + to, { waitUntil: 'networkidle' });
+		const res = await page.goto(baseURL + to, { waitUntil: 'networkidle' });
+		if (!res?.ok()) throw new Error(`vite dev answered ${res?.status()} for ${to}.\n\n${output.slice(-4000)}`);
 		await page.locator(ready).waitFor();
 	};
-	return { baseURL, open, stop };
+	return { baseURL, open, log: () => output, stop };
 }

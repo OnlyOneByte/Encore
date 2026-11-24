@@ -8,6 +8,10 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	// Unset in normal use. The test gallery gives each `vite dev` its own, or two dependency optimisers race on one.
 	cacheDir: process.env.ENCORE_VITE_CACHE_DIR,
+	// A trace .html Playwright writes there made `vite dev` reload every open page mid-test.
+	server: { watch: { ignored: ['**/tests/playwright/.artifacts/**'] } },
+	// Scan every route at startup: a dependency found later re-bundles mid-session and breaks open pages (a 500).
+	optimizeDeps: { entries: ['src/routes/**/+*.{svelte,ts}'] },
 	// bun:sqlite is a Bun built-in — keep it external in VITE's SSR build. This does NOT reach the adapter:
 	// svelte-adapter-bun re-bundles with its own rolldown call whose externals ignore this config, so
 	// `/^bun:/` is added there by patches/svelte-adapter-bun@1.0.1.patch.

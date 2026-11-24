@@ -596,9 +596,17 @@ because a `class:` directive is not valid on a component. Their common contracts
 
 `src/lib/ui/Spotlight.svelte` is the redesign's one lit surface. A screen has at most one, and it holds the next
 thing to do. No screen uses it yet. Its story is `/components/spotlight` (dev-only), filmed by the `spotlight-*`
-rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Each `vite dev`
-gets its own cache dir (`ENCORE_VITE_CACHE_DIR`, unset in normal use), so parallel workers never race one
-dependency optimiser. The `spotlight` probe runs serially on one server and holds these on the same story:
+rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Four things
+keep it steady, each found as a flake:
+- **One server, serially.** The story rows share one `vite dev` and run serially, and so does the probe file.
+  Parallel instances share `.svelte-kit/` and reload each other's pages.
+- **A cache per instance.** Each instance gets its own cache dir (`ENCORE_VITE_CACHE_DIR`, unset in normal use), so
+  two cold optimisers never collide (`ENOTEMPTY`).
+- **The artifacts are ignored.** `vite.config.ts` ignores `tests/playwright/.artifacts/`, where a trace `.html`
+  reloaded every open page.
+- **Every route is scanned at startup** (`optimizeDeps.entries`), so no late re-bundle breaks an open page.
+
+The `spotlight` probe holds these on the same story:
 - only transform and opacity move;
 - the spinner obeys the grace;
 - a Guide tap checks in the next frame;
