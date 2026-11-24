@@ -47,6 +47,18 @@ test('compose hands ENCORE_WORKER_TOKEN to both core and the worker', () => {
 	}
 });
 
+test('the worker service has exactly ONE group_add block, carrying core gid 1000', () => {
+	// Read as TEXT: two PRs each adding a block merge silently into a duplicate key, and a YAML parser that keeps
+	// the last one would hide it (#1207, #1202).
+	const text = readFileSync(join(CORE, '../docker/compose.yaml'), 'utf8');
+	const worker = text.slice(text.indexOf('\n  worker:\n') + 1);
+	const end = worker.slice(1).search(/\n(?: {2}\S|\S)/);
+	const block = end < 0 ? worker : worker.slice(0, end + 1);
+	expect(block.match(/^ {4}group_add:/gm)).toHaveLength(1);
+	const compose = Bun.YAML.parse(text) as { services: Record<string, { group_add?: string[] }> };
+	expect(compose.services.worker!.group_add).toContain('1000');
+});
+
 // Read by the code but owned by the image or compose itself: in-container paths, binaries and internals.
 // Forwarding a docker/.env value for these would point the container at a HOST path (dev.sh rewrites them
 // for the native run). Every other setting a service reads must be in its `environment:` list.

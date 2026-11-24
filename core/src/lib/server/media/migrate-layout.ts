@@ -2,7 +2,18 @@
 // read. IDEMPOTENT, so it is safe to leave wired in forever. Promotes legacy scratch-retained raw audio into
 // `audio/` and moves legacy derived artifacts under `derived/`, rewriting DB refs in the same pass.
 
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, copyFileSync, chmodSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	statSync,
+	copyFileSync,
+	chmodSync,
+	realpathSync
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mediaRoot, audioDir, derivedDir, metaDir, workDir, LEGACY } from './paths';
 
@@ -191,10 +202,59 @@ export function applyMigration(
 	return res;
 }
 
+/** rwxrwxr-x: core and its group write, everyone else only reads (#1206). */
+export const SHARED_DIR_MODE = 0o775;
+/** The same plus sticky, for the media root and `derived/`: the group may add entries but only an entry's owner
+ *  may rename or remove it, so the worker cannot swap out core's `meta/` (or any other core dir). */
+export const PARENT_DIR_MODE = 0o1775;
+
+/** The API first (at least 0775 on any Bun), then chmod(1) for the sticky bit, then a loud warning if it still
+ *  isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs out. */
+function chmodParent(dir: string): void {
+	if (leftAlone(dir)) return;
+	try {
+		chmodSync(dir, PARENT_DIR_MODE);
+	} catch {
+		/* not ours to change: reported below */
+	}
+	if (modeOf(dir) === PARENT_DIR_MODE) return;
+	// shortcut: Bun 1.3's fs.chmod drops the sticky bit (kept from Bun 1.4.3); drop chmod(1) once the image moves (#1222).
+	try {
+		Bun.spawnSync(['chmod', PARENT_DIR_MODE.toString(8), '--', dir], { stdout: 'ignore', stderr: 'ignore' });
+	} catch {
+		/* no chmod(1) on PATH: reported below */
+	}
+	const now = modeOf(dir);
+	if (now !== PARENT_DIR_MODE) {
+		console.warn(
+			`[core] ${dir} is ${now.toString(8)}, not 1775, so the worker can rename core's meta/ out of the way. Run: chmod 1775 ${dir}`
+		);
+	}
+}
+
+/** True, with a warning, for a dir that is or sits above the home dir, the temp dir or /, by real path: those
+ *  are shared with everything else, so core never re-modes them (any MEDIA_DIR or ENCORE_*_DIR may point there). */
+function leftAlone(dir: string): boolean {
+	const real = realpathSync(dir);
+	const above = real.endsWith('/') ? real : `${real}/`;
+	if (![homedir(), tmpdir(), '/'].map(realpathOr).some((s) => s === real || s.startsWith(above))) return false;
+	console.warn(`[core] ${dir} is a shared directory, so core leaves its mode alone. Give media its own dir.`);
+	return true;
+}
+
+const modeOf = (dir: string) => statSync(dir).mode & 0o7777;
+const realpathOr = (dir: string) => {
+	try {
+		return realpathSync(dir);
+	} catch {
+		return dir;
+	}
+};
+
 /**
  * So the first write never races a missing dir. Core and worker are separate containers at DIFFERENT uids on
- * one volume, and whichever creates a dir owns it, so a 0755 dir made by one is unwritable by the other —
- * hence world-writable worker dirs, via an explicit chmod because umask masks `mkdirSync`'s mode. `meta/`
+ * one volume, so the shared dirs are group-writable (core's group) rather than world-writable, and
+ * compose adds the worker to that group. An explicit chmod because umask masks `mkdirSync`'s mode. `meta/`
  * stays restrictive and core-only: it is the authoritative record, not a drop box.
  */
 export function ensureLayout(): void {
@@ -209,22 +269,27 @@ export function ensureLayout(): void {
 	];
 	for (const dir of shared) {
 		mkdirSync(dir, { recursive: true });
+		if (leftAlone(dir)) continue;
 		try {
-			chmodSync(dir, 0o777);
+			chmodSync(dir, SHARED_DIR_MODE);
 		} catch {
 			/* pre-existing dir owned by another uid — already works or already doesn't */
 		}
 	}
-	// Parents too, so a worker can create a missing subdir itself.
+	// Parents too, so a worker can create a missing subdir itself. Sticky only here: in the leaf dirs the worker
+	// replaces its own files over ones core may have made, which a sticky bit would refuse.
 	for (const dir of [mediaRoot(), derivedDir()]) {
 		mkdirSync(dir, { recursive: true });
-		try {
-			chmodSync(dir, 0o777);
-		} catch {
-			/* best effort */
-		}
+		chmodParent(dir);
 	}
-	mkdirSync(metaDir(), { recursive: true }); // core-only: the authoritative sidecar records
+	// Core-only: the authoritative sidecar records. Set explicitly, since the worker shares core's group.
+	mkdirSync(metaDir(), { recursive: true });
+	if (leftAlone(metaDir())) return;
+	try {
+		chmodSync(metaDir(), 0o755);
+	} catch {
+		/* best effort */
+	}
 }
 
 // Boot entry: create the layout, migrate anything legacy, return a loggable result.

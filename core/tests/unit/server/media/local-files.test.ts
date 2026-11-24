@@ -1,9 +1,64 @@
 // Finding #2: the /media path-traversal guard. safeMediaPath must ONLY return paths inside
 // MEDIA_DIR. These are the attack vectors the route depends on it rejecting.
 import { test, expect, beforeEach } from 'bun:test';
-import { resolve, sep } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve, sep } from 'node:path';
 import { safeMediaPath } from '$lib/server/media/local-files';
 import { mediaRoot } from '$lib/server/media/paths';
+
+/** A real media tree with a secret beside it, so symlinks have something to point at (#1206). */
+function withTree(run: (dirs: { media: string; secret: string }) => void) {
+	const top = mkdtempSync(join(tmpdir(), 'encore-links-'));
+	const media = join(top, 'media');
+	mkdirSync(join(media, 'derived', 'stems'), { recursive: true });
+	mkdirSync(join(media, 'meta'), { recursive: true });
+	writeFileSync(join(media, 'meta', 'm1.json'), '{}');
+	writeFileSync(join(media, 'song.mp3'), 'ok');
+	const secret = join(top, 'worker-token');
+	writeFileSync(secret, 'secret');
+	process.env.MEDIA_DIR = media;
+	try {
+		run({ media, secret });
+	} finally {
+		rmSync(top, { recursive: true, force: true });
+	}
+}
+
+test('a symlink inside media that points outside it is refused', () => {
+	withTree(({ media, secret }) => {
+		symlinkSync(secret, join(media, 'link-to-token'));
+		symlinkSync(join(secret, '..'), join(media, 'derived', 'stems', 'up'));
+		expect(safeMediaPath('link-to-token')).toBeNull();
+		expect(safeMediaPath('derived/stems/up/worker-token')).toBeNull();
+	});
+});
+
+test('a symlink into meta/ is refused, a dangling one too, and a link that stays inside media is served', () => {
+	withTree(({ media }) => {
+		symlinkSync(join(media, 'meta', 'm1.json'), join(media, 'sidecar.json'));
+		symlinkSync(join(media, 'nowhere'), join(media, 'dangling'));
+		symlinkSync(join(media, 'song.mp3'), join(media, 'alias.mp3'));
+		expect(safeMediaPath('sidecar.json')).toBeNull();
+		expect(safeMediaPath('dangling')).toBeNull();
+		expect(safeMediaPath('alias.mp3')).toBe(join(media, 'alias.mp3'));
+		expect(safeMediaPath('song.mp3')).toBe(join(media, 'song.mp3'));
+		// A write target that does not exist yet still resolves.
+		expect(safeMediaPath('derived/stems/new-instrumental.flac')).toBe(
+			join(media, 'derived', 'stems', 'new-instrumental.flac')
+		);
+	});
+});
+
+test('a media root that is itself a symlink keeps working', () => {
+	withTree(({ media }) => {
+		const linked = `${media}-link`;
+		symlinkSync(media, linked);
+		process.env.MEDIA_DIR = linked;
+		expect(safeMediaPath('song.mp3')).toBe(join(linked, 'song.mp3'));
+		rmSync(linked);
+	});
+});
 
 beforeEach(() => {
 	process.env.MEDIA_DIR = '/srv/encore/media';

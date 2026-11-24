@@ -883,6 +883,26 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   globally, because a class directory may legitimately point outside it. It is the single containment
   authority, shared by the `/media` route and its test so "what is safe to serve" cannot drift; a join that
   skips it serves any file the process can read.
+- **Symlinks are resolved, not trusted (#1206).** The check runs on the real path too: a ref's real path
+  must stay inside the real path of its class root, and outside `meta/` and the thumbnail caches. A link that
+  leads out (to the worker token, the SQLite file, `/etc`) or dangles is a 404. A link that stays inside
+  media is served, and a media root or class dir that is itself a link or a mount keeps working. That is
+  why this resolves instead of refusing every link: no part of the library scan relies on per-file links, but
+  installs do point `MEDIA_DIR` or a class dir at another disk. A song file linked into `library/` from
+  outside media is refused, and the scan skips it as unreadable. Limit: the route opens the path after the
+  check, so swapping a link inside that window needs write access to media already.
+- **Shared dirs are group-writable, never world-writable.** `ensureLayout` sets the worker-written dirs to
+  `0775` (core's group) and their parents, the media root and `derived/`, to `1775`. Compose adds the worker
+  (uid 10001) to core's group (`bun`, gid 1000) with one `group_add` block, so it writes there. `meta/` is
+  set to `0755` whatever the umask, and the sticky bit on the parents means only an entry's owner may rename
+  or remove it, so that group membership never lets the worker write sidecars or swap `meta/` (or `audio/`,
+  `library/`) for its own. The leaf dirs carry no sticky bit, because there the worker replaces its own files
+  over ones core may have made. Bun 1.3's `chmod` drops the sticky bit, so core sets `0775` through the API,
+  then runs `chmod 1775 --` on the dir; when the bit still isn't set it logs a warning naming the command to
+  run (#1222 removes the workaround). Any dir core would re-mode (`MEDIA_DIR` or an `ENCORE_*_DIR`) that
+  is, or sits above, the home dir, the temp dir or `/` keeps its own mode, with a warning: core re-modes only
+  a directory that is media's alone. Core re-modes a `0777` dir it owns on its next boot; a dir the worker
+  created stays as it is, since only its owner can change it.
 - **A store answers BYTES, never a URL.** There is no presigned or direct link and no `url()` member to
   re-add, which is what keeps media same-origin.
 - **The raw audio's real extension is recorded nowhere.** Any consumer must enumerate every known extension

@@ -240,15 +240,82 @@ describe('migration off the legacy layout', () => {
 		expect(mediaRoot()).toBe(root);
 	});
 
-	it('worker-written dirs are SHARED-WRITE, meta is not', () => {
+	it('worker-written dirs are GROUP-writable, never world-writable, and meta is neither', () => {
 		// Core and worker are different uids on one mounted volume, so a 0755 dir created by the core is
 		// unwritable by the worker and every process dies with "Permission denied: /app/media/work/<jobId>".
-		// meta/ is core-only and stays restrictive.
+		// Compose puts the worker in core's group; a world-writable dir let any local user plant a file (#1206).
 		ensureLayout();
-		const mode = (p: string) => statSync(p).mode & 0o777;
+		const mode = (p: string) => statSync(p).mode & 0o7777;
 		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'work']) {
-			expect(mode(join(root, ...d.split('/')))).toBe(0o777);
+			expect(mode(join(root, ...d.split('/')))).toBe(0o775);
 		}
-		expect(mode(join(root, 'meta'))).not.toBe(0o777);
+		// Sticky on the two parents, so the group cannot rename core's meta/ (or another core dir) out of the way.
+		expect(mode(root)).toBe(0o1775);
+		expect(mode(join(root, 'derived'))).toBe(0o1775);
+		expect(mode(join(root, 'meta')) & 0o022).toBe(0);
+	});
+
+	it('an upgrade re-modes a 0777 dir core owns, with no hand step', () => {
+		mkdirSync(join(root, 'work'), { recursive: true });
+		chmodSync(join(root, 'work'), 0o777);
+		ensureLayout();
+		expect(statSync(join(root, 'work')).mode & 0o7777).toBe(0o775);
+	});
+
+	// A child Bun, so HOME (read by os.homedir) can be a dir this test owns.
+	const layoutIn = (env: Record<string, string>) => {
+		const layout = join(import.meta.dir, '../../../../src/lib/server/media/migrate-layout.ts');
+		return Bun.spawnSync(
+			[process.execPath, '-e', `const m = await import(${JSON.stringify(layout)}); m.ensureLayout();`],
+			{ cwd: root, env: { MEDIA_DIR: root, PATH: process.env.PATH ?? '', ...env }, stderr: 'pipe' }
+		);
+	};
+
+	it('a MEDIA_DIR that is the home dir keeps its own mode, and the warning says why', () => {
+		chmodSync(root, 0o700);
+		const child = layoutIn({ HOME: root });
+		expect(child.exitCode).toBe(0);
+		expect(statSync(root).mode & 0o7777).toBe(0o700);
+		expect(child.stderr.toString()).toContain('shared directory');
+	});
+
+	// R3-M1: each configurable class dir, at the home dir or above it, is left alone too.
+	for (const [envVar, at] of [
+		['ENCORE_AUDIO_DIR', 'home'],
+		['ENCORE_DERIVED_DIR', 'home'],
+		['ENCORE_META_DIR', 'home'],
+		['ENCORE_META_DIR', 'above home']
+	] as const) {
+		it(`an ${envVar} at the ${at} dir keeps its own mode`, () => {
+			const home = join(root, 'up', 'home');
+			mkdirSync(home, { recursive: true });
+			const dir = at === 'home' ? home : join(root, 'up');
+			chmodSync(dir, 0o700);
+			const child = layoutIn({ HOME: home, [envVar]: dir });
+			expect(child.exitCode).toBe(0);
+			expect(statSync(dir).mode & 0o7777).toBe(0o700);
+			expect(child.stderr.toString()).toContain(`${dir} is a shared directory`);
+		});
+	}
+
+	it('with no chmod(1) on PATH, the parents still lose the world bit and the missing sticky bit is said out loud', () => {
+		for (const d of ['', 'derived']) {
+			mkdirSync(join(root, d), { recursive: true });
+			chmodSync(join(root, d), 0o777);
+		}
+		// A child Bun, because Bun resolves executables against the PATH it started with, not process.env.PATH.
+		const layout = join(import.meta.dir, '../../../../src/lib/server/media/migrate-layout.ts');
+		const child = Bun.spawnSync(
+			[process.execPath, '-e', `const m = await import(${JSON.stringify(layout)}); m.ensureLayout();`],
+			{ cwd: root, env: { MEDIA_DIR: root, PATH: join(root, 'no-chmod-here') }, stderr: 'pipe' }
+		);
+		expect(child.exitCode).toBe(0);
+		const warned = [child.stderr.toString()];
+		for (const d of [root, join(root, 'derived')]) {
+			const mode = statSync(d).mode & 0o7777;
+			expect(mode & 0o002).toBe(0);
+			// Bun 1.3's chmodSync drops the sticky bit, so without chmod(1) this host must say so.
+			if (mode !== 0o1775) expect(warned.some((w) => w.includes(d) && w.includes('chmod 1775'))).toBe(true);
+		}
 	});
 });
