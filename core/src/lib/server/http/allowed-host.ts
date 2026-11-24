@@ -1,13 +1,10 @@
 // The DNS-rebinding guard, run by server.ts before any route, /ws included. See docs/SERVER.md#the-host-allowlist.
 // Relative imports only: server.ts loads this outside SvelteKit, where `$lib` does not resolve.
 
-import { existsSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { hostname as osHostname } from 'node:os';
+import { IN_CONTAINER } from '../in-container';
 import { declaredOrigins, requestHost } from '../public-origin';
-
-/** Docker writes /.dockerenv and Podman /run/.containerenv; inside either, os.hostname() is the container ID. */
-const IN_CONTAINER = existsSync('/.dockerenv') || existsSync('/run/.containerenv');
 
 /**
  * The hostname of a host[:port], lowercased, unbracketed and without one trailing dot, or null when it is not one.

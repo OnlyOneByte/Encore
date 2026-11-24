@@ -104,6 +104,63 @@ test('rejects the .thumbs cache dir (served only via /api/thumb)', () => {
 	expect(safeMediaPath('.thumbs/deadbeef.jpg')).toBeNull();
 });
 
+test('rejects any dot-file or dot-dir segment, encoded or not', () => {
+	for (const ref of ['.worker-token', '%2eworker-token', 'library/.hidden.mp3', 'derived/._x.flac', 'audio\\.env'])
+		expect(safeMediaPath(ref), ref).toBeNull();
+	expect(safeMediaPath('library/song.v2.mp3')).not.toBeNull();
+});
+
+test('never serves the worker token, wherever it was put (MEDIA_DIR=X, DATA_DIR=X/data, or set by hand)', () => {
+	const saved = { DATA_DIR: process.env.DATA_DIR, FILE: process.env.ENCORE_WORKER_TOKEN_FILE };
+	try {
+		process.env.MEDIA_DIR = '/srv/encore';
+		process.env.DATA_DIR = '/srv/encore/data';
+		delete process.env.ENCORE_WORKER_TOKEN_FILE;
+		expect(safeMediaPath('auth/worker-token')).toBeNull();
+		expect(safeMediaPath('auth/worker-token.tmp-123')).toBeNull();
+		expect(safeMediaPath('auth/anything')).toBeNull(); // the default auth/ dir is the token's alone
+		expect(safeMediaPath('library/song.mp3')).toBe(resolve('/srv/encore/library/song.mp3'));
+		process.env.ENCORE_WORKER_TOKEN_FILE = '/srv/encore/library/tok';
+		expect(safeMediaPath('library/tok')).toBeNull();
+		expect(safeMediaPath('library/tok.tmp-9')).toBeNull();
+		expect(safeMediaPath('library/song.mp3')).not.toBeNull(); // a hand-set file's dir may hold media: only it is refused
+	} finally {
+		if (saved.DATA_DIR === undefined) delete process.env.DATA_DIR;
+		else process.env.DATA_DIR = saved.DATA_DIR;
+		if (saved.FILE === undefined) delete process.env.ENCORE_WORKER_TOKEN_FILE;
+		else process.env.ENCORE_WORKER_TOKEN_FILE = saved.FILE;
+	}
+});
+
+test('a linked MEDIA_DIR or DATA_DIR cannot alias the token back in: compared by real path both ways', () => {
+	const root = mkdtempSync(join(tmpdir(), 'enc-lf-'));
+	const saved = { DATA_DIR: process.env.DATA_DIR, FILE: process.env.ENCORE_WORKER_TOKEN_FILE };
+	try {
+		const disk = join(root, 'disk');
+		const link = join(root, 'link');
+		mkdirSync(join(disk, 'auth'), { recursive: true });
+		writeFileSync(join(disk, 'auth', 'worker-token'), 'x'.repeat(43));
+		writeFileSync(join(disk, 'song.mp3'), 'audio');
+		symlinkSync(disk, link);
+		delete process.env.ENCORE_WORKER_TOKEN_FILE;
+		for (const [media, data] of [
+			[link, join(disk, 'data')],
+			[disk, join(link, 'data')]
+		]) {
+			process.env.MEDIA_DIR = media;
+			process.env.DATA_DIR = data;
+			expect(safeMediaPath('auth/worker-token'), `${media} ${data}`).toBeNull();
+			expect(safeMediaPath('auth/worker-token.tmp-1'), `${media} ${data}`).toBeNull();
+			expect(safeMediaPath('song.mp3'), `${media} ${data}`).not.toBeNull();
+		}
+	} finally {
+		if (saved.DATA_DIR === undefined) delete process.env.DATA_DIR;
+		else process.env.DATA_DIR = saved.DATA_DIR;
+		if (saved.FILE !== undefined) process.env.ENCORE_WORKER_TOKEN_FILE = saved.FILE;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test('empty / missing ref returns null', () => {
 	expect(safeMediaPath('')).toBeNull();
 });

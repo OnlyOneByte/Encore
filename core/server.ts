@@ -21,7 +21,13 @@ import {
 } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
 import { releaseWorkerSocket } from './src/lib/server/jobs/worker-sockets';
-import { workerTokenMatches, workerTokenProblem } from './src/lib/server/jobs/worker-token';
+import {
+	resolveWorkerToken,
+	workerTokenFile,
+	workerTokenMatches,
+	workerTokenProblem
+} from './src/lib/server/jobs/worker-token';
+import { IN_CONTAINER } from './src/lib/server/in-container';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
@@ -36,7 +42,6 @@ import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-ori
 import { fromOurOrigin } from './src/lib/server/http/same-origin';
 import { refuseForeignHost, requestUrl, unreadableHost } from './src/lib/server/http/allowed-host';
 import { adminTokenProblem } from './src/lib/server/host-key';
-import { cleanToken } from './src/lib/server/secret-text';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -45,14 +50,16 @@ const DEV_HARNESS = process.env.ENCORE_DEV_HARNESS === '1';
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
-// When set, a role=worker upgrade must present a matching `token` query param or get 401 — otherwise any
-// LAN device could register as a worker and fabricate job completions. Unset means unauthenticated.
-const WORKER_TOKEN = cleanToken(process.env.ENCORE_WORKER_TOKEN) || null;
+// A role=worker upgrade must present a matching `token` query param or get 401 — otherwise any LAN device
+// could register as a worker and fabricate job completions. Unset, core makes one in a file the worker reads.
+const workerToken = resolveWorkerToken(process.env.ENCORE_WORKER_TOKEN, workerTokenFile(), IN_CONTAINER);
+const WORKER_TOKEN = workerToken.token;
 
 // Refused before anything boots: a short fixed key or worker token is one a LAN device could guess.
 const refusals = [
 	adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN),
-	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN)
+	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN),
+	workerToken.refusal
 ].filter(Boolean);
 for (const refusal of refusals) console.error(`[core] ${refusal}`);
 if (refusals.length) process.exit(1);
@@ -443,11 +450,12 @@ console.log(
 		: `[core] Host link: ${hostLink}<your ENCORE_ADMIN_TOKEN>`
 );
 
+if (workerToken.note) console.log(`[core] ${workerToken.note}`);
 // Loud, so an open box is not silently exposed.
 if (!WORKER_TOKEN) {
 	console.warn(
-		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
-			'that can reach this port can register as a worker and receive job assignments. Set ' +
-			'ENCORE_WORKER_TOKEN to require a matching `token` on the worker handshake.'
+		'[core] No worker token — role=worker WS upgrades are UNAUTHENTICATED. Any device that can reach this ' +
+			'port can register as a worker and receive job assignments. Set ENCORE_WORKER_TOKEN, or make ' +
+			"core's worker token file writable (its path is in the worker token line)."
 	);
 }

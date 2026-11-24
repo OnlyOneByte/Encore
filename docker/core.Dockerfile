@@ -50,7 +50,10 @@ EXPOSE 3000
 
 # Run as the non-root `bun` user shipped by the base image: the app never needs root. Own the writable
 # volumes + app tree to `bun` so SQLite/media writes work.
-RUN mkdir -p /app/data /app/media && chown -R bun:bun /app
+# /app/auth seeds the worker-auth volume: 0750, so the worker (in bun's group) can reach the token and no one else.
+# compose's worker `group_add: ["1000"]` is bun's gid: fail the build, not the worker's dial, if the base renumbers it.
+RUN test "$(id -u bun):$(id -g bun)" = "1000:1000"
+RUN mkdir -p /app/data /app/media /app/auth && chown -R bun:bun /app && chmod 750 /app/auth
 # AFTER the chown: Docker discards changes a later RUN makes to a declared volume path, which would leave a
 # bare `docker run` (or a fresh named volume) root-owned and core dying with SQLITE_CANTOPEN.
 VOLUME ["/app/data", "/app/media"]

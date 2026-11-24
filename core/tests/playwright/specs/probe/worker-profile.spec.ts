@@ -24,7 +24,8 @@ const VIEWPORTS = [
 ];
 
 test('the profile a worker sends in hello is on /api/metrics and the /metrics page', async ({ world, browser }) => {
-	const ws = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=worker`);
+	const token = encodeURIComponent(world.core.workerToken() ?? '');
+	const ws = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=worker&token=${token}`);
 	await new Promise((resolve, reject) => {
 		ws.once('open', resolve);
 		ws.once('error', reject);

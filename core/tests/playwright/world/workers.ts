@@ -26,8 +26,8 @@ import type { Core } from './core';
 import type { World } from './fixtures';
 import type { JobArtifacts, JobParams, JobType, MediaStatus, WorkerCommand, WorkerMessage } from '$lib/contract';
 
-/** Only the parts of the world a worker needs; `core` is here so a failure can name core's own output. */
-export type WorkerWorld = Pick<World, 'baseURL' | 'mediaDir'> & { core: Pick<Core, 'log'> };
+/** Only the parts of the world a worker needs; `core` names core's own output in a failure, and its token. */
+export type WorkerWorld = Pick<World, 'baseURL' | 'mediaDir'> & { core: Pick<Core, 'log' | 'workerToken'> };
 
 /** The env-configurable storage classes from src/lib/server/media/paths.ts. `work` is deliberately not
  *  configurable there, and nothing this worker writes lands in it. */
@@ -97,9 +97,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	concurrency?: number;
 	/** The resolved profile sent in hello, which core stamps on every attempt it assigns. Default: none. */
 	profile?: { backend?: string; device?: string; threads?: number };
-	/** Matches `ENCORE_WORKER_TOKEN` on core. Omit it unless the spec booted core WITH one — core refuses a
-	 *  role=worker upgrade with 401 when the token is set and the query param does not match. */
-	token?: string;
+	/** What the worker presents. Default: core's own (`Core.workerToken`), as a real worker reads it; `null`
+	 *  sends none, which core refuses with 401. */
+	token?: string | null;
 	/**
 	 * CLAIM: 'all' is the working worker; 'none' is the align observer — it advertises and records every
 	 * `job:assign` but never sends `job:accept`, so the job's ack lease expires after ~10s and requeues with
@@ -174,7 +174,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		capabilities = ['fetch:ytdlp', 'stems', 'align'],
 		concurrency = 1,
 		profile,
-		token,
+		token = world.core.workerToken(),
 		claim = 'all',
 		mediaDir = world.mediaDir,
 		storageDirs = {},
@@ -465,7 +465,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		send({
 			type: 'worker:hello',
 			workerId,
-			authToken: token,
+			authToken: token ?? undefined,
 			capabilities,
 			concurrency,
 			version: 'pw-fake',
@@ -502,8 +502,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 	ws.on('unexpected-response', (_req, res) => {
 		upgradeFailure =
 			res.statusCode === 401
-				? 'core answered 401 to the role=worker upgrade: it was booted with ENCORE_WORKER_TOKEN set, so pass the ' +
-					'same value as `token`.'
+				? 'core answered 401 to the role=worker upgrade: the token presented is not core.workerToken().'
 				: `core answered ${res.statusCode} to the role=worker upgrade.`;
 		log(upgradeFailure);
 	});

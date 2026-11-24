@@ -82,7 +82,8 @@ test('a foreign Host reaches nothing; every name a real setup uses still works',
 	}
 
 	// The worker dials `ws://core:3000` in compose and sends no Origin, so it is no browser and passes.
-	expect((await send(world.baseURL, 'GET', '/ws?role=worker', wsHeaders('core:3000'))).status).toBe(101);
+	const workerPath = `/ws?role=worker&token=${encodeURIComponent(world.core.workerToken() ?? '')}`;
+	expect((await send(world.baseURL, 'GET', workerPath, wsHeaders('core:3000'))).status).toBe(101);
 	expect((await send(world.baseURL, 'GET', '/api/settings', { host: 'core:3000' })).status).toBe(421);
 
 	// A join address the host saves is answered at once, with no restart.

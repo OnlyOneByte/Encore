@@ -319,7 +319,8 @@ a GPU two jobs would share its memory unguarded.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ENCORE_CORE_URL` | `ws://localhost:3000/ws?role=worker` | the core's websocket. The `/ws` path and `role=worker` are both required |
-| `ENCORE_WORKER_TOKEN` | unset | the shared secret core checks on a `role=worker` upgrade; the same value on both sides, at least 24 random characters (`openssl rand -base64 24`), or core refuses to start. Never printed |
+| `ENCORE_WORKER_TOKEN` | unset | the shared secret core checks on a `role=worker` upgrade; the same value on both sides, at least 24 random characters (`openssl rand -base64 24`), or core refuses to start. Wins over the file below. Never printed |
+| `ENCORE_WORKER_TOKEN_FILE` | unset | the file core writes its token to when it has no `ENCORE_WORKER_TOKEN` (compose and `dev.sh` set it). Read at every dial, so a worker that starts first picks it up once core writes it |
 | `ENCORE_WORKER_ID` | `worker-` plus a stable suffix, e.g. `worker-3fa2c1` | this worker's id. Core treats a repeated id as the same worker reconnecting, so two live workers must never share one |
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
 | `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Above 1, the CPU threads are split between the jobs |

@@ -25,6 +25,9 @@ vite.config.ts.timestamp-*
 # `media/` previously matched those and silently excluded the entire M4 search subsystem from git.
 /data/
 /media/
+# the worker token core makes on first boot (#1196); a secret, never commit
+/auth/
+core/auth/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

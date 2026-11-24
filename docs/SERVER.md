@@ -659,7 +659,7 @@ exposure to the internet. What each attack gets:
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
-| A rogue worker | `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. Like `ENCORE_ADMIN_TOKEN`, core refuses to start with one under 24 characters, so a set token can't be guessed if it is random (`openssl rand -base64 24`). The Origin check passes the worker, which sends no Origin. |
+| A rogue worker | `role=worker` needs core's token (constant-time compare). See [The worker token](#the-worker-token) (#1196). Like `ENCORE_ADMIN_TOKEN`, a set `ENCORE_WORKER_TOKEN` under 24 characters stops core from starting. The Origin check passes the worker, which sends no Origin. The token rides in the `ws://` query, so it stops "connect to the port", not someone sniffing the Wi-Fi. |
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open
 `<address>/host#k=<that value>`. Existing host sessions survive a restart.
@@ -790,6 +790,55 @@ checked would not be the name sent. Only `X-Forwarded-Host` is a comma chain.
   still checked, because a browser's same-origin `GET` sends none.
 - Under `bun run dev`, Vite's own `server.allowedHosts` check applies instead; `server.ts` is not running.
 - `probe/host-allowlist.spec.ts` sends foreign and allowed names to `/api`, `/tv` and `/ws`.
+
+### The worker token
+
+`src/lib/server/jobs/worker-token.ts` (#1196). A `role=worker` socket can take jobs and report their results, so
+a guest phone on the Wi-Fi must not be able to open one. There is always a token, with nothing to set:
+
+- **A set `ENCORE_WORKER_TOKEN` wins**, on core and on the worker. Under 24 characters, core refuses to start.
+- **Unset, core makes one on first boot**: 32 random bytes (base64url) written to `ENCORE_WORKER_TOKEN_FILE`, and
+  reused on every later boot. The default is `auth/worker-token` beside `DATA_DIR`.
+  - The write is whole or not at all: a temp file beside it, linked into place.
+  - An empty or short file (under 24 characters) is replaced the same way, so it cannot become a crash loop.
+- **Never inside what `/media/...` serves.** Under compose the file is `/app/auth/worker-token` on the `worker-auth`
+  named volume, which core mounts read-write and the worker read-only. Under `dev.sh` it is `<repo>/auth/worker-token`.
+  - **If the path falls inside `MEDIA_DIR` or a storage class directory, core refuses to start**, unless
+    `ENCORE_WORKER_TOKEN` is set. A hand-set `ENCORE_WORKER_TOKEN_FILE` gets the same check. The default does land
+    there in the layout `MEDIA_DIR=X`, `DATA_DIR=X/data`. In that layout `/media` also serves the database, so the
+    message says to move `DATA_DIR` out too. Keeping core from booting there is deliberate.
+  - `safeMediaPath` refuses the token file and its temp files wherever they are, and the whole default `auth/`
+    directory.
+  - Both checks compare **real paths**, with every symlink followed on both sides. So `MEDIA_DIR` as a link to the
+    disk that `DATA_DIR` names directly, or the reverse, is caught too.
+  - Separately, `safeMediaPath` refuses any dot-file segment, because no media ref is one.
+- **Who can read it.** Natively both processes run as one user, so the file is `0600` and its directory `0700`.
+  - In compose, core is `bun` (uid and gid 1000) and the worker is uid 10001. So in a container (`/.dockerenv` or
+    `/run/.containerenv`) the file is `0640` and its directory `0750`, and compose gives the worker gid 1000 with
+    `group_add`.
+  - The image seeds `/app/auth` as `bun:bun 0750`, so a fresh volume is not root-owned. Its build fails if the base
+    image's `bun` is not 1000:1000. `container-layout.test.ts` pins all of this.
+  - Kubernetes and LXC are not detected as containers. A worker there with its own uid needs `ENCORE_WORKER_TOKEN`.
+- **Modes are put back at every boot.** Core sets the file to its exact mode whenever it differs. A `0666` file
+  left by a hand edit is closed again; a `0600` file is opened to `0640` so a container worker can read it.
+  - The directory is changed only when it is the token's own: the default `auth/` (by real path), or one core just
+    created.
+  - A hand-set file in `/tmp` or `$HOME` leaves that directory as it was. If the directory is group- or
+    world-writable, core logs that another user could replace the file.
+  - If a change fails, core logs a line naming the path and keeps booting.
+- **The worker reads the file at every dial**, not once at start, because compose may start it before core has
+  written the file. Until then it gets `401` and retries.
+- **A worker on another machine** needs the value copied into its `ENCORE_WORKER_TOKEN`. Core logs the file's path
+  at boot, never the token.
+- **Fails open, loudly.** If core can neither read nor write the file (say, an image older than this change on a
+  root-owned volume), it boots without a token, as before #1196, and logs the warning. An existing install
+  therefore keeps working after the upgrade: the first `up` creates `worker-auth`, and core fills it.
+- **The caveat.** The token rides in the `ws://` query, so it stops a device that merely reaches the port. It does
+  not stop someone who can sniff the Wi-Fi.
+- `probe/p9-settings.spec.ts` dials with no token (401), a wrong one (401) and core's (opens), and checks core's log
+  never holds the token. In the `MEDIA_DIR=X`, `DATA_DIR=X/data` layout, it checks that core refuses to start. With
+  a token set and a file planted at the real `X/auth/worker-token`, it checks that `/media/auth/worker-token` is a
+  404.
 
 ### Schema and migrations
 
