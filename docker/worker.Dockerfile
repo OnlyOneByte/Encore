@@ -5,28 +5,24 @@
 # tested — `--frozen` below turns a lock/manifest disagreement into a build failure rather than a silent
 # re-resolve. The deno runtime, /etc/yt-dlp.conf, the non-root uid and the cache volume were each paid for
 # in the predecessor image this replaced, and none of the reasons changed.
-FROM python:3.12-slim-bookworm AS runtime
+#
+# TWO STAGES, for linux/amd64 and linux/arm64 alike: `deps` installs the Python dependencies with a compiler
+# at hand, and `runtime` copies only the result, so no compiler ships in the image.
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+
+# ── dependencies, from the lockfile ──────────────────────────────────────────────────────────────
+FROM ${PYTHON_IMAGE} AS deps
 WORKDIR /app/worker
 
-# ffmpeg is NOT optional here: `host/hardware.py` refuses to advertise `stems` without it, because
-# publication encodes stems to FLAC and the guide mix is an ffmpeg filter graph. A box without it would
-# connect, advertise nothing, and look broken.
-#
-# KEPT EVEN THOUGH THE `ffmpeg` EXTRA BELOW BUNDLES ONE, and the two serve different callers.
-# `host.ffmpeg` prefers the bundled static build, so that is what encodes every stem — which is the point:
-# one pinned build instead of bookworm's 5.1 versus whatever Homebrew has. Not one version everywhere: the
-# Linux wheels (x86_64 and aarch64) ship 7.0.2, macOS arm64 7.1. This apt package stays for anything that shells `ffmpeg`
-# BY NAME rather than through our config: whisperx's `load_audio` does, and yt-dlp would if a format ever
-# needed merging.
+# g++ because `mojimoji` (the `romanize` extra) has no aarch64 wheel and compiles from source there.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+	&& apt-get install -y --no-install-recommends g++ \
 	&& rm -rf /var/lib/apt/lists/*
 
 # uv is copied from its own published image rather than installed with pip: it is a build TOOL, so it has
 # no business in the runtime's dependency resolution, and the pinned tag is reproducible.
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
 
-# ── dependencies, from the lockfile ──────────────────────────────────────────────────────────────
 # Manifests ONLY in this layer, so editing a source file does not re-resolve or re-download torch.
 #
 # `--frozen` fails the build if the lockfile disagrees with pyproject.toml, rather than silently
@@ -46,8 +42,37 @@ ENV UV_LINK_MODE=copy \
 # image because romanization requires them: without them `build_romanizer` answers None, no CJK line gains
 # its second script, and the per-language stage-2 table cannot route zh or ko to MMS_FA at all
 # (docs/arch/04-alignment.md §9.2).
+#
+# torchcodec 0.7.0 has no aarch64 wheel, so arm64 skips it. Nothing here decodes through it: pyannote only
+# warns without it, because the aligner hands it a preloaded waveform (tests/test_ffmpeg.py).
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/uv \
-	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg --extra audiosep --extra romanize --extra nonlatin
+	case "${TARGETARCH:-$(uname -m)}" in arm64 | aarch64) skip="--no-install-package torchcodec" ;; *) skip="" ;; esac \
+	&& uv sync --frozen --no-install-project ${skip} --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg --extra audiosep --extra romanize --extra nonlatin
+
+# ── the runtime ──────────────────────────────────────────────────────────────────────────────────
+FROM ${PYTHON_IMAGE} AS runtime
+WORKDIR /app/worker
+
+# ffmpeg is NOT optional here: `host/hardware.py` refuses to advertise `stems` without it, because
+# publication encodes stems to FLAC and the guide mix is an ffmpeg filter graph. A box without it would
+# connect, advertise nothing, and look broken.
+#
+# KEPT EVEN THOUGH THE `ffmpeg` EXTRA (installed in `deps`) BUNDLES ONE, and the two serve different callers.
+# `host.ffmpeg` prefers the bundled static build, so that is what encodes every stem — which is the point:
+# one pinned build instead of bookworm's 5.1 versus whatever Homebrew has. Not one version everywhere: the
+# Linux wheels (x86_64 and aarch64) ship 7.0.2, macOS arm64 7.1. This apt package stays for anything that shells `ffmpeg`
+# BY NAME rather than through our config: whisperx's `load_audio` does, and yt-dlp would if a format ever
+# needed merging.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
+
+# The installed dependencies (and uv) from `deps`. Same base image, so /usr/local only gains site-packages.
+COPY --from=deps /usr/local /usr/local
+ENV UV_LINK_MODE=copy \
+	UV_PYTHON_DOWNLOADS=never \
+	UV_PROJECT_ENVIRONMENT=/usr/local
 
 # ── deno, for yt-dlp's challenge solver ──────────────────────────────────────────────────────────
 # Placed AFTER the dependency layer on purpose: a layer invalidates everything below it, so a ~40 MB
