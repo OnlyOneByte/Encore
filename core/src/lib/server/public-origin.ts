@@ -37,10 +37,12 @@ function configuredOrigin(): string | null {
 /** `ENCORE_TRUST_PROXY=1`: a proxy in front sets X-Forwarded-*. Off, those headers are anyone's to forge. */
 export const trustsProxy = () => process.env.ENCORE_TRUST_PROXY?.trim() === '1';
 
-/** The host[:port] the browser opened: Host, or X-Forwarded-Host behind a trusted proxy. */
+/** The host[:port] the browser opened: Host, or X-Forwarded-Host behind a trusted proxy. Only the forwarded value
+ *  is a comma chain; a comma in Host is a malformed or duplicated header, left for the allowlist to refuse. */
 export function requestHost(request: Request, url: URL): string {
 	const forwarded = trustsProxy() ? request.headers.get('x-forwarded-host') : null;
-	return (forwarded ?? request.headers.get('host') ?? url.host).split(',')[0]!.trim();
+	if (forwarded !== null) return forwarded.split(',')[0]!.trim();
+	return (request.headers.get('host') ?? url.host).trim();
 }
 
 /** A non-empty `configured` wins outright; otherwise `host` comes from `requestHost` rather than
