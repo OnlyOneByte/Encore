@@ -246,9 +246,12 @@ describe('migration off the legacy layout', () => {
 		// Compose puts the worker in core's group; a world-writable dir let any local user plant a file (#1206).
 		ensureLayout();
 		const mode = (p: string) => statSync(p).mode & 0o7777;
-		for (const d of ['', 'audio', 'derived', 'derived/stems', 'derived/lyrics', 'work']) {
-			expect(mode(join(root, ...d.split('/').filter(Boolean)))).toBe(0o775);
+		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'work']) {
+			expect(mode(join(root, ...d.split('/')))).toBe(0o775);
 		}
+		// Sticky on the two parents, so the group cannot rename core's meta/ (or another core dir) out of the way.
+		expect(mode(root)).toBe(0o1775);
+		expect(mode(join(root, 'derived'))).toBe(0o1775);
 		expect(mode(join(root, 'meta')) & 0o022).toBe(0);
 	});
 

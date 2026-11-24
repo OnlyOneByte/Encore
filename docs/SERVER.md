@@ -790,10 +790,13 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   installs do point `MEDIA_DIR` or a class dir at another disk. A song file linked into `library/` from
   outside media is refused, and the scan skips it as unreadable. Limit: the route opens the path after the
   check, so swapping a link inside that window needs write access to media already.
-- **Shared dirs are group-writable, never world-writable.** `ensureLayout` sets the worker-written dirs and
-  their parents to `0775` (core's group). Compose adds the worker (uid 10001) to core's group (`bun`, gid
-  1000) with `group_add`, so it writes there. `meta/` is set to `0755` whatever the umask, so that group
-  membership never lets the worker write sidecars. Core re-modes a `0777` dir it owns on its next boot; a dir the
+- **Shared dirs are group-writable, never world-writable.** `ensureLayout` sets the worker-written dirs to
+  `0775` (core's group) and their parents, the media root and `derived/`, to `1775`. Compose adds the worker
+  (uid 10001) to core's group (`bun`, gid 1000) with one `group_add` block, so it writes there. `meta/` is
+  set to `0755` whatever the umask, and the sticky bit on the parents means only an entry's owner may rename
+  or remove it, so that group membership never lets the worker write sidecars or swap `meta/` (or `audio/`,
+  `library/`) for its own. The leaf dirs carry no sticky bit, because there the worker replaces its own files
+  over ones core may have made. Core re-modes a `0777` dir it owns on its next boot; a dir the
   worker created stays as it is, since only its owner can change it.
 - **A store answers BYTES, never a URL.** There is no presigned or direct link and no `url()` member to
   re-add, which is what keeps media same-origin.

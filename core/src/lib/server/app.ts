@@ -445,7 +445,7 @@ export function getApp(): EncoreApp {
 				if (skipped.length > 0) {
 					// Named, because "my song is not in search" is otherwise indistinguishable from a broken scan.
 					console.warn(
-						`[core] library: skipped ${skipped.length} file(s) with no readable duration (${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ', …' : ''}) — not decodable, or ffmpeg is missing`
+						`[core] library: skipped ${skipped.length} file(s) with no readable duration (${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ', …' : ''}) — a link that leads outside media, not decodable, or ffmpeg is missing`
 					);
 				}
 			}
