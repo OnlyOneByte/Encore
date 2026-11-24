@@ -1,0 +1,115 @@
+{
+  "scenario": "phone-sing-widen-320",
+  "what": "Phone 320x844: \"Not it? Search everything\" under a default answer — the rows are replaced by the wider search's, a cut; the field alone above them does not move (rows from the local index)",
+  "capturedAt": "2026-11-24T03:38:16.529Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "findRow": {
+      "x": 32,
+      "y": 74,
+      "width": 256,
+      "height": 204.0625,
+      "top": 74,
+      "right": 288,
+      "bottom": 278.0625,
+      "left": 32
+    },
+    "rows": 1,
+    "widenOffered": false
+  },
+  "subject": {
+    "selector": ".find-row",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "findRow": {
+        "x": 32,
+        "y": 74,
+        "width": 256,
+        "height": 204.0625,
+        "top": 74,
+        "right": 288,
+        "bottom": 278.0625,
+        "left": 32
+      },
+      "rows": 1,
+      "widenOffered": false
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.7,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "findRow": {
+        "x": 32,
+        "y": 74,
+        "width": 256,
+        "height": 204.0625,
+        "top": 74,
+        "right": 288,
+        "bottom": 278.0625,
+        "left": 32
+      },
+      "rows": 1,
+      "widenOffered": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 6409,
+    "encodeMs": 572,
+    "liveMs": 13229,
+    "reducedMs": 2483,
+    "reducedEncodeMs": 756
+  },
+  "files": {
+    "clip.gif": 32895,
+    "clip-slow4x.gif": 32895,
+    "filmstrip.png": 87624,
+    "filmstrip-reduced.png": 84031
+  }
+}
