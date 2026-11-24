@@ -9,24 +9,12 @@ import { readJsonBody, requiredString } from '$lib/server/http/json-body';
 
 export const GET: RequestHandler = async ({ cookies }) => json({ host: isHost(cookies) });
 
-export const POST: RequestHandler = async ({ request, cookies, url, getClientAddress }) => {
+export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const app = getApp();
-	const addr = getClientAddress();
 	const key = requiredString(await readJsonBody(request), 'key');
 	if (!key) return json({ error: 'key required' }, { status: 400 });
-	// The right key always unlocks, so a guest behind the host's NAT cannot lock the host out by guessing wrong.
-	if (!app.hostKey.matches(key)) {
-		const wait = app.hostKey.tries.wait(addr, app.now());
-		if (wait > 0) {
-			return json(
-				{ error: 'too many wrong keys; try again later' },
-				{ status: 429, headers: { 'retry-after': String(Math.ceil(wait / 1000)) } }
-			);
-		}
-		app.hostKey.tries.wrong(addr, app.now());
-		return json({ error: 'that is not the host key' }, { status: 403 });
-	}
-	app.hostKey.tries.right(addr);
+	// No per-address lockout: it could not slow guessing without locking out a host behind a guest's NAT.
+	if (!app.hostKey.matches(key)) return json({ error: 'that is not the host key' }, { status: 403 });
 	// Always a fresh token, so a cookie planted from another port on this host is never promoted.
 	cookies.set(HOST_COOKIE, app.hostKey.open(app.now()), {
 		path: '/',

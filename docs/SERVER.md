@@ -514,8 +514,8 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   room at all — a legitimate viewer, still gated per command on mutation). An unscoped viewer of the served
   room is not a cross-room leak, and treating it as one breaks the TV.
 - **HTTP statuses are part of the contract, because the phone branches on them.** `429` means a limit, and
-  exactly two exist: the per-singer concurrent-process cap on `/api/process`, and the wrong-key backoff on
-  `POST /api/host` (with `Retry-After`), so a limit is distinguishable from a generic refusal; `409` is a
+  exactly one exists: the per-singer concurrent-process cap on `/api/process`, so a limit is
+  distinguishable from a generic refusal; `409` is a
   conflict the caller can resolve (a taken name, a song that is not processable); `404` is an unknown media
   or room; `400` is malformed input. Substituting one for another changes what the phone tells a guest.
 - **Route auth posture, per method.** `POST /api/join` is necessarily ungated, since it is how a session is
@@ -591,8 +591,7 @@ exposure to the internet. What each attack gets:
 | A guest elevates to host | Refused. The host capabilities read only `encore_host`, and a singer cookie presented as one resolves to no session. |
 | A guest retargets the QR (`joinOrigin`) to a phishing page | Refused (403); this was the most direct path to stealing a session. |
 | The TV, or a cookieless socket or request | Holds no capability: no singer, no host. A socket never carries the host, so nothing on `/ws` is host-only. |
-| Brute-forcing the key | Infeasible, because of key length alone: a minted key is 256 bits, and core refuses to start with an `ENCORE_ADMIN_TOKEN` under 24 characters. `KeyTries` does NOT slow guessing, since the right key is always accepted: after five wrong keys from one address it answers further wrong keys with 429 (1 minute, doubling up to an hour, with `Retry-After`) instead of 403, which only hides whether a guess was wrong. Whether to remove it or make it meaningful is #1173. The comparison hashes both sides to 32 bytes and uses `timingSafeEqual`, so neither length nor content leaks. |
-| Flooding the try table from many addresses (IPv6) to reset a lockout | Refused. The table holds 1024 addresses and, when full, drops the oldest one still within its free tries, then the oldest whose lockout has run out. A locked address is never dropped; with every entry locked, a new address gets 429. |
+| Brute-forcing the key | Infeasible, because of key length alone: a minted key is 256 bits, and core refuses to start with an `ENCORE_ADMIN_TOKEN` under 24 characters. There is no wrong-key lockout (#1173): a per-address one cannot slow guessing while the right key is still accepted, and a lock the right key obeys would let a guest behind the host's NAT, or anyone flooding, lock the host out. At a rate the LAN allows, say 10,000 guesses a second, a 256-bit key outlasts the universe, and so does a 24-character `ENCORE_ADMIN_TOKEN` if it is random; one built from a word or a pattern is the operator's risk, so use a password manager's random string. The comparison hashes both sides to 32 bytes and uses `timingSafeEqual`, so neither length nor content leaks. |
 | A guest behind the host's address (NAT, a proxy, Docker Desktop) locking the host out with wrong keys | Can't. The correct key unlocks whatever its address's count, which is safe because a key of at least 24 characters cannot be guessed. |
 | A percent-encoded or otherwise re-spelled path (`/%61pi/metrics`, `/api/%6Detrics`, `..`) | Gets nothing. The Origin and JSON checks run on every unsafe method on every path, matched or not. The host gates live in each route and page load, which SvelteKit reaches only after decoding, and the hook's second layer keys on `event.route.id`, never the raw path. p9 sends each spelling raw. |
 | Stealing a token from the DB file or a backup | Useless: singer and host tokens are stored as SHA-256 and looked up by hash. |

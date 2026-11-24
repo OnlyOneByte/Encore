@@ -222,19 +222,13 @@ test('a route refuses a body that is not application/json even without the hook'
 	).rejects.toMatchObject({ status: 415 });
 });
 
-test('POST /api/host answers a null body with 400, and backs off after five wrong keys', async () => {
-	const app = installApp();
+test('POST /api/host answers a null body with 400, and wrong keys never lock the right one out', async () => {
+	installApp();
 	expect((await hostPost(event('/api/host', 'POST', jar(), 'null'))).status).toBe(400);
-	for (let i = 0; i < 5; i++)
+	for (let i = 0; i < 20; i++)
 		expect((await hostPost(event('/api/host', 'POST', jar(), { key: 'x' }))).status).toBe(403);
-	expect((await hostPost(event('/api/host', 'POST', jar(), { key: 'x' }))).status).toBe(403);
-	// A wrong key is now held off, with a Retry-After.
-	const locked = await hostPost(event('/api/host', 'POST', jar(), { key: 'x' }));
-	expect(locked.status).toBe(429);
-	expect(Number(locked.headers.get('retry-after'))).toBeGreaterThan(0);
-	// The right key from the same address still unlocks: a guest behind the host's NAT cannot lock the host out.
+	// A guest behind the host's NAT cannot lock the host out.
 	expect((await hostPost(event('/api/host', 'POST', jar(), { key: KEY }))).status).toBe(200);
-	expect(app.hostKey.tries.wait('192.168.1.50', app.now())).toBe(0);
 });
 
 test('the hook refuses another site and a non-JSON body', async () => {
