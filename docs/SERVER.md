@@ -668,12 +668,16 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   (`stemStatus: 'none'`, lyrics gate cleared) and frees its finished `stems`, `stems-upgrade` and `align` job
   rows (`forgetEvicted`, through `forgetProcess`). Those rows still hold the dedup slot, so without this the next pick got the old
   `ready` stems job back and marked the deleted stems ready, and the TV was handed a song it could not play.
-  The phone, the TV and Library all read `isPlayable`, so they agree the song needs making, and the next pick
-  runs the normal process.
-- **A pick checks the file, not just the status.** `/api/process` asks the media store whether the
-  instrumental exists. A song whose status (or finished stems job) says ready but whose file is gone is
-  treated as not made: `processState` stops answering `ready`, and `requestProcess` forgets the process
-  before it enqueues. This also covers songs evicted before the reset above shipped.
+  The pass then broadcasts `media:status` `canceled` for each reset song, the quiet terminal status, so a
+  phone that loaded Library or search before the pass finished settles the song to not made and re-reads
+  Library without a reload. The phone, the TV and Library all read `isPlayable`, so they agree the song
+  needs making, and the next Sing runs the normal process. Limit: a "+" on a row a phone still shows as
+  ready is a plain queue add that never checks the file, which is #1162.
+- **A pick checks the file, not just the status.** For a song that claims stems, `/api/process` asks the
+  media store whether the stored instrumental ref exists. A song whose status (or finished stems job) says
+  ready but whose file is gone is treated as not made: `processState` stops answering `ready`, and
+  `requestProcess` forgets the process before it enqueues. A store that errors or takes over 2 s is
+  trusted as before. This also covers songs evicted before the reset above shipped.
 - **`protectedIds` (the playing song plus everything queued) is enforced INSIDE the pure planner**, not left
   to callers, so no caller can forget it. A protected song still COUNTS toward the total, so an unreachable
   cap reports "evict everything allowed" rather than under-reporting pressure.

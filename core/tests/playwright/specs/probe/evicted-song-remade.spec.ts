@@ -1,9 +1,11 @@
 // #1153: AN EVICTED SONG IS MADE AGAIN, NOT CALLED READY. A song is made, the host reboots with a disk cap that
 // evicts its stems, and a guest picks it again. Before the fix the pick ran no job and answered `ready` over
 // deleted files. Now no screen calls it ready, the pick runs the process, and the TV plays it.
-import { existsSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '../../world/fixtures';
+import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { openBrowseFromHome } from '../../world/actors';
 import { processTrack, queueReadyTrack, tapStage, TRACKS } from './audio-probe-support';
@@ -69,4 +71,42 @@ test('evict, re-pick: the song is made again and plays', async ({ world }) => {
 	} finally {
 		await worker.stop();
 	}
+});
+
+// The fake worker writes legacy .wav stems, so the reboot's recompress pass encodes them to FLAC before eviction
+// runs. A slow encoder holds that pass open, so the phone reconnects and re-reads Library while the song is
+// still listed as ready, and only the eviction broadcast can take it off.
+const slowFfmpeg = join(mkdtempSync(join(tmpdir(), 'enc-slow-ffmpeg-')), 'ffmpeg.sh');
+writeFileSync(slowFfmpeg, '#!/bin/sh\ncase "$*" in *"-c:a flac"*) sleep 5;; esac\nexec ffmpeg "$@"\n');
+chmodSync(slowFfmpeg, 0o755);
+
+test.describe(() => {
+	test.use({
+		coreEnv: { ENCORE_EPHEMERAL: '0', ENCORE_MEDIA_MAX_GB: '0.000000001', FFMPEG_BIN: slowFfmpeg }
+	});
+
+	test('a phone open during eviction sees the song leave Library without reloading', async ({ world }) => {
+		test.setTimeout(180_000);
+		const worker = await startFakeWorker(world);
+		const maya = await world.openPhone('Maya');
+		try {
+			await processTrack(maya, world.baseURL, track);
+		} finally {
+			await worker.stop();
+		}
+		await maya.goto('/library');
+		const row = maya.locator(SEL.songRow).filter({ hasText: track.title });
+		await expect(row).toHaveCount(1);
+
+		const reread = maya.waitForResponse((r) => r.url().endsWith('/api/library'), { timeout: 30_000 });
+		await world.core.restart();
+		await reread;
+		expect(world.core.log(), 'the phone re-read Library before eviction ran').not.toContain('retention: evicted');
+		await expect(row, 'the reconnect re-read still lists the song').toHaveCount(1);
+
+		await expect
+			.poll(() => world.core.log().includes('retention: evicted derived artifacts'), { timeout: 60_000 })
+			.toBe(true);
+		await expect(row, 'the open phone still shows the evicted song in Library').toHaveCount(0, { timeout: 5_000 });
+	});
 });

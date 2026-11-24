@@ -76,11 +76,20 @@ export function isProcessed(media: Media): boolean {
 	return isPlayable(media);
 }
 
+/** A ready status or a finished stems job: the song says its stems exist. */
+export function claimsStems(media: Media, jobs: Pick<JobRepository, 'findLive'>): boolean {
+	return isProcessed(media) || jobs.findLive(media.id, 'stems')?.status === 'ready';
+}
+
+/** The stems ref a claiming song names: the stored ref, else the default key. */
+export function claimedStemsRef(media: Media): string {
+	return media.instrumentalRef ?? instrumentalKey(media.id);
+}
+
 /** A ready status, or a finished stems job, whose instrumental file is gone (evicted, deleted by hand). */
 export function stemsMissing(media: Media, deps: Pick<ProcessDeps, 'jobs' | 'stemsOnDisk'>): boolean {
 	if (!deps.stemsOnDisk) return false;
-	const claimsStems = isProcessed(media) || deps.jobs.findLive(media.id, 'stems')?.status === 'ready';
-	return claimsStems && !deps.stemsOnDisk(media.instrumentalRef ?? instrumentalKey(media.id));
+	return claimsStems(media, deps.jobs) && !deps.stemsOnDisk(claimedStemsRef(media));
 }
 
 /** Resets a song to not-made. The finished jobs must go too: they hold the dedup slot, so the next pick

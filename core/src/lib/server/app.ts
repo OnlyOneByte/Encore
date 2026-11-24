@@ -399,6 +399,8 @@ export function getApp(): EncoreApp {
 					const live = mediaById.get(id);
 					if (!live) continue;
 					freed += await evictSong(live, { jobs, upsert: (m) => mediaRepo.upsert(m) });
+					// `canceled` is the quiet exit: open phones settle the song to not made and re-read Library.
+					app.publish({ type: 'media:status', mediaId: id, status: 'canceled', pct: 0 });
 				}
 				if (doomed.length > 0) {
 					console.log(

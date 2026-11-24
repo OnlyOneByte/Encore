@@ -8,12 +8,29 @@ import {
 	processState,
 	requestProcess,
 	maxProcessesPerSinger,
-	instrumentalKey,
+	claimsStems,
+	claimedStemsRef,
 	stemsMissing
 } from '$lib/server/jobs/process';
 import { clearArtifacts } from '$lib/server/media/sidecar';
+import type { MediaStore } from '$lib/server/media/store';
 import { readJsonBody, requiredString } from '$lib/server/http/json-body';
 import type { MediaStatus } from '$lib/contract';
+
+const STORE_CHECK_MS = 2_000;
+
+/** A store that errors or doesn't answer in time trusts the status, as picks did before the file check. */
+async function storeHas(store: MediaStore, ref: string): Promise<boolean> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(true), STORE_CHECK_MS)));
+	try {
+		return await Promise.race([store.exists(ref), late]);
+	} catch {
+		return true;
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -27,7 +44,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const getSettings = () => app.settings.getGlobal();
 	// Checked once here because the store is async: a `ready` song whose stems were evicted must be made again.
 	const media = app.mediaById.get(mediaId);
-	const present = media ? await app.mediaStore.exists(media.instrumentalRef ?? instrumentalKey(mediaId)) : false;
+	const present = media && claimsStems(media, app.jobs) ? await storeHas(app.mediaStore, claimedStemsRef(media)) : true;
 	const stemsOnDisk = () => present;
 	const state = processState(
 		mediaId,
