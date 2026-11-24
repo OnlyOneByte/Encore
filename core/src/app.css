@@ -781,17 +781,24 @@ body {
 		animation: pop var(--motion-pop) var(--ease-pop);
 	}
 }
-/* THE QUEUE'S HOLD (routes/queue, proposal 18): a block the page moved in layout is drawn where it was, --hold-from
-   away, and eased home, so a layout shift never paints. Two names, so a second hold restarts the ease. `add`, so a
-   row's own transform (the live sort's shift) still applies under it. AFTER `.pop-in`, which it must outrank on a row. */
+/* THE QUEUE'S HOLD (routes/queue, docs/FRONTEND.md § The Queued list holds still). `top` keeps a moved block in its
+   old layout slot, as Chromium counts a restarted transform's layout move (#1081). AFTER `.pop-in`, which it outranks. */
 @media (prefers-reduced-motion: no-preference) {
+	[data-hold] {
+		position: relative;
+		top: var(--hold-top);
+	}
 	[data-hold='a'] {
-		animation: hold-a var(--motion-base) ease-out;
+		animation: hold-a var(--motion-base) ease-out forwards;
 		animation-composition: add;
 	}
 	[data-hold='b'] {
-		animation: hold-b var(--motion-base) ease-out;
+		animation: hold-b var(--motion-base) ease-out forwards;
 		animation-composition: add;
+	}
+	/* Removing the animation with the slot is what counts no shift; zeroing it under a fill would. */
+	[data-hold='done'] {
+		animation: none;
 	}
 }
 @keyframes hold-a {
@@ -799,7 +806,7 @@ body {
 		transform: translateY(var(--hold-from));
 	}
 	to {
-		transform: translateY(0);
+		transform: translateY(calc(-1 * var(--hold-top)));
 	}
 }
 @keyframes hold-b {
@@ -807,7 +814,7 @@ body {
 		transform: translateY(var(--hold-from));
 	}
 	to {
-		transform: translateY(0);
+		transform: translateY(calc(-1 * var(--hold-top)));
 	}
 }
 /* `.pop-in`'s entrance for something anchored to the BOTTOM edge (the "You're up" sheet over the dock): it rises into

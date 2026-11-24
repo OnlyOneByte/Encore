@@ -13,8 +13,8 @@
 //
 // (c) A ROW UNDER THE CARD, at the top of the page: the row under Theo's card must not shift as the card shrinks.
 //
-// Chromium files no layout shift for an element with a running transform animation, so (a) also reads where the
-// heading is DRAWN on the first frame after the change: a hold in the wrong place passes the CLS half alone.
+// A layout move hidden by a fresh transform is not counted as a shift, so (a) also reads where the heading is DRAWN
+// on the first frame after the change: a hold in the wrong place passes the CLS half alone.
 import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { SEL } from '../../world/selectors';
@@ -33,6 +33,9 @@ type Watch = {
 	syBefore: number;
 	firstRowBefore: number | null;
 	maxDrift: number;
+	holdEnds: number;
+	// The most a row moved after its hold ended: the glide's end is the row's slot, so it must not move again.
+	afterEnd: number;
 };
 
 /** Layout shifts inside `main` (not a row's own content), the heading's first drawn frame, and the scroll's drift. */
@@ -52,7 +55,9 @@ async function watch(page: Page): Promise<void> {
 			headFirst: null,
 			syBefore: scrollY,
 			firstRowBefore: firstRow(),
-			maxDrift: 0
+			maxDrift: 0,
+			holdEnds: 0,
+			afterEnd: 0
 		};
 		w.__obs = new PerformanceObserver((list) => {
 			for (const e of list.getEntries() as unknown as {
@@ -82,8 +87,22 @@ async function watch(page: Page): Promise<void> {
 			requestAnimationFrame(() => (w.__w.headFirst = head()));
 		});
 		w.__mo.observe(main.querySelector('.below')!, { childList: true });
+		// A row is held while it sits off its slot by `top` (app.css `[data-hold]`).
+		const was = new Map<Element, { held: boolean; endTop?: number }>();
 		const sample = () => {
 			if (w.__run !== run) return;
+			for (const el of main.querySelectorAll('.qrow')) {
+				const top = el.getBoundingClientRect().top;
+				const held = (parseFloat(getComputedStyle(el).top) || 0) !== 0;
+				const prev = was.get(el);
+				let endTop = held ? undefined : prev?.endTop;
+				if (prev?.held && !held) {
+					w.__w.holdEnds++;
+					endTop = top;
+				}
+				if (endTop !== undefined) w.__w.afterEnd = Math.max(w.__w.afterEnd, Math.abs(top - endTop));
+				was.set(el, { held, endTop });
+			}
 			const r = firstRow();
 			const rowDrift = r === null || w.__w.firstRowBefore === null ? 0 : Math.abs(r - w.__w.firstRowBefore);
 			w.__w.maxDrift = Math.max(w.__w.maxDrift, Math.abs(scrollY - w.__w.syBefore), rowDrift);
@@ -108,7 +127,6 @@ for (const [width, height] of [
 			test(`${tag}${tall ? ', 1200 tall' : ''}: your song starts and the list under it holds still`, async ({
 				world
 			}) => {
-				test.fail(width === 390 && !reduce, 'known main gap: #1044 transform hold under Chromium layout-shift count');
 				const worker = await startFakeWorker(world, { seconds: SECS });
 				const maya = await world.openPhone('Maya');
 				const theo = await world.openPhone('Theo');
@@ -141,6 +159,8 @@ for (const [width, height] of [
 					} else {
 						expect.soft(w.shifts, 'layout shift inside main as your song starts').toEqual([]);
 						expect(Math.abs(w.headFirst! - w.headBefore!), 'px the heading jumped on the first frame').toBeLessThan(2);
+						expect(w.holdEnds, 'rows whose hold ended').toBeGreaterThan(0);
+						expect(w.afterEnd, 'px a row moved after its hold ended').toBeLessThan(1);
 					}
 				} finally {
 					await worker.stop().catch(() => {});

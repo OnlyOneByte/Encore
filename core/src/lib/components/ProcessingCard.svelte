@@ -76,8 +76,8 @@
 		/** In ROWS rather than pixels: the pixel height is the page's business, and a component taking px would need
 		 * the same measurement twice. */
 		shift?: -1 | 0 | 1;
-		/** The list's hold, as QueueRow's: `dy` px from where the card was drawn before a patch moved it. */
-		hold?: { dy: number; turn: 'a' | 'b' };
+		/** The list's hold, as QueueRow's. */
+		hold?: { top: number; from: number; turn: 'a' | 'b' | 'done' };
 	}
 	let {
 		kind,
@@ -217,7 +217,7 @@
 			{...props}
 			class={['qrow', 'proc', 'card', 'list-row', { pending, failed, stalled, moving, shifted: shift !== 0 }]}
 			data-hold={hold?.turn}
-			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-from:{hold?.dy ?? 0}px"
+			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-top:{hold?.top ?? 0}px; --hold-from:{hold?.from ?? 0}px"
 		>
 			<!-- The digit rolls on a position change exactly as QueueRow's does: the two kinds share ONE list, and a drag
 					that rolled one and jumped the other reads as broken. Keyed on the number, so a change swaps the element. -->
