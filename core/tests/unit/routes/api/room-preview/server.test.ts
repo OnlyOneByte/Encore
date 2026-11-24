@@ -12,6 +12,7 @@ import { test, expect, afterEach } from 'bun:test';
 import { GET } from '$routes/api/room-preview/+server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
+import { PeopleRepository } from '$lib/server/people/repository';
 import { PresenceTracker } from '$lib/server/realtime/presence';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { assertNameFree, NameTakenError } from '$lib/server/singers/join';
@@ -39,6 +40,7 @@ function installApp() {
 		singers,
 		presence,
 		settings,
+		people: new PeopleRepository(db),
 		state: { entries: [] as unknown[] },
 		now: () => clock.now
 	};
@@ -51,7 +53,8 @@ afterEach(() => {
 });
 
 function call(code: string) {
-	return GET({ url: new URL(`http://x/api/room-preview?code=${encodeURIComponent(code)}`) } as never);
+	const url = new URL(`http://x/api/room-preview?code=${encodeURIComponent(code)}`);
+	return GET({ url, request: new Request(url), cookies: { get: () => undefined } } as never);
 }
 
 test('present = online AND a singer of THIS room — not online alone, not listed alone', async () => {

@@ -189,6 +189,7 @@ const server = Bun.serve<SocketData>({
 			// spectator. A TV binds via its join code instead. Mutations stay gated per command either way.
 			// See docs/SERVER.md#sessions-and-cookies.
 			const sessionToken = readSessionToken(req.headers.get('cookie'));
+			app.people.seenOnSocket(req.headers.get('cookie'), app.now());
 			const me = app.singers.bySessionToken(sessionToken);
 			const roomId =
 				role === 'tv'

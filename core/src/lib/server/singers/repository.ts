@@ -7,7 +7,13 @@ import { singers } from '../db/schema';
 import { ulid, type Singer } from '../../contract';
 
 /** A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key, surfaced because the server scopes the roster and in-room name-uniqueness by it. A phone DOES learn its own room id — `/api/join` returns it in the response body deliberately. What strips `room_id` is the ROSTER: {@link SingerRepository.listPublic} (and any other wire projection, e.g. /api/me) drops it, since a roster entry of someone else has no use for it and the public shape is the wire `Singer`. */
-export type StoredSinger = Singer & { roomId: string };
+export type StoredSinger = Singer & { roomId: string; personId: string | null };
+
+/** The wire shape: no token, and none of the server-side keys. */
+export function publicSinger(s: Singer | StoredSinger): Omit<Singer, 'sessionToken'> {
+	const { sessionToken: _t, roomId: _r, personId: _p, ...rest } = s as Partial<StoredSinger> & Singer;
+	return rest;
+}
 
 export const SESSION_COOKIE = 'encore_singer';
 
@@ -31,7 +37,7 @@ export class SingerRepository {
 	}
 
 	/** Create a singer IN a room, minting id + session token. `roomId` is the party this singer belongs to — the room `/api/join` resolved (an explicit code or the active room) — scoping the roster, `least-recently-sung` ordering, and presence sweep to one party. The wire `Singer` carries no room field (unchanged contract); the joining phone still learns its own room, since /api/join returns `roomId` beside the singer. The returned `sessionToken` is the only copy of the plain token: the row stores its hash. */
-	create(displayName: string, color: string, now: number, roomId: string): Singer {
+	create(displayName: string, color: string, now: number, roomId: string, personId: string | null = null): Singer {
 		const singer: Singer = {
 			id: ulid(now),
 			displayName: displayName.trim().slice(0, 32) || 'Guest',
@@ -41,9 +47,33 @@ export class SingerRepository {
 		};
 		this.#db
 			.insert(singers)
-			.values({ ...singer, sessionToken: hashToken(singer.sessionToken), roomId })
+			.values({ ...singer, sessionToken: hashToken(singer.sessionToken), roomId, personId })
 			.run();
 		return singer;
+	}
+
+	/** Link this night to a kept person and swap its token, so a copy of the old cookie (one planted from another
+	 *  port, say) never becomes the kept person. Returns the new plain token. */
+	linkPerson(id: string, personId: string): string {
+		const token = mintSessionToken();
+		this.#db
+			.update(singers)
+			.set({ personId, sessionToken: hashToken(token) })
+			.where(eq(singers.id, id))
+			.run();
+		return token;
+	}
+
+	byPerson(personId: string): StoredSinger[] {
+		return this.#db.select().from(singers).where(eq(singers.personId, personId)).all();
+	}
+
+	unlinkPerson(id: string): void {
+		this.#db.update(singers).set({ personId: null }).where(eq(singers.id, id)).run();
+	}
+
+	delete(id: string): void {
+		this.#db.delete(singers).where(eq(singers.id, id)).run();
 	}
 
 	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId`; its `sessionToken` is the stored hash. */
@@ -103,12 +133,7 @@ export class SingerRepository {
 
 	/** A ROOM's singers, without session tokens (safe to broadcast). Scoped by `room_id` — feeds the roster, the ordering input, and the in-room name-uniqueness check, none of which may see another party's singers. `room_id` is a server-side key, stripped alongside `sessionToken`. */
 	listPublic(roomId: string): Omit<Singer, 'sessionToken'>[] {
-		return this.#db
-			.select()
-			.from(singers)
-			.where(eq(singers.roomId, roomId))
-			.all()
-			.map(({ sessionToken: _t, roomId: _r, ...rest }) => rest);
+		return this.#db.select().from(singers).where(eq(singers.roomId, roomId)).all().map(publicSinger);
 	}
 }
 

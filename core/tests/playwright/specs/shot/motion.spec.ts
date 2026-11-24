@@ -11,7 +11,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong, singOnce } from '../../world/actors';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
@@ -46,7 +46,11 @@ const CUTS = new Set([
 	'phone-tab-left-390',
 	'phone-tab-left-320',
 	'phone-tab-adopted-390',
-	'phone-tab-adopted-320'
+	'phone-tab-adopted-320',
+	'phone-keep-me-390',
+	'phone-keep-me-320',
+	'phone-welcome-back-390',
+	'phone-welcome-back-320'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -170,6 +174,121 @@ async function asSinger(
 		storageState: await state.context().storageState()
 	});
 	return ctx.newPage();
+}
+
+/** A joined phone at `width` whose first song has started and ended, the state Keep me is offered in. Starts this
+ *  row's worker and makes the song on the first call. */
+const madeSong = new WeakSet<World>();
+async function sungPhone(
+	browser: Browser,
+	world: World,
+	cleanup: (fn: () => Promise<unknown>) => void,
+	width: number,
+	opts: BrowserContextOptions = {}
+): Promise<Page> {
+	const ctx = await browser.newContext({
+		...opts,
+		viewport: { width, height: width === 320 ? 568 : 844 },
+		baseURL: world.baseURL
+	});
+	const page = await ctx.newPage();
+	await world.joinAs(page, `Keep${++joins}`);
+	if (!madeSong.has(world)) {
+		madeSong.add(world);
+		const worker = await startFakeWorker(world);
+		cleanup(() => worker.stop());
+		// The TV is what ends a song, so the next run's guest gets their turn.
+		await world.openTv();
+		await readySong(world, page, 'caroline');
+		await page.goto('/');
+	}
+	await singOnce(page, 'caroline');
+	await expect(page.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
+	return page;
+}
+
+async function keptPhone(browser: Browser, world: World, cleanup: (fn: () => Promise<unknown>) => void, width: number) {
+	const page = await sungPhone(browser, world, cleanup, width);
+	await page.goto('/settings/you');
+	await page.getByRole('button', { name: 'Keep me', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /is kept on this phone/ })).toBeVisible();
+	return page;
+}
+
+function keepMe(width: number): Make {
+	return (browser, world, cleanup) => ({
+		name: `phone-keep-me-${width}`,
+		what: `Phone ${width}: Keep me tapped after a first song; the offer gives way to "<name> is kept on this phone" (a cut)`,
+		stepMs: 33,
+		scale: 1,
+		columns: 5,
+		open: async (opts) => {
+			const page = await sungPhone(browser, world, cleanup, width, opts);
+			await page.goto('/settings/you');
+			await expect(page.getByRole('button', { name: 'Keep me', exact: true })).toBeVisible();
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: (page) => page.getByRole('button', { name: 'Keep me', exact: true }).click(),
+		subject: '#kept',
+		observe: (page) => page.evaluate(() => ({ kept: !!document.querySelector('#kept') }))
+	});
+}
+
+/** A kept phone back on the scanned join: "Welcome back", then "I'm someone else" opens the guest form (a cut). */
+/** The Delete me confirm opening on a kept phone: the alert dialog's own motion. */
+function deleteMeDialog(width: number): Make {
+	let kept: Page | undefined;
+	return (browser, world, cleanup) => ({
+		name: `phone-delete-me-dialog-${width}`,
+		what: `Phone ${width}: the "Delete me" confirm opening on a kept phone (encore-alert-in + encore-scrim-in, --motion-fast)`,
+		stepMs: 12,
+		scale: 1,
+		columns: 6,
+		open: async (opts) => {
+			kept ??= await keptPhone(browser, world, cleanup, width);
+			const page = await asSinger(browser, world, opts, kept, width);
+			await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+			await page.goto('/settings/you');
+			await expect(page.getByRole('button', { name: 'Delete me' })).toBeVisible();
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: async (page) => {
+			await page.getByRole('button', { name: 'Delete me' }).click();
+			await page.locator('[role="alertdialog"]').waitFor({ state: 'attached' });
+		},
+		subject: '[role="alertdialog"]',
+		observe: (page) => page.evaluate(() => ({ dialogOpen: !!document.querySelector('[role="alertdialog"]') }))
+	});
+}
+
+function welcomeBack(width: number): Make {
+	let left: Page | undefined;
+	return (browser, world, cleanup) => ({
+		name: `phone-welcome-back-${width}`,
+		what: `Phone ${width}: a kept phone's "Welcome back" join, then "I'm someone else" swapping in the name field and ring (a cut)`,
+		stepMs: 33,
+		scale: 1,
+		columns: 5,
+		open: async (opts) => {
+			if (!left) {
+				left = await keptPhone(browser, world, cleanup, width);
+				await left.getByRole('button', { name: 'Leave the room' }).click();
+				await left.getByRole('button', { name: 'Yes, leave' }).click();
+				await left.waitForURL((u) => u.pathname === '/');
+			}
+			const page = await asSinger(browser, world, opts, left, width);
+			await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+			await page.goto(`/?room=${encodeURIComponent(world.code)}`);
+			await expect(page.getByText('Welcome back')).toBeVisible();
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: (page) => page.getByRole('button', { name: "I'm someone else" }).click(),
+		subject: SEL.nameInput,
+		observe: (page) => page.evaluate(() => ({ welcome: document.body.textContent?.includes('Welcome back') ?? false }))
+	});
 }
 
 /** Skip whatever is on until the room is empty. Each skip waits past the strip's settle window (SETTLE_MS, #974),
@@ -1325,6 +1444,15 @@ const SCENARIOS: Record<string, Make> = {
 		subject: '[role="alertdialog"]',
 		observe: (page) => page.evaluate(() => ({ dialogOpen: !!document.querySelector('[role="alertdialog"]') }))
 	}),
+
+	/** Keep me after a first song (proposal 30): the offer gives way to the kept card. A cut. Each run is a new
+	 *  guest who sings once, since a guest can be kept only once. */
+	'phone-keep-me-390': keepMe(390),
+	'phone-keep-me-320': keepMe(320),
+	'phone-delete-me-dialog-390': deleteMeDialog(390),
+	'phone-delete-me-dialog-320': deleteMeDialog(320),
+	'phone-welcome-back-390': welcomeBack(390),
+	'phone-welcome-back-320': welcomeBack(320),
 
 	/** On deck crossing into the heads-up, for real: Theo sings a 36 s track on a real TV, so Maya's card starts as
 	 *  "On deck" with its time-left and, 30 s from the end, becomes "You’re next": the class, the eyebrow text and

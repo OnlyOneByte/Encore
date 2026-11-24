@@ -3,6 +3,7 @@ import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
 import { SingerRepository } from '$lib/server/singers/repository';
+import { PeopleRepository } from '$lib/server/people/repository';
 import { HostKey } from '$lib/server/host-key';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import {
@@ -48,6 +49,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		// still holds a turn.
 		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
+		people: new PeopleRepository(db),
 		hostKey: new HostKey(db, null),
 		rooms,
 		activeRoomId,

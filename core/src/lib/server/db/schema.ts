@@ -28,12 +28,45 @@ export const singers = sqliteTable(
 		// NULL means "has not sung", distinct from 0, which sorts ahead of everyone who has. Here and not in `plays`, which deliberately carries no singer id.
 		lastSungAt: integer('last_sung_at'),
 		// Scopes the roster to a room: ordering, presence and rotation all read only THIS room's singers. Minted from the room `doJoin` resolved, NEVER read from a cookie.
-		roomId: text('room_id').notNull()
+		roomId: text('room_id').notNull(),
+		// The kept person this night belongs to; NULL for a guest. Server-side only, never on the wire.
+		personId: text('person_id')
 	},
 	(t) => ({
 		// The auth lookup key on every authed request. UNIQUE prevents a token collision mapping two singers to one session.
 		sessionTokenIdx: uniqueIndex('singers_session_token_idx').on(t.sessionToken),
-		roomIdx: index('singers_room_idx').on(t.roomId)
+		roomIdx: index('singers_room_idx').on(t.roomId),
+		personIdx: index('singers_person_idx').on(t.personId)
+	})
+);
+
+// Someone who tapped Keep me. See docs/SERVER.md#kept-people.
+export const people = sqliteTable('people', {
+	id: text('id').primaryKey(),
+	displayName: text('display_name').notNull(),
+	color: text('color').notNull(),
+	createdAt: integer('created_at').notNull()
+});
+
+// A phone a person is kept on, keyed by the SHA-256 hex of its `encore_device` cookie.
+export const personDevices = sqliteTable(
+	'person_devices',
+	{
+		id: text('id').primaryKey(),
+		personId: text('person_id').notNull(),
+		tokenHash: text('token_hash').notNull(),
+		createdAt: integer('created_at').notNull(),
+		lastSeenAt: integer('last_seen_at').notNull(),
+		// The token before the last rotation, still accepted until the new one is first used or this time passes,
+		// so a lost response cannot un-keep the phone. See docs/SERVER.md#kept-people.
+		prevTokenHash: text('prev_token_hash'),
+		prevValidUntil: integer('prev_valid_until'),
+		// The new token is sha256(salt:previous token), so a grace use can be answered with it without storing it.
+		rotationSalt: text('rotation_salt')
+	},
+	(t) => ({
+		tokenIdx: uniqueIndex('person_devices_token_idx').on(t.tokenHash),
+		personIdx: index('person_devices_person_idx').on(t.personId)
 	})
 );
 
