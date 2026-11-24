@@ -49,7 +49,7 @@ for (const path of files(specsDir)) {
 	readFileSync(path, 'utf8')
 		.split('\n')
 		.forEach((line, i) => {
-			if (line.includes("'@youtube'")) youtube.push(`specs/${relative(specsDir, path)}:${i + 1}`);
+			if (/\btest\(.*@youtube\b/.test(line)) youtube.push(`specs/${relative(specsDir, path)}:${i + 1}`);
 		});
 }
 

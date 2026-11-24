@@ -212,7 +212,7 @@ test('one media id appears at most once across ready, processing and results', a
 	}
 });
 
-test('a local file and a YouTube upload of the same title coexist as separate rows', async ({ world }) => {
+test('a local file and a YouTube upload of the same title coexist as separate rows @youtube', async ({ world }) => {
 	// Cross-source non-dedupe is INTENTIONAL: a local "Bohemian Rhapsody" and a YouTube "Queen — Bohemian
 	// Rhapsody" are different recordings and both belong. All three buckets are checked, because the local file
 	// may already be processed and so sit in `ready` while the YouTube upload stays in `results`.
@@ -392,7 +392,9 @@ test('a query with no matches returns three empty buckets — against a source t
 	).toBe(true);
 });
 
-test('the default source never returns empty, and that is recorded rather than asserted away', async ({ world }) => {
+test('the default source never returns empty, and that is recorded rather than asserted away @youtube', async ({
+	world
+}) => {
 	/* THE NEGATIVE CONTROL for the test above, and for every future "no results" assertion. YouTube Music is the
 	   default source and its `songs` filter always substitutes something, so a zero-match UI state is UNREACHABLE
 	   through it. Pinned so that a later change to the default — or to the filter — shows up here as a red test and

@@ -33,7 +33,7 @@ every test's `core.log`. The check is advisory, not required.
 touches, or that exercise a path it changes (grep the probes for the changed functions and UI actions). A
 failure there that also fails on `main`, or a flaky test, is not the PR's.
 
-A probe that needs YouTube cannot pass on a network with no route out. Tag it `{ tag: '@youtube' }`: the
+A probe that needs YouTube cannot pass on a network with no route out. End its title with `@youtube`: the
 hermetic run leaves it out and lists it, and `nightly.yml`, which has a network, still runs it.
 
 Motion is `shot` too: `bun run ui:review` records each row of `specs/shot/motion.spec.ts` as a GIF, a
