@@ -20,7 +20,11 @@ export const ADMIN_TOKEN_MIN = 24;
 /** Why `ENCORE_ADMIN_TOKEN` cannot be used, or null when it is unset or long enough. */
 export function adminTokenProblem(raw: string | null | undefined): string | null {
 	const token = cleanToken(raw);
-	if (!token || codePoints(token) >= ADMIN_TOKEN_MIN) return null;
+	if (!token)
+		return raw?.trim()
+			? 'ENCORE_ADMIN_TOKEN has no visible characters; set a random one (`openssl rand -base64 24`) or unset it.'
+			: null;
+	if (codePoints(token) >= ADMIN_TOKEN_MIN) return null;
 	return `ENCORE_ADMIN_TOKEN is ${codePoints(token)} characters; it must be at least ${ADMIN_TOKEN_MIN}, or unset it to get a new key at every start.`;
 }
 

@@ -11,7 +11,12 @@ export const WORKER_TOKEN_MIN = 24;
 /** Why `ENCORE_WORKER_TOKEN` cannot be used, or null when it is unset or long enough. */
 export function workerTokenProblem(raw: string | null | undefined): string | null {
 	const token = cleanToken(raw);
-	if (!token || codePoints(token) >= WORKER_TOKEN_MIN) return null;
+	// Invisible-only must refuse, not read as unset: unset here means worker auth is off.
+	if (!token)
+		return raw?.trim()
+			? 'ENCORE_WORKER_TOKEN has no visible characters; set a random one (`openssl rand -base64 24`) or unset it.'
+			: null;
+	if (codePoints(token) >= WORKER_TOKEN_MIN) return null;
 	return `ENCORE_WORKER_TOKEN is ${codePoints(token)} characters; it must be at least ${WORKER_TOKEN_MIN}. Make a random one with \`openssl rand -base64 24\` and set the same value on core and every worker.`;
 }
 

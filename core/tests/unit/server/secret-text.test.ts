@@ -33,6 +33,14 @@ test('the 24-character floor counts real characters', () => {
 	}
 });
 
+test('a token of only invisible characters is refused, but blank still means unset', () => {
+	for (const problem of [adminTokenProblem, workerTokenProblem]) {
+		expect(problem(ZWSP.repeat(24))).toContain('no visible characters');
+		expect(problem('\t\x1c')).toContain('no visible characters');
+		for (const blank of [undefined, null, '', '   ']) expect(problem(blank)).toBeNull();
+	}
+});
+
 test('a fixed host key pasted with a BOM still matches the clean key', () => {
 	const key = new HostKey({} as never, BOM + 'k'.repeat(24));
 	expect(key.matches('k'.repeat(24))).toBe(true);

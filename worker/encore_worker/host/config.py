@@ -31,8 +31,8 @@ def redact_token(text: str) -> str:
 
 
 def clean_token(raw: str) -> str:
-    """Core's `cleanToken` (secret-text.ts), exactly: drop control and format characters (U+200B, a BOM), then
-    strip, so both sides read one pasted token the same way."""
+    """Core's `cleanToken` (secret-text.ts): drop control and format characters (U+200B, a BOM), then strip.
+    The two agree while Python's and Bun's Unicode tables do; a newer table may class a code point apart."""
     return "".join(c for c in raw if unicodedata.category(c) not in ("Cc", "Cf")).strip()
 
 
