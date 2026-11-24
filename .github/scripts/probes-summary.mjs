@@ -23,8 +23,9 @@ const shards = [];
 function walk(suite, shard) {
 	for (const spec of suite.specs ?? []) {
 		for (const test of spec.tests ?? []) {
-			const where = `specs/${spec.file}:${spec.line}`;
 			const last = test.results?.at(-1);
+			const failedAt = last?.error?.location?.line;
+			const where = `specs/${spec.file}:${spec.line}` + (failedAt && failedAt !== spec.line ? ` (fails at :${failedAt})` : '');
 			const message = (last?.error?.message ?? '').replace(/\x1b\[[0-9;]*m/g, '').split('\n')[0].slice(0, 200);
 			if (test.status === 'unexpected') failed.push({ where, title: spec.title, shard, message });
 			if (test.status === 'flaky') flaky.push({ where, title: spec.title, shard });

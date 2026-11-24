@@ -54,7 +54,7 @@ test('a foreign Host reaches nothing; every name a real setup uses still works',
 	for (const evil of [`evil.example:${port}`, `192.168.1.20.nip.io:${port}`, `localhost.evil.example:${port}`]) {
 		const joined = await join(evil, 'Rebound');
 		expect(joined.status, `POST /api/join as ${evil}: ${joined.text}`).toBe(421);
-		expect(joined.text).toContain('DELIBERATELY_BROKEN_FOR_1216');
+		expect(joined.text).toContain('ENCORE_ALLOWED_HOSTS');
 		expect((await send(world.baseURL, 'GET', '/api/settings', { host: evil })).status, `GET /api as ${evil}`).toBe(421);
 		expect((await send(world.baseURL, 'GET', '/tv', { host: evil })).status, `GET /tv as ${evil}`).toBe(421);
 		const ws = await send(world.baseURL, 'GET', '/ws?role=phone', wsHeaders(evil, `http://${evil}`));
