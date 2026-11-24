@@ -556,6 +556,25 @@ seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
 `tv:claim` does not already give any LAN device under the no-lockout rule, so it is not a defect; never build
 authorization on the seat.
 
+### The TV clock relay
+
+A copy keeps its own muted element, so on its own it drifts: before the relay it ran up to ~90 ms off at 1x CPU
+and a steady ~340 ms behind at 4x (proposal 34). Core relays the seat's clock so copies can follow it
+(`src/lib/server/realtime/tv-clock.ts`; the copy side is `docs/FRONTEND.md#a-copy-on-the-tvs-clock`).
+
+- **`tv:clock { entryId, positionSec, serverAt }`.** Built from each seated `tv:telemetry` `playing` frame (~4 Hz),
+  after the seat check, and only for the current entry while the room plays, with a finite, non-negative position.
+  `serverAt` is core's receive time (`performance.timeOrigin + performance.now()`). It goes on the room's TV topic
+  with `ws.publish`, which skips the sender, so the seat never hears its own clock. Phones are not subscribed.
+  The frame has no `rate` field (the proposal's had one): the seat always plays at rate 1, which
+  `p34-copy-drift` asserts. A later PR that changes the seat's rate must add it.
+- **`tv:ping { t0 }` -> `tv:pong { t0, serverAt }`.** It is answered only on a `role=tv` socket, and only to that
+  socket. `t0` must be a finite number and is echoed back. It moves nothing in the room.
+
+**A copy can only receive the clock.** Nothing a copy, a guest phone or a cookieless `role=tv` socket sends feeds
+`tv:clock`: the relay sits behind `seated(ws)`, so a copy's telemetry is still dropped before it gets there. The
+clock says no more than `playback:state` already tells every socket in the room (which song, and where).
+
 ### The host key
 
 Proposal 30, PR 1 (#1080, #1119). The host changes settings, reads the operator pages, deletes songs and
@@ -601,6 +620,7 @@ exposure to the internet. What each attack gets:
 | The key in logs, `queue:sync` or `/metrics` | The minted key appears in the one boot line and nowhere else. No payload carries a token or its hash: rosters come from `listPublic`, which strips both. |
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
+| A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
 | A rogue worker | Unchanged: `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. The Origin check passes the worker, which sends no Origin. |
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open

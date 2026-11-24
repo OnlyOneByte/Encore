@@ -27,6 +27,7 @@ import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor, tvTopicFor } from './src/lib/server/realtime/room-scope';
 import { createReactionLimiter, handleReaction } from './src/lib/server/realtime/reactions';
+import { clockFrame, pongFrame, serverNow } from './src/lib/server/realtime/tv-clock';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
 import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
@@ -315,11 +316,12 @@ const server = Bun.serve<SocketData>({
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps, sendToOrigin);
 					break;
-				case 'tv:telemetry':
+				case 'tv:telemetry': {
 					// Only from the room's TV seat: a phone-app socket's `ended` was a free skip and its position a free seek, and
 					// a second /tv (a guest reading along, a forgotten tab) is a copy whose frames would fight the real TV's.
 					// The same holds for `failed` and `resume`: only the seated TV can fail a song or release its hold.
 					if (!seated(ws)) break;
+					const clock = clockFrame(evt, state.playback, serverNow());
 					handleTelemetry(
 						{
 							positionSec: evt.positionSec,
@@ -330,7 +332,17 @@ const server = Bun.serve<SocketData>({
 						},
 						deps
 					);
+					// `ws.publish` skips the sender, so only the copies hear the seat's clock.
+					if (clock) ws.publish(roomTvTopic(app.activeRoomId), JSON.stringify(clock));
 					break;
+				}
+				case 'tv:ping': {
+					// Any TV screen may time its offset; the answer goes to it alone and moves nothing.
+					if (ws.data.role !== 'tv') break;
+					const pong = pongFrame(evt.t0, serverNow());
+					if (pong) ws.send(JSON.stringify(pong));
+					break;
+				}
 				case 'tv:claim':
 					if (ws.data.tvKey !== undefined) announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey));
 					// The new seat is the TV now: a hold left waiting for one starts here, as on the seat's hello.

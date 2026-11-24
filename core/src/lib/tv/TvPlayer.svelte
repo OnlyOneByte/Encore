@@ -15,6 +15,15 @@
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	import { StallWatchdog, STALL_TICK_MS, unansweredPlayIsAutoplay } from './stall-watchdog';
+	import {
+		clientNow,
+		followPlan,
+		nextSeekLead,
+		tvPositionAt,
+		untrim,
+		untrimWhenStale,
+		type TvClock
+	} from './copy-clock';
 	interface Props {
 		/** A `PlaybackSnapshot`, not a live `Media`: the brand makes this a compiler boundary. */
 		media: PlaybackSnapshot | null;
@@ -38,6 +47,8 @@
 		 * autoplay everywhere, so the copy still runs the clock the words follow. See docs/SERVER.md#the-tv-seat.
 		 */
 		silent?: boolean;
+		/** A COPY's view of the TV's clock: when set, this slot trims its rate or seeks to follow it. The seat never gets one. */
+		follow?: { clock: TvClock; offsetMs: number } | null;
 		/** Gated on VISIBILITY: the hidden slot buffers a song ahead, so firing there flips the room over a black frame. */
 		onready?: () => void;
 		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
@@ -72,6 +83,7 @@
 		guideLevel = 0,
 		masterLevel = 1,
 		silent = false,
+		follow = null,
 		onready,
 		onprewarmed,
 		onended,
@@ -443,8 +455,54 @@
 		applySeek(target);
 	});
 
+	// A COPY ON THE TV'S CLOCK, re-taken on each `tv:clock` frame. Without `follow` (the seat, or a copy just promoted)
+	// the rate goes back to 1, so the seat's own element stays the room's clock. See docs/FRONTEND.md#a-copy-on-the-tvs-clock.
+	let followSeekVotes = 0;
+	// How far ahead a seek aims, learned from where the last one landed: a slow device lands late.
+	let followSeekLead = 0;
+	let followSeeked = false;
+	$effect(() => {
+		const f = follow;
+		const el = untrack(() => master);
+		if (!el) return;
+		if (!f) {
+			untrim(el);
+			el.preservesPitch = true;
+			followSeekVotes = 0;
+			return;
+		}
+		const snap = untrack(() => media);
+		const following =
+			untrack(() => active && entryId === f.clock.entryId) && !!snap && isPlayable(snap) && !el.paused && !el.seeking;
+		if (!following || resumeTarget !== undefined) {
+			untrim(el);
+			return;
+		}
+		// Muted, so pitch is moot: plain resampling is the cheaper trim on a slow device.
+		el.preservesPitch = false;
+		const tvSec = tvPositionAt(f.clock, f.offsetMs, clientNow());
+		if (followSeeked) {
+			followSeekLead = nextSeekLead(followSeekLead, el.currentTime - tvSec);
+			followSeeked = false;
+		}
+		const plan = followPlan(el.currentTime, tvSec, followSeekLead);
+		if (plan.kind === 'rate') {
+			followSeekVotes = 0;
+			if (el.playbackRate !== plan.rate) el.playbackRate = plan.rate;
+			// The next frame re-runs this and cancels it; with no next frame, the trim goes.
+			return untrimWhenStale(el);
+		}
+		// Two frames in a row, so one late frame from before a room seek cannot bounce the words back.
+		if (++followSeekVotes < 2) return untrimWhenStale(el);
+		followSeekVotes = 0;
+		untrim(el);
+		el.currentTime = plan.toSec;
+		followSeeked = true;
+		watchdog.rebase();
+	});
+
 	/**
-	 * Called ONLY by the effect above. Every read in here is `untrack`ed, and that is the INVARIANT rather than
+	 * Called ONLY by the seek effect above. Every read in here is `untrack`ed, and that is the INVARIANT rather than
 	 * tidiness: an input to the decision must never become a trigger for it.
 	 */
 	function applySeek(seekTarget: number): void {
