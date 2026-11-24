@@ -198,11 +198,15 @@ const WAITS_FOR_ABSENCE = new Set(['metrics']);
 async function openSurface(surface: Surface, browser: Browser, world: World): Promise<Page> {
 	if (!surface.join) {
 		const context = await browser.newContext({ baseURL: world.baseURL, viewport: surface.vp });
-		return context.newPage();
+		const page = await context.newPage();
+		// /metrics is the host's, and every settings control is live only for the host.
+		await world.becomeHost(page);
+		return page;
 	}
 	// Joined through the real screen, then resized: the name is the surface's, so two joining surfaces in the
 	// same room could not collide even if they shared one.
 	const page = await world.openPhone(`Pf${surface.name.replace(/[^a-z]/gi, '')}`);
+	await world.becomeHost(page);
 	await page.setViewportSize(surface.vp);
 	return page;
 }

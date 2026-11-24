@@ -48,6 +48,8 @@ function installApp() {
 	);
 	const app = {
 		singers,
+		hostKey: { isHost: () => true },
+		now: () => 0,
 		settings,
 		activeRoomId: ROOM,
 		state,

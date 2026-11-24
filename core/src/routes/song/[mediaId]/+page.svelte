@@ -15,6 +15,9 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import { Button } from '$lib/components/ui/button';
 
+	/** Only the host re-picks a song's lyrics (the route refuses anyone else), so only the host is offered it. */
+	let { data }: { data: { host: boolean } } = $props();
+
 	const mediaId = $derived(page.params.mediaId ?? '');
 
 	let media = $state<Media | null>(null);
@@ -201,7 +204,7 @@
 			</section>
 
 			<!-- Quick-select only: picking among the ranker's versions. Authoring one is a separate surface. -->
-			{#if candidates.length}
+			{#if candidates.length && data.host}
 				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one reads as
 						possibly-null to the checker. -->
 				{@const songId = media.id}

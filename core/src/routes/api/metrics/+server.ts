@@ -1,8 +1,10 @@
 // GET /api/metrics — INTERNAL processing metrics: per-step durations, end-to-end, per-model cost.
-// UNGATED, deliberately and temporarily — see docs/ARCHITECTURE.md §10.
+// Host only (docs/SERVER.md#the-host-key).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
+import { can } from '$lib/server/capabilities';
+import { isHost } from '$lib/server/host-gate';
 import { clampDays, songDisplay } from '$lib/contract';
 import {
 	attemptsCsv,
@@ -30,7 +32,9 @@ function clampLimit(raw: string | null): number {
 	return Math.min(20_000, Math.floor(n));
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, cookies }) => {
+	if (!can({ host: isHost(cookies) }, 'operator:read'))
+		return json({ error: 'only the host can open this' }, { status: 403 });
 	const app = getApp();
 	const limit = clampLimit(url.searchParams.get('limit'));
 	const windowDays = clampDays(url.searchParams.get('days'), { fallback: DEFAULT_WINDOW_DAYS, max: MAX_WINDOW_DAYS });

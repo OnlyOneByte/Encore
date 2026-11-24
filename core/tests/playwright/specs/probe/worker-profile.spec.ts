@@ -32,11 +32,12 @@ test('the profile a worker sends in hello is on /api/metrics and the /metrics pa
 	ws.send(JSON.stringify(HELLO));
 
 	await expect
-		.poll(async () => (await (await fetch(`${world.baseURL}/api/metrics`)).json()).workers[0]?.profile)
+		.poll(async () => (await (await world.hostGet('/api/metrics')).json()).workers[0]?.profile)
 		.toEqual(PROFILE);
 
 	for (const vp of VIEWPORTS) {
-		const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+		const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, baseURL: world.baseURL });
+		await world.becomeHost(page);
 		await page.goto(`${world.baseURL}/metrics`);
 		const worker = page.locator('.worker', { hasText: 'gpu-1' });
 		await worker.scrollIntoViewIfNeeded();

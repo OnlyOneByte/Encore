@@ -5,12 +5,17 @@ import { getApp } from '$lib/server/app';
 import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { publicOriginIsHttps } from '$lib/server/public-origin';
+import { optionalString, readJsonBody, requiredString } from '$lib/server/http/json-body';
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
-	const body = await request.json().catch(() => ({}));
+	const body = await readJsonBody(request);
 	let result;
 	try {
-		result = doJoin(getApp(), { displayName: body.displayName, color: body.color, code: body.code });
+		result = doJoin(getApp(), {
+			displayName: requiredString(body, 'displayName'),
+			color: optionalString(body, 'color'),
+			code: optionalString(body, 'code')
+		});
 	} catch (e) {
 		// 409, not 400: the request is well-formed, the name is simply spoken for. The phone shows this verbatim, so it has to read as a sentence about the name rather than a validation failure.
 		const status = e instanceof NameTakenError ? 409 : e instanceof RoomNotFoundError ? 404 : 400;

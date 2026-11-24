@@ -61,6 +61,7 @@ for (const [width, height] of [
 			const dock = theo.locator(SEL.dock);
 			const box = await dock.boundingBox();
 			const skip = (p: Page) => p.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await world.becomeHost(ana);
 			const reactions = (on: boolean) => ana.request.put('/api/settings/room', { data: { tvReactions: on } });
 
 			const across = async (name: string, act: () => Promise<unknown>, settled: () => Promise<unknown>) => {

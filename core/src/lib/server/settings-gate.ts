@@ -9,6 +9,8 @@
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { isHost } from '$lib/server/host-gate';
+import { joinOrigin } from '$lib/server/public-origin';
 
 /**
  * Refuse an unjoined visitor, and answer with the singer MINUS the session token — page data is serialised into
@@ -31,4 +33,12 @@ export function settingsSinger({ cookies, url }: Pick<RequestEvent, 'cookies' | 
 
 	const { sessionToken: _t, ...me } = singer;
 	return me;
+}
+
+/** The room and machine scopes: the host opens them without joining, a joined guest reads them locked, anyone else
+ *  goes to join. Null means unlocked. */
+export function settingsLock(event: Pick<RequestEvent, 'cookies' | 'url' | 'request'>): { hostLink: string } | null {
+	if (isHost(event.cookies)) return null;
+	settingsSinger(event);
+	return { hostLink: `Host link: ${joinOrigin(event.request, event.url)}/host#…` };
 }

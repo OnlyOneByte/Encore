@@ -20,7 +20,9 @@ function installApp() {
 		rooms,
 		activeRoomId: room.id,
 		singers: new SingerRepository(db),
-		settings: new SettingsRepository(db)
+		settings: new SettingsRepository(db),
+		hostKey: { isHost: () => false },
+		now: () => 0
 	};
 }
 

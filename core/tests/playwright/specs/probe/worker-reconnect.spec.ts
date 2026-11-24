@@ -20,7 +20,7 @@ async function openWorker(baseURL: string): Promise<WebSocket> {
 
 test('a stale worker socket closing after a reconnect does not deregister the live worker', async ({ world }) => {
 	const registered = async (): Promise<string[]> =>
-		(await (await fetch(`${world.baseURL}/api/metrics`)).json()).workers.map((w: { workerId: string }) => w.workerId);
+		(await (await world.hostGet('/api/metrics')).json()).workers.map((w: { workerId: string }) => w.workerId);
 
 	const old = await openWorker(world.baseURL);
 	old.send(JSON.stringify(HELLO));

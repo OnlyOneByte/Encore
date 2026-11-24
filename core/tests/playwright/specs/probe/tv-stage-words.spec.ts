@@ -45,6 +45,7 @@ test('the unreachable-address notice shows on attract and the lobby, and never o
 		await expect(tv.locator(SEL.lowerThird), 'the stage names its lyric source').not.toContainText('Auto-transcribed');
 
 		// TIME LEFT IN THE NOW-SINGING CARD is ASCII too: `-0:02`, never the phone's typographic `−0:02`.
+		await world.becomeHost(phone);
 		const set = await phone.request.put('/api/settings/room', { data: { tvProgressStyle: 'card' } });
 		expect(set.ok(), `PUT /api/settings/room -> ${set.status()}`).toBe(true);
 		const left = tv.locator(`${SEL.lowerThird} .card-row .t`).last();

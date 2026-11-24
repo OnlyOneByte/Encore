@@ -61,6 +61,7 @@ services:
       # and S3/AWS credentials never reach the worker. In-container paths are pinned above, not here.
       # core/tests/unit/server/container-layout.test.ts fails when core reads a setting this list misses,
       # or when this list names one core never reads.
+      - ENCORE_ADMIN_TOKEN
       - ENCORE_MEDIA_MAX_GB
       - ENCORE_SONG_INTRO_MS
       - INTERSTITIAL_MS

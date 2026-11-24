@@ -27,7 +27,9 @@ function installApp() {
 			perDay: () => []
 		},
 		attempts: { finishedSince: () => [], countFinished: () => 0 },
-		workers: { list: () => [] }
+		workers: { list: () => [] },
+		// /api/metrics is the host's; this test is about its window, so the caller is the host.
+		hostKey: { isHost: () => true }
 	};
 }
 
@@ -39,7 +41,7 @@ function callStats(days: string) {
 	return statsGET({ url: new URL(`http://x/api/stats?days=${days}`) } as never);
 }
 function callMetrics(days: string) {
-	return metricsGET({ url: new URL(`http://x/api/metrics?days=${days}`) } as never);
+	return metricsGET({ url: new URL(`http://x/api/metrics?days=${days}`), cookies: { get: () => 'h' } } as never);
 }
 
 test('metrics: ?days=0.5 clamps the window to at least 1, not 0 (its docstring bound)', async () => {

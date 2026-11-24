@@ -47,6 +47,7 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 	try {
 		const tv = await world.openTv();
 		const theo = await world.openPhone('Theo');
+		await world.becomeHost(theo);
 		// The join address is a machine setting; with it set, the TV paints a QR instead of the operator notice.
 		await theo.goto('/settings/server');
 		await theo.locator(SEL.setting('join-origin')).fill('http://192.168.7.42:3000');

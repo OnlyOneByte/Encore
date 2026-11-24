@@ -468,13 +468,18 @@ async function openSurface(
 	if (frame.surface === 'tv') return { page: await world.openTv(), context: null };
 	if (frame.surface === 'phone') {
 		const page = await world.openPhone('Maya');
+		// The host's view of settings, every control live, which is the frame each settings shot is about.
+		await world.becomeHost(page);
 		if (frame.viewport) await page.setViewportSize(frame.viewport);
 		return { page, context: null };
 	}
 	// An anonymous context, made here rather than through the `page` fixture so the frame's viewport is the
-	// one it is laid out at from the first paint, and so a frame that wants no session cannot inherit one.
+	// one it is laid out at from the first paint, and so a frame that wants no singer session cannot inherit one.
+	// It holds the host session, which joins no one and is what /metrics needs.
 	const context = await browser.newContext({ baseURL: world.baseURL, viewport: frame.viewport });
-	return { page: await context.newPage(), context };
+	const page = await context.newPage();
+	await world.becomeHost(page);
+	return { page, context };
 }
 
 for (const frame of FRAMES) {

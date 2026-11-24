@@ -14,8 +14,9 @@ const APP_KEY = Symbol.for('encore.app');
 /** Minimal app exposing only what the room PUT handler reads via getApp(), backed by a real repo. */
 function installApp(settings: SettingsRepository, activeRoomId = 'active-room') {
 	(globalThis as Record<PropertyKey, unknown>)[APP_KEY] = {
-		// A joined singer: can(actor,'settings:write-room') passes iff singerId is truthy.
-		singers: { bySessionToken: () => ({ id: 'singer-1' }) },
+		// The host: can(actor,'settings:write-room') passes iff the host session is live.
+		hostKey: { isHost: () => true },
+		now: () => 0,
 		settings,
 		// An omitted ?roomId= falls back to the LIVE room, not the literal 'main'.
 		activeRoomId,

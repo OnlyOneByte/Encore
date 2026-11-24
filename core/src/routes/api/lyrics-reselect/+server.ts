@@ -1,8 +1,10 @@
-// POST /api/lyrics-reselect — { mediaId, ref } | { mediaId, text } -> re-pick a song's lyrics and re-time them: a fallback for when the ranker chose wrong. The user either picks a different STORED candidate by ref, or PASTES words (a `manual` source), and the align step re-times the chosen text from the retained vocals stem. Requires a joined singer, like /api/process — no anonymous compute, no capability gate beyond "joined" (see docs/ARCHITECTURE.md §10).
+// POST /api/lyrics-reselect — { mediaId, ref } | { mediaId, text } -> re-pick a song's lyrics and re-time them: a fallback for when the ranker chose wrong. The user either picks a different STORED candidate by ref, or PASTES words (a `manual` source), and the align step re-times the chosen text from the retained vocals stem. Host only: it changes a library song for every room (docs/SERVER.md#the-host-key).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { can } from '$lib/server/capabilities';
+import { isHost } from '$lib/server/host-gate';
 import { mediaStatusFor } from '$lib/server/jobs/media-status';
 import { requestLyricsReselect, type ReselectRefusal } from '$lib/server/jobs/process';
 import { optionalString, readJsonBody, requiredString } from '$lib/server/http/json-body';
@@ -24,8 +26,11 @@ const REFUSAL_MESSAGE: Record<ReselectRefusal, string> = {
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
+	if (!can({ host: isHost(cookies) }, 'media:edit')) {
+		return json({ error: "only the host can change a song's lyrics" }, { status: 403 });
+	}
+	// The host need not have joined; when they have, the re-time is theirs in the job ledger.
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
-	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
 	const body = await readJsonBody(request);
 	const mediaId = requiredString(body, 'mediaId');
@@ -42,7 +47,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		mediaId,
 		{ ref, text },
 		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now },
-		singer.id
+		singer?.id
 	);
 	if (typeof result === 'string') {
 		return json({ error: REFUSAL_MESSAGE[result], reason: result }, { status: REFUSAL_STATUS[result] });

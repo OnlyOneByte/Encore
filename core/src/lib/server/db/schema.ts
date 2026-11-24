@@ -22,6 +22,7 @@ export const singers = sqliteTable(
 		id: text('id').primaryKey(),
 		displayName: text('display_name').notNull(),
 		color: text('color').notNull(),
+		// SHA-256 hex of the `encore_singer` cookie, never the cookie itself: a copied DB file must not be a set of logins.
 		sessionToken: text('session_token').notNull(),
 		joinedAt: integer('joined_at').notNull(),
 		// NULL means "has not sung", distinct from 0, which sorts ahead of everyone who has. Here and not in `plays`, which deliberately carries no singer id.
@@ -35,6 +36,13 @@ export const singers = sqliteTable(
 		roomIdx: index('singers_room_idx').on(t.roomId)
 	})
 );
+
+// A phone the host unlocked, keyed by the SHA-256 hex of its `encore_host` cookie. See docs/SERVER.md#the-host-key.
+export const hostSessions = sqliteTable('host_sessions', {
+	tokenHash: text('token_hash').primaryKey(),
+	createdAt: integer('created_at').notNull(),
+	expiresAt: integer('expires_at').notNull()
+});
 
 export const media = sqliteTable('media', {
 	id: text('id').primaryKey(),

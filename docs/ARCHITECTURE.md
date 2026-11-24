@@ -881,25 +881,27 @@ Keep these intact:
 
 - Thumbnail proxy: HTTPS-only + host allowlist (SSRF boundary).
 - `/media`: per-root path-containment checks through `safeMediaPath`.
-- Session token: unique index; singer identity comes from the cookie, not client claims.
+- Session tokens: stored as SHA-256 under a unique index; singer identity comes from the cookie, not client
+  claims.
+- The host key: settings, the operator pages and song deletes need an `encore_host` session, from the link
+  core prints at boot or `ENCORE_ADMIN_TOKEN` (`docs/SERVER.md#the-host-key`, with the threat model).
+- Requests from other sites: every unsafe-method request, on any path, and the `/ws` upgrade must come from
+  our origin, and bodies must be JSON; no check reads the raw path (`docs/SERVER.md#requests-from-other-sites`).
 - yt-dlp: query is one argv element, with a kill timer — never shell-concatenate user input.
 - Containers: non-root, `no-new-privileges`, `cap_drop: [ALL]`, pinned base/dependencies.
 - Workers dial home; core does not need inbound reachability to arbitrary worker hosts.
 
 Known and accepted, not an oversight:
 
-- **There is no operator identity.** The only auth axis is anonymous vs _any_ singer holding a session
-  cookie, which any device on the LAN obtains by POSTing `/api/join` with a name. So a "joined singer"
-  check is a liveness check, not an authorization one.
-- **Ownership is the one narrowing.** A singer's own entry is theirs: On deck moves and prefs, and the playing
+- **A singer is anyone on the LAN.** Any device obtains a session by POSTing `/api/join` with a name, so a
+  "joined singer" check is a liveness check. That is why singers hold only the party's capabilities (skip,
+  reorder, remove) and the machine's are the host's.
+- **Among singers, ownership is the one narrowing.** A singer's own entry is theirs: On deck moves and prefs, and the playing
   song's `key` and `guide` (`realtime/player.ts`) are refused from any other socket, the sender alone
   told why (`player:stale` with `singerOnly`). The transport (play, pause, skip, restart, seek) stays with everyone.
-- Consequently `/metrics`, `/api/metrics` and `/api/audit/*` ship **ungated**. They expose worker ids,
-  resolved model/backend/device names, host details and terminal error strings — no singer identities
-  and no media bytes. `PUT /api/settings` has the same property and higher stakes: any joined phone
-  can change the separator engine and which Whisper weights the fleet loads.
-- The honest fixes are a shared secret (`ENCORE_ADMIN_TOKEN`), binding those routes to a trusted
-  interface, or a real host/operator concept that closes both. Gating these is open work.
+- **Plain HTTP.** Anyone sniffing an open Wi-Fi can copy any cookie, the host's included. The fix is an HTTPS
+  reverse proxy, documented in the README rather than shipped.
+- **A `role=worker` socket is open when `ENCORE_WORKER_TOKEN` is unset**, with a loud boot warning.
 - `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
   than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
   even by mistake.

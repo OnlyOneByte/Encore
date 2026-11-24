@@ -4,18 +4,18 @@
 // than through a `+layout.server.ts`.
 import type { PageServerLoad } from './$types';
 import { getApp } from '$lib/server/app';
-import { settingsSinger } from '$lib/server/settings-gate';
+import { settingsLock } from '$lib/server/settings-gate';
 import { fallbackJoinOrigin, joinCandidates, publicOriginIsHttps } from '$lib/server/public-origin';
 import { offeredModels } from '$lib/server/jobs/offered-models';
 
 export const load: PageServerLoad = ({ cookies, request, url }) => {
-	// FOR THE GATE, not for the value: `settingsSinger` throws the join redirect, and every settings write is a 401
-	// without a session.
-	settingsSinger({ cookies, url });
+	// Throws the join redirect for a visitor who is neither the host nor joined.
+	const locked = settingsLock({ cookies, request, url });
 
 	const app = getApp();
 	return {
 		settings: app.settings.getEffective(app.activeRoomId),
+		locked,
 		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),
 		// This box's home-network addresses, so a host on two networks picks one instead of typing an IP.

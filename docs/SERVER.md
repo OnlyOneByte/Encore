@@ -473,10 +473,9 @@ queue and playback state was actually lost.
 
 ### Sessions and cookies
 
-There is no operator identity and none is planned in this shape; see `docs/ARCHITECTURE.md` §10 for what
-that leaves open.
+A singer's cookie runs the party; the host's runs the machine ([The host key](#the-host-key)).
 
-- **One cookie: `encore_singer`.** It is written by exactly one live writer, `cookies.set` in
+- **One singer cookie: `encore_singer`.** It is written by exactly one live writer, `cookies.set` in
   `src/routes/api/join/+server.ts`, and cleared by `cookies.delete` in
   `src/routes/api/leave/+server.ts` with a MATCHING `path`, or the delete does not apply.
 - **A cookie is a browser, not a tab, and a Leave ends it on the server.** The tabs of one phone share the
@@ -496,8 +495,12 @@ that leaves open.
 - **There is no room cookie.** A room is a tenancy boundary, so a room id resolves through the singer's row
   in `src/lib/server/realtime/room-scope.ts` and never as a client claim. Never reintroduce one, and never
   write prose claiming the room-scoping chain reads one.
-- **`singers.session_token` carries a unique index.** Identity is derived from the cookie's token, never
-  from anything the client asserts about who it is.
+- **`singers.session_token` holds the SHA-256 of the cookie, never the cookie**, under a unique index, and
+  every lookup hashes the presented cookie first (`hashToken`). A copied DB file or backup is therefore not a
+  set of logins: the stored value presented as a cookie resolves to no one. A row written before hashing is
+  hashed in place at boot (`hashLegacyTokens`, idempotent: a hash is 64 hex characters, a token 32), so the
+  phones already joined stay joined. Identity is derived from the cookie's token, never from anything the
+  client asserts about who it is.
 - **A phone learns its room id from the `/api/join` RESPONSE BODY**, never from a cookie.
 - **A TV carries no singer, and its one cookie names a screen, not a room.** It binds its room from the
   join CODE on the WS URL — the same code the QR encodes — resolved through the rooms table, and falls back
@@ -510,17 +513,20 @@ that leaves open.
   it: IN-ROOM (full access), FOREIGN (refused, and subscribed only to its own room's topic), SPECTATOR (no
   room at all — a legitimate viewer, still gated per command on mutation). An unscoped viewer of the served
   room is not a cross-room leak, and treating it as one breaks the TV.
-- **HTTP statuses are part of the contract, because the phone branches on them.** `429` means specifically
-  the per-singer concurrent-process cap, so a limit is distinguishable from a generic refusal; `409` is a
+- **HTTP statuses are part of the contract, because the phone branches on them.** `429` means a limit, and
+  exactly two exist: the per-singer concurrent-process cap on `/api/process`, and the wrong-key backoff on
+  `POST /api/host` (with `Retry-After`), so a limit is distinguishable from a generic refusal; `409` is a
   conflict the caller can resolve (a taken name, a song that is not processable); `404` is an unknown media
   or room; `400` is malformed input. Substituting one for another changes what the phone tells a guest.
-- **Route auth posture is pinned per METHOD, and the registry is CLOSED** — a new route method with no
-  entry fails. `POST /api/join` is necessarily ungated, since it is how a session is acquired. `GET` on
-  `/api/library`, `/api/search`, `/api/stats`, `/api/thumb`, `/api/metrics`, `/api/room-preview`,
-  `/api/audit/[mediaId]` and `/api/settings` are ungated; `PUT /api/settings` and `PUT /api/settings/room`
-  are capability-gated; everything that mutates a caller's own record or queues work is session-gated,
-  including `POST /api/delete-media`. `/api/thumb` is bounded by an https-only host allowlist rather than by
-  a session, which is the SSRF boundary and not a convenience.
+- **Route auth posture, per method.** `POST /api/join` is necessarily ungated, since it is how a session is
+  acquired, and `POST /api/host` is how the host's is. `GET` on `/api/library`, `/api/search`, `/api/stats`,
+  `/api/thumb`, `/api/room-preview`, `/api/settings` and `/api/host` is ungated; `GET /api/audit/[mediaId]`
+  answers anyone with the song's catalog row and the host with its history. HOST-ONLY: `PUT /api/settings`,
+  `PUT /api/settings/room`, `GET /api/metrics`, `POST /api/delete-media`, `POST /api/lyrics-reselect`,
+  `DELETE /api/host`, and the `/metrics`, `/metrics/[mediaId]` and `/admin` pages; the song page offers the
+  lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
+  session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party. `/api/thumb` is bounded by an https-only host allowlist rather than by a
+  session, which is the SSRF boundary and not a convenience.
 - **`plays` carries no singer column, structurally.** That is what makes the public stats endpoints
   aggregate-only by construction rather than by a filter, so no per-singer figure can be served from them
   even by mistake.
@@ -549,6 +555,78 @@ seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
 `encore_tv` value (cookies are not port-scoped) counts as the same screen as its holder. That buys nothing a
 `tv:claim` does not already give any LAN device under the no-lockout rule, so it is not a defect; never build
 authorization on the seat.
+
+### The host key
+
+Proposal 30, PR 1 (#1080, #1119). The host changes settings, reads the operator pages, deletes songs and
+re-picks a song's lyrics; a singer runs the party (skip, reorder, remove, pick a song, as before); the TV
+only displays. `can()` (`src/lib/server/capabilities.ts`) is the one place that says so:
+`settings:write-room`, `settings:write-global`, `operator:read`, `media:delete` and `media:edit` need
+`actor.host`, and nothing else does.
+
+- **Where the key comes from.** With `ENCORE_ADMIN_TOKEN` set, that is the key. Unset, core mints a 256-bit
+  key at every start (`HostKey`, `src/lib/server/host-key.ts`) and prints it once, as
+  `[core] Host link: <address>/host#k=<key>`; `docker compose logs core` shows it. Only its SHA-256 is kept
+  in memory after that line, and it is never written to the DB. The address is the bound one when `HOST` is
+  a specific address and no join address is declared; otherwise the same pick as the TV's QR
+  (`startupAddress`), falling back to `localhost`.
+- **One tap.** The key rides in the URL FRAGMENT, which no browser sends to a server, so it never reaches a
+  request log, a proxy or a `Referer`. `/host` reads it, strips it from the address bar and history before
+  anything else, and `POST`s it to `/api/host`, which swaps it for an `encore_host` session and lands on
+  `/settings`. A host need not have joined. `/host` with no fragment says where the link is and takes a
+  pasted key, for the `ENCORE_ADMIN_TOKEN` case and for a link that lost its fragment.
+- **The session.** `encore_host` is 256 random bits, `httpOnly`, `sameSite: 'strict'`, `path: '/'`,
+  `secure` as `encore_singer`, 30 days, and expires on the server too (`host_sessions.expires_at`). Only its
+  SHA-256 is stored. Every unlock mints a fresh one, so a value planted from another port on this machine
+  (cookies are not port-scoped) is never promoted. "Sign out every host phone" on `/host` deletes every row.
+- **What a guest sees.** `/settings` and `/settings/server` load for a joined guest with the panel `inert`
+  and one card, "Only the host can change these", naming what the host link looks like. The operator pages
+  send anyone else to `/host`. The server refuses the write either way, with 403.
+
+**Threat model.** The audience is phones on the host's Wi-Fi, over plain HTTP; the north star rules out
+exposure to the internet. What each attack gets:
+
+| Attack | Outcome |
+| --- | --- |
+| A guest elevates to host | Refused. The host capabilities read only `encore_host`, and a singer cookie presented as one resolves to no session. |
+| A guest retargets the QR (`joinOrigin`) to a phishing page | Refused (403); this was the most direct path to stealing a session. |
+| The TV, or a cookieless socket or request | Holds no capability: no singer, no host. A socket never carries the host, so nothing on `/ws` is host-only. |
+| Brute-forcing the key | Infeasible, because of key length alone: a minted key is 256 bits, and core refuses to start with an `ENCORE_ADMIN_TOKEN` under 24 characters. `KeyTries` does NOT slow guessing, since the right key is always accepted: after five wrong keys from one address it answers further wrong keys with 429 (1 minute, doubling up to an hour, with `Retry-After`) instead of 403, which only hides whether a guess was wrong. Whether to remove it or make it meaningful is #1173. The comparison hashes both sides to 32 bytes and uses `timingSafeEqual`, so neither length nor content leaks. |
+| Flooding the try table from many addresses (IPv6) to reset a lockout | Refused. The table holds 1024 addresses and, when full, drops the oldest one still within its free tries, then the oldest whose lockout has run out. A locked address is never dropped; with every entry locked, a new address gets 429. |
+| A guest behind the host's address (NAT, a proxy, Docker Desktop) locking the host out with wrong keys | Can't. The correct key unlocks whatever its address's count, which is safe because a key of at least 24 characters cannot be guessed. |
+| A percent-encoded or otherwise re-spelled path (`/%61pi/metrics`, `/api/%6Detrics`, `..`) | Gets nothing. The Origin and JSON checks run on every unsafe method on every path, matched or not. The host gates live in each route and page load, which SvelteKit reaches only after decoding, and the hook's second layer keys on `event.route.id`, never the raw path. p9 sends each spelling raw. |
+| Stealing a token from the DB file or a backup | Useless: singer and host tokens are stored as SHA-256 and looked up by hash. |
+| Replaying a copied singer cookie after Leave | Refused: Leave replaces the stored hash with one of a token nobody holds (`endSession`). |
+| Sniffing the Wi-Fi | Over plain HTTP any cookie can be copied, as before. Put Encore behind an HTTPS proxy when guests are not trusted. |
+| The key in logs, `queue:sync` or `/metrics` | The minted key appears in the one boot line and nowhere else. No payload carries a token or its hash: rosters come from `listPublic`, which strips both. |
+| CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
+| DNS rebinding (predates #1140) | Open: the Origin check trusts the request's own `Host` and `X-Forwarded-Host`, so a rebinding page can act as a cookieless LAN client (join, queue, skip). It never holds the host's or a guest's cookie, which are bound to the box's real address. A `Host` allowlist is #1144. |
+| A rogue worker | Unchanged: `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. The Origin check passes the worker, which sends no Origin. |
+
+**A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open
+`<address>/host#k=<that value>`. Existing host sessions survive a restart.
+
+### Requests from other sites
+
+`src/lib/server/http/same-origin.ts`, run by `src/hooks.server.ts` on every request whose method is not
+`GET`, `HEAD` or `OPTIONS`, whatever its path, and by `server.ts` on every `/ws` upgrade, so a page on another
+site cannot make a guest's or the host's browser act with its cookies. The hook never tests the raw path: a
+client can percent-encode it (`/%61pi/leave`) and SvelteKit still routes it.
+
+- **Origin, or failing that Referer, must be ours**: the request's own host, the join address or
+  `ENCORE_PUBLIC_ORIGIN`. Another host, another port on this machine, or the literal `null` a sandboxed
+  iframe sends is refused with 403. A request with neither header is a non-browser client (the worker,
+  `curl`, a probe), which carries no borrowed cookie, so it passes.
+- **The WebSocket upgrade gets the same check.** CORS does not cover a WebSocket, and `SameSite` does not
+  separate ports, so without it a page served from any other port on this machine (or a same-site name)
+  could open `/ws` with a guest's cookie and act as them.
+- **Only JSON bodies are accepted** (415 otherwise), twice: the hook refuses a body of any other type, and
+  every route that reads a body refuses a missing or wrong `Content-Type` itself (`readJsonBody`,
+  `requireJsonType`). A cross-site `<form>` can only send urlencoded, multipart or text/plain, and a no-cors
+  `fetch` with a `Blob` body sends no type at all. An empty body (`POST /api/leave`) is not a body of the
+  wrong type; the Origin check is what guards it.
+- `encore_host` is also `SameSite=Strict`, so no other SITE's request carries it. Another port on this
+  machine is the same site and does carry it, which is why the Origin check, not the cookie, is the guard.
 
 ### Schema and migrations
 

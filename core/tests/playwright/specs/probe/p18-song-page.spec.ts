@@ -77,6 +77,12 @@ test('a REFUSED pick says why, releases the control, and keeps the pasted words'
 		});
 	});
 
+	// A guest is never offered the re-pick: only the host may change a song's lyrics.
+	await phone.goto(`${world.baseURL}/song/${row.id}`);
+	await expect(phone.locator('.facts.card')).toBeVisible();
+	await expect(phone.locator('.reselect-toggle')).toHaveCount(0);
+
+	await world.becomeHost(phone);
 	await phone.goto(`${world.baseURL}/song/${row.id}`);
 	await expect(phone.locator('.facts.card')).toBeVisible();
 	await phone.locator('.reselect-toggle').click();
@@ -112,6 +118,7 @@ test('a REFUSED pick says why, releases the control, and keeps the pasted words'
 
 test('an ACCEPTED pick is re-read, without collapsing the disclosure', async ({ world }) => {
 	const phone = await world.openPhone('Reeda');
+	await world.becomeHost(phone);
 	const row = await oneIndexedSong(world, phone);
 
 	/* The re-read's observable is a SECOND candidate arriving — a worker's answer to the pick would reach the

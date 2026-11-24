@@ -297,6 +297,7 @@ test('[MOVED] the room default applies to a fresh song with no override', async 
 	const { worker, phone, tv, media } = await stage(world);
 	try {
 		await awaitMixSrc(tv, media[0]!);
+		await world.becomeHost(phone);
 		const res = await phone.request.put(`${world.baseURL}/api/settings/room`, {
 			data: { guideLevelDefault: ROOM_DEFAULT_ON }
 		});

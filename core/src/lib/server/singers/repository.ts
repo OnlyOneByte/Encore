@@ -1,7 +1,7 @@
 // Singer repository + session tokens. Singers are ephemeral identities (name + color) — no signup wall (ARCHITECTURE §1/§10). A crypto session token is minted on join and stored in a cookie; subsequent requests resolve the singer by that token.
 
-import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
+import { eq, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { singers } from '../db/schema';
 import { ulid, type Singer } from '../../contract';
@@ -16,13 +16,21 @@ export function mintSessionToken(): string {
 	return randomBytes(24).toString('base64url');
 }
 
+/** What the DB holds for a token. A lookup by this hash leaks nothing a timing attack could use: the input is 192 random bits. */
+export function hashToken(token: string): string {
+	return createHash('sha256').update(token).digest('hex');
+}
+
+/** A minted token is 32 base64url chars and its hash is 64 hex chars, so a row of any other length predates hashing. */
+const HASH_LENGTH = 64;
+
 export class SingerRepository {
 	#db: DB;
 	constructor(db: DB) {
 		this.#db = db;
 	}
 
-	/** Create a singer IN a room, minting id + session token. `roomId` is the party this singer belongs to — the room `/api/join` resolved (an explicit code or the active room) — scoping the roster, `least-recently-sung` ordering, and presence sweep to one party. The wire `Singer` carries no room field (unchanged contract); the joining phone still learns its own room, since /api/join returns `roomId` beside the singer. */
+	/** Create a singer IN a room, minting id + session token. `roomId` is the party this singer belongs to — the room `/api/join` resolved (an explicit code or the active room) — scoping the roster, `least-recently-sung` ordering, and presence sweep to one party. The wire `Singer` carries no room field (unchanged contract); the joining phone still learns its own room, since /api/join returns `roomId` beside the singer. The returned `sessionToken` is the only copy of the plain token: the row stores its hash. */
 	create(displayName: string, color: string, now: number, roomId: string): Singer {
 		const singer: Singer = {
 			id: ulid(now),
@@ -33,16 +41,37 @@ export class SingerRepository {
 		};
 		this.#db
 			.insert(singers)
-			.values({ ...singer, roomId })
+			.values({ ...singer, sessionToken: hashToken(singer.sessionToken), roomId })
 			.run();
 		return singer;
 	}
 
-	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId`. */
+	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId`; its `sessionToken` is the stored hash. */
 	bySessionToken(token: string | undefined | null): StoredSinger | null {
 		if (!token) return null;
-		const row = this.#db.select().from(singers).where(eq(singers.sessionToken, token)).all()[0];
+		const row = this.#db
+			.select()
+			.from(singers)
+			.where(eq(singers.sessionToken, hashToken(token)))
+			.all()[0];
 		return row ?? null;
+	}
+
+	/** One-time, idempotent boot step: hash any token stored before hashing, so the cookies phones already hold keep working. */
+	hashLegacyTokens(): number {
+		const legacy = this.#db
+			.select({ id: singers.id, token: singers.sessionToken })
+			.from(singers)
+			.where(sql`length(${singers.sessionToken}) != ${HASH_LENGTH}`)
+			.all();
+		this.#db.transaction((tx) => {
+			for (const row of legacy)
+				tx.update(singers)
+					.set({ sessionToken: hashToken(row.token) })
+					.where(eq(singers.id, row.id))
+					.run();
+		});
+		return legacy.length;
 	}
 
 	byId(id: string): StoredSinger | null {
@@ -60,7 +89,11 @@ export class SingerRepository {
 	/** End this singer's session: the token is replaced by one nobody holds, so the old cookie, wherever a copy of it
 	 *  is (another tab's socket reconnecting, a saved request), resolves to no one. The row stays for the sing history. */
 	endSession(id: string): void {
-		this.#db.update(singers).set({ sessionToken: mintSessionToken() }).where(eq(singers.id, id)).run();
+		this.#db
+			.update(singers)
+			.set({ sessionToken: hashToken(mintSessionToken()) })
+			.where(eq(singers.id, id))
+			.run();
 	}
 
 	/** Stamp that this singer has STARTED a song — drives `least-recently-sung` ordering. Records only that they sang and when, never what, matching the privacy line the `plays` table draws (no singer id there). Idempotent: called from the one place a song becomes current. */
