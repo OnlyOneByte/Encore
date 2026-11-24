@@ -198,6 +198,9 @@ of failed processes on specific videos is not a broken install.
 >   Core logs one loud warning at startup when it is unset. The token travels in **cleartext**, as the
 >   `token=` query of a plain `ws://` URL: it keeps stray LAN devices out, not anyone who can watch
 >   the LAN's traffic. It is for a trusted LAN only.
+> - Core answers only to an IP address, `localhost`, the join address and the names in
+>   `ENCORE_ALLOWED_HOSTS` (anything else gets `421`), so a web page cannot reach it by DNS rebinding.
+>   Opening it as `http://mybox.local:3000` needs that name in `ENCORE_ALLOWED_HOSTS`.
 >
 > Bind to a trusted interface or put it behind a gateway. Run natively, `HOST=127.0.0.1` keeps it off the
 > network entirely. **Under Docker, `HOST` and `PORT` do nothing**: compose sets `PORT=3000`, passes no
@@ -278,6 +281,8 @@ one of them.
 | `ENCORE_ADMIN_TOKEN`     | unset        | a fixed host key, at least 24 characters (core refuses to start with a shorter one); the host link is then `/host#k=<value>`. Unset means core makes a new key at every start and prints the host link — see Security                                                                                                                                                                                     |
 | `ENCORE_WORKER_TOKEN`    | unset        | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. **Unset means worker registration is unauthenticated** — see Security                                                                                                                                                                                |
 | `ENCORE_PUBLIC_ORIGIN`   | unset        | address the TV's join QR advertises, e.g. `http://192.168.1.20:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`). This is the _boot-time_ declaration; **Joining** in `/settings/server` overrides it at runtime with no restart |
+| `ENCORE_ALLOWED_HOSTS`   | unset        | extra names core answers to, comma-separated (e.g. `mybox.local,karaoke.lan`; ports ignored). Core always answers to any IP address, `localhost` and the join address; any other `Host` gets `421`, which is what stops a DNS-rebinding page. Set it when you open Encore by a name |
+| `ENCORE_TRUST_PROXY`     | unset        | `1` → believe `X-Forwarded-Host` and `X-Forwarded-Proto`. Set it only behind a proxy or tunnel that sets them itself; otherwise anyone can send them |
 | `DATA_DIR`               | `./data`     | SQLite (WAL) location — created if missing                                                                                                                                                                                                                                                                                                                |
 | `MEDIA_DIR`              | `./media`    | root of the media volume — created if missing                                                                                                                                                                                                                                                                                                             |
 | `MEDIA_STORE`            | `local`      | `local` volume or `object` (MinIO/S3, for remote workers)                                                                                                                                                                                                                                                                                                 |

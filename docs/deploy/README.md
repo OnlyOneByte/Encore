@@ -94,7 +94,9 @@ never outranks the home network. A VPN that routes through its own gateway can s
 Settings -> This machine. It never shows a 172.16-31.x address (Docker's and WSL2's NAT), so
 a home network on that range gets the "Phones can't open this address" warning: type the address in
 Settings -> This machine, or pick it from the choices there. Behind a tunnel or proxy, set
-`ENCORE_PUBLIC_ORIGIN`. A tunnel that rewrites `Host` to localhost (`ngrok --host-header=rewrite`) looks
+`ENCORE_PUBLIC_ORIGIN`, which is also a name core answers to, and `ENCORE_TRUST_PROXY=1` if it sets
+`X-Forwarded-Host` and `X-Forwarded-Proto` (core ignores them otherwise). Any other name the browser uses goes in
+`ENCORE_ALLOWED_HOSTS`, or core answers `421` ([the host allowlist](../SERVER.md#the-host-allowlist)). A tunnel that rewrites `Host` to localhost (`ngrok --host-header=rewrite`) looks
 like the localhost TV, so its visitors see the box's private LAN address in the QR; Settings -> This
 machine also lists those addresses to anyone who has joined.
 

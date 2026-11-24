@@ -1,6 +1,6 @@
 // Derived from the request, NEVER `url.origin`: adapter-node's protocol defaults to "https" whenever
 // PROTOCOL_HEADER is unset, even on a plain LAN request, so a QR built from it opens on no phone. This
-// process only ever speaks plain HTTP itself, so believe a forwarding header when present, else say http.
+// process only ever speaks plain HTTP itself, so believe a forwarding header behind a trusted proxy, else say http.
 
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -34,14 +34,22 @@ function configuredOrigin(): string | null {
 	return normalized;
 }
 
-/** A non-empty `configured` wins outright; otherwise `host` comes from Host/X-Forwarded-Host rather than
+/** `ENCORE_TRUST_PROXY=1`: a proxy in front sets X-Forwarded-*. Off, those headers are anyone's to forge. */
+export const trustsProxy = () => process.env.ENCORE_TRUST_PROXY?.trim() === '1';
+
+/** The host[:port] the browser opened: Host, or X-Forwarded-Host behind a trusted proxy. */
+export function requestHost(request: Request, url: URL): string {
+	const forwarded = trustsProxy() ? request.headers.get('x-forwarded-host') : null;
+	return (forwarded ?? request.headers.get('host') ?? url.host).split(',')[0]!.trim();
+}
+
+/** A non-empty `configured` wins outright; otherwise `host` comes from `requestHost` rather than
  *  `url`, so a LAN IP, a tunnel hostname and localhost each resolve from where the request came from. */
 export function resolveOrigin(request: Request, url: URL, configured: string | null | undefined): string {
 	if (configured) return configured;
-	const headers = request.headers;
 	let proto = '';
-	for (const h of PROTO_HEADERS) {
-		const raw = headers.get(h);
+	for (const h of trustsProxy() ? PROTO_HEADERS : []) {
+		const raw = request.headers.get(h);
 		if (raw) {
 			// A chain of proxies APPENDS, so the FIRST entry is the client-facing scheme.
 			proto = raw.split(',')[0]!.trim().toLowerCase();
@@ -49,8 +57,7 @@ export function resolveOrigin(request: Request, url: URL, configured: string | n
 		}
 	}
 	if (proto !== 'http' && proto !== 'https') proto = 'http';
-	const host = (headers.get('x-forwarded-host') ?? headers.get('host') ?? url.host).split(',')[0]!.trim();
-	return `${proto}://${host}`;
+	return `${proto}://${requestHost(request, url)}`;
 }
 
 /** The scheme the cookie must agree with. Deliberately does NOT consult `joinOrigin`; see below. */
@@ -66,6 +73,11 @@ export function publicOrigin(request: Request, url: URL): string {
  */
 export function joinOrigin(request: Request, url: URL): string {
 	return storedJoinOrigin() || fallbackJoinOrigin(request, url);
+}
+
+/** The addresses an operator declared: the saved join address and ENCORE_PUBLIC_ORIGIN. */
+export function declaredOrigins(): string[] {
+	return [storedJoinOrigin(), configuredOrigin()].filter((o): o is string => !!o);
 }
 
 function storedJoinOrigin(): string {
