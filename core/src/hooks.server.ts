@@ -5,7 +5,7 @@ import { isHost } from '$lib/server/host-gate';
 
 /** Keyed on the MATCHED route, never the raw path, which a client can percent-encode past a prefix test. The route
  *  checks the host too; this is the second layer. */
-const HOST_ONLY_ROUTES = new Set(['/api/metrics']);
+const HOST_ONLY_ROUTES = new Set(['/api/metrics', '/api/library/sizes']);
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 

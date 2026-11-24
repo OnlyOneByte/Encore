@@ -25,7 +25,7 @@
  * three exports went with them rather than surviving as a module no surface imports with tests that only proved
  * arithmetic. `libraryWindow` below is the survivor and is a DOOR rather than a cap; see its note.
  */
-import type { Media } from '$lib/contract';
+import type { LibrarySizes, Media } from '$lib/contract';
 
 /** How rows are ordered. `newest` is the order the server already returns; see {@link sortLibrary}. */
 export type LibrarySort = 'newest' | 'title' | 'artist';
@@ -171,6 +171,21 @@ export function browseLibrary(input: {
 	if (terms.length) rows = rows.filter((m) => matchesQuery(haystackFor(m, tags[m.id]), terms));
 
 	return sortLibrary(rows, sort);
+}
+
+/** The host's two clean-up sorts in Manage, over GET /api/library/sizes. */
+export type ManageSort = 'biggest' | 'least-sung';
+
+/** Ties fall back to title, so the order never depends on what the server returned first. */
+export function sortManaged(rows: Media[], sort: ManageSort, songs: LibrarySizes['songs']): Media[] {
+	const key = (m: Media) => (sort === 'biggest' ? -(songs[m.id]?.bytes ?? 0) : (songs[m.id]?.plays ?? 0));
+	return [...rows].sort((a, b) => key(a) - key(b) || COLLATOR.compare(foldForMatch(a.title), foldForMatch(b.title)));
+}
+
+/** "96 MB" under a gigabyte, "12.4 GB" from there, decimal like the cap. */
+export function formatBytes(bytes: number): string {
+	if (bytes < 1e9) return `${bytes > 0 ? Math.max(1, Math.round(bytes / 1e6)) : 0} MB`;
+	return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
 /** Count descending then name ascending, so the chips lead with the artists you actually have most of. */

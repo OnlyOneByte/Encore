@@ -65,6 +65,8 @@ import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent, type HubDeps, type Publish } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
+import { PendingDeletes } from './media/library-manage';
+import { deleteMediaEntirely, type DeleteMediaResult } from './media/delete';
 import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '../contract';
 
 export interface EncoreApp {
@@ -98,6 +100,8 @@ export interface EncoreApp {
 	popularity: PopularityTracker;
 	mediaStore: MediaStore; // local volume (default) or object-store (S3/MinIO)
 	mediaStoreConfig: MediaStoreConfig; // the resolved config sent to remote workers in worker:welcome
+	/** Library deletes waiting out their Undo window. */
+	pendingDeletes: PendingDeletes;
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
 	/** Replaced by server.ts with the real socket map. */
 	toWorker: (workerId: string, cmd: WorkerCommand) => void;
@@ -390,12 +394,18 @@ export function getApp(): EncoreApp {
 				const ready = mediaRepo.listReady();
 				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m), lastUsedAt: 0 }));
 				// Recency from the sidecar: lastPlayedAt, else addedAt for a never-played song.
+				const kept = new Set<string>();
+				let keptBytes = 0;
 				for (const c of candidates) {
 					const side = await readSidecar(c.mediaId);
 					c.lastUsedAt = side?.library.lastPlayedAt ?? side?.library.addedAt ?? 0;
+					if (side?.library.keep) {
+						kept.add(c.mediaId);
+						keptBytes += c.derivedBytes;
+					}
 				}
-				// Never strip a process out from under a live or queued entry: hydrate() restored the queue BEFORE this pass, so a restart mid-party with the cap set would otherwise evict the playing song.
-				const protectedIds = new Set<string>(entries.map((e) => e.mediaId));
+				// Never strip a process out from under a live or queued entry: hydrate() restored the queue BEFORE this pass, so a restart mid-party with the cap set would otherwise evict the playing song. Kept songs are never evicted either.
+				const protectedIds = new Set<string>([...entries.map((e) => e.mediaId), ...kept]);
 				const currentMediaId = playback ? entries.find((e) => e.id === playback.currentEntryId)?.mediaId : undefined;
 				if (currentMediaId) protectedIds.add(currentMediaId);
 				const doomed = planEviction(candidates, cap, protectedIds);
@@ -410,6 +420,12 @@ export function getApp(): EncoreApp {
 				if (doomed.length > 0) {
 					console.log(
 						`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`
+					);
+				}
+				if (keptBytes > 0.9 * cap) {
+					console.warn(
+						`[core] retention: kept songs use ${(keptBytes / 1e9).toFixed(1)} of ${(cap / 1e9).toFixed(1)} GB; none of them is evicted` +
+							(doomed.length ? `, so these unkept songs went instead: ${doomed.join(', ')}` : '')
 					);
 				}
 			}
@@ -458,16 +474,7 @@ export function getApp(): EncoreApp {
 		})();
 	});
 
-	/** A room-wide `queue:sync`, for the hub's own re-sends (a song turned ready, the maker verdict moved). */
-	const roomSync = () =>
-		syncEvent(state, {
-			mediaById,
-			listSingers: () => app.singers.listPublic(app.activeRoomId),
-			listOnline: () => app.presence.online(),
-			getSettings: () => app.settings.getEffective(app.activeRoomId),
-			canMake: () => app.workerHub.canMake(),
-			canFetch: () => app.workerHub.canFetch()
-		});
+	const roomSync = () => roomSyncOf(app);
 
 	const workerHub = new WorkerHub({
 		jobs,
@@ -600,6 +607,7 @@ export function getApp(): EncoreApp {
 		popularity: createPopularityTracker(),
 		mediaStore,
 		mediaStoreConfig,
+		pendingDeletes: new PendingDeletes((mediaId) => deleteSongNow(app, mediaId)),
 		// No-op sinks until server.ts wires Bun.serve; routes and state still work without them.
 		publish: () => {},
 		toWorker: () => {},
@@ -611,6 +619,36 @@ export function getApp(): EncoreApp {
 
 	g[APP_KEY] = app;
 	return g[APP_KEY]!;
+}
+
+/** A room-wide `queue:sync`, for the hub's own re-sends (a song turned ready, the maker verdict moved, a rename). */
+export function roomSyncOf(app: EncoreApp): Extract<ServerEvent, { type: 'queue:sync' }> {
+	return syncEvent(app.state, {
+		mediaById: app.mediaById,
+		listSingers: () => app.singers.listPublic(app.activeRoomId),
+		listOnline: () => app.presence.online(),
+		getSettings: () => app.settings.getEffective(app.activeRoomId),
+		canMake: () => app.workerHub.canMake(),
+		canFetch: () => app.workerHub.canFetch()
+	});
+}
+
+/** The hard delete behind /api/delete-media and the library's Undo window. */
+export function deleteSongNow(app: EncoreApp, mediaId: string, actorSingerId?: string): DeleteMediaResult {
+	// The delete drives applyQueueOp + reconcileOnReady directly, not handleQueueCommand, so a no-op idempotency ledger is correct.
+	const hub = buildHubDeps(app, {
+		broadcast: (e) => app.publish(e),
+		actorSingerId,
+		listOnline: () => app.presence.online(),
+		listAway: () => [],
+		seenOp: () => false,
+		hasOp: () => false
+	});
+	return deleteMediaEntirely(mediaId, {
+		hub,
+		media: app.media,
+		cancel: { jobs: app.jobs, toWorker: app.toWorker, now: app.now }
+	});
 }
 
 /** server.ts calls this at boot to route broadcasts through Bun.serve's native pub/sub. */
@@ -672,6 +710,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 				now: app.now,
 				dispatch: () => app.workerHub.dispatch()
 			}),
+		isDeleting: (mediaId) => app.pendingDeletes.has(mediaId),
 		actorSingerId: perFrame.actorSingerId,
 		seenOp: perFrame.seenOp,
 		hasOp: perFrame.hasOp

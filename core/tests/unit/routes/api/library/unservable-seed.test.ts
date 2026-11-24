@@ -43,7 +43,8 @@ async function processingRows(unservableJobs: (jobId: string) => boolean) {
 		media: new MediaRepository(db),
 		jobs,
 		state: new AuthoritativeState(),
-		workerHub: { isUnservable: (id: string) => id === deadJob && unservableJobs(id), noMakerMedia: () => [] }
+		workerHub: { isUnservable: (id: string) => id === deadJob && unservableJobs(id), noMakerMedia: () => [] },
+		pendingDeletes: { has: () => false }
 	};
 	const res = await GET({
 		url: new URL('http://x/api/library'),
@@ -145,7 +146,8 @@ async function noMakerFailed(caps: string[] = []) {
 		media: new MediaRepository(db),
 		jobs,
 		state,
-		workerHub
+		workerHub,
+		pendingDeletes: { has: () => false }
 	};
 	const res = await GET({
 		url: new URL('http://x/api/library'),

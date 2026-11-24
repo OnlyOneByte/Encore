@@ -19,19 +19,24 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
-	import { originalKeyLabel, songDisplay } from '$lib/contract';
+	import { originalKeyLabel, songDisplay, type LibrarySizes } from '$lib/contract';
 	import {
 		artistFacetsOf,
 		browseLibrary,
 		FACET_CHIP_LIMIT,
+		formatBytes,
 		LIBRARY_PAGE,
 		libraryWindow,
+		sortManaged,
 		tagFacetsOf,
-		type LibrarySort
+		type LibrarySort,
+		type ManageSort
 	} from '$lib/library-browse';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
+	import ManageRow from '$lib/components/ManageRow.svelte';
+	import { Progress } from '$lib/components/ui/progress';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -40,6 +45,7 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import { toast } from 'svelte-sonner';
 	import { rememberedKey } from '$lib/stores/remembered-key';
+	import { isHostPhone } from '$lib/stores/host';
 
 	let me = $state<PublicSinger | null>(null);
 	let status = $state<RoomStatus>('checking');
@@ -87,8 +93,30 @@
 		   per arrival bounds it by construction, and on a first mount the flag is false, so this is inert in the
 		   common case. It does not replace the failure arm below: a guest who is still offline needs to be told. */
 		if (room.libraryFailed) void room.refreshLibrary();
+		// Only the host is offered Manage; a guest's page is unchanged.
+		void isHostPhone().then((yes) => (host = yes));
 		return stopMirror;
 	});
+
+	let host = $state(false);
+	let managing = $state(false);
+	let sizes = $state.raw<LibrarySizes | null>(null);
+	let openId = $state<string | null>(null);
+
+	async function loadSizes() {
+		const res = await fetch('/api/library/sizes').catch(() => null);
+		if (res?.ok) sizes = (await res.json()) as LibrarySizes;
+	}
+	function toggleManage() {
+		managing = !managing;
+		openId = null;
+		if (managing) void loadSizes();
+		else if (sort === 'biggest' || sort === 'least-sung') sort = 'title';
+	}
+	function onManaged() {
+		void room.refreshLibrary();
+		void loadSizes();
+	}
 
 	let query = $state('');
 	/* WHAT THE ROWS ARE FILTERED BY, 150ms behind the box. The field itself stays live — `query` is what the input
@@ -101,7 +129,7 @@
 	let appliedQuery = $state('');
 	let filterTimer: ReturnType<typeof setTimeout> | undefined;
 	let queryEl = $state<HTMLInputElement | null>(null);
-	let sort = $state<LibrarySort>('title');
+	let sort = $state<LibrarySort | ManageSort>('title');
 	/** How much of the match list is rendered. Grows on tap; back to one page whenever the match list changes, or a
 	 *  600-row DOM built up under one query would be handed straight to the next one. */
 	let revealed = $state(LIBRARY_PAGE);
@@ -132,15 +160,17 @@
 	const artistFacets = $derived(artistFacetsOf(library).slice(0, FACET_CHIP_LIMIT));
 	const tagFacets = $derived(tagFacetsOf(library, libraryTags).slice(0, FACET_CHIP_LIMIT));
 
-	const rows = $derived(
-		browseLibrary({
+	const rows = $derived.by(() => {
+		const managed = sort === 'biggest' || sort === 'least-sung' ? sort : null;
+		const found = browseLibrary({
 			library,
 			tags: libraryTags,
 			query: appliedQuery,
 			facet: { artist: pickedArtist, tag: pickedTag },
-			sort
-		})
-	);
+			sort: managed ? 'title' : (sort as LibrarySort)
+		});
+		return managed && sizes ? sortManaged(found, managed, sizes.songs) : found;
+	});
 	/** The window actually rendered, and what the reveal control still has behind it. */
 	const view = $derived(libraryWindow(rows, revealed));
 	/** What the ROWS reflect — the count line must never describe a query the list has not applied yet. */
@@ -161,6 +191,11 @@
 		['artist', 'Artist'],
 		['newest', 'Newest']
 	];
+	const MANAGE_SORTS: ReadonlyArray<readonly [ManageSort, string]> = [
+		['biggest', 'Biggest'],
+		['least-sung', 'Least sung']
+	];
+	const sorts = $derived(managing ? [...SORTS, ...MANAGE_SORTS] : SORTS);
 
 	let panelOpen = $state(false);
 	/** Nothing to refine with one song and no facets, and an empty disclosure is worse than no disclosure. */
@@ -176,6 +211,13 @@
 			? `${rows.length} of ${library.length} songs`
 			: `${library.length} ${library.length === 1 ? 'song' : 'songs'}`
 	);
+	/** "214 songs · 12.4 GB of 20 GB", from the media store's own sizes. */
+	const storageLabel = $derived(
+		sizes
+			? `${countLabel} · ${formatBytes(sizes.totalBytes)}${!sizes.capBytes ? '' : sizes.totalBytes > sizes.capBytes ? `, over the ${formatBytes(sizes.capBytes)} cap` : ` of ${formatBytes(sizes.capBytes)}`}`
+			: countLabel
+	);
+	const keptOverCap = $derived(!!sizes?.capBytes && sizes.keptBytes > 0.9 * sizes.capBytes);
 	/** The filtered-to-nothing sentence, hoisted for the reason this file already records for `countLabel` (the
 	 *  newline note in this `<script>`): inline across two lines it rendered "Nothing here matches“zzqq”." — Svelte
 	 *  trims the leading whitespace of a branch fragment's first text node, so neither half kept a separator and the
@@ -217,7 +259,7 @@
 		pickedTag = pickedTag === tag ? null : tag;
 		revealed = LIBRARY_PAGE;
 	}
-	function pickSort(next: LibrarySort) {
+	function pickSort(next: LibrarySort | ManageSort) {
 		sort = next;
 		revealed = LIBRARY_PAGE;
 	}
@@ -375,7 +417,26 @@
 							than fetching them, which is the whole difference from the field on `/`. It is still the line that
 							states it at every width — at --bp-lg it sits BESIDE the field rather than under it, which is the
 							same visual row and the place a desktop toolbar puts a count. -->
-					<p class="count" role="status" aria-live="polite">{countLabel}</p>
+					<p class="count" role="status" aria-live="polite">{managing ? storageLabel : countLabel}</p>
+					{#if managing && sizes?.capBytes}
+						<div class="storage-bar">
+							<Progress
+								value={Math.min(100, (sizes.totalBytes / sizes.capBytes) * 100)}
+								size="sm"
+								aria-label="Disk used"
+							/>
+						</div>
+					{/if}
+					{#if managing && keptOverCap && sizes?.capBytes}
+						<p class="count">
+							Kept songs use {formatBytes(sizes.keptBytes)} of {formatBytes(sizes.capBytes)}
+						</p>
+					{/if}
+					{#if host}
+						<Button variant="eyebrow" aria-pressed={managing} onclick={toggleManage}>
+							{managing ? 'Done' : 'Manage'}
+						</Button>
+					{/if}
 
 					<!-- COLLAPSED BY DEFAULT, and that is the page's main design decision. Expanded, the chip rows are
 							~420px of chrome on a nine-song library — seven artists, six tags and three sorts, each with its own
@@ -414,7 +475,7 @@
 								{#if library.length > 1}
 									<h2 class="grouphead">Sort</h2>
 									<div class="chips">
-										{#each SORTS as [value, label] (value)}
+										{#each sorts as [value, label] (value)}
 											<Button
 												variant={sort === value ? 'secondary' : 'outline'}
 												size="tap"
@@ -465,12 +526,23 @@
 
 				{#if rows.length}
 					{#each view.shown as m (m.id)}
-						<SongRow
-							{...rowMeta(m)}
-							readiness="ready"
-							inQueue={inMyQueue(m.id)}
-							onadd={store ? () => addSong(m) : undefined}
-						/>
+						{#if managing}
+							<ManageRow
+								media={m}
+								info={sizes?.songs[m.id]}
+								open={openId === m.id}
+								queued={entries.some((e) => e.mediaId === m.id && e.status !== 'done')}
+								ontoggle={() => (openId = openId === m.id ? null : m.id)}
+								onchanged={onManaged}
+							/>
+						{:else}
+							<SongRow
+								{...rowMeta(m)}
+								readiness="ready"
+								inQueue={inMyQueue(m.id)}
+								onadd={store ? () => addSong(m) : undefined}
+							/>
+						{/if}
 					{/each}
 					<!-- A DOOR, not a cap: this page is where `See all` leads, so every matching song has to stay reachable —
 							it just is not all in the DOM at once. 2000 rows cost 4.6s and 40,125 nodes before the first one was
@@ -573,6 +645,10 @@
 		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.storage-bar {
+		margin: calc(-1 * var(--space-sm)) var(--space-2xs) var(--space-md);
 	}
 
 	/* The disclosure's body. A bottom margin only, because each group inside carries its own heading spacing. */

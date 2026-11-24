@@ -10,6 +10,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import { safeNextPath } from '$lib/next-path';
+	import { forgetHost } from '$lib/stores/host';
 
 	let { data }: { data: { host: boolean } } = $props();
 
@@ -27,6 +28,7 @@
 			body: JSON.stringify({ key: presented.trim() })
 		}).catch(() => null);
 		busy = false;
+		forgetHost();
 		if (res?.ok) return goto(next, { replaceState: true, invalidateAll: true });
 		error = res
 			? 'That key did not work. Encore makes a new link each time it starts, so use the newest one.'
@@ -37,6 +39,7 @@
 		busy = true;
 		await fetch('/api/host', { method: 'DELETE' }).catch(() => null);
 		busy = false;
+		forgetHost();
 		await invalidateAll();
 	}
 

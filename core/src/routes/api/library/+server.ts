@@ -13,7 +13,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	// Browse: an optional facet filter, one at a time (artist or tag, never both — matching the mutual-exclusion the chip row already imposes; artist wins if both are somehow present). Only READY songs are browsable — the catalog holds every search result ever materialised, far more than what's singable. `?tag=` reuses the media_tags byKindValue index via byTag rather than filtering the whole payload client-side, which doesn't scale past a few hundred songs.
 	const artist = url.searchParams.get('artist')?.trim();
 	const tag = url.searchParams.get('tag')?.trim();
-	const library = artist ? app.media.byArtist(artist) : tag ? app.media.byTag(tag) : app.media.listReady();
+	// A song deleted from Library is gone at once, though its files wait out the Undo window.
+	const library = (artist ? app.media.byArtist(artist) : tag ? app.media.byTag(tag) : app.media.listReady()).filter(
+		(m) => !app.pendingDeletes.has(m.id)
+	);
 
 	// The hub validates adds against the runtime catalog, so anything offered for one-tap re-queue must be resolvable there; re-seeding keeps this endpoint honest if a row was written by another path.
 	hydrateMediaCatalog(library, app.mediaById);

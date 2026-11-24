@@ -9,6 +9,8 @@ import {
 	libraryArtist,
 	queryTerms,
 	sortLibrary,
+	sortManaged,
+	formatBytes,
 	tagFacetsOf
 } from '$lib/library-browse';
 import type { Media } from '$lib/contract';
@@ -227,4 +229,33 @@ test('sorting does not mutate the caller', () => {
 	const before = titles(LIB);
 	sortLibrary(LIB, 'title');
 	expect(titles(LIB)).toEqual(before);
+});
+
+// ── the host's Manage sorts ──────────────────────────────────────────────────
+
+test('Biggest and Least sung order by the sizes endpoint, ties and missing rows on title', () => {
+	const songs = {
+		'01H0000001': { bytes: 96e6, plays: 14, kept: false },
+		'01H0000002': { bytes: 64e6, plays: 0, kept: false },
+		'01H0000003': { bytes: 96e6, plays: 2, kept: true }
+	};
+	expect(titles(sortManaged(LIB, 'biggest', songs)).slice(0, 3)).toEqual([
+		'Bohemian Rhapsody',
+		'Halo',
+		'Dancing Queen'
+	]);
+	expect(titles(sortManaged(LIB, 'least-sung', songs))).toEqual([
+		'Dancing Queen',
+		'Killer Queen',
+		'Take On Me',
+		'Halo',
+		'Bohemian Rhapsody'
+	]);
+});
+
+test('formatBytes reads like the storage line', () => {
+	expect(formatBytes(0)).toBe('0 MB');
+	expect(formatBytes(1)).toBe('1 MB');
+	expect(formatBytes(96_400_000)).toBe('96 MB');
+	expect(formatBytes(12_400_000_000)).toBe('12.4 GB');
 });

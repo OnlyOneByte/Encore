@@ -32,9 +32,9 @@ export interface Media {
 	titleCanonical?: string;
 	/** MusicBrainz recording id, set only when annotation agreed on artist AND title. Absent is normal. */
 	mbid?: string;
-	/** `musicbrainz` and `youtube` are CITATIONS, `normalizer` is a parse, and the difference decides
-	 *  overwrite rights. See docs/SERVER.md#media-storage-and-paths. */
-	annotation?: { source: 'musicbrainz' | 'youtube' | 'normalizer'; confidence: 'high' | 'medium' };
+	/** `musicbrainz` and `youtube` are CITATIONS, `normalizer` is a parse, `manual` is the host's rename, which
+	 *  nothing overwrites. The difference decides overwrite rights. See docs/SERVER.md#media-storage-and-paths. */
+	annotation?: { source: 'musicbrainz' | 'youtube' | 'normalizer' | 'manual'; confidence: 'high' | 'medium' };
 	durationSec: number;
 	thumbnail?: string;
 	/** Display and tie-breaking ONLY — never ranking, dedupe or any gate: a popularity number must not
@@ -71,6 +71,18 @@ export interface Media {
 	/** Key, range, loudness. Third artifact of the `stems` job, so present means analysis RAN. */
 	songProfile?: SongProfile;
 }
+
+/** GET /api/library/sizes, host only: what each ready song holds in the media store. See docs/SERVER.md#managing-the-library. */
+export interface LibrarySizes {
+	songs: Record<string, { bytes: number; plays: number; kept: boolean }>;
+	totalBytes: number;
+	keptBytes: number;
+	/** ENCORE_MEDIA_MAX_GB in bytes, or null when unset. */
+	capBytes: number | null;
+}
+
+/** How long a library delete waits for Undo. */
+export const DELETE_UNDO_MS = 10_000;
 
 /** `''` when nothing is playable. One pure helper here is what lets `sourceRef` stay immutable. */
 export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): string {

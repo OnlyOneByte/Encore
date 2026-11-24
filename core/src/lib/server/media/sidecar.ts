@@ -70,6 +70,8 @@ export interface MediaSidecar {
 		addedAt: number;
 		playCount: number;
 		lastPlayedAt: number | null;
+		/** The host's Keep: retention never evicts this song. */
+		keep?: boolean;
 	};
 	/** UNTOUCHED source metadata, so a better normalizer can re-derive canonical fields later. */
 	raw: {
@@ -88,7 +90,10 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	// Never-regress: a manual or cited field beats a re-parse, and a runtime annotation beats a stored one.
 	const CITED = ['manual', 'musicbrainz', 'youtube'];
 	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
-	const cited = m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
+	// The host's rename beats a citation too, so a later worker annotation never undoes it.
+	const named = prev?.provenance?.artist?.by === 'manual';
+	const cited =
+		!named && (m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube') ? m.annotation : undefined;
 	const citedBy = cited?.source === 'youtube' ? ('youtube' as const) : ('musicbrainz' as const);
 
 	return {
@@ -107,7 +112,9 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 					? prev!.canonical.artist
 					: parsed.artist,
 			// Outside `cited`/`keepCited`: a recording-level citation cannot better the UPLOAD's own billing.
-			artistCredit: parsed.artistFull ?? prev?.canonical.artistCredit ?? null,
+			artistCredit: named
+				? (prev!.canonical.artistCredit ?? null)
+				: (parsed.artistFull ?? prev?.canonical.artistCredit ?? null),
 			title: cited ? (m.titleCanonical ?? parsed.title) : keepCited('title') ? prev!.canonical.title : parsed.title,
 			album: prev?.canonical.album ?? null,
 			year: prev?.canonical.year ?? null,
@@ -147,7 +154,8 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			tags: prev?.library.tags ?? [],
 			addedAt: prev?.library.addedAt ?? now,
 			playCount: prev?.library.playCount ?? 0,
-			lastPlayedAt: prev?.library.lastPlayedAt ?? null
+			lastPlayedAt: prev?.library.lastPlayedAt ?? null,
+			...(prev?.library.keep ? { keep: true } : {})
 		},
 		raw: {
 			uploader: prev?.raw.uploader ?? m.artist ?? null,
@@ -174,7 +182,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		id: s.id,
 		source: s.origin.source,
 		sourceRef: s.origin.sourceRef,
-		title: s.raw.rawTitle,
+		title: s.provenance.title?.by === 'manual' ? s.canonical.title : s.raw.rawTitle,
 		artist: s.raw.uploader ?? undefined,
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
@@ -190,8 +198,8 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 						source:
 							s.provenance.artist.by === 'musicbrainz'
 								? 'musicbrainz'
-								: s.provenance.artist.by === 'youtube'
-									? 'youtube'
+								: s.provenance.artist.by === 'youtube' || s.provenance.artist.by === 'manual'
+									? s.provenance.artist.by
 									: 'normalizer',
 						confidence: s.provenance.artist.confidence === 'low' ? 'medium' : s.provenance.artist.confidence
 					}

@@ -403,6 +403,8 @@ function gracefulShutdown(signal: string): void {
 	// actually lost, and a log line is not visible to an out-of-band probe.
 	let ok = true;
 	try {
+		// Before the state flush, since a delete also removes its queue entries.
+		app.pendingDeletes.flush();
 		state.flushNow();
 		app.reaper.stop();
 		server.stop();

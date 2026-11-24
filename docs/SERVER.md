@@ -805,11 +805,56 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   ready but whose file is gone is treated as not made: `processState` stops answering `ready`, and
   `requestProcess` forgets the process before it enqueues. A store that errors or takes over 2 s is
   trusted as before. This also covers songs evicted before the reset above shipped.
-- **`protectedIds` (the playing song plus everything queued) is enforced INSIDE the pure planner**, not left
-  to callers, so no caller can forget it. A protected song still COUNTS toward the total, so an unreachable
-  cap reports "evict everything allowed" rather than under-reporting pressure.
+- **`protectedIds` (the playing song, everything queued and every kept song) is enforced INSIDE the pure
+  planner**, not left to callers, so no caller can forget it. A protected song still COUNTS toward the total,
+  so an unreachable cap reports "evict everything allowed" rather than under-reporting pressure.
 - **A lossy stem is never recompressed to FLAC** — lossless cannot recover discarded data, it only bloats
   the file. Only a legacy uncompressed stem is recompressed in place.
+
+### Managing the library
+
+Proposal 33, PR 1 (#1164). The host manages the library from the Library tab; a guest's Library is
+unchanged and none of these routes answer a guest. Every write is `POST`, JSON only, and checks `can()`:
+rename and Keep need `media:edit`, delete and Undo need `media:delete`, sizes need `operator:read`. p9 sends
+each one, in every spelling, from a guest, a cookieless caller and another site.
+
+| Route | Body | Does |
+| --- | --- | --- |
+| `GET /api/library/sizes` | | `LibrarySizes`: per ready song its bytes, plays and Keep, the total, the kept total and the cap. Also in the hook's host-only list. |
+| `POST /api/library/manage/rename` | `{ mediaId, title, artist }` | The host's name. Empty artist means none; 200 characters at most. |
+| `POST /api/library/manage/keep` | `{ mediaId, keep }` | `library.keep` in `meta/<id>.json`. |
+| `POST /api/library/manage/delete` | `{ mediaId }` | 409 `queued` while the song is playing or still to come tonight, 409 `kept` for a kept song. Otherwise the song leaves every screen at once and is deleted when the Undo window closes. |
+| `POST /api/library/manage/undo` | `{ mediaId }` | Cancels a pending delete; 409 once the window has closed. |
+
+Rename, Keep and delete act only on a ready song outside an Undo window (`librarySong`); anything else is 404.
+
+- **A rename is never overwritten.** The route writes the sidecar first with `by: 'manual'` on title and
+  artist, then sets `title`, the canonical fields and `annotation: manual` on the row. `applyAnnotation`
+  refuses to touch a manual row, and `sidecarFromMedia` keeps a manual name over a parse and over a
+  citation. `raw.rawTitle` keeps the source's title; a restore shows the manual one. Lyrics lookups use the
+  new name from the next job on.
+- **Sizes come from the media store**: `store.size()` over every ref a delete would free (retention's
+  `derivedRefsOf` plus every audio candidate), so an object store reports its own bytes. Retention's cap
+  still measures derived files on the local disk.
+- **Keep.** The boot eviction pass adds kept songs to `protectedIds`. When kept songs alone pass 90% of the
+  cap it logs `kept songs use X of Y GB`, naming the unkept songs it evicted, and Manage shows the same line.
+  A cap below the kept total leaves Encore over the cap.
+- **Delete with Undo, not a dialog.** `PendingDeletes` (`src/lib/server/media/library-manage.ts`) holds
+  each delete for `DELETE_UNDO_MS` (10 s) plus 2 s, so an Undo tapped as the phone's toast closes still
+  lands, then runs the same `deleteSongNow` as `/api/delete-media`. Shutdown flushes pending deletes before
+  the state flush. A library-folder song keeps its file in `library/`; the response says so and the toast
+  repeats it. `/admin`'s two-step confirm is unchanged. A hard kill (SIGKILL, OOM) inside the window skips the
+  flush, so the song stays, which is the safe way to fail.
+- **No one is cut off.** A song in tonight's queue is never deleted from here (`inTonightsQueue`); the sheet
+  says "In tonight's queue. Delete it after its turn." `requestDelete` reads Keep first, then checks the
+  queue and starts the window with no await between them, so a turn added meanwhile is always seen.
+- **During the Undo window the song is offered nowhere.** `/api/library`, `/api/library/sizes` and
+  `/api/search` (Sing's recent and popular lists included) leave it out, and the hub refuses an add of it as `unknown media` (`HubDeps.isDeleting`), so a
+  phone says the song is gone.
+- **Every screen follows.** Scheduling a delete broadcasts `media:status` `canceled`, and Undo `ready`, so each
+  phone re-reads Library. A rename broadcasts `ready` (true, as only a ready song can be renamed) and a
+  room-wide `queue:sync`, so the TV and the queue show the new name at once.
+- Not yet: bulk actions (PR 2), Make it again (PR 3), same-song pairs (PR 4) and the folder watch (PR 5).
 
 ## Jobs and the worker
 

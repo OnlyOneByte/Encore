@@ -15,6 +15,11 @@ import { POST as leave } from '$routes/api/leave/+server';
 import { GET as getAudit } from '$routes/api/audit/[mediaId]/+server';
 import { GET as getMetrics } from '$routes/api/metrics/+server';
 import { POST as reselect } from '$routes/api/lyrics-reselect/+server';
+import { POST as rename } from '$routes/api/library/manage/rename/+server';
+import { POST as keep } from '$routes/api/library/manage/keep/+server';
+import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server';
+import { POST as undoDelete } from '$routes/api/library/manage/undo/+server';
+import { GET as getSizes } from '$routes/api/library/sizes/+server';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { MediaRepository } from '$lib/server/media/repository';
 import { PlayLog } from '$lib/server/media/play-log';
@@ -112,12 +117,17 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 			await putRoom(event('/api/settings/room', 'PUT', cookies, { queueOrder: 'fcfs' })),
 			await deleteMedia(event('/api/delete-media', 'POST', cookies, { mediaId: 'm1' })),
 			await reselect(event('/api/lyrics-reselect', 'POST', cookies, { mediaId: 'm1', text: 'x' })),
-			await hostDelete(event('/api/host', 'DELETE', cookies))
+			await hostDelete(event('/api/host', 'DELETE', cookies)),
+			await rename(event('/api/library/manage/rename', 'POST', cookies, { mediaId: 'm1', title: 'x', artist: '' })),
+			await keep(event('/api/library/manage/keep', 'POST', cookies, { mediaId: 'm1', keep: true })),
+			await libraryDelete(event('/api/library/manage/delete', 'POST', cookies, { mediaId: 'm1' })),
+			await undoDelete(event('/api/library/manage/undo', 'POST', cookies, { mediaId: 'm1' })),
+			await getSizes(event('/api/library/sizes', 'GET', cookies))
 		];
 		expect(
 			results.map((r) => r.status),
 			who
-		).toEqual([403, 403, 403, 403, 403]);
+		).toEqual([403, 403, 403, 403, 403, 403, 403, 403, 403, 403]);
 	}
 	expect(app.settings.getGlobal().joinOrigin).toBe('');
 });

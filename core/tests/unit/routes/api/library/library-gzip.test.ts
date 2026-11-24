@@ -32,7 +32,8 @@ function installApp() {
 		},
 		jobs: { findOutstandingForMedia: () => undefined },
 		state: { entries: [] },
-		workerHub: { noMakerMedia: () => [] }
+		workerHub: { noMakerMedia: () => [] },
+		pendingDeletes: { has: () => false }
 	};
 }
 
