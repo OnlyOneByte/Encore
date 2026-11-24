@@ -22,7 +22,8 @@ test('keep me: the You tab, Delete me, Welcome back, and the TV', async ({ world
 	async function shoot(page: Page, name: string): Promise<void> {
 		await page.evaluate(() => document.fonts.ready.then(() => true));
 		const path = join(out, `${name}.png`);
-		await page.screenshot({ path, animations: 'disabled', caret: 'hide' });
+		// The whole host page, whose kept-people list sits below the host card.
+		await page.screenshot({ path, animations: 'disabled', caret: 'hide', fullPage: name.startsWith('host-kept') });
 		await testInfo.attach(`${name}.png`, { path, contentType: 'image/png' });
 	}
 	async function both(page: Page, path: string, ready: () => Promise<void>, name: string): Promise<void> {
@@ -64,6 +65,23 @@ test('keep me: the You tab, Delete me, Welcome back, and the TV', async ({ world
 			await theo.getByRole('button', { name: 'Delete me' }).click();
 			await expect(theo.locator('[role="alertdialog"]')).toBeVisible();
 			await shoot(theo, `you-delete-confirm-${size.width}`);
+		}
+
+		// The host's side: the kept people on /host, and the Reset phones confirm (nothing is reset here).
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await both(
+			host,
+			'/host',
+			() => expect(host.getByRole('heading', { name: 'Kept phones' })).toBeVisible(),
+			'host-kept-phones'
+		);
+		for (const size of SIZES) {
+			await host.setViewportSize(size);
+			await host.goto('/host');
+			await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+			await expect(host.locator('[role="alertdialog"]')).toBeVisible();
+			await shoot(host, `host-reset-confirm-${size.width}`);
 		}
 
 		await theo.setViewportSize(SIZES[0]!);

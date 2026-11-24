@@ -267,7 +267,7 @@ const publicMethods = [
 it('membership: the discredited socket-count predicate stays deleted — exposes ONLY the allowlisted public methods (a rename cannot slip a membership predicate in)', () => {
 	// Add a name here ONLY after deciding it belongs on the presence surface: a `sockets > 0` membership
 	// boolean under any name (isHere, present, active, …) reds this by construction.
-	const ALLOWED = ['connect', 'disconnect', 'evaluate', 'forget', 'online', 'sockets', 'stateOf'];
+	const ALLOWED = ['connect', 'disconnect', 'endSession', 'evaluate', 'forget', 'online', 'sockets', 'stateOf'];
 	expect([...publicMethods]).toEqual([...ALLOWED].sort());
 });
 

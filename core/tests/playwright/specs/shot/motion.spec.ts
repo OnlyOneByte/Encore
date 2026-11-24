@@ -236,7 +236,37 @@ function keepMe(width: number): Make {
 	});
 }
 
-/** A kept phone back on the scanned join: "Welcome back", then "I'm someone else" opens the guest form (a cut). */
+/** The host's Reset phones confirm opening on /host, over a kept person (the reset itself never runs). */
+function hostResetDialog(width: number): Make {
+	let host: Page | undefined;
+	return (browser, world, cleanup) => ({
+		name: `phone-host-reset-dialog-${width}`,
+		what: `Phone ${width}: the host's "Reset Theo's phones" confirm opening (encore-alert-in + encore-scrim-in, --motion-fast)`,
+		stepMs: 12,
+		scale: 1,
+		columns: 6,
+		open: async (opts) => {
+			if (!host) {
+				await keptPhone(browser, world, cleanup, width);
+				host = await world.openPhone(`Host${++joins}`);
+				await world.becomeHost(host);
+			}
+			const page = await asSinger(browser, world, opts, host, width);
+			await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+			await page.goto('/host');
+			await expect(page.getByRole('heading', { name: 'Kept phones' })).toBeVisible();
+			await page.evaluate(() => document.fonts.ready.then(() => true));
+			return page;
+		},
+		trigger: async (page) => {
+			await page.getByRole('button', { name: /^Reset .* phones$/ }).click();
+			await page.locator('[role="alertdialog"]').waitFor({ state: 'attached' });
+		},
+		subject: '[role="alertdialog"]',
+		observe: (page) => page.evaluate(() => ({ dialogOpen: !!document.querySelector('[role="alertdialog"]') }))
+	});
+}
+
 /** The Delete me confirm opening on a kept phone: the alert dialog's own motion. */
 function deleteMeDialog(width: number): Make {
 	let kept: Page | undefined;
@@ -264,6 +294,7 @@ function deleteMeDialog(width: number): Make {
 	});
 }
 
+/** A kept phone back on the scanned join: "Welcome back", then "I'm someone else" opens the guest form (a cut). */
 function welcomeBack(width: number): Make {
 	let left: Page | undefined;
 	return (browser, world, cleanup) => ({
@@ -1454,6 +1485,8 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-delete-me-dialog-320': deleteMeDialog(320),
 	'phone-welcome-back-390': welcomeBack(390),
 	'phone-welcome-back-320': welcomeBack(320),
+	'phone-host-reset-dialog-390': hostResetDialog(390),
+	'phone-host-reset-dialog-320': hostResetDialog(320),
 
 	/** On deck crossing into the heads-up, for real: Theo sings a 36 s track on a real TV, so Maya's card starts as
 	 *  "On deck" with its time-left and, 30 s from the end, becomes "You’re next": the class, the eyebrow text and

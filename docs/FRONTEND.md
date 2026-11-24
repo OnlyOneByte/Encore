@@ -1458,8 +1458,9 @@ drifting apart.
 **A kept phone is welcomed back** (proposal 30, PR 2). When the room preview carries `returning`, the identity
 pane swaps the name field and the colour ring for an idle Spotlight look in the person's colour, its one heading
 "Welcome back, Theo" at the Spotlight title size, so it cannot read as a field to type in. It is drawn inline
-rather than with `<Spotlight>`, whose stylesheet the join screen's budget cannot carry until #1171 ships it on a
-phone tab. The one CTA, Start singing, joins with `returning: true`. Arriving there costs no extra request: the
+rather than with `<Spotlight>`: this screen also renders on `/queue`, which does not otherwise ship Spotlight's
+stylesheet, and importing it there costs about 750 B gz of CSS against 170 B of headroom (#1198). The one CTA,
+Start singing, joins with `returning: true`. Arriving there costs no extra request: the
 preview already answers it, so nothing flashes a name field first. "I'm someone else" (a borrowed phone) drops to
 the normal pane for this visit and leaves the phone's device cookie alone. A 409 (someone here holds the kept name)
 shows the name field, still as the same person; a 401 (the phone is no longer kept) falls back to the normal

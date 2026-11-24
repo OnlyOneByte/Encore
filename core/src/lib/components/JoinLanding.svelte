@@ -254,8 +254,8 @@
 		{/snippet}
 
 		{#if returning}
-			<!-- The idle Spotlight's look, inline rather than the component or a stylesheet: this screen's CSS ships on
-					all three phone tabs, and CLAIM 13 has no room for it. -->
+			<!-- The idle Spotlight's look, inline rather than the component: this screen also renders on /queue, which
+					does not ship Spotlight's stylesheet, and CLAIM 13 has no room for it there (#1198). -->
 			<section
 				style:padding="var(--step-4)"
 				style:border-radius="var(--round-spot)"

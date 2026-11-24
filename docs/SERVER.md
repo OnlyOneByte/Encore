@@ -560,7 +560,8 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   `/api/thumb`, `/api/room-preview`, `/api/settings` and `/api/host` is ungated; `GET /api/audit/[mediaId]`
   answers anyone with the song's catalog row and the host with its history. HOST-ONLY: `PUT /api/settings`,
   `PUT /api/settings/room`, `GET /api/metrics`, `POST /api/delete-media`, `POST /api/lyrics-reselect`, the three
-  [lyrics-fix](#lyrics-fixes) routes, `DELETE /api/host`, and the `/metrics`, `/metrics/[mediaId]` and `/admin` pages; the song page offers the
+  [lyrics-fix](#lyrics-fixes) routes, `DELETE /api/host`, `POST /api/host/people/reset`, and the `/metrics`,
+  `/metrics/[mediaId]` and `/admin` pages; the song page offers the
   lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
   session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party.
   KEPT-ONLY: `DELETE /api/me/person` and `DELETE /api/me/person/others` need the singer cookie AND this
@@ -620,8 +621,8 @@ clock says no more than `playback:state` already tells every socket in the room 
 Proposal 30, PR 1 (#1080, #1119). The host changes settings, reads the operator pages, deletes songs and
 re-picks a song's lyrics; a singer runs the party (skip, reorder, remove, pick a song, as before); the TV
 only displays. `can()` (`src/lib/server/capabilities.ts`) is the one place that says so:
-`settings:write-room`, `settings:write-global`, `operator:read`, `media:delete` and `media:edit` need
-`actor.host`, and nothing else does.
+`settings:write-room`, `settings:write-global`, `operator:read`, `media:delete`, `media:edit` and `people:reset`
+need `actor.host`, and nothing else does.
 
 - **Where the key comes from.** With `ENCORE_ADMIN_TOKEN` set, that is the key. Unset, core mints a 256-bit
   key at every start (`HostKey`, `src/lib/server/host-key.ts`) and prints it once, as
@@ -697,6 +698,10 @@ as the same person. There is no email, no password and no signup screen.
   previous one without storing any token in plain text. The salt and the previous hash are cleared the moment the
   window ends: on the new token's first use, on a late use of the old one, and on every reaper tick for a window
   that ran out unused. Until then, the DB plus an old cookie would derive the live token.
+- **A lost response with no retry un-keeps the phone.** If a returning join's response never reaches the phone
+  and the phone does not try again within those 2 minutes, its old token is past its grace and the new one never
+  arrived: the phone is no longer kept, and joins as a guest. Nothing else is lost (the person stays, with no
+  live phone, until the daily prune or a host Reset phones), and a Keep me after the next song keeps it again.
 - **A returning join replaces its own stalled night**: a night of the same person in the room with no socket and
   no turn (the join whose response was lost) is ended, so it does not hold the kept name against the retry.
 - **The returning phone.** `GET /api/room-preview` adds `returning: { displayName, color }` only when the
@@ -712,6 +717,18 @@ as the same person. There is no email, no password and no signup screen.
   unlinked instead of deleted, so the queue keeps its singer. `forgetPerson` also deletes every
   [night](#your-night) of the person, tonight's included; anything else later keyed on a singer or a person
   must be deleted there too.
+- **Reset phones** (`POST /api/host/people/reset { personId }`, host only, `people:reset`) is the host's way to
+  clear a kept person when their own phone can't: it does what Delete me does with no night kept (every device
+  revoked, every signed-in night ended and its sockets released, the person and every recorded night removed,
+  through the same `forgetPerson`), so no old
+  device cookie is welcomed back and the owner joins fresh and can tap Keep me again. The `/host` page lists the
+  kept people (name, colour, phone count) to the host alone; an unknown id is 404. Nothing is broadcast: guests
+  see only that person's own nights leave, as on any session end.
+- **An ended night's name** (Reset phones, Sign out other phones, Delete me): the night's sockets stop counting
+  (`PresenceTracker.endSession`), and its name stays held while it has a queued or playing turn, so a new guest
+  cannot join under the name that turn waits under. Once the turn has played or been removed, the name is free
+  at once, with no grace window, since nobody can come back as that night. The owner rejoining meanwhile gets the
+  usual "That name is taken" and picks another.
 - **Nothing reaches the room.** `publicSinger` strips `sessionToken`, `roomId` and `personId` from every wire
   projection: rosters, `singer:joined`, `/api/me` and the settings loads. The TV learns nothing about accounts.
 
@@ -720,8 +737,9 @@ as the same person. There is no email, no password and no signup screen.
 | Typing a kept person's name on another phone | A new guest. "Welcome back" needs the device cookie. |
 | A forged device cookie, or another phone's after Sign out other phones | 401: it resolves to no row. |
 | A copy of this phone's own cookie (sniffed over HTTP) | It shares this phone's row, so it works only until the token rotates (the owner's one-tap join or Sign out other phones) and the owner's phone then presents the new one (its `/ws` upgrade, about a second later), or 2 minutes pass; after that it gets 401. Inside that window the copy is answered with the current token, as the owner's own retry would be. |
-| The thief uses the copy first | The rotation goes the other way. Once the grace ends, the owner's phone is no longer welcomed back, which is how the theft shows, and it can no longer sign out, rename or delete the person. The thief, holding the only live token and a linked night, CAN rename the person and Delete me them, history included. The recovery is the host's Reset phones (#1201, not built yet); until then only the thief's Delete me or 180 days of disuse end it. This sits inside the plain-HTTP Wi-Fi sniffing risk below: an HTTPS proxy is what prevents the copy. |
-| A phone lost or sold | Sign out other phones from the phone you have, or Delete me. Or wait: 180 days unused and it is signed out. |
+| The thief uses the copy first | The rotation goes the other way. Once the grace ends, the owner's phone is no longer welcomed back, which is how the theft shows, and it can no longer sign out, rename or delete the person. The thief, holding the only live token and a linked night, CAN rename the person and Delete me them, history included. The recovery is the host's Reset phones on `/host`: it signs out every phone kept as that person, the thief's included, and forgets the person, so the owner joins fresh and keeps themselves again. This sits inside the plain-HTTP Wi-Fi sniffing risk below: an HTTPS proxy is what prevents the copy. |
+| A phone lost or sold | Sign out other phones from the phone you have, or Delete me, or ask the host to Reset phones. Or wait: 180 days unused and it is signed out. |
+| A guest resetting someone's phones | 403: Reset phones needs the host session; a guest's or the TV's cookie holds no host capability, and a cross-site request is refused by the Origin check first. |
 | A device cookie planted from another port on this host (plain HTTP only) | The victim sees "Welcome back" with the planter's name and taps "I'm someone else"; the planter gains nothing from it, but the plant blocks the victim's own Keep me (409). `__Host-` closes it over HTTPS. |
 | Deleting or signing out someone else | 401 unless the singer cookie and the device cookie name the same person. Every `/api/me/*` route reads the person from the cookies, never the URL or body. |
 | CSRF from another site | The Origin check refuses every write ([Requests from other sites](#requests-from-other-sites)). |

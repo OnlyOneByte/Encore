@@ -18,14 +18,17 @@ export type Capability =
 	/** Delete a song from the library entirely, or undo that within its window. */
 	| 'media:delete'
 	/** Change a library song for every room, such as re-picking its lyrics, renaming it or keeping it. */
-	| 'media:edit';
+	| 'media:edit'
+	/** Reset a kept person's phones: sign out every one and forget the person (docs/SERVER.md#kept-people). */
+	| 'people:reset';
 
 const HOST_ONLY: ReadonlySet<Capability> = new Set([
 	'settings:write-room',
 	'settings:write-global',
 	'operator:read',
 	'media:delete',
-	'media:edit'
+	'media:edit',
+	'people:reset'
 ]);
 
 export interface Actor {
