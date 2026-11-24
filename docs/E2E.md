@@ -1,5 +1,7 @@
 # The Chromium suite
 
+(Throwaway: a docs-only change, to show probes.yml skipping. Never merged.)
+
 `core/tests/playwright/`, run from `core/` with `bun run pw` (or one project: `gate:measured`, `pw:flow`,
 `pw:probe`, `pw:shot`). Needs `bun run build` first — the specs serve the BUILT app, and `playwright.config.ts`'s
 `globalSetup` fails with that remedy when `build/index.js` is absent. Paths below are relative to
