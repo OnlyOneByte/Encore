@@ -2,6 +2,12 @@ Closes #
 
 ## What changed and why
 
+## Self-review
+
+Areas this PR touches (server and routes, phone UI, TV, worker, security, tests, process):
+
+- [ ] Self-review: [docs/PR-CHECKLIST.md](https://github.com/OnlyOneByte/Encore/blob/main/docs/PR-CHECKLIST.md) done for those areas
+
 ## Gates
 
 On the head commit, with no new failures against `main` (see the README's

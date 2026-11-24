@@ -267,6 +267,7 @@ LICENSE  CREDITS.md   ← PolyForm Noncommercial 1.0.0; third-party material (co
 | [`UI-DESIGN.md`](docs/UI-DESIGN.md)       | the visual rules: control contrast, the spacing and type ladders, one look each |
 | [`UI-CHECKLIST.md`](docs/UI-CHECKLIST.md) | what a UI PR is checked against: the motion frames and the tenet checks         |
 | [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) | how a change is written up, documented and reviewed                             |
+| [`PR-CHECKLIST.md`](docs/PR-CHECKLIST.md) | the self-review a builder runs before opening a PR, from past review must-fixes |
 | [`arch/`](docs/arch/README.md)            | subsystem contracts as numbered requirements a machine can often check          |
 | [`deploy/`](docs/deploy/README.md)        | getting a secure context, and the WSL2 case that breaks it                      |
 | [`benchmarks/`](docs/benchmarks/)         | the stem-separation and forced-alignment measurements, and how to rerun them    |
