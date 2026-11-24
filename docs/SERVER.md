@@ -662,11 +662,25 @@ it. So core answers only to:
 - **`localhost` and `*.localhost`**, which the browser resolves to loopback itself.
 - **The declared addresses**: the saved join address and `ENCORE_PUBLIC_ORIGIN`, read per request, so a new join
   address is answered with no restart.
-- **`ENCORE_ALLOWED_HOSTS`**: comma-separated names, case-insensitive, ports ignored. A `.local` name or a router's
-  DNS name goes here.
+- **This box's own names, on a native run only**: `os.hostname()` and its first label with `.local` (mDNS), so
+  `http://mybox.local:3000` works with no setting (#1186). `.local` never resolves through public DNS, and a bare
+  hostname resolves through the LAN's own search domain, so neither is a name an outside page can rebind. When the
+  hostname is a full domain name (`mybox.corp.example`), that whole name is allowed too. That is safe because only
+  the operator of that DNS zone could point it elsewhere, and that is the box's own zone, not an attacker's.
+  Docker and Podman are detected (`/.dockerenv`, `/run/.containerenv`): there the hostname is the container ID, so
+  nothing is added and Docker users set `ENCORE_ALLOWED_HOSTS`. Kubernetes and LXC are not detected, which is
+  harmless: the only names added are the container's own ID or pod name, which no outside page can register.
+- **`ENCORE_ALLOWED_HOSTS`**: comma-separated names, case-insensitive, ports ignored. A router's DNS name, or a
+  `.local` name under Docker, goes here.
 
-Anything else gets `421` with a plain-text line naming `ENCORE_ALLOWED_HOSTS`. Ports are never compared: a
-rebinding page uses this box's port anyway, and Docker maps it.
+Anything else gets `421` with a plain-text line that echoes the refused name (lowercased, anything outside
+`a-z0-9.-:_` shown as `?`, capped at 100 characters) and says to add it to `ENCORE_ALLOWED_HOSTS`, in `docker/.env`
+under Docker, then restart core. Ports are never compared: a rebinding page uses this box's port anyway, and Docker
+maps it. One trailing dot is dropped (`mybox.local.` is `mybox.local`).
+
+A `Host` that is not a host at all gets `400` (#1187): none on HTTP/1.0, an unbracketed `::1`, a duplicated header
+(which reads as `a, b`), or one holding `\`, `%` or `,`. WHATWG reads `\` as `/` and percent-decodes, so the name
+checked would not be the name sent. Only `X-Forwarded-Host` is a comma chain.
 
 - **`X-Forwarded-Host` and `X-Forwarded-Proto` count only with `ENCORE_TRUST_PROXY=1`**, here and in
   `public-origin.ts` (`requestHost`, `resolveOrigin`). Otherwise any client could send them. Behind a trusted proxy the

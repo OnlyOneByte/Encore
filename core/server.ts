@@ -34,7 +34,7 @@ import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
 import { fromOurOrigin } from './src/lib/server/http/same-origin';
-import { refuseForeignHost } from './src/lib/server/http/allowed-host';
+import { refuseForeignHost, requestUrl, unreadableHost } from './src/lib/server/http/allowed-host';
 import { adminTokenProblem } from './src/lib/server/host-key';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
@@ -169,7 +169,8 @@ const server = Bun.serve<SocketData>({
 	idleTimeout: 30,
 
 	async fetch(req, server) {
-		const url = new URL(req.url);
+		const url = requestUrl(req);
+		if (!url) return unreadableHost();
 		// Before every route, SvelteKit's included, so a DNS-rebinding page reaches nothing.
 		const foreign = refuseForeignHost(req, url);
 		if (foreign) return foreign;
