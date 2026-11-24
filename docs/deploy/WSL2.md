@@ -478,3 +478,5 @@ Flagged rather than glossed, because each could cost an evening:
 - **First-process downloads.** The worker's boot warm-up fetches the separator checkpoint and the align
   and whisper models into `worker-cache` right after it connects (`[worker] warm: ...` lines); the first
   song still fetches yt-dlp's solver script. A song queued before the warm-up ends waits on it, not a hang.
+
+CI probe (docs-only), do not merge.
