@@ -32,6 +32,7 @@ review. Code comments are not documentation.
 ## Every pull request
 
 - Says `Closes #N` for its issue.
+- Has been through the [self-review checklist](PR-CHECKLIST.md) for the areas it touches, and names those areas.
 - Updates the docs it makes stale, or says why none are.
 - Adds no new long comment blocks.
 - Passes the gates in the [README](../README.md#testing-and-ci) with no new failures against `main`. A UI change also
