@@ -644,9 +644,12 @@ it. So core answers only to:
   address is answered with no restart.
 - **This box's own names, on a native run only**: `os.hostname()` and its first label with `.local` (mDNS), so
   `http://mybox.local:3000` works with no setting (#1186). `.local` never resolves through public DNS, and a bare
-  hostname resolves through the LAN's own search domain, so neither is a name an outside page can rebind. Inside a
-  container (`/.dockerenv` or `/run/.containerenv` exists) the hostname is the container ID, so nothing is added and
-  Docker users set `ENCORE_ALLOWED_HOSTS`.
+  hostname resolves through the LAN's own search domain, so neither is a name an outside page can rebind. When the
+  hostname is a full domain name (`mybox.corp.example`), that whole name is allowed too. That is safe because only
+  the operator of that DNS zone could point it elsewhere, and that is the box's own zone, not an attacker's.
+  Docker and Podman are detected (`/.dockerenv`, `/run/.containerenv`): there the hostname is the container ID, so
+  nothing is added and Docker users set `ENCORE_ALLOWED_HOSTS`. Kubernetes and LXC are not detected, which is
+  harmless: the only names added are the container's own ID or pod name, which no outside page can register.
 - **`ENCORE_ALLOWED_HOSTS`**: comma-separated names, case-insensitive, ports ignored. A router's DNS name, or a
   `.local` name under Docker, goes here.
 

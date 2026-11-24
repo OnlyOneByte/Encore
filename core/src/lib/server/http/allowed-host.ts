@@ -46,6 +46,7 @@ function nameAllowed(name: string): boolean {
 	return isIP(name) !== 0 || name === 'localhost' || name.endsWith('.localhost') || namedHosts().has(name);
 }
 
+/** Whether a raw host[:port] is a name we answer to; false when it is not a host at all. */
 export function hostAllowed(host: string): boolean {
 	const name = hostnameOf(host);
 	return name !== null && nameAllowed(name);
