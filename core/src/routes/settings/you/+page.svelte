@@ -17,11 +17,18 @@
 	import { leaveCostSentence, type LeaveCost } from '$lib/phrasing/leave-cost-sentence';
 	import { room } from '$lib/stores/room';
 	import type { PublicSinger } from '$lib/contract';
+	import Spotlight from '$lib/ui/Spotlight.svelte';
 
+	interface KeepState {
+		kept: boolean;
+		canKeep: boolean;
+		otherPhones: number;
+	}
 	interface Props {
 		data: {
 			/** You, without the session token — the load strips it before the page is serialised. */
 			me: PublicSinger;
+			keep: KeepState;
 		};
 	}
 	let { data }: Props = $props();
@@ -176,6 +183,44 @@
 		await goto('/');
 	}
 
+	/* KEEP ME, SIGN OUT OTHER PHONES, DELETE ME. Each tap shows its outcome at once and rolls back with one line on a
+	   refusal (tenet 1). Only delete asks first, since it cannot be undone. docs/FRONTEND.md#settings */
+	let keep = $state<KeepState>(untrack(() => data.keep));
+	let keepRefusal = $state('');
+	let confirmingDelete = $state(false);
+
+	async function keepWrite(method: 'POST' | 'DELETE', path: string, optimistic: KeepState, refusal: string) {
+		const before = keep;
+		keep = optimistic;
+		keepRefusal = '';
+		try {
+			const res = await fetch(path, { method });
+			if (!res.ok) throw new Error(String(res.status));
+			keep = await res.json();
+		} catch {
+			keep = before;
+			keepRefusal = refusal;
+		}
+	}
+	const keepMe = () =>
+		keepWrite(
+			'POST',
+			'/api/me/person',
+			{ kept: true, canKeep: false, otherPhones: 0 },
+			'Could not keep you — try again.'
+		);
+	const signOutOthers = () =>
+		keepWrite('DELETE', '/api/me/person/others', { ...keep, otherPhones: 0 }, 'Could not sign them out — try again.');
+	function deleteMe() {
+		confirmingDelete = false;
+		void keepWrite(
+			'DELETE',
+			'/api/me/person',
+			{ kept: false, canKeep: false, otherPhones: 0 },
+			'Could not delete you — try again.'
+		);
+	}
+
 	/* Counts, not adjectives — and a cost that has not answered is UNKNOWN, never zero. The sentence itself lives in
 	   $lib/phrasing so that unknown arm can be asserted without mounting anything; leave-cost-sentence.ts carries the
 	   reasoning for why the `?? 0` that used to be here was the defect. */
@@ -183,6 +228,49 @@
 </script>
 
 <SettingsScope scope={SETTINGS_SCOPES.you} back={{ href: closeTo, label: 'Back to the remote' }}>
+	<!-- First, so the offer sits above the fold at 320x568 and its answer lands where the tap was. Offered only after a
+			first song, never as a modal. -->
+	{#if keep.canKeep}
+		<Spotlight title="Keep {savedName} for next time" colour={savedColour}>
+			<p class="keep-copy">Your name and colour come back on this phone. No email, no password.</p>
+			<Button size="block" onclick={keepMe}>Keep me</Button>
+		</Spotlight>
+	{:else if keep.kept}
+		<Card.Root id="kept">
+			<!-- No scope mark: the You card right below carries it. -->
+			<Card.Header>
+				<Card.Title role="heading" aria-level={2}>{savedName} is kept on this phone</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<p class="keep-copy">Next time, one tap and you're in.</p>
+				{#if keep.otherPhones > 0}
+					<Button variant="secondary" size="block" onclick={signOutOthers}>
+						Sign out {keep.otherPhones === 1 ? 'the other phone' : `${keep.otherPhones} other phones`}
+					</Button>
+				{/if}
+				<AlertDialog.Root bind:open={confirmingDelete}>
+					<AlertDialog.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="ghost" size="block">Delete me</Button>
+						{/snippet}
+					</AlertDialog.Trigger>
+					<AlertDialog.Content>
+						<AlertDialog.Header>
+							<AlertDialog.Title>Delete {savedName}?</AlertDialog.Title>
+							<AlertDialog.Description>
+								Your name, colour and past nights are removed from every phone. You stay in the room tonight as a guest.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+						<AlertDialog.Footer>
+							<AlertDialog.Cancel variant="ghost">Don't delete</AlertDialog.Cancel>
+							<AlertDialog.Action variant="destructive" onclick={deleteMe}>Yes, delete me</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Root>
+			</Card.Content>
+		</Card.Root>
+	{/if}
+	{#if keepRefusal}<p class="err" role="alert">{keepRefusal}</p>{/if}
 	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and what `Card.Scope` is. -->
 	<Card.Root id="you">
 		<Card.Header>
@@ -304,6 +392,10 @@
 	   THE SAME RUNG AS THE TWO INTER-GROUP MARGINS IN THE SHELL, and for the same reason: this is a card-content child
 	   too, so what the guest sees is 8 + 12 = 20px, and a commit control is an inter-group boundary, not a section one.
 	   It was `xl` until app.css retired that rung, which would now render 22px against those two at 20px. */
+	.keep-copy {
+		margin: 0;
+		font-size: var(--type-body);
+	}
 	.save-slot {
 		margin-top: var(--space-lg);
 	}

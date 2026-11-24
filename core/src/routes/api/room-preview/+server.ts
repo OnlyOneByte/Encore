@@ -9,9 +9,10 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { roomMembership } from '$lib/server/singers/join';
+import { readDevice } from '$lib/server/people/keep';
 import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, cookies, request }) => {
 	const app = getApp();
 	// Normalised as the segment entry does, so a QR's raw value and a typed code resolve alike.
 	const code = normalizeRoomCodeInput(url.searchParams.get('code') ?? '');
@@ -32,11 +33,17 @@ export const GET: RequestHandler = async ({ url }) => {
 	// `here` first, so a caller naming only a few people names reachable ones.
 	const members = [...here, ...away];
 
-	return json({
-		code,
-		presentCount: members.length,
-		awayCount: away.length,
-		names: members.map((s) => s.displayName),
-		colors: members.map((s) => s.color)
-	});
+	// Only this phone's own person, from its own device cookie: the name alone never welcomes anyone back.
+	const device = readDevice(app, cookies, { request, url });
+	return json(
+		{
+			code,
+			presentCount: members.length,
+			awayCount: away.length,
+			names: members.map((s) => s.displayName),
+			colors: members.map((s) => s.color),
+			returning: device ? { displayName: device.person.displayName, color: device.person.color } : null
+		},
+		{ headers: { 'cache-control': 'private, no-store' } }
+	);
 };

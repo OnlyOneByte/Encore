@@ -5,7 +5,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
-import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { publicSinger, SESSION_COOKIE } from '$lib/server/singers/repository';
 import { assertNameFree, NameTakenError, resolveSingerColor } from '$lib/server/singers/join';
 import { optionalString, readJsonBody } from '$lib/server/http/json-body';
 
@@ -13,9 +13,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
 	const token = cookies.get(SESSION_COOKIE);
 	const singer = getApp().singers.bySessionToken(token);
 	if (!singer) return json({ singer: null }, { status: 401 });
-	// `roomId` goes too, not just the token: this projects a StoredSinger onto the wire `Singer`, and `room_id` is a server-side scoping key. The phone already learned its room from /api/join.
-	const { sessionToken: _t, roomId: _r, ...safe } = singer;
-	return json({ singer: safe });
+	return json({ singer: publicSinger(singer) });
 };
 
 export const PATCH: RequestHandler = async ({ request, cookies }) => {
@@ -44,8 +42,10 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	const updated = app.singers.updateProfile(me.id, displayName, color);
 	if (!updated) return json({ error: 'could not update profile' }, { status: 400 });
 
-	// `roomId` is stripped alongside the token because this frame is typed `PublicSinger`, which has no room field; broadcast, or the TV's roster chip and "Now singing" lower-third keep the old name until the next full sync.
-	const { sessionToken: _t, roomId: _r, ...safe } = updated;
+	// A kept person carries the new name and colour to the next night.
+	if (updated.personId) app.people.update(updated.personId, updated.displayName, updated.color);
+	// Broadcast, or the TV's roster chip and "Now singing" lower-third keep the old name until the next full sync.
+	const safe = publicSinger(updated);
 	app.publish({ type: 'singer:updated', singer: safe });
 	return json({ singer: safe });
 };

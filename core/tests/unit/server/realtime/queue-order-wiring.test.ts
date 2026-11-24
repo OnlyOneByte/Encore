@@ -201,7 +201,7 @@ test('the stamp records only THAT a singer sang, never what', () => {
 	h.singers.markSang(ana.id, 777);
 	const row = h.singers.byId(ana.id)!;
 	expect(row.lastSungAt).toBe(777);
-	// roomId is a scoping key, not song history — its presence does not cross the privacy line
+	// roomId and personId are scoping keys, not song history — their presence does not cross the privacy line
 	// the test guards (no media/entry id on the singer row).
 	expect(Object.keys(row).sort()).toEqual([
 		'color',
@@ -209,6 +209,7 @@ test('the stamp records only THAT a singer sang, never what', () => {
 		'id',
 		'joinedAt',
 		'lastSungAt',
+		'personId',
 		'roomId',
 		'sessionToken'
 	]);

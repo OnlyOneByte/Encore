@@ -168,6 +168,7 @@ touches it, measured on `main` and on the branch.
 | A joined phone opens `/queue` → heading ready       | ≤ 500 ms                                  | 164 (156–196)    | –             | **Gated**                                                                  |
 | TV `/tv` cold → room code and QR                    | ≤ 1000 ms                                 | 112 (100–160)    | –             | **Gated**. LCP 784 ms is the attract phrase's ruled 600 ms fade            |
 | Join: tap Start singing → Sing box ready            | ≤ 300 ms                                  | 136 (105–149)    | –             | dock at 162 ms                                                             |
+| Kept phone: tap Start singing → Sing box ready      | ≤ 300 ms                                  | 263–297          | –             | `probe/keep-me`, timed from the test process at load ~70; one tap, no name |
 | Search: last keystroke → first library result       | ≤ 300 ms                                  | 205 (175–259)    | 275 (214–279) | 150 ms of that is the debounce in `core/src/routes/+page.svelte`           |
 | Search: default sources (catalog and YouTube)       | ≤ 1000 ms on real Wi-Fi                   | **unmeasured**   | –             | 188 (179–277) with the resolvers stubbed; real network unmeasured          |
 | Tap Sing (+) → button reads "queued"                | ≤ 100 ms                                  | 40 (31–82)       | 33            | optimistic. **Gated** at 1×; 4× reported                                   |

@@ -3,6 +3,7 @@
 import { canonicalHex, freeSingerColor, isLegibleSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
 import type { Room } from '../rooms/repository';
+import { publicSinger } from './repository';
 
 export interface JoinInput {
 	displayName: string;
@@ -10,6 +11,8 @@ export interface JoinInput {
 	color?: string;
 	/** Room join code (TV QR or typed). Absent = the core's single active room ({@link EncoreApp.activeRoomId}); present = that room specifically — an unknown code is refused, never silently defaulted, so a mistyped code can't drop a guest into the wrong party. */
 	code?: string;
+	/** The kept person this phone returns as, read by the route from the device cookie only. */
+	personId?: string;
 }
 
 export interface JoinResult {
@@ -120,13 +123,24 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');
+	// A returning phone replaces its own earlier night that never got going (a join whose response was lost): no
+	// socket and no turn, so it would otherwise hold the kept name against its own retry.
+	if (input.personId) {
+		const online = new Set(app.presence.online());
+		for (const s of app.singers.byPerson(input.personId)) {
+			if (s.roomId !== room.id || online.has(s.id) || hasPendingSongs(app, s.id)) continue;
+			app.singers.endSession(s.id);
+			app.presence.forget(s.id);
+			app.releaseSinger?.(s.id);
+		}
+	}
 	// In-room uniqueness: a name is free if no one still in THIS room holds it.
 	assertNameFree(app, room.id, name);
 	// Resolved HERE, inside one synchronous handler, so phones that read the same room preview still get distinct
 	// colours: each join sees every join before it.
 	const color = resolveSingerColor(app, room.id, input.color);
 
-	const singer = app.singers.create(name, color, app.now(), room.id);
+	const singer = app.singers.create(name, color, app.now(), room.id, input.personId ?? null);
 
 	// Registered RIGHT NOW (connect then disconnect, an away-ish state), so the name is held across the gap
 	// between this HTTP response and the WebSocket opening, without claiming a live socket. The real WS
@@ -136,7 +150,6 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	// This broadcast reaches EVERY socket in the room, including a cookie-less spectator, and `singer`
 	// carries the session token — the whole auth axis — so it MUST be stripped before the wire.
-	const { sessionToken: _t, ...publicSinger } = singer;
-	app.publish({ type: 'singer:joined', singer: publicSinger });
+	app.publish({ type: 'singer:joined', singer: publicSinger(singer) });
 	return { singer, roomId: room.id };
 }

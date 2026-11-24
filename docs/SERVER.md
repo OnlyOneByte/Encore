@@ -475,9 +475,9 @@ queue and playback state was actually lost.
 
 A singer's cookie runs the party; the host's runs the machine ([The host key](#the-host-key)).
 
-- **One singer cookie: `encore_singer`.** It is written by exactly one live writer, `cookies.set` in
-  `src/routes/api/join/+server.ts`, and cleared by `cookies.delete` in
-  `src/routes/api/leave/+server.ts` with a MATCHING `path`, or the delete does not apply.
+- **One singer cookie: `encore_singer`.** It is written by exactly one writer, `setSessionCookie`
+  (`src/lib/server/singers/session-cookie.ts`), which a join and Keep me call, and cleared by `cookies.delete`
+  in `src/routes/api/leave/+server.ts` with a MATCHING `path`, or the delete does not apply.
 - **A cookie is a browser, not a tab, and a Leave ends it on the server.** The tabs of one phone share the
   cookie, so they are one singer. `POST /api/leave` replaces the singer's token (`endSession`), so no copy of
   the cookie resolves again, and releases every socket opened with it (`singer-sockets.ts`): each stops acting
@@ -525,7 +525,9 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   `PUT /api/settings/room`, `GET /api/metrics`, `POST /api/delete-media`, `POST /api/lyrics-reselect`,
   `DELETE /api/host`, and the `/metrics`, `/metrics/[mediaId]` and `/admin` pages; the song page offers the
   lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
-  session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party. `/api/thumb` is bounded by an https-only host allowlist rather than by a
+  session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party.
+  KEPT-ONLY: `DELETE /api/me/person` and `DELETE /api/me/person/others` need the singer cookie AND this
+  phone's device cookie, naming the same person ([Kept people](#kept-people)). `/api/thumb` is bounded by an https-only host allowlist rather than by a
   session, which is the SSRF boundary and not a convenience.
 - **`plays` carries no singer column, structurally.** That is what makes the public stats endpoints
   aggregate-only by construction rather than by a filter, so no per-singer figure can be served from them
@@ -624,6 +626,68 @@ exposure to the internet. What each attack gets:
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open
 `<address>/host#k=<that value>`. Existing host sessions survive a restart.
+
+### Kept people
+
+Proposal 30, PR 2 (#1109). A guest is a `singers` row for one night and stays the default. After their first
+song, a guest can tap Keep me on the You tab; next time the QR opens on "Welcome back" and one tap joins them
+as the same person. There is no email, no password and no signup screen.
+
+- **Tables.** `people` (name, colour) and `person_devices` (one row per phone, keyed by the SHA-256 of its
+  cookie, with `last_seen_at`). `singers.person_id` links a night to its person and is NULL for a guest.
+  `src/lib/server/people/` owns both.
+- **Keep me** (`POST /api/me/person`) needs tonight's singer cookie and a first song (`last_sung_at`), and is
+  refused (409) on a phone that already holds a live device cookie, so a borrowed phone cannot be taken over.
+  It creates the person from tonight's name and colour, sets the device cookie, and swaps the singer token
+  (`linkPerson`), so a copy of the old singer cookie, one planted from another port say, never becomes the
+  kept person.
+- **The device cookie.** `encore_device`: 256 random bits, `httpOnly`, `sameSite: 'lax'` (the QR opens the
+  app from the camera, a cross-site navigation that must carry it), `path: '/'`, one year. Over HTTPS it is
+  `__Host-encore_device` and `secure`, so a plain-HTTP sibling on the same host cannot plant one. Only its
+  SHA-256 is stored.
+- **Server-side expiry.** A device whose `last_seen_at` is 180 days old resolves to no one, whatever its cookie
+  says. A returning join and opening the You tab count as use. At boot and then once a day on the reaper tick
+  (`dailyPersonPrune`), idle devices are deleted, and a person left with none is deleted as though they had
+  tapped Delete me, since nothing can bring them back.
+- **The token rotates** on every returning join and on Sign out other phones: the device row gets a new hash and
+  the phone a new cookie. The token it replaced keeps working for 2 minutes (`ROTATION_GRACE_MS`) or until the
+  new one is first presented, whichever is sooner, so a response the Wi-Fi drops, a reload mid-request or a second
+  tab does not un-keep the phone. "Presented" includes the phone's `/ws` upgrade, which carries the cookie about a
+  second after a join (`seenOnSocket`), so on a normal join the window lasts about a second. A use inside the
+  window is answered with the CURRENT token again and rotates nothing; anything older resolves to no one. The new
+  token is `sha256(salt:previous token)` with a fresh salt, so the server can re-send it to whoever presents the
+  previous one without storing any token in plain text. The salt and the previous hash are cleared the moment the
+  window ends: on the new token's first use, on a late use of the old one, and on every reaper tick for a window
+  that ran out unused. Until then, the DB plus an old cookie would derive the live token.
+- **A returning join replaces its own stalled night**: a night of the same person in the room with no socket and
+  no turn (the join whose response was lost) is ended, so it does not hold the kept name against the retry.
+- **The returning phone.** `GET /api/room-preview` adds `returning: { displayName, color }` only when the
+  request carries a live device cookie, with `cache-control: private, no-store`. `POST /api/join` with
+  `returning: true` reads the person from the device cookie alone (401 when it is not live), and may carry a
+  `displayName` when someone in the room holds the kept name (409 first). The name is never a credential: a
+  phone without the cookie is a new guest, whatever name it types.
+- **A rename** (`PATCH /api/me`) of a kept night renames the person too, so the next night has it.
+- **Sign out other phones** (`DELETE /api/me/person/others`) deletes every other device of the person and ends
+  every other night of theirs still signed in (`endSession` and the socket release a Leave uses).
+- **Delete me** (`DELETE /api/me/person`) deletes the person, every device, and every past night's `singers`
+  row. Tonight's row stays, unlinked, so the guest is still in the room; a night still holding a queue entry is
+  unlinked instead of deleted, so the queue keeps its singer. Proposal 29's history (not built yet) must be
+  deleted in `forgetPerson` with those rows, and so must anything else later keyed on a singer or a person.
+- **Nothing reaches the room.** `publicSinger` strips `sessionToken`, `roomId` and `personId` from every wire
+  projection: rosters, `singer:joined`, `/api/me` and the settings loads. The TV learns nothing about accounts.
+
+| Attack | Outcome |
+| --- | --- |
+| Typing a kept person's name on another phone | A new guest. "Welcome back" needs the device cookie. |
+| A forged device cookie, or another phone's after Sign out other phones | 401: it resolves to no row. |
+| A copy of this phone's own cookie (sniffed over HTTP) | It shares this phone's row, so it works only until the token rotates (the owner's one-tap join or Sign out other phones) and the owner's phone then presents the new one (its `/ws` upgrade, about a second later), or 2 minutes pass; after that it gets 401. Inside that window the copy is answered with the current token, as the owner's own retry would be. |
+| The thief uses the copy first | The rotation goes the other way. Once the grace ends, the owner's phone is no longer welcomed back, which is how the theft shows, and it can no longer sign out, rename or delete the person. The thief, holding the only live token and a linked night, CAN rename the person and Delete me them, history included. The recovery is the host's Reset phones (#1201, not built yet); until then only the thief's Delete me or 180 days of disuse end it. This sits inside the plain-HTTP Wi-Fi sniffing risk below: an HTTPS proxy is what prevents the copy. |
+| A phone lost or sold | Sign out other phones from the phone you have, or Delete me. Or wait: 180 days unused and it is signed out. |
+| A device cookie planted from another port on this host (plain HTTP only) | The victim sees "Welcome back" with the planter's name and taps "I'm someone else"; the planter gains nothing from it, but the plant blocks the victim's own Keep me (409). `__Host-` closes it over HTTPS. |
+| Deleting or signing out someone else | 401 unless the singer cookie and the device cookie name the same person. Every `/api/me/*` route reads the person from the cookies, never the URL or body. |
+| CSRF from another site | The Origin check refuses every write ([Requests from other sites](#requests-from-other-sites)). |
+| The DB file or a backup | Device tokens are stored as SHA-256 only. |
+| Sniffing the Wi-Fi | As for every cookie over plain HTTP. A kept person holds a name and a colour, never a password, email or payment detail. |
 
 ### Requests from other sites
 

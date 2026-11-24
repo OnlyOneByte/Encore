@@ -141,6 +141,8 @@ of failed processes on specific videos is not a broken install.
   **Sing** (one search box over YouTube and your library, ordered by whether you can sing it _now_, with
   one-tap queue), **Queue** (`/queue`: the rotation, drag-reorder, remove with undo, now-playing
   transport) and **Library** (`/library`: the songs already made, filtered in place).
+- **Keep me** — after your first song, one tap on the You tab keeps you on that phone. Next time the QR
+  opens on "Welcome back" and one tap puts you in. No email, no password; **Delete me** removes you.
 - **Your turn** — while the song before yours plays, an **On deck** card on the Queue tab sets the key
   and guide your song will start in, and offers **Not yet** once to let the next singer go first. When
   the TV shows the "Now singing" card for you, your phone says **You're up**, on any tab.

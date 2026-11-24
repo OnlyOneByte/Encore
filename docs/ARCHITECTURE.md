@@ -885,6 +885,9 @@ Keep these intact:
   claims.
 - The host key: settings, the operator pages and song deletes need an `encore_host` session, from the link
   core prints at boot or `ENCORE_ADMIN_TOKEN` (`docs/SERVER.md#the-host-key`, with the threat model).
+- Kept people: "Welcome back" and every `/api/me/person` write read the person from this phone's device cookie,
+  never a name, the URL or a body; device tokens are stored as SHA-256 and expire on the server after 180 days
+  unused (`docs/SERVER.md#kept-people`).
 - Requests from other sites: every unsafe-method request, on any path, and the `/ws` upgrade must come from
   our origin, and bodies must be JSON; no check reads the raw path (`docs/SERVER.md#requests-from-other-sites`).
 - yt-dlp: query is one argv element, with a kill timer — never shell-concatenate user input.

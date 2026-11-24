@@ -12,6 +12,8 @@ export interface RoomPreview {
 	/** How many of `presentCount` are AWAY rather than reachable. They are still COUNTED — the grace window holds their
 	 * names — and this is what lets the sentence avoid claiming they are in front of you. Absent reads as 0. */
 	awayCount?: number;
+	/** The person this phone is kept for, when it holds a live device cookie. */
+	returning?: { displayName: string; color: string } | null;
 }
 
 /**

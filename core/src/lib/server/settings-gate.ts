@@ -8,7 +8,7 @@
 // which is what makes freshness the cheap option here. Each route then loads only what its own controls read.
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
-import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { publicSinger, SESSION_COOKIE } from '$lib/server/singers/repository';
 import { isHost } from '$lib/server/host-gate';
 import { joinOrigin } from '$lib/server/public-origin';
 
@@ -31,8 +31,7 @@ export function settingsSinger({ cookies, url }: Pick<RequestEvent, 'cookies' | 
 		redirect(303, `/?next=${next}`);
 	}
 
-	const { sessionToken: _t, ...me } = singer;
-	return me;
+	return publicSinger(singer);
 }
 
 /** The room and machine scopes: the host opens them without joining, a joined guest reads them locked, anyone else

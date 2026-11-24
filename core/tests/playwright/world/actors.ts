@@ -170,6 +170,23 @@ export async function queueReady(phone: Page, query: string): Promise<void> {
 		.toBe(true);
 }
 
+/** Queue a READY song and wait until it has started, so the server counts this singer as having sung (Keep me
+ *  needs that). Another turn ahead of it ends on its own; the fake worker's songs are 8 s. */
+export async function singOnce(phone: Page, query: string): Promise<void> {
+	await queueReady(phone, query);
+	await expect
+		.poll(
+			async () =>
+				((await phone.request.get('/api/me').then((r) => r.json())) as { singer?: { lastSungAt?: number | null } })
+					.singer?.lastSungAt ?? null,
+			{
+				timeout: 60_000,
+				message: `"${query}" never started for this singer`
+			}
+		)
+		.not.toBeNull();
+}
+
 /** Take a phone offline. A Chromium that already reports offline fires no `offline` event, so the app's drop cue
  *  waits out its heartbeat instead: fail on the environment, not on the cue. See docs/E2E.md#running-in-docker. */
 export async function goOffline(page: Page): Promise<void> {

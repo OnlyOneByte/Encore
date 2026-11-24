@@ -2,6 +2,8 @@
 
 import { AuthoritativeState } from './state/store';
 import { SingerRepository } from './singers/repository';
+import { PeopleRepository } from './people/repository';
+import { dailyPersonPrune, pruneIdlePeople } from './people/keep';
 import { HostKey } from './host-key';
 import { RoomRepository } from './rooms/repository';
 import { PresenceTracker } from './realtime/presence';
@@ -73,6 +75,7 @@ export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
+	people: PeopleRepository;
 	hostKey: HostKey;
 	rooms: RoomRepository;
 	/** Where a bare `/join` lands, and the room the TV QR advertises; an explicit code resolves via {@link rooms}. */
@@ -559,6 +562,7 @@ export function getApp(): EncoreApp {
 	};
 
 	let lastAttemptPrune = 0;
+	let personPrune: (() => void) | null = null;
 	// A lease expiry may have changed capacity, so redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
@@ -572,6 +576,10 @@ export function getApp(): EncoreApp {
 				lastAttemptPrune = now;
 				attempts.pruneFinishedBefore(now - ATTEMPT_RETENTION_MS);
 			}
+			// Daily as well as at boot, so a core that runs for months still drops people whose phones all went idle.
+			(personPrune ??= dailyPersonPrune(app, now))();
+			// Every tick: an unused grace's salt must not outlive its window (docs/SERVER.md#kept-people).
+			app.people.clearExpiredGrace(now);
 		},
 		// A reaper-killed process reaches terminal `failed` without the worker reporting it, so it never hits worker-hub's onFailed. The SAME shared epilogue must run here, or the phone stays pinned on the processing percentage forever.
 		// THE SINKS COME FROM THE HUB, not a bag built here. This call site used to pass `{ broadcast, mediaById }` and no `persist`, so a reaper-killed process settled its stem gate IN MEMORY ONLY while the stored row kept saying 'queued' — and `hydrateMediaCatalog` then won at the next boot, resurrecting the stranding the settle exists to prevent (repaired only incidentally, one boot later still, by `reconcileStrandedGates`). `TerminalFailureDeps.persist` is optional in the TYPE and required for durability, which is exactly the mistake a second assembly site invites; `WorkerHub.terminalFailureSinks()` is the one bag.
@@ -586,6 +594,7 @@ export function getApp(): EncoreApp {
 		db,
 		state,
 		singers,
+		people: new PeopleRepository(db),
 		hostKey,
 		rooms,
 		activeRoomId,
@@ -616,6 +625,9 @@ export function getApp(): EncoreApp {
 
 	// A restart drops every worker WS session, so an assigned/running row is orphaned. One-shot, before server.ts starts the reaper tick loop.
 	app.reaper.recoverOnBoot();
+
+	// A person whose every phone went idle can never come back, so their nights go too.
+	pruneIdlePeople(app);
 
 	g[APP_KEY] = app;
 	return g[APP_KEY]!;

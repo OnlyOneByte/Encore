@@ -1418,6 +1418,16 @@ wide, y=352.58 at 1920x1080, and the CTA's bottom edge at y=828 of 844 at 390x84
 than pin, so a spacing rung can still move them with nothing red. What cannot happen again is the two hosts
 drifting apart.
 
+**A kept phone is welcomed back** (proposal 30, PR 2). When the room preview carries `returning`, the identity
+pane swaps the name field and the colour ring for an idle Spotlight look in the person's colour, its one heading
+"Welcome back, Theo" at the Spotlight title size, so it cannot read as a field to type in. It is drawn inline
+rather than with `<Spotlight>`, whose stylesheet the join screen's budget cannot carry until #1171 ships it on a
+phone tab. The one CTA, Start singing, joins with `returning: true`. Arriving there costs no extra request: the
+preview already answers it, so nothing flashes a name field first. "I'm someone else" (a borrowed phone) drops to
+the normal pane for this visit and leaves the phone's device cookie alone. A 409 (someone here holds the kept name)
+shows the name field, still as the same person; a 401 (the phone is no longer kept) falls back to the normal
+pane with the reason. See docs/SERVER.md#kept-people.
+
 Finally `.confirm`, `.err` and `.cta-reason` stay
 ordinary elements rather than Field primitives: `tests/playwright/world/selectors.ts` addresses `.err` as a class on the
 alerting element and a class handed to a component carries no scoped rule; `.confirm` is the scanned path's
@@ -1557,7 +1567,16 @@ is Sound's last row**, not a card of its own: it was a separate "Sound quality" 
 scope, and two cards on one page cannot both be headed "Sound". That gives up the adjacency to what it caps
 (`capAboveDefault` compares the room's `maxQualityRank` against the machine's `defaultEngine`/`defaultModel`), so the
 `At or above the server default` line under the field is now the one place that relation is read. The machine scope runs Making karaoke, Lyrics engine, Joining, Re-processing. The
-You scope runs You then Leaving.
+You scope runs Keep me (the offer, or the kept card), You, then Leaving.
+
+**KEEP ME IS OFFERED, NEVER ASKED.** After a guest's first song (and never before), the You scope opens on one
+ringed Spotlight in their colour, "Keep Ana for next time", with one Keep me button. It comes first so it sits above
+the fold at 320x568, and it is never a modal and never interrupts. Once kept, the same slot holds a plain card, so
+the tap's answer lands where the tap was: "Ana is kept on this phone", with "Sign out the other phone(s)"
+when there are any and "Delete me" behind an `alertdialog`, which says what goes (name, colour, past nights, on
+every phone) and that the guest stays in the room tonight. Each tap shows its outcome at once and rolls back with
+one line on a refusal. A phone kept for someone else (borrowed) offers nothing. The now-line nudge the proposal
+also names waits for the Spotlight now-line (#1171). Server rules: docs/SERVER.md#kept-people.
 
 **THE TENTH CARD IS TITLED AND ITS DOOR IS REAL.** The Advanced disclosure wrapper used to be the one untitled
 card, and a scope page cannot mark a card that has no heading to mark — it is `Re-processing` now, with
@@ -1613,8 +1632,7 @@ leaving from the machine scope and tapping back landed on the room scope.
 
 That in-card commit has a consequence that is KEPT ON PURPOSE: the You scope's last control is `Leave the room` in
 the Leaving card below it. The destructive action is last because last is the end of the scope, after everything a
-guest came for; it is the only BUTTON in settings that is not an `--accent` fill, and the only control anywhere here
-behind an `alertdialog` confirm, so arriving at it by reaching for the bottom costs a dismissal rather than a room.
+guest came for; it is one of two controls here behind an `alertdialog` confirm (Delete me is the other), so arriving at it by reaching for the bottom costs a dismissal rather than a room.
 Lifting Leaving above the You card would move the destructive card into the panel's FIRST position — top-left of
 the paired grid, which is desktop-only but real — to protect its last. **A refusal is keyed to whatever it is a
 statement ABOUT**, which is a rule and not one shape. The profile refusal is keyed to the draft it refused

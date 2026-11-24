@@ -58,6 +58,12 @@
 	// WRONG room in the one case both exist — a scan that failed, dropped to step 1, and was corrected by hand.
 	let previewCode = $state('');
 
+	/* A kept phone joins as its person in one tap; "I'm someone else" is the borrowed-phone way out. `renaming` is a
+	   kept phone whose name someone in the room already holds. See docs/FRONTEND.md#the-join-screen. */
+	let someoneElse = $state(false);
+	let renaming = $state(false);
+	const returning = $derived(someoneElse ? null : (preview?.returning ?? null));
+
 	/* DERIVED from `preview`, so no state can show an identity pane for a room that was never confirmed. */
 	const pane = $derived<'resolving' | 'code' | 'identity'>(
 		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
@@ -89,7 +95,9 @@
 
 	const joinCode = $derived(preview ? previewCode : typedCode);
 	const canContinue = $derived(typedCode.length === CODE_LENGTH && !previewLoading);
-	const canJoin = $derived(pane === 'identity' && name.trim().length > 0 && !submitting);
+	/* A kept phone needs no name unless it is renaming. */
+	const needsName = $derived(!returning || renaming);
+	const canJoin = $derived(pane === 'identity' && (!needsName || name.trim().length > 0) && !submitting);
 	const onCodeStep = $derived(pane === 'code');
 	const ctaEnabled = $derived(onCodeStep ? canContinue : canJoin);
 	/* ONE reason string for BOTH panes, because there is one live region for it below and a second would compete with
@@ -102,7 +110,7 @@
 			return '';
 		}
 		if (pane === 'resolving') return 'Waiting for the room to load.';
-		if (name.trim().length === 0) return 'Enter your name to continue.';
+		if (needsName && name.trim().length === 0) return 'Enter your name to continue.';
 		return '';
 	});
 
@@ -150,18 +158,26 @@
 		if (!canJoin) return;
 		submitting = true;
 		error = '';
+		const asKept = returning !== null;
 		try {
 			const res = await fetch('/api/join', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					displayName: name.trim(),
-					color: colorPicked ? color : undefined,
-					code: joinCode || undefined
-				})
+				body: JSON.stringify(
+					asKept
+						? { returning: true, displayName: renaming ? name.trim() : undefined, code: joinCode || undefined }
+						: { displayName: name.trim(), color: colorPicked ? color : undefined, code: joinCode || undefined }
+				)
 			});
 			if (!res.ok) {
 				error = (await res.json()).error ?? 'Could not join';
+				// Someone here holds the kept name: ask for another, still as this person.
+				if (asKept && res.status === 409 && !renaming) {
+					renaming = true;
+					name = returning?.displayName ?? '';
+				}
+				// The phone is no longer kept: it joins like anyone else.
+				if (asKept && res.status === 401) someoneElse = true;
 				submitting = false;
 				return;
 			}
@@ -221,34 +237,69 @@
 		<!-- STEP 2 — IDENTITY. No code input here: both paths have already taken the code. -->
 		<p class="confirm" role="status">{confirmSentence}</p>
 
-		<label class="name-field">
-			<span class="control-label">Your name</span>
-			<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
-			<Input
-				variant="join"
-				bind:value={name}
-				placeholder="e.g. Maya"
-				maxlength={32}
-				autocomplete="nickname"
-				enterkeyhint="go"
-				onkeydown={(e) => e.key === 'Enter' && join()}
-			/>
-		</label>
+		{#snippet nameField()}
+			<label class="name-field">
+				<span class="control-label">Your name</span>
+				<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
+				<Input
+					variant="join"
+					bind:value={name}
+					placeholder="e.g. Maya"
+					maxlength={32}
+					autocomplete="nickname"
+					enterkeyhint="go"
+					onkeydown={(e) => e.key === 'Enter' && join()}
+				/>
+			</label>
+		{/snippet}
 
-		<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence above is built from. An empty
-				room is an empty list, which needs no special case. -->
-		<ColourRing
-			label="Your color"
-			hint="How you'll spot yourself in the queue and on the TV."
-			taken={preview?.colors ?? []}
-			bind:value={
-				() => color,
-				(v) => {
-					color = v;
-					colorPicked = true;
+		{#if returning}
+			<!-- The idle Spotlight's look, inline rather than the component or a stylesheet: this screen's CSS ships on
+					all three phone tabs, and CLAIM 13 has no room for it. -->
+			<section
+				style:padding="var(--step-4)"
+				style:border-radius="var(--round-spot)"
+				style:background="var(--role-raise)"
+				style:box-shadow="inset 0 0 0 2px {nearestPaletteStop(returning.color).fill}"
+			>
+				<h2
+					style:margin="0"
+					style:font-size="var(--type-lead)"
+					style:font-weight="800"
+					style:line-height="var(--lh-tight)"
+				>
+					Welcome back, {returning.displayName}
+				</h2>
+			</section>
+			{#if renaming}{@render nameField()}{/if}
+			<Button
+				variant="ghost"
+				size="tap"
+				onclick={() => {
+					someoneElse = true;
+					renaming = false;
+					error = '';
+					name = '';
+				}}>I'm someone else</Button
+			>
+		{:else}
+			{@render nameField()}
+
+			<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence above is built from. An empty
+					room is an empty list, which needs no special case. -->
+			<ColourRing
+				label="Your color"
+				hint="How you'll spot yourself in the queue and on the TV."
+				taken={preview?.colors ?? []}
+				bind:value={
+					() => color,
+					(v) => {
+						color = v;
+						colorPicked = true;
+					}
 				}
-			}
-		/>
+			/>
+		{/if}
 
 		{#if error}
 			<div class="err" role="alert">{error}</div>
