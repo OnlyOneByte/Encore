@@ -972,6 +972,29 @@ once there is room. It all runs on `--motion-base`, on the same clock as the `.b
 and the list under it move together. There's no grow while the card is still arriving (the arrive's fade already shows
 it at its new size) and none under reduced motion, which is a cut.
 
+### The Queued list holds still
+
+Inside `.below`, the "Queued" heading, the reorder note and every row hold still when the page moves them in layout.
+That happens when your own song starts (your On deck card leaves, then your row leaves the list about 12 ms later)
+and when a cooking card changes height. Each block's drawn top and layout top are read before the patch
+(`$effect.pre`). After it, every block that survived and moved is held in its OLD layout slot by `position: relative`
+and `top: --hold-top`, so its box never moves and no layout shift is counted. It glides by transform alone, from where
+it was drawn (`--hold-from`) to its new slot, on `--motion-base`, with `forwards` so it stays there. On
+`animationend` the hold turns `done`: `top` goes to 0 and `animation: none` removes the glide in the same frame, so the
+drawn position does not move and Chromium counts no shift. Two other ways to end it fail. Zeroing `--hold-top` and
+`--hold-from` while the finished `forwards` animation stays on moves the layout box under a live animation, and
+Chromium counts that as a layout shift. Removing `data-hold` gives the row's `animation` back to `.pop-in`, which
+replays its entrance: the row jumps 6 px up and eases back. A block that left is a cut, and one that arrived just
+appears.
+
+A second patch mid-glide, such as your row leaving right after your card, re-reads both tops and restarts the glide
+from where the block is drawn, still in its old layout slot. The older design held blocks with a transform alone
+over a layout move. Chromium counted that move once a running transform was restarted in the same frame: about 0.0117
+at 390x844 and 390x1200 (#1081).
+
+There is no hold during a drag (the live sort owns those rows), for a reorder (the rows would cross each other), at
+the first sync or a reconnect, or under reduced motion. Those cases are cuts, and any hold still running turns `done`.
+
 ### The Sing tab
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its

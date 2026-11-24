@@ -695,18 +695,8 @@
 		if (Math.abs(dy) >= 0.5) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
 	}
 
-	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (proposal 18). The hold above moves `.below` as one box, and nothing
-	   held what is inside it: when your own song starts, your On deck card leaves and the heading and rows under it
-	   jumped up by its height (356 px), then your row left the list 12 ms later and the rows under it jumped again. A
-	   cooking card changing state moved every row under it the same way. So the same move, one level down: each block's
-	   DRAWN top inside `.below` is read before the patch, and after it every block that survived and moved is held there
-	   by `data-hold` and eased home on --motion-base (app.css). A block that left is a cut; one that arrived just
-	   appears. The drawn top, so a second patch mid-ease starts from where the block is on screen: its running hold is
-	   cancelled first, so the read after the patch is its new slot. Under reduced motion the CSS does nothing: a cut.
-	   `$effect.pre`, never a ResizeObserver: the proposal's prototype measured one firing a frame after the jump painted.
-	   Never during a drag (the live sort owns those rows), never for a reorder (the rows would cross each other), and
-	   never at the first sync or a reconnect, on the gate above: `holdArmed` is that gate as of the last patch.
-	   Rows are keyed by entry and by component, since a card turning into a row is a new element. */
+	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (docs/FRONTEND.md § The Queued list holds still). `$effect.pre`,
+	   never a ResizeObserver: one fired a frame after the jump had painted. */
 	const rowKinds = $derived(queued.map((e) => queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))));
 	const rowKey = (id: string, kind: string | undefined) => `${id}:${kind === 'plain' ? 'row' : 'card'}`;
 	// Everything that can change a block's height or the list's membership, as one primitive: an equal emit runs nothing.
@@ -717,8 +707,10 @@
 			)
 			.join('|')
 	);
-	let holds = $state<Record<string, { dy: number; turn: 'a' | 'b' }>>({});
-	let topsWas: Record<string, number | undefined> | null = null;
+	type Hold = { top: number; from: number; turn: 'a' | 'b' | 'done' };
+	let holds = $state<Record<string, Hold>>({});
+	// Each block's drawn top `t` and layout top `l` (its slot, held or not) before the patch.
+	let topsWas: Record<string, { t: number; l: number } | undefined> | null = null;
 	let scrollWas = 0;
 	// `.below`'s drawn top before the patch, and the song the last patch saw: a song change settles the box itself.
 	let boxWas: number | undefined;
@@ -737,13 +729,25 @@
 		return els;
 	}
 	const topIn = (box: HTMLElement, el: Element) => el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+	// How far the block's own transform (a hold, a pop) draws its top edge off its layout top.
+	const liftOf = (el: Element) => {
+		const t = getComputedStyle(el).transform;
+		return t === 'none' ? 0 : new DOMMatrix(t).m42;
+	};
 	$effect.pre(() => {
 		void nowId;
 		void holdKey;
 		scrollWas = window.scrollY;
 		const box = untrack(() => below);
 		boxWas = box?.getBoundingClientRect().top;
-		topsWas = box ? Object.fromEntries(blocksOf(box).map(([k, el]) => [k, topIn(box, el)])) : null;
+		topsWas = box
+			? Object.fromEntries(
+					blocksOf(box).map(([k, el]) => {
+						const t = topIn(box, el);
+						return [k, { t, l: t - liftOf(el) }];
+					})
+				)
+			: null;
 	});
 	$effect(() => {
 		const id = nowId;
@@ -758,29 +762,43 @@
 			rowKeys = queued.map((e, i) => rowKey(e.id, rowKinds[i]));
 			if (!was) return;
 			keepPage(scrollWas);
-			if (!below || !holdArmed || !ready || dragging || !orderKept(idsOf(prev), idsOf(rowKeys))) return;
+			const box = below;
+			if (!box) return;
+			if (!holdArmed || !ready || dragging || reducedMotion.current || !orderKept(idsOf(prev), idsOf(rowKeys))) {
+				for (const k in holds) if (holds[k]!.turn !== 'done') holds[k] = HOLD_DONE;
+				return;
+			}
 			const next: typeof holds = {};
-			for (const [k, el] of blocksOf(below)) {
-				if (holds[k]) next[k] = holds[k];
+			for (const [k, el] of blocksOf(box)) {
 				const old = was[k];
 				if (old === undefined) continue;
 				for (const a of el.getAnimations())
 					if (a instanceof CSSAnimation && a.animationName.startsWith('hold-')) a.cancel();
-				const dy = old - topIn(below, el);
-				if (Math.abs(dy) >= 0.5) next[k] = { dy, turn: holds[k]?.turn === 'a' ? 'b' : 'a' };
+				// Its slot now, with no hold: the read still carries the old `top`, which is not rendered away yet.
+				const slot = topIn(box, el) - liftOf(el) - (holds[k]?.top ?? 0);
+				const hold: Hold = { top: old.l - slot, from: old.t - old.l, turn: holds[k]?.turn === 'a' ? 'b' : 'a' };
+				if (Math.abs(hold.top) >= 0.5 || Math.abs(hold.from) >= 0.5) next[k] = hold;
+				else if (holds[k]) next[k] = HOLD_DONE;
 			}
 			holds = next;
 			// A settle still easing from the last song change restarts with the holds; a song change in this patch already did.
 			if (
 				sameSong &&
 				boxWas !== undefined &&
-				below.getAnimations().some((a) => a instanceof CSSAnimation && a.animationName.includes('settle-'))
+				box.getAnimations().some((a) => a instanceof CSSAnimation && a.animationName.includes('settle-'))
 			)
 				settleFrom(boxWas);
 		});
 		holdArmed = ready;
 	});
 	const idsOf = (keys: string[]) => keys.map((k) => k.slice(0, k.lastIndexOf(':')));
+	// The glide is over: the old slot and the hold's animation go in one frame, which counts no shift. `done`, not
+	// deleted: dropping `data-hold` hands the row's `animation` back to `.pop-in`, which would replay its entrance.
+	const HOLD_DONE: Hold = { top: 0, from: 0, turn: 'done' };
+	function endHold(ev: AnimationEvent): void {
+		if (!below || !ev.animationName.startsWith('hold-')) return;
+		for (const [k, el] of blocksOf(below)) if (el === ev.target && holds[k]) holds[k] = HOLD_DONE;
+	}
 
 	/* A PAGE THAT GOT SHORTER AT THE BOTTOM KEEPS ITS HEIGHT. A guest scrolled to the bottom when a card got shorter
 	   (failed 137 → making 109 → ready 69 px) saw the whole column slide down twice, because the browser clamps the
@@ -944,6 +962,7 @@
 		<div
 			class="below"
 			bind:this={below}
+			onanimationend={endHold}
 			data-settle={settle?.turn}
 			style:--settle-from={settle ? `${settle.dy}px` : undefined}
 		>
@@ -970,7 +989,8 @@
 				<h2
 					class="grouphead"
 					data-hold={holds.grouphead?.turn}
-					style:--hold-from={holds.grouphead ? `${holds.grouphead.dy}px` : undefined}
+					style:--hold-top={holds.grouphead ? `${holds.grouphead.top}px` : undefined}
+					style:--hold-from={holds.grouphead ? `${holds.grouphead.from}px` : undefined}
 				>
 					Queued
 				</h2>
@@ -979,7 +999,8 @@
 					<p
 						class={['reorder-note', { held: noteIsHold }]}
 						data-hold={holds['reorder-note']?.turn}
-						style:--hold-from={holds['reorder-note'] ? `${holds['reorder-note'].dy}px` : undefined}
+						style:--hold-top={holds['reorder-note'] ? `${holds['reorder-note'].top}px` : undefined}
+						style:--hold-from={holds['reorder-note'] ? `${holds['reorder-note'].from}px` : undefined}
 					>
 						{reorderNote}
 					</p>

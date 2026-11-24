@@ -43,8 +43,8 @@
 		/** A keyboard step from the grip: -1 for Arrow Up, +1 for Arrow Down. */
 		onnudge?: (delta: number) => void;
 		onremove?: () => void;
-		/** The list's hold (app.css `[data-hold]`): `dy` px from where the row was drawn before a patch moved it. */
-		hold?: { dy: number; turn: 'a' | 'b' };
+		/** The list's hold (app.css `[data-hold]`): `top` px held at its old layout slot, drawn `from` px off it. */
+		hold?: { top: number; from: number; turn: 'a' | 'b' | 'done' };
 	}
 	let {
 		seq,
@@ -109,7 +109,7 @@
 				{ mine, up, pending, moving, shifted: shift !== 0, 'with-next': withNext }
 			]}
 			data-hold={hold?.turn}
-			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-from:{hold?.dy ?? 0}px"
+			style="--drag-y:{dragY}px; --row-shift:{shift}; --hold-top:{hold?.top ?? 0}px; --hold-from:{hold?.from ?? 0}px"
 		>
 			<Item.Media>
 				<!-- THE GRIP LEADS THE ROW, as a handle rather than a fourth action on it. `press="grab"` is not styling: that
