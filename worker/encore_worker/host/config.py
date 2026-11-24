@@ -14,6 +14,7 @@ import hashlib
 import os
 import re
 import sys
+import unicodedata
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -27,6 +28,12 @@ _TOKEN_PARAM = re.compile(r"(token=)[^&#\s'\"]*")
 def redact_token(text: str) -> str:
     """`text` with every `token=` query value blanked, for anything that may echo a dialled URL into a log."""
     return _TOKEN_PARAM.sub(r"\1<redacted>", text)
+
+
+def clean_token(raw: str) -> str:
+    """Core's `cleanToken` (secret-text.ts), exactly: drop control and format characters (U+200B, a BOM), then
+    strip, so both sides read one pasted token the same way."""
+    return "".join(c for c in raw if unicodedata.category(c) not in ("Cc", "Cf")).strip()
 
 
 #: Progress emitted this often while a long step runs. Must stay well under the core's 30 s progress lease,
@@ -214,7 +221,7 @@ class Config:
         concurrency = _positive_int(src, "ENCORE_WORKER_CONCURRENCY", 0)
         return Config(
             core_url=core_url,
-            worker_token=optional("ENCORE_WORKER_TOKEN"),
+            worker_token=clean_token(src.get("ENCORE_WORKER_TOKEN", "")) or None,
             worker_id=optional("ENCORE_WORKER_ID") or _default_worker_id(dbos_db),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=concurrency or 1,

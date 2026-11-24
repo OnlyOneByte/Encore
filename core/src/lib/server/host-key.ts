@@ -5,6 +5,7 @@ import { eq, lte } from 'drizzle-orm';
 import type { DB } from './db/index';
 import { hostSessions } from './db/schema';
 import { hashToken } from './singers/repository';
+import { cleanToken, codePoints } from './secret-text';
 
 export const HOST_COOKIE = 'encore_host';
 export const HOST_SESSION_MS = 30 * 86_400_000;
@@ -18,9 +19,9 @@ export const ADMIN_TOKEN_MIN = 24;
 
 /** Why `ENCORE_ADMIN_TOKEN` cannot be used, or null when it is unset or long enough. */
 export function adminTokenProblem(raw: string | null | undefined): string | null {
-	const token = raw?.trim();
-	if (!token || token.length >= ADMIN_TOKEN_MIN) return null;
-	return `ENCORE_ADMIN_TOKEN is ${token.length} characters; it must be at least ${ADMIN_TOKEN_MIN}, or unset it to get a new key at every start.`;
+	const token = cleanToken(raw);
+	if (!token || codePoints(token) >= ADMIN_TOKEN_MIN) return null;
+	return `ENCORE_ADMIN_TOKEN is ${codePoints(token)} characters; it must be at least ${ADMIN_TOKEN_MIN}, or unset it to get a new key at every start.`;
 }
 
 export class HostKey {
@@ -33,7 +34,7 @@ export class HostKey {
 		this.#db = db;
 		const problem = adminTokenProblem(adminToken);
 		if (problem) throw new Error(problem);
-		const fixed = adminToken?.trim() || null;
+		const fixed = cleanToken(adminToken) || null;
 		const key = fixed ?? randomBytes(32).toString('base64url');
 		this.#key = digest(key);
 		this.#bootKey = fixed ? null : key;
@@ -48,8 +49,9 @@ export class HostKey {
 
 	/** Constant-time: both sides are hashed to 32 bytes first, so neither length nor content leaks. */
 	matches(presented: unknown): boolean {
-		if (typeof presented !== 'string' || !presented) return false;
-		return timingSafeEqual(digest(presented), this.#key);
+		const key = typeof presented === 'string' ? cleanToken(presented) : '';
+		if (!key) return false;
+		return timingSafeEqual(digest(key), this.#key);
 	}
 
 	/** A new host session. The returned token is the cookie value; only its hash is stored. */
