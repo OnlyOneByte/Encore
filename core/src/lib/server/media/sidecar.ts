@@ -7,7 +7,7 @@ import type { Media, LyricsCandidate } from '../../contract';
 import { resolveLyricsRef } from '../../contract';
 import type { SongProfile } from '../../contract';
 import { normalizeSongProfile } from '../../contract';
-import { metaDir } from './paths';
+import { metaDir, keptOriginalRef } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 
 /** Keep every new field OPTIONAL and additive: there is no migration step, so an older record's absent
@@ -48,6 +48,8 @@ export interface MediaSidecar {
 	// Every field below is authoritative here — a DB wipe restores it without re-processing.
 	artifacts: {
 		audio: string | null;
+		/** `audio`'s size when a fetch job kept it; a kept original is used only with one. */
+		audioBytes?: number | null;
 		instrumental: string | null;
 		vocals: string | null;
 		/** Both stems in ONE 4-channel file. Absent → the TV takes the legacy two-element path. */
@@ -128,7 +130,8 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 		// Runtime wins, else the prior write: an index-only hydrate carries none of these refs, so without
 		// the fallback a rewrite erases an artifact already recorded.
 		artifacts: {
-			audio: prev?.artifacts.audio ?? null, // no field on Media at all — the worker owns it
+			audio: m.originalRef ?? prev?.artifacts.audio ?? null, // the download a fetch job kept
+			audioBytes: m.originalBytes ?? prev?.artifacts.audioBytes ?? null,
 			instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental ?? null,
 			vocals: m.vocalsRef ?? prev?.artifacts.vocals ?? null,
 			guideMix: m.guideMixRef ?? prev?.artifacts.guideMix ?? null, // the mix IS the two stems, one file
@@ -152,6 +155,15 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			thumbnail: m.thumbnail ?? prev?.raw.thumbnail ?? null
 		}
 	};
+}
+
+/** A fetched song's kept original, with its size, or nothing. An upload's `audio` is its only copy, never one. */
+function keptOriginalOf(s: MediaSidecar): Pick<Media, 'originalRef' | 'originalBytes'> {
+	const ref = s.origin.source === 'local' ? null : keptOriginalRef(s.id, s.artifacts.audio);
+	const bytes = s.artifacts.audioBytes;
+	return ref && Number.isSafeInteger(bytes) && (bytes as number) > 0
+		? { originalRef: ref, originalBytes: bytes as number }
+		: {};
 }
 
 /** The INDEX direction. PURE. `title` keeps the RAW title, which is what search matches and what a singer
@@ -184,6 +196,8 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 						confidence: s.provenance.artist.confidence === 'low' ? 'medium' : s.provenance.artist.confidence
 					}
 				: undefined,
+		// Only what `setMediaOriginal` would accept, so a hand-edited ref cannot point outside `audio/<id>.*`.
+		...keptOriginalOf(s),
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
 		vocalsRef: s.artifacts.vocals ?? undefined,
 		guideMixRef: s.artifacts.guideMix ?? undefined,
@@ -318,6 +332,8 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 	if (!side) return;
 	side.artifacts = {
 		...side.artifacts,
+		// A fetched original is re-acquirable, so eviction takes it too; an upload's never is.
+		...(side.origin.source === 'local' ? {} : { audio: null, audioBytes: null }),
 		instrumental: null,
 		vocals: null,
 		guideMix: null, // the mix IS the two evicted stems, in one file

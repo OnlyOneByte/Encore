@@ -52,6 +52,10 @@ export const media = sqliteTable('media', {
 	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] })
 		.notNull()
 		.default('none'),
+	// The download a fetch job kept, so later stages read it rather than download the song again. NULL on a library file and on rows fetched before downloads were kept, which download as they always did.
+	originalRef: text('original_ref'),
+	// Its size at fetch: a kept file of any other size (empty, truncated) is not trusted, and the watch URL is used.
+	originalBytes: integer('original_bytes'),
 	// SEPARATE from source_ref, which must stay the song's immutable origin identity — what search dedupes on.
 	instrumentalRef: text('instrumental_ref'),
 	// Nullable: absent means no guide, either never separated or came back silent.

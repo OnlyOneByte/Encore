@@ -16,7 +16,7 @@ import {
 } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
-import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
+import { instrumentalKey as layoutInstrumentalKey, toRelativeKey, keptOriginalRef } from '../media/paths';
 import { mediaStatusFor, shouldBroadcastProcess } from './media-status';
 import { cleanJobWork } from '../media/migrate-layout';
 import type { ServerEvent } from '../../contract';
@@ -127,8 +127,8 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 	media.stemStatus = 'queued'; // rotation holds this slot until the instrumental exists
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
 	// The fetch step already ran, so the next step is stems: Try again after a failed separation starts there. (Stems
-	// downloads from the source again into its own work dir, so it never reads the fetch's file.) Enqueueing `fetch`
-	// again handed back that finished job: no stems job was made, and the line below marked the song ready.
+	// reads the fetch's kept file, or the watch URL once that was evicted.) Enqueueing `fetch` again handed back
+	// that finished job: no stems job was made, and the line below marked the song ready.
 	const fetched = deps.jobs.findLive(mediaId, 'fetch')?.status === 'ready';
 	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) && !fetched ? 'fetch' : 'stems';
 	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now(), undefined, singerId);
@@ -428,6 +428,22 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 	const ref = toRelativeKey(uri);
 	if (!media || !ref) return false;
 	media.vocalsRef = ref;
+	return true;
+}
+
+/** The download a fetch job kept, with its size. Only an `audio/<id>.<known ext>` ref (an older worker reports a
+ *  scratch path, which `cleanJobWork` deletes) and a positive whole size (an older worker sends none). */
+export function setMediaOriginal(
+	mediaId: string,
+	uri: string | undefined,
+	bytes: unknown,
+	mediaById: Map<string, Media>
+): boolean {
+	const media = mediaById.get(mediaId);
+	const ref = keptOriginalRef(mediaId, uri);
+	if (!media || !ref || !Number.isSafeInteger(bytes) || (bytes as number) <= 0) return false;
+	media.originalRef = ref;
+	media.originalBytes = bytes as number;
 	return true;
 }
 

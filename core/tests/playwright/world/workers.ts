@@ -15,7 +15,7 @@
 // directly rather than by tailing a file (the old probes had to poll a LOG FILE because a buried stdout
 // listener on the child was enough to kill its WS), and teardown is one close frame rather than a
 // process-group kill.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 // `ws`, not Node's global WebSocket: a token mismatch comes back as a 401 HTTP response to the UPGRADE, and
 // only `ws` surfaces it (`unexpected-response`) with a status code. On the global it is an opaque error event,
@@ -215,10 +215,14 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		return fromEnv ? resolve(fromEnv) : join(mediaRoot, cls);
 	};
 
+	const pathOf = (ref: string): string => {
+		const [head, ...rest] = ref.split('/');
+		return join(classDir(head ?? ''), rest.join('/'));
+	};
+
 	/** Write bytes for a relative ref like "derived/stems/<id>-instrumental.wav". */
 	const writeRef = (ref: string, bytes: Uint8Array): void => {
-		const [head, ...rest] = ref.split('/');
-		const abs = join(classDir(head ?? ''), rest.join('/'));
+		const abs = pathOf(ref);
 		mkdirSync(dirname(abs), { recursive: true });
 		writeFileSync(abs, bytes);
 		log(`wrote ${ref} (${(bytes.length / 1024).toFixed(0)} KB)`);
@@ -297,13 +301,15 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			if (jobType === 'fetch') {
 				await progress('downloading', 40);
 				const ref = `audio/${mediaId}.wav`;
-				if (!skipWrite) writeRef(ref, tone({ seconds, hz: [196, 246.94, 293.66] }));
+				const audio = tone({ seconds, hz: [196, 246.94, 293.66] });
+				if (!skipWrite) writeRef(ref, audio);
 				await progress('downloading', 100);
 				send({
 					type: 'job:complete',
 					workerId,
 					jobId,
 					mediaUri: ref,
+					artifacts: { original: { bytes: audio.length } },
 					facts: { engine: 'fake-fetch' },
 					stages: [{ stage: 'download', ms: slowMs }]
 				});
@@ -311,6 +317,16 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			}
 
 			if (jobType === 'stems' || jobType === 'stems-upgrade') {
+				// One download per song: once a fetch kept this song's audio, a stems job sent the watch URL is
+				// downloading it again, so it fails loudly here rather than passing unseen.
+				const kept = `audio/${mediaId}.wav`;
+				const keptOk = sourceUri === kept && params.fetcher === 'local' && params.originalBytes != null;
+				if (existsSync(pathOf(kept)) && !keptOk) {
+					const error = `stems got ${params.fetcher ?? '?'}:${sourceUri}, not the kept ${kept}`;
+					log(error);
+					send({ type: 'job:failed', workerId, jobId, error, retryable: false });
+					return;
+				}
 				await progress('separating', 25);
 				// .wav rather than the flac/m4a the real policy names: the key helpers take an explicit ext and
 				// the media route maps wav → audio/wav, so this is a legal ref a browser can play.

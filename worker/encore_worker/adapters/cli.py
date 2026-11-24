@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import glob
+import json
 import os
 import re
 import signal
@@ -407,6 +408,38 @@ def caption_argv(
     ]
 
 
+#: One list for both kinds, so `en.*` to keep named authored tracks (`en-nP7-2PuUl7o`); it also fetches
+#: translations, never picked. `en` and `en-orig` come first, so a 429 on a translation cannot take them.
+FETCH_SUB_LANGS = "en,en-orig,en.*"
+
+
+def fetch_argv(source_uri: str, out_dir: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
+    """The fetch job's ONE call: the audio, both caption kinds, and the info JSON that says which is which.
+
+    `--ignore-errors` keeps the audio when one caption track gets a 429 (docs/SERVER.md, "downloaded once").
+    """
+    return [
+        ytdlp_bin,
+        "--no-playlist",
+        "--socket-timeout",
+        str(YTDLP_SOCKET_TIMEOUT_SEC),
+        "--newline",
+        "-f",
+        "bestaudio/best",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-langs",
+        FETCH_SUB_LANGS,
+        "--sub-format",
+        "vtt/srt/best",
+        "--ignore-errors",
+        "--write-info-json",
+        "-o",
+        os.path.join(out_dir, "original.%(ext)s"),
+        source_uri,
+    ]
+
+
 def duration_argv(path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """Ask ffmpeg to describe the file. Exits non-zero by design — there is no output to produce."""
     return [ffmpeg_bin, "-hide_banner", "-i", path]
@@ -454,12 +487,73 @@ class YtDlpAudio:
     def __init__(self, ytdlp_bin: str = "yt-dlp") -> None:
         self._bin = ytdlp_bin
 
-    def fetch(self, source_uri: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> str:
-        run(audio_argv(source_uri, out_dir, self._bin), on_progress=on_progress, idle_sec=YTDLP_IDLE_SEC)
-        found = sorted(glob.glob(os.path.join(out_dir, "original.*")))
-        if not found:
+    def fetch(
+        self,
+        source_uri: str,
+        out_dir: str,
+        *,
+        on_progress: ProgressSink | None = None,
+        with_captions: bool = False,
+    ) -> str:
+        """The downloaded audio's path. `with_captions` is the fetch job's one call (`fetch_argv`), which
+        leaves its caption tracks beside the audio for `fetched_captions`."""
+        argv = fetch_argv if with_captions else audio_argv
+        try:
+            run(argv(source_uri, out_dir, self._bin), on_progress=on_progress, idle_sec=YTDLP_IDLE_SEC)
+        except ToolFailed as exc:
+            # With `--ignore-errors` yt-dlp still exits 1 when any one track failed (a caption 429). The audio
+            # it wrote is good; with no audio, the failure is the download's own and is raised as it is.
+            if not with_captions or original_audio(out_dir) is None:
+                raise
+            print(f"[fetch] yt-dlp exited {exc.code} after writing the audio; keeping it", flush=True)
+        found = original_audio(out_dir)
+        if found is None:
             raise ToolFailed([self._bin], 0, f"yt-dlp reported success but wrote nothing into {out_dir}")
-        return found[0]
+        return found
+
+
+def original_audio(out_dir: str) -> str | None:
+    """The `original.<ext>` audio yt-dlp wrote: never a caption track, info JSON or partial download."""
+    for path in sorted(glob.glob(os.path.join(out_dir, "original.*"))):
+        name = os.path.basename(path)
+        if name.count(".") == 1 and not name.endswith((".vtt", ".srt", ".json", ".part", ".ytdl")):
+            return path
+    return None
+
+
+def fetched_captions(out_dir: str) -> dict[str, str]:
+    """The caption tracks `fetch_argv` wrote, as `{"authored": path, "machine": path}`; either may be absent.
+
+    No info JSON returns nothing: without its kind, a machine track would be trusted as a person's words.
+    """
+    try:
+        with open(os.path.join(out_dir, "original.info.json"), encoding="utf-8") as handle:
+            info = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(info, dict):
+        return {}
+    # The files on disk, since yt-dlp leaves `requested_subtitles` out of this JSON.
+    authored = info.get("subtitles") or {}
+    machine = info.get("automatic_captions") or {}
+    written: dict[str, str] = {}
+    for ext in ("srt", "vtt"):  # vtt last, so it wins when both were written
+        for path in glob.glob(os.path.join(out_dir, f"original.*.{ext}")):
+            written[os.path.basename(path)[len("original.") : -len(ext) - 1]] = path
+    # One track per language, authored where there is one. Authored is any `en.*`, `en` first. Machine is
+    # `en-orig`, or `en` only when `en-orig` exists: without it, machine `en` is a translation.
+    picks: dict[str, list[str]] = {
+        "authored": sorted(
+            (lang for lang in written if lang in authored and re.fullmatch("en.*", lang, re.I)),
+            key=lambda lang: (lang != "en", lang),
+        ),
+        "machine": [
+            lang
+            for lang in ("en-orig", "en")
+            if lang in written and lang in machine and lang not in authored and "en-orig" in machine
+        ],
+    }
+    return {kind: written[langs[0]] for kind, langs in picks.items() if langs}
 
 
 class YtDlpCaptions:

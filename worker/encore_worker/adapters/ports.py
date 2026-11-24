@@ -145,8 +145,17 @@ class CaptionSource(Protocol):
 class AudioFetcher(Protocol):
     """Getting the bytes. yt-dlp for a remote source; a declared-local source is already on disk."""
 
-    def fetch(self, source_uri: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> str:
-        """The path of the downloaded audio. Raises when the source is unreachable or refused."""
+    def fetch(
+        self,
+        source_uri: str,
+        out_dir: str,
+        *,
+        on_progress: ProgressSink | None = None,
+        with_captions: bool = False,
+    ) -> str:
+        """The path of the downloaded audio. Raises when the source is unreachable or refused.
+
+        `with_captions` (the fetch job's) writes the caption tracks beside the audio in the same call."""
         ...
 
 

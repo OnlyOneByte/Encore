@@ -370,6 +370,11 @@ export interface JobParams {
 	pinnedRef?: string;
 	/** PASTED lyrics no provider had. `pinnedRef` is the key it is written under, so the two travel together. */
 	pinnedText?: string;
+	/** The watch URL of a song whose kept original is the job's `local` source: the fallback for a worker
+	 *  that cannot see the media volume, which downloads (and fetches captions) from here instead. */
+	remoteUri?: string;
+	/** The kept original's size at fetch; a file of any other size is not trusted, and `remoteUri` is used. */
+	originalBytes?: number;
 }
 
 // core -> worker
@@ -450,4 +455,6 @@ export interface JobArtifacts {
 	pitch?: { uri: string }; // reference pitch-track JSON
 	/** Nothing reads it today, but EVERY key the worker writes must be declared here. */
 	source?: { audio: string };
+	/** A fetch's kept download (`mediaUri`): its size, which later stages check before trusting the file. */
+	original?: { bytes: number };
 }

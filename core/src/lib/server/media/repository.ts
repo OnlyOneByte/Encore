@@ -22,6 +22,8 @@ const toRow = (m: Media): MediaRow => ({
 	mbid: m.mbid ?? null,
 	annotationSource: m.annotation?.source ?? null,
 	annotationConfidence: m.annotation?.confidence ?? null,
+	originalRef: m.originalRef ?? null,
+	originalBytes: m.originalBytes ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	vocalsRef: m.vocalsRef ?? null,
 	// Index copy; null falls back to the legacy two-element playback path.
@@ -89,6 +91,8 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 					confidence: r.annotationConfidence as NonNullable<Media['annotation']>['confidence']
 				}
 			: undefined,
+	originalRef: r.originalRef ?? undefined,
+	originalBytes: r.originalBytes ?? undefined,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	vocalsRef: r.vocalsRef ?? undefined,
 	// A NULL column means no mix — leave it UNDEFINED, which guidePath() reads as the two-element path.

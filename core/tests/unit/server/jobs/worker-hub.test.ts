@@ -1213,6 +1213,52 @@ test('a fetch that reports a refused publish as a retryable job:failed is requeu
 	expect(jobs.listByStatus('queued').some((j) => j.jobType === 'stems')).toBe(false);
 });
 
+/** Drives a fetch to completion with `mediaUri`, then returns the `job:assign` its chained stems job got. */
+function stemsAfterFetch(mediaUri: string, bytes: unknown = 4_050_000) {
+	const h = harness();
+	const job = h.jobs.enqueue('m1', 'fetch', 0, T0);
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['fetch:ytdlp'], concurrency: 1, version: '1' });
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	const artifacts = bytes === null ? undefined : { original: { bytes: bytes as number } };
+	h.hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri, artifacts });
+	h.hub.handle({
+		type: 'worker:hello',
+		workerId: 'w2',
+		capabilities: [requiredCapability('stems')],
+		concurrency: 1,
+		version: '1'
+	});
+	const assign = cmdsOfType(h.sent, 'job:assign').find((c) => c.type === 'job:assign' && c.jobType === 'stems');
+	return { ...h, assign: assign as Extract<WorkerCommand, { type: 'job:assign' }> };
+}
+
+test('a fetch that kept the download sends stems the store ref, with the watch URL as the fallback', () => {
+	// Before, stems and align each downloaded the song again from the watch URL (proposal 27).
+	const { mediaById, assign } = stemsAfterFetch('audio/m1.webm');
+	expect(mediaById.get('m1')!.originalRef).toBe('audio/m1.webm');
+	expect(assign.sourceUri).toBe('audio/m1.webm');
+	expect(assign.params.fetcher).toBe('local');
+	expect(assign.params.remoteUri).toBe('https://www.youtube.com/watch?v=vid-m1');
+	expect(assign.params.originalBytes).toBe(4_050_000);
+});
+
+test('a kept ref reported with no usable size is not kept, so stems downloads as before', () => {
+	for (const bytes of [null, 0, -5, 1.5, '4050000']) {
+		const { mediaById, assign } = stemsAfterFetch('audio/m1.webm', bytes);
+		expect(mediaById.get('m1')!.originalRef).toBeUndefined();
+		expect(assign.params.fetcher).toBe('ytdlp');
+	}
+});
+
+test("an older worker's scratch-dir path is not kept, so stems downloads as before", () => {
+	// That dir is deleted on completion: recording it would send stems to a missing file.
+	const { mediaById, assign } = stemsAfterFetch('work/j1/original.webm');
+	expect(mediaById.get('m1')!.originalRef).toBeUndefined();
+	expect(assign.sourceUri).toBe('https://www.youtube.com/watch?v=vid-m1');
+	expect(assign.params.fetcher).toBe('ytdlp');
+	expect(assign.params.remoteUri).toBeUndefined();
+});
+
 test('a stems completion that names no instrumental is a retryable failure, not a ready song', () => {
 	// The frame a worker sent when its publish was refused: `mediaUri: ""` and no artifacts. Readying it derived a key
 	// for a file nobody wrote and queued align, so the TV 404'd on a "ready" song.

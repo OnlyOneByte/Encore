@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import replace
 from typing import Any, TypeVar
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, separate, zoo
-from encore_worker.artifacts import scratch
+from encore_worker.artifacts import keys, scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
 from encore_worker.domain.lyrics import language, lexical, romanize, units
@@ -535,11 +536,16 @@ def _fetch_completion(job: JobRef, config: Config, fetched: FetchOutcome) -> f.C
         # Empty ONLY when the publish was refused for ownership: as for stems and align, that is not a
         # completion, and sent as one core marked the fetch done and queued its follow-ups.
         return f.Failed(config.worker_id, job.job_id, fetched.why, retryable=True)
+    artifacts = _annotation_artifacts(fetched.identified) or {}
+    if keys.class_of(fetched.published) == "audio":
+        # The kept file's size, which later stages check before trusting it over the watch URL.
+        size = os.path.getsize(os.path.join(job.media_dir, fetched.published))
+        artifacts["original"] = {"bytes": size}
     return f.Complete(
         worker_id=config.worker_id,
         job_id=job.job_id,
         media_uri=fetched.published,
-        artifacts=_annotation_artifacts(fetched.identified),
+        artifacts=artifacts or None,
         facts={
             "artist": fetched.identified.artist,
             "track": fetched.identified.track,
@@ -762,6 +768,7 @@ async def _dispatch(
                 config=config,
                 audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
                 reporter=_ReporterFor(client),
+                store=LocalArtifactStore(Roots.under(job.media_dir)),
                 # Built per fetch: it holds no models and no socket, so there is nothing to amortise, and
                 # `ENCORE_ANNOTATE=0` is then honoured without a restart.
                 annotator=musicbrainz.build_client(),

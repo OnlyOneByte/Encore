@@ -13,7 +13,8 @@ import {
 	getFetcher,
 	fetcherFor,
 	isQualityUpgrade,
-	SEPARATOR_ENGINES
+	SEPARATOR_ENGINES,
+	sourceUriFor
 } from '../../contract';
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
@@ -43,15 +44,24 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
 	if (jobType === 'fetch') return { fetcher, ...annotationKeys(media) };
+	// A kept original is a LOCAL source, with the watch URL along for a worker that cannot see the volume.
+	const acquire: JobParams =
+		media && keptOriginal(jobType, media)
+			? {
+					fetcher: 'local',
+					remoteUri: sourceUriFor(media, settings?.defaultFetcher),
+					originalBytes: media.originalBytes
+				}
+			: { fetcher };
 	// THROUGH separatorFor (non-undefined for exactly the two separation types), not a second spelling of
 	// the same defaults: `markMediaReady` judges an upgrade by comparing the pair a completion PUBLISHES —
 	// resolved there by separatorFor — against the pair on the media, so a drifted literal here would rank
 	// a job against a separator it was never dispatched with.
 	const separator = separatorFor(jobType, settings);
-	if (separator) return { fetcher, ...separator };
-	if (jobType !== 'align') return { fetcher };
+	if (separator) return { ...acquire, ...separator };
+	if (jobType !== 'align') return acquire;
 	return {
-		fetcher,
+		...acquire,
 		asrModel: settings?.asrModel ?? DEFAULT_ASR_MODEL,
 		syncMode: settings?.syncMode ?? DEFAULT_SYNC_MODE,
 		...lookupKeys(media),
@@ -65,6 +75,18 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 				}
 			: {})
 	};
+}
+
+/** The download a fetch job kept for this song, which every later stage reads rather than downloading the
+ *  song again. Never for a fetch itself, which always downloads. */
+function keptOriginal(jobType: JobType, media: Media): string | undefined {
+	return jobType === 'fetch' || media.source === 'local' || !media.originalBytes ? undefined : media.originalRef;
+}
+
+/** PURE. The `sourceUri` a job is sent: the kept original's store ref, else the media's fetchable address. */
+export function assignSourceUri(jobType: JobType, media: Media | undefined, defaultFetcher?: string): string {
+	if (!media) return '';
+	return keptOriginal(jobType, media) ?? sourceUriFor(media, defaultFetcher);
 }
 
 /**

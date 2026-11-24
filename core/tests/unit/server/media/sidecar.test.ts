@@ -18,6 +18,7 @@ import {
 	SIDECAR_SCHEMA,
 	type MediaSidecar
 } from '$lib/server/media/sidecar';
+import { assignParams } from '$lib/server/jobs/dispatch';
 
 const NOW = 1_788_400_000_000;
 
@@ -462,8 +463,47 @@ describe('clearArtifacts (eviction must stick) (§1)', () => {
 		expect(mediaFromSidecar(final!).stemStatus).toBe('none'); // stays evicted
 	});
 
+	it("clears a fetched song's kept original, so the next process reads the watch URL", async () => {
+		await writeSidecar(sidecarFromMedia(media({ originalRef: 'audio/m1.webm', originalBytes: 4_050_000 }), NOW));
+		expect(mediaFromSidecar((await readSidecar('m1'))!).originalRef).toBe('audio/m1.webm');
+
+		await clearArtifacts('m1');
+		const after = mediaFromSidecar((await readSidecar('m1'))!);
+		expect(after.originalRef).toBeUndefined();
+		expect(after.originalBytes).toBeUndefined();
+		expect(assignParams('align', after).fetcher).not.toBe('local');
+		expect(assignParams('align', after).remoteUri).toBeUndefined();
+	});
+
 	it('is a no-op when the song has no sidecar yet', async () => {
 		await clearArtifacts('ghost'); // must not throw
 		expect(await readSidecar('ghost')).toBeNull();
+	});
+});
+
+describe('the kept original read back from a sidecar', () => {
+	const side = (audio: string | null, audioBytes: unknown, source: Media['source'] = 'youtube') => {
+		const s = sidecarFromMedia(media({ source }), NOW);
+		return { ...s, artifacts: { ...s.artifacts, audio, audioBytes: audioBytes as number } };
+	};
+
+	it('takes only an audio/<id>.<known ext> ref with a positive size, as setMediaOriginal does', () => {
+		expect(mediaFromSidecar(side('audio/m1.webm', 4_050_000))).toMatchObject({
+			originalRef: 'audio/m1.webm',
+			originalBytes: 4_050_000
+		});
+		for (const [audio, bytes] of [
+			['../../outside.webm', 10],
+			['audio/m2.webm', 10],
+			['audio/m1.flac', 10],
+			['audio/m1.webm', 0],
+			['audio/m1.webm', null]
+		] as const) {
+			expect(mediaFromSidecar(side(audio, bytes)).originalRef).toBeUndefined();
+		}
+	});
+
+	it("never reads an upload's original as a kept, evictable one", () => {
+		expect(mediaFromSidecar(side('audio/m1.webm', 4_050_000, 'local')).originalRef).toBeUndefined();
 	});
 });

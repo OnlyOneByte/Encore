@@ -12,10 +12,13 @@ import {
 	recompressLegacyStems,
 	planEviction,
 	evictDerived,
+	forgetEvicted,
 	derivedBytesOf,
 	ffmpegTranscoder,
 	transcodeDiagnostics
 } from '$lib/server/media/retention';
+import { assignParams } from '$lib/server/jobs/dispatch';
+import { read } from '$test';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -229,6 +232,29 @@ describe('evictDerived', () => {
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 	});
 
+	it("counts and evicts a fetched song's kept original with its captions: both come back from the URL", () => {
+		mkdirSync(join(root, 'audio'), { recursive: true });
+		mkdirSync(join(root, 'derived/captions/captions'), { recursive: true });
+		put('audio/a.webm', 900);
+		put('derived/captions/captions/a.captions.vtt', 30);
+		put('derived/stems/a-instrumental.m4a', 500);
+		const m = media('a', { originalRef: 'audio/a.webm', originalBytes: 900 });
+
+		expect(derivedBytesOf(m)).toBe(1430);
+		expect(evictDerived(m).bytes).toBe(1430);
+		expect(existsSync(join(root, 'audio/a.webm'))).toBe(false);
+		expect(existsSync(join(root, 'derived/captions/captions/a.captions.vtt'))).toBe(false);
+	});
+
+	it("never evicts an upload's original, even one named as a kept ref", () => {
+		mkdirSync(join(root, 'audio'), { recursive: true });
+		put('audio/a.webm', 900);
+		const m = media('a', { source: 'local', sourceRef: 'library/a.flac', originalRef: 'audio/a.webm' });
+
+		evictDerived(m);
+		expect(existsSync(join(root, 'audio/a.webm'))).toBe(true);
+	});
+
 	it('is safe on a song with no artifacts on disk', () => {
 		expect(evictDerived(media('ghost'))).toEqual({ removed: [], bytes: 0 });
 	});
@@ -307,6 +333,31 @@ describe('evictDerived', () => {
 				'derived/captions/auto-captions/a.captions.srt'
 			])
 		);
+	});
+});
+
+describe('forgetEvicted (what the boot eviction pass clears on the row)', () => {
+	it("clears a fetched song's kept original with its stems and lyrics, so the next process uses the URL", () => {
+		const m = media('a', { originalRef: 'audio/a.webm', originalBytes: 900, lyricsRef: 'derived/lyrics/a.json' });
+		forgetEvicted(m);
+		expect(m).toMatchObject({ originalRef: undefined, originalBytes: undefined, instrumentalRef: undefined });
+		expect(m.lyricsRef).toBeUndefined();
+		expect(m.stemStatus).toBe('none');
+		expect(assignParams('align', m).fetcher).toBe('ytdlp');
+		expect(assignParams('align', m).remoteUri).toBeUndefined();
+	});
+
+	it("keeps an upload's own original, which eviction never deletes", () => {
+		const m = media('a', { source: 'local', sourceRef: 'library/a.flac', originalRef: 'audio/a.webm' });
+		forgetEvicted(m);
+		expect(m.originalRef).toBe('audio/a.webm');
+	});
+
+	it('is what the boot eviction pass in app.ts calls on every evicted song, before persisting it', () => {
+		// `getApp()` has no unit harness, so the wiring is pinned as a source scan (as boot-maintenance.test.ts).
+		const app = stripComments(read('src/lib/server/app.ts'));
+		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
+		expect(pass).toMatch(/evictDerived\(live\)[\s\S]*forgetEvicted\(live\);\s*mediaRepo\.upsert\(live\)/);
 	});
 });
 

@@ -1,6 +1,7 @@
-// `audio/` and `meta/` are NEVER touched here: audio cannot be re-acquired once an upload disappears,
-// and meta IS the library. Two jobs — RECOMPRESS legacy WAV stems in place, and EVICT derived artifacts
-// over a soft cap. Both planning halves are pure, so the policy tests without a filesystem.
+// `meta/` and an upload's `audio/` are NEVER touched here: that audio cannot be re-acquired, and meta IS the
+// library. A fetched song's kept original can, so it is evicted with its derived files. Two jobs — RECOMPRESS
+// legacy WAV stems in place, and EVICT derived artifacts over a soft cap. Both planning halves are pure, so the
+// policy tests without a filesystem.
 
 import { existsSync, statSync, rmSync } from 'node:fs';
 import type { Media } from '../../contract';
@@ -182,12 +183,14 @@ export function derivedRefsOf(m: Media): string[] {
 		...(m.lyricsCandidates ?? []).map((c) => c.ref),
 		// Not stored as a ref: the worker writes a deterministic per-(kind,ext) path, so these are named
 		// from the id instead.
-		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))
+		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext))),
+		// A fetched song's kept original goes with its captions: both come back from the watch URL.
+		m.source === 'local' ? undefined : m.originalRef
 	].filter((r): r is string => !!r);
 }
 
-/** NEVER touches `audio/` or `meta/`. The CALLER resets the media to un-processed, so rotation stops
- *  treating it as playable. */
+/** NEVER touches `meta/`, or `audio/` beyond a fetched song's kept original. The CALLER resets the media to
+ *  un-processed, so rotation stops treating it as playable. */
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
@@ -206,6 +209,22 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 		}
 	}
 	return { removed, bytes };
+}
+
+/** What an evicted song's row forgets, so nothing names a file `evictDerived` just deleted and the next process
+ *  reads a fetched song's watch URL again. The caller persists the row, then `clearArtifacts` the sidecar. */
+export function forgetEvicted(m: Media): void {
+	m.instrumentalRef = undefined;
+	m.vocalsRef = undefined;
+	// The mix IS those two stems in one file — evicting them evicts it.
+	m.guideMixRef = undefined;
+	m.lyricsRef = undefined;
+	m.lyricsCandidates = [];
+	if (m.source !== 'local') {
+		m.originalRef = undefined;
+		m.originalBytes = undefined;
+	}
+	m.stemStatus = 'none';
 }
 
 /** MUST agree with evictDerived. */

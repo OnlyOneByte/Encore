@@ -548,7 +548,8 @@ not titles, name files. `safeMediaPath` performs containment per root.
   the cost of the guarantee.
 - Demucs emits 44.1 kHz; removing explicit `-ar 44100` is hygiene, not a sample-rate change.
 - Stereo is the source ceiling; a 5.1.2 receiver upmixes it.
-- `ENCORE_MEDIA_MAX_GB` is an optional soft cap; eviction is derived-only, true-LRU.
+- `ENCORE_MEDIA_MAX_GB` is an optional soft cap; eviction is derived-only, true-LRU. A fetched song's kept
+  original counts as derived, since its watch URL re-acquires it; an upload's original never does.
 
 Measured migration: old per-song storage ~108 MB → ~14–21 MB depending on FLAC complexity; live
 `derived/` fell from 911 MB to 136 MB without dropping library songs. The guide mix adds roughly the two

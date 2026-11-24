@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from encore_worker.domain.audio.activity import ShiftFit
     from encore_worker.domain.lyrics.generate import Generated, Line
 
-from encore_worker.adapters import ports
+from encore_worker.adapters import cli, ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts import keys
 from encore_worker.domain.document import Segment
@@ -255,33 +255,40 @@ class AlignStepsImpl:
 
     # ── acquisition ──────────────────────────────────────────────────────────────────────────────
 
-    async def acquire_audio(self, job: JobRef, *, report_download: bool = False) -> AudioRef:
+    async def acquire_audio(
+        self, job: JobRef, *, report_download: bool = False, with_captions: bool = False
+    ) -> AudioRef:
         """The bytes and their duration. Raises when the source is unreachable — nothing substitutes.
 
         A LOCAL source is already on disk, decided from the DECLARED fetcher rather than by sniffing the URI.
-        `report_download` is the FETCH job's alone: inside a stems or align job a download percentage would
-        drag that job's bar back to the download's.
+        `report_download` and `with_captions` are the FETCH job's alone: inside a stems or align job a
+        download percentage would drag that job's bar back to the download's.
         """
         local = job.param_str("fetcher") == "local"
         path = job.source_uri or ""
+        remote = job.param_str("remoteUri")
         if local:
-            # A LOCAL source_uri is a STORE REF, not a path: it arrives relative to the media volume, and
-            # only this worker knows where that volume is mounted. Handing the bare ref to ffmpeg resolves it
-            # against the process CWD instead, and fails with nothing naming the media dir.
-            if path and not os.path.isabs(path):
-                path = os.path.join(job.media_dir, path)
-            if not os.path.isfile(path):
+            found = self._local_source(job)
+            if found is not None:
+                path = found
+            elif remote is None:
                 # Named explicitly: "the volume is mounted elsewhere" and "the file is gone" look identical
                 # several stages later inside ffmpeg.
                 raise _Permanent(
-                    f"local source {job.source_uri!r} resolves to {path!r}, which is not a file — "
-                    f"check this worker's media volume (currently {job.media_dir!r}) matches the core's"
+                    f"local source {job.source_uri!r} resolves to {self._local_path(job)!r}, which is not "
+                    f"a file — check this worker's media volume (currently {job.media_dir!r}) matches the "
+                    "core's"
                 )
-        else:
+            else:
+                # The fetched original is on core's volume, not this one (a second machine): the watch URL.
+                local, path = False, remote
+        if not local:
             if self._a.fetcher is None:
                 raise _Permanent("this worker has no audio fetcher, so it cannot acquire a remote source")
             sink = progress_sink(self._out, job.job_id, Stage.DOWNLOADING) if report_download else None
-            path = await asyncio.to_thread(self._a.fetcher.fetch, path, self._work(job), on_progress=sink)
+            path = await asyncio.to_thread(
+                self._a.fetcher.fetch, path, self._work(job), on_progress=sink, with_captions=with_captions
+            )
 
         duration = 0.0
         if self._a.probe is not None:
@@ -307,17 +314,54 @@ class AlignStepsImpl:
                 return path
         return None
 
-    async def fetch_captions(self, job: JobRef, *, automatic: bool) -> TextRef | None:
-        """The upload's caption track. A miss is the common case and must not raise."""
-        if self._a.captions is None or not job.source_uri:
+    def _local_path(self, job: JobRef) -> str:
+        """Where a LOCAL source_uri (a store ref, relative to this worker's media volume) points."""
+        path = job.source_uri or ""
+        return os.path.join(job.media_dir, path) if path and not os.path.isabs(path) else path
+
+    def _local_source(self, job: JobRef) -> str | None:
+        """A LOCAL source's file, or None. A kept original (with `remoteUri`) must be its fetched size too."""
+        path = self._local_path(job)
+        if not os.path.isfile(path):
             return None
+        if job.param_str("remoteUri") is None:
+            return path
+        size = job.params.get("originalBytes")
+        return path if isinstance(size, int) and size > 0 and os.path.getsize(path) == size else None
+
+    async def fetch_captions(self, job: JobRef, *, automatic: bool) -> TextRef | None:
+        """The upload's caption track. A miss is the common case and must not raise.
+
+        A kept original's tracks come from the store, never yt-dlp (docs/SERVER.md, "downloaded once")."""
         kind = "auto-captions" if automatic else "captions"
+        source = job.source_uri
+        remote = job.param_str("remoteUri")
+        # `remoteUri` is what marks a KEPT original; a library file (local, no URL) is asked as it always was.
+        if job.param_str("fetcher") == "local" and remote is not None:
+            if self._local_source(job) is not None:
+                cues = await asyncio.to_thread(self._kept_captions, job, kind)
+                return self._caption_ref(job, cues, automatic=automatic)
+            source = remote
+        if self._a.captions is None or not source:
+            return None
         try:
             cues = await asyncio.to_thread(
-                self._a.captions.fetch, job.source_uri, self._work(job, kind), automatic=automatic
+                self._a.captions.fetch, source, self._work(job, kind), automatic=automatic
             )
         except Exception:  # noqa: BLE001 - no track / no yt-dlp / no network are all the same miss
             return None
+        return self._caption_ref(job, cues, automatic=automatic)
+
+    def _kept_captions(self, job: JobRef, kind: str) -> Sequence[Segment]:
+        """The track of `kind` the fetch job kept in the store, as cues; empty when it kept none."""
+        for ext in keys.KNOWN_CAPTION_EXTS:
+            path = os.path.join(job.media_dir, keys.raw_caption_key(job.media_id, kind, ext))
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8", errors="replace") as handle:
+                    return cli.parse_vtt(handle.read())
+        return ()
+
+    def _caption_ref(self, job: JobRef, cues: Sequence[Segment], *, automatic: bool) -> TextRef | None:
         if not cues:
             return None
         return TextRef(

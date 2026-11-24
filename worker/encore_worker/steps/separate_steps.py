@@ -213,18 +213,21 @@ class FetchStepsImpl:
         config: Config,
         audio: AlignStepsImpl,
         reporter: Reporter,
+        store: ArtifactStore,
         annotator: object | None = None,
     ) -> None:
         self._cfg = config
         self._audio = audio
         self._out = reporter
+        self._store = store
         #: A MusicBrainz client, or None when annotation is off or the box has no network. None degrades to
         #: the title parse, which is the behaviour before this existed.
         self._annotator = annotator
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
-        # The one job whose bar IS the download, so the one that forwards yt-dlp's percentage.
-        return await self._audio.acquire_audio(job, report_download=True)
+        # The one job whose bar IS the download, and the song's only download: the captions come in the same
+        # call and are kept for align.
+        return await self._audio.acquire_audio(job, report_download=True, with_captions=True)
 
     async def annotate(self, job: JobRef, audio: AudioRef) -> Identified:
         """Identify the song. Never raises — not knowing is a real answer, not a failure.
@@ -271,10 +274,23 @@ class FetchStepsImpl:
         )
 
     async def publish_original(self, job: JobRef, audio: AudioRef, found: Identified) -> str:
-        """Guarded, like every other publish."""
+        """Keep the download at `audio/<id>.<ext>` and its caption tracks in the store, captions first, so
+        later stages read them instead of downloading again. Guarded, like every other publish."""
         if not await self._out.confirm_ownership(job.job_id):
             raise NotOurJob(self._out.explain_ownership(job.job_id))
-        return os.path.relpath(audio.path, job.media_dir)
+        ext = os.path.splitext(audio.path)[1].lstrip(".").lower()
+        if ext not in keys.KNOWN_AUDIO_EXTS:
+            # Core's delete names the known exts only, so this stays in scratch and later stages download.
+            return os.path.relpath(audio.path, job.media_dir)
+        # shortcut: a re-fetch that finds fewer tracks or another ext leaves the earlier files (the store has
+        # no delete); fine while a re-fetch is of the same video, revisit if one can change source.
+        for kind, path in cli.fetched_captions(os.path.dirname(audio.path)).items():
+            track_ext = os.path.splitext(path)[1].lstrip(".")
+            kept = "captions" if kind == "authored" else "auto-captions"
+            await self._store.put(keys.raw_caption_key(job.media_id, kept, track_ext), path)
+        ref = keys.audio_key(job.media_id, ext)
+        await self._store.put(ref, audio.path)
+        return ref
 
     async def note(
         self, job: JobRef, state: str, attempt: int, verdict: str, why: str, knob: str | None
