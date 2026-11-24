@@ -85,6 +85,11 @@ export class PlayLog {
 			.all();
 	}
 
+	/** When this entry first went on stage, or null if it never did. */
+	startedAt(entryId: string): number | null {
+		return this.#db.select({ at: plays.at }).from(plays).where(eq(plays.entryId, entryId)).all()[0]?.at ?? null;
+	}
+
 	/** How many distinct songs have ever been played. */
 	distinctSongs(): number {
 		const row = this.#db

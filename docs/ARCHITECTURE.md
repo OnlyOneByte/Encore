@@ -908,3 +908,10 @@ Known and accepted, not an oversight:
 - `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
   than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
   even by mistake.
+- **Your night is the one per-singer history, and it lives apart.** `performances` (with `nights`) holds
+  each turn's song, times, key and a cheer count, never who cheered and nothing about the phone. It is served
+  only to the singer it is about, through `/api/me/nights`, which reads the singer from the cookie and the
+  kept person from the device cookie, never an id from the URL; another singer's night is 404. No frame
+  carries it to another phone or the TV, and `plays` and `/stats` do not read it. Recording is on by default
+  for home parties; a singer can opt out or delete it all, a guest's rows go after 90 days, and Delete me
+  takes a kept person's (`docs/SERVER.md#your-night`).

@@ -145,6 +145,10 @@ export class PeopleRepository {
 		this.#db.update(personDevices).set({ lastSeenAt: now }).where(eq(personDevices.id, deviceId)).run();
 	}
 
+	exists(personId: string): boolean {
+		return this.#db.select({ id: people.id }).from(people).where(eq(people.id, personId)).all().length > 0;
+	}
+
 	update(personId: string, displayName: string, color: string): void {
 		this.#db.update(people).set({ displayName, color }).where(eq(people.id, personId)).run();
 	}

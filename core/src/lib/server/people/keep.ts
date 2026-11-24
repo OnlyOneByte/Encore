@@ -76,6 +76,7 @@ export function keepSinger(
 ): { person: Person; deviceToken: string; singerToken: string } {
 	const { person, token } = app.people.create(singer.displayName, singer.color, app.now());
 	const singerToken = app.singers.linkPerson(singer.id, person.id);
+	app.nights.linkPerson(singer.id, person.id, app.now());
 	return { person, deviceToken: token, singerToken };
 }
 
@@ -116,7 +117,12 @@ export function dailyPersonPrune(app: EncoreApp, since: number): () => void {
 export function forgetPerson(app: EncoreApp, personId: string, keepSingerId: string | null = null): void {
 	endOtherSessions(app, personId, keepSingerId ?? '');
 	const holding = new Set(app.state.entries.map((e) => e.singerId));
-	for (const s of app.singers.byPerson(personId)) {
+	const theirs = app.singers.byPerson(personId);
+	app.nights.forgetPerson(
+		personId,
+		theirs.map((s) => s.id)
+	);
+	for (const s of theirs) {
 		if (s.id === keepSingerId || holding.has(s.id)) app.singers.unlinkPerson(s.id);
 		else app.singers.delete(s.id);
 	}
