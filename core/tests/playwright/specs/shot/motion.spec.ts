@@ -11,7 +11,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
@@ -1060,7 +1060,7 @@ const SCENARIOS: Record<string, Make> = {
 		'Phone 390x844: the link drops — “Reconnecting…” takes the title slot in --warn (a cut) and the Cheer key fades out in place (--motion-base); the dock does not grow',
 		{
 			trigger: async (page) => {
-				await page.context().setOffline(true);
+				await goOffline(page);
 				await page.locator(SEL.npStripOffline).waitFor({ state: 'attached', timeout: 15_000 });
 			},
 			only: '.dock .cheer-key',

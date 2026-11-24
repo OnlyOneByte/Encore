@@ -42,7 +42,7 @@
 // cannot, so the condition is checked earlier and louder than a probe step could.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import { startFakeWorker } from '../../world/workers';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
@@ -445,7 +445,7 @@ test('a severed phone shows as AWAY, keeps its queued song, and returns as here'
 
 		// ORDER IS LOAD-BEARING — see the header. Sever first, then block the re-dial.
 		expect(await dropSocket(away!.page), 'could not sever the away phone: no socket to drop').toBe(true);
-		await away!.context.setOffline(true);
+		await goOffline(away!.page);
 
 		await expect
 			.poll(() => chipAway(tv, away!.name), {
@@ -507,7 +507,7 @@ test('a queue-add taken while the socket is severed reconciles on reconnect', as
 
 		const beforeConnects = await connectCount(origin!.page);
 		expect(await dropSocket(origin!.page), 'could not sever the origin phone: no socket to drop').toBe(true);
-		await origin!.context.setOffline(true);
+		await goOffline(origin!.page);
 
 		// A REAL tap on a severed phone: the send lands on a closed socket, so the op stays pending and only the
 		// local row shows.

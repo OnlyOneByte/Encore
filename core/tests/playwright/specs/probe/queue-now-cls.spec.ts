@@ -16,7 +16,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 type Shift = { value: number; sources: string[] };
@@ -203,7 +203,7 @@ test('390px: a reload during a song, and a reconnect after the song changed, are
 	await theo.evaluate(
 		() => void ((window as unknown as { __moved: object }).__moved = { arrive: false, settle: false })
 	);
-	await theo.context().setOffline(true);
+	await goOffline(theo);
 	await expect(theo.locator(SEL.npStripOffline)).toContainText('Reconnecting…', { timeout: 15_000 });
 	await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 	await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 10_000 });
