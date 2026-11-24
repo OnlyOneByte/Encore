@@ -280,6 +280,43 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
 - **Baseline preference order is only for choosing a fallback to SHOW**, never to weight grading, where every
   speaking baseline gets one equal vote.
 
+### Lyrics fixes
+
+The host can change a song's lyrics; guests can't (proposal 32). Every change is data on the media, never baked
+into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs/lyrics-edit.ts`).
+
+- **The state** is three fields on the media, indexed in SQLite and kept in `meta/<id>.json`: the pin
+  (`lyricsOverrideRef`), the host's words (`lyricsOverrideText`) and `lyricsEditRev`, which counts changes. Once
+  a song has a rev, the sidecar writes these as the runtime holds them, so clearing one really clears it. The
+  whole-song Earlier/Later nudge is proposal 32's PR 3, with its control.
+- **New words get a new ref**, `derived/lyrics/<id>-edit-r<rev>.json`, pinned with the words. The align re-times
+  them from the vocals stem through the ordinary pinned path (`pinnedRef` + `pinnedText`), so the machine does the
+  timing. A fixed name per paste was why a second fix never reached a TV that had loaded the first: the overlay
+  only fetches when the ref moves. A remake re-sends the pin, so the fix comes back.
+- **The old line timings seed the re-time.** Dispatch also sends `pinnedFrom`, the document on screen (which
+  `lyricsRef` still names until the re-time lands). A host changes which words, not when they are sung, so the
+  worker (`align_text.seed_times`) pairs the pasted lines with that document's lines in order: equal, an edited
+  line that still reads mostly the same, or a line rewritten in place keeps its old slot, and the paste is
+  aligned as a line-timed claim, the way an authored caption track is. An ADDED line has no slot. In a document
+  with no word timings the line spans are the provider's own and swallow nothing, so the added lines share the
+  gap they left as claims. In an aligned one the line before may have swallowed the missed line's audio, so it
+  keeps only its start and the two are decoded in one window, up to the next claimed start. With no such document (none, or evicted), or under
+  half the lines paired, the paste is decoded blind as before, which on two of the three in-repo songs trailed
+  the automatic document's timing; a remake after eviction is that case today (#1199).
+- **Every change keeps the state it replaced** (pin, words, rev) in the sidecar's `lyricsEditHistory`,
+  the newest 20, never on the wire. Undo puts the newest back. If its document is still stored, it shows at once;
+  if eviction took it, the words are timed again. A pick or paste through `/api/lyrics-reselect` is kept the same
+  way, so a paste can be undone.
+- **Back to automatic** clears the pin and words and shows the ranked choice. Ranking skips `manual`
+  documents, because every fix stays in the candidate set and the newest would otherwise win again. With nothing
+  automatic stored, the words are timed again with no pin.
+- **Stale saves are refused.** Every change names the rev it was made from; another rev answers 409, so two hosts
+  can't overwrite each other. `/api/lyrics-reselect` checks a `rev` when the page sends one, as the song page does.
+- **Routes**, all host-only (`media:edit`), JSON-only and same-origin like every write:
+  `POST /api/lyrics-edit {mediaId, rev, lines: {text}[]}` (up to 400 lines of 300 characters),
+  `POST /api/lyrics-edit/undo {mediaId, rev}` and `POST /api/lyrics-edit/auto {mediaId, rev}`. Each answers
+  `{rev, job?}` and sends a room `queue:sync`, so the TV picks up the new ref without waiting for the heartbeat. `GET /api/audit/<id>` tells the host `lyricsUndo`, how many changes Undo can go back through.
+
 ### Registries and the quality ladder
 
 Every flat id-keyed set goes through `makeRegistry`; the two-level separator registry in
@@ -522,8 +559,8 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   acquired, and `POST /api/host` is how the host's is. `GET` on `/api/library`, `/api/search`, `/api/stats`,
   `/api/thumb`, `/api/room-preview`, `/api/settings` and `/api/host` is ungated; `GET /api/audit/[mediaId]`
   answers anyone with the song's catalog row and the host with its history. HOST-ONLY: `PUT /api/settings`,
-  `PUT /api/settings/room`, `GET /api/metrics`, `POST /api/delete-media`, `POST /api/lyrics-reselect`,
-  `DELETE /api/host`, and the `/metrics`, `/metrics/[mediaId]` and `/admin` pages; the song page offers the
+  `PUT /api/settings/room`, `GET /api/metrics`, `POST /api/delete-media`, `POST /api/lyrics-reselect`, the three
+  [lyrics-fix](#lyrics-fixes) routes, `DELETE /api/host`, and the `/metrics`, `/metrics/[mediaId]` and `/admin` pages; the song page offers the
   lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
   session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party.
   KEPT-ONLY: `DELETE /api/me/person` and `DELETE /api/me/person/others` need the singer cookie AND this

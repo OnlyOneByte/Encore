@@ -34,13 +34,14 @@ test('the load error is announced once — the inline alert, never also a toast'
 
 test('the self-write re-read is QUIET: no skeleton, and no error arm from a blipped refresh', () => {
 	expect(songPage).toContain('async function load(id: string, quiet = false)');
-	// Both call sites pass it, and only they do — the arrival path must still show the skeleton.
-	expect(songPage.match(/load\(songId, true\)/g)).toHaveLength(2);
+	// The three self-write sites (pick, paste, Undo/Back to automatic) pass it, and only they do — the arrival
+	// path must still show the skeleton.
+	expect(songPage.match(/load\(songId, true\)/g)).toHaveLength(3);
 	expect(songPage).toContain('void load(mediaId)');
 	/* The commit a quiet pass makes: the row if it got one, and nothing else. Flipping `loading` would unmount
 	   LyricsReselect and collapse the disclosure the guest is standing in; writing `loadError` would replace a
 	   working screen with an apology because one refresh missed. */
-	expect(songPage).toMatch(/if \(quiet\) \{\s*if \(row\) media = row;\s*return;\s*\}/);
+	expect(songPage).toMatch(/if \(quiet\) \{\s*if \(row\) \{\s*media = row;\s*lyricsUndo = undo;\s*\}\s*return;\s*\}/);
 });
 
 test('a refusal releases the pending flag, since nothing is broadcast for one', () => {
@@ -48,8 +49,10 @@ test('a refusal releases the pending flag, since nothing is broadcast for one', 
 	// the control would stay disabled + aria-busy until a reload.
 	expect(songPage.match(/else justPicked = false;/g)).toHaveLength(2);
 	// Both callbacks await the boolean. `onpaste` additionally hands it on, for the draft the control keeps.
-	expect(songPage).toContain('if (await room.reselectLyrics(songId, { ref })) await load(songId, true);');
-	expect(songPage).toContain('const ok = await room.reselectLyrics(songId, { text });');
+	expect(songPage).toContain(
+		'if (await room.reselectLyrics(songId, { ref, rev: media?.lyricsEditRev ?? 0 })) await load(songId, true);'
+	);
+	expect(songPage).toContain('const ok = await room.reselectLyrics(songId, { text, rev: media?.lyricsEditRev ?? 0 });');
 	expect(songPage).toContain('return ok;');
 });
 

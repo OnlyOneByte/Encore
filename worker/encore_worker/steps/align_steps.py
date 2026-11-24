@@ -109,6 +109,7 @@ from encore_worker.steps.align_text import (
     _stored_lines,
     _timing_of,
     _with_source_lines,
+    seeded,
 )
 from encore_worker.steps.align_unsung import (
     _NEVER_SUNG_ENV,
@@ -473,10 +474,12 @@ class AlignStepsImpl:
                 "are not published; the words a person typed are never dropped by this",
                 None,
             )
+        segments, timing = seeded(job, segments) if pin.pasted is not None else (segments, None)
         return TextRef(
             tier=tier_of_label(label),
             label=label,
             segments=segments,
+            timing=timing,
             # THE STORED DOCUMENT'S OWN `language` WINS over detection: an earlier job detected it, possibly
             # with a detector this box does not have, and a pin must re-time exactly what the person chose,
             # the language it was read in included. A PASTE has none stored, so it is detected.

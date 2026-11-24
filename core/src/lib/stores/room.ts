@@ -506,7 +506,7 @@ export class RoomLink {
 	 * RESOLVES TRUE ONLY WHEN THE WRITE LANDED, because the caller has to tell a landed write from a refused one:
 	 * a refusal's only trace is `#fail` on a channel this method cannot see, and the page has to re-read itself
 	 * after a 200 and release its own pending flag after anything else. */
-	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<boolean> {
+	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string; rev?: number }): Promise<boolean> {
 		try {
 			const res = await fetch('/api/lyrics-reselect', {
 				method: 'POST',
@@ -521,6 +521,32 @@ export class RoomLink {
 			return true;
 		} catch {
 			this.#fail('Could not re-time the lyrics — check your connection');
+			return false;
+		}
+	}
+
+	/** The host's lyrics fixes (docs/SERVER.md#lyrics-fixes): `edit` saves words, `undo` puts back the last state,
+	 * `auto` goes back to automatic lyrics. Every one names the `rev` it was made from. TRUE only when it landed, as
+	 * with `reselectLyrics`. */
+	async changeLyrics(
+		action: 'edit' | 'undo' | 'auto',
+		body: { mediaId: string; rev: number; lines?: { text: string }[] }
+	): Promise<boolean> {
+		const path = action === 'edit' ? '/api/lyrics-edit' : `/api/lyrics-edit/${action}`;
+		try {
+			const res = await fetch(path, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+			const reply = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				this.#fail(reply.error ?? 'Could not change the lyrics');
+				return false;
+			}
+			return true;
+		} catch {
+			this.#fail('Could not change the lyrics — check your connection');
 			return false;
 		}
 	}

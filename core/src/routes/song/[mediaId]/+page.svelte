@@ -21,6 +21,8 @@
 	const mediaId = $derived(page.params.mediaId ?? '');
 
 	let media = $state<Media | null>(null);
+	/** How many lyrics changes Undo can go back through; the audit row tells the host only. */
+	let lyricsUndo = $state(0);
 	let loading = $state(true);
 	/** A load that failed, as distinct from a song that is genuinely unknown — the two read differently. */
 	let loadError = $state<string | null>(null);
@@ -88,11 +90,15 @@
 		// A 404 is an ANSWER — the id is simply not a song this server knows — so it leaves `row` null and `failed`
 		// unset, and the empty state says so. Only a thrown error is a failed load.
 		let row: Media | null = null;
+		let undo = 0;
 		let failed: string | null = null;
 		try {
 			const res = await fetch(`/api/audit/${encodeURIComponent(id)}`);
-			if (res.ok) row = (await res.json()).media ?? null;
-			else if (res.status !== 404) throw new Error(`HTTP ${res.status}`);
+			if (res.ok) {
+				const body = await res.json();
+				row = body.media ?? null;
+				undo = typeof body.lyricsUndo === 'number' ? body.lyricsUndo : 0;
+			} else if (res.status !== 404) throw new Error(`HTTP ${res.status}`);
 		} catch {
 			failed = "Couldn't load this song.";
 		}
@@ -102,10 +108,14 @@
 		   response for the song we left, arriving after a 100ms one for the song we are on, is discarded. */
 		if (id !== mediaId) return;
 		if (quiet) {
-			if (row) media = row;
+			if (row) {
+				media = row;
+				lyricsUndo = undo;
+			}
 			return;
 		}
 		media = row;
+		lyricsUndo = undo;
 		loadError = failed;
 		loading = false;
 		/* NO TOAST FOR THIS SENTENCE. The failure arm below is a `role="alert"` carrying the same words AND the control
@@ -124,7 +134,19 @@
 	const rangeText = $derived(facts.rangeText);
 	const octaves = $derived(facts.octaves);
 	const bandSentence = $derived(facts.bandSentence);
-	const candidates = $derived(media?.lyricsCandidates ?? []);
+	// Every fix is kept as a document; only the one showing is listed, and Undo walks the rest.
+	const candidates = $derived(
+		(media?.lyricsCandidates ?? []).filter((c) => c.textSource !== 'manual' || c.ref === media?.lyricsRef)
+	);
+
+	/** Undo and Back to automatic. A re-time they start holds the control through the live `aligning` status;
+	 *  a refusal re-reads too, since a stale rev means another change landed. */
+	async function change(action: 'undo' | 'auto', songId: string) {
+		justPicked = true;
+		await room.changeLyrics(action, { mediaId: songId, rev: media?.lyricsEditRev ?? 0 });
+		await load(songId, true);
+		justPicked = false;
+	}
 
 	const heading = $derived(loading ? 'Song' : display.title || media?.title || 'Unknown song');
 </script>
@@ -226,18 +248,22 @@
 							   `media:status`, which carries no override field, and this row comes from the audit endpoint
 							   rather than the room catalog. On a refusal the server never broadcasts anything, so clearing
 							   `justPicked` here is the only thing that can release the control. */
-							if (await room.reselectLyrics(songId, { ref })) await load(songId, true);
+							if (await room.reselectLyrics(songId, { ref, rev: media?.lyricsEditRev ?? 0 })) await load(songId, true);
 							else justPicked = false;
 						}}
 						onpaste={async (text) => {
 							// Same two jobs as `onpick` — this path used to set no pending flag at all — plus the boolean the
 							// control needs to keep the guest's pasted verse when the server says no.
 							justPicked = true;
-							const ok = await room.reselectLyrics(songId, { text });
+							const ok = await room.reselectLyrics(songId, { text, rev: media?.lyricsEditRev ?? 0 });
 							if (ok) await load(songId, true);
 							else justPicked = false;
 							return ok;
 						}}
+						undoable={lyricsUndo > 0}
+						changed={!!media.lyricsOverrideRef}
+						onundo={() => void change('undo', songId)}
+						onauto={() => void change('auto', songId)}
 					/>
 				</section>
 			{/if}

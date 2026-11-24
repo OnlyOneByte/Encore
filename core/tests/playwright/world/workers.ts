@@ -391,14 +391,21 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 
 			if (jobType === 'align') {
 				await progress('aligning', 50);
-				const ref = `derived/lyrics/${mediaId}.json`;
+				// A host's fix arrives pinned, as the real worker gets it: its own lines, on the same grid, under its ref.
+				const pinned = typeof params.pinnedRef === 'string' && typeof params.pinnedText === 'string';
+				const pasted = pinned ? String(params.pinnedText).split('\n') : null;
+				const ref = pinned ? String(params.pinnedRef) : `derived/lyrics/${mediaId}.json`;
 				// Word-level timings inside the fixture's 8 seconds, so the overlay has something to bounce a
 				// ball along. FIELD NAMES ARE LOAD-BEARING: the TV's parser reads `start`, `end` and — inside
 				// `words` — `word`. Anything else parses to an empty reel with no active word, which reads as a
 				// broken overlay when the FIXTURE is what is wrong.
-				const words = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
+				const words = pasted ?? ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
 				const lines = words.map((w, i) => {
-					const said = longLyricLines ? [w, 'tonight', 'forever', 'under', 'bright', 'lights'] : [w];
+					const said = pasted
+						? w.split(' ')
+						: longLyricLines
+							? [w, 'tonight', 'forever', 'under', 'bright', 'lights']
+							: [w];
 					const step = 0.7 / said.length;
 					return {
 						start: i * 0.8,
@@ -426,8 +433,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 									// `ref`, not `uri`: a candidate carrying the wrong key name is DROPPED, which
 									// leaves chosenCandidate() null and the provenance label silently absent.
 									ref,
-									textSource: 'asr',
-									textConfidence: 'low',
+									textSource: pinned ? 'manual' : 'asr',
+									textConfidence: pinned ? 'high' : 'low',
 									timing: 'word',
 									timingConfidence: 'medium',
 									language: 'en',

@@ -15,6 +15,9 @@ import { POST as leave } from '$routes/api/leave/+server';
 import { GET as getAudit } from '$routes/api/audit/[mediaId]/+server';
 import { GET as getMetrics } from '$routes/api/metrics/+server';
 import { POST as reselect } from '$routes/api/lyrics-reselect/+server';
+import { POST as lyricsEdit } from '$routes/api/lyrics-edit/+server';
+import { POST as lyricsUndo } from '$routes/api/lyrics-edit/undo/+server';
+import { POST as lyricsAuto } from '$routes/api/lyrics-edit/auto/+server';
 import { POST as rename } from '$routes/api/library/manage/rename/+server';
 import { POST as keep } from '$routes/api/library/manage/keep/+server';
 import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server';
@@ -117,6 +120,9 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 			await putRoom(event('/api/settings/room', 'PUT', cookies, { queueOrder: 'fcfs' })),
 			await deleteMedia(event('/api/delete-media', 'POST', cookies, { mediaId: 'm1' })),
 			await reselect(event('/api/lyrics-reselect', 'POST', cookies, { mediaId: 'm1', text: 'x' })),
+			await lyricsEdit(event('/api/lyrics-edit', 'POST', cookies, { mediaId: 'm1', rev: 0, lines: [{ text: 'x' }] })),
+			await lyricsUndo(event('/api/lyrics-edit/undo', 'POST', cookies, { mediaId: 'm1', rev: 0 })),
+			await lyricsAuto(event('/api/lyrics-edit/auto', 'POST', cookies, { mediaId: 'm1', rev: 0 })),
 			await hostDelete(event('/api/host', 'DELETE', cookies)),
 			await rename(event('/api/library/manage/rename', 'POST', cookies, { mediaId: 'm1', title: 'x', artist: '' })),
 			await keep(event('/api/library/manage/keep', 'POST', cookies, { mediaId: 'm1', keep: true })),
@@ -127,7 +133,7 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 		expect(
 			results.map((r) => r.status),
 			who
-		).toEqual([403, 403, 403, 403, 403, 403, 403, 403, 403, 403]);
+		).toEqual(results.map(() => 403));
 	}
 	expect(app.settings.getGlobal().joinOrigin).toBe('');
 });
@@ -179,7 +185,56 @@ test('a song history is the host only; a guest gets the catalog row the song pag
 	const call = (cookies: ReturnType<typeof jar>) =>
 		getAudit({ ...(event('/api/audit/m1', 'GET', cookies) as object), params: { mediaId: 'm1' } } as never);
 	expect(Object.keys(await (await call(jar())).json())).toEqual(['media']);
-	expect(Object.keys(await (await call(await unlock())).json())).toEqual(['media', 'processes', 'plays', 'hasHistory']);
+	expect(Object.keys(await (await call(await unlock())).json())).toEqual([
+		'media',
+		'processes',
+		'plays',
+		'hasHistory',
+		'lyricsUndo'
+	]);
+});
+
+test('a stale rev is refused on every lyrics write, bad lines are a 400, and unknown media is a 404', async () => {
+	const app = installApp();
+	// No vocals stem, so nothing here starts a re-time.
+	app.mediaById.set('m1', {
+		id: 'm1',
+		source: 'youtube',
+		sourceRef: 'vid',
+		title: 'Caroline',
+		durationSec: 200,
+		stemStatus: 'ready'
+	});
+	const host = await unlock();
+	const auto = (rev: number) => lyricsAuto(event('/api/lyrics-edit/auto', 'POST', host, { mediaId: 'm1', rev }));
+	const ok = await auto(0);
+	expect(ok.status).toBe(200);
+	expect(await ok.json()).toEqual({ rev: 1 });
+	expect(app.mediaById.get('m1')).toMatchObject({ lyricsEditRev: 1 });
+	// A second host still on rev 0 cannot silently overwrite the first, on any of the four writes.
+	expect((await auto(0)).status).toBe(409);
+	const edit = (body: object) => lyricsEdit(event('/api/lyrics-edit', 'POST', host, body));
+	expect((await edit({ mediaId: 'm1', rev: 0, lines: [{ text: 'x' }] })).status).toBe(409);
+	expect(
+		(await reselect(event('/api/lyrics-reselect', 'POST', host, { mediaId: 'm1', text: 'x', rev: 0 }))).status
+	).toBe(409);
+	expect((await edit({ mediaId: 'm1', rev: 1, lines: 'not a list' })).status).toBe(400);
+	expect((await edit({ mediaId: 'nope', rev: 0, lines: [{ text: 'x' }] })).status).toBe(404);
+	// Nothing kept yet, so Undo has nothing to put back.
+	expect((await lyricsUndo(event('/api/lyrics-edit/undo', 'POST', host, { mediaId: 'm1', rev: 1 }))).status).toBe(409);
+});
+
+test('the lyrics-fix routes take JSON only, even without the hook', async () => {
+	installApp();
+	const host = await unlock();
+	for (const [route, path] of [
+		[lyricsEdit, '/api/lyrics-edit'],
+		[lyricsUndo, '/api/lyrics-edit/undo'],
+		[lyricsAuto, '/api/lyrics-edit/auto']
+	] as const) {
+		const req = event(path, 'POST', host, '{"mediaId":"m1","rev":0}', { 'content-type': 'text/plain' });
+		await expect(route(req)).rejects.toMatchObject({ status: 415 });
+	}
 });
 
 test('the hook gates the metrics ROUTE however its path is spelled, and the route gates itself too', async () => {

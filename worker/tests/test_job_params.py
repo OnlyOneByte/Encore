@@ -834,15 +834,20 @@ def _core(relative: str) -> str:
     raise AssertionError(f"could not find core/{relative} above {here}: the H5 contract is UNCHECKED")
 
 
-def test_the_manual_key_is_the_one_core_mints() -> None:
-    """Core pins `manualLyricsRef(mediaId)` and its test says "the worker test pins the same literal from its
-    side" (`lyrics-paste-carries-pasted-text.test.ts`). This is that side, from core's template."""
+def test_the_ref_core_mints_for_a_fix_is_one_a_pin_may_write() -> None:
+    """Core pins `editLyricsRef(mediaId, rev)`, a new name per fix. This is the worker's side, from core's
+    template: the pin is honoured, published there, and reads as the host's own words."""
     match = re.search(
-        r"export function manualLyricsRef\(mediaId: string\): string \{\s*return `([^`]+)`",
+        r"export function editLyricsRef\(mediaId: string, rev: number\): string \{\s*return `([^`]+)`",
         _core("src/lib/server/jobs/process.ts"),
     )
-    assert match, "manualLyricsRef is no longer a one-template return: the mirror cannot be checked"
-    assert match.group(1).replace("${mediaId}", "m1") == keys.manual_lyrics_key("m1") == MANUAL
+    assert match, "editLyricsRef is no longer a one-template return: the mirror cannot be checked"
+    ref = match.group(1).replace("${mediaId}", "m1").replace("${rev}", "3")
+    assert ref == "derived/lyrics/m1-edit-r3.json"
+    from encore_worker.steps.align_text import _pinned_label
+
+    assert pin_of(job(pinnedRef=ref, pinnedText=PASTE)) == Pin(ref=ref, pasted=PASTE)
+    assert _pinned_label(ref, "m1") == "manual"
 
 
 def test_the_params_the_worker_reads_are_the_ones_core_declares() -> None:

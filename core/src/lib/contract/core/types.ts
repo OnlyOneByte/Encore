@@ -66,6 +66,8 @@ export interface Media {
 	/** On the MEDIA because a job row carries no params: a paste held anywhere narrower is lost by a restart
 	 *  between enqueue and dispatch. ALWAYS paired with `lyricsOverrideRef`. */
 	lyricsOverrideText?: string;
+	/** Counts the host's lyrics changes; a save must name the current one. See docs/SERVER.md#lyrics-fixes. */
+	lyricsEditRev?: number;
 	/** `ready` means alignment RAN, not that it found words. */
 	lyricsStatus?: StepStatus;
 	/** Key, range, loudness. Third artifact of the `stems` job, so present means analysis RAN. */
@@ -345,18 +347,20 @@ export function resolveLyricsRef(
 ): string | undefined {
 	const set = candidates ?? [];
 	if (overrideRef && set.some((c) => c.ref === overrideRef)) return overrideRef;
-	return pickBestLyrics(set)?.ref;
+	// The host's own words are shown only while pinned, so "back to automatic" really leaves them.
+	return pickBestLyrics(set.filter((c) => c.textSource !== 'manual'))?.ref;
 }
 
-/** Drives the phone's "a better version exists" hint. `false` with no override, on agreement, or when the
- *  pinned ref is gone. */
+/** Drives the phone's "a better version exists" hint. `false` with no override, on agreement, when the
+ *  pinned ref is gone, or when the pin is the host's own words, which no ranking outdoes. */
 export function hasNewerCandidateThanOverride(
 	candidates: readonly LyricsCandidate[] | undefined,
 	overrideRef: string | null | undefined
 ): boolean {
 	if (!overrideRef) return false;
 	const set = candidates ?? [];
-	if (!set.some((c) => c.ref === overrideRef)) return false;
-	const ranked = pickBestLyrics(set)?.ref;
+	const pinned = set.find((c) => c.ref === overrideRef);
+	if (!pinned || pinned.textSource === 'manual') return false;
+	const ranked = resolveLyricsRef(set, undefined);
 	return ranked !== undefined && ranked !== overrideRef;
 }

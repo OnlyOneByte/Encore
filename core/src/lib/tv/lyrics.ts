@@ -284,6 +284,52 @@ export function activeLineIndex(lines: LyricLine[], pos: number): number {
 	return active;
 }
 
+/** True when `pos` is inside no line of `doc` (before the first, after the last, or in a gap). A null doc has none. */
+export function betweenLines(doc: Pick<LyricsDoc, 'lines'> | null, pos: number): boolean {
+	return !doc?.lines.some((l) => {
+		const b = lineBounds(l);
+		return b !== null && pos >= b[0] && pos < b[1];
+	});
+}
+
+/** The rows of `after` whose text differs from the same row of `before`, including rows `before` lacks. */
+export function changedRows(before: Pick<LyricsDoc, 'lines'> | null, after: Pick<LyricsDoc, 'lines'>): Set<number> {
+	const out = new Set<number>();
+	for (const [i, l] of after.lines.entries()) if (before?.lines[i]?.text !== l.text) out.add(i);
+	return out;
+}
+
+/** For each row of `after`, the row of `before` it stands for, so a fix that drops or adds a row is not read as
+ *  a step back. Equal texts pair in order, a run between pairs pairs by position, and a row added past the end
+ *  of its run counts as just after that run's last row (+0.5). */
+export function rowsOf(before: Pick<LyricsDoc, 'lines'>, after: Pick<LyricsDoc, 'lines'>): number[] {
+	const a = before.lines.map((l) => l.text);
+	const b = after.lines.map((l) => l.text);
+	// lcs(i, j): the longest in-order run of equal texts in a[i..] and b[j..], flat so no index can be undefined.
+	const width = b.length + 1;
+	const table = new Array<number>((a.length + 1) * width).fill(0);
+	const lcs = (i: number, j: number) => table[i * width + j] ?? 0;
+	for (let i = a.length - 1; i >= 0; i--)
+		for (let j = b.length - 1; j >= 0; j--)
+			table[i * width + j] = a[i] === b[j] ? lcs(i + 1, j + 1) + 1 : Math.max(lcs(i + 1, j), lcs(i, j + 1));
+	const out = new Array<number>(b.length);
+	let [i, j, i0, j0] = [0, 0, 0, 0];
+	const pairRun = () => {
+		for (let k = j0; k < j; k++) out[k] = k - j0 < i - i0 ? i0 + k - j0 : i - 0.5;
+	};
+	while (i < a.length && j < b.length) {
+		if (a[i] === b[j]) {
+			pairRun();
+			out[j] = i;
+			[i0, j0] = [++i, ++j];
+		} else if (lcs(i + 1, j) >= lcs(i, j + 1)) i++;
+		else j++;
+	}
+	[i, j] = [a.length, b.length];
+	pairRun();
+	return out;
+}
+
 /** Index of the word within a line being sung at `pos` (the "ball" position); -1 if none/between. */
 export function activeWordIndex(line: LyricLine, pos: number): number {
 	for (const [i, w] of line.words.entries()) {

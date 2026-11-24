@@ -1,0 +1,1 @@
+ALTER TABLE `media` ADD `lyrics_edit_rev` integer;

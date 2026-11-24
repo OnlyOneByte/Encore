@@ -376,6 +376,8 @@ export interface JobParams {
 	pinnedRef?: string;
 	/** PASTED lyrics no provider had. `pinnedRef` is the key it is written under, so the two travel together. */
 	pinnedText?: string;
+	/** The document on screen when the paste was pinned: its line timings seed the re-time. See docs/SERVER.md#lyrics-fixes. */
+	pinnedFrom?: string;
 	/** The watch URL of a song whose kept original is the job's `local` source: the fallback for a worker
 	 *  that cannot see the media volume, which downloads (and fetches captions) from here instead. */
 	remoteUri?: string;

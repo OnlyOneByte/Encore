@@ -9,6 +9,7 @@ import type { SongProfile } from '../../contract';
 import { normalizeSongProfile } from '../../contract';
 import { metaDir, keptOriginalRef } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
+import type { LyricsEditSnapshot } from '../jobs/lyrics-edit';
 
 /** Keep every new field OPTIONAL and additive: there is no migration step, so an older record's absent
  *  field must read as "never ran" rather than an error. */
@@ -62,6 +63,10 @@ export interface MediaSidecar {
 		lyricsOverrideRef?: string;
 		/** The pasted WORDS, for a pin naming a candidate nothing has written yet. */
 		lyricsOverrideText?: string;
+		/** The host's lyrics-fix state. See docs/SERVER.md#lyrics-fixes. */
+		lyricsEditRev?: number;
+		/** Earlier states, oldest first, for Undo. Kept here only: it never rides the wire or the index. */
+		lyricsEditHistory?: LyricsEditSnapshot[];
 		/** An ALL-NULLS profile is a real, gate-satisfying result and is NOT the same as absent. */
 		songProfile?: SongProfile;
 	};
@@ -144,10 +149,21 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			guideMix: m.guideMixRef ?? prev?.artifacts.guideMix ?? null, // the mix IS the two stems, one file
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates,
-			lyricsOverrideRef: m.lyricsOverrideRef ?? prev?.artifacts.lyricsOverrideRef,
-			// EXCEPTION to the fallback above: the paste moves WITH its ref, so falling back would re-time a
-			// stale paste over a newly picked candidate.
-			lyricsOverrideText: m.lyricsOverrideRef ? m.lyricsOverrideText : prev?.artifacts.lyricsOverrideText,
+			// Once the host has changed the lyrics, the runtime holds the whole state, so "back to automatic" clears.
+			...(m.lyricsEditRev !== undefined
+				? {
+						lyricsOverrideRef: m.lyricsOverrideRef,
+						lyricsOverrideText: m.lyricsOverrideText,
+						lyricsEditRev: m.lyricsEditRev
+					}
+				: {
+						lyricsOverrideRef: m.lyricsOverrideRef ?? prev?.artifacts.lyricsOverrideRef,
+						// EXCEPTION to the fallback above: the paste moves WITH its ref, so falling back would re-time a
+						// stale paste over a newly picked candidate.
+						lyricsOverrideText: m.lyricsOverrideRef ? m.lyricsOverrideText : prev?.artifacts.lyricsOverrideText,
+						lyricsEditRev: prev?.artifacts.lyricsEditRev
+					}),
+			lyricsEditHistory: prev?.artifacts.lyricsEditHistory,
 			songProfile: m.songProfile ?? prev?.artifacts.songProfile
 		},
 		library: {
@@ -213,6 +229,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
 		lyricsOverrideText: s.artifacts.lyricsOverrideText,
+		lyricsEditRev: s.artifacts.lyricsEditRev,
 		// Re-normalized on the way out even though authoritative: a hand edit may not match today's shape.
 		songProfile: s.artifacts.songProfile ? normalizeSongProfile(s.artifacts.songProfile) : undefined,
 		// Carried so a RESTORED media is complete ahead of the boot sync pass that mirrors these too.
@@ -328,6 +345,34 @@ export async function writeSidecar(s: MediaSidecar): Promise<void> {
 		}
 		throw err;
 	}
+}
+
+// On globalThis because server.ts and the SvelteKit bundle each load their own copy of this module.
+const QUEUE_KEY = Symbol.for('encore.sidecar-updates');
+const pendingUpdates: Map<string, Promise<unknown>> = ((globalThis as Record<symbol, unknown>)[QUEUE_KEY] ??= new Map<
+	string,
+	Promise<unknown>
+>()) as Map<string, Promise<unknown>>;
+
+/** A read-modify-write of one record, run one at a time per id: two writers that read the same record lose
+ *  one's change, and an Undo entry is not a field the runtime can restore. `change` returning null writes nothing. */
+export function updateSidecar(
+	mediaId: string,
+	change: (prev: MediaSidecar | null) => MediaSidecar | null
+): Promise<MediaSidecar | null> {
+	const run = (pendingUpdates.get(mediaId) ?? Promise.resolve())
+		.catch(() => undefined)
+		.then(async () => {
+			const next = change(await readSidecar(mediaId));
+			if (next) await writeSidecar(next);
+			return next;
+		});
+	pendingUpdates.set(mediaId, run);
+	const settle = () => {
+		if (pendingUpdates.get(mediaId) === run) pendingUpdates.delete(mediaId);
+	};
+	run.then(settle, settle);
+	return run;
 }
 
 /**

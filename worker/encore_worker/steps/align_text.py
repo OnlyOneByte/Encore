@@ -6,6 +6,7 @@ including which earlier candidates it withdraws. Design: docs/arch/05-worker.md 
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 from collections.abc import Collection, Sequence
@@ -147,6 +148,127 @@ def superseded_candidates(
 
 #: Where every lyrics document is stored, relative to the media volume (`steps.api.store_ref`).
 _LYRICS_STORE = "derived/lyrics"
+
+
+def _norm(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum() or ch.isspace()).strip()
+
+
+def _timed_lines(path: str) -> list[tuple[str, float, float]]:
+    """A stored document's lines with their bounds (the line's own, else its first and last word's); [] when
+    the file is gone or unreadable, which only means there is nothing to seed from."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    out: list[tuple[str, float, float]] = []
+    for line in loaded.get("lines", []) if isinstance(loaded, dict) else []:
+        if not isinstance(line, dict) or not isinstance(line.get("text"), str):
+            continue
+        words = [w for w in line.get("words") or [] if isinstance(w, dict)]
+        start = line.get("start")
+        start = start if start is not None else (words[0].get("start") if words else None)
+        end = line.get("end")
+        end = end if end is not None else (words[-1].get("end") if words else None)
+        if isinstance(start, (int, float)) and isinstance(end, (int, float)) and end > start:
+            out.append((line["text"], float(start), float(end)))
+    return out
+
+
+def _worded(path: str) -> bool:
+    """Whether a stored document carries word timings: an aligned one, not a provider's line-timed one."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    lines = loaded.get("lines") if isinstance(loaded, dict) else None
+    return any(isinstance(line, dict) and line.get("words") for line in lines or [])
+
+
+def _pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
+    """The in-order pairing of `a` with `b` scoring most (equal 1, alike 0.5), not difflib's longest block,
+    which on a chorus of repeated lines pairs a run one line early. A tie keeps the LATER pairing."""
+
+    def weight(i: int, j: int) -> float | None:
+        if a[i] == b[j]:
+            return 1.0
+        return 0.5 if difflib.SequenceMatcher(a=a[i], b=b[j]).ratio() >= 0.6 else None
+
+    # best[i][j]: the most a[:i] and b[:j] can score.
+    best = [[0.0] * (len(b) + 1) for _ in range(len(a) + 1)]
+    for i in range(len(a)):
+        for j in range(len(b)):
+            w = weight(i, j)
+            best[i + 1][j + 1] = max(best[i][j + 1], best[i + 1][j], -1.0 if w is None else best[i][j] + w)
+    out: list[tuple[int, int]] = []
+    i, j = len(a), len(b)
+    while i and j:
+        w = weight(i - 1, j - 1)
+        if w is not None and best[i][j] == best[i - 1][j - 1] + w:
+            out.append((i - 1, j - 1))
+            i, j = i - 1, j - 1
+        elif best[i][j] == best[i - 1][j]:
+            i -= 1
+        else:
+            j -= 1
+    return out[::-1]
+
+
+def seed_times(
+    texts: Sequence[str], old: Sequence[tuple[str, float, float]], *, line_timed: bool = False
+) -> list[tuple[float, float | None] | None] | None:
+    """Line bounds for a fix's lines, from the document it corrects; None for a line the aligner must find.
+    A kept, edited or rewritten line (`_pairs`, or a same-size run between pairs) keeps its slot. An added
+    line shares the gap a `line_timed` document left, or is decoded with the line before it (which keeps only
+    its start) in an aligned one. None when under half the lines pair. See docs/SERVER.md#lyrics-fixes.
+    """
+    paired: list[tuple[float, float | None] | None] = [None] * len(texts)
+    a, b = [_norm(t) for t, _s, _e in old], [_norm(t) for t in texts]
+    i0 = j0 = 0
+    for i, j in [*_pairs(a, b), (len(a), len(b))]:
+        if i - i0 == j - j0:
+            for k in range(j - j0):
+                paired[j0 + k] = old[i0 + k][1:]
+        if i < len(a):
+            paired[j] = old[i][1:]
+        i0, j0 = i + 1, j + 1
+    if sum(p is not None for p in paired) * 2 < len(texts):
+        return None
+    out = list(paired)
+    j = 0
+    while j < len(paired):
+        if paired[j] is not None:
+            j += 1
+            continue
+        stop = next((k for k in range(j, len(paired)) if paired[k] is not None), len(paired))
+        before, after = paired[j - 1] if j else None, paired[stop] if stop < len(paired) else None
+        gap = (before[1], after[0]) if before and after and before[1] is not None else None
+        if line_timed and gap and gap[1] > gap[0]:
+            step = (gap[1] - gap[0]) / (stop - j)
+            out[j:stop] = [(gap[0] + n * step, gap[0] + (n + 1) * step) for n in range(stop - j)]
+        elif before is not None:
+            out[j - 1] = (before[0], None)
+        j = stop
+    return out
+
+
+def seeded(job: JobRef, segments: tuple[Segment, ...]) -> tuple[tuple[Segment, ...], str | None]:
+    """A paste's segments timed from core's `pinnedFrom`, the document it corrects, and their timing; the
+    segments untouched and None (decoded blind) when there is no such document or it does not pair. A ref
+    outside the lyrics store is ignored, as it is joined onto the media directory to be read."""
+    ref = job.param_str("pinnedFrom")
+    if not ref or ref.startswith("/") or "\\" in ref or ".." in ref.split("/"):
+        return segments, None
+    if not ref.startswith("derived/lyrics/") or not ref.endswith(".json"):
+        return segments, None
+    path = os.path.join(job.media_dir, ref)
+    times = seed_times([str(s["text"]) for s in segments], _timed_lines(path), line_timed=not _worded(path))
+    if times is None:
+        return segments, None
+    pairs = zip(segments, times, strict=True)
+    return tuple(s if t is None else {**s, "start": t[0], "end": t[1]} for s, t in pairs), TIMING_LINE
 
 
 def _stored_lines(path: str) -> tuple[list[str], str | None, str]:
