@@ -24,14 +24,16 @@ that touches more than `worker/**` and the worker/nightly/ml workflow files (its
 ### Probes on GitHub
 
 `.github/workflows/probes.yml` runs `--project=probe` in four shards, plus `gate:measured`, on every pull request
-and every push to `main`. It runs them in the Playwright image on an internal Docker network, as
-[Running in Docker](#running-in-docker) prescribes. Its `probes` job lists every failure by file:line in the run
-summary, then the flaky tests. Each shard's `probes-<job>` artifact holds the HTML report, `results.json` and
-every test's `core.log`. The check is advisory, not required.
+and every push to `main` that changes more than docs, Markdown or the worker (its `paths-ignore`). It runs them
+in the Playwright image on an internal Docker network, as [Running in Docker](#running-in-docker) prescribes. Its
+`probes` job lists every failure by file:line in the run summary, then the flaky tests. Each shard's
+`probes-<job>` artifact holds the HTML report, `results.json` and every test's `core.log`. The check is advisory,
+not required.
 
 **Reviewers read that job instead of re-running the probe set locally.** Run locally only the specs the PR
 touches, or that exercise a path it changes (grep the probes for the changed functions and UI actions). A
-failure there that also fails on `main`, or a flaky test, is not the PR's.
+failure there that also fails on `main`, or a flaky test in a spec this PR doesn't add or change, is not the
+PR's.
 
 A probe that needs YouTube cannot pass on a network with no route out. End its title with `@youtube`: the
 hermetic run leaves it out and lists it, and `nightly.yml`, which has a network, still runs it.

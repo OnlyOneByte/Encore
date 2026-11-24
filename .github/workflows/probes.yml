@@ -7,10 +7,20 @@
 # Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
 name: Probes
 
+# An ignore list, not an allow list, so a path nobody thought of still runs the probes.
 on:
   pull_request:
+    paths-ignore: &skip
+      - 'docs/**'
+      - 'worker/**'
+      - 'docker/worker.Dockerfile'
+      - '*.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
   push:
     branches: [main]
+    paths-ignore: *skip
 
 permissions:
   contents: read
