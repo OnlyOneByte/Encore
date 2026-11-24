@@ -13,13 +13,37 @@ const SLOT = '.copy-slot';
 const CHIP = '.copy-chip';
 const CLAIM = { name: 'Make this the TV' };
 
-async function openScreen(browser: Browser, world: World, w: number, h: number, real = false): Promise<Page> {
-	const ctx = await browser.newContext({ viewport: { width: w, height: h }, baseURL: world.baseURL });
+async function openScreen(
+	browser: Browser,
+	world: World,
+	w: number,
+	h: number,
+	real = false,
+	touch = false
+): Promise<Page> {
+	const ctx = await browser.newContext({ viewport: { width: w, height: h }, baseURL: world.baseURL, hasTouch: touch });
 	if (real) await ctx.addCookies([world.tvCookie]);
 	const page = await ctx.newPage();
+	// Every `tv:claim` this page sends, counted on its way out.
+	await page.addInitScript(() => {
+		const w = window as unknown as { __claims: number };
+		w.__claims = 0;
+		const send = WebSocket.prototype.send;
+		WebSocket.prototype.send = function (d) {
+			if (typeof d === 'string' && d.includes('"tv:claim"')) w.__claims++;
+			return send.call(this, d);
+		};
+	});
 	await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
 	return page;
 }
+const claims = (p: Page) => p.evaluate(() => (window as unknown as { __claims: number }).__claims);
+/** Where the claim button sits while it sleeps: `visibility: hidden` keeps its box. */
+const buttonCentre = (p: Page) =>
+	p.evaluate(() => {
+		const r = document.querySelector('.copy-slot button')!.getBoundingClientRect();
+		return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+	});
 const shot = async (page: Page, name: string) => {
 	if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
 };
@@ -113,6 +137,68 @@ test('a copy mid-song is a room screen: its QR in the corner, and the chip only 
 		await tv.context().close();
 		await expect(copy.locator(CHIP)).toContainText('The TV is reconnecting...', { timeout: 5_000 });
 		await expect(copy.locator(CHIP)).toBeVisible();
+	} finally {
+		await worker.stop();
+	}
+});
+
+// The review of #1195: a touch tap's click is hit-tested after the touch ends, by when the woken chip is back, and a
+// double click's second half lands on it. Neither may claim; a deliberate press once the chip is up does.
+test('no press that wakes a sleeping chip claims the TV; a press once it is up does', async ({ browser, world }) => {
+	test.setTimeout(300_000);
+	const worker = await startFakeWorker(world, { seconds: 120 });
+	try {
+		const tv = await openScreen(browser, world, 1920, 1080, true);
+		const ana = await world.openPhone('Ana');
+		await readySong(world, ana, 'caroline');
+		const mouse = await openScreen(browser, world, 1920, 1080);
+		const touch = await openScreen(browser, world, 1920, 1080, false, true);
+		for (const p of [tv, mouse]) await p.mouse.click(5, 540);
+		await touch.touchscreen.tap(5, 540);
+		await queueReady(ana, 'caroline');
+		for (const p of [mouse, touch]) await expect(p.locator(SEL.lowerThird)).toContainText(/Ana/, { timeout: 30_000 });
+
+		const cases: [string, Page, (p: Page, at: { x: number; y: number }) => Promise<void>][] = [
+			['a mouse click', mouse, (p, at) => p.mouse.click(at.x, at.y)],
+			['a touch tap', touch, (p, at) => p.touchscreen.tap(at.x, at.y)],
+			['a mouse double click', mouse, (p, at) => p.mouse.dblclick(at.x, at.y)],
+			[
+				'a touch double tap',
+				touch,
+				async (p, at) => {
+					await p.touchscreen.tap(at.x, at.y);
+					await p.waitForTimeout(120);
+					await p.touchscreen.tap(at.x, at.y);
+				}
+			],
+			['Enter', mouse, (p) => p.keyboard.press('Enter')],
+			['Space', mouse, (p) => p.keyboard.press(' ')],
+			[
+				'a remote: ArrowDown, ArrowRight, Enter',
+				mouse,
+				async (p) => {
+					for (const k of ['ArrowDown', 'ArrowRight', 'Enter']) await p.keyboard.press(k);
+				}
+			]
+		];
+		for (const [name, p, act] of cases) {
+			await asleep(p);
+			const before = await claims(p);
+			await act(p, await buttonCentre(p));
+			await p.waitForTimeout(800);
+			expect((await claims(p)) - before, `${name} on the sleeping chip's spot sent a claim`).toBe(0);
+			await expect(p.locator(SLOT), `${name} moved the seat`).toBeAttached();
+		}
+
+		// Up for 600 ms, the chip takes a tap: this screen becomes the TV.
+		await asleep(touch);
+		const at = await buttonCentre(touch);
+		await touch.touchscreen.tap(5, 540);
+		await awake(touch);
+		await touch.waitForTimeout(600);
+		await touch.touchscreen.tap(at.x, at.y);
+		await expect(touch.locator(SLOT)).toHaveCount(0, { timeout: 5_000 });
+		expect(await claims(touch)).toBe(1);
 	} finally {
 		await worker.stop();
 	}

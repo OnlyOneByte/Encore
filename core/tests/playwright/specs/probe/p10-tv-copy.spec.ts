@@ -129,9 +129,11 @@ async function shot(page: Page, name: string): Promise<void> {
 
 /** One tap per screen, as a room gives it: a television grants no autoplay. Top-right, clear of the copy's chip. */
 const tap = (s: Screen) => s.page.mouse.click(s.page.viewportSize()!.width - 2, s.page.viewportSize()!.height / 2);
-/** "Make this the TV" as a person does it mid-song: the first tap wakes the chip, the second presses it. */
+/** "Make this the TV" as a person does it mid-song: the first tap wakes the chip, and a press once it is up claims (a
+ *  press within 500 ms of waking is dropped, p34-room-screen). */
 const claim = async (s: Screen) => {
 	await tap(s);
+	await s.page.waitForTimeout(600);
 	await s.page.getByRole('button', CLAIM).click();
 };
 

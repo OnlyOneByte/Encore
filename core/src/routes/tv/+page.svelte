@@ -592,6 +592,14 @@
 	const CHIP_OPEN_MS = 20_000;
 	const CHIP_WAKE_MS = 10_000;
 	let chipAwake = $state(true);
+	// The press that wakes a sleeping chip must not also claim: a touch tap's click is hit-tested after the chip is
+	// back, and a double click's second half lands on it. So a claim this soon after waking is dropped.
+	const CLAIM_AFTER_WAKE_MS = 500;
+	let chipWokeAt = -Infinity;
+	function claimUnlessJustWoken() {
+		if (performance.now() - chipWokeAt < CLAIM_AFTER_WAKE_MS) return;
+		ws?.send({ type: 'tv:claim' });
+	}
 	$effect(() => {
 		if (!isCopy) return;
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -600,7 +608,10 @@
 			clearTimeout(timer);
 			timer = setTimeout(() => (chipAwake = false), ms);
 		};
-		const wake = () => awake(CHIP_WAKE_MS);
+		const wake = () => {
+			if (chipAsleep) chipWokeAt = performance.now();
+			awake(CHIP_WAKE_MS);
+		};
 		const opts: AddEventListenerOptions = { capture: true, passive: true };
 		awake(CHIP_OPEN_MS);
 		window.addEventListener('pointerdown', wake, opts);
@@ -1070,7 +1081,7 @@
 	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
 	     it stands where "Up next" does, top-right; in attract (nobody here yet), in attract's free band. -->
 	{#snippet copyChip()}
-		<TvCopyChip tvOnline={tvOnline} onclaim={() => ws?.send({ type: 'tv:claim' })} />
+		<TvCopyChip tvOnline={tvOnline} onclaim={claimUnlessJustWoken} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
 		<div class={['copy-slot', { 'on-attract': screen === 'attract', asleep: chipAsleep }]} bind:this={copySlotEl}>

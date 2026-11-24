@@ -1984,8 +1984,10 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
   after any tap or key on it (`CHIP_OPEN_MS`, `CHIP_WAKE_MS` in `routes/tv/+page.svelte`). On a TV it stands
   top-right in "Up next"'s place, and "Up next" steps aside (a cut, like the lower third's). On a phone it stays
   top-left, and "Up next" steps aside there too, because the two meet across a 320 screen.
-- **Asleep** it is `visibility: hidden` and takes no pointer, so the first tap only wakes it and a second claims. It
-  fades in and out over `--motion-base`, and cuts under reduced motion.
+- **Asleep** it is `visibility: hidden` and takes no pointer. Hiding alone does not make the waking press harmless:
+  a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
+  lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
+  wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
 - **It stays up** in the lobby (where it stands in the QR's place), in attract, and while the TV is gone ("The TV
   is reconnecting...").
 
