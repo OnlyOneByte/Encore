@@ -17,6 +17,9 @@ import {
 } from './paths';
 import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
+import { clearArtifacts } from './sidecar';
+import { forgetProcess } from '../jobs/process';
+import type { JobRepository } from '../jobs/repository';
 
 /** The soft cap, in bytes. Unset (the default) means unlimited — a party box must not silently delete. */
 export function retentionCapBytes(env: Record<string, string | undefined> = process.env): number | null {
@@ -189,7 +192,7 @@ export function derivedRefsOf(m: Media): string[] {
 	].filter((r): r is string => !!r);
 }
 
-/** NEVER touches `meta/`, or `audio/` beyond a fetched song's kept original. The CALLER resets the media to
+/** NEVER touches `meta/`, or `audio/` beyond a fetched song's kept original. `evictSong` resets the media to
  *  un-processed, so rotation stops treating it as playable. */
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
@@ -213,18 +216,25 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 
 /** What an evicted song's row forgets, so nothing names a file `evictDerived` just deleted and the next process
  *  reads a fetched song's watch URL again. The caller persists the row, then `clearArtifacts` the sidecar. */
-export function forgetEvicted(m: Media): void {
-	m.instrumentalRef = undefined;
-	m.vocalsRef = undefined;
-	// The mix IS those two stems in one file — evicting them evicts it.
-	m.guideMixRef = undefined;
-	m.lyricsRef = undefined;
-	m.lyricsCandidates = [];
+export function forgetEvicted(m: Media, jobs: Pick<JobRepository, 'supersedeForRerun'>): void {
+	forgetProcess(m, jobs);
 	if (m.source !== 'local') {
 		m.originalRef = undefined;
 		m.originalBytes = undefined;
 	}
-	m.stemStatus = 'none';
+}
+
+/** One song's eviction: the files, then the DB row and the sidecar, so no screen still calls it made. */
+export async function evictSong(
+	m: Media,
+	deps: { jobs: Pick<JobRepository, 'supersedeForRerun'>; upsert: (m: Media) => void }
+): Promise<number> {
+	const { bytes } = evictDerived(m);
+	forgetEvicted(m, deps.jobs);
+	deps.upsert(m);
+	// upsert's sidecar merge would RESTORE the refs just cleared — see clearArtifacts.
+	await clearArtifacts(m.id);
+	return bytes;
 }
 
 /** MUST agree with evictDerived. */

@@ -661,9 +661,19 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
 - **Delete order: unlink the SIDECAR before the DB row.** A crash between them otherwise lets a rescan
   resurrect the song from the sidecar that is still there. The delete path must also delegate to retention's
   ref enumeration rather than keep a rival one.
-- **Eviction is derived-only and true-LRU.** `audio/` and `meta/` are never touched: audio cannot be
-  re-acquired once its source disappears, and meta IS the library. Only `derived/` is evictable, because it
-  regenerates from a re-process.
+- **Eviction is derived-only and true-LRU.** `meta/` and an upload's `audio/` are never touched: that audio
+  cannot be re-acquired once its source disappears, and meta IS the library. `derived/` and a fetched song's
+  kept original are evictable, because they come back from a re-process.
+- **An evicted song is not made any more, on every screen.** `evictSong` resets the media to not-made
+  (`stemStatus: 'none'`, lyrics gate cleared) and frees its finished `stems`, `stems-upgrade` and `align` job
+  rows (`forgetEvicted`, through `forgetProcess`). Those rows still hold the dedup slot, so without this the next pick got the old
+  `ready` stems job back and marked the deleted stems ready, and the TV was handed a song it could not play.
+  The phone, the TV and Library all read `isPlayable`, so they agree the song needs making, and the next pick
+  runs the normal process.
+- **A pick checks the file, not just the status.** `/api/process` asks the media store whether the
+  instrumental exists. A song whose status (or finished stems job) says ready but whose file is gone is
+  treated as not made: `processState` stops answering `ready`, and `requestProcess` forgets the process
+  before it enqueues. This also covers songs evicted before the reset above shipped.
 - **`protectedIds` (the playing song plus everything queued) is enforced INSIDE the pure planner**, not left
   to callers, so no caller can forget it. A protected song still COUNTS toward the total, so an unreachable
   cap reports "evict everything allowed" rather than under-reporting pressure.

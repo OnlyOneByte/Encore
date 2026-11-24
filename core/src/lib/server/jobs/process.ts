@@ -28,6 +28,8 @@ export interface ProcessDeps {
 	now: () => number;
 	/** Must be threaded to BOTH `processState` and `requestProcess` — see docs/SERVER.md#idempotency-and-the-process-cap. */
 	getSettings?: () => GlobalSettings;
+	/** Whether the instrumental is in the media store. Omitted means "trust the status". */
+	stemsOnDisk?: (ref: string) => boolean;
 }
 
 /** Sorts after every queued turn; `backfill.ts` reuses this exact value as BACKFILL_PRIORITY. */
@@ -74,6 +76,26 @@ export function isProcessed(media: Media): boolean {
 	return isPlayable(media);
 }
 
+/** A ready status, or a finished stems job, whose instrumental file is gone (evicted, deleted by hand). */
+export function stemsMissing(media: Media, deps: Pick<ProcessDeps, 'jobs' | 'stemsOnDisk'>): boolean {
+	if (!deps.stemsOnDisk) return false;
+	const claimsStems = isProcessed(media) || deps.jobs.findLive(media.id, 'stems')?.status === 'ready';
+	return claimsStems && !deps.stemsOnDisk(media.instrumentalRef ?? instrumentalKey(media.id));
+}
+
+/** Resets a song to not-made. The finished jobs must go too: they hold the dedup slot, so the next pick
+ *  would get the old `ready` stems job back and mark the deleted stems ready again. */
+export function forgetProcess(media: Media, jobs: Pick<JobRepository, 'supersedeForRerun'>): void {
+	media.instrumentalRef = undefined;
+	media.vocalsRef = undefined;
+	media.guideMixRef = undefined;
+	media.lyricsRef = undefined;
+	media.lyricsCandidates = [];
+	media.lyricsStatus = undefined;
+	media.stemStatus = 'none';
+	for (const t of ['stems', 'stems-upgrade', 'align'] as const) jobs.supersedeForRerun(media.id, t);
+}
+
 /** Lets the route answer honestly: an already-processed song is a SUCCESS, not an error. */
 export type ProcessState =
 	| 'unknown' // not in the catalog
@@ -86,7 +108,7 @@ export type ProcessState =
 
 export function processState(
 	mediaId: string,
-	deps: Pick<ProcessDeps, 'mediaById' | 'state' | 'jobs' | 'getSettings'>,
+	deps: Pick<ProcessDeps, 'mediaById' | 'state' | 'jobs' | 'getSettings' | 'stemsOnDisk'>,
 	singerId?: string
 ): ProcessState {
 	const media = deps.mediaById.get(mediaId);
@@ -96,7 +118,7 @@ export function processState(
 	if (!isProcessableSource(media.source)) return 'not-processable';
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
 	if (current && current.mediaId === mediaId) return 'playing';
-	if (isProcessed(media)) return 'ready';
+	if (isProcessed(media) && !stemsMissing(media, deps)) return 'ready';
 	if (media.stemStatus === 'queued') return 'processing';
 	// `cap !== PROCESSES_UNCAPPED` MUST be tested before `count >= cap`: `0` means uncapped, and a bare
 	// `count >= 0` is true for everyone, so turning the cap off would instead refuse every first request.
@@ -124,6 +146,7 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 	if (state === 'ready') return null;
 	if (state === 'over-limit') return null;
 
+	if (stemsMissing(media, deps)) forgetProcess(media, deps.jobs);
 	media.stemStatus = 'queued'; // rotation holds this slot until the instrumental exists
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
 	// The fetch step already ran, so the next step is stems: Try again after a failed separation starts there. (Stems

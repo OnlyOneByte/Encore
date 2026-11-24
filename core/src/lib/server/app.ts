@@ -24,8 +24,7 @@ import {
 	recompressLegacyStems,
 	ffmpegTranscoder,
 	planEviction,
-	evictDerived,
-	forgetEvicted,
+	evictSong,
 	derivedBytesOf,
 	transcodeDiagnostics
 } from './media/retention';
@@ -49,8 +48,7 @@ import {
 	rebuildIndexFromMeta,
 	backfillSidecars,
 	canonicalsOf,
-	readAllSidecars,
-	clearArtifacts
+	readAllSidecars
 } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -400,11 +398,7 @@ export function getApp(): EncoreApp {
 				for (const id of doomed) {
 					const live = mediaById.get(id);
 					if (!live) continue;
-					freed += evictDerived(live).bytes;
-					forgetEvicted(live);
-					mediaRepo.upsert(live);
-					// upsert fires sidecarFromMedia, whose `?? prev` would RESTORE the refs just cleared — see clearArtifacts.
-					await clearArtifacts(id);
+					freed += await evictSong(live, { jobs, upsert: (m) => mediaRepo.upsert(m) });
 				}
 				if (doomed.length > 0) {
 					console.log(
