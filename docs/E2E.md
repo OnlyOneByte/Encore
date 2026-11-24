@@ -110,7 +110,7 @@ experiment. It is an option fixture rather than something a test body sets, beca
 
 Everything a spec drives with lives in `world/`: `fixtures.ts` (above), `selectors.ts` (every hook; see
 [below](#why-selectors-are-centralised)), `actors.ts` (route steps such as `openBrowseFromHome`, `openQueue`,
-`returnHomeFromBrowse`, `queueReady`), `workers.ts` (the [fake worker](#the-fake-worker)), `seed.ts` (the
+`returnHomeFromBrowse`, `queueReady`, `goOffline`), `workers.ts` (the [fake worker](#the-fake-worker)), `seed.ts` (the
 [demo library](#the-demo-library)), `audio.ts` (WAV writer), `autoplay.ts` ([autoplay](#autoplay)),
 `chromium.ts` ([discovery](#chromium-discovery)), plus `presence.ts`, `reactions.ts`, `motion.ts` and
 `motion-realtime.ts`.
@@ -149,6 +149,14 @@ host (a newer build can need system libraries an old distro lacks), set
 A per-file `test.use({ launchOptions })` **REPLACES** the config's rather than merging, so it silently
 drops `executablePath`. Repeat `executablePath: resolveChromium()` and spread `BASE_LAUNCH_ARGS`, both from
 `world/chromium.ts`.
+
+## Running in Docker
+
+Run Playwright in Docker with `--network encore-hermetic` (made once with
+`docker network create --internal encore-hermetic`), never `--network none`. With no network interface,
+Chromium reports `navigator.onLine = false` from the start, so `setOffline(true)` fires no `offline` event and
+the phone's "Reconnecting…" cue waits out its heartbeat. Take a page offline with `goOffline` (`actors.ts`),
+which fails with that remedy instead.
 
 ## Autoplay
 

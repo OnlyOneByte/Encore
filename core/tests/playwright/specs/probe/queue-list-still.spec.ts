@@ -19,7 +19,7 @@ import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 // Long songs, so nothing ends by itself while a step is watched.
@@ -300,7 +300,7 @@ test('390px: a reorder from another phone and a reconnect are not eased', async 
 
 		// Theo drops off, his song starts meanwhile (his On deck card goes), and he comes back.
 		await watchHolds(theo);
-		await theo.context().setOffline(true);
+		await goOffline(theo);
 		await expect(theo.locator(SEL.npStripOffline)).toContainText('Reconnecting…', { timeout: 15_000 });
 		await skip(maya);
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 10_000 });

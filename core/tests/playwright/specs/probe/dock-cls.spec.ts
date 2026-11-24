@@ -7,7 +7,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openQueue, queueReady, readySong } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 type Shift = { value: number; hadRecentInput: boolean; inDock: string[] };
@@ -120,7 +120,7 @@ for (const [width, height] of [
 			await expect(theo.locator(SEL.npTransport), 'an idle room shows no transport').toHaveCount(0);
 			await across(
 				'7 the link drops',
-				() => theo.context().setOffline(true),
+				() => goOffline(theo),
 				() => expect(theo.locator(SEL.npStripOffline)).toContainText('Reconnecting…', { timeout: 15_000 })
 			);
 			await theo.context().setOffline(false);

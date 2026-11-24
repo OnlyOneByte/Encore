@@ -169,3 +169,13 @@ export async function queueReady(phone: Page, query: string): Promise<void> {
 		)
 		.toBe(true);
 }
+
+/** Take a phone offline. A Chromium that already reports offline fires no `offline` event, so the app's drop cue
+ *  waits out its heartbeat instead: fail on the environment, not on the cue. See docs/E2E.md#running-in-docker. */
+export async function goOffline(page: Page): Promise<void> {
+	expect(
+		await page.evaluate(() => navigator.onLine),
+		'Chromium already reports offline; docker --network none? Use --network encore-hermetic'
+	).toBe(true);
+	await page.context().setOffline(true);
+}

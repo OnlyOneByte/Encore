@@ -13,6 +13,7 @@
  */
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
+import { goOffline } from '../../world/actors';
 import { burst, countMounts, mounted, putRoom, stage } from '../../world/reactions';
 import { MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 import { TAP } from '../gate/measured-design-register';
@@ -173,7 +174,7 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 		await fan.locator(SEL.npCheerKey).click({ timeout: 5_000 });
 		await expect(fan.locator(SEL.npCheers)).toHaveCount(1);
 		const dropped = Date.now();
-		await fan.context().setOffline(true);
+		await goOffline(fan);
 		await expect(fan.locator(SEL.npStripOffline)).toBeVisible({ timeout: 4_000 });
 		expect(Date.now() - dropped, 'the cue waited for the tray to time out').toBeLessThan(5_000);
 		expect(await fan.locator(SEL.npCheers).count(), 'the tray stayed open offline').toBe(0);
