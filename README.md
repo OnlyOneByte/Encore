@@ -42,6 +42,9 @@ each service the settings from it that the service uses. In-container paths (dat
 `compose` is handed to `docker compose` verbatim. The wrapper exists because the compose file lives in
 [`docker/`](docker/) alongside both Dockerfiles and `.env`, so the equivalent by hand is
 `docker compose -f docker/compose.yaml …` — and a forgotten `-f` acts on nothing rather than failing.
+The worker image builds for linux/amd64 and linux/arm64 (Apple Silicon, ARM Linux); CI builds both on every
+PR that touches it. On arm64 it leaves out torchcodec, which has no aarch64 wheel and which nothing in the
+worker decodes through.
 
 > **Run with `--stems` if you want songs made into karaoke.** Core accepts the request
 > happily and then leaves it at `queued` **forever**, because stem separation happens in the worker —
