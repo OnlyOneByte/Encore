@@ -385,6 +385,37 @@ export function updateSidecar(
 	});
 }
 
+/** A read behind every queued write for this id, for a decision such as "is it kept?" that a write in flight
+ *  could change. Never call it from inside a queued task for the same id: it would wait on itself. */
+export function readSidecarInOrder(mediaId: string): Promise<MediaSidecar | null> {
+	return queueSidecarTask(mediaId, () => readSidecar(mediaId));
+}
+
+/** A crash between `writeSidecar`'s write and rename leaves its temp behind; boot removes any over a minute
+ *  old, so a write in flight right now is never touched. @returns how many were removed. */
+export async function sweepSidecarTemps(now: number, maxAgeMs = 60_000): Promise<number> {
+	const { readdirSync, statSync, unlinkSync } = await import('node:fs');
+	let removed = 0;
+	let names: string[];
+	try {
+		names = readdirSync(metaDir());
+	} catch {
+		return 0;
+	}
+	for (const name of names) {
+		if (!name.startsWith('.') || !name.endsWith('.tmp')) continue;
+		const path = join(metaDir(), name);
+		try {
+			if (now - statSync(path).mtimeMs < maxAgeMs) continue;
+			unlinkSync(path);
+			removed++;
+		} catch {
+			/* gone already, or not ours to remove */
+		}
+	}
+	return removed;
+}
+
 /**
  * Eviction must call THIS, never a bare upsert: `sidecarFromMedia`'s `?? prev` merge would restore the
  * just-deleted refs, resurrecting the song as processed with refs to files that are gone. Weakening the
