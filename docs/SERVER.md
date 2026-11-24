@@ -600,7 +600,7 @@ exposure to the internet. What each attack gets:
 | Sniffing the Wi-Fi | Over plain HTTP any cookie can be copied, as before. Put Encore behind an HTTPS proxy when guests are not trusted. |
 | The key in logs, `queue:sync` or `/metrics` | The minted key appears in the one boot line and nowhere else. No payload carries a token or its hash: rosters come from `listPublic`, which strips both. |
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
-| DNS rebinding (predates #1140) | Open: the Origin check trusts the request's own `Host` and `X-Forwarded-Host`, so a rebinding page can act as a cookieless LAN client (join, queue, skip). It never holds the host's or a guest's cookie, which are bound to the box's real address. A `Host` allowlist is #1144. |
+| DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A rogue worker | Unchanged: `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. The Origin check passes the worker, which sends no Origin. |
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open
@@ -627,6 +627,35 @@ client can percent-encode it (`/%61pi/leave`) and SvelteKit still routes it.
   wrong type; the Origin check is what guards it.
 - `encore_host` is also `SameSite=Strict`, so no other SITE's request carries it. Another port on this
   machine is the same site and does carry it, which is why the Origin check, not the cookie, is the guard.
+- "The request's own host" is safe to trust only because the host allowlist below has already checked it.
+
+### The host allowlist
+
+`src/lib/server/http/allowed-host.ts`, run by `server.ts` first on every request, before `/ws`, `/health` and
+SvelteKit (#1144). A DNS-rebinding page is opened under the attacker's name and then pointed at this box, so the
+browser sends that name as `Host` and treats the box as the attacker's own origin; the Origin check above cannot see
+it. So core answers only to:
+
+- **Any IP address**, v4 or v6, on any port. A browser that sends an IP opened that IP, so its origin is the IP.
+  This covers every LAN address, the QR's address, Docker port mappings (the container cannot see the box's LAN
+  address, so a list of its own would miss it) and loopback.
+- **`localhost` and `*.localhost`**, which the browser resolves to loopback itself.
+- **The declared addresses**: the saved join address and `ENCORE_PUBLIC_ORIGIN`, read per request, so a new join
+  address is answered with no restart.
+- **`ENCORE_ALLOWED_HOSTS`**: comma-separated names, case-insensitive, ports ignored. A `.local` name or a router's
+  DNS name goes here.
+
+Anything else gets `421` with a plain-text line naming `ENCORE_ALLOWED_HOSTS`. Ports are never compared: a
+rebinding page uses this box's port anyway, and Docker maps it.
+
+- **`X-Forwarded-Host` and `X-Forwarded-Proto` count only with `ENCORE_TRUST_PROXY=1`**, here and in
+  `public-origin.ts` (`requestHost`, `resolveOrigin`). Otherwise any client could send them. Behind a trusted proxy the
+  forwarded name is the one checked, so it must be on the list too.
+- **A `/ws` handshake with no `Origin` passes.** A browser always sends one on a WebSocket, so this is the worker
+  (`ws://core:3000` in compose) or a script, which can send any `Host` anyway. An HTTP request with no `Origin` is
+  still checked, because a browser's same-origin `GET` sends none.
+- Under `bun run dev`, Vite's own `server.allowedHosts` check applies instead; `server.ts` is not running.
+- `probe/host-allowlist.spec.ts` sends foreign and allowed names to `/api`, `/tv` and `/ws`.
 
 ### Schema and migrations
 

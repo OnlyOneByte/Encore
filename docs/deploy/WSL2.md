@@ -23,8 +23,8 @@ Encore's whole join flow is _phones on the LAN scan a QR shown on the TV_. Two f
 - **Unless an address is declared, the QR follows the `Host` header of the request that loaded the TV.**
   `core/src/routes/tv/+page.server.ts` builds `joinUrl` via `joinOrigin(request, url)`
   (`core/src/lib/server/public-origin.ts`): the `joinOrigin` setting if one is saved, else
-  `ENCORE_PUBLIC_ORIGIN`, else the request — the authority from `X-Forwarded-Host` or `Host`, and the
-  scheme from `X-Forwarded-Proto` defaulting to `http`. With neither declared, the QR contains whatever
+  `ENCORE_PUBLIC_ORIGIN`, else the request — the authority from `Host`, and the scheme `http`
+  (`X-Forwarded-Host` and `X-Forwarded-Proto` count only with `ENCORE_TRUST_PROXY=1`). With neither declared, the QR contains whatever
   address the _TV browser_ used to load `/tv`. A TV opened at `localhost` gets the box's own 192.168.x or
   10.x address instead, but inside WSL2 the only one is the NAT's 172.x, which is never advertised, so
   the QR says `localhost` — useless to a phone, even if the network were otherwise fine.

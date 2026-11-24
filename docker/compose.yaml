@@ -62,6 +62,8 @@ services:
       # core/tests/unit/server/container-layout.test.ts fails when core reads a setting this list misses,
       # or when this list names one core never reads.
       - ENCORE_ADMIN_TOKEN
+      - ENCORE_ALLOWED_HOSTS
+      - ENCORE_TRUST_PROXY
       - ENCORE_MEDIA_MAX_GB
       - ENCORE_SONG_INTRO_MS
       - INTERSTITIAL_MS

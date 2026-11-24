@@ -53,6 +53,11 @@ test('a returning screen keeps its value; a value we could not have minted is re
 });
 
 test('behind an https tunnel the cookie is Secure, decided like the singer cookie (publicOriginIsHttps)', async () => {
-	const [c] = await loadTv(undefined, { 'x-forwarded-proto': 'https' });
-	expect(c!.opts.secure).toBe(true);
+	process.env.ENCORE_TRUST_PROXY = '1';
+	try {
+		const [c] = await loadTv(undefined, { 'x-forwarded-proto': 'https' });
+		expect(c!.opts.secure).toBe(true);
+	} finally {
+		delete process.env.ENCORE_TRUST_PROXY;
+	}
 });

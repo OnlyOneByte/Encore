@@ -32,26 +32,47 @@ test('a bare LAN request is http, whatever the adapter claims', () => {
 	expect(publicOrigin(req({ host: '192.168.1.20:3000' }), url)).toBe('http://192.168.1.20:3000');
 });
 
-test('a proxy that reports https is believed — the tunnel case', () => {
-	const o = publicOrigin(req({ host: 'encore.example.test', 'x-forwarded-proto': 'https' }), url);
+/** Behind ENCORE_TRUST_PROXY=1, the only setting under which X-Forwarded-* count. */
+const behindProxy = <T>(fn: () => T): T => {
+	process.env.ENCORE_TRUST_PROXY = '1';
+	try {
+		return fn();
+	} finally {
+		delete process.env.ENCORE_TRUST_PROXY;
+	}
+};
+
+test('a trusted proxy that reports https is believed — the tunnel case', () => {
+	const o = behindProxy(() => publicOrigin(req({ host: 'encore.example.test', 'x-forwarded-proto': 'https' }), url));
 	expect(o).toBe('https://encore.example.test');
 });
 
-test('a chain of proxies uses the CLIENT-facing scheme, which is the first entry', () => {
-	expect(publicOrigin(req({ host: 'h', 'x-forwarded-proto': 'https, http' }), url)).toBe('https://h');
+test('without a trusted proxy, forwarding headers are ignored: anyone can send them', () => {
+	const headers = { host: '192.168.1.20:3000', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' };
+	expect(publicOrigin(req(headers), url)).toBe('http://192.168.1.20:3000');
 });
 
-test('x-forwarded-host wins over host, so a tunnel hostname survives the hop', () => {
-	const o = publicOrigin(
-		req({ host: '127.0.0.1:5180', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' }),
-		url
+test('a chain of proxies uses the CLIENT-facing scheme, which is the first entry', () => {
+	expect(behindProxy(() => publicOrigin(req({ host: 'h', 'x-forwarded-proto': 'https, http' }), url))).toBe(
+		'https://h'
+	);
+});
+
+test('x-forwarded-host wins over host behind a trusted proxy, so a tunnel hostname survives the hop', () => {
+	const o = behindProxy(() =>
+		publicOrigin(
+			req({ host: '127.0.0.1:5180', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' }),
+			url
+		)
 	);
 	expect(o).toBe('https://party.example');
 });
 
 test('a junk scheme falls back to http rather than being echoed into the QR', () => {
-	expect(publicOrigin(req({ host: 'h', 'x-forwarded-proto': 'javascript' }), url)).toBe('http://h');
-	expect(publicOrigin(req({ host: 'h', 'x-forwarded-proto': '' }), url)).toBe('http://h');
+	behindProxy(() => {
+		expect(publicOrigin(req({ host: 'h', 'x-forwarded-proto': 'javascript' }), url)).toBe('http://h');
+		expect(publicOrigin(req({ host: 'h', 'x-forwarded-proto': '' }), url)).toBe('http://h');
+	});
 });
 
 test('with no Host header at all it falls back to the request URL host', () => {
@@ -124,7 +145,9 @@ test('a plain-HTTP LAN request is NOT https, so the cookie is not marked Secure'
 });
 
 test('a request through an https proxy IS https, so the cookie stays Secure on a tunnel', () => {
-	expect(publicOriginIsHttps(req({ host: 'party.example', 'x-forwarded-proto': 'https' }), url)).toBe(true);
+	expect(
+		behindProxy(() => publicOriginIsHttps(req({ host: 'party.example', 'x-forwarded-proto': 'https' }), url))
+	).toBe(true);
 });
 
 test('an explicit https origin marks the cookie Secure', () => {
@@ -488,7 +511,7 @@ test('a LAN or tunnel request is unchanged: the Host it arrived on wins, as befo
 		'http://192.168.1.30:3000'
 	);
 	const tunnel = req({ host: '127.0.0.1:3000', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' });
-	expect(bare(() => fallbackJoinOrigin(tunnel, url, HOME))).toBe('https://party.example');
+	expect(bare(() => behindProxy(() => fallbackJoinOrigin(tunnel, url, HOME)))).toBe('https://party.example');
 });
 
 test('the cookie origin never takes the pick: publicOrigin stays the request', () => {

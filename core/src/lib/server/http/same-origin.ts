@@ -16,7 +16,8 @@ function senderHost(request: Request): string | null {
 }
 
 /**
- * Whether a browser could have sent this from a page of ours. Allowed: the request's own host, the configured public
+ * Whether a browser could have sent this from a page of ours. Allowed: the request's own host (which allowed-host.ts
+ * has already checked, so a rebinding name never gets here), the configured public
  * origin and the join address. No Origin and no Referer is a non-browser client (the worker, curl, a probe), which
  * carries no ambient cookie a third-party page could borrow, so it passes.
  */
