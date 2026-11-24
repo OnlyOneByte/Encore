@@ -456,6 +456,11 @@
 		{SETTINGS_SCOPES.server.label}
 	</Button>
 
+	<!-- The host's door to every /tv open in this room (proposal 34). A guest has no use for it, so it is not shown. -->
+	{#if !data.locked}
+		<Button variant="outline" size="block" href="/settings/screens">Screens</Button>
+	{/if}
+
 	<!-- THE DOOR TO THE "YOU" SCOPE, and it was MISSING — the scope rebuild split one page into three routes and
 		wired only two of the three together. The machine scope had its door (above) and /stats had its own, but a host
 		standing on the room scope had no path to their own name and colour at all: `/settings/you` was reachable only

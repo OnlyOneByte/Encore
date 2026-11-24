@@ -20,7 +20,9 @@ export type Capability =
 	/** Change a library song for every room, such as re-picking its lyrics, renaming it or keeping it. */
 	| 'media:edit'
 	/** Reset a kept person's phones: sign out every one and forget the person (docs/SERVER.md#kept-people). */
-	| 'people:reset';
+	| 'people:reset'
+	/** See, name and remove the room's screens, and make one the TV, on the Screens page. */
+	| 'screens:manage';
 
 const HOST_ONLY: ReadonlySet<Capability> = new Set([
 	'settings:write-room',
@@ -28,7 +30,8 @@ const HOST_ONLY: ReadonlySet<Capability> = new Set([
 	'operator:read',
 	'media:delete',
 	'media:edit',
-	'people:reset'
+	'people:reset',
+	'screens:manage'
 ]);
 
 export interface Actor {

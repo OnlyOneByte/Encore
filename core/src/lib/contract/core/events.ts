@@ -61,6 +61,12 @@ export type PublicSinger = Omit<Singer, 'sessionToken'>;
 /** The WebSocket close code for "this socket's singer left the room" (server.ts, on a Leave from any tab). The phone
  *  reads it as a session ending, not a dropped link, so it asks /api/me without showing "Reconnecting…". */
 export const LEFT_CLOSE_CODE = 4001;
+/** A `/tv` the host removed on the Screens page: it stops reconnecting and says so. Opened again, it is a new screen. */
+export const TV_REMOVED_CLOSE_CODE = 4002;
+/** A `/tv` turned away because the room already has `MAX_TV_SCREENS` open. */
+export const TV_FULL_CLOSE_CODE = 4003;
+/** How many screens a room may have open. The seat's own screen is never turned away. */
+export const MAX_TV_SCREENS = 8;
 
 // core -> all clients (broadcasts)
 export type ServerEvent =
@@ -160,6 +166,8 @@ export type ClientEvent =
 	| { type: 'tv:claim' }
 	// A copy timing its offset to core's clock; `t0` is echoed back in `tv:pong`.
 	| { type: 'tv:ping'; t0: number }
+	// A copy's own distance from the TV's clock (copy minus TV, ms), every few seconds, for the host's Screens page.
+	| { type: 'tv:drift'; ms: number }
 	| { type: 'hello'; lastRev: number }
 	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
 	| { type: 'room:react'; kind: ReactionKind };

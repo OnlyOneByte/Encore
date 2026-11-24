@@ -2118,6 +2118,25 @@ the same line. Headless Chromium on a shared host paints both screens at only 7-
 still light a new line up to a frame apart. That is why the probe's floor for the same line is 98%, not the
 proposal's 99.5%. Judge the 99.5% on real devices.
 
+### The Screens page
+
+`/settings/screens` is host only. Its door, **Screens**, is on the room scope and is shown to the host alone. It
+lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
+
+- **Each row** has the screen's name and one tag: "The TV · sound", or for a copy "Quiet · 12 ms behind", "ahead",
+  "in step", or "Quiet" with no fresh report (`screenTag`, `$lib/screens`).
+- **A screen opened in the last minute that nobody has named** is a `Spotlight` headed "Just opened", so the host
+  can tell which one they just switched on.
+- **The actions** are **Make this the TV**, **Rename** (inline, 32 characters at most) and **Remove**. Copies only
+  get Make this the TV and Remove; the TV gets Rename alone. While a song is on, Make this the TV is disabled and one
+  line says why: a screen becomes the TV mid-song only when someone taps it there.
+- **Polled every 2 s while the page is visible**, not pushed, because a socket never carries the host. A refused
+  action says what to do instead, in the page's status line.
+- The page ends with where to add a screen: the join address with `/tv`.
+
+The layouts per screen (Everything, Words only, Up next) come with proposal 34's PR 4.
+`p34-screens.spec.ts` covers the page, the API, the removed screen and the cap.
+
 ### A song that won't play
 
 ONE rule, in `src/lib/tv/stall-watchdog.ts`: **the song isn't moving.** A media error fails it at once. Otherwise,

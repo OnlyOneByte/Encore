@@ -62,6 +62,7 @@ import { ATTEMPT_PRUNE_EVERY_MS, ATTEMPT_RETENTION_MS, AttemptLedger } from './j
 import { PlayLog } from './media/play-log';
 import { NightLog } from './nights/repository';
 import { dailyNightSweep, recordTurn, sweepGuestNights } from './nights/service';
+import type { ScreensControl } from './rooms/tv-screens';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
@@ -127,6 +128,9 @@ export interface EncoreApp {
 	releaseSinger?: (singerId: string) => void;
 	/** A room-wide `queue:sync`, so every screen re-reads a song row a route just changed. OPTIONAL as above. */
 	syncRoom?: () => void;
+	/** The served room's screens, for the host's Screens page. Assigned by server.ts, which owns the TV sockets;
+	 *  OPTIONAL for the same reason as {@link refreshMembership}. */
+	screens?: ScreensControl;
 	now: () => number;
 }
 
