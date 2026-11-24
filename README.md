@@ -428,9 +428,9 @@ frames, and `bun run ui:review` GIFs for anything that moves.
 
 [`.github/workflows/`](.github/workflows/) holds four workflow definitions: `ci.yml` (core) and
 `ci-worker.yml` (worker) on pull requests, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. The two
-PR workflows run on each PR that touches their paths, a fork's included, with a read-only token and no
-secrets. They are not required checks: the
-local gate run above is still the bar.
+PR workflows run on every PR, a fork's included, with a read-only token and no secrets; each skips its heavy
+job when no path it covers changed. Their `core-gate` and `worker-gate` checks pass when that job passed or
+was skipped, and they are the required checks on `main`, alongside the local gate run above.
 
 ## License
 
