@@ -113,15 +113,23 @@ def demucs_paths(out_dir: str, input_wav: str, model: str = "htdemucs") -> Stems
     )
 
 
+def thread_env(threads: int) -> dict[str, str]:
+    """A separator child's thread count, or nothing (it inherits this process's) when 0."""
+    return {"OMP_NUM_THREADS": str(threads), "MKL_NUM_THREADS": str(threads)} if threads else {}
+
+
 class TorchDemucs:
     """`Separator` over torch demucs."""
 
     name = "demucs"
 
-    def __init__(self, *, model: str | None = "htdemucs", device: str = "cpu", jobs: int = 1) -> None:
+    def __init__(
+        self, *, model: str | None = "htdemucs", device: str = "cpu", jobs: int = 1, threads: int = 0
+    ) -> None:
         self._model = resolve_model(model)
         self._device = device
         self._jobs = jobs
+        self._threads = threads
 
     @property
     def model(self) -> str:
@@ -132,6 +140,7 @@ class TorchDemucs:
             demucs_argv(input_wav, out_dir, self._model, device=self._device, jobs=self._jobs),
             on_progress=on_progress,
             idle_sec=DEMUCS_IDLE_SEC,
+            env=thread_env(self._threads),
         )
         return demucs_paths(out_dir, input_wav, self._model)
 
@@ -373,8 +382,14 @@ class Roformer:
     name = "roformer"
 
     def __init__(
-        self, *, model: str | None = None, device: str | None = None, bin: str = "bs-roformer-infer"
+        self,
+        *,
+        model: str | None = None,
+        device: str | None = None,
+        bin: str = "bs-roformer-infer",
+        threads: int = 0,
     ) -> None:
+        self._threads = threads
         self._slug = resolve_roformer_slug(model)
         #: The allowlist TOKEN, which is what core names and records; the slug is a resolution detail.
         self._token = model or DEFAULT_ROFORMER_MODEL
@@ -399,6 +414,7 @@ class Roformer:
         run(
             roformer_argv(staged, store, self._slug, device=self._device, bin=self._bin),
             on_progress=on_progress,
+            env=thread_env(self._threads),
         )
 
         instrumental = find_roformer_instrumental(store, self._slug)
@@ -434,6 +450,7 @@ def build_separator(
     engine: str | None = None,
     zoo_model_dir: str = "",
     demucs_jobs: int = 1,
+    threads: int = 0,
 ) -> TorchDemucs | MlxDemucs | Roformer | Any | None:
     """The separator for the RESOLVED backend, or None when this box cannot build one — a refused job rather
     than a crashed process, `host.capabilities` having already declined to advertise `stems`.
@@ -459,7 +476,7 @@ def build_separator(
         return ZooSeparator(token=token, model_file_dir=zoo_model_dir, device=device)
     if engine == "roformer":
         return (
-            Roformer(model=model if model in ROFORMER_MODELS else None, device=device)
+            Roformer(model=model if model in ROFORMER_MODELS else None, device=device, threads=threads)
             if binary_available("bs-roformer-infer")
             else None
         )
@@ -469,7 +486,7 @@ def build_separator(
         return MlxDemucs(model=model, mlx_bin=mlx_bin, ffmpeg_bin=ffmpeg_bin)
     if not module_available("demucs"):
         return None
-    return TorchDemucs(model=model, device=device, jobs=demucs_jobs)
+    return TorchDemucs(model=model, device=device, jobs=demucs_jobs, threads=threads)
 
 
 __all__ = [

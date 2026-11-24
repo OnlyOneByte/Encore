@@ -233,6 +233,7 @@ async def main() -> None:
         ffmpeg_bin=config.ffmpeg_bin,
         zoo_model_dir=config.zoo_model_dir,
         demucs_jobs=profile.demucs_jobs.count,
+        threads=profile.separator_threads.count,
     )
 
     def settled(job_id: str, resumable: bool) -> None:
@@ -280,6 +281,8 @@ async def main() -> None:
         return DbosAlignSteps(impl, dbos)
 
     def stems_steps_for(job: JobRef) -> Any:
+        from encore_worker.workflows.dbos_stems import DbosStemsSteps  # noqa: PLC0415
+
         # Built PER JOB from the job's OWN `engine` and `model` params, not once at startup from the box's
         # backend: a `stems-upgrade` job names the engine it wants, and honouring the startup backend instead
         # would publish a demucs separation as the upgrade with nothing downstream able to contradict it.
@@ -294,10 +297,11 @@ async def main() -> None:
                 model=job.param_str("model"),
                 zoo_model_dir=config.zoo_model_dir,
                 demucs_jobs=profile.demucs_jobs.count,
+                threads=profile.separator_threads.count,
             )
             or separator
         )
-        return SeparateStepsImpl(
+        impl = SeparateStepsImpl(
             config=config,
             audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client, loop)),
             reporter=_ReporterFor(client, loop),
@@ -307,7 +311,9 @@ async def main() -> None:
             probe=adapters.probe,
             # What the CORE asked for at handshake, not what this box's env says.
             publish_stem_format=client.publish_stem_format,
+            device=device,
         )
+        return DbosStemsSteps(impl, dbos)
 
     durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
 
@@ -389,6 +395,7 @@ def _launch_dbos(config: Config) -> Any:
         dbos = DBOS(
             config=DBOSConfig(name="encore-worker", system_database_url=f"sqlite:///{config.dbos_db}")
         )
+        durable.declare(dbos)  # before launch, which recovers in-flight runs (docs/arch/05-worker.md §8.1)
         DBOS.launch()
     except Exception as exc:  # noqa: BLE001 - see the docstring; this must not take the box down
         print(f"[worker] DBOS failed to start ({exc}); running without durable resumption", flush=True)

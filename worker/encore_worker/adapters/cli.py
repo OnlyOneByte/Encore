@@ -175,8 +175,9 @@ def run(
     timeout_sec: float = 3600.0,
     idle_sec: float | None = None,
     cancel: CancelToken | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> str:
-    """Run a command to completion, returning its combined output.
+    """Run a command to completion, returning its combined output. `env` is laid over this process's.
 
     SYNCHRONOUS on purpose, every caller already being inside `asyncio.to_thread`. The child gets its own
     process group, so a kill takes the whole tree. The deadline, the token and `idle_sec` (no output for
@@ -198,6 +199,7 @@ def run(
             text=True,
             bufsize=1,
             start_new_session=True,
+            env={**os.environ, **env} if env else None,
         )
     except BaseException:
         if token is not None:

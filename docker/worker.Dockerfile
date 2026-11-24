@@ -8,7 +8,9 @@
 #
 # TWO STAGES, for linux/amd64 and linux/arm64 alike: `deps` installs the Python dependencies with a compiler
 # at hand, and `runtime` copies only the result, so no compiler ships in the image.
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+# trixie, not bookworm: DBOS needs SQLite >= 3.42, and on bookworm's 3.40 it fails to launch, so the worker
+# ran with no durable resumption at all.
+ARG PYTHON_IMAGE=python:3.12-slim-trixie
 
 # ── dependencies, from the lockfile ──────────────────────────────────────────────────────────────
 FROM ${PYTHON_IMAGE} AS deps
@@ -60,7 +62,7 @@ WORKDIR /app/worker
 #
 # KEPT EVEN THOUGH THE `ffmpeg` EXTRA (installed in `deps`) BUNDLES ONE, and the two serve different callers.
 # `host.ffmpeg` prefers the bundled static build, so that is what encodes every stem — which is the point:
-# one pinned build instead of bookworm's 5.1 versus whatever Homebrew has. Not one version everywhere: the
+# one pinned build instead of Debian's versus whatever Homebrew has. Not one version everywhere: the
 # Linux wheels (x86_64 and aarch64) ship 7.0.2, macOS arm64 7.1. This apt package stays for anything that shells `ffmpeg`
 # BY NAME rather than through our config: whisperx's `load_audio` does, and yt-dlp would if a format ever
 # needed merging.

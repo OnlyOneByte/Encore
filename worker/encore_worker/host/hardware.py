@@ -200,12 +200,12 @@ def resolve_demucs_jobs(configured: int | None, *, device: str) -> Jobs:
 def resolve_concurrency(configured: int | None) -> Jobs:
     """How many jobs this box runs at once: 1 unless `ENCORE_WORKER_CONCURRENCY` says otherwise.
 
-    Whisper and the aligner share `ML_LOCK`, so a second job would halve every job's threads and gain little.
-    shortcut: always 1; overlapping songs safely is proposal 28's.
+    2 made 3 queued songs 18-70% sooner but a song picked alone 10-30% slower, its align at least (#1177).
+    shortcut: auto 1 until a lone pick at 2 measures flat; 2 is the opt-in for queue-heavy nights.
     """
     if configured:
         return Jobs(configured, f"explicitly configured {configured} (ENCORE_WORKER_CONCURRENCY)")
-    return Jobs(1, "auto 1 (the models share one lock)")
+    return Jobs(1, "auto 1 (ENCORE_WORKER_CONCURRENCY=2 overlaps a queue of songs)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,14 +219,19 @@ class Profile:
     asr_compute: str
     asr_compute_why: str
     warmup: bool
+    #: OMP/MKL threads each separator child gets; 0 means it inherits this process's.
+    separator_threads: Jobs = Jobs(0, "inherited")
 
     def lines(self) -> tuple[str, ...]:
         """One line per setting, for the startup log."""
         threads = str(self.threads.count) if self.threads.count else "torch default"
+        child = self.separator_threads
+        shared = child.count and child.count != self.threads.count
+        children = f"; separators {child.count} ({child.why})" if shared else ""
         demucs = self.demucs_jobs
         return (
             f"concurrency {self.concurrency.count} ({self.concurrency.why})",
-            f"threads {threads} ({self.threads.why}); demucs -j {demucs.count} ({demucs.why})",
+            f"threads {threads} ({self.threads.why}){children}; demucs -j {demucs.count} ({demucs.why})",
             f"asr compute {self.asr_compute} ({self.asr_compute_why})",
             "warm-up on (ENCORE_WARMUP=0 turns it off)" if self.warmup else "warm-up off (ENCORE_WARMUP=0)",
         )
@@ -242,19 +247,20 @@ def resolve_profile(
     device: str,
     cores: int | None = None,
 ) -> Profile:
-    """The boot profile: each setting's explicit value when one was set, else the auto pick for this box.
-
-    Threads split the cores between the concurrent jobs, so two at once never run twice the box's threads.
-    """
+    """The boot profile: each setting's explicit value when one was set, else the auto pick for this box."""
     n = cores if cores is not None else cpu_count()
     jobs = resolve_concurrency(concurrency)
     if threads:
         picked_threads = Jobs(threads, f"explicitly configured {threads} (ENCORE_THREADS)")
+        child = picked_threads
     elif device != "cpu":
         picked_threads = Jobs(0, f"auto ({device}: the work is on the accelerator)")
+        child = picked_threads
     else:
+        # The in-process models take turns behind ML_LOCK, so only the separator children share the cores.
+        picked_threads = Jobs(n, f"auto {n} (cpu, {n} cores; the models take turns)")
         each = max(1, n // jobs.count)
-        picked_threads = Jobs(each, f"auto {each} (cpu, {n} cores / {jobs.count} at once)")
+        child = Jobs(each, f"auto {each} ({n} cores / {jobs.count} at once)")
     if asr_compute:
         compute, compute_why = asr_compute, "explicitly configured (ENCORE_ASR_COMPUTE)"
     else:
@@ -269,6 +275,7 @@ def resolve_profile(
         asr_compute=compute,
         asr_compute_why=compute_why,
         warmup=warmup,
+        separator_threads=child,
     )
 
 
@@ -276,7 +283,7 @@ def apply_threads(threads: int) -> int | None:
     """Pin this process's torch threads, and the OMP/MKL threads every child inherits, to `threads`. 0 sets
     nothing. Returns the thread count torch now runs, or None without torch.
 
-    Set in this process's environment because the demucs children are started from it and must match.
+    Set in this process's environment too, for the children that are not given a share of their own.
     """
     if threads:
         # WRITTEN for the children, never read: not a setting docker/.env carries.
