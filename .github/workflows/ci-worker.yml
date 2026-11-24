@@ -3,29 +3,17 @@
 #
 # Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
 #
-# PATH FILTERS AND REQUIRED CHECKS DO NOT MIX: if `worker` is ever made a required status check, a PR this
-# filter skips waits forever on "Expected". Drop `paths` (or add an always-run stub job) before requiring it.
+# The required status check is `worker-gate`, not `worker`: it runs on every PR and passes when `worker` passed or
+# was skipped by the path filter, so a skipped PR never waits on "Expected".
 name: CI · worker
 
-# What the worker's tests read: their own tree; core's wire contract, media paths and the cross-language
-# fixtures under core/tests/unit (worker-align-contract.json, bench-highlight-parity.json, cjk-join-ranges.json);
-# the benchmark scripts they import; docs/arch, whose alignment design doc two tests read; and the top-level
-# docs/*.md the worker's code cites, so the PR that breaks a pointer (test_docs_pointers) is the one that fails.
 # No `push: main`: a merge is a squash of a PR head that already passed here.
 on:
   pull_request:
-    paths:
-      - 'worker/**'
-      - 'core/src/lib/**'
-      - 'core/tests/unit/contract/**'
-      - 'core/tests/unit/lib/tv/*.json'
-      - 'docs/benchmarks/**'
-      - 'docs/arch/**'
-      - 'docs/*.md'
-      - '.github/workflows/ci-worker.yml'
 
 permissions:
   contents: read
+  pull-requests: read # paths-filter lists the PR's files through the API
 
 # A new push to a PR cancels the run it replaces.
 concurrency:
@@ -36,8 +24,34 @@ env:
   UV_VERSION: 0.9.30
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      worker: ${{ steps.filter.outputs.worker }}
+    steps:
+      # What the worker's tests read: their own tree; core's wire contract, media paths and the cross-language
+      # fixtures under core/tests/unit (worker-align-contract.json, bench-highlight-parity.json, cjk-join-ranges.json);
+      # the benchmark scripts they import; docs/arch, whose alignment design doc two tests read; and the top-level
+      # docs/*.md the worker's code cites, so the PR that breaks a pointer (test_docs_pointers) is the one that fails.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            worker:
+              - 'worker/**'
+              - 'core/src/lib/**'
+              - 'core/tests/unit/contract/**'
+              - 'core/tests/unit/lib/tv/*.json'
+              - 'docs/benchmarks/**'
+              - 'docs/arch/**'
+              - 'docs/*.md'
+              - '.github/workflows/ci-worker.yml'
+
   worker:
     name: worker
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -58,3 +72,17 @@ jobs:
       - run: uv run --no-sync ruff format --check .
       - run: uv run --no-sync mypy
       - run: uv run --no-sync pytest -q -m "not ml"
+
+  worker-gate:
+    name: worker-gate
+    needs: [changes, worker]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          WORKER: ${{ needs.worker.result }}
+        run: |
+          echo "changes=$CHANGES worker=$WORKER"
+          [ "$CHANGES" = success ] && { [ "$WORKER" = success ] || [ "$WORKER" = skipped ]; }

@@ -18,7 +18,7 @@ Four kinds of artifact; the gate's timing half runs as its own project:
 | `shot`       | **cannot** — a screenshot cannot fail a build            | frames, each driven INTO its state                                                                                             |
 
 CI is `.github/workflows/ci.yml` (`gate:measured`, then `--project=flow fuzz.spec.ts`) on every pull request
-that touches more than `worker/**` and the worker/nightly workflow files (its `paths-ignore`), and
+that touches more than `worker/**` and the worker/nightly/ml workflow files (its `changes` path filter), and
 `.github/workflows/nightly.yml` (`--project=gate --project=flow --project=probe`).
 
 Motion is `shot` too: `bun run ui:review` records each row of `specs/shot/motion.spec.ts` as a GIF, a
