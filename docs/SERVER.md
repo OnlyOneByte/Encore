@@ -620,7 +620,7 @@ exposure to the internet. What each attack gets:
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
-| A rogue worker | Unchanged: `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. The Origin check passes the worker, which sends no Origin. |
+| A rogue worker | `role=worker` needs `ENCORE_WORKER_TOKEN` when set (constant-time compare) and is open without it, with a boot warning. Like `ENCORE_ADMIN_TOKEN`, core refuses to start with one under 24 characters, so a set token can't be guessed if it is random (`openssl rand -base64 24`). The Origin check passes the worker, which sends no Origin. |
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open
 `<address>/host#k=<that value>`. Existing host sessions survive a restart.

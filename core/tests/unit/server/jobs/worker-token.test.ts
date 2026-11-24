@@ -2,7 +2,22 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { workerTokenMatches } from '$lib/server/jobs/worker-token';
+import { workerTokenMatches, workerTokenProblem } from '$lib/server/jobs/worker-token';
+
+test('a set token shorter than 24 characters is refused; unset or long enough is fine', () => {
+	expect(workerTokenProblem('abc')).toContain('at least 24');
+	expect(workerTokenProblem('abc')).toContain('openssl rand -base64 24');
+	expect(workerTokenProblem('x'.repeat(23))).not.toBeNull();
+	expect(workerTokenProblem(`  ${'x'.repeat(23)}  `)).not.toBeNull();
+	expect(workerTokenProblem('x'.repeat(24))).toBeNull();
+	expect(workerTokenProblem(undefined)).toBeNull();
+	expect(workerTokenProblem('   ')).toBeNull();
+});
+
+test('server.ts exits before boot on a short worker token', () => {
+	const server = readFileSync(join(CORE, 'server.ts'), 'utf8');
+	expect(server).toContain('workerTokenProblem(process.env.ENCORE_WORKER_TOKEN)');
+});
 
 test('only the exact token matches, whatever the lengths', () => {
 	expect(workerTokenMatches('s3 cr&t=/', 's3 cr&t=/')).toBe(true);

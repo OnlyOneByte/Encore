@@ -21,7 +21,7 @@ import {
 } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
 import { releaseWorkerSocket } from './src/lib/server/jobs/worker-sockets';
-import { workerTokenMatches } from './src/lib/server/jobs/worker-token';
+import { workerTokenMatches, workerTokenProblem } from './src/lib/server/jobs/worker-token';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
 import { can } from './src/lib/server/capabilities';
@@ -48,10 +48,13 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 // LAN device could register as a worker and fabricate job completions. Unset means unauthenticated.
 const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
 
-// Refused before anything boots: a short fixed key is the one host key a LAN guest could guess.
-const adminTokenRefusal = adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN);
-if (adminTokenRefusal) {
-	console.error(`[core] ${adminTokenRefusal}`);
+// Refused before anything boots: a short fixed key or worker token is one a LAN device could guess.
+for (const refusal of [
+	adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN),
+	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN)
+]) {
+	if (!refusal) continue;
+	console.error(`[core] ${refusal}`);
 	process.exit(1);
 }
 
