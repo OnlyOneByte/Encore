@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -190,6 +191,19 @@ async def test_dials_with_the_worker_token_core_requires() -> None:
     with_token, without = (parse_qs(urlsplit(u).query) for u in dialled)
     assert with_token == {"role": ["worker"], "token": ["s3 cr&t=/"]}, "URL-encoded, role kept"
     assert without == {"role": ["worker"]}, "unset leaves the URL exactly as configured"
+
+
+def test_reads_the_token_core_wrote_at_every_dial_and_the_env_wins(tmp_path: Path) -> None:
+    """#1196: with ENCORE_WORKER_TOKEN unset core writes one to a file, maybe after this worker started."""
+    file = tmp_path / "worker-token"
+    base = {"ENCORE_CORE_URL": "ws://core.test/ws?role=worker", "ENCORE_WORKER_TOKEN_FILE": str(file)}
+    cfg = Config.from_env(base)
+    assert "token" not in parse_qs(urlsplit(transport.dial_url(cfg)).query), "no file yet: dial without one"
+    # A BOM and a zero-width space, as a hand edit can leave: read through clean_token, as core reads it.
+    file.write_text(f"{chr(0xFEFF)}from-the-file{chr(0x200B)}\n")
+    assert parse_qs(urlsplit(transport.dial_url(cfg)).query)["token"] == ["from-the-file"]
+    explicit = Config.from_env({**base, "ENCORE_WORKER_TOKEN": "from-env"})
+    assert parse_qs(urlsplit(transport.dial_url(explicit)).query)["token"] == ["from-env"]
 
 
 async def test_closes_the_socket_when_the_session_ends() -> None:

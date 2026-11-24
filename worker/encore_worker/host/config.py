@@ -109,8 +109,11 @@ class Config:
     core_url: str = "ws://localhost:3000/ws?role=worker"
     #: The shared secret core checks on a `role=worker` upgrade (`ENCORE_WORKER_TOKEN`, the SAME value both
     #: sides). Sent as the `token` query param at dial time; kept out of `core_url` and `repr` so it is never
-    #: printed. None means core runs unauthenticated.
+    #: printed. None means the token file below, or none at all.
     worker_token: str | None = field(default=None, repr=False)
+    #: The file core writes its token to when ENCORE_WORKER_TOKEN is unset (`ENCORE_WORKER_TOKEN_FILE`). Read
+    #: at every dial, because core may write it after this worker starts.
+    worker_token_file: str | None = None
     #: Core keys a worker by this id and treats a repeated id as a RECONNECT of the same worker, so two live
     #: workers must never share one. `from_env` derives it per machine (`_default_worker_id`); this literal is
     #: only what a test-built `Config()` carries.
@@ -222,6 +225,7 @@ class Config:
         return Config(
             core_url=core_url,
             worker_token=clean_token(src.get("ENCORE_WORKER_TOKEN", "")) or None,
+            worker_token_file=optional("ENCORE_WORKER_TOKEN_FILE"),
             worker_id=optional("ENCORE_WORKER_ID") or _default_worker_id(dbos_db),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=concurrency or 1,

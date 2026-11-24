@@ -140,6 +140,5 @@ Two auth-posture questions are open by decision rather than oversight, and both 
 rows in [`arch/02-api.md`](arch/02-api.md):
 
 - `GET` on the settings endpoint is ungated while `PUT` is capability-gated.
-- The worker WebSocket role accepts unauthenticated upgrades when `ENCORE_WORKER_TOKEN` is unset. `server.ts`
-  warns at boot, which is the right default for a self-hosted box, but it is worth an explicit decision rather
-  than a warning.
+- The worker WebSocket role needs core's token even when `ENCORE_WORKER_TOKEN` is unset: core makes one on first
+  boot (#1196, [SERVER.md](SERVER.md#the-worker-token)).

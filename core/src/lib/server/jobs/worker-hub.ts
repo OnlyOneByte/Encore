@@ -141,7 +141,7 @@ export interface WorkerHubDeps {
 }
 
 /** Validates an inbound frame BEFORE anything reads a field off it. This family carries DISPATCH
- *  AUTHORITY and is reachable UNAUTHENTICATED whenever `ENCORE_WORKER_TOKEN` is unset, so a malformed
+ *  AUTHORITY and is reachable UNAUTHENTICATED whenever core has no worker token, so a malformed
  *  frame must never throw out of the socket handler. Returns an error string, or null when shape-safe. */
 /** A trail EXPLAINS an outcome, so the most recent decisions are the ones worth keeping. Bounded because a
  *  pathological worker could otherwise stream `job:state` until the process runs out of memory. */

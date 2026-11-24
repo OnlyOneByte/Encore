@@ -56,6 +56,8 @@ services:
       # Shared secret on role=worker upgrades. Passed to BOTH services from docker/.env: compose's .env only
       # feeds `${}` substitution, so a key not listed here never reaches the container.
       - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
+      # Unset above, core makes a token here on first boot and the worker reads it (worker-auth volume).
+      - ENCORE_WORKER_TOKEN_FILE=/app/auth/worker-token
       # Passed through when set, and left unset otherwise. A value exported in the shell that runs compose
       # WINS over docker/.env and is forwarded too (an AWS_* key on a dev box, say). Core-only: the Spotify
       # and S3/AWS credentials never reach the worker. In-container paths are pinned above, not here.
@@ -93,6 +95,8 @@ services:
       # in the header. An override in .env should be an ABSOLUTE path to avoid inheriting that base.
       - ${ENCORE_DATA_VOLUME:-../data}:/app/data # sqlite (WAL)
       - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media # audio + derived + meta + job scratch
+      # The worker token, OUTSIDE the media tree that /media/... serves. Named, so it starts owned by `bun`.
+      - worker-auth:/app/auth
     restart: unless-stopped
 
   # The only worker. A second, older service sat beside this one during the rewrite and was deleted at the
@@ -104,7 +108,8 @@ services:
     # they accumulate. `init: true` interposes Docker's tini instead.
     init: true
     # Core's group (the image's `bun`, gid 1000), the ONE group_add block: core makes the shared media dirs
-    # group-writable, never world-writable, so the worker writes through this membership.
+    # group-writable, never world-writable, so the worker writes through this membership, and reads the 0640
+    # worker token in worker-auth the same way. container-layout.test.ts pins this gid to core's base image.
     group_add:
       - "1000"
     build:
@@ -121,6 +126,8 @@ services:
       - ENCORE_CORE_URL=ws://core:3000/ws?role=worker
       # Appended by the worker as `&token=`; must match core's (see the core service).
       - ENCORE_WORKER_TOKEN=${ENCORE_WORKER_TOKEN:-}
+      # Read at every dial when the line above is empty: the token core made on first boot.
+      - ENCORE_WORKER_TOKEN_FILE=/app/auth/worker-token
       # Unset means the worker derives a per-machine id; a fixed default here would make every worker collide.
       - ENCORE_WORKER_ID=${ENCORE_WORKER_ID:-}
       # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator and
@@ -160,6 +167,7 @@ services:
       # DBOS checkpoints, so it is per-box machine state and must survive `docker rm` while staying clear of
       # any retention sweep over `media/`.
       - worker-state:/home/worker/state
+      - worker-auth:/app/auth:ro
     depends_on:
       - core
     restart: unless-stopped
@@ -170,3 +178,5 @@ volumes:
   # expensive to refetch, so it lives outside the writable layer and survives `docker rm`.
   worker-cache:
   worker-state:
+  # Created on the first `up` after #1196, core's included, so an existing install needs no hand step.
+  worker-auth:

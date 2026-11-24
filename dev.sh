@@ -143,6 +143,8 @@ CORE="$ROOT/core"
 
 export MEDIA_DIR="$ROOT/media"
 export DATA_DIR="$ROOT/data"
+# With no ENCORE_WORKER_TOKEN, core writes its token here (0600) on first boot and the worker reads it.
+export ENCORE_WORKER_TOKEN_FILE="${ENCORE_WORKER_TOKEN_FILE:-$ROOT/auth/worker-token}"
 # Read from the environment or .env, because server.ts does (`process.env.PORT ?? 3000`). Every check
 # below uses it: hardcoding 3000 here while .env moved the listener costs a 45-second wait and then a
 # "core did not become healthy" that names the wrong cause.
@@ -697,7 +699,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 	(
 		cd "$WORKER_DIR"
 		# `ENCORE_CORE_URL`, not `ENCORE_CORE_WS`: the new worker reads the full ws URL from one variable.
-		# No `token=` here: ENCORE_WORKER_TOKEN is exported by the .env loader above and the worker appends it.
+		# No `token=` here: the worker appends ENCORE_WORKER_TOKEN (from .env) or reads ENCORE_WORKER_TOKEN_FILE.
 		# `ENCORE_DBOS_DB` is per-box durable state and must NOT sit under MEDIA_DIR, where a retention
 		# sweep would be free to evict the checkpoints a resumed job replays from.
 		exec env \

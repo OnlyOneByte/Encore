@@ -2,7 +2,7 @@
 // their own, plus 28 hand-rolled /health polls and 31 readings of EPORT.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,8 @@ export interface Core {
 	/** Stop core and boot it again on the SAME port, DATA_DIR and env, as a host reboot or a deploy would. Only
 	 *  meaningful with `ENCORE_EPHEMERAL: '0'` in the env, or the new core boots an empty room. */
 	restart(): Promise<void>;
+	/** The token core's role=worker gate checks: the spec's ENCORE_WORKER_TOKEN, else the file core made (#1196). */
+	workerToken(): string | null;
 }
 
 export interface CoreOptions {
@@ -58,6 +60,12 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 	const port = await freePort();
 	const dataDir = ownDir ?? mkdtempSync(join(tmpdir(), 'enc-data-'));
 	const baseURL = `http://127.0.0.1:${port}`;
+	// Inside DATA_DIR, so it goes with it; core's default (beside DATA_DIR) would be shared by every test core.
+	const tokenFile = env.ENCORE_WORKER_TOKEN_FILE ?? join(dataDir, 'worker-token');
+	const workerToken = (): string | null => {
+		if (env.ENCORE_WORKER_TOKEN?.trim()) return env.ENCORE_WORKER_TOKEN.trim();
+		return existsSync(tokenFile) ? readFileSync(tokenFile, 'utf8').trim() || null : null;
+	};
 	let output = '';
 
 	const spawnCore = (): ChildProcess =>
@@ -79,6 +87,7 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 				ENCORE_LYRICS_BACKFILL: '0',
 				ENCORE_VOCALS_BACKFILL: '0',
 				ENCORE_ADMIN_TOKEN: TEST_HOST_KEY,
+				ENCORE_WORKER_TOKEN_FILE: tokenFile,
 				...env
 			}
 		});
@@ -136,7 +145,7 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 		capture(proc);
 		if (!(await healthy())) throw new Error(`core did not come back on ${baseURL} within 45s.\n\n${output}`);
 	};
-	if (await healthy()) return { baseURL, mediaDir, dataDir, log: () => output, stop, restart };
+	if (await healthy()) return { baseURL, mediaDir, dataDir, log: () => output, stop, restart, workerToken };
 	await stop();
 	throw new Error(`core did not answer ${baseURL}/health within 45s.\n\n${output}`);
 }

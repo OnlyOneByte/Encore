@@ -904,7 +904,9 @@ Known and accepted, not an oversight:
   told why (`player:stale` with `singerOnly`). The transport (play, pause, skip, restart, seek) stays with everyone.
 - **Plain HTTP.** Anyone sniffing an open Wi-Fi can copy any cookie, the host's included. The fix is an HTTPS
   reverse proxy, documented in the README rather than shipped.
-- **A `role=worker` socket is open when `ENCORE_WORKER_TOKEN` is unset**, with a loud boot warning.
+- **A `role=worker` socket needs core's token**, which core makes on first boot when `ENCORE_WORKER_TOKEN` is
+  unset ([SERVER.md](SERVER.md#the-worker-token)). It rides in the `ws://` query, so it stops a device that
+  reaches the port, not one that sniffs the Wi-Fi.
 - `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
   than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
   even by mistake.

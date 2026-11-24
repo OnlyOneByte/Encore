@@ -59,6 +59,33 @@ test('the worker service has exactly ONE group_add block, carrying core gid 1000
 	expect(compose.services.worker!.group_add).toContain('1000');
 });
 
+test('core and the worker share the token file on worker-auth, which the worker reads through bun group', () => {
+	const compose = Bun.YAML.parse(readFileSync(join(CORE, '../docker/compose.yaml'), 'utf8')) as {
+		services: Record<string, { environment: string[]; volumes: string[]; group_add?: string[] }>;
+		volumes: Record<string, unknown>;
+	};
+	const dockerfile = readFileSync(join(CORE, '../docker/core.Dockerfile'), 'utf8');
+	const file = 'ENCORE_WORKER_TOKEN_FILE=/app/auth/worker-token';
+	expect(compose.services.core!.environment).toContain(file);
+	expect(compose.services.worker!.environment).toContain(file);
+	expect(compose.services.core!.volumes).toContain('worker-auth:/app/auth');
+	expect(compose.services.worker!.volumes).toContain('worker-auth:/app/auth:ro');
+	expect('worker-auth' in compose.volumes).toBe(true);
+	// The oven/bun image's `bun` user is uid and gid 1000; the token file is 0640 bun:bun.
+	expect(dockerfile).toMatch(/^FROM oven\/bun:[^\n]* AS runtime$/m);
+	expect(dockerfile).toContain('USER bun');
+	expect(compose.services.worker!.group_add).toEqual(['1000']); // one block: see the test above
+	// The image build checks the base's numbering, so a renumbered `bun` fails there rather than as a worker 401.
+	expect(dockerfile).toContain('RUN test "$(id -u bun):$(id -g bun)" = "1000:1000"');
+	// Seeded from the image: a fresh named volume is owned by bun, not root, or core cannot write the token.
+	// 0750 so the worker (group bun) can enter and nobody else can.
+	expect(dockerfile).toContain(
+		'mkdir -p /app/data /app/media /app/auth && chown -R bun:bun /app && chmod 750 /app/auth'
+	);
+	// Nothing serves /app/auth: it is outside MEDIA_DIR.
+	expect(compose.services.core!.environment).toContain('MEDIA_DIR=/app/media');
+});
+
 // Read by the code but owned by the image or compose itself: in-container paths, binaries and internals.
 // Forwarding a docker/.env value for these would point the container at a HOST path (dev.sh rewrites them
 // for the native run). Every other setting a service reads must be in its `environment:` list.

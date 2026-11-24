@@ -4,34 +4,12 @@
 // ref's FIRST SEGMENT selects its storage root, so classes can live on separate volumes — the
 // containment check is PER-ROOT, since a class dir may be pointed outside the media root.
 
-import { lstatSync, realpathSync } from 'node:fs';
-import { resolve, join, sep, dirname, basename } from 'node:path';
+import { dirname, resolve, join, sep } from 'node:path';
 import { mediaRoot, resolveBase, metaDir, derivedDir } from './paths';
+import { isTokenDir, workerTokenFile } from '../jobs/worker-token';
+import { realPath } from '../real-path';
 
 const under = (p: string, dir: string) => p === dir || p.startsWith(dir + sep);
-
-/** `p` with every symlink followed, or null for a dangling link. A path not written yet (a write target)
- *  resolves through its nearest existing ancestor. */
-function realPath(p: string): string | null {
-	const tail: string[] = [];
-	let head = p;
-	for (;;) {
-		try {
-			lstatSync(head);
-			break;
-		} catch {
-			const up = dirname(head);
-			if (up === head) return p;
-			tail.unshift(basename(head));
-			head = up;
-		}
-	}
-	try {
-		return join(realpathSync(head), ...tail);
-	} catch {
-		return null;
-	}
-}
 
 /**
  * Resolve a ref to an absolute path PROVABLY inside that ref's storage class root, or null if it
@@ -47,6 +25,8 @@ export function safeMediaPath(ref: string): string | null {
 		return null; // malformed %-encoding
 	}
 	if (decoded.includes('\0') || decoded.startsWith('/') || decoded.startsWith('\\')) return null;
+	// No media ref is a dot-file, so none is served: caches (.thumbs), AppleDouble files (._x), stray secrets.
+	if (decoded.split(/[/\\]/).some((segment) => segment.startsWith('.'))) return null;
 
 	const { base, rest } = resolveBase(decoded);
 	const candidate = resolve(join(base, rest));
@@ -65,6 +45,15 @@ export function safeMediaPath(ref: string): string | null {
 		const realDir = realPath(dir) ?? dir;
 		if (under(candidate, dir) || under(real, dir) || under(real, realDir)) return null;
 	}
+	// Never the worker token, its temp files, or its own auth/ dir (a hand-set file's dir may hold media), compared
+	// by real path both ways so a linked MEDIA_DIR or DATA_DIR cannot alias them back in.
+	const tokenFile = workerTokenFile();
+	const tokenDir = dirname(tokenFile);
+	const paths = [candidate, real];
+	const files = [tokenFile, realPath(tokenFile) ?? tokenFile];
+	if (paths.some((p) => files.some((f) => p === f || p.startsWith(`${f}.tmp-`)))) return null;
+	const dirs = isTokenDir(tokenDir) ? [tokenDir, realPath(tokenDir) ?? tokenDir] : [];
+	if (paths.some((p) => dirs.some((d) => under(p, d)))) return null;
 
 	return candidate;
 }

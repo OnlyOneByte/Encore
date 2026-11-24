@@ -9,8 +9,8 @@ import { WebSocket } from 'ws';
 const HELLO = { type: 'worker:hello', workerId: 'worker-1', capabilities: ['stems'], concurrency: 1, version: 't' };
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
-async function openWorker(baseURL: string): Promise<WebSocket> {
-	const ws = new WebSocket(`${baseURL.replace(/^http/, 'ws')}/ws?role=worker`);
+async function openWorker(baseURL: string, token: string | null): Promise<WebSocket> {
+	const ws = new WebSocket(`${baseURL.replace(/^http/, 'ws')}/ws?role=worker&token=${encodeURIComponent(token ?? '')}`);
 	await new Promise((resolve, reject) => {
 		ws.once('open', resolve);
 		ws.once('error', reject);
@@ -22,10 +22,10 @@ test('a stale worker socket closing after a reconnect does not deregister the li
 	const registered = async (): Promise<string[]> =>
 		(await (await world.hostGet('/api/metrics')).json()).workers.map((w: { workerId: string }) => w.workerId);
 
-	const old = await openWorker(world.baseURL);
+	const old = await openWorker(world.baseURL, world.core.workerToken());
 	old.send(JSON.stringify(HELLO));
 	await settle();
-	const live = await openWorker(world.baseURL);
+	const live = await openWorker(world.baseURL, world.core.workerToken());
 	live.send(JSON.stringify(HELLO));
 	await settle();
 	expect(await registered()).toEqual(['worker-1']);

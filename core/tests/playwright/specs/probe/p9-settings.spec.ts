@@ -17,8 +17,8 @@
 //
 // SECTION 7 IS THE BLAST RADIUS. p9's security section reported the guest-is-a-host findings; proposal 30 closed
 // them, so they are asserted CLOSED here: a joined guest cannot write settings or read /api/metrics, a page on
-// another site cannot write or open a socket, and the one surface still open by design — a role=worker socket
-// with no ENCORE_WORKER_TOKEN set — is characterised as before. Every settings write elsewhere goes through the
+// another site cannot write or open a socket, and a role=worker socket without core's token (the one core makes
+// on first boot, #1196) is refused. Every settings write elsewhere goes through the
 // host key (`hostCookie`), which is what the boot link hands the host.
 //
 // WHAT IS DROPPED, NAMED. (1) p9's `EXPECTED_ENV_ORIGIN` arm — "clearing joinOrigin falls back to
@@ -29,9 +29,12 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, startObservingWorker } from '../../world/workers';
-import { TEST_HOST_KEY } from '../../world/core';
+import { startCore, TEST_HOST_KEY } from '../../world/core';
 import { WebSocket } from 'ws';
 import { request as httpRequest } from 'node:http';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { World } from '../../world/fixtures';
 import type { EffectiveSettings, RoomSettings } from '$lib/contract';
 
@@ -536,21 +539,60 @@ test('the operator JSON is the host only, and the worker socket is open by desig
 		'media'
 	]);
 
-	// (c) a role=worker socket opens with NO token unless ENCORE_WORKER_TOKEN is set — and it carries dispatch
-	// authority. `world` boots core without one, and core WARNS about exactly this on boot.
-	const worker = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=worker`);
-	const opened = await new Promise<boolean>((resolve) => {
-		worker.once('open', () => resolve(true));
-		worker.once('error', () => resolve(false));
-		worker.once('unexpected-response', () => resolve(false));
-		setTimeout(() => resolve(false), 5_000);
-	});
-	worker.close();
-	expect(
-		opened,
-		'a role=worker socket is accepted without a token — dispatch authority on the LAN. Set ' +
-			'ENCORE_WORKER_TOKEN to gate it (server.ts refuses the upgrade with 401 when it is set).'
-	).toBe(true);
+	// (c) a role=worker socket carries dispatch authority. `world` boots core with NO ENCORE_WORKER_TOKEN, so
+	// core made one (#1196): a socket without it is refused, one with it opens, and the token is never served.
+	const dialWorker = (token: string | null) =>
+		new Promise<number | 'open'>((resolve) => {
+			const query = token ? `&token=${encodeURIComponent(token)}` : '';
+			const ws = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=worker${query}`);
+			ws.once('open', () => (ws.close(), resolve('open')));
+			ws.once('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+			ws.once('error', () => resolve(0));
+			setTimeout(() => resolve(0), 5_000);
+		});
+	const token = world.core.workerToken();
+	expect(token, `core made no worker token\n\n${world.core.log()}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
+	expect(await dialWorker(null), 'a role=worker socket with no token — server.ts must 401 it').toBe(401);
+	expect(await dialWorker(`${token}x`), 'a wrong token must 401').toBe(401);
+	expect(await dialWorker(token), "core's own token must open the socket").toBe('open');
+	expect(world.core.log(), 'core logs where the token is, never the token').not.toContain(token!);
+});
+
+test('with MEDIA_DIR=X and DATA_DIR=X/data the token is never served: core refuses that path, and /media 404s it', async () => {
+	// Core's default puts the token at DATA_DIR/../auth, which this layout places inside MEDIA_DIR (#1202 review M1).
+	const root = mkdtempSync(join(tmpdir(), 'enc-p9-layout-'));
+	const dataDir = join(root, 'data');
+	mkdirSync(dataDir, { recursive: true });
+	const real = join(root, 'auth', 'worker-token');
+	try {
+		// An empty ENCORE_WORKER_TOKEN_FILE is core's default, as on a hand-configured box.
+		const refused = await startCore({ mediaDir: root, dataDir, env: { ENCORE_WORKER_TOKEN_FILE: '' } }).then(
+			() => 'booted',
+			(err: Error) => err.message
+		);
+		expect(refused, 'core must not boot with its token inside MEDIA_DIR').toContain('which /media serves');
+		expect(existsSync(real), 'and must write nothing there').toBe(false);
+
+		// With a token set it boots; a file at the real path (planted, as an older build would have made) stays unserved.
+		mkdirSync(join(root, 'auth'), { recursive: true });
+		writeFileSync(real, 'planted-token-value-not-to-be-served\n');
+		const core = await startCore({
+			mediaDir: root,
+			dataDir,
+			env: { ENCORE_WORKER_TOKEN_FILE: '', ENCORE_WORKER_TOKEN: 'p9-layout-token-0123456789abcdef' }
+		});
+		try {
+			for (const ref of ['auth/worker-token', 'auth%2Fworker-token', 'AUTH/worker-token', 'auth/']) {
+				const served = await fetch(`${core.baseURL}/media/${ref}`);
+				expect(served.status, `GET /media/${ref}`).toBe(404);
+				expect(await served.text()).not.toContain('planted-token-value');
+			}
+		} finally {
+			await core.stop();
+		}
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 /** A request with the path sent byte for byte: `fetch` would resolve `..` and `.` before it left. */

@@ -24,7 +24,7 @@ frames are generated rather than committed, so regenerate them locally when you 
 **Docker:**
 
 ```bash
-cp docker/.env.example docker/.env     # then set ENCORE_WORKER_TOKEN in it (see Security)
+cp docker/.env.example docker/.env     # optional: every setting in it has a working default
 ./dev.sh compose up                    # core only, on http://localhost:3000
 ./dev.sh compose --stems up            # core + the worker that makes karaoke tracks
 ```
@@ -96,15 +96,14 @@ cd worker
 # adds `mlx`, which installs only on Apple Silicon.
 uv sync --frozen --extra cpu --extra ml --extra text --extra ffmpeg --extra audiosep --extra romanize --extra nonlatin
 
-# ENCORE_WORKER_TOKEN must be the same value core was started with; leave it empty only if core's is unset.
+# The token file is the one core made on first boot (it logs the path); ENCORE_WORKER_TOKEN, if core has one, wins.
 ENCORE_CORE_URL='ws://localhost:3000/ws?role=worker' \
   ENCORE_MEDIA_DIR="$PWD/../core/media" \
-  ENCORE_WORKER_TOKEN="${ENCORE_WORKER_TOKEN:-}" \
+  ENCORE_WORKER_TOKEN_FILE="$PWD/../core/auth/worker-token" \
 uv run python -m encore_worker                         # uv run puts .venv/bin on PATH for python/yt-dlp
 ```
 
-Those three variables are the whole configuration (the token only when core sets one, which the
-Security section below says it should). The worker measures the rest and prints what it found at startup:
+Those three variables are the whole configuration. The worker measures the rest and prints what it found at startup:
 the accelerator, the device, the separator backend and the **capabilities** it can prove (`fetch:ytdlp`,
 `stems`, `stems:roformer`, `stems:audiosep`, `align`, …), each gated on the tool actually being
 installed. A box that proves none says so in a warning, because that line is what explains a song stuck at
@@ -199,12 +198,16 @@ of failed processes on specific videos is not a broken install.
 >   link is made at every start, so a lost one is a restart away.
 > - It is plain HTTP: anyone watching an open Wi-Fi can copy a cookie, the host's included. Put it behind an
 >   HTTPS reverse proxy when guests aren't trusted.
-> - **Set `ENCORE_WORKER_TOKEN`.** Without it, `role=worker` WebSocket upgrades are unauthenticated:
->   anything that can reach the port can register as a worker and start receiving job assignments.
->   Core logs one loud warning at startup when it is unset, and refuses to start when it is set but under
->   24 characters. Make it random: `openssl rand -base64 24`. The token travels in **cleartext**, as the
->   `token=` query of a plain `ws://` URL: it keeps stray LAN devices out, not anyone who can watch
->   the LAN's traffic. It is for a trusted LAN only.
+> - **A worker needs core's token.** Without one, anything that can reach the port could register as a
+>   worker and receive job assignments. With `ENCORE_WORKER_TOKEN` unset, core makes a random token on
+>   first boot and keeps it in a file only core and the worker can read: the `worker-auth` volume under
+>   Docker, `auth/worker-token` beside `data/` under `dev.sh`. The worker beside it reads the same file, so
+>   there is nothing to set. Core logs the file's path at startup, never the token. A **worker on another
+>   machine** needs that value: copy it (`docker compose exec core cat /app/auth/worker-token`, or
+>   `cat auth/worker-token` natively) into the worker's `ENCORE_WORKER_TOKEN`. Or set your own
+>   `ENCORE_WORKER_TOKEN` on both sides, at least 24 random characters (`openssl rand -base64 24`), which
+>   wins over the file. The token travels in **cleartext**, as the `token=` query of a plain `ws://` URL: it
+>   keeps devices that merely reach the port out, not anyone who can watch the LAN's traffic.
 > - Core answers only to an IP address, `localhost`, the join address and the names in
 >   `ENCORE_ALLOWED_HOSTS` (anything else gets `421`), so a web page cannot reach it by DNS rebinding.
 >   Run natively, it also answers to the machine's own hostname and `<hostname>.local`. Under Docker,
@@ -288,7 +291,8 @@ one of them.
 | `PORT`                   | `3000`       | HTTP + WS port                                                                                                                                                                                                                                                                                                                                            |
 | `HOST`                   | `0.0.0.0`    | bind address (use `127.0.0.1` to keep it off the network)                                                                                                                                                                                                                                                                                                 |
 | `ENCORE_ADMIN_TOKEN`     | unset        | a fixed host key, at least 24 characters (core refuses to start with a shorter one). Make it random, e.g. `openssl rand -base64 24`: its length is the only guard against guessing. The host link is then `/host#k=<value>`. Unset means core makes a new key at every start and prints the host link — see Security                                                                                                                                                                                     |
-| `ENCORE_WORKER_TOKEN`    | unset        | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. At least 24 characters (core refuses to start with a shorter one); make it random, e.g. `openssl rand -base64 24`. **Unset means worker registration is unauthenticated** — see Security                                                                                                                                                                                |
+| `ENCORE_WORKER_TOKEN`    | unset        | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. At least 24 characters (core refuses to start with a shorter one); make it random, e.g. `openssl rand -base64 24`. Unset means core makes one on first boot in `ENCORE_WORKER_TOKEN_FILE` — see Security                                                                                                                                                                                |
+| `ENCORE_WORKER_TOKEN_FILE` | `auth/worker-token` beside `DATA_DIR` | where core keeps the token it makes when `ENCORE_WORKER_TOKEN` is unset (0600; 0640 in a container, for the worker in core's group), and where the worker reads it. Compose pins `/app/auth/worker-token` on the `worker-auth` volume. Core refuses to start when it falls inside `MEDIA_DIR` (as with `MEDIA_DIR=X`, `DATA_DIR=X/data`): point it elsewhere, or set `ENCORE_WORKER_TOKEN`. Core sets the file's mode at every boot, and its directory's only when that is the default `auth/` or one core created                                                                                                                                                                                |
 | `ENCORE_PUBLIC_ORIGIN`   | unset        | address the TV's join QR advertises, e.g. `http://192.168.1.20:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`). This is the _boot-time_ declaration; **Joining** in `/settings/server` overrides it at runtime with no restart |
 | `ENCORE_ALLOWED_HOSTS`   | unset        | extra names core answers to, comma-separated (e.g. `mybox.local,karaoke.lan`; ports ignored). Core always answers to any IP address, `localhost` and the join address, and natively to the machine's hostname and `<hostname>.local`; any other `Host` gets `421`, which is what stops a DNS-rebinding page. Set it when you open Encore by a name |
 | `ENCORE_TRUST_PROXY`     | unset        | `1` → believe `X-Forwarded-Host` and `X-Forwarded-Proto`. Set it only behind a proxy or tunnel that sets them itself; otherwise anyone can send them |
@@ -330,7 +334,8 @@ worker at startup with a message naming the variable and what it accepts. `ENCOR
 
 Everything else is an **override**, with a default that suits one worker beside one core:
 
-- **Placement** — `ENCORE_WORKER_TOKEN` (must match core's), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
+- **Placement** — `ENCORE_WORKER_TOKEN` (must match core's; a worker on another machine copies core's token
+  file here), `ENCORE_WORKER_TOKEN_FILE` (read at every dial when the token is unset), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
   `ENCORE_WORKER_CONCURRENCY` (`1`; above 1 the CPU threads are split between the jobs)
 - **Speed** — `ENCORE_THREADS` and `ENCORE_ASR_COMPUTE` (auto at boot), `ENCORE_DEMUCS_JOBS` (`1`) and
   `ENCORE_WARMUP=0` (skip loading the models right after boot)

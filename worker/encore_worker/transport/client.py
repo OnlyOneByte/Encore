@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, assert_never
 from urllib.parse import urlencode
 
-from encore_worker.host.config import Config, redact_token
+from encore_worker.host.config import Config, clean_token, redact_token
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Action, Stage, serves
 from encore_worker.transport.ownership import Ownership, Reason
@@ -118,7 +118,10 @@ class Client:
                 raise
             except Exception as exc:  # noqa: BLE001 - any transport fault is a reconnect, not a crash
                 if getattr(getattr(exc, "response", None), "status_code", None) == 401:
-                    self._note("core refused the worker token (HTTP 401): set ENCORE_WORKER_TOKEN to core's")
+                    self._note(
+                        "core refused the worker token (HTTP 401): set ENCORE_WORKER_TOKEN to core's, "
+                        "or ENCORE_WORKER_TOKEN_FILE to the file core logs at boot"
+                    )
                 else:
                     self._note(f"connection lost ({type(exc).__name__}: {exc})")
             self.ownership.disconnected()
@@ -427,10 +430,22 @@ class Client:
 
 def dial_url(config: Config) -> str:
     """`core_url` with the worker token appended as the `token` query param core's upgrade gate reads."""
-    if not config.worker_token:
+    token = config.worker_token or read_token_file(config.worker_token_file)
+    if not token:
         return config.core_url
     sep = "&" if "?" in config.core_url else "?"
-    return f"{config.core_url}{sep}{urlencode({'token': config.worker_token})}"
+    return f"{config.core_url}{sep}{urlencode({'token': token})}"
+
+
+def read_token_file(path: str | None) -> str | None:
+    """The token core wrote, or None while it has not (yet): the dial then gets core's 401 and retries."""
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return clean_token(fh.read()) or None  # as core's cleanToken reads it
+    except OSError:
+        return None
 
 
 def jittered_backoff(attempt: int) -> float:
