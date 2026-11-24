@@ -63,10 +63,8 @@ export type PublicSinger = Omit<Singer, 'sessionToken'>;
 export const LEFT_CLOSE_CODE = 4001;
 /** A `/tv` the host removed on the Screens page: it stops reconnecting and says so. Opened again, it is a new screen. */
 export const TV_REMOVED_CLOSE_CODE = 4002;
-/** A `/tv` turned away because the room already has `MAX_TV_SCREENS` open. */
+/** A cookieless `/tv` turned away because the room has its fill of those. A screen with a cookie never is. */
 export const TV_FULL_CLOSE_CODE = 4003;
-/** How many screens a room may have open. The seat's own screen is never turned away. */
-export const MAX_TV_SCREENS = 8;
 
 // core -> all clients (broadcasts)
 export type ServerEvent =

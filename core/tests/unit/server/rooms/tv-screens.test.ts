@@ -1,6 +1,5 @@
 import { expect, it } from 'bun:test';
 import { read } from '$test';
-import { MAX_TV_SCREENS } from '$lib/contract';
 import {
 	DRIFT_FRESH_MS,
 	MAX_COOKIELESS_SCREENS,
@@ -23,10 +22,16 @@ it('numbers screens in the order they first open, and lists the TV first', () =>
 	s.connect(R, 1, 'tvA');
 	s.connect(R, 2, 'tvB');
 	s.connect(R, 3, undefined);
-	expect(s.list(R, 2).map((v) => [v.name, v.isTv, v.canBeTv])).toEqual([
-		['Screen 2', true, true],
-		['Screen 1', false, true],
-		['Screen 3', false, false]
+	expect(s.list(R, 2, 'tvB').map((v) => [v.name, v.isTv, v.canBeTv, v.canRemove])).toEqual([
+		['Screen 2', true, true, false],
+		['Screen 1', false, true, true],
+		['Screen 3', false, false, true]
+	]);
+	// A screen standing in for the room's TV holds the seat and can still be removed.
+	expect(s.list(R, 1, 'tvB').map((v) => [v.name, v.isTv, v.canRemove])).toEqual([
+		['Screen 1', true, true],
+		['Screen 2', false, false],
+		['Screen 3', false, true]
 	]);
 });
 
@@ -35,12 +40,12 @@ it('a screen with two tabs is one row, and a reload keeps its number and name', 
 	const s = new TvScreens(c.now);
 	s.connect(R, 1, 'tvA');
 	s.connect(R, 2, 'tvA');
-	expect(s.list(R, null)).toHaveLength(1);
+	expect(s.list(R, null, null)).toHaveLength(1);
 	expect(s.rename(R, 'tvA', 'Kitchen')).toBe(true);
 	s.disconnect(R, 1);
 	s.disconnect(R, 2);
 	s.connect(R, 3, 'tvA');
-	expect(s.list(R, null)[0]).toMatchObject({ id: 'tvA', name: 'Kitchen', isNew: false });
+	expect(s.list(R, null, null)[0]).toMatchObject({ id: 'tvA', name: 'Kitchen', isNew: false });
 });
 
 it('a removed screen forgets its name and comes back as a new one', () => {
@@ -51,7 +56,7 @@ it('a removed screen forgets its name and comes back as a new one', () => {
 	s.forget(R, 'tvA');
 	s.disconnect(R, 1);
 	s.connect(R, 2, 'tvA');
-	expect(s.list(R, null)[0]).toMatchObject({ name: 'Screen 1', isNew: true });
+	expect(s.list(R, null, null)[0]).toMatchObject({ name: 'Screen 1', isNew: true });
 });
 
 it('only an open screen can be renamed', () => {
@@ -64,12 +69,12 @@ it('a new screen is the arrival for a minute, until it is named', () => {
 	const s = new TvScreens(c.now);
 	s.connect(R, 1, 'tvA');
 	s.connect(R, 2, 'tvB');
-	expect(s.list(R, 1).map((v) => v.isNew)).toEqual([false, true]);
+	expect(s.list(R, 1, 'tv').map((v) => v.isNew)).toEqual([false, true]);
 	s.rename(R, 'tvB', 'Hall');
-	expect(s.list(R, 1)[1]!.isNew).toBe(false);
+	expect(s.list(R, 1, 'tv')[1]!.isNew).toBe(false);
 	s.connect(R, 3, 'tvC');
 	c.t += NEW_SCREEN_MS;
-	expect(s.list(R, 1)[2]!.isNew).toBe(false);
+	expect(s.list(R, 1, 'tv')[2]!.isNew).toBe(false);
 });
 
 it('drift is a copy-only, finite, fresh report', () => {
@@ -79,44 +84,27 @@ it('drift is a copy-only, finite, fresh report', () => {
 	s.connect(R, 2, 'copy');
 	s.drift(R, 1, 30);
 	s.drift(R, 2, -12.4);
-	expect(s.list(R, 1).map((v) => v.driftMs)).toEqual([null, -12]);
+	expect(s.list(R, 1, 'tv').map((v) => v.driftMs)).toEqual([null, -12]);
 	for (const bad of [Number.NaN, Infinity, '5', null]) s.drift(R, 2, bad);
-	expect(s.list(R, 1)[1]!.driftMs).toBe(-12);
+	expect(s.list(R, 1, 'tv')[1]!.driftMs).toBe(-12);
 	s.drift(R, 2, 1e9);
-	expect(s.list(R, 1)[1]!.driftMs).toBe(60_000);
+	expect(s.list(R, 1, 'tv')[1]!.driftMs).toBe(60_000);
 	c.t += DRIFT_FRESH_MS;
-	expect(s.list(R, 1)[1]!.driftMs).toBeNull();
+	expect(s.list(R, 1, 'tv')[1]!.driftMs).toBeNull();
 });
 
-it('the room fills at MAX_TV_SCREENS cookied screens, and a screen already open is never "one more"', () => {
+// The review of #1204: a script minting cookies filled a cookied cap, and the room's own TV was refused. A cookie is
+// free to mint, so only cookieless sockets, which can never hold the seat, are capped.
+it('only cookieless sockets are capped; a screen with a cookie is never turned away', () => {
 	const s = new TvScreens(clock().now);
-	for (let i = 0; i < MAX_TV_SCREENS; i++) s.connect(R, i + 1, `tv${i}`);
-	expect(s.isFull(R, 'tvNew', 'tv0')).toBe(true);
-	expect(s.isFull(R, 'tv3', 'tv0')).toBe(false);
-	expect(s.isFull('another room', 'tvNew', 'tv0')).toBe(false);
-	s.disconnect(R, 1);
-	expect(s.isFull(R, 'tvNew', 'tv0')).toBe(false);
-});
-
-// The review of #1204: scripted cookieless sockets filled the room, the TV was off past the seat wait, and the TV
-// was then turned away with nothing holding the seat.
-it('a screen that can hold the seat is never turned away while the seat is free or kept for it', () => {
-	const s = new TvScreens(clock().now);
-	for (let i = 0; i < MAX_TV_SCREENS; i++) s.connect(R, i + 1, `copy${i}`);
-	expect(s.isFull(R, 'theTv', null)).toBe(false);
-	expect(s.isFull(R, 'theTv', 'theTv')).toBe(false);
-	expect(s.isFull(R, 'theTv', 'copy0')).toBe(true);
-});
-
-it('cookieless sockets fill a pool of their own and never count against a cookied screen', () => {
-	const s = new TvScreens(clock().now);
+	expect(s.isFull(R, undefined)).toBe(false);
 	for (let i = 0; i < MAX_COOKIELESS_SCREENS; i++) s.connect(R, i + 1, undefined);
-	expect(s.isFull(R, undefined, 'theTv')).toBe(true);
-	expect(s.isFull(R, 'theTv', 'someone else')).toBe(false);
-	for (let i = 1; i < MAX_TV_SCREENS; i++) s.connect(R, 100 + i, `copy${i}`);
-	expect(s.isFull(R, 'theTv', 'someone else')).toBe(false);
-	s.connect(R, 200, 'copyLast');
-	expect(s.isFull(R, 'theTv', 'someone else')).toBe(true);
+	expect(s.isFull(R, undefined)).toBe(true);
+	for (let i = 0; i < 100; i++) s.connect(R, 100 + i, `minted${i}`);
+	expect(s.isFull(R, 'theTv')).toBe(false);
+	expect(s.isFull('another room', undefined)).toBe(false);
+	s.disconnect(R, 1);
+	expect(s.isFull(R, undefined)).toBe(false);
 });
 
 it('closed screens are remembered for a day and at most REMEMBER_MAX of them; numbers stay small', () => {
@@ -131,12 +119,12 @@ it('closed screens are remembered for a day and at most REMEMBER_MAX of them; nu
 		s.disconnect(R, 10 + i);
 	}
 	s.connect(R, 9999, 'fresh');
-	const n = Number(s.list(R, null)[0]!.name.replace('Screen ', ''));
+	const n = Number(s.list(R, null, null)[0]!.name.replace('Screen ', ''));
 	expect(n).toBeLessThanOrEqual(REMEMBER_MAX + 1);
 	s.disconnect(R, 9999);
 	// The oldest, Kitchen, was the first to go.
 	s.connect(R, 2, 'kitchen');
-	expect(s.list(R, null)[0]!.name).not.toBe('Kitchen');
+	expect(s.list(R, null, null)[0]!.name).not.toBe('Kitchen');
 	s.disconnect(R, 2);
 	// A name within the day survives; past it, it is gone.
 	const t = new TvScreens(c.now);
@@ -145,12 +133,12 @@ it('closed screens are remembered for a day and at most REMEMBER_MAX of them; nu
 	t.disconnect(R, 1);
 	c.t += REMEMBER_MS - 1;
 	t.connect(R, 2, 'hall');
-	expect(t.list(R, null)[0]!.name).toBe('Hall');
+	expect(t.list(R, null, null)[0]!.name).toBe('Hall');
 	t.disconnect(R, 2);
 	c.t += REMEMBER_MS + 1;
 	t.connect(R, 3, 'other');
 	t.connect(R, 4, 'hall');
-	expect(t.list(R, null).map((v) => v.name)).toEqual(['Screen 1', 'Screen 2']);
+	expect(t.list(R, null, null).map((v) => v.name)).toEqual(['Screen 1', 'Screen 2']);
 });
 
 it('cleanScreenName trims, folds space, drops control characters and caps the length', () => {
@@ -165,10 +153,14 @@ it('server.ts turns a screen too many away at open and takes drift from copies o
 	const src = read('server.ts');
 	const open = src.split('open(ws) {')[1]!.split('message(ws, raw)')[0]!;
 	expect(open.indexOf('tvScreens.isFull(')).toBeLessThan(open.indexOf('ws.subscribe('));
-	expect(open).toContain('tvScreens.isFull(roomId, tvId, app.rooms.tvSeat(roomId))');
+	expect(open).toContain('tvScreens.isFull(roomId, tvId)');
 	const drift = src.split("case 'tv:drift':")[1]!.split('break;')[0]!;
 	expect(drift).toContain('!seated(ws)');
 	expect(src).toContain('if (ws.data.refused) return;');
+	// Remove refuses only the room's TV, and hands the seat of a screen standing in for it back before it closes.
+	const remove = src.split('remove: (id) => {')[1]!.split("return 'ok';")[0]!;
+	expect(remove).toContain("if (id === tvSeats.roomTv(app.activeRoomId)) return 'is-tv';");
+	expect(remove.indexOf('tvSeats.release(')).toBeLessThan(remove.indexOf('.close(TV_REMOVED_CLOSE_CODE'));
 });
 
 it('/api/screens is host only, and a mid-song "make this the TV" is refused', () => {

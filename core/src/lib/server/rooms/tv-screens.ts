@@ -1,7 +1,6 @@
 // The room's screens, for the host's Screens page (proposal 34): every `/tv` open in a room, its name, whether it is
 // the TV, and how far a copy runs from the TV's clock. See docs/SERVER.md#screens.
 
-import { MAX_TV_SCREENS } from '../../contract';
 import type { ScreenRow as ScreenView } from '../../screens';
 
 export const SCREEN_NAME_MAX = 32;
@@ -11,8 +10,8 @@ export const DRIFT_FRESH_MS = 10_000;
 export const NEW_SCREEN_MS = 60_000;
 /** A drift past this is not a measurement; the copy is lost and will seek. */
 const DRIFT_MAX_MS = 60_000;
-/** Cookieless sockets (a script, a browser with cookies off) can never hold the seat, so they get a pool of their own
- *  and can never fill the room against a screen that can. */
+/** Cookieless sockets (a script, a browser with cookies off) can never hold the seat, so only they are capped. A
+ *  cookie is free to mint, so a cap on screens with one could never hold back a script, only refuse a real TV. */
 export const MAX_COOKIELESS_SCREENS = 4;
 /** A closed screen's number and name are kept this long, so it comes back as itself; then they are dropped. */
 export const REMEMBER_MS = 24 * 60 * 60 * 1000;
@@ -54,17 +53,10 @@ export class TvScreens {
 		return r;
 	}
 
-	/**
-	 * Whether a new screen would be one too many. `seatHolder` is the screen the seat is kept for (`rooms.tv_seat`).
-	 * A screen with a cookie is never turned away while the seat is free or kept for it, and only screens with a
-	 * cookie count against it; cookieless ones fill their own, smaller pool. A screen already open is never "new".
-	 */
-	isFull(roomId: string, tvId: string | undefined, seatHolder: string | null): boolean {
+	/** Whether a new screen would be one too many: only a cookieless one ever is. */
+	isFull(roomId: string, tvId: string | undefined): boolean {
 		const r = this.#rooms.get(roomId);
-		if (!r) return false;
-		if (!tvId) return r.sockets.filter((s) => !s.tvId).length >= MAX_COOKIELESS_SCREENS;
-		if (seatHolder === null || seatHolder === tvId || r.sockets.some((s) => s.tvId === tvId)) return false;
-		return new Set(r.sockets.filter((s) => s.tvId).map((s) => s.tvId)).size >= MAX_TV_SCREENS;
+		return !tvId && !!r && r.sockets.filter((s) => !s.tvId).length >= MAX_COOKIELESS_SCREENS;
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): void {
@@ -139,8 +131,9 @@ export class TvScreens {
 		return (this.#rooms.get(roomId)?.sockets ?? []).filter((s) => s.screenId === screenId).map((s) => s.key);
 	}
 
-	/** The TV first, then the others in the order they first opened. `tvKey` is the seat's live socket, if any. */
-	list(roomId: string, tvKey: number | null): ScreenView[] {
+	/** The TV first, then the others in the order they first opened. `tvKey` is the seat's live socket, if any, and
+	 *  `roomTv` the room's TV (tv-seat.ts), the one screen that cannot be removed. */
+	list(roomId: string, tvKey: number | null, roomTv: string | null): ScreenView[] {
 		const r = this.#rooms.get(roomId);
 		if (!r) return [];
 		const now = this.#now();
@@ -153,6 +146,7 @@ export class TvScreens {
 				driftMs: null,
 				isNew: !r.names.has(s.screenId),
 				canBeTv: !!s.tvId,
+				canRemove: s.screenId !== roomTv,
 				n: r.numbers.get(s.screenId) ?? Infinity
 			};
 			if (s.key === tvKey) v.isTv = true;
@@ -174,6 +168,7 @@ export interface ScreensControl {
 	/** Whether a song is current: a screen becomes the TV mid-song only when tapped (owner ruling, proposal 34). */
 	midSong(): boolean;
 	rename(screenId: string, name: string): boolean;
+	/** 'is-tv': the room's TV. A screen standing in for it can be removed, and the seat waits for the TV again. */
 	remove(screenId: string): 'ok' | 'unknown' | 'is-tv';
 	makeTv(screenId: string): 'ok' | 'unknown' | 'mid-song' | 'no-cookie';
 }

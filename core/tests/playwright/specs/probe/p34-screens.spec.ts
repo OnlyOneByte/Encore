@@ -1,11 +1,14 @@
 // P34 PR 3: the host's Screens page lists every /tv open in the room, the TV first. The host names a screen, makes
 // one the TV between songs (mid-song a screen becomes the TV only when tapped on it), and removes one, which then says
-// so and can be opened again. A copy's row says how far it runs from the TV. Guests get 403, and a room holds at
-// most MAX_TV_SCREENS screens. `SHOT_DIR=<dir>` writes the page at 390 and 320 and a removed screen at 1920.
+// so and can be opened again. A copy's row says how far it runs from the TV. Guests get 403. Only cookieless screens
+// are capped, and the room's TV always gets back in and takes its seat back. `SHOT_DIR=<dir>` writes the page at 390
+// and 320 and a removed screen at 1920.
+import { randomBytes } from 'node:crypto';
+import WebSocket from 'ws';
 import { test, expect } from '../../world/fixtures';
 import { startFakeWorker } from '../../world/workers';
 import { readySong, queueReady } from '../../world/actors';
-import { MAX_TV_SCREENS, TV_FULL_CLOSE_CODE } from '../../../../src/lib/contract';
+import { TV_FULL_CLOSE_CODE } from '../../../../src/lib/contract';
 import { MAX_COOKIELESS_SCREENS } from '../../../../src/lib/server/rooms/tv-screens';
 import type { Browser, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
@@ -22,7 +25,7 @@ async function openScreen(browser: Browser, world: World, real = false, w = 1920
 const shot = async (page: Page, name: string) => {
 	if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
 };
-type Row = { id: string; name: string; isTv: boolean; driftMs: number | null; isNew: boolean; canBeTv: boolean };
+type Row = { id: string; name: string; isTv: boolean; isNew: boolean; canBeTv: boolean; canRemove: boolean };
 const rows = async (host: Page): Promise<Row[]> => (await (await host.request.get('/api/screens')).json()).screens;
 const row = (host: Page, name: string) => host.locator('section', { hasText: name }).first();
 
@@ -111,16 +114,7 @@ test('the host sees, names, swaps and removes the screens, and a guest cannot', 
 		await expect.poll(async () => (await rows(host)).filter((r) => r.isNew).map((r) => r.name)).toContain('Screen 3');
 		await expect(tv.locator('.lower-third')).toContainText(/Ana/);
 
-		// One screen too many is turned away and says so; the TV itself always gets back in.
-		const more: Page[] = [];
-		while ((await rows(host)).length < MAX_TV_SCREENS) more.push(await openScreen(browser, world));
-		const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
-		const extra = await ctx.newPage();
-		await extra.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-		await expect(extra.locator('.shut-line')).toHaveText('This room has all the screens it can show', {
-			timeout: 10_000
-		});
-		expect((await rows(host)).length).toBe(MAX_TV_SCREENS);
+		// The TV reloading mid-song is the TV again at once.
 		await tv.reload();
 		await expect(tv.locator('.lower-third')).toContainText(/Ana/, { timeout: 15_000 });
 		await expect(tv.locator('.shut-out')).toHaveCount(0);
@@ -130,15 +124,20 @@ test('the host sees, names, swaps and removes the screens, and a guest cannot', 
 	}
 });
 
-/** A cookieless role=tv socket from a script: no Origin, no cookie. Resolves with its close code, if any. */
-function rawTv(world: World) {
-	const ws = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=tv&room=${encodeURIComponent(world.code)}`);
+/** A role=tv socket from a script: no Origin, and no cookie unless `minted` (a made-up `encore_tv`, as any script can
+ *  have). Resolves with its close code, if any. */
+function rawTv(world: World, minted = false) {
+	const url = `${world.baseURL.replace(/^http/, 'ws')}/ws?role=tv&room=${encodeURIComponent(world.code)}`;
+	const headers = minted ? { cookie: `encore_tv=${randomBytes(24).toString('base64url')}` } : undefined;
+	const ws = new WebSocket(url, { headers });
 	// A refused socket opens first and is closed at once (the cap runs in the server's `open`), so "open" means it
 	// was still open a second later.
-	const opened = new Promise<'open'>((r) => ws.addEventListener('open', () => setTimeout(() => r('open'), 1_000)));
-	const closed = new Promise<number>((r) => ws.addEventListener('close', (e) => r(e.code)));
+	const opened = new Promise<'open'>((r) => ws.on('open', () => setTimeout(() => r('open'), 1_000)));
+	const closed = new Promise<number>((r) => ws.on('close', (code) => r(code)));
 	return { ws, outcome: Promise.race([opened, closed]) };
 }
+const FLOOD = 8;
+const tvRow = async (host: Page) => (await rows(host)).find((r) => r.isTv);
 
 // The review of #1204: a script fills the room with cookieless sockets, the TV is off past the seat wait (the seat goes
 // free), and the TV comes back. It must get in and take the seat.
@@ -151,11 +150,11 @@ test('cookieless sockets cannot fill the room against the TV, even after its sea
 	const host = await world.openPhone('Host');
 	await world.becomeHost(host);
 	const socks = [];
-	for (let i = 0; i < MAX_TV_SCREENS; i++) socks.push(rawTv(world));
+	for (let i = 0; i < FLOOD; i++) socks.push(rawTv(world));
 	const outcomes = await Promise.all(socks.map((s) => s.outcome));
 	// They fill their own pool and no more: the rest are turned away as one too many.
 	expect(outcomes.filter((o) => o === 'open')).toHaveLength(MAX_COOKIELESS_SCREENS);
-	expect(outcomes.filter((o) => o === TV_FULL_CLOSE_CODE)).toHaveLength(MAX_TV_SCREENS - MAX_COOKIELESS_SCREENS);
+	expect(outcomes.filter((o) => o === TV_FULL_CLOSE_CODE)).toHaveLength(FLOOD - MAX_COOKIELESS_SCREENS);
 	await tv.context().close();
 	await host.waitForTimeout(1_000);
 	const topUp = rawTv(world);
@@ -167,6 +166,45 @@ test('cookieless sockets cannot fill the room against the TV, even after its sea
 	await expect(back.locator('.shut-out')).toHaveCount(0);
 	await expect.poll(async () => (await rows(host)).find((r) => r.isTv)?.canBeTv ?? false).toBe(true);
 	await expect(back.locator('.copy-chip')).toHaveCount(0);
+	for (const s of socks) s.ws.close();
+});
+
+// The review of #1204, round 2: a script mints cookies (any GET /tv hands one out), the TV is off past the seat wait,
+// and the script's newest screen stands in. The room's TV must still get in and take its seat back, and the host
+// must be able to remove the stand-in.
+test("a script minting cookies cannot keep the room's TV out, and the host can remove its stand-in", async ({
+	browser,
+	world
+}) => {
+	test.setTimeout(240_000);
+	const tv = await openScreen(browser, world, true);
+	const host = await world.openPhone('Host');
+	await world.becomeHost(host);
+	const roomTv = (await tvRow(host))!.id;
+	const socks = [];
+	for (let i = 0; i < 9; i++) socks.push(rawTv(world, true));
+	// No cap on screens with a cookie: every one is open.
+	expect(await Promise.all(socks.map((s) => s.outcome))).toEqual(Array(9).fill('open'));
+	await tv.context().close();
+	await host.waitForTimeout(1_000);
+	for (let i = 0; i < 3; i++) socks.push(rawTv(world, true));
+	expect(await Promise.all(socks.slice(-3).map((s) => s.outcome))).toEqual(Array(3).fill('open'));
+	// Past the seat's wait (TV_SEAT_SLOW_BOOT_MS, 60 s): a script screen stands in.
+	await host.waitForTimeout(70_000);
+	const standIn = (await tvRow(host))!;
+	expect(standIn.id).not.toBe(roomTv);
+	// The host removes it: the seat waits for the room's TV again, then the next screen stands in.
+	const removed = await host.request.post('/api/screens', { data: { action: 'remove', id: standIn.id } });
+	expect(removed.status()).toBe(200);
+	await expect.poll(async () => (await rows(host)).map((r) => r.id)).not.toContain(standIn.id);
+	await expect.poll(async () => (await tvRow(host))?.id, { timeout: 25_000 }).toBeDefined();
+	expect([roomTv, standIn.id]).not.toContain((await tvRow(host))!.id);
+	// The room's TV comes back: it gets in, and takes the seat from the stand-in.
+	const back = await openScreen(browser, world, true);
+	await expect(back.locator('.shut-out')).toHaveCount(0);
+	await expect.poll(async () => (await tvRow(host))?.id).toBe(roomTv);
+	await expect(back.locator('.copy-chip')).toHaveCount(0);
+	expect((await host.request.post('/api/screens', { data: { action: 'remove', id: roomTv } })).status()).toBe(409);
 	for (const s of socks) s.ws.close();
 });
 

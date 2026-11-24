@@ -2128,7 +2128,8 @@ lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
 - **A screen opened in the last minute that nobody has named** is a `Spotlight` headed "Just opened", so the host
   can tell which one they just switched on.
 - **The actions** are **Make this the TV**, **Rename** (inline, 32 characters at most) and **Remove**. Copies only
-  get Make this the TV and Remove; the TV gets Rename alone. While a song is on, Make this the TV is disabled and one
+  get Make this the TV, and every screen but the room's TV gets Remove (`canRemove`), so a screen standing in for the
+  TV while it is off can go. While a song is on, Make this the TV is disabled and one
   line says why: a screen becomes the TV mid-song only when someone taps it there.
 - **The first list comes with the page** from its host-gated load, so the page paints whole (CLS 0). After that it
   is polled every 2 s while the page is visible, not pushed, because a socket never carries the host.
@@ -2139,7 +2140,7 @@ lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
 - The page ends with where to add a screen: the join address with `/tv`.
 
 The layouts per screen (Everything, Words only, Up next) come with proposal 34's PR 4.
-`p34-screens.spec.ts` covers the page, the API, the removed screen and the cap.
+`p34-screens.spec.ts` covers the page, the API, the removed screen, the cookieless cap and a script minting cookies.
 
 ### A song that won't play
 

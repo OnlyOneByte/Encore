@@ -12,6 +12,8 @@ export interface ScreenRow {
 	isNew: boolean;
 	/** A cookieless screen can never hold the seat (docs/SERVER.md#the-tv-seat). */
 	canBeTv: boolean;
+	/** Every screen but the room's TV. One standing in for it while it is off can go (docs/SERVER.md#screens). */
+	canRemove: boolean;
 }
 
 /** "The TV · sound", or a copy's distance from it: "Quiet · 12 ms behind". */

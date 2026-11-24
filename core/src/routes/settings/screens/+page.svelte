@@ -90,7 +90,7 @@
 				</Button>
 			{/if}
 			<Button variant="ghost" size="tap" disabled={busy === s.id} onclick={() => startRename(s)}>Rename</Button>
-			{#if !s.isTv}
+			{#if s.canRemove}
 				<Button variant="ghost" size="tap" disabled={busy === s.id} onclick={() => act('remove', s)}>Remove</Button>
 			{/if}
 		</div>

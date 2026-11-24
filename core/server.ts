@@ -121,13 +121,15 @@ function announceSeat(notices: SeatNotice[]): void {
 // Every /tv open in a room, for the host's Screens page (src/lib/server/rooms/tv-screens.ts).
 const tvScreens = new TvScreens(() => app.now());
 app.screens = {
-	list: () => tvScreens.list(app.activeRoomId, tvSeats.holderKey(app.activeRoomId)),
+	list: () => tvScreens.list(app.activeRoomId, tvSeats.holderKey(app.activeRoomId), tvSeats.roomTv(app.activeRoomId)),
 	midSong: () => state.playback.currentEntryId !== null,
 	rename: (id, name) => tvScreens.rename(app.activeRoomId, id, name),
 	remove: (id) => {
 		const keys = tvScreens.socketsOf(app.activeRoomId, id);
 		if (!keys.length) return 'unknown';
-		if (keys.includes(tvSeats.holderKey(app.activeRoomId) ?? -1)) return 'is-tv';
+		if (id === tvSeats.roomTv(app.activeRoomId)) return 'is-tv';
+		// A screen standing in for the room's TV: the seat waits for that TV again before it closes.
+		announceSeat(tvSeats.release(app.activeRoomId, id));
 		tvScreens.forget(app.activeRoomId, id);
 		for (const k of keys) tvSockets.get(k)?.close(TV_REMOVED_CLOSE_CODE, 'removed by the host');
 		return 'ok';
@@ -263,10 +265,10 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
-			// One screen too many is turned away before it hears anything. A screen that could take the seat never is
-			// while the seat is free or kept for it (tv-screens.ts `isFull`).
+			// One cookieless screen too many is turned away before it hears anything. A screen with a cookie never is
+			// (tv-screens.ts `isFull`).
 			const { role, roomId, tvId } = ws.data;
-			if (role === 'tv' && roomId && tvScreens.isFull(roomId, tvId, app.rooms.tvSeat(roomId))) {
+			if (role === 'tv' && roomId && tvScreens.isFull(roomId, tvId)) {
 				ws.data.refused = true;
 				ws.close(TV_FULL_CLOSE_CODE, 'this room has its fill of screens');
 				return;
