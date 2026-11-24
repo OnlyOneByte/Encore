@@ -796,7 +796,10 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   set to `0755` whatever the umask, and the sticky bit on the parents means only an entry's owner may rename
   or remove it, so that group membership never lets the worker write sidecars or swap `meta/` (or `audio/`,
   `library/`) for its own. The leaf dirs carry no sticky bit, because there the worker replaces its own files
-  over ones core may have made. Core re-modes a `0777` dir it owns on its next boot; a dir the
+  over ones core may have made. Bun 1.3's `chmod` drops the sticky bit, so core sets `0775` through the API,
+  then runs `chmod 1775 --` on the dir; when the bit still isn't set it logs a warning naming the command to
+  run (#1222 removes the workaround). A `MEDIA_DIR` that is the home dir, the temp dir or `/` keeps its own
+  mode, with a warning: core re-modes only a directory that is media's alone. Core re-modes a `0777` dir it owns on its next boot; a dir the
   worker created stays as it is, since only its owner can change it.
 - **A store answers BYTES, never a URL.** There is no presigned or direct link and no `url()` member to
   re-add, which is what keeps media same-origin.

@@ -2,7 +2,18 @@
 // read. IDEMPOTENT, so it is safe to leave wired in forever. Promotes legacy scratch-retained raw audio into
 // `audio/` and moves legacy derived artifacts under `derived/`, rewriting DB refs in the same pass.
 
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, copyFileSync, chmodSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	statSync,
+	copyFileSync,
+	chmodSync,
+	realpathSync
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { mediaRoot, audioDir, derivedDir, metaDir, workDir, LEGACY } from './paths';
 
@@ -197,11 +208,45 @@ export const SHARED_DIR_MODE = 0o775;
  *  may rename or remove it, so the worker cannot swap out core's `meta/` (or any other core dir). */
 export const PARENT_DIR_MODE = 0o1775;
 
-// shortcut: Bun 1.3's fs.chmod drops the sticky bit, so this goes through chmod(1); use fs again once Bun keeps it.
+/** The API first (at least 0775 on any Bun), then chmod(1) for the sticky bit, then a loud warning if it still
+ *  isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs out. */
 function chmodParent(dir: string): void {
-	const r = Bun.spawnSync(['chmod', PARENT_DIR_MODE.toString(8), dir], { stdout: 'ignore', stderr: 'ignore' });
-	if (r.exitCode !== 0) chmodSync(dir, SHARED_DIR_MODE);
+	// A MEDIA_DIR set to the home dir, /tmp or / is shared with everything else: never re-mode it.
+	const real = realpathSync(dir);
+	if ([homedir(), tmpdir(), '/'].some((shared) => realpathOr(shared) === real)) {
+		console.warn(
+			`[core] MEDIA_DIR ${dir} is a shared directory, so core leaves its mode alone. Give media its own dir.`
+		);
+		return;
+	}
+	try {
+		chmodSync(dir, PARENT_DIR_MODE);
+	} catch {
+		/* not ours to change: reported below */
+	}
+	if (modeOf(dir) === PARENT_DIR_MODE) return;
+	// shortcut: Bun 1.3's fs.chmod drops the sticky bit (kept from Bun 1.4.3); drop chmod(1) once the image moves (#1222).
+	try {
+		Bun.spawnSync(['chmod', PARENT_DIR_MODE.toString(8), '--', dir], { stdout: 'ignore', stderr: 'ignore' });
+	} catch {
+		/* no chmod(1) on PATH: reported below */
+	}
+	const now = modeOf(dir);
+	if (now !== PARENT_DIR_MODE) {
+		console.warn(
+			`[core] ${dir} is ${now.toString(8)}, not 1775, so the worker can rename core's meta/ out of the way. Run: chmod 1775 ${dir}`
+		);
+	}
 }
+
+const modeOf = (dir: string) => statSync(dir).mode & 0o7777;
+const realpathOr = (dir: string) => {
+	try {
+		return realpathSync(dir);
+	} catch {
+		return dir;
+	}
+};
 
 /**
  * So the first write never races a missing dir. Core and worker are separate containers at DIFFERENT uids on
@@ -231,11 +276,7 @@ export function ensureLayout(): void {
 	// replaces its own files over ones core may have made, which a sticky bit would refuse.
 	for (const dir of [mediaRoot(), derivedDir()]) {
 		mkdirSync(dir, { recursive: true });
-		try {
-			chmodParent(dir);
-		} catch {
-			/* best effort */
-		}
+		chmodParent(dir);
 	}
 	// Core-only: the authoritative sidecar records. Set explicitly, since the worker shares core's group.
 	mkdirSync(metaDir(), { recursive: true });
