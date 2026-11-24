@@ -227,7 +227,13 @@ export function ensureLayout(): void {
 			/* best effort */
 		}
 	}
-	mkdirSync(metaDir(), { recursive: true }); // core-only: the authoritative sidecar records
+	// Core-only: the authoritative sidecar records. Set explicitly, since the worker shares core's group.
+	mkdirSync(metaDir(), { recursive: true });
+	try {
+		chmodSync(metaDir(), 0o755);
+	} catch {
+		/* best effort */
+	}
 }
 
 // Boot entry: create the layout, migrate anything legacy, return a loggable result.

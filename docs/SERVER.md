@@ -792,7 +792,8 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   check, so swapping a link inside that window needs write access to media already.
 - **Shared dirs are group-writable, never world-writable.** `ensureLayout` sets the worker-written dirs and
   their parents to `0775` (core's group). Compose adds the worker (uid 10001) to core's group (`bun`, gid
-  1000) with `group_add`, so it writes there. Core re-modes a `0777` dir it owns on its next boot; a dir the
+  1000) with `group_add`, so it writes there. `meta/` is set to `0755` whatever the umask, so that group
+  membership never lets the worker write sidecars. Core re-modes a `0777` dir it owns on its next boot; a dir the
   worker created stays as it is, since only its owner can change it.
 - **A store answers BYTES, never a URL.** There is no presigned or direct link and no `url()` member to
   re-add, which is what keeps media same-origin.
