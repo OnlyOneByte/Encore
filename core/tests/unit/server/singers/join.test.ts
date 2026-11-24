@@ -25,6 +25,7 @@ import { JobReaper } from '$lib/server/jobs/reaper';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { LocalMediaStore } from '$lib/server/media/store';
+import { PendingDeletes } from '$lib/server/media/library-manage';
 import { PresenceTracker } from '$lib/server/realtime/presence';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { PlayTracker } from '$lib/server/media/plays';
@@ -78,6 +79,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		popularity: createPopularityTracker(),
 		mediaStore: new LocalMediaStore(),
 		mediaStoreConfig: { kind: 'local' },
+		pendingDeletes: new PendingDeletes(() => {}),
 		publish: (e) => published.push(e),
 		toWorker: () => {},
 		now: () => 1_700_000_000_000

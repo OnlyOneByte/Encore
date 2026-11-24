@@ -397,6 +397,7 @@ export function applyAnnotation(
 	const confidence = annotation.confidence === 'high' ? 'high' : 'medium';
 
 	const current = media.annotation;
+	if (current?.source === 'manual') return false;
 	const currentIsCitation = current?.source === 'musicbrainz' || current?.source === 'youtube';
 	if (currentIsCitation && current!.confidence === 'high' && confidence !== 'high') {
 		return false;

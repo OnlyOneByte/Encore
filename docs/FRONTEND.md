@@ -1322,6 +1322,17 @@ is unaffected — driven on `/`, a "Needs karaoke" row carries no region and one
 reading "Making karaoke…" — and the one case deliberately given up is a row that mounts already failed, whose
 visible chip still says so.
 
+**Manage is the host's, and a guest sees none of it.** The page asks `/api/host` once on mount; only a host gets
+the quiet `Manage` control beside the count. Manage swaps each `SongRow` for a `ManageRow`
+(`src/lib/components/ManageRow.svelte`): title, artist (and `Kept`) and the song's size, with no `+`. The count
+line becomes the storage line, "214 songs · 12.4 GB of 20 GB", with a thin bar when a cap is set and "Kept songs
+use X of Y GB" past 90% of it. Sort gains `Biggest` and `Least sung`, which leave with Manage. Tapping a row opens
+its sheet in place: Name and artist (Change), Lyrics (Fix, the song page), Keep on this machine, and Delete,
+which a kept song does not offer. Delete has no dialog: the row goes, and a 10 s toast offers Undo. The sizes,
+plays and Keep come from `GET /api/library/sizes`, fetched only when Manage opens. The server side is
+`docs/SERVER.md#managing-the-library`. This is PR 1 of proposal 33. The proposal's own screens wait for the
+Spotlight Library step (#1159), so this UI stays minimal.
+
 ### The join screen
 
 `src/lib/components/JoinLanding.svelte` is the UNJOINED state of all three phone TABS, not a route of its own. It has TWO PANES,

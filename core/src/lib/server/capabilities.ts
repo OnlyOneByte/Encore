@@ -13,11 +13,11 @@ export type Capability =
 	| 'settings:write-room'
 	/** Change deployment-wide separator and process policy, and the join address. */
 	| 'settings:write-global'
-	/** Read /metrics, /api/metrics, a song's history on /api/audit/*, and /admin. */
+	/** Read /metrics, /api/metrics, a song's history on /api/audit/*, /api/library/sizes, and /admin. */
 	| 'operator:read'
-	/** Delete a song from the library entirely. */
+	/** Delete a song from the library entirely, or undo that within its window. */
 	| 'media:delete'
-	/** Change a library song for every room, such as re-picking its lyrics. */
+	/** Change a library song for every room, such as re-picking its lyrics, renaming it or keeping it. */
 	| 'media:edit';
 
 const HOST_ONLY: ReadonlySet<Capability> = new Set([

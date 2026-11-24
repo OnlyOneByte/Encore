@@ -600,6 +600,14 @@ const PAGE_SPELLINGS = [
 	'/x/../admin',
 	'/metrics/%2E%2E/admin'
 ];
+const SIZES_SPELLINGS = [
+	'/api/library/sizes',
+	'/api/library/%73izes',
+	'/%61pi/library/sizes',
+	'/API/library/sizes',
+	'/api/library/sizes/',
+	'/api/x/../library/sizes'
+];
 
 test('no spelling of a gated path reaches it without the host key', async ({ world }) => {
 	const guest = await joinAs(world.baseURL, 'EncodedProbe');
@@ -618,9 +626,17 @@ test('no spelling of a gated path reaches it without the host key', async ({ wor
 			const r = await rawRequest(world.baseURL, 'GET', path, headers);
 			expect(r.status, `${who} GET ${path}`).not.toBe(200);
 		}
+		for (const path of SIZES_SPELLINGS) {
+			const r = await rawRequest(world.baseURL, 'GET', path, headers);
+			expect(r.status, `${who} GET ${path}`).not.toBe(200);
+			expect(r.text, `${who} GET ${path} leaked the sizes`).not.toContain('totalBytes');
+		}
 	}
 	// The host still gets the real thing, so the refusals above are the gate and not a broken route.
 	expect((await rawRequest(world.baseURL, 'GET', '/api/%6Detrics', { cookie: host })).status).toBe(200);
+	expect((await rawRequest(world.baseURL, 'GET', '/api/library/%73izes', { cookie: host })).text).toContain(
+		'totalBytes'
+	);
 });
 
 test('no spelling of a mutating path lets another site, or a no-cors post, act with a cookie', async ({ world }) => {
@@ -633,6 +649,10 @@ test('no spelling of a mutating path lets another site, or a no-cors post, act w
 		['POST', '/api/leave', '{}'],
 		['POST', '/api/delete-media', '{"mediaId":"nope"}'],
 		['POST', '/api/lyrics-reselect', '{"mediaId":"nope","text":"x"}'],
+		['POST', '/api/library/manage/rename', '{"mediaId":"nope","title":"x","artist":""}'],
+		['POST', '/api/library/manage/keep', '{"mediaId":"nope","keep":true}'],
+		['POST', '/api/library/manage/delete', '{"mediaId":"nope"}'],
+		['POST', '/api/library/manage/undo', '{"mediaId":"nope"}'],
 		['POST', '/api/join', '{"displayName":"Evil","color":"#ff0000"}'],
 		['PUT', '/api/settings', '{"joinOrigin":"http://evil.example"}'],
 		['PUT', '/api/settings/room', '{"queueOrder":"fcfs"}'],
@@ -675,6 +695,10 @@ const HOST_ONLY_WRITES: [string, string, (mediaId: string) => string][] = [
 	['PUT', '/api/settings/room', () => '{"queueOrder":"fcfs"}'],
 	['POST', '/api/delete-media', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/lyrics-reselect', (id) => JSON.stringify({ mediaId: id, text: 'not the words' })],
+	['POST', '/api/library/manage/rename', (id) => JSON.stringify({ mediaId: id, title: 'Hijacked', artist: '' })],
+	['POST', '/api/library/manage/keep', (id) => JSON.stringify({ mediaId: id, keep: true })],
+	['POST', '/api/library/manage/delete', (id) => JSON.stringify({ mediaId: id })],
+	['POST', '/api/library/manage/undo', (id) => JSON.stringify({ mediaId: id })],
 	['DELETE', '/api/host', () => '']
 ];
 
