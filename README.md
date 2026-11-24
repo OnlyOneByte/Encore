@@ -148,7 +148,8 @@ of failed processes on specific videos is not a broken install.
   the stage.
 - **TV stage** — four room states (attract → lobby → waiting → playing), gapless two-player video, a
   "Now singing" card, and a song-intro card between turns. One TV per room: a second screen that opens
-  `/tv` offers **Make this the TV** instead of fighting the first.
+  `/tv` is a quiet room screen on the TV's clock, with its own join QR, and offers **Make this the TV** for a
+  while after it opens or is tapped.
 - **Making karaoke** — one tap on any YouTube result takes a turn and starts the worker stripping the
   vocals. The singer keeps their place in line while it works, and the card shows real progress and the
   time left, estimated from past jobs. The separator is a setting: Demucs, BS-RoFormer or the

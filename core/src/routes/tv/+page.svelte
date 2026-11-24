@@ -576,17 +576,57 @@
 		measuredCardPx === null ? undefined : `--tv-chrome-h: calc(var(--tv-safe-y) + ${Math.ceil(measuredCardPx)}px)`
 	);
 	// And the corner join card, which the reaction lane stands directly above: it is NOT part of the chrome band (the
-	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller. A copy
-	// has no card: its corner holds "Make this the TV", so that is the corner measured. Two refs, not one shared
-	// bind, so the order one unmounts and the other mounts in can never leave the corner unmeasured.
+	// lower-third is), and the two heights drift apart independently, so the lane clears whichever is taller.
 	let cornerEl = $state<HTMLElement | undefined>();
-	let copySlotEl = $state<HTMLElement | undefined>();
 	let measuredCornerPx = $state<number | null>(null);
-	$effect(() => observeBlockSize(isCopy ? copySlotEl : cornerEl, (px) => (measuredCornerPx = px)));
+	$effect(() => observeBlockSize(cornerEl, (px) => (measuredCornerPx = px)));
+	let copySlotEl = $state<HTMLElement | undefined>();
+	let measuredChipPx = $state<number | null>(null);
+	$effect(() => observeBlockSize(copySlotEl, (px) => (measuredChipPx = px)));
+	const upnextPx = $derived(
+		isCopy && measuredChipPx !== null ? Math.max(measuredUpnextPx ?? 0, measuredChipPx) : measuredUpnextPx
+	);
+
+	// A copy's chip on the stage shows for a while after the screen opens and after a tap or a key, then gets out of
+	// the room's way (tenet 6). The lobby and attract keep it, and so does a copy whose TV has gone.
+	const CHIP_OPEN_MS = 20_000;
+	const CHIP_WAKE_MS = 10_000;
+	let chipAwake = $state(true);
+	// The press that wakes a sleeping chip must not also claim: a touch tap's click is hit-tested after the chip is
+	// back, and a double click's second half lands on it. So a claim this soon after waking is dropped.
+	const CLAIM_AFTER_WAKE_MS = 500;
+	let chipWokeAt = -Infinity;
+	function claimUnlessJustWoken() {
+		if (performance.now() - chipWokeAt < CLAIM_AFTER_WAKE_MS) return;
+		ws?.send({ type: 'tv:claim' });
+	}
+	$effect(() => {
+		if (!isCopy) return;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const awake = (ms: number) => {
+			chipAwake = true;
+			clearTimeout(timer);
+			timer = setTimeout(() => (chipAwake = false), ms);
+		};
+		const wake = () => {
+			if (chipAsleep) chipWokeAt = performance.now();
+			awake(CHIP_WAKE_MS);
+		};
+		const opts: AddEventListenerOptions = { capture: true, passive: true };
+		awake(CHIP_OPEN_MS);
+		window.addEventListener('pointerdown', wake, opts);
+		window.addEventListener('keydown', wake, opts);
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener('pointerdown', wake, opts);
+			window.removeEventListener('keydown', wake, opts);
+		};
+	});
 	const tvStyle = $derived(
 		[
 			chromeBandStyle,
-			measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`,
+			// The full-screen button clears whichever is taller of "Up next" and the copy chip standing in its place.
+			upnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(upnextPx)}px`,
 			measuredCornerPx === null ? undefined : `--tv-corner-h: ${Math.ceil(measuredCornerPx)}px`,
 			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
 			settings.room.tvReactions ? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))' : undefined
@@ -598,6 +638,17 @@
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
+	const chipAsleep = $derived(isCopy && !chipAwake && tvOnline && screen !== 'lobby' && screen !== 'attract');
+	// "Up next" comes back once the chip's fade is over, so the two never draw text on text.
+	let chipFadedOut = $state(false);
+	$effect(() => {
+		if (!chipAsleep) {
+			chipFadedOut = false;
+			return;
+		}
+		const t = setTimeout(() => (chipFadedOut = true), prefersReducedMotion ? 0 : cssTimeMs('--motion-base'));
+		return () => clearTimeout(t);
+	});
 
 	// `isPlayable`, not `readyToSing`: the same question the PLAYER asks, so the lobby cannot call something processing
 	// that the player would happily start.
@@ -944,24 +995,23 @@
 				: null}
 			oncardsize={(px) => (measuredCardPx = px)}
 			onupnextsize={(px) => (measuredUpnextPx = px)}
+			yieldUpnext={isCopy && !(chipAsleep && chipFadedOut)}
 		/>
 		{#if settings.room.tvReactions}
 			<Reactions bind:this={reactions} />
 		{/if}
-		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner). A copy gives that corner to
-		     "Make this the TV": the guests join from the real TV's QR. -->
-		<!-- Hidden while `.takeover-join` shows the dimmed copy; `visibility` keeps the lane's box. -->
-		{#if !isCopy}
-			<div class={['stage-join', { 'under-card': !!transient }]}>
-				<JoinBadge
-					qrDataUrl={data.qrDataUrl}
-					joinUrl={data.joinUrl}
-					placement="corner"
-					roomCode={data.roomCode}
-					bind:cornerEl={cornerEl}
-				/>
-			</div>
-		{/if}
+		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner), on a TV-shaped copy too: every
+		     screen in the room is a place to scan from. Hidden while `.takeover-join` shows the dimmed copy;
+		     `visibility` keeps the lane's box. -->
+		<div class={['stage-join', { 'under-card': !!transient, 'on-copy': isCopy }]}>
+			<JoinBadge
+				qrDataUrl={data.qrDataUrl}
+				joinUrl={data.joinUrl}
+				placement="corner"
+				roomCode={data.roomCode}
+				bind:cornerEl={cornerEl}
+			/>
+		</div>
 	{/if}
 
 	<TvTakeover
@@ -1029,12 +1079,14 @@
 
 	<p class="vh" role="status">{seatAnnounce}</p>
 	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
-	     it floats in the corner the join QR has on the real TV; in attract (nobody here yet), in attract's free band. -->
+	     it stands where "Up next" does, top-right; in attract (nobody here yet), in attract's free band. -->
 	{#snippet copyChip()}
-		<TvCopyChip tvOnline={tvOnline} onclaim={() => ws?.send({ type: 'tv:claim' })} />
+		<TvCopyChip tvOnline={tvOnline} onclaim={claimUnlessJustWoken} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
-		<div class={['copy-slot', { 'on-attract': screen === 'attract' }]} bind:this={copySlotEl}>{@render copyChip()}</div>
+		<div class={['copy-slot', { 'on-attract': screen === 'attract', asleep: chipAsleep }]} bind:this={copySlotEl}>
+			{@render copyChip()}
+		</div>
 	{/if}
 
 	<div class={['status', { on: connected }]}></div>
@@ -1077,13 +1129,35 @@
 	.stage-bg.shown {
 		opacity: 1;
 	}
-	/* ONE TV PER ROOM: a copy's chip, bottom-right, in the corner the join QR has on the real TV. */
+	/* ONE TV PER ROOM: a copy's chip, top-right, in "Up next"'s place (which yields while the chip shows). */
 	.copy-slot {
 		position: absolute;
 		right: var(--tv-safe-x);
-		bottom: var(--tv-safe-y);
+		top: calc(var(--tv-safe-y) + 2.6vh);
 		z-index: var(--z-tv-affordance);
 		max-width: calc(100vw - 2 * var(--tv-safe-x));
+	}
+	/* Attract has its own QR and an empty bottom band. */
+	.copy-slot.on-attract {
+		top: auto;
+		bottom: var(--tv-safe-y);
+	}
+	/* Out of the room's way mid-song: unreachable as well as unseen, so a first tap wakes it and cannot claim. */
+	.copy-slot.asleep {
+		opacity: 0;
+		visibility: hidden;
+		pointer-events: none;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		/* Waking, `visibility` flips at once and only opacity moves; sleeping, it holds until the fade is done. */
+		.copy-slot {
+			transition: opacity var(--motion-base) var(--ease-out);
+		}
+		.copy-slot.asleep {
+			transition:
+				opacity var(--motion-base) ease-in,
+				visibility var(--motion-base);
+		}
 	}
 	/* A phone reading along: the bottom band is the lower third (mid-song) or the roster and the room code (lobby), and
 	   the right edge is the reactions lane, so the chip goes TOP-LEFT, kept clear of the lane's column at every width.
@@ -1100,6 +1174,10 @@
 		.copy-slot.on-attract {
 			top: auto;
 			bottom: var(--tv-safe-y);
+		}
+		/* A phone reading along has already joined, and the corner card does not fit beside the lower third there. */
+		.stage-join.on-copy {
+			display: none;
 		}
 	}
 	/* `contents`, so the corner card keeps the stage as its containing block; `visibility` inherits into it. */

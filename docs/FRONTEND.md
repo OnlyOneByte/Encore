@@ -2024,6 +2024,26 @@ on-screen say; a failure no tap can lift moves the room on instead (see "A song 
 Motion on this surface lives inside `@media (prefers-reduced-motion: no-preference)` or is gated in JS.
 Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide because the transition runtime never consults the media query.
 
+### A copy is a room screen
+
+A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it asks to be pressed all song (tenet 6).
+
+- **The join QR** is in its corner mid-song, as on the TV: every screen in the room is a place to scan from. A
+  phone-shaped copy (a guest reading along) leaves it out: that guest has joined, and the card does not fit beside
+  the lower third there.
+- **The chip**, "This screen is quiet" and **Make this the TV**, shows for 20 s after the screen opens and for 10 s
+  after any tap or key on it (`CHIP_OPEN_MS`, `CHIP_WAKE_MS` in `routes/tv/+page.svelte`). On a TV it stands
+  top-right in "Up next"'s place, and "Up next" steps aside (a cut, like the lower third's). On a phone it stays
+  top-left, and "Up next" steps aside there too, because the two meet across a 320 screen.
+- **Asleep** it is `visibility: hidden` and takes no pointer. Hiding alone does not make the waking press harmless:
+  a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
+  lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
+  wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
+- **It stays up** in the lobby (where it stands in the QR's place), in attract, and while the TV is gone ("The TV
+  is reconnecting...").
+
+`p34-room-screen.spec.ts` holds each of these.
+
 ### A copy on the TV's clock
 
 A copy plays the song on its own muted element, which drifts from the TV's. So it follows the TV's clock as core

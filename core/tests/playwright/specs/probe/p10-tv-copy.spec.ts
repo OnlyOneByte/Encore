@@ -129,6 +129,13 @@ async function shot(page: Page, name: string): Promise<void> {
 
 /** One tap per screen, as a room gives it: a television grants no autoplay. Top-right, clear of the copy's chip. */
 const tap = (s: Screen) => s.page.mouse.click(s.page.viewportSize()!.width - 2, s.page.viewportSize()!.height / 2);
+/** "Make this the TV" as a person does it mid-song: the first tap wakes the chip, and a press once it is up claims (a
+ *  press within 500 ms of waking is dropped, p34-room-screen). */
+const claim = async (s: Screen) => {
+	await tap(s);
+	await s.page.waitForTimeout(600);
+	await s.page.getByRole('button', CLAIM).click();
+};
 
 test('a second /tv is a muted copy that sends no telemetry, and "Make this the TV" moves the seat', async ({
 	browser,
@@ -158,10 +165,11 @@ test('a second /tv is a muted copy that sends no telemetry, and "Make this the T
 		expect((await contextsOf(copy.page)).made).toBe(0);
 		// The same stage on the copy: the song is up on both.
 		await expect(copy.page.locator('.lower-third')).toContainText(/Ana/);
-		// The join QR's corner is the chip's on a copy; the real TV keeps it.
+		// A TV-shaped copy has the join QR in its corner as the TV does; a phone reading along has joined already.
 		const joinCorner = (p: Page) => p.getByLabel('Scan to join Encore').locator('visible=true');
 		await expect(joinCorner(tv.page)).toHaveCount(1);
-		await expect(joinCorner(copy.page)).toHaveCount(0);
+		await expect(joinCorner(copy.page)).toHaveCount(1);
+		await expect(joinCorner(small.page)).toHaveCount(0);
 		const before = { tv: tv.sent.telemetry, copy: copy.sent.telemetry };
 		await tv.page.waitForTimeout(3_000);
 		expect(tv.sent.telemetry - before.tv).toBeGreaterThan(0);
@@ -172,13 +180,13 @@ test('a second /tv is a muted copy that sends no telemetry, and "Make this the T
 		await shot(tiny.page, 'copy-320');
 
 		// "Make this the TV": the chip moves to the old TV, and the sound follows.
-		await copy.page.getByRole('button', CLAIM).click();
+		await claim(copy);
 		await expect(copy.page.locator(CHIP)).toHaveCount(0);
 		await expect(tv.page.locator(CHIP)).toBeVisible();
 		// The move is announced on the screen that became the TV, and the chip's own status line is the sentence only.
 		await expect(copy.page.locator('p.vh[role="status"]')).toHaveText('This screen is now the TV');
 		// The demoted TV says so in the page's live region; the chip itself holds none.
-		await expect(tv.page.locator('p.vh[role="status"]')).toHaveText('Another screen is the TV');
+		await expect(tv.page.locator('p.vh[role="status"]')).toHaveText('This screen is quiet');
 		await expect(tv.page.locator(`${CHIP} [role="status"], ${CHIP}[role="status"]`)).toHaveCount(0);
 		// No live region on the page holds the button, so its label is never read out as status.
 		await expect(tv.page.locator('[role="status"]').filter({ has: tv.page.getByRole('button', CLAIM) })).toHaveCount(0);
@@ -216,7 +224,7 @@ test('the TV drops mid-song: every copy says "The TV is reconnecting..." and goe
 		await expect(copies[0]!.page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
 		// Past the "Now singing" card, so the drop lands over the lyrics.
 		for (const c of copies) await expect(c.page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
-		for (const c of copies) await expect(c.page.locator(CHIP)).toContainText('Another screen is the TV');
+		for (const c of copies) await expect(c.page.locator(CHIP)).toContainText('This screen is quiet');
 
 		await tv.page.context().close();
 		for (const c of copies) {
@@ -231,8 +239,8 @@ test('the TV drops mid-song: every copy says "The TV is reconnecting..." and goe
 		const back = await openScreen(browser, world, 1920, 1080, { real: true });
 		await expect(back.page.locator(CHIP)).toHaveCount(0);
 		for (const c of copies) {
-			await expect(c.page.locator(CHIP)).toContainText('Another screen is the TV', { timeout: 5_000 });
-			await expect(c.page.locator('p.vh[role="status"]')).toHaveText('Another screen is the TV');
+			await expect(c.page.locator(CHIP)).toContainText('This screen is quiet', { timeout: 5_000 });
+			await expect(c.page.locator('p.vh[role="status"]')).toHaveText('This screen is quiet');
 		}
 	} finally {
 		await worker.stop();
@@ -389,7 +397,10 @@ test('on a phone the chip stays inside the screen, clear of the reactions lane, 
 		for (const s of [tv, ...phones]) await tap(s);
 		await queueReady(ana, 'caroline');
 		await expect(phones[0]!.page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		// Mid-song the chip shows only after a tap (p34-room-screen), and a TV-shaped copy has its join QR in the corner.
+		for (const s of phones) await tap(s);
 		await check('mid-song', ['.reaction-lane', '.lower-third']);
+		await check('mid-song', ['.corner'], 1920);
 	} finally {
 		await worker.stop();
 	}
@@ -428,7 +439,7 @@ test('a seat move never plays two screens at once, whichever socket is older (4 
 		] as const) {
 			await startSampling(from.page);
 			await startSampling(to.page);
-			await to.page.getByRole('button', CLAIM).click();
+			await claim(to);
 			await expect.poll(() => audioOf(to.page)).toMatchObject({ muted: false, paused: false });
 			await to.page.waitForTimeout(500);
 			const [off, on] = [await samples(from.page), await samples(to.page)];
@@ -444,8 +455,8 @@ test('a seat move never plays two screens at once, whichever socket is older (4 
 			).toBeGreaterThan(lastOld);
 		}
 		// b just LEFT the seat (its region says so); it comes back within the 4 s, and that move is announced too.
-		await expect(b.page.locator('p.vh[role="status"]')).toHaveText('Another screen is the TV');
-		await b.page.getByRole('button', CLAIM).click();
+		await expect(b.page.locator('p.vh[role="status"]')).toHaveText('This screen is quiet');
+		await claim(b);
 		await expect(b.page.locator('p.vh[role="status"]')).toHaveText('This screen is now the TV', { timeout: 2_000 });
 		// And it clears once read, so the region is empty for the next change.
 		await expect(b.page.locator('p.vh[role="status"]')).toHaveText('', { timeout: 10_000 });
@@ -485,7 +496,7 @@ test('a mid-song claim on a guide-mix song keeps the song going, and the NEXT si
 				() => [...document.querySelectorAll<HTMLMediaElement>('audio')].find((e) => !e.paused)?.currentTime ?? -1
 			);
 		const before = { room: (await serverPlayback(world.baseURL)).state.positionSec, copy: await at(copy.page) };
-		await copy.page.getByRole('button', CLAIM).click();
+		await claim(copy);
 		await expect.poll(() => audioOf(copy.page)).toMatchObject({ muted: false, paused: false });
 		// Counted from the claim, so an error at the song change (within ms of it) is inside the window.
 		const errorsBefore = (await mediaErrorsOf(copy.page)).length;

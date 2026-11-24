@@ -54,6 +54,8 @@ const STRIP_CONTENT = '.dock .meta, .dock .meta *, .dock .tp, .dock .tp *';
 
 /** A track longer than the 30 s heads-up window, so the on-deck row can cross it. The fixture's own are 8 s. */
 const LONG_TRACK = { file: 'long-take.wav', seconds: 36, hz: [196, 246.94, 293.66] };
+/** Five runs that each wait out a copy chip's 20 s, inside one song. */
+const ROOM_SCREEN_TRACK = { file: 'room-screen-take.wav', seconds: 240, hz: [174.61, 220, 261.63] };
 /** Two more songs, so each of the bar row's five pages (seek, three live, reduced) makes a song of its own. */
 const BAR_TRACKS = [
 	{ file: 'open-road.wav', seconds: 8, hz: [196, 246.94, 293.66] },
@@ -80,6 +82,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-now-card-grow-390': HELD_LIBRARY,
 	'phone-now-card-grow-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-copy-chip-wake': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
+	'tv-copy-chip-sleep': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK]
@@ -575,7 +579,77 @@ function stalledRetryRow(browser: Browser, world: World, afterTtl: boolean): Mot
 	};
 }
 
-/** A copy mid-song as the room's TV drops (proposal 19): its chip's line turns from "Another screen is the TV" to
+/** A copy's chip mid-song (proposal 34): `wake`, a tap on a copy whose chip has gone to sleep fades it in where "Up
+ *  next" stands (which yields at once, a cut); `sleep`, 10 s after that tap it fades out and "Up next" is back.
+ *  The tap lands mid-stage, away from the chip, so it wakes and never claims. */
+function tvCopyChip(kind: 'wake' | 'sleep'): Make {
+	return (browser, world, cleanup) => {
+		let phone: Page | undefined;
+		return {
+			name: `tv-copy-chip-${kind}`,
+			what:
+				kind === 'wake'
+					? 'TV 1920x1080, a copy mid-song with its chip asleep: a tap fades "This screen is quiet / Make this the TV" in, top-right, in place of "Up next"'
+					: 'TV 1920x1080, a copy mid-song 10 s after a tap: the chip fades out and "Up next" is back in its place',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: kind === 'wake' ? 1_500 : 12_000,
+			open: async (opts) => {
+				if (!phone) {
+					const worker = await startFakeWorker(world, { seconds: ROOM_SCREEN_TRACK.seconds });
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await readySong(world, phone, 'room-screen');
+					await readySong(world, phone, 'caroline');
+					await queueReady(phone, 'room-screen');
+					await queueReady(phone, 'caroline');
+				}
+				const seat = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+				cleanup(() => seat.close());
+				await seat.addCookies([world.tvCookie]);
+				const real = await seat.newPage();
+				await real.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await expect(real.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 1920, height: 1080 },
+					baseURL: world.baseURL
+				});
+				cleanup(() => ctx.close());
+				const page = await ctx.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				// "Up next" shows while a turn waits behind this one; the later runs of five can outlast that turn.
+				await expect(page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
+				// `wake` waits out the 20 s the chip shows after the screen opens; `sleep` taps, which starts its 10 s over.
+				if (kind === 'wake') await expect(page.locator('.copy-slot.asleep')).toBeAttached({ timeout: 30_000 });
+				else {
+					await page.mouse.click(960, 540);
+					await expect(page.locator('.copy-slot:not(.asleep)')).toBeAttached();
+				}
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				if (kind === 'wake') await page.mouse.click(960, 540);
+				// Every frame, so the timer hold below is in place well before "Up next"'s 250 ms is up.
+				else
+					await page.waitForFunction(() => !!document.querySelector('.copy-slot.asleep'), null, {
+						polling: 'raf',
+						timeout: 12_000
+					});
+			},
+			// "Up next" returns on a timer once the fade is over; the seek run's frozen frames would see it early.
+			holdTimers: kind === 'sleep',
+			// Leaving, the chip is gone in the settled frame, so the subject is the join card the room keeps throughout.
+			subject: kind === 'wake' ? '.copy-chip' : '.corner',
+			only: '.copy-slot'
+		};
+	};
+}
+
+/** A copy mid-song as the room's TV drops (proposal 19): its chip's line turns from "This screen is quiet" to
  *  "The TV is reconnecting...", as a CUT, in the same chip and place. Each run seats a fresh real TV (its cookie, so it
  *  is the holder again inside the grace) and opens a fresh copy at this size; the trigger closes the real TV's tab. */
 function tvCopyOffline(width: number, height: number): Make {
@@ -609,7 +683,7 @@ function tvCopyOffline(width: number, height: number): Make {
 				cleanup(() => ctx.close());
 				const page = await ctx.newPage();
 				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-				await expect(page.locator('.copy-chip')).toContainText('Another screen is the TV', { timeout: 15_000 });
+				await expect(page.locator('.copy-chip')).toContainText('This screen is quiet', { timeout: 15_000 });
 				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
@@ -1032,6 +1106,8 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-restart-return-320': restartRest(320, true),
 	'phone-song-didnt-play-390': songDidntPlay(390),
 	'phone-song-didnt-play-320': songDidntPlay(320),
+	'tv-copy-chip-wake': tvCopyChip('wake'),
+	'tv-copy-chip-sleep': tvCopyChip('sleep'),
 	'tv-copy-offline': tvCopyOffline(1920, 1080),
 	'tv-copy-offline-390': tvCopyOffline(390, 844),
 	'tv-copy-offline-320': tvCopyOffline(320, 568),
