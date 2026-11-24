@@ -9,6 +9,7 @@ import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { queueReady, readySong } from '../../world/actors';
+import { SETTLE_MS } from '../../../../src/lib/transport-target';
 
 async function watchShifts(p: Page): Promise<void> {
 	await p.evaluate(() => {
@@ -20,6 +21,13 @@ async function watchShifts(p: Page): Promise<void> {
 	});
 }
 const shifts = (p: Page) => p.evaluate(() => (window as unknown as { __shifts: number[] }).__shifts);
+
+/** Maya pauses the room and `seen` shows it. The fixture songs last 8 s, which a slow box can spend on the checks
+ *  for one song, and the song then ends by itself before the skip under test (#1219). A pause names no song. */
+async function pause(maya: Page, seen: Page): Promise<void> {
+	await maya.locator(SEL.npPlayPause).click();
+	await expect(seen.locator(SEL.npPlayPause)).toHaveAttribute('aria-label', 'Play');
+}
 
 /** Chrome's own AX tree (not Playwright's snapshot): the unignored nodes named like a cheer or the cheer group. */
 async function axCheers(p: Page): Promise<string[]> {
@@ -62,6 +70,7 @@ for (const reduce of [false, true]) {
 			await queueReady(theo, 'believin');
 			await queueReady(maya, 'prayer');
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+			await pause(maya, theo);
 			// Past the playhead's first second and the strip's settle window, as dock-cls does.
 			await theo.waitForTimeout(3_000);
 			await watchShifts(theo);
@@ -75,11 +84,12 @@ for (const reduce of [false, true]) {
 			await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 5_000 });
 			await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 5_000 });
+			await pause(maya, theo);
 			// One-shot, not retrying: the tray's own 6 s timer would satisfy a retrying assertion.
 			expect(await ana.locator(SEL.npCheers).count(), 'the tray stayed open across a song change').toBe(0);
 			await expect(theo.locator(SEL.npCheerKey)).toHaveAttribute('inert');
-			const ok = theo.getByRole('button', { name: 'OK' });
-			if (await ok.isVisible()) await ok.click();
+			// "You're up" closes on its own timer, so a tap on OK can race it. Paused, no new one opens.
+			await expect(theo.getByRole('button', { name: 'OK' })).toBeHidden();
 			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'hidden');
 			expect(await axCheers(theo), 'cheers Chrome exposes to assistive tech while resting').toEqual([]);
 			const box = (await theo.locator(SEL.npCheerKey).boundingBox())!;
@@ -96,9 +106,12 @@ for (const reduce of [false, true]) {
 			await expect(ana.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
 			await expect(ana.locator(SEL.npCheerKey)).toHaveCSS('opacity', '1');
 
-			// Maya's next song: Theo is back in the audience, and so is his key.
+			// Maya's next song: Theo is back in the audience, and so is his key. A phone drops a skip tapped within
+			// SETTLE_MS of its strip changing (one skip per tap), and Ana's changed before the checks above (#1219).
+			await ana.waitForTimeout(SETTLE_MS);
 			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/prayer|livin/i, { timeout: 5_000 });
+			await pause(maya, theo);
 			await expect(theo.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
 			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('opacity', '1');
 			await expect(theo.locator(SEL.npCheerKey)).toHaveCSS('visibility', 'visible');
