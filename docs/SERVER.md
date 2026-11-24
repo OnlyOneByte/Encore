@@ -803,8 +803,10 @@ each one, in every spelling, from a guest, a cookieless caller and another site.
 | `GET /api/library/sizes` | | `LibrarySizes`: per ready song its bytes, plays and Keep, the total, the kept total and the cap. Also in the hook's host-only list. |
 | `POST /api/library/manage/rename` | `{ mediaId, title, artist }` | The host's name. Empty artist means none; 200 characters at most. |
 | `POST /api/library/manage/keep` | `{ mediaId, keep }` | `library.keep` in `meta/<id>.json`. |
-| `POST /api/library/manage/delete` | `{ mediaId }` | 409 for a kept song. Otherwise the song leaves `/api/library` at once and is deleted when the Undo window closes. |
+| `POST /api/library/manage/delete` | `{ mediaId }` | 409 `queued` while the song is playing or still to come tonight, 409 `kept` for a kept song. Otherwise the song leaves every screen at once and is deleted when the Undo window closes. |
 | `POST /api/library/manage/undo` | `{ mediaId }` | Cancels a pending delete; 409 once the window has closed. |
+
+Rename, Keep and delete act only on a ready song outside an Undo window (`librarySong`); anything else is 404.
 
 - **A rename is never overwritten.** The route writes the sidecar first with `by: 'manual'` on title and
   artist, then sets `title`, the canonical fields and `annotation: manual` on the row. `applyAnnotation`
@@ -821,9 +823,16 @@ each one, in every spelling, from a guest, a cookieless caller and another site.
   each delete for `DELETE_UNDO_MS` (10 s) plus 2 s, so an Undo tapped as the phone's toast closes still
   lands, then runs the same `deleteSongNow` as `/api/delete-media`. Shutdown flushes pending deletes before
   the state flush. A library-folder song keeps its file in `library/`; the response says so and the toast
-  repeats it. `/admin`'s two-step confirm is unchanged.
-- **Every phone follows.** Rename and Undo broadcast `media:status` `ready` for the song, which makes each
-  phone re-read Library; the real delete broadcasts `canceled`, as before.
+  repeats it. `/admin`'s two-step confirm is unchanged. A hard kill (SIGKILL, OOM) inside the window skips the
+  flush, so the song stays, which is the safe way to fail.
+- **No one is cut off.** A song in tonight's queue is never deleted from here (`inTonightsQueue`); the sheet
+  says "In tonight's queue. Delete it after its turn."
+- **During the Undo window the song is offered nowhere.** `/api/library`, `/api/library/sizes` and
+  `/api/search` leave it out, and the hub refuses an add of it as `unknown media` (`HubDeps.isDeleting`), so a
+  phone says the song is gone.
+- **Every screen follows.** Scheduling a delete broadcasts `media:status` `canceled`, and Undo `ready`, so each
+  phone re-reads Library. A rename broadcasts `ready` (true, as only a ready song can be renamed) and a
+  room-wide `queue:sync`, so the TV and the queue show the new name at once.
 - Not yet: bulk actions (PR 2), Make it again (PR 3), same-song pairs (PR 4) and the folder watch (PR 5).
 
 ## Jobs and the worker

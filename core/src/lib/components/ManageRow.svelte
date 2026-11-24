@@ -11,19 +11,22 @@
 		media,
 		info,
 		open,
+		queued,
 		ontoggle,
 		onchanged
 	}: {
 		media: Media;
 		info: LibrarySizes['songs'][string] | undefined;
 		open: boolean;
+		/** Playing or still to come tonight; the server refuses its delete. */
+		queued: boolean;
 		ontoggle: () => void;
 		/** The library or the sizes changed; re-read both. */
 		onchanged: () => void;
 	} = $props();
 
 	const shown = $derived(songDisplay(media));
-	const artist = $derived(shown.artist ?? media.artist ?? '');
+	const artist = $derived(shown.artist ?? '');
 	const kept = $derived(info?.kept === true);
 	const byline = $derived([artist, kept ? 'Kept' : null].filter(Boolean).join(' · '));
 	const facts = $derived(
@@ -143,7 +146,9 @@
 			<Switch checked={kept} disabled={busy} onCheckedChange={(v) => void setKeep(v)} />
 		</label>
 		<div class="line">
-			{#if kept}
+			{#if queued}
+				<span class="dim">In tonight's queue. Delete it after its turn.</span>
+			{:else if kept}
 				<span class="dim">Turn Keep off to delete this song.</span>
 			{:else}
 				<Button variant="ghost" size="tap" class="delete" disabled={busy} onclick={remove}>Delete</Button>

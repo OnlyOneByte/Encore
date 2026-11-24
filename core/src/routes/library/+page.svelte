@@ -214,7 +214,7 @@
 	/** "214 songs · 12.4 GB of 20 GB", from the media store's own sizes. */
 	const storageLabel = $derived(
 		sizes
-			? `${countLabel} · ${formatBytes(sizes.totalBytes)}${sizes.capBytes ? ` of ${formatBytes(sizes.capBytes)}` : ''}`
+			? `${countLabel} · ${formatBytes(sizes.totalBytes)}${!sizes.capBytes ? '' : sizes.totalBytes > sizes.capBytes ? `, over the ${formatBytes(sizes.capBytes)} cap` : ` of ${formatBytes(sizes.capBytes)}`}`
 			: countLabel
 	);
 	const keptOverCap = $derived(!!sizes?.capBytes && sizes.keptBytes > 0.9 * sizes.capBytes);
@@ -531,6 +531,7 @@
 								media={m}
 								info={sizes?.songs[m.id]}
 								open={openId === m.id}
+								queued={entries.some((e) => e.mediaId === m.id && e.status !== 'done')}
 								ontoggle={() => (openId = openId === m.id ? null : m.id)}
 								onchanged={onManaged}
 							/>

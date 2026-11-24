@@ -3,9 +3,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE, type Media, type QueueEntry } from '$lib/contract';
 import { mediaFromSidecar, readSidecar, sidecarFromMedia, writeSidecar } from '$lib/server/media/sidecar';
-import { PendingDeletes, librarySizes, renameSong, setKeep } from '$lib/server/media/library-manage';
+import {
+	PendingDeletes,
+	inTonightsQueue,
+	librarySizes,
+	librarySong,
+	renameSong,
+	setKeep
+} from '$lib/server/media/library-manage';
 import { applyAnnotation } from '$lib/server/jobs/process';
 import { planEviction } from '$lib/server/media/retention';
 
@@ -111,6 +118,34 @@ describe('librarySizes', () => {
 		expect(out.songs.m1).toEqual({ bytes: 5_000_000, plays: 4, kept: true });
 		expect(out.songs.m2!.bytes).toBe(2_000_000);
 		expect(out).toMatchObject({ totalBytes: 7_000_000, keptBytes: 5_000_000, capBytes: 10_000_000 });
+	});
+});
+
+describe('what the host may manage', () => {
+	it('a song playing or still queued tonight is in the queue; a finished turn is not', () => {
+		const entry = (status: QueueEntry['status']) =>
+			({ id: 'e', mediaId: 'm1', singerId: 's', status, rotationSeq: 0, addedAt: 0 }) as QueueEntry;
+		expect(inTonightsQueue([entry('playing')], 'm1')).toBe(true);
+		expect(inTonightsQueue([entry('queued')], 'm1')).toBe(true);
+		expect(inTonightsQueue([entry('done')], 'm1')).toBe(false);
+		expect(inTonightsQueue([entry('queued')], 'm2')).toBe(false);
+	});
+
+	it('only a ready song outside its Undo window', () => {
+		const pending = new Set(['gone']);
+		const ready = { lyricsStatus: 'ready', songProfile: EMPTY_SONG_PROFILE } as const;
+		const app = {
+			mediaById: new Map([
+				['m1', song(ready)],
+				['raw', song({ id: 'raw', stemStatus: 'none', instrumentalRef: undefined })],
+				['gone', song({ id: 'gone', ...ready })]
+			]),
+			pendingDeletes: { has: (id: string) => pending.has(id) }
+		};
+		expect(librarySong(app, 'm1')?.id).toBe('m1');
+		expect(librarySong(app, 'raw')).toBeUndefined();
+		expect(librarySong(app, 'gone')).toBeUndefined();
+		expect(librarySong(app, 'nope')).toBeUndefined();
 	});
 });
 

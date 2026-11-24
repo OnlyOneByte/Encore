@@ -1,12 +1,26 @@
 // The host's library actions: rename, Keep, sizes and the delete Undo window. See docs/SERVER.md#managing-the-library.
 
-import { DELETE_UNDO_MS, type LibrarySizes, type Media } from '../../contract';
+import { DELETE_UNDO_MS, readinessOf, type LibrarySizes, type Media, type QueueEntry } from '../../contract';
 import type { MediaStore } from './store';
 import { candidateAudioRefs } from './paths';
 import { derivedRefsOf } from './retention';
 import { readSidecar, sidecarFromMedia, writeSidecar, type FieldProvenance, type MediaSidecar } from './sidecar';
 
 export const NAME_MAX = 200;
+
+/** A song the host can manage: in Library (ready) and not waiting out a delete. */
+export function librarySong(
+	app: { mediaById: Map<string, Media>; pendingDeletes: Pick<PendingDeletes, 'has'> },
+	mediaId: string
+): Media | undefined {
+	const m = app.mediaById.get(mediaId);
+	return m && readinessOf(m) === 'ready' && !app.pendingDeletes.has(mediaId) ? m : undefined;
+}
+
+/** Playing or still to come tonight: deleting it would cut a singer off, so the host waits for its turn. */
+export function inTonightsQueue(entries: readonly QueueEntry[], mediaId: string): boolean {
+	return entries.some((e) => e.mediaId === mediaId && e.status !== 'done');
+}
 
 /** Writes the sidecar FIRST with `by: 'manual'`, so the upsert's own sidecar merge keeps the name. */
 export async function renameSong(

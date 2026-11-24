@@ -474,16 +474,7 @@ export function getApp(): EncoreApp {
 		})();
 	});
 
-	/** A room-wide `queue:sync`, for the hub's own re-sends (a song turned ready, the maker verdict moved). */
-	const roomSync = () =>
-		syncEvent(state, {
-			mediaById,
-			listSingers: () => app.singers.listPublic(app.activeRoomId),
-			listOnline: () => app.presence.online(),
-			getSettings: () => app.settings.getEffective(app.activeRoomId),
-			canMake: () => app.workerHub.canMake(),
-			canFetch: () => app.workerHub.canFetch()
-		});
+	const roomSync = () => roomSyncOf(app);
 
 	const workerHub = new WorkerHub({
 		jobs,
@@ -630,6 +621,18 @@ export function getApp(): EncoreApp {
 	return g[APP_KEY]!;
 }
 
+/** A room-wide `queue:sync`, for the hub's own re-sends (a song turned ready, the maker verdict moved, a rename). */
+export function roomSyncOf(app: EncoreApp): Extract<ServerEvent, { type: 'queue:sync' }> {
+	return syncEvent(app.state, {
+		mediaById: app.mediaById,
+		listSingers: () => app.singers.listPublic(app.activeRoomId),
+		listOnline: () => app.presence.online(),
+		getSettings: () => app.settings.getEffective(app.activeRoomId),
+		canMake: () => app.workerHub.canMake(),
+		canFetch: () => app.workerHub.canFetch()
+	});
+}
+
 /** The hard delete behind /api/delete-media and the library's Undo window. */
 export function deleteSongNow(app: EncoreApp, mediaId: string, actorSingerId?: string): DeleteMediaResult {
 	// The delete drives applyQueueOp + reconcileOnReady directly, not handleQueueCommand, so a no-op idempotency ledger is correct.
@@ -707,6 +710,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 				now: app.now,
 				dispatch: () => app.workerHub.dispatch()
 			}),
+		isDeleting: (mediaId) => app.pendingDeletes.has(mediaId),
 		actorSingerId: perFrame.actorSingerId,
 		seenOp: perFrame.seenOp,
 		hasOp: perFrame.hasOp

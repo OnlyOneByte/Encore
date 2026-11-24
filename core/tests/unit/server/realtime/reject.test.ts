@@ -49,6 +49,19 @@ test('add with unknown media -> reject to origin, NO broadcast', () => {
 	expect(rej.reason).toContain('unknown media');
 });
 
+test('add of a song waiting out its delete Undo window -> rejected as gone, nothing queued', () => {
+	const { published, toOrigin, state, deps } = harness();
+	deps.isDeleting = (id) => id === 'm1';
+	const c = cmd({
+		op: 'add',
+		entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 }
+	});
+	handleQueueCommand(c, deps, (e) => toOrigin.push(e));
+	expect(published).toHaveLength(0);
+	expect(state.entries).toHaveLength(0);
+	expect((toOrigin[0] as Extract<ServerEvent, { type: 'op:reject' }>).reason).toContain('unknown media');
+});
+
 test('remove of unknown entry -> reject, no state change, no broadcast', () => {
 	const { published, toOrigin, state, deps } = harness();
 	const c = cmd({ op: 'remove', id: 'ghost' });

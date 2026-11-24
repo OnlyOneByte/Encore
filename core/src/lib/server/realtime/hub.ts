@@ -68,6 +68,8 @@ export interface HubDeps {
 	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
 	/** Mirror of onEntryRemoved: re-prioritizes any in-flight process for that media. */
 	onEntryAdded?: (mediaId: string, entries: QueueEntry[]) => void;
+	/** A song the host deleted that is waiting out its Undo window: an add of it is refused as gone. */
+	isDeleting?: (mediaId: string) => boolean;
 	/** Resolved from the session cookie at WS upgrade; `undefined` for a socket that never joined. `add`
 	 *  MUST carry THIS id, never one the client picks, or any socket could queue songs as anybody. */
 	actorSingerId?: string;
@@ -163,7 +165,8 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// Rejected rather than silently rewritten, which would desync the sender's optimistic copy.
 			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
 			// The phone parses this wording to say the song was deleted: keep in step with room.ts `onReject`/`#songGone`.
-			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
+			if (!deps.mediaById.has(op.entry.mediaId) || deps.isDeleting?.(op.entry.mediaId))
+				return `unknown media: ${op.entry.mediaId}`;
 			// applyOp overwrites in place on id match, so an id colliding with a DIFFERENT live entry would
 			// let one phone hijack another's turn and orphan the displaced media's process. Re-adding the
 			// SAME identity onto a still-'queued' row IS allowed (optimistic echo, idempotent redelivery).

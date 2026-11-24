@@ -115,7 +115,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		return media;
 	});
 
-	const { ready, processing, unacquired, clipped } = partitionSearch(q, [...app.mediaById.values()], materialized);
+	// A song the host just deleted is offered nowhere while its Undo window runs.
+	const offered = (m: Media) => !app.pendingDeletes.has(m.id);
+	const { ready, processing, unacquired, clipped } = partitionSearch(
+		q,
+		[...app.mediaById.values()].filter(offered),
+		materialized.filter(offered)
+	);
 	/* `results` keeps its name for the unacquired group: it is what still needs work to become karaoke.
 	   `clipped` is REPORTED rather than acted on here: the phone already reveals in pages and can say "there
 	   are more" honestly, and a route that silently truncated would be the same class of lie as the zero-state

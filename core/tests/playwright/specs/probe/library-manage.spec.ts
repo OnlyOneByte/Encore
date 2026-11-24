@@ -3,7 +3,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '../../world/fixtures';
-import { readySong } from '../../world/actors';
+import { queueReady, readySong } from '../../world/actors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page, TestInfo } from '@playwright/test';
 import type { Media } from '$lib/contract';
@@ -84,10 +84,57 @@ test('a guest sees no Manage; the host renames, keeps, deletes and undoes', asyn
 		await host.locator('[data-testid="manage-row"] button.open').click();
 		await host.getByRole('button', { name: 'Delete' }).click();
 		expect(await libraryIds(guest)).not.toContain(id);
+		// During the window the song is offered nowhere: not on a guest's open Library, not in search.
+		await expect(guest.getByText('Renamed By Host')).toHaveCount(0);
+		const search = (await (await guest.request.get('/api/search?q=caroline')).json()) as Record<string, Media[]>;
+		expect(
+			Object.values(search)
+				.flat()
+				.some((m) => m?.id === id)
+		).toBe(false);
 		expect(existsSync(join(world.mediaDir, 'meta', `${id}.json`))).toBe(true);
 		await expect.poll(() => existsSync(join(world.mediaDir, 'meta', `${id}.json`)), { timeout: 20_000 }).toBe(false);
 		expect(readdirSync(join(world.mediaDir, 'library')).some((f) => f.includes('caroline'))).toBe(true);
 		expect((await host.request.post('/api/library/manage/undo', { data: { mediaId: id } })).status()).toBe(409);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test("a song in tonight's queue cannot be deleted, and a rename reaches the TV at once", async ({
+	world
+}, testInfo) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const tv = await world.openTv();
+		const guest = await world.openPhone('Bo');
+		await readySong(world, guest, 'bohemian');
+		await readySong(world, guest, 'prayer');
+		const id = (await world.awaitDemoTrack('prayer')).id;
+		// Two turns, so the second is still waiting while the first plays.
+		await queueReady(guest, 'bohemian');
+		await queueReady(guest, 'prayer');
+
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		const refused = await host.request.post('/api/library/manage/delete', { data: { mediaId: id } });
+		expect(refused.status()).toBe(409);
+		expect(((await refused.json()) as { reason?: string }).reason).toBe('queued');
+
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		const row = host.locator('[data-testid="manage-row"]', { hasText: 'prayer' });
+		await row.locator('button.open').click();
+		const sheet = host.locator('[data-testid="song-sheet"]');
+		await expect(sheet).toContainText("In tonight's queue. Delete it after its turn.");
+		await expect(sheet.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+		await frame(host, testInfo, 'queued-sheet');
+
+		const renamed = await host.request.post('/api/library/manage/rename', {
+			data: { mediaId: id, title: 'Prayer Renamed', artist: 'Bon Jovi' }
+		});
+		expect(renamed.status()).toBe(200);
+		await expect(tv.getByText('Prayer Renamed').first()).toBeVisible({ timeout: 5_000 });
 	} finally {
 		await worker.stop();
 	}
