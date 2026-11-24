@@ -13,7 +13,7 @@
 // restart, through the SQLite index and through the sidecar it is rebuildable from.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { requestLyricsReselect, manualLyricsRef, type ProcessDeps } from '$lib/server/jobs/process';
+import { requestLyricsReselect, editLyricsRef, type ProcessDeps } from '$lib/server/jobs/process';
 import { assignParams } from '$lib/server/jobs/dispatch';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { MediaRepository } from '$lib/server/media/repository';
@@ -60,18 +60,41 @@ test('a paste carries the words through to the worker params as pinnedText', () 
 	const res = requestLyricsReselect('m1', { text: `  ${PASTED}  ` }, d, 's1');
 	if (typeof res === 'string') throw new Error(res);
 
-	// The ref must be the key the WORKER computes for the (manual, word) tier; the worker test pins the same
-	// literal from its side.
-	expect(res.ref).toBe(manualLyricsRef('m1'));
-	expect(manualLyricsRef('m1')).toBe('derived/lyrics/m1-manual-word.json');
+	// A new ref per lyrics change; the worker test reads the same template from its side.
+	expect(res.ref).toBe(editLyricsRef('m1', 1));
+	expect(editLyricsRef('m1', 1)).toBe('derived/lyrics/m1-edit-r1.json');
 
 	// Stored on the media, trimmed, so dispatch has something to send.
 	expect(m.lyricsOverrideText).toBe(PASTED);
 
 	// What the worker actually receives: without it, a ref with no content behind it.
 	const params = assignParams('align', d.mediaById.get('m1'));
-	expect(params.pinnedRef).toBe(manualLyricsRef('m1'));
+	expect(params.pinnedRef).toBe(editLyricsRef('m1', 1));
 	expect(params.pinnedText).toBe(PASTED);
+	// The document on screen, whose line timings seed the re-time; it moves only when the re-time lands.
+	expect(params.pinnedFrom).toBe('derived/lyrics/m1-asr.json');
+});
+
+test('a paste with nothing on screen, and a ref pick, send no pinnedFrom', () => {
+	const d = deps();
+	const m = media({ lyricsRef: undefined });
+	d.mediaById.set('m1', m);
+	if (typeof requestLyricsReselect('m1', { text: PASTED }, d, 's1') === 'string') throw new Error('refused');
+	expect(assignParams('align', m).pinnedFrom).toBeUndefined();
+	if (typeof requestLyricsReselect('m1', { ref: STORED }, d, 's1') === 'string') throw new Error('refused');
+	expect(assignParams('align', m).pinnedFrom).toBeUndefined();
+});
+
+test('a second paste gets a new ref, so a TV holding the first one fetches again', () => {
+	const d = deps();
+	const m = media();
+	d.mediaById.set('m1', m);
+	const first = requestLyricsReselect('m1', { text: PASTED }, d, 's1');
+	const second = requestLyricsReselect('m1', { text: `${PASTED}\nand one more line` }, d, 's1');
+	if (typeof first === 'string' || typeof second === 'string') throw new Error('refused');
+	expect(second.ref).not.toBe(first.ref);
+	expect(m.lyricsEditRev).toBe(2);
+	expect(assignParams('align', m).pinnedRef).toBe(second.ref);
 });
 
 test('a ref pick sends pinnedRef and NO pinnedText, even after an earlier paste', () => {
@@ -128,7 +151,8 @@ test('the pinned paste survives a restart through the SQLite index', () => {
 
 	// A restart: a new repository over the same file, as boot's hydrate does.
 	const restored = new MediaRepository(db).byId('m1')!;
-	expect(restored.lyricsOverrideRef).toBe(manualLyricsRef('m1'));
+	expect(restored.lyricsOverrideRef).toBe(editLyricsRef('m1', 1));
+	expect(restored.lyricsEditRev).toBe(1);
 	expect(restored.lyricsOverrideText).toBe(PASTED);
 	// The dispatcher re-derives params from the RESTORED media, so the requeued align still carries the
 	// paste. With nothing durable holding the text, a restart between enqueue and dispatch drops it.
@@ -150,7 +174,7 @@ test('the pinned paste survives a DB wipe through the sidecar', () => {
 	const s = sidecarFromMedia(m, T0);
 	expect(s.artifacts.lyricsOverrideText).toBe(PASTED);
 	const back = mediaFromSidecar(s);
-	expect(back.lyricsOverrideRef).toBe(manualLyricsRef('m1'));
+	expect(back.lyricsOverrideRef).toBe(editLyricsRef('m1', 1));
 	expect(back.lyricsOverrideText).toBe(PASTED);
 	expect(assignParams('align', back).pinnedText).toBe(PASTED);
 });
@@ -176,6 +200,15 @@ test('a sidecar rewrite after a ref pick does not resurrect the abandoned paste'
 	// the candidate set and the ref rely on.
 	const indexOnly = media({ lyricsOverrideRef: undefined, lyricsOverrideText: undefined });
 	const rewritten = sidecarFromMedia(indexOnly, T0 + 2000, pasteWrite);
-	expect(rewritten.artifacts.lyricsOverrideRef).toBe(manualLyricsRef('m1'));
+	expect(rewritten.artifacts.lyricsOverrideRef).toBe(editLyricsRef('m1', 1));
 	expect(rewritten.artifacts.lyricsOverrideText).toBe(PASTED);
+});
+
+test('once the host has changed the lyrics, a rewrite keeps a cleared pin cleared', () => {
+	const m = media({ lyricsEditRev: 3 });
+	const pinned = sidecarFromMedia({ ...m, lyricsOverrideRef: STORED }, T0);
+	// Back to automatic: the runtime clears the pin, and the sidecar must not restore it from `prev`.
+	const cleared = sidecarFromMedia(m, T0 + 1000, pinned);
+	expect(cleared.artifacts.lyricsOverrideRef).toBeUndefined();
+	expect(cleared.artifacts.lyricsEditRev).toBe(3);
 });

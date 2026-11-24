@@ -7,8 +7,32 @@ import {
 	activeLineIndex,
 	activeWordIndex,
 	wipesWords,
+	betweenLines,
+	changedRows,
+	rowsOf,
 	type LyricsDoc
 } from '$lib/tv/lyrics';
+
+test('a lyrics fix swaps in only between lines, and only the rows it rewrote are fresh', () => {
+	const line = (text: string, start: number, end: number) => ({ start, end, text, words: [] });
+	const doc = { lines: [line('one', 1, 2), line('two', 2.5, 4)] };
+	expect(betweenLines(doc, 0.5)).toBe(true);
+	expect(betweenLines(doc, 1.5)).toBe(false);
+	expect(betweenLines(doc, 2.2)).toBe(true); // the gap
+	expect(betweenLines(doc, 3)).toBe(false);
+	expect(betweenLines(doc, 4)).toBe(true); // a line's end is not inside it
+	expect(betweenLines(null, 3)).toBe(true);
+	const fixed = { lines: [line('one', 1, 2), line('too', 2.5, 4), line('three', 5, 6)] };
+	expect([...changedRows(doc, fixed)]).toEqual([1, 2]);
+});
+
+test('a fix that drops or adds a row maps each new row to the one it stands for, so neither reads as a step back', () => {
+	const rows = (...texts: string[]) => ({ lines: texts.map((text) => ({ start: 0, end: 1, text, words: [] })) });
+	const shown = rows('a', 'junk', 'b', 'wrong', 'c');
+	expect(rowsOf(shown, rows('a', 'b', 'right', 'c'))).toEqual([0, 2, 3, 4]); // dropped, then rewritten in place
+	expect(rowsOf(shown, rows('a', 'junk', 'b', 'missed', 'wrong', 'c', 'd'))).toEqual([0, 1, 2, 2.5, 3, 4, 4.5]);
+	expect(rowsOf(rows('a'), rows('first', 'a'))).toEqual([-0.5, 0]); // added before the first row
+});
 // `resegmentLine` is imported ONCE, in the second import block below, beside the LINE_GAP_SEC /
 // LINE_MAX_CHARS constants its tests read — naming it here as well is a duplicate binding that tsc
 // rejects even though the bundler tolerates it, so the split-testing block owns the name.

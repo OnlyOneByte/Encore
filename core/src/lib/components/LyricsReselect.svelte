@@ -26,8 +26,26 @@
 		/** Resolves FALSE when the server refused the paste, so the draft and the open disclosure survive it. A caller
 		 * that reports nothing back (or nothing at all) is treated as acceptance, which is what `void` covers. */
 		onpaste?: (text: string) => void | Promise<boolean | void>;
+		/** There is an earlier lyrics state to go back to. */
+		undoable?: boolean;
+		/** The host has changed these lyrics (a pick or words), so automatic is somewhere to go back to. */
+		changed?: boolean;
+		onundo?: () => void;
+		onauto?: () => void;
 	}
-	let { candidates, chosenRef, overrideRef, newerExists = false, pending = false, onpick, onpaste }: Props = $props();
+	let {
+		candidates,
+		chosenRef,
+		overrideRef,
+		newerExists = false,
+		pending = false,
+		onpick,
+		onpaste,
+		undoable = false,
+		changed = false,
+		onundo,
+		onauto
+	}: Props = $props();
 
 	let open = $state(false);
 	let pasting = $state(false);
@@ -128,6 +146,18 @@
 						<Icon name="chevron-right" /> Paste my own
 					</button>
 				{/if}
+				{#if undoable || changed}
+					<div class="reselect-back">
+						{#if undoable}
+							<button class="reselect-quiet" data-act="undo" disabled={pending} onclick={() => onundo?.()}>Undo</button>
+						{/if}
+						{#if changed}
+							<button class="reselect-quiet" data-act="auto" disabled={pending} onclick={() => onauto?.()}
+								>Back to automatic lyrics</button
+							>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -192,6 +222,26 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-weight: 500;
+	}
+	.reselect-back {
+		display: flex;
+		flex-wrap: wrap;
+		column-gap: var(--space-md);
+	}
+	.reselect-quiet {
+		min-height: var(--tap);
+		background: none;
+		border: none;
+		color: var(--ink-dim);
+		font: inherit;
+		padding: var(--space-2xs) 0;
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+		cursor: pointer;
+	}
+	.reselect-quiet:disabled {
+		cursor: default;
+		opacity: 0.5;
 	}
 	.reselect-paste-open {
 		margin-top: var(--space-xs);

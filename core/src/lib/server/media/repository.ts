@@ -36,6 +36,7 @@ const toRow = (m: Media): MediaRow => ({
 	lyricsOverrideRef: m.lyricsOverrideRef ?? null,
 	// Written unconditionally (never `||`) so clearing on a ref pick writes NULL, not a stale re-surfaced `pinnedText` after restart.
 	lyricsOverrideText: m.lyricsOverrideText ?? null,
+	lyricsEditRev: m.lyricsEditRev ?? null,
 	artistCanonical: m.artistCanonical ?? null,
 	artistCredit: m.artistCredit ?? null,
 	titleCanonical: m.titleCanonical ?? null
@@ -103,6 +104,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
 	lyricsOverrideRef: r.lyricsOverrideRef ?? undefined,
 	lyricsOverrideText: r.lyricsOverrideText ?? undefined,
+	lyricsEditRev: r.lyricsEditRev ?? undefined,
 	artistCanonical: r.artistCanonical ?? undefined,
 	artistCredit: r.artistCredit ?? undefined,
 	titleCanonical: r.titleCanonical ?? undefined

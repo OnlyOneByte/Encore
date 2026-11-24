@@ -31,6 +31,7 @@ from encore_worker.domain.lyrics.report import Engine
 from encore_worker.host.config import Config
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
+from encore_worker.steps.align_text import seed_times
 from encore_worker.steps.api import NotOurJob
 from encore_worker.steps.records import (
     TIMING_LINE,
@@ -2221,6 +2222,108 @@ async def test_a_verbatim_paste_is_noted_about_nothing(tmp_path: Path) -> None:
 
     assert got is not None and len(got.segments) == 2
     assert "pin-cleaned" not in [verdict for _state, verdict, _knob in reporter.states]
+
+
+def _old_doc(tmp: Path, *, worded: bool = True) -> str:
+    ref = "derived/lyrics/m1-asr-word.json"
+    words = [{"word": "iii", "start": 28.0, "end": 29.0}, {"word": "jjj", "start": 29.0, "end": 30.0}]
+    lines: list[dict[str, object]] = [
+        {"text": "aaa bbb", "start": 10.0, "end": 12.0, "words": []},
+        {"text": "ccc dde", "start": 14.0, "end": 16.0, "words": []},
+        {"text": "eee fff", "start": 20.0, "end": 24.0, "words": []},
+        {"text": "ggg hhh", "start": 24.5, "end": 26.0, "words": []},
+        # A null bound falls back to the line's own words.
+        {"text": "iii jjj", "start": None, "end": None, "words": words},
+    ]
+    if not worded:
+        lines[-1] = {"text": "iii jjj", "start": 28.0, "end": 30.0, "words": []}
+    (tmp / "derived" / "lyrics").mkdir(parents=True, exist_ok=True)
+    (tmp / ref).write_text(json.dumps({"lines": lines}))
+    return ref
+
+
+async def _seeded(tmp: Path, paste: str, *, worded: bool = True) -> list[tuple[str, object, object]]:
+    seed = _old_doc(tmp, worded=worded)
+    got = await steps(tmp).fetch_pinned_text(
+        job(tmp, pinnedRef="derived/lyrics/m1-edit-r1.json", pinnedText=paste, pinnedFrom=seed)
+    )
+    assert got is not None and got.timing == "line" and got.has_own_timings
+    return [(str(s["text"]), s.get("start"), s.get("end")) for s in got.segments]
+
+
+async def test_a_fix_keeps_the_slots_of_kept_edited_and_rewritten_lines(tmp_path: Path) -> None:
+    """A host changes which words, not when they are sung: the paste claims the old line slots."""
+    paste = "aaa bbb\nccc ddd\nsomething else entirely\nggg hhh\niii jjj"
+    assert await _seeded(tmp_path, paste) == [
+        ("aaa bbb", 10.0, 12.0),
+        ("ccc ddd", 14.0, 16.0),  # an edited word
+        ("something else entirely", 20.0, 24.0),  # rewritten in place
+        ("ggg hhh", 24.5, 26.0),
+        ("iii jjj", 28.0, 30.0),
+    ]
+
+
+async def test_an_added_line_is_found_in_one_window_with_the_line_before_it(tmp_path: Path) -> None:
+    """The line before a missed one may have swallowed its audio, so it keeps only its start and both are
+    decoded up to the next claimed start; the line after keeps its slot."""
+    paste = "aaa bbb\nccc ddd\neee fff\nthe missed line\nggg hhh\niii jjj"
+    assert await _seeded(tmp_path, paste) == [
+        ("aaa bbb", 10.0, 12.0),
+        ("ccc ddd", 14.0, 16.0),
+        ("eee fff", 20.0, None),
+        ("the missed line", None, None),
+        ("ggg hhh", 24.5, 26.0),
+        ("iii jjj", 28.0, 30.0),
+    ]
+
+
+def test_a_line_added_into_a_repeated_chorus_pairs_every_other_line_with_its_own_slot() -> None:
+    """difflib paired [one, chosen] one line early here, dropping the first `one` and shifting the rest."""
+    old = [("cause one", 50.0, 52.0), ("one", 53.0, 56.0), ("one", 60.0, 67.5), ("chosen", 68.0, 70.0)]
+    assert seed_times(["cause one", "one", "chosen", "one", "chosen"], old, line_timed=True) == [
+        (50.0, 52.0),
+        (53.0, 56.0),
+        (56.0, 60.0),
+        (60.0, 67.5),
+        (68.0, 70.0),
+    ]
+
+
+async def test_in_a_line_timed_document_added_lines_share_the_gap_the_provider_left(tmp_path: Path) -> None:
+    """A provider's own line spans swallow nothing, so the gap between them is where the missed lines go."""
+    paste = "aaa bbb\nccc ddd\none missed\ntwo missed\neee fff\nggg hhh\niii jjj"
+    assert await _seeded(tmp_path, paste, worded=False) == [
+        ("aaa bbb", 10.0, 12.0),
+        ("ccc ddd", 14.0, 16.0),
+        ("one missed", 16.0, 18.0),
+        ("two missed", 18.0, 20.0),
+        ("eee fff", 20.0, 24.0),
+        ("ggg hhh", 24.5, 26.0),
+        ("iii jjj", 28.0, 30.0),
+    ]
+
+
+@pytest.mark.parametrize(
+    "seed",
+    [None, "derived/lyrics/gone.json", "../outside.json"],
+    ids=["no document", "evicted", "outside the store"],
+)
+async def test_with_no_old_timings_a_fix_is_decoded_blind(tmp_path: Path, seed: str | None) -> None:
+    params: dict[str, object] = {"pinnedRef": "derived/lyrics/m1-edit-r1.json", "pinnedText": "aaa\nccc"}
+    if seed:
+        params["pinnedFrom"] = seed
+    got = await steps(tmp_path).fetch_pinned_text(job(tmp_path, **params))
+    assert got is not None and got.timing is None and all("start" not in s for s in got.segments)
+
+
+async def test_a_rewrite_rather_than_a_fix_is_decoded_blind(tmp_path: Path) -> None:
+    """Under half the lines pair with the old document: its slots would place other words."""
+    seed = _old_doc(tmp_path)
+    paste = "one two\nthree four\nfive six\naaa bbb"
+    got = await steps(tmp_path).fetch_pinned_text(
+        job(tmp_path, pinnedRef="derived/lyrics/m1-edit-r1.json", pinnedText=paste, pinnedFrom=seed)
+    )
+    assert got is not None and got.timing is None
 
 
 async def test_a_paste_of_nothing_but_headers_is_an_unreadable_pin_not_an_empty_decode(

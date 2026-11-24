@@ -71,7 +71,9 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		...(media?.lyricsOverrideRef
 			? {
 					pinnedRef: media.lyricsOverrideRef,
-					...(media.lyricsOverrideText ? { pinnedText: media.lyricsOverrideText } : {})
+					...(media.lyricsOverrideText ? { pinnedText: media.lyricsOverrideText } : {}),
+					// `lyricsRef` moves only when the re-time lands, so until then it is the document being fixed.
+					...(media.lyricsOverrideText && media.lyricsRef ? { pinnedFrom: media.lyricsRef } : {})
 				}
 			: {})
 	};

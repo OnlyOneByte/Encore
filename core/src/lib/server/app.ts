@@ -47,6 +47,7 @@ import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
 	readSidecar,
 	writeSidecar,
+	updateSidecar,
 	sidecarFromMedia,
 	rebuildIndexFromMeta,
 	backfillSidecars,
@@ -120,6 +121,8 @@ export interface EncoreApp {
 	/** Unbinds and closes every socket of a singer who left (src/lib/server/realtime/singer-sockets.ts). Assigned
 	 *  by server.ts, which owns the sockets; OPTIONAL for the same reason as {@link refreshMembership}. */
 	releaseSinger?: (singerId: string) => void;
+	/** A room-wide `queue:sync`, so every screen re-reads a song row a route just changed. OPTIONAL as above. */
+	syncRoom?: () => void;
 	now: () => number;
 }
 
@@ -208,9 +211,7 @@ export function getApp(): EncoreApp {
 	const mediaRepo = new MediaRepository(db, (m) => {
 		void (async () => {
 			try {
-				const prev = await readSidecar(m.id);
-				const next = sidecarFromMedia(m, Date.now(), prev);
-				await writeSidecar(next);
+				const next = (await updateSidecar(m.id, (prev) => sidecarFromMedia(m, Date.now(), prev)))!;
 				mediaRepo.setCanonical(m.id, canonicalsOf(next));
 				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
@@ -620,6 +621,7 @@ export function getApp(): EncoreApp {
 		// No-op sinks until server.ts wires Bun.serve; routes and state still work without them.
 		publish: () => {},
 		toWorker: () => {},
+		syncRoom: () => app.publish(roomSync()),
 		now: () => Date.now()
 	};
 

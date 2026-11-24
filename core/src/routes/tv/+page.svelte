@@ -941,6 +941,7 @@
 
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
+		songKey={current?.id}
 		provenance={lyricsProvenance}
 		positionSec={positionSec}
 		playing={lyricsPlaying}

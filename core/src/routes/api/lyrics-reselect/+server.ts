@@ -7,6 +7,8 @@ import { can } from '$lib/server/capabilities';
 import { isHost } from '$lib/server/host-gate';
 import { mediaStatusFor } from '$lib/server/jobs/media-status';
 import { requestLyricsReselect, type ReselectRefusal } from '$lib/server/jobs/process';
+import { keepReplaced, snapshotOf } from '$lib/server/jobs/lyrics-edit';
+import { refusal } from '../lyrics-edit/respond';
 import { optionalString, readJsonBody, requiredString } from '$lib/server/http/json-body';
 import type { MediaStatus } from '$lib/contract';
 
@@ -43,6 +45,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		return json({ error: REFUSAL_MESSAGE['no-text'], reason: 'no-text' }, { status: 400 });
 	}
 
+	const before = app.mediaById.get(mediaId);
+	// A page names the rev it was opened at, so a second host's stale pick or paste is refused, as on /api/lyrics-edit.
+	if (before && typeof body.rev === 'number' && body.rev !== (before.lyricsEditRev ?? 0)) return refusal('stale');
+	const replaced = before ? snapshotOf(before, app.now()) : undefined;
 	const result = requestLyricsReselect(
 		mediaId,
 		{ ref, text },
@@ -56,6 +62,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	// The override + fresh align job just changed this media — persist so a restart mid-re-time still knows the human's pick and that lyrics are pending (the reaper requeues the job).
 	const m = app.mediaById.get(mediaId);
 	if (m) app.media.upsert(m);
+	// A pick or a paste can be undone like any other lyrics change.
+	if (replaced) await keepReplaced(mediaId, replaced);
 
 	// Kick the dispatcher in case an idle align-capable worker is already connected, and show the live bar now. The align job is where the SONG is; reuse the shared mapping so this cannot drift.
 	app.workerHub.dispatch();

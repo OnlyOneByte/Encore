@@ -90,7 +90,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'tv-copy-chip-sleep': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
-	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK]
+	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-lyrics-fix': [...DEMO_LIBRARY, LONG_TRACK]
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -1650,6 +1651,73 @@ const SCENARIOS: Record<string, Make> = {
 			// The chip the old TV gains: on screen in every frame after the tap.
 			subject: '.copy-chip',
 			only: '.copy-chip, .copy-chip *'
+		};
+	},
+	'tv-lyrics-fix': (browser, world, cleanup) => {
+		let phone: Page | undefined;
+		let tv: BrowserContext | undefined;
+		cleanup(async () => tv?.close());
+		let mediaId = '';
+		let run = 0;
+		const base = (i: number) => `line ${i} of the song`;
+		const save = async (text: (i: number) => string) => {
+			const audit = await (await phone!.request.get(`/api/audit/${mediaId}`)).json();
+			const rev = (audit.media?.lyricsEditRev ?? 0) as number;
+			const lines = Array.from({ length: 40 }, (_, i) => ({ text: text(i) }));
+			const res = await phone!.request.post('/api/lyrics-edit', { data: { mediaId, rev, lines } });
+			expect(res.status(), await res.text()).toBe(200);
+		};
+		return {
+			name: 'tv-lyrics-fix',
+			what: 'TV 1920x1080 mid-song: the host fixes two upcoming lines on their phone; at the next gap between lines those two rows fade in with the new words (lyrics-arrive, --motion-base, opacity only) and nothing else moves',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 12_000,
+			open: async (opts) => {
+				if (!phone) {
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await world.becomeHost(phone);
+					await readySong(world, phone, 'long');
+					mediaId = (await world.awaitDemoTrack('long')).id;
+				}
+				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'long');
+				// One TV at a time, so each run's screen is the TV and not a copy.
+				await tv?.close();
+				tv = await browser.newContext({ ...opts, viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+				const page = await tv.newPage();
+				const seat = page
+					.waitForEvent('websocket', { timeout: 30_000 })
+					.then((ws) =>
+						ws.waitForEvent('framereceived', {
+							predicate: (f) => String(f.payload).includes('"tv:seat"'),
+							timeout: 30_000
+						})
+					)
+					.then((f) => (JSON.parse(String(f.payload)) as { mine: boolean }).mine);
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				// The last run's screen may still hold the seat for its grace; this one takes it.
+				if (!(await seat)) await page.getByRole('button', { name: 'Make this the TV' }).click();
+				await expect(page.locator('.copy-chip')).toHaveCount(0);
+				await page.mouse.click(960, 540);
+				await expect(page.locator(SEL.stateNext)).toHaveCount(0, { timeout: 30_000 });
+				await save(base);
+				await expect(page.locator(SEL.lyricsRowCurrent)).toContainText('of the song', { timeout: 20_000 });
+				return page;
+			},
+			trigger: async (page) => {
+				run++;
+				const rows = page.locator(SEL.lyricsRow);
+				const now = await rows.evaluateAll((els) => els.findIndex((el) => el.classList.contains('current')));
+				// The two lines after next, so neither becomes the sung row inside the fade.
+				await save((i) => (i === now + 2 || i === now + 3 ? `fixed words, take ${run}` : base(i)));
+				// Delivered means on screen: the re-time and the wait for a gap come first, which Reduce Motion cannot see.
+				await expect(page.locator('.lyrics .row.fresh').first()).toBeAttached({ timeout: 12_000 });
+			},
+			subject: '.lyrics .row.fresh',
+			only: '.lyrics .row.fresh'
 		};
 	},
 	'tv-song-intro': tvHandoff('in'),

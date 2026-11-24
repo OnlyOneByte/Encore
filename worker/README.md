@@ -119,7 +119,8 @@ The align params, each read by one pure function in `steps/api.py`:
 
 | Param | Honoured as |
 | --- | --- |
-| `pinnedRef` + `pinnedText` | A **paste**: the only text, untimed, decoded blind. A person chose it, so it is never judged a wrong text. If a wrong-text gate would refuse it, it publishes with every line graded `low` (`pin-unvouched` on the trail) and is reported with `vouched: false`. It is published under the manual key `derived/lyrics/{id}-manual-word.json` (`keys.manual_lyrics_key`, core's `manualLyricsRef`) |
+| `pinnedFrom` | With a paste: the document it corrects. Its line timings seed the paste, which is then aligned as a line-timed claim (`steps/align_text.py` `seed_times`); an added line is claimed in the gap a line-timed document left, or decoded with the line before it in an aligned one. Missing, evicted, or under half the lines pairing: the paste is decoded blind |
+| `pinnedRef` + `pinnedText` | A **paste**: the only text, decoded blind unless `pinnedFrom` seeds it. A person chose it, so it is never judged a wrong text. If a wrong-text gate would refuse it, it publishes with every line graded `low` (`pin-unvouched` on the trail) and is reported with `vouched: false`. It is published under `pinnedRef`, a new name per host fix (core's `editLyricsRef`, `derived/lyrics/{id}-edit-r{rev}.json`) |
 | `pinnedRef` alone | A **re-pick**: the stored candidate's words, re-timed blind (its old timings are not read), written back under the same ref with its label intact |
 | `syncMode` | `forced` (the default) or `lines`. `lines` publishes no word timing: each text's only attempt is its own line timings through the gated LINE_SYNC rung (04-alignment.md §5.3). It is honoured only where there is a vocals stem, and never for a pin |
 | `asrModel` | The whisper checkpoint the ASR fallback loads: one of `host.config.ASR_MODELS`, else the worker's default, with the fallback on the trail |

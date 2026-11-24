@@ -79,9 +79,8 @@ def lyrics_candidate_key(media_id: str, label: str, timing: str) -> str:
 
 
 def manual_lyrics_key(media_id: str) -> str:
-    """Where PASTED lyrics are published: core's `manualLyricsRef`
-    (`core/src/lib/server/jobs/process.ts`) — a literal both sides pin, so core's merge overwrites it
-    rather than adding a rival (docs/arch/05-worker.md §4)."""
+    """Where a paste sent with no `pinnedRef` is published. Core always sends one (`editLyricsRef`, a new
+    name per fix), so this is only the fallback (docs/arch/05-worker.md §4)."""
     return lyrics_candidate_key(media_id, "manual", "word")
 
 

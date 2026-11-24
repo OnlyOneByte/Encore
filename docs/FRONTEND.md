@@ -1733,9 +1733,10 @@ longer in the room's catalog, so it fetches the row from `/api/audit/<mediaId>` 
 audit screen reads — rather than reading the room. It still subscribes to the link for the live key shift,
 which is the one fact the stored row cannot know, so the range readout agrees with what the television is
 sounding. A singable song may have no measured range (that needs a vocals stem); the page says so rather
-than drawing an empty strip. Lyrics here are quick-select among the ranker's candidates only, and only for
-the host: a re-pick changes the song for every room, so a guest is not offered it
-([the host key](SERVER.md#the-host-key)).
+than drawing an empty strip. Lyrics here are quick-select among the ranker's candidates, a paste, **Undo** and
+**Back to automatic lyrics**, and only for the host: a re-pick changes the song for every room, so a guest is not
+offered it ([the host key](SERVER.md#the-host-key), [lyrics fixes](SERVER.md#lyrics-fixes)). Only the fix on screen
+is listed; Undo walks back through the rest.
 
 ### Stats
 
@@ -1915,6 +1916,27 @@ throttles rAF, so the reel decays to line 0. While playing it extrapolates from 
 anchor. Advancing needs all three of `screen === 'playing'`, the server's `isPlaying` intent, and the
 master element actually running (`src/lib/tv/screen.ts`, `lyricsAdvancing`) — the first two stay true
 through an autoplay refusal, and the words would sweep over a silent room.
+
+### Lyrics fixes
+
+A host's fix reaches the TV through the next `queue:sync`, as a new `lyricsRef` on the playing song
+([SERVER.md#lyrics-fixes](SERVER.md#lyrics-fixes)). The overlay shows nothing new: no banner and no toast. For
+the turn already on stage (`songKey`), a new ref is fetched behind the words on screen and held.
+
+- **The current row never steps back.** On every path the held words go in only on a frame where the new
+  document's current line stands for the old current line or a later one. `rowsOf` maps each new row to the
+  old row it stands for (equal texts in order, a rewritten run by position, an added row just after the row
+  before it), so a fix that drops or adds a row above the one being sung is not a step back and can land.
+- **The swap waits for a gap.** The held words go in at the first frame where neither the old reading nor the new
+  one is inside a line (`betweenLines`), so no word is cut off. Paused, or with nothing on screen, only the rule
+  above applies. After 10 s with no shared gap, the old reading being between lines, or a new line starting, is
+  enough: a screen painting a few frames a second steps right over a short gap. That fallback can land a fix
+  with the first word of the new line already lit.
+- **Only opacity moves.** A row the fix rewrote is keyed by its text too, so it is a new node rather than a
+  centred line whose text slides sideways (which the layout-shift API counts); every other row keeps its index
+  key. Those rows (`changedRows`) fade in over 250 ms; the rest stay put and the reel does not scroll. Under
+  Reduce Motion they appear at once.
+- **A fix that fails to load changes nothing**: the old words stay, rather than the "No lyrics" notice.
 
 ### The pitch-shift graph
 

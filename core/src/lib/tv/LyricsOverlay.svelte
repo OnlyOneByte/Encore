@@ -9,10 +9,14 @@
 		isAutoTranscribed,
 		wipesWords,
 		wordGap,
+		betweenLines,
+		changedRows,
+		rowsOf,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
 	} from './lyrics';
+	import { untrack } from 'svelte';
 	import { drawPosition } from '$lib/playhead';
 	import { reelOffset as reelOffsetFor } from './reel-offset';
 	import {
@@ -44,6 +48,8 @@
 		provenance?: LyricsProvenance | null;
 		/** Seconds to run the highlight AHEAD of the audio — see LYRICS_LEAD_SEC for why. */
 		leadSec?: number;
+		/** Which turn is on stage. A new `lyricsRef` for the SAME turn is a lyrics fix, swapped in at a gap. */
+		songKey?: string;
 		/**
 		 * `resolveLyricsPresentation` has ALREADY clamped both against what the deployment's sync mode produces, so
 		 * this component renders what it is handed and must not re-derive the rule.
@@ -67,6 +73,7 @@
 		visible = true,
 		provenance = null,
 		leadSec = LYRICS_LEAD_SEC,
+		songKey,
 		ball = DEFAULT_LYRICS_BALL,
 		highlight = DEFAULT_LYRICS_HIGHLIGHT,
 		scalePct = DEFAULT_LYRICS_SCALE_PCT,
@@ -77,8 +84,17 @@
 		singerColor = null
 	}: Props = $props();
 
+	const FIX_WAIT_MAX_MS = 10_000;
+
 	let fetched = $state<LyricsDoc | null>(null);
 	let loadedRef: string | undefined;
+	let loadedSong: string | undefined;
+	// A lyrics fix for the turn on stage waits here for a gap between lines.
+	let heldDoc = $state<LyricsDoc | null>(null);
+	let heldSince = 0;
+	let heldAtLine = -1;
+	// The rows the last swap rewrote. They are new nodes (keyed by text), so the class fades each in once.
+	let freshRows = $state<ReadonlySet<number>>(new Set());
 	// Reactive, unlike `loadedRef`, because it keeps the one distinction `doc === null` cannot make: "this song has
 	// no words" versus "the artifact is still in flight". Both render nothing, but only the first may SAY so.
 	let settledRef = $state<string | undefined>(undefined);
@@ -120,22 +136,34 @@
 			return;
 		}
 		if (ref === loadedRef) return;
+		// The same turn with words already up: fetch behind them, and keep them if the fix does not load.
+		const fix = songKey !== undefined && songKey === loadedSong && untrack(() => fetched) !== null;
 		loadedRef = ref;
-		settledRef = undefined;
-		// Clear on the ref CHANGE, or the derived `doc` keeps the old artifact until the fetch resolves and one frame
-		// renders the PREVIOUS song's lyrics under the new song's title.
-		fetched = null;
+		loadedSong = songKey;
+		if (!fix) {
+			settledRef = undefined;
+			// Clear on the ref CHANGE, or the derived `doc` keeps the old artifact until the fetch resolves and one frame
+			// renders the PREVIOUS song's lyrics under the new song's title.
+			fetched = null;
+			heldDoc = null;
+			freshRows = new Set();
+		}
 		let cancelled = false;
 		fetch(`/media/${ref}`)
 			.then((r) => (r.ok ? r.json() : null))
 			.then((j) => {
-				if (!cancelled) {
-					fetched = parseLyricsDoc(j);
-					settledRef = ref;
+				if (cancelled) return;
+				const parsed = parseLyricsDoc(j);
+				if (fix) {
+					if (parsed) heldDoc = parsed;
+					heldSince = performance.now();
+					return;
 				}
+				fetched = parsed;
+				settledRef = ref;
 			})
 			.catch(() => {
-				if (!cancelled) {
+				if (!cancelled && !fix) {
 					fetched = null; // dead/absent lyrics → the notice below says so
 					settledRef = ref;
 				}
@@ -160,6 +188,29 @@
 
 	// The HIGHLIGHT's position: playback position plus the lead. `displayPos` itself stays honest.
 	const cuePos = $derived(displayPos + leadSec);
+
+	// Which row of the reading on screen each row of the held fix stands for, so a dropped row is not a step back.
+	const heldRows = $derived(heldDoc && doc ? rowsOf(doc, heldDoc) : null);
+
+	// A held fix goes in where neither the old nor the new reading is inside a line, so no word is cut off, and on
+	// every path only where the new current row is not an earlier one. See docs/FRONTEND.md#lyrics-fixes.
+	$effect(() => {
+		if (!heldDoc) return;
+		// shortcut: after 10 s with no shared gap, the old reading being between lines or a new line starting is
+		// enough (a slow screen paints right over short gaps), so the fix can land with a word already lit.
+		const overdue = heldSince > 0 && now - heldSince > FIX_WAIT_MAX_MS;
+		const lineStarted = lineIdx !== heldAtLine;
+		heldAtLine = lineIdx;
+		const oldGap = betweenLines(doc, cuePos);
+		const atGap = !playing || !doc || (oldGap ? overdue || betweenLines(heldDoc, cuePos) : overdue && lineStarted);
+		if (!atGap || (heldRows?.[activeLineIndex(heldDoc.lines, cuePos)] ?? lineIdx) < lineIdx) return;
+		freshRows = changedRows(fetched, heldDoc);
+		fetched = heldDoc;
+		settledRef = loadedRef;
+		heldDoc = null;
+		heldSince = 0;
+	});
+
 	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, cuePos) : -1);
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
@@ -245,8 +296,10 @@
 		-->
 		<div class="viewport" bind:this={viewportEl}>
 			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
-				{#each doc.lines as l, i (i)}
-					<div class={['row', { current: i === lineIdx, past: i < lineIdx }]}>
+				<!-- A row a lyrics fix rewrote is a new node, not a centred line sliding sideways; the rest keep index keys,
+				     so a new song reuses the rows as before. -->
+				{#each doc.lines as l, i (freshRows.has(i) ? `${i}:${l.text}` : i)}
+					<div class={['row', { current: i === lineIdx, past: i < lineIdx, fresh: freshRows.has(i) }]}>
 						{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}
 							{#each l.words as w, wi (wi)}
 								<span class={['word', { done: cuePos >= w.end, active: wi === ballWord }]}>
@@ -538,6 +591,10 @@
 		   `--motion-fast`: the first line has to be readable within ~100 ms of when it was with no fade at all. */
 		.lyrics {
 			animation: lyrics-arrive var(--motion-fast) ease-out both;
+		}
+		/* A row a lyrics fix rewrote fades its new words in. Opacity only, so the reel does not move. */
+		.row.fresh {
+			animation: lyrics-arrive var(--motion-base) ease-out both;
 		}
 	}
 	@keyframes lyrics-arrive {

@@ -183,18 +183,33 @@ export interface ReselectResult {
 	ref: string;
 }
 
-/** The idempotency key for a pasted candidate: a repeat paste OVERWRITES rather than stacking, and the
- *  worker derives this same key from `pinnedRef`. */
-export function manualLyricsRef(mediaId: string): string {
-	return `derived/lyrics/${mediaId}-manual-word.json`;
+/** Where the host's words for change `rev` are published. A new name per change, because a screen that already
+ *  loaded the last fix only fetches again when the ref moves. */
+export function editLyricsRef(mediaId: string, rev: number): string {
+	return `derived/lyrics/${mediaId}-edit-r${rev}.json`;
 }
 
 /**
- * A HUMAN RE-PICK, then a re-time. The pinned `lyricsOverrideRef` OUTRANKS `pickBestLyrics` everywhere.
+ * Re-time the media's lyrics now, from whatever is pinned (or ranked, with no pin).
  *
  * ORDER IS LOAD-BEARING: a finished `align` is terminal `ready` and still holds the dedup slot, so the slot
  * must be freed BEFORE the enqueue, or the caller gets the OLD job back and nothing re-runs.
  */
+export function retimeLyrics(media: Media, deps: Pick<ProcessDeps, 'jobs' | 'state' | 'now'>, singerId?: string): Job {
+	const priority = soonestSeqFor(media.id, deps.state.entries);
+	const now = deps.now();
+	const live = deps.jobs.findLive(media.id, 'align');
+	if (live && !isTerminalJob(live.status)) deps.jobs.cancel(live.id, now);
+	else deps.jobs.supersedeForRerun(media.id, 'align');
+	const job = deps.jobs.enqueue(media.id, 'align', priority, now, undefined, singerId);
+	// Direct, NOT markLyricsQueued, which refuses to walk a settled gate backwards: a re-pick is the one
+	// case where reopening a finished lyrics gate is correct.
+	media.lyricsStatus = 'queued';
+	return job;
+}
+
+/** A HUMAN RE-PICK, then a re-time. The pinned `lyricsOverrideRef` OUTRANKS `pickBestLyrics` everywhere. It is a
+ *  lyrics change like any other, so it counts one and the caller keeps the state it replaced for Undo. */
 export function requestLyricsReselect(
 	mediaId: string,
 	choice: { ref?: string; text?: string },
@@ -207,9 +222,10 @@ export function requestLyricsReselect(
 	if (!media.vocalsRef) return 'not-processed';
 
 	const pasted = typeof choice.text === 'string' ? choice.text.trim() : '';
+	const rev = (media.lyricsEditRev ?? 0) + 1;
 	let ref: string;
 	if (pasted) {
-		ref = manualLyricsRef(mediaId);
+		ref = editLyricsRef(mediaId, rev);
 	} else {
 		const picked = typeof choice.ref === 'string' ? choice.ref : '';
 		// Whitespace-only paste is `no-text`, not `unknown-candidate` — the caller named the paste shape.
@@ -223,17 +239,8 @@ export function requestLyricsReselect(
 	// On the media, not the job, so it survives a restart's requeue. MUST be cleared on a ref pick: a
 	// leftover paste outranks `pinnedRef` in the worker and re-times over the human's choice.
 	media.lyricsOverrideText = pasted || undefined;
-
-	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	const now = deps.now();
-	const live = deps.jobs.findLive(mediaId, 'align');
-	if (live && !isTerminalJob(live.status)) deps.jobs.cancel(live.id, now);
-	else deps.jobs.supersedeForRerun(mediaId, 'align');
-	const job = deps.jobs.enqueue(mediaId, 'align', priority, now, undefined, singerId);
-	// Direct, NOT markLyricsQueued, which refuses to walk a settled gate backwards: a re-pick is the one
-	// case where reopening a finished lyrics gate is correct.
-	media.lyricsStatus = 'queued';
-	return { job, ref };
+	media.lyricsEditRev = rev;
+	return { job: retimeLyrics(media, deps, singerId), ref };
 }
 
 /** `sourceRef` is deliberately LEFT ALONE: it is the song's origin identity, and overwriting it makes the

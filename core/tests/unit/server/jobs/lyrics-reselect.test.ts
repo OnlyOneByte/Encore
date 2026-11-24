@@ -7,7 +7,7 @@
 // cancel-then-enqueue is reverted (the enqueue returns the old ready job), or the pin is dropped.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { requestLyricsReselect, manualLyricsRef, type ProcessDeps } from '$lib/server/jobs/process';
+import { requestLyricsReselect, editLyricsRef, type ProcessDeps } from '$lib/server/jobs/process';
 import { assignParams } from '$lib/server/jobs/dispatch';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
@@ -83,8 +83,8 @@ test('pasting lyrics pins a MANUAL ref and re-times, even with no live align yet
 	// no prior align job at all — the enqueue starts the first one
 	const res = requestLyricsReselect('m1', { text: 'hello darkness my old friend' }, d, 's1');
 	if (typeof res === 'string') throw new Error(res);
-	expect(res.ref).toBe(manualLyricsRef('m1'));
-	expect(d.mediaById.get('m1')!.lyricsOverrideRef).toBe(manualLyricsRef('m1'));
+	expect(res.ref).toBe(editLyricsRef('m1', 1));
+	expect(d.mediaById.get('m1')!.lyricsOverrideRef).toBe(editLyricsRef('m1', 1));
 	expect(res.job.status).toBe('queued');
 });
 
