@@ -103,6 +103,10 @@ services:
     # demucs/yt-dlp grandchildren reparent to this process, which runs as PID 1 and is not an init, so
     # they accumulate. `init: true` interposes Docker's tini instead.
     init: true
+    # Core's group (the image's `bun`, gid 1000): core makes the shared media dirs group-writable, never
+    # world-writable, so the worker writes through this membership.
+    group_add:
+      - "1000"
     build:
       context: ..
       dockerfile: docker/worker.Dockerfile

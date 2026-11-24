@@ -240,15 +240,22 @@ describe('migration off the legacy layout', () => {
 		expect(mediaRoot()).toBe(root);
 	});
 
-	it('worker-written dirs are SHARED-WRITE, meta is not', () => {
+	it('worker-written dirs are GROUP-writable, never world-writable, and meta is neither', () => {
 		// Core and worker are different uids on one mounted volume, so a 0755 dir created by the core is
 		// unwritable by the worker and every process dies with "Permission denied: /app/media/work/<jobId>".
-		// meta/ is core-only and stays restrictive.
+		// Compose puts the worker in core's group; a world-writable dir let any local user plant a file (#1206).
 		ensureLayout();
-		const mode = (p: string) => statSync(p).mode & 0o777;
-		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'work']) {
-			expect(mode(join(root, ...d.split('/')))).toBe(0o777);
+		const mode = (p: string) => statSync(p).mode & 0o7777;
+		for (const d of ['', 'audio', 'derived', 'derived/stems', 'derived/lyrics', 'work']) {
+			expect(mode(join(root, ...d.split('/').filter(Boolean)))).toBe(0o775);
 		}
-		expect(mode(join(root, 'meta'))).not.toBe(0o777);
+		expect(mode(join(root, 'meta')) & 0o022).toBe(0);
+	});
+
+	it('an upgrade re-modes a 0777 dir core owns, with no hand step', () => {
+		mkdirSync(join(root, 'work'), { recursive: true });
+		chmodSync(join(root, 'work'), 0o777);
+		ensureLayout();
+		expect(statSync(join(root, 'work')).mode & 0o7777).toBe(0o775);
 	});
 });

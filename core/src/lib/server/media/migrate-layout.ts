@@ -191,10 +191,13 @@ export function applyMigration(
 	return res;
 }
 
+/** rwxrwxr-x: core and its group write, everyone else only reads (#1206). */
+export const SHARED_DIR_MODE = 0o775;
+
 /**
  * So the first write never races a missing dir. Core and worker are separate containers at DIFFERENT uids on
- * one volume, and whichever creates a dir owns it, so a 0755 dir made by one is unwritable by the other —
- * hence world-writable worker dirs, via an explicit chmod because umask masks `mkdirSync`'s mode. `meta/`
+ * one volume, so the shared dirs are group-writable (core's group) rather than world-writable, and
+ * compose adds the worker to that group. An explicit chmod because umask masks `mkdirSync`'s mode. `meta/`
  * stays restrictive and core-only: it is the authoritative record, not a drop box.
  */
 export function ensureLayout(): void {
@@ -210,7 +213,7 @@ export function ensureLayout(): void {
 	for (const dir of shared) {
 		mkdirSync(dir, { recursive: true });
 		try {
-			chmodSync(dir, 0o777);
+			chmodSync(dir, SHARED_DIR_MODE);
 		} catch {
 			/* pre-existing dir owned by another uid — already works or already doesn't */
 		}
@@ -219,7 +222,7 @@ export function ensureLayout(): void {
 	for (const dir of [mediaRoot(), derivedDir()]) {
 		mkdirSync(dir, { recursive: true });
 		try {
-			chmodSync(dir, 0o777);
+			chmodSync(dir, SHARED_DIR_MODE);
 		} catch {
 			/* best effort */
 		}
