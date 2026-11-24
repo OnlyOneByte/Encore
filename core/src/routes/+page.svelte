@@ -5,7 +5,6 @@
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { failureNoticeId } from '$lib/stores/room';
-	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -31,6 +30,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
+	import Spotlight from '$lib/ui/Spotlight.svelte';
+	import { createGrace } from '$lib/ui/grace';
 	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
 	import * as Empty from '$lib/components/ui/empty';
 	import { rememberedKey } from '$lib/stores/remembered-key';
@@ -157,6 +158,11 @@
 	let rawResults = $state<Media[]>([]);
 	let processingResults = $state<Media[]>([]);
 	let searching = $state(false);
+	// Tenet 2: no skeleton for a search under PENDING_GRACE_MS, and once shown it holds that long (#1091).
+	let showSkeleton = $state(false);
+	const searchGrace = createGrace({ onShow: (shown) => (showSkeleton = shown) });
+	$effect(() => searchGrace.set(searching));
+	$effect(() => () => searchGrace.dispose());
 	/* A FAILED SEARCH IS A THIRD STATE, not an empty one. Without this the catch below wiped the rows and the
 	   zero-state then asserted `Nothing matches "<query>"` — the review's only blocks-the-party finding. Reset
 	   wherever a new attempt begins, so the failure cannot outlive the query it belongs to. */
@@ -473,7 +479,10 @@
 	there is no topbar: JoinLanding paints its own brand, so both would say "Encore" twice. -->
 {#if status === 'not-joined'}
 	<main>
-		<JoinLanding />
+		<!-- Loaded on demand: a joined phone opens Sing all night and never needs the join screen's ~1.8 KB gz of CSS. -->
+		{#await import('$lib/components/JoinLanding.svelte') then { default: JoinLanding }}
+			<JoinLanding />
+		{/await}
 	</main>
 {:else}
 	<header class="topbar">
@@ -513,29 +522,38 @@
 					<Button variant="ghost" size="tap" href={resolve('/queue')}>Cancel</Button>
 				</div>
 			{/if}
+			<!-- THE SPOTLIGHT: this screen's one lit surface holds its one job. It stays put whether or not there is a
+					query, so typing never moves it. -->
 			<div class="find-row">
 				<div class="field-slot">
-					<FindField
-						bind:value={query}
-						bind:element={queryEl}
-						ariaLabel="Search a song or artist"
-						placeholder="Search a song or artist…"
-						busy={searching}
-						clearable={searchActive}
-						clearLabel="Clear the search"
-						onclear={clearSearch}
-						oninput={onQueryInput}
-					/>
+					<Spotlight title="What do you want to sing?">
+						<FindField
+							bind:value={query}
+							bind:element={queryEl}
+							ariaLabel="Search a song or artist"
+							placeholder="Search a song or artist…"
+							clearable={searchActive}
+							clearLabel="Clear the search"
+							onclear={clearSearch}
+							oninput={onQueryInput}
+						/>
+						<!-- NEITHER LINE UNTIL THE VERDICT IS KNOWN, and both in one grid cell so the box is always the taller
+								one's height: a cold load printed the promise, then took it back 120 ms later (CLS 0.0039). -->
+						<p class="promise">
+							<span class:shown={verdictKnown && !onlyReady}
+								>Find any song and we'll make the karaoke track for it.</span
+							>
+							<span class:shown={verdictKnown && onlyReady}>Only ready songs can play right now.</span>
+						</p>
+					</Spotlight>
 				</div>
 			</div>
 
-			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. This used to be a four-term boolean naming
-					the queue, the library shelf and the processing group, three things that are no longer on this tab. -->
-			{#if searchActive}
-				{#if searching && rawResults.length === 0 && readyResults.length === 0}
-					<SkeletonRows label="Searching…" />
-				{/if}
-
+			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. With no query the Spotlight is the whole
+					screen. While the skeleton is up it is the only answer, so it never sits above rows it is about to leave. -->
+			{#if searchActive && showSkeleton}
+				<SkeletonRows flat label="Searching…" />
+			{:else if searchActive}
 				<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
 						answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
 				{#if processingRows.length}
@@ -550,6 +568,7 @@
 						{@const r = displayReadiness(c.media, liveOf(c.id))}
 						<SongRow
 							{...rowMeta(c.media)}
+							flat
 							readiness={r}
 							pct={c.pct}
 							status={c.status}
@@ -578,7 +597,7 @@
 				{#if readyResults.length}
 					<h2 class="grouphead" tabindex="-1">Ready to sing</h2>
 					{#each readyView.shown as m (m.id)}
-						<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+						<SongRow {...rowMeta(m)} flat readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 					{/each}
 					<!-- The same door /library ships, down to the copy: the remaining count rides ON the control so a
 							paused list is distinguishable from a finished one, and focus stays on it across the tap, so the
@@ -605,6 +624,7 @@
 						{@const r = readinessFor(m)}
 						<SongRow
 							{...rowMeta(m)}
+							flat
 							readiness={r}
 							pct={liveOf(m.id)?.pct ?? 0}
 							status={liveOf(m.id)?.status}
@@ -634,7 +654,7 @@
 				{#if cantRows.length}
 					<h2 class="grouphead" tabindex="-1">{cantMakeHeading(cantRows.length)}</h2>
 					{#each cantView.shown as m (m.id)}
-						<SongRow {...rowMeta(m)} readiness={readinessFor(m)} inQueue={inMyQueue(m.id)} cantMake />
+						<SongRow {...rowMeta(m)} flat readiness={readinessFor(m)} inQueue={inMyQueue(m.id)} cantMake />
 					{/each}
 					{#if cantView.hidden > 0}
 						<div class="reveal">
@@ -715,45 +735,6 @@
 						</div>
 					{/if}
 				{/if}
-			{:else}
-				<!-- THE IDLE STATE, which is the whole screen with an empty box. It says what this TAB is for: the title
-						used to read "Nothing queued yet", which is false here (the queue is another tab) and is word for word
-						/queue's own idle headline. -->
-				<Empty.Root>
-					<div class="idle">
-						<!-- A MARK, and it is not decoration: this block is the whole screen, and a lone sentence in a void reads
-								as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
-								title beside it already says this in words. -->
-						<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
-						<Empty.Header>
-							<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and this
-								 state REPLACES every `<h2 class="grouphead">` on the tab, so with an empty box the only heading in
-								 the whole document was the wordmark. A guest cycling headings to orient learned nothing about what
-								 the app is. Added at the call site, not by re-vendoring, which is the precedent /settings set for
-								 `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in the comment above
-								 that page's `PageHeader` (named, not line-numbered). -->
-							<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
-							<!-- The promise is only true while something can make karaoke; with no maker it would send the guest
-									into the same dead end the banner above steers them away from. NEITHER LINE UNTIL THE VERDICT IS
-									KNOWN, and both in one grid cell so the box is always the taller one's height: a cold load printed
-									the promise, then took it back 120 ms later, and the block below it jumped (CLS 0.0039). -->
-							<Empty.Description>
-								<span class="promise">
-									<span class:shown={verdictKnown && !onlyReady}
-										>Find any song and we'll make the karaoke track for it.</span
-									>
-									<span class:shown={verdictKnown && onlyReady}>Only ready songs can play right now.</span>
-								</span>
-							</Empty.Description>
-						</Empty.Header>
-						<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
-								they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
-								anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
-						<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
-							<Icon name="search" /> Search for a song
-						</Button>
-					</div>
-				</Empty.Root>
 			{/if}
 		{:else}
 			<RoomPending unreachable={status === 'unreachable'} />
@@ -843,8 +824,7 @@
 	@media (min-width: 768px) {
 		main {
 			display: grid;
-			/* 440px is measured off the row's contents: ~220px goes on thumbnail, badge, button and gaps, so a narrower
-				   column truncates every title. */
+			/* 440px keeps a long title to two lines beside its byline and button. */
 			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
 			gap: 0 var(--space-2xl);
 			align-content: start;
@@ -879,6 +859,10 @@
 	/* Both wordings stacked in one cell: the box is the taller one's height whichever shows, or while neither does. */
 	.promise {
 		display: grid;
+	}
+	/* The field inside the lit card sits on the card's own surface: one lit thing, not a box in a box. */
+	.field-slot :global(.findbox) {
+		background: var(--role-ground);
 	}
 	.promise > span {
 		grid-area: 1 / 1;
@@ -984,51 +968,19 @@
 		max-width: 100%;
 	}
 
-	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
-	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-2xl (the size the title
-	   rule below actually resolves) and 200% text one unbreakable word is wider than the viewport. The size reaches
-	   the vendored slot through `:global()`. */
-	/* FLEX COLUMN, not `grid` + `place-items: center`. The vendored `Empty.Header` is `display: contents`, so its
-	   children become direct children of THIS box — under grid they became two auto rows that split the min-height
-	   between them and put the description 220px below its own title. A centred flex column stacks them as one
-	   group with a real gap, and reads the same when there is only a title. */
-	.idle {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-lg);
-		/* 32vh, DOWN FROM 40: the block carries a mark, a title, a line and a button, so the void that used to stand in
-		   for content is no longer doing that job. Still a `min-height` and still not a centring trick, for the reason the
-		   original note gives — three other rules own this column's height. */
-		min-height: 32vh;
-		padding: var(--space-2xl) var(--space-md);
-		text-align: center;
+	/* The Spotlight's second line, dim: the field above it is the thing to read. */
+	.promise {
+		margin: var(--step-8) 0 0;
+		font-size: var(--type-meta);
+		color: var(--role-ink-dim);
 	}
-	/* The mark's own size, on the type ladder rather than a px literal so it scales with the text it sits above. Dim,
-	   because the TITLE is the thing to read — an accent-coloured glyph here would out-shout it. */
-	.empty-mark {
-		display: grid;
-		place-items: center;
-		font-size: var(--ph-text-2xl);
-		color: var(--ink-dim);
-	}
-	/* THE SPACE IS LOAD-BEARING. Without it this is a COMPOUND selector — one element carrying both `.idle`
-	   and `data-slot="empty-title"` — and `empty-title` is a GRANDCHILD (through `Empty.Header`, which computes to
-	   `display: contents`). It matched nothing, silently: `:global()` suppresses Svelte's unused-selector warning,
-	   so the size, weight and the `overflow-wrap` reflow clause below never applied and the title rendered at the
-	   vendored `text-lg`. */
-	/* --ph-text-2xl, DOWN FROM 3xl (2.6rem / ~42px, the ladder's display rung). The old size was both the
-	   largest type in the app AND dimmed by `.encore-empty`'s --ink-dim, which is the worst pair available: big enough
-	   to dominate the screen, faint enough to
-	   read as a placeholder nobody finished. Full --ink at a heading size states it once, properly. It also now agrees
-	   with /library's `.lib-empty` twin, which was already at this step. */
-	.idle :global([data-slot='empty-title']) {
-		font-size: var(--ph-text-2xl);
-		line-height: var(--lh-snug);
-		font-weight: 700;
-		color: var(--ink);
-		overflow-wrap: anywhere;
+	/* NO EYEBROWS on a Spotlight screen: the group headings are dim sentence case, not uppercase letterspaced. */
+	.grouphead {
+		font-size: var(--type-meta);
+		font-weight: 600;
+		letter-spacing: normal;
+		text-transform: none;
+		margin-bottom: 0;
 	}
 
 	/* Declared here, never inline: an inline style outranks the short-viewport rule below and defeats it. */
@@ -1080,7 +1032,7 @@
 	   precedent and must not be cited as one: its `.inner` left-packs `.back-slot` then `h1` with `gap:
 	   var(--space-md)`, with no trailing slot and no auto margin anywhere in the file. What `/` alone lacks is that
 	   every other header is a capped SURFACE, and this is the cheapest honest form of one.
-	   Deliberately NOT the PageHeader pill: that fill and blur are earned by being STICKY, and this header is not
+	   Deliberately NOT the PageHeader pill: that fill is earned by being STICKY, and this header is not
 	   (docs/FRONTEND.md#the-sing-tab). --line and not --control-line: this is a decorative hairline, not the
 	   boundary of anything operable.
 	   The rule spans the shell's content box, 16px past the rows' column on each side, which is deliberate — a divider

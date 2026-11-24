@@ -8,13 +8,8 @@
   no `--radius-xl` then, so it fell through to Tailwind's; it now aliases `--radius-sm`, which is the SAME 12px
   this rule sets, and that is a requirement rather than a coincidence: `Card.Header`'s `rounded-t-xl`, the
   `*:[img:…]` corners below and `Card.Footer` all resolve it), `shadow-xs`, and `ring-1 ring-foreground/10`
-  in place of a border — while `app.css`'s `.card` carries `--radius-sm`, a 1px `--line` border, and
-  `--shadow-sm` + `inset 0 1px 0 var(--edge-hi)`, a pair whose comment says they "belong together on this
-  one rule rather than per caller: a border alone made every surface in the app read as an outline drawn on
-  the page". Two card looks met at a visible seam — the phone's rows read as lit surfaces while every
-  settings and stats card read as a flat outline — and nothing in the app put them side by side until
-  /components grew a Primitives section, which measured the difference as: same 12px radius and background,
-  but `.card` with `0 1px 2px rgba(0,0,0,.3)` plus the inset edge where `Card.Root` had neither.
+  in place of a border — while `app.css`'s `.card` is a flat fill with `--radius-sm` and a 1px `--line` border.
+  The two must match, so this takes the app's look.
 
   PAINT ONLY. Radius, border and shadow are taken from the app idiom; `--card-spacing` and every layout
   property are left exactly as the registry set them, because that is what makes this safe to apply to every
@@ -55,8 +50,6 @@
 		min-width: 0;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 var(--edge-hi);
+		box-shadow: none;
 	}
 </style>

@@ -27,13 +27,14 @@
 	--type-display: 2.125rem;
 	--type-hero: 3.5rem;
 
-	--step-1: var(--space-2xs);
-	--step-2: var(--space-sm);
-	--step-3: var(--space-lg);
-	--step-4: var(--space-2xl);
-	--step-5: var(--space-5xl);
-	--step-6: 32px;
-	--step-7: 48px;
+	/* Named by value, so a rung added between two never renumbers the rest. */
+	--step-4: var(--space-2xs);
+	--step-8: var(--space-sm);
+	--step-12: var(--space-lg);
+	--step-16: var(--space-2xl);
+	--step-24: var(--space-5xl);
+	--step-32: 32px;
+	--step-48: 48px;
 
 	--round-spot: var(--radius);
 	--round-pill: var(--radius-pill);

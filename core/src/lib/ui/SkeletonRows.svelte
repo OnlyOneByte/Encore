@@ -18,8 +18,10 @@
 		/** How many placeholder rows. Matched to what the surface typically shows, not to a guess at the response. */
 		count = 3,
 		/** What is being waited for, in words — this is the announcement, so it names the ACT ("Searching…"). */
-		label
-	}: { count?: number; label: string } = $props();
+		label,
+		/** Stands in for SongRow's flat rows: no card, no thumbnail. */
+		flat = false
+	}: { count?: number; label: string; flat?: boolean } = $props();
 </script>
 
 <!-- Keyed by index, which is the exception the rule allows: the "items" are placeholders of a fixed length that never
@@ -31,8 +33,8 @@
 			row than the text that replaced it, and no `box-shadow` at all, so the placeholder read as a flat outline while
 			the arriving rows read as lit objects. Neither shared rule carries hover or state colour — SongRow keeps those
 			in its own file — so there is nothing here a placeholder must avoid inheriting. -->
-		<div class="card list-row">
-			<Skeleton variant="thumb" />
+		<div class={['list-row', { card: !flat, flat }]}>
+			{#if !flat}<Skeleton variant="thumb" />{/if}
 			<div class="skel-text">
 				<Skeleton />
 				<Skeleton variant="line-short" />
@@ -48,6 +50,13 @@
 	}
 	/* Two bars in the space the row gives its title and byline. The ROW's box is not described here at all — see the
 	   composed classes on the element above, and the thumb variant, which reads the row frame's own tokens. */
+	/* SongRow's `.row.flat` box. */
+	.flat {
+		margin: 0;
+		padding: var(--step-8) 0;
+		min-height: 64px;
+		border-bottom: 1px solid var(--role-rule);
+	}
 	.skel-text {
 		flex: 1;
 		display: flex;

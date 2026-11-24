@@ -34,7 +34,8 @@ export async function startGallery(path = '/components/spotlight'): Promise<Gall
 			DATA_DIR: dir,
 			MEDIA_DIR: dir,
 			ENCORE_EPHEMERAL: '1',
-			ENCORE_VITE_CACHE_DIR: join(dir, 'vite')
+			ENCORE_VITE_CACHE_DIR: join(dir, 'vite'),
+			ENCORE_VITE_NO_WATCH: '1'
 		}
 	});
 	proc.stdout?.on('data', (d: Buffer) => (output += d.toString()));

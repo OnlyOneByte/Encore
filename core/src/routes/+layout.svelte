@@ -579,12 +579,4 @@
 		width: 100%;
 		max-width: var(--max-w);
 	}
-
-	/* The blur is the surface the strip and the tab bar both sit on, declared once here rather than twice in them:
-	   two translucent layers stacked compound into a darker band than either declares. */
-	@supports (backdrop-filter: blur(1px)) {
-		.dock {
-			backdrop-filter: var(--chrome-blur);
-		}
-	}
 </style>

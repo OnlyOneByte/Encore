@@ -80,7 +80,7 @@
 	button {
 		min-width: var(--tap);
 		min-height: var(--tap);
-		padding: 0 var(--step-3);
+		padding: 0 var(--step-12);
 		border: 0;
 		border-radius: var(--round-pill);
 		background: none;

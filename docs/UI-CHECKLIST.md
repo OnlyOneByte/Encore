@@ -119,8 +119,8 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
   300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. **Automated** (`gate:measured`
   CLAIM 12) on cold loads, the Sing search and a slow or lost `/api/me` (words not before 3 s; the 4 s upper bound
   races, #1093, and is the reviewer's). Today's breaks are expected failures that a fix flips, one per cause:
-  "Finding the room…" on the QR link (#1089), "Loading the queue…" on `/queue` (#1090), and on a Sing search **two**:
-  the "Searching…" skeleton rows (#1091) and the search field's own "Searching" spinner (#1126).
+  "Finding the room…" on the QR link (#1089) and "Loading the queue…" on `/queue` (#1090). The Sing search's two
+  (the skeleton rows and the field's spinner) are fixed and gate as plain tests.
 - **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
   table with the owner's ruling. Read from the diff.
 

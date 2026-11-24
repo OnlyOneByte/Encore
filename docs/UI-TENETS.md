@@ -156,7 +156,7 @@ joined phone and a joined phone opening `/queue` (500 ms), TV `/tv` cold (1000 m
 (CLAIM 10, ≤ 100 ms, with the dock tabs, On deck's key and Try again). The **4× column is reported, never gated**:
 printed in the gate output and attached to the run, and checked on a quiet machine or by the reviewer's A/B run,
 because a throttled page on a shared, loaded box swings 2–3× between runs. The CSS and JS each route ships is gated too
-(CLAIM 13, gzipped; `/` 20.4 + 129.0 KB, `/queue` 21.6 + 143.9 KB, `/tv` 20.2 + 132.0 KB today, with about 3%
+(CLAIM 13, gzipped; `/` 19.4 + 126.7 KB, `/queue` 22.1 + 146.1 KB, `/tv` 20.4 + 133.2 KB today, with about 3%
 headroom); a PR that shrinks a route lowers its budget in the same PR. Every other row is reported by the PR that
 touches it, measured on `main` and on the branch.
 

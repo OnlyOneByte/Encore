@@ -1,7 +1,7 @@
 // THE SING TAB IS ONE SEARCH BOX (proposal 21). The Music / Everything / YouTube / Library menu under the field is
 // gone: its choices returned the same rows and "Library" meant everything anyone had searched for. Six claims:
-//   1. At 390x844 and 320x568 the find row is the field alone: no `<select>` in the column, and the row is one
-//      control tall, so the content below it starts where the menu used to.
+//   1. At 390x844 and 320x568 the Spotlight holds the field alone: no `<select>` in the column, the field spans
+//      the card, and the card's only control with an empty box is the field.
 //   2. `Not it? Search everything` is the one way wider, and it lasts for ONE query: its tap re-runs the query
 //      with `source=all`, and the next keystroke, or a clear, goes back to the route's default (no `source`).
 //   3. The narrowing filter is still reachable off-screen: `/?source=local` sends `source=local`, and the widen is
@@ -43,7 +43,7 @@ function nextSearch(page: Page, q: string): Promise<string> {
 		.then((r) => new URL(r.url()).searchParams.get('source') ?? '');
 }
 
-test('the find row is the search field alone at 390 and 320', async ({ world }) => {
+test('the Spotlight holds the search field alone at 390 and 320', async ({ world }) => {
 	const page = await world.openPhone('Maya');
 	for (const vp of [
 		{ width: 390, height: 844 },
@@ -54,12 +54,14 @@ test('the find row is the search field alone at 390 and 320', async ({ world }) 
 		await openBrowseFromHome(page);
 		await expect(page.locator('main select'), `no menu in the Sing column at ${vp.width}`).toHaveCount(0);
 		await expect(page.getByRole('combobox', { name: 'Where to search' })).toHaveCount(0);
-		const row = await page.locator('.find-row').boundingBox();
-		const field = await page.locator(SEL.findBox).first().boundingBox();
-		expect(row && field, 'find row and field both render').toBeTruthy();
-		// One control tall: the menu wrapped onto its own line below 520px, which made the row 124px at 320.
-		expect(Math.round(row!.height), `the row is the field's height at ${vp.width}`).toBe(Math.round(field!.height));
-		expect(Math.round(field!.width), `the field spans the row at ${vp.width}`).toBe(Math.round(row!.width));
+		// The region is named by its heading alone (aria-labelledby), so the name is said once.
+		const spot = page.getByRole('region', { name: 'What do you want to sing?', exact: true });
+		await expect(spot).toHaveCount(1);
+		const body = await spot.locator('.body').boundingBox();
+		const field = await spot.locator(SEL.findBox).boundingBox();
+		expect(body && field, 'the Spotlight and its field both render').toBeTruthy();
+		expect(Math.round(field!.width), `the field spans the card at ${vp.width}`).toBe(Math.round(body!.width));
+		await expect(spot.locator('input, select, button, a'), "the field is the card's only control").toHaveCount(1);
 		await shoot(page, `idle-${vp.width}`);
 	}
 });

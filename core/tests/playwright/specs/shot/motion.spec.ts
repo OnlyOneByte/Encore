@@ -825,6 +825,36 @@ function singWiden(width: number): Make {
 	};
 }
 
+/** The Sing tab's Spotlight (redesign step 3) as a guest taps Sing from Queue: the lit card fades in from
+ *  scale(.98) over --motion-base, the tab's only motion. It tells the guest where the next thing to do is. */
+function singSpotlight(width: number): Make {
+	return (browser, world) => {
+		let maya: Page | undefined;
+		return {
+			name: `phone-sing-spotlight-${width}`,
+			what: `Phone ${width}: tapping the Sing tab from Queue, the search Spotlight fades in from scale(.98) over --motion-base`,
+			stepMs: 12,
+			scale: 1,
+			columns: 6,
+			open: async (opts) => {
+				maya ??= await world.openPhone(`Spot${++joins}`);
+				const page = await asSinger(browser, world, opts, maya, width);
+				if (width === 320) await page.setViewportSize({ width, height: 568 });
+				await page.goto('/queue');
+				await openQueue(page);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await page.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
+				await page.locator('.find-row .spotlight').waitFor({ state: 'attached' });
+			},
+			only: '.find-row .spotlight',
+			subject: '.find-row .spotlight'
+		};
+	};
+}
+
 /** Restart resting in place (#1050) on Theo's phone at one width, as the strip goes between a song and a waiting line:
  *  `rest`, Ana skips Maya's caroline and Theo's unmakeable song (no worker) leaves "Can't make new karaoke right now";
  *  `return`, from that line Maya's believin starts. The key fades (opacity, --motion-base) and keeps its slot, so the
@@ -994,6 +1024,8 @@ const SCENARIOS: Record<string, Make> = {
 	'spotlight-guide-tv': spotlightStory('guide', { width: 1920, height: 1080 }),
 	'phone-sing-widen-390': singWiden(390),
 	'phone-sing-widen-320': singWiden(320),
+	'phone-sing-spotlight-390': singSpotlight(390),
+	'phone-sing-spotlight-320': singSpotlight(320),
 	'phone-restart-rest-390': restartRest(390, false),
 	'phone-restart-rest-320': restartRest(320, false),
 	'phone-restart-return-390': restartRest(390, true),

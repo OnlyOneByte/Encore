@@ -57,6 +57,8 @@
 		processable?: boolean;
 		/** Nothing connected can make it now: no action, since a Sing that cannot work is a dead tap (docs/FRONTEND.md). */
 		cantMake?: boolean;
+		/** The Spotlight row (Sing): no card, no thumbnail, text that wraps, an outlined action. */
+		flat?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
 		onmake?: () => void;
@@ -77,6 +79,7 @@
 		inQueue = false,
 		processable = true,
 		cantMake = false,
+		flat = false,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -122,7 +125,7 @@
 	 * sees a direct reference and reports a block-scoped use before declaration.
 	 */
 	const metaFacts = $derived(
-		[byline, views ? `${views} views` : '', showKey ? keyName : ''].filter(Boolean).join(' · ')
+		[byline, views ? `${views} views` : '', showKey ? keyName : '', flat ? duration : ''].filter(Boolean).join(' · ')
 	);
 	/* `durationNote` IS NOT IN THAT JOIN, and the measurement is why. It was demoted to byline text with the other two
 	   and it does not fit: the byline is 144px on a 390px phone and "Longer than a song" alone measures 116 of them.
@@ -201,22 +204,29 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class={['row', 'card', 'list-row', { ready: readiness === 'ready', processing: readiness === 'processing' }]}
+			class={[
+				'row',
+				'list-row',
+				{ card: !flat, flat, ready: readiness === 'ready', processing: readiness === 'processing' }
+			]}
 		>
-			<Item.Media
-				><div class="thumb">
-					{#if thumbSrc}
-						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
-						<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
-					{:else}
-						<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
-						<span class="ph"><Icon name="play" /></span>
-					{/if}
-					{#if duration}
-						<span class={['dur', { odd: oddDuration }]}>{duration}</span>
-					{/if}
-				</div></Item.Media
-			>
+			<!-- No thumbnail on a flat row (owner ruling): fewer bytes and decodes per keystroke. -->
+			{#if !flat}
+				<Item.Media
+					><div class="thumb">
+						{#if thumbSrc}
+							<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
+							<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
+						{:else}
+							<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
+							<span class="ph"><Icon name="play" /></span>
+						{/if}
+						{#if duration}
+							<span class={['dur', { odd: oddDuration }]}>{duration}</span>
+						{/if}
+					</div></Item.Media
+				>
+			{/if}
 
 			<Item.Content>
 				<!-- THE MARK MUST STAY A SIBLING of `.t`, never a child: `.t` is a two-line clamp with overflow hidden, so a
@@ -525,6 +535,54 @@
 		border-color: var(--line);
 		color: var(--ink-dim);
 		opacity: 0.65;
+	}
+
+	/* THE FLAT ROW: ink on the ground, a hairline between rows, and nothing ellipsised at 320 (G2). */
+	.row.flat {
+		margin: 0;
+		padding: var(--step-8) 0;
+		min-height: 64px;
+		border: 0;
+		border-bottom: 1px solid var(--role-rule);
+		border-radius: 0;
+		background: none;
+	}
+	.flat .t {
+		display: block;
+		-webkit-line-clamp: none;
+		line-clamp: none;
+		overflow: visible;
+		overflow-wrap: anywhere;
+		font-size: var(--type-title);
+	}
+	.flat .byline {
+		white-space: normal;
+		overflow-wrap: anywhere;
+		font-size: var(--type-meta);
+	}
+	/* The chips read as toned words, not pills: no fill on a flat row. */
+	.flat .chips {
+		column-gap: var(--step-12);
+	}
+	.flat :global([data-slot='badge']) {
+		padding: 0;
+		border: 0;
+		background: none;
+	}
+	/* Outlined, so the Spotlight keeps the screen's one accent. */
+	.flat :global([data-slot='button'][data-testid]) {
+		border-radius: var(--round-pill);
+		border: 1.5px solid var(--role-control);
+		background: none;
+		color: var(--role-ink);
+	}
+	.flat :global([data-slot='button'][data-row-state='queued']) {
+		border-color: var(--role-accent);
+		color: var(--role-accent-ink);
+	}
+	.flat :global([data-slot='button'][data-row-state='unavailable']) {
+		border-color: var(--role-rule);
+		color: var(--role-ink-dim);
 	}
 
 	/* Below the narrow breakpoint the title gains a third line, because the version marker this row exists to show is

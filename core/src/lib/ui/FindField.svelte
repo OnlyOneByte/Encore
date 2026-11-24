@@ -1,13 +1,13 @@
 <script lang="ts">
 	/*
-	 * THE APP'S ONE TEXT FIELD SHAPE: a leading mark, a borderless input, an optional spinner, an optional clear
-	 * control, and the focus ring drawn around the WHOLE box rather than the input. `/` and `/library` declared all of
-	 * it twice — five CSS rules byte for byte, and near-identical markup.
+	 * THE APP'S ONE TEXT FIELD SHAPE: a leading mark, a borderless input, an optional clear control, and the focus
+	 * ring drawn around the WHOLE box rather than the input. `/` and `/library` declared all of it twice — five CSS
+	 * rules byte for byte, and near-identical markup.
 	 *
 	 * THE TWO CALLERS DO OPPOSITE THINGS and that is deliberate, not an accident this component should paper over:
-	 * home's field FETCHES from three resolvers (hence `busy`, which is the only reason a spinner exists here), while
-	 * /library's narrows rows already in memory. What they share is the CONTROL; the behaviour stays at the call site,
-	 * which is why this takes callbacks rather than owning a query.
+	 * home's field FETCHES from three resolvers, while /library's narrows rows already in memory. What they share is
+	 * the CONTROL; the behaviour stays at the call site, which is why this takes callbacks rather than owning a query.
+	 * No spinner: Sing's wait is its graced skeleton rows (tenet 2), and a second indicator flashed (#1126).
 	 *
 	 * SIZING IS THE CALLER'S. The root is `width: 100%; min-width: 0` and nothing else, because the two need different
 	 * flex behaviour — home caps it at the prose measure, /library bounds it by its row grid. A class handed to a component is
@@ -19,15 +19,12 @@
 	 */
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Spinner } from '$lib/components/ui/spinner';
 
 	let {
 		value = $bindable(''),
 		/** The accessible name. Distinct from `placeholder` on purpose: a placeholder is not a label. */
 		ariaLabel,
 		placeholder,
-		/** Renders the spinner. Only true for a field that actually goes somewhere. */
-		busy = false,
 		/** Whether to offer the clear control right now — the caller decides what "has something to clear" means. */
 		clearable = false,
 		/** The clear control's accessible name. It differs by caller ("the search" vs "the filter"), and it is the
@@ -41,7 +38,6 @@
 		value?: string;
 		ariaLabel: string;
 		placeholder: string;
-		busy?: boolean;
 		clearable?: boolean;
 		clearLabel?: string;
 		onclear?: () => void;
@@ -53,7 +49,6 @@
 <div class="findbox">
 	<span class="find-mark"><Icon name="search" /></span>
 	<input bind:this={element} bind:value={value} oninput={oninput} aria-label={ariaLabel} placeholder={placeholder} />
-	{#if busy}<Spinner aria-label="Searching" />{/if}
 	{#if clearable}
 		<Button variant="ghost" size="icon" aria-label={clearLabel} onclick={onclear}>
 			<Icon name="close" />

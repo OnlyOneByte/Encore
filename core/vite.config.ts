@@ -8,8 +8,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	// Unset in normal use. The test gallery gives each `vite dev` its own, or two dependency optimisers race on one.
 	cacheDir: process.env.ENCORE_VITE_CACHE_DIR,
-	// A trace .html Playwright writes there made `vite dev` reload every open page mid-test.
-	server: { watch: { ignored: ['**/tests/playwright/.artifacts/**'] } },
+	// A trace .html Playwright writes there made `vite dev` reload every open page mid-test. The test gallery turns
+	// watching off: it never edits a file, and one watcher per instance ran the box out of file handles (EMFILE).
+	server: { watch: process.env.ENCORE_VITE_NO_WATCH ? null : { ignored: ['**/tests/playwright/.artifacts/**'] } },
 	// Scan every route at startup: a dependency found later re-bundles mid-session and breaks open pages (a 500).
 	optimizeDeps: { entries: ['src/routes/**/+*.{svelte,ts}'] },
 	// bun:sqlite is a Bun built-in — keep it external in VITE's SSR build. This does NOT reach the adapter:

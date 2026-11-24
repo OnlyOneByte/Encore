@@ -210,10 +210,10 @@ test('CLAIM 10 Try again answers in the next frame', async ({ world }) => {
 	}
 });
 
-// One test per indicator, so each fix flips only its own test.
+// One test per indicator that used to flash (#1091, #1126).
 const SEARCH_FLASHES = [
-	{ name: 'the "Searching…" skeleton rows', match: /^DIV\.skels /, issue: '#1091' },
-	{ name: 'the search field\'s "Searching" spinner', match: /^SPAN\.encore-spinner /, issue: '#1126' }
+	{ name: 'the "Searching…" skeleton rows', match: /^DIV\.skels / },
+	{ name: 'the search field\'s "Searching" spinner', match: /^SPAN\.encore-spinner / }
 ];
 async function searchFlashes(world: World) {
 	const track = await world.awaitDemoTrack('caroline');
@@ -230,9 +230,8 @@ async function searchFlashes(world: World) {
 }
 
 for (const flash of SEARCH_FLASHES) {
-	test(`CLAIM 12 KNOWN BREAK a Sing search shows no flash of ${flash.name}`, async ({ world }) => {
+	test(`CLAIM 12 a Sing search shows no flash of ${flash.name}`, async ({ world }) => {
 		const f = (await searchFlashes(world)).filter((i) => flash.match.test(i.what));
-		knownBreak(`${flash.name} flash on a Sing search, ${flash.issue}`);
 		expect(f, `CLAIM 12 ${flash.name} flashed for under 300 ms while searching`).toEqual([]);
 	});
 }
