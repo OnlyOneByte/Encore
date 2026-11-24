@@ -763,6 +763,12 @@
 		min-width: 0;
 		display: flex;
 	}
+	/* The size's rem `px-2.5 gap-1.5` out-merge the variant's own, so at a 32px root the button outgrew
+	   `.me-cluster`'s floor and the dot slid under the gear. These are the values that floor sums. */
+	.me-slot :global([data-slot='button']) {
+		padding-inline: var(--space-xs);
+		gap: var(--space-sm);
+	}
 	.gear-slot {
 		/* `ghost` sets no base text colour, only a hover one, so the dim ink is supplied here. */
 		margin-right: -10px;
