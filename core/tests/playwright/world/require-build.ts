@@ -1,3 +1,4 @@
+// Throwaway: a core change, to show probes.yml running. Never merged.
 // `bun run build` output. The gate and every flow serve the BUILT app, so an unbuilt tree is an environment
 // error with the remedy printed — never a skip. This repo already ruled that a permanently-skipped test is
 // indistinguishable from the rot it was meant to catch.
