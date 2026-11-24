@@ -17,6 +17,7 @@ import { can, type Capability } from '../capabilities';
 import { queueEntries } from '../db/schema';
 import { entryPrefsRefusal, onDeckOpRefusal, type OnDeckOp } from './on-deck-ops';
 import { heldOnDeck, stealsHeld } from '../rotation';
+import type { TurnEnd } from '../nights/repository';
 
 /** The refusal a reorder that would steal On deck gets. The phone parses it to name the singer (room.ts `onReject`), so
  *  it carries the held entry's id: keep the two in step. */
@@ -68,6 +69,10 @@ export interface HubDeps {
 	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
 	/** Mirror of onEntryRemoved: re-prioritizes any in-flight process for that media. */
 	onEntryAdded?: (mediaId: string, entries: QueueEntry[]) => void;
+	/** The playing song's singer changed its key, for that turn's row in their night. */
+	onKeyChanged?: (entryId: string) => void;
+	/** A turn on stage finished, was skipped or failed, with the key and guide it ended on. */
+	onTurnEnded?: (entry: QueueEntry, end: TurnEnd, endedWith: { keyShift: number; guideLevel: number | null }) => void;
 	/** A song the host deleted that is waiting out its Undo window: an add of it is refused as gone. */
 	isDeleting?: (mediaId: string) => boolean;
 	/** Resolved from the session cookie at WS upgrade; `undefined` for a socket that never joined. `add`

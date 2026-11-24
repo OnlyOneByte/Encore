@@ -354,7 +354,7 @@ const server = Bun.serve<SocketData>({
 					break;
 				case 'room:react': {
 					const current = state.entries.find((e) => e.id === state.playback.currentEntryId);
-					handleReaction(evt.kind, {
+					const sent = handleReaction(evt.kind, {
 						actorSingerId: ws.data.singerId,
 						currentSingerId: current?.singerId ?? null,
 						isEnabled: () => app.settings.getRoom(app.activeRoomId).tvReactions,
@@ -363,6 +363,8 @@ const server = Bun.serve<SocketData>({
 						// The TV topic, NEVER `broadcast`: phones are not subscribed to it.
 						publishToTv: (e) => server.publish(roomTvTopic(app.activeRoomId), JSON.stringify(e))
 					});
+					// A count for the singer's night, never who cheered.
+					if (sent && current) app.nights.cheered(current.id);
 					break;
 				}
 			}

@@ -60,6 +60,8 @@ import { createPopularityTracker, type PopularityTracker } from './media/popular
 import { JobRepository } from './jobs/repository';
 import { ATTEMPT_PRUNE_EVERY_MS, ATTEMPT_RETENTION_MS, AttemptLedger } from './jobs/attempts';
 import { PlayLog } from './media/play-log';
+import { NightLog } from './nights/repository';
+import { dailyNightSweep, recordTurn, sweepGuestNights } from './nights/service';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
@@ -88,6 +90,8 @@ export interface EncoreApp {
 	attempts: AttemptLedger;
 	/** One row per performance — the time axis a play COUNTER cannot provide. */
 	playLog: PlayLog;
+	/** Each singer's own turns, for their recap; never served to anyone else. */
+	nights: NightLog;
 	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
@@ -564,6 +568,7 @@ export function getApp(): EncoreApp {
 
 	let lastAttemptPrune = 0;
 	let personPrune: (() => void) | null = null;
+	let nightSweep: (() => void) | null = null;
 	// A lease expiry may have changed capacity, so redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
@@ -579,6 +584,7 @@ export function getApp(): EncoreApp {
 			}
 			// Daily as well as at boot, so a core that runs for months still drops people whose phones all went idle.
 			(personPrune ??= dailyPersonPrune(app, now))();
+			(nightSweep ??= dailyNightSweep(app, now))();
 			// Every tick: an unused grace's salt must not outlive its window (docs/SERVER.md#kept-people).
 			app.people.clearExpiredGrace(now);
 		},
@@ -604,6 +610,7 @@ export function getApp(): EncoreApp {
 		jobs,
 		attempts,
 		playLog,
+		nights: new NightLog(db),
 		settings,
 		reaper,
 		workers,
@@ -630,6 +637,7 @@ export function getApp(): EncoreApp {
 
 	// A person whose every phone went idle can never come back, so their nights go too.
 	pruneIdlePeople(app);
+	sweepGuestNights(app);
 
 	g[APP_KEY] = app;
 	return g[APP_KEY]!;
@@ -724,6 +732,8 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 				now: app.now,
 				dispatch: () => app.workerHub.dispatch()
 			}),
+		onKeyChanged: (entryId) => app.nights.keyChanged(entryId),
+		onTurnEnded: (entry, end, endedWith) => recordTurn(app, entry, end, endedWith),
 		isDeleting: (mediaId) => app.pendingDeletes.has(mediaId),
 		actorSingerId: perFrame.actorSingerId,
 		seenOp: perFrame.seenOp,

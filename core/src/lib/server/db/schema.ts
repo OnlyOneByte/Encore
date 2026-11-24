@@ -340,6 +340,53 @@ export const jobAttempts = sqliteTable(
 	})
 );
 
+// A party: it starts at the first turn after 6 hours with none and ends at its last turn. See docs/SERVER.md#your-night.
+export const nights = sqliteTable(
+	'nights',
+	{
+		id: text('id').primaryKey(),
+		roomId: text('room_id').notNull(),
+		startedAt: integer('started_at').notNull(),
+		endedAt: integer('ended_at').notNull()
+	},
+	(t) => ({ byRoom: index('nights_room_idx').on(t.roomId, t.endedAt) })
+);
+
+// One finished, skipped or failed turn, for that singer's own recap. Never who cheered. See docs/SERVER.md#your-night.
+export const performances = sqliteTable(
+	'performances',
+	{
+		id: text('id').primaryKey(),
+		roomId: text('room_id').notNull(),
+		nightId: text('night_id').notNull(),
+		singerId: text('singer_id').notNull(),
+		// Stamped when the singer is kept, so Delete me reaches it and the 90-day guest sweep skips it.
+		personId: text('person_id'),
+		mediaId: text('media_id').notNull(),
+		entryId: text('entry_id').notNull(),
+		startedAt: integer('started_at').notNull(),
+		endedAt: integer('ended_at').notNull(),
+		end: text('end', { enum: ['finished', 'skipped', 'failed'] }).notNull(),
+		keyShift: integer('key_shift').notNull().default(0),
+		keyChanges: integer('key_changes').notNull().default(0),
+		guideLevel: real('guide_level'),
+		cheers: integer('cheers').notNull().default(0)
+	},
+	(t) => ({
+		uniqEntry: uniqueIndex('performances_entry_idx').on(t.entryId),
+		bySinger: index('performances_singer_idx').on(t.singerId),
+		byPerson: index('performances_person_idx').on(t.personId),
+		byNight: index('performances_night_idx').on(t.nightId),
+		byEnded: index('performances_ended_idx').on(t.endedAt)
+	})
+);
+
+// "Don't keep my nights": a singer id, or a person id once kept. Its own table, so no roster projection can carry it.
+export const nightOptOuts = sqliteTable('night_opt_outs', {
+	subjectId: text('subject_id').primaryKey(),
+	createdAt: integer('created_at').notNull()
+});
+
 /** The sidecar's `library.playCount` stays the authoritative total and drives LRU retention; this answers WHEN, which a counter cannot and `queue_entries` cannot either, being wiped every flush. Deliberately no `singer_id`. */
 export const plays = sqliteTable(
 	'plays',

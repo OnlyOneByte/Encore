@@ -1,6 +1,6 @@
 // `room:react` intake: a guest's cheer for whoever is singing, shown on the TV and nowhere else. Fire-and-forget
 // by design — a tap that is refused or rate-limited gets no reply, because there is nothing a guest could do
-// about one, and nothing about a reaction is persisted (the `plays` table stays singer-free on purpose).
+// about one. Only a count per turn is kept, in the singer's own night; never who cheered.
 
 import { isReactionKind, type ReactionKind, type ServerEvent } from '../../contract';
 

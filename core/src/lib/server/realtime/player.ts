@@ -14,6 +14,7 @@ import {
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation';
 import { entryResolves } from '../state/store';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
+import type { TurnEnd } from '../nights/repository';
 
 /**
  * Fields a NEW song clears. PlaybackState is a long-lived singleton and setPlayback takes a Partial, so
@@ -145,9 +146,11 @@ export function onTvHello(deps: HubDeps): void {
 
 /** Advance to the next playable entry (held-slot aware). Returns the new current (or null). A FAILED song is not
  *  sung: its entry goes back to `queued` in the slot it already holds, and `nextPlayable` skips it from there. */
-function advance(deps: HubDeps, outcome: 'done' | 'failed' = 'done'): QueueEntry | null {
+function advance(deps: HubDeps, outcome: TurnEnd): QueueEntry | null {
 	const { state } = deps;
 	const cur = state.playback.currentEntryId;
+	const ended = state.entries.find((e) => e.id === cur);
+	const endedWith = { keyShift: state.playback.keyShift, guideLevel: state.playback.guideLevel };
 	// shortcut: the failed singer keeps the `lastSungAt` stamp their start wrote, so under least-recently-sung their
 	// NEXT add lands as if they had sung; un-stamp it if a room on that order reports it.
 	if (cur)
@@ -171,6 +174,7 @@ function advance(deps: HubDeps, outcome: 'done' | 'failed' = 'done'): QueueEntry
 	});
 	// Only when something ACTUALLY changed — an unchanged snapshot just makes clients redo work.
 	if (cur || next) publishQueue(deps);
+	if (ended) deps.onTurnEnded?.(ended, outcome, endedWith);
 	return next ?? null;
 }
 
@@ -235,14 +239,16 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps, sendToOri
 			if (Number.isFinite(cmd.positionSec)) state.setPlayback({ positionSec: Math.max(0, cmd.positionSec) });
 			break;
 		case 'skip':
-			advance(deps);
+			advance(deps, 'skipped');
 			break;
 		case 'key': {
 			// Only for a song whose stems are ready — nothing to re-pitch before separation. `isEntryReady`
 			// resolves the media itself and is false when there is none, so no separate lookup is needed.
 			const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
 			if (cur && isEntryReady(cur, deps.mediaById)) {
-				state.setPlayback({ keyShift: clampKeyShift(cmd.semitones) });
+				const keyShift = clampKeyShift(cmd.semitones);
+				if (keyShift !== state.playback.keyShift) deps.onKeyChanged?.(cur.id);
+				state.setPlayback({ keyShift });
 			}
 			break;
 		}
@@ -307,7 +313,7 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 			}
 			return;
 		}
-		advance(deps, t.failed ? 'failed' : 'done');
+		advance(deps, t.failed ? 'failed' : 'finished');
 		deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		emitNowPlaying(deps);
 		return;

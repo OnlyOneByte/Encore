@@ -564,7 +564,8 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
   session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party.
   KEPT-ONLY: `DELETE /api/me/person` and `DELETE /api/me/person/others` need the singer cookie AND this
-  phone's device cookie, naming the same person ([Kept people](#kept-people)). `/api/thumb` is bounded by an https-only host allowlist rather than by a
+  phone's device cookie, naming the same person ([Kept people](#kept-people)). `/api/me/nights` is the
+  caller's own and session-gated ([Your night](#your-night)). `/api/thumb` is bounded by an https-only host allowlist rather than by a
   session, which is the SSRF boundary and not a convenience.
 - **`plays` carries no singer column, structurally.** That is what makes the public stats endpoints
   aggregate-only by construction rather than by a filter, so no per-singer figure can be served from them
@@ -708,8 +709,9 @@ as the same person. There is no email, no password and no signup screen.
   every other night of theirs still signed in (`endSession` and the socket release a Leave uses).
 - **Delete me** (`DELETE /api/me/person`) deletes the person, every device, and every past night's `singers`
   row. Tonight's row stays, unlinked, so the guest is still in the room; a night still holding a queue entry is
-  unlinked instead of deleted, so the queue keeps its singer. Proposal 29's history (not built yet) must be
-  deleted in `forgetPerson` with those rows, and so must anything else later keyed on a singer or a person.
+  unlinked instead of deleted, so the queue keeps its singer. `forgetPerson` also deletes every
+  [night](#your-night) of the person, tonight's included; anything else later keyed on a singer or a person
+  must be deleted there too.
 - **Nothing reaches the room.** `publicSinger` strips `sessionToken`, `roomId` and `personId` from every wire
   projection: rosters, `singer:joined`, `/api/me` and the settings loads. The TV learns nothing about accounts.
 
@@ -725,6 +727,44 @@ as the same person. There is no email, no password and no signup screen.
 | CSRF from another site | The Origin check refuses every write ([Requests from other sites](#requests-from-other-sites)). |
 | The DB file or a backup | Device tokens are stored as SHA-256 only. |
 | Sniffing the Wi-Fi | As for every cookie over plain HTTP. A kept person holds a name and a colour, never a password, email or payment detail. |
+
+### Your night
+
+Proposal 29, PR 2 (#1108). Each singer's turns are kept for their own recap ("Your night"); the phone and TV
+screens come in later PRs. `src/lib/server/nights/` owns it.
+
+- **Tables.** `performances`: one row per turn that finished, was skipped or failed, with the song, start and
+  end, the key and guide it ended on, how many times its singer changed the key, and how many cheers it got.
+  Cheers are a count, never who cheered. `nights` groups a room's turns: a turn more than 6 hours after the
+  room's last one starts a new night (`NIGHT_GAP_MS`). There is no device data, no IP and no user agent.
+  `plays` and `/stats` are unchanged and stay singer-free.
+- **Recording.** `advance()` in `realtime/player.ts` calls `onTurnEnded`. `recordTurn` takes the turn's counts,
+  end time and kept person at once, and writes the row on `setImmediate`, after the handoff's frames are
+  flushed; a failure is logged and never reaches playback. The start time is the turn's `plays` row. Key
+  changes and cheers are counted in memory for the turn on stage only, so a restart mid-song loses that song's
+  counts, and a turn that leaves the stage another way (removed, or its song deleted) is not recorded and its
+  counts are dropped when the next turn counts. A failed turn sung again on Try again keeps its one row and
+  takes the later outcome.
+- **The gap before the write.** A Delete me that lands between a turn's end and its write wins: the turn's
+  person is gone, so no row is written. A guest's Delete my history in that same gap does not catch the turn
+  that just ended; its row lands a moment later and can be deleted again.
+- **Recording is on by default**, as the north star sets for home parties. "Don't keep my nights" adds the singer, and the
+  kept person when the device cookie proves it, to `night_opt_outs`; a turn of anyone listed writes nothing.
+  Opting out stops new rows only: the nights already kept stay until Delete my history.
+  The opt-out is its own table so no roster projection can carry it, and Keep me copies it to the person.
+- **Reading.** `GET /api/me/nights` lists your nights, newest first, with `recording`. `GET /api/me/nights/:id`
+  returns your own turns in one night, with titles from the catalog. Both answer only about the caller: the
+  singer from `encore_singer`, and the kept person only when the device cookie names them too, as for Delete
+  me. A night you sang nothing in is 404, even if others did, and its times are your own turns', never the
+  room's. No cookie, a forged one, or one ended by Leave is 401.
+- **Changing it.** `PATCH /api/me/nights { recording }` and `DELETE /api/me/nights` (Delete my history, every
+  row you can read) are the caller's own, behind the same Origin and JSON checks as every write. Keep me
+  stamps tonight's rows with the person (`performances.person_id`), and Delete me deletes them all.
+- **Retention.** At boot and once a day on the reaper tick (`dailyNightSweep`), a guest's rows older than 90
+  days go (`GUEST_NIGHTS_RETENTION_MS`), and then nights left with no rows. A kept person's rows stay until
+  Delete me, or until the person is pruned after 180 days with no phone. Both periods are constants for now.
+- **Nothing reaches another phone or the TV.** No frame carries a performance, and the host has no route to a
+  guest's history: the host cookie is not a singer cookie.
 
 ### Requests from other sites
 
