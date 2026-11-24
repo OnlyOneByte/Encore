@@ -45,6 +45,8 @@ async function twoTabs(browser: Browser, world: World, name: string, width: numb
 /** Leave through the real You pane, as a guest does. */
 async function leaveFrom(tab: Page): Promise<void> {
 	await tab.goto('/settings/you');
+	// The pane's HTML comes from the server, so its button is there before it does anything; the dock is client-only.
+	await tab.locator(SEL.dock).waitFor({ state: 'attached' });
 	await tab.getByRole('button', { name: 'Leave the room' }).click();
 	await tab.getByRole('button', { name: 'Yes, leave' }).click();
 	await tab.waitForURL((u) => u.pathname === '/');
@@ -99,8 +101,9 @@ test('the server closes the leaver socket before the Leave answers: still no los
 	// The Leave lands on the server, but its answer is held until the 4001 close and its /api/me 401 have come back.
 	await a.route('**/api/leave', async (route) => {
 		if (route.request().method() !== 'POST') return route.continue();
-		const response = await route.fetch();
+		// Counted before the fetch: the server's 4001 close, and its /api/me, can come before the Leave's answer does.
 		const before = asked;
+		const response = await route.fetch();
 		await expect.poll(() => asked, { timeout: 5_000 }).toBeGreaterThan(before);
 		await a.waitForTimeout(500);
 		await route.fulfill({ response });

@@ -158,6 +158,13 @@ Chromium reports `navigator.onLine = false` from the start, so `setOffline(true)
 the phone's "Reconnecting…" cue waits out its heartbeat. Take a page offline with `goOffline` (`actors.ts`),
 which fails with that remedy instead.
 
+## Keeping core's log
+
+A failed test gets core's whole output as its `core.log` attachment. A passing test can still hide a server
+error, such as a 500 on a page it only glanced at, so set `ENCORE_KEEP_CORE_LOG=1` to write every test's log to
+`core.log` in its output directory under `tests/playwright/.artifacts/`. It is off by default; then
+`grep -rl ' 500 \|Error' tests/playwright/.artifacts/*/core.log` finds the run to read.
+
 ## Autoplay
 
 Headless Chromium here cannot be made to refuse autoplay: an unmuted `play()` succeeds from a cold load with no
