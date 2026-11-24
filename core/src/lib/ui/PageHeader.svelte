@@ -79,29 +79,9 @@
 		width: 100%;
 		max-width: min(var(--page-measure, var(--max-w)), calc(100dvw - 2 * var(--space-2xl)));
 		border-radius: var(--radius-pill);
-		/* `--card`, the same fill the strip and the tab bar paint, and the OPAQUE FALLBACK for the blurred one below: on a
-			   sticky element a translucent fill with nothing behind it lets scrolled content read straight through the title.
-			   The `@supports` arm is what earns the translucency — see the note there. */
+		/* Opaque, so scrolled rows never read through the title. */
 		background: var(--card);
-		/* The FLOATING rung: this surface sticks over a scrolling column, so it is the far end of the ladder from the rows
-		   passing beneath it. With the lit edge, so it agrees with `.card` about where the light is. */
-		box-shadow:
-			var(--shadow),
-			inset 0 1px 0 var(--edge-hi);
 		z-index: var(--z-header);
-	}
-	/* THE BLUR IS GATED, and that is the whole reason the opaque fill stays declared above: `backdrop-filter` is the only
-	   thing that makes a translucent sticky surface legible, so the fill may only go translucent where the filter is
-	   actually applied. Both spellings are tested — Safari shipped this prefixed and still matches only `-webkit-`. The
-	   pair comes from `--chrome-fill`/`--chrome-blur` so the header and the dock cannot drift apart. The mechanism is
-	   unchanged by the phone-shell rebuild, only the parties: `.dock` declares `backdrop-filter: var(--chrome-blur)`
-	   ONCE for both of its rows, because two translucent layers stacked compound into a darker band than either. */
-	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-		.page-header {
-			background: var(--chrome-fill);
-			-webkit-backdrop-filter: var(--chrome-blur);
-			backdrop-filter: var(--chrome-blur);
-		}
 	}
 	/* The cap lives on the SURFACE, because that is what has to align with the column, so this is layout only. The
 	   vertical padding must stay symmetric — inside a stadium an uneven inset reads as the contents sitting low. */

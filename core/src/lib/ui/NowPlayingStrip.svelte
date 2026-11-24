@@ -229,7 +229,6 @@
 		padding-inline: var(--space-lg);
 		background: var(--card);
 		border-top: 1px solid var(--line);
-		box-shadow: inset 0 1px 0 var(--edge-hi);
 	}
 
 	.rail {

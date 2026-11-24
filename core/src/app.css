@@ -85,20 +85,7 @@
 
 	--scrim-strong: rgba(0, 0, 0, 0.85);
 
-	/* THE LIT TOP EDGE — a 1px inset highlight, and the reason it is a token rather than three copies: on a dark page a
-	   surface separated only by a border reads as an OUTLINE, not as a thing sitting above something. The highlight is
-	   what makes it read as lit from above, and it has to move in step with the shadow rung below or the two disagree
-	   about where the light is. Deliberately a literal rgba and not a `--ink` mix: this is light falling on an edge, not
-	   ink, so it must not follow a theme's text colour. */
-	--edge-hi: rgba(255, 255, 255, 0.05);
-
-	/* DOCKED AND STICKY CHROME ONLY — never a card in the scrolling column, which has nothing behind it to blur and
-	   would pay the compositing for no effect. The two are a PAIR and must be applied together: the fill alone lets
-	   scrolled text read through the surface, which is the exact fault `PageHeader` was opaque to avoid. Every call
-	   site gates both behind `@supports`, so a browser without the filter keeps its opaque fill rather than going
-	   see-through. */
-	--chrome-blur: blur(20px) saturate(135%);
-	--chrome-fill: color-mix(in srgb, var(--card) 82%, transparent);
+	/* Phone surfaces are flat fills (the Spotlight redesign): no blur, no lit edge, no elevation ladder. */
 
 	/* A sixth radius value is a bug, not a decision. */
 	--radius: 18px;
@@ -126,23 +113,8 @@
 	--radius-2xl: var(--radius-md);
 	--radius-3xl: var(--radius);
 	--radius-4xl: var(--radius);
-	/* ELEVATION AS A LADDER, because one value cannot express two heights: a row resting in a list and a sheet floating
-	   over the whole page were both wearing the same 30px shadow, so nothing read as nearer than anything else.
-	   `--shadow` STAYS THE NAME OF THE TOP RUNG — four files already spell it, and they are all the floating tier — so
-	   adding the ladder renames nothing. A fourth rung is a bug, not a decision, on the `--radius` rule's reasoning. */
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-	/* THE MIDDLE RUNG IS DECLARED BUT UNREAD, labelled here so the next reader neither deletes it as dead nor spends
-	   the search twice. No rule in src spells it, and it is NOT reached through Tailwind either: a shadow utility
-	   INLINES its value rather than reading this key — measured in the built stylesheet, `.shadow-xs` compiles to
-	   `--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d)` and never `var(--shadow-xs)`. So it is a well-formed
-	   rung of the ladder rather than a live value, exactly as `--tv-joinurl` below. IT HAS NO CANDIDATE CALLER NOW: the
-	   one named here was the now-playing sheet, which wore the floating rung at both snaps and is deleted — the strip
-	   that replaced it is a flat chrome row with a 1px top border and an inset highlight, and a 14px drop shadow under
-	   it would read as a lift the dock does not have. The rung stays as a well-formed step; giving it a first caller is
-	   a VISUAL ruling that needs a before/after. */
-	--shadow-md: 0 4px 14px rgba(0, 0, 0, 0.38);
-	--shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
-	--shadow: var(--shadow-lg);
+	/* Two floating callers only: the TV's join badge over a music video, and the alert dialog over the page. */
+	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 
 	/* The measured gate resolves THIS declaration at runtime (tests/playwright/specs/gate/measured-design-support.ts),
 	   so a control must express var(--tap) and never the literal. */
@@ -227,8 +199,7 @@
 	   spend and took 2xl: 16px collapsing against .list-row's 8px margin-bottom, a 2.0 ratio against the row-to-row
 	   gap, which is why a phone screen read as one undifferentiated column. 24px makes that 3.0.
 	   No 32px or 48px rung: the widest phone column is --max-w 480px, and an unread rung is the same defect in a new
-	   register (see --shadow-md above, declared and spelled by nothing), so the next one is minted WITH its first
-	   caller. */
+	   register, so the next one is minted WITH its first caller. */
 	--space-5xl: 24px;
 
 	/* rem as a correctness requirement (SC 1.4.4). Form controls do NOT use this ladder — they take their own
@@ -263,8 +234,8 @@
 	   DISPLAY size, not the next step of a reading ladder — the jump from /stats' secondary tiles at 2xl to its one
 	   hero number IS the hierarchy, not a hole an intermediate rung traverses. /'s empty-queue title is the only
 	   other site near that end and it deliberately reads 2xl, to agree with /library's twin. So a 2rem rung had no
-	   caller, and a rung declared and spelled by nothing is the same defect as --shadow-md above and the 32px
-	   --space rung the block above refuses: the next one is minted WITH its first caller, at which point the 1.733
+	   caller, and a rung declared and spelled by nothing is the same defect as the 32px --space rung the block above
+	   refuses: the next one is minted WITH its first caller, at which point the 1.733
 	   ratio here becomes a measurement worth taking.
 	   `base` and `2xl` are FIXED POINTS. base is the form-control floor above; 2xl is the join wordmark's flight,
 	   which scales by base ÷ 2xl = 16 ÷ 24 written as the literal `scale(0.667)` in src/lib/components/JoinLanding.svelte
@@ -633,13 +604,6 @@ body {
 	background: var(--card);
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
-	/* THE RESTING RUNG PLUS THE LIT EDGE, and they belong together on this one rule rather than per caller: a border
-	   alone made every surface in the app read as an outline drawn on the page. Both are PAINT — no layout property is
-	   touched — so this reaches the song rows, the queue rows and the song page's fact block without moving a pixel,
-	   which is what makes it safe to put on the shared surface. No transition: a card does not change elevation. */
-	box-shadow:
-		var(--shadow-sm),
-		inset 0 1px 0 var(--edge-hi);
 }
 
 /* A row in one of the phone's three lists. Compose as `class="card list-row"`; one rule, because three files

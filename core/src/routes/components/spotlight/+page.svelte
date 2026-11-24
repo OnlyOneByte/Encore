@@ -36,7 +36,7 @@
 	{#key replay}
 		<div class="grid">
 			<div data-testid="spot-idle">
-				<Spotlight title="Pick a song" meta="Sing" busy={busy} busyLabel="Searching" />
+				<Spotlight title="Pick a song" meta="Sing" busy={busy} />
 			</div>
 			<div data-testid="spot-on-deck">
 				<Spotlight moment="on-deck" title="You're next" meta="After Maya · about 1 min" colour={THEO}>
@@ -89,10 +89,10 @@
 
 <style>
 	.story {
-		padding: var(--step-4);
+		padding: var(--step-16);
 		display: flex;
 		flex-direction: column;
-		gap: var(--step-5);
+		gap: var(--step-24);
 	}
 	h1,
 	h2 {
@@ -102,7 +102,7 @@
 	.tools {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--step-2);
+		gap: var(--step-8);
 	}
 	.tools button {
 		min-height: var(--tap);
@@ -110,7 +110,7 @@
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
-		gap: var(--step-4);
+		gap: var(--step-16);
 	}
 	.song {
 		margin: 0;
@@ -121,15 +121,15 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--step-3);
-		margin-top: var(--step-2);
+		gap: var(--step-12);
+		margin-top: var(--step-8);
 		font-weight: 700;
 	}
 	.light {
 		display: flex;
 		flex-direction: column;
-		gap: var(--step-3);
-		padding: var(--step-4);
+		gap: var(--step-12);
+		padding: var(--step-16);
 		background: var(--role-ground);
 		color: var(--role-ink);
 	}

@@ -1185,16 +1185,12 @@
 		height: var(--radius-sm);
 		border-bottom: 0;
 		border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-		box-shadow: inset 0 1px 0 var(--edge-hi);
 	}
 	/* 1px under each cap, so no hairline shows at a fractional seam. */
 	.now-surface > .mid {
 		top: calc(var(--radius-sm) - 1px);
 		bottom: calc(var(--radius-sm) - 1px);
 		border-block: 0;
-		box-shadow: var(--shadow-sm);
-		/* The shadow shows at the sides only, or it draws a line across each seam. */
-		clip-path: inset(0 -4px);
 		transform-origin: top;
 	}
 	.now-surface > .cap-bot {
@@ -1202,8 +1198,6 @@
 		height: var(--radius-sm);
 		border-top: 0;
 		border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-		box-shadow: var(--shadow-sm);
-		clip-path: inset(0 -4px -4px);
 	}
 
 	/* Everything under the card, in one box so one transform can hold it still. Same column rhythm as `main`. */

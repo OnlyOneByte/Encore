@@ -105,9 +105,6 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		background: var(--card-tint);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 var(--edge-hi);
 	}
 	/* The heads-up is the singer's OWN colour: the one signal on the phone that is unmistakably "you". The surface is
 	   app.css `.your-turn`, shared with the "You're up" sheet. */

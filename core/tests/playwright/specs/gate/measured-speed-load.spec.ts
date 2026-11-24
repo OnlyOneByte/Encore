@@ -203,9 +203,9 @@ for (const row of ROWS.filter((r) => r.flashBreak && r.cpu === 1)) {
 
 // Today's gzipped bytes + ~3%. Only ratchet down; raising one needs the owner's ruling.
 const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
-	'/': { css: 21_000, js: 132_600 },
+	'/': { css: 20_000, js: 130_500 },
 	'/queue': { css: 22_300, js: 147_900 },
-	'/tv': { css: 20_900, js: 135_900 }
+	'/tv': { css: 20_700, js: 135_900 }
 };
 
 test('CLAIM 13 the CSS and JS each route ships stay under budget', async ({ world, browser }) => {

@@ -112,7 +112,7 @@ test('the door carries the 320px reflow clause, because its label is long', () =
 	   shared. The trailing brace in the pattern is load-bearing: without it the match also swept the PROSE above,
 	   which names the sibling selector, and the test failed on a correct tree. */
 	for (const m of home.matchAll(/(\S*)\s*:global\(\[data-slot='button'\]\)\s*\{/g)) {
-		expect(['.reveal', '.showall-row']).toContain(m[1]);
+		expect(['.reveal', '.showall-row', '.me-slot']).toContain(m[1]);
 	}
 });
 

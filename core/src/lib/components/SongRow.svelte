@@ -57,6 +57,8 @@
 		processable?: boolean;
 		/** Nothing connected can make it now: no action, since a Sing that cannot work is a dead tap (docs/FRONTEND.md). */
 		cantMake?: boolean;
+		/** The Spotlight row (Sing): no card, no thumbnail, text that wraps, an outlined action. */
+		flat?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
 		onmake?: () => void;
@@ -77,6 +79,7 @@
 		inQueue = false,
 		processable = true,
 		cantMake = false,
+		flat = false,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -122,7 +125,7 @@
 	 * sees a direct reference and reports a block-scoped use before declaration.
 	 */
 	const metaFacts = $derived(
-		[byline, views ? `${views} views` : '', showKey ? keyName : ''].filter(Boolean).join(' · ')
+		[byline, views ? `${views} views` : '', showKey ? keyName : '', flat ? duration : ''].filter(Boolean).join(' · ')
 	);
 	/* `durationNote` IS NOT IN THAT JOIN, and the measurement is why. It was demoted to byline text with the other two
 	   and it does not fit: the byline is 144px on a 390px phone and "Longer than a song" alone measures 116 of them.
@@ -201,22 +204,29 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class={['row', 'card', 'list-row', { ready: readiness === 'ready', processing: readiness === 'processing' }]}
+			class={[
+				'row',
+				'list-row',
+				{ card: !flat, flat, ready: readiness === 'ready', processing: readiness === 'processing' }
+			]}
 		>
-			<Item.Media
-				><div class="thumb">
-					{#if thumbSrc}
-						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
-						<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
-					{:else}
-						<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
-						<span class="ph"><Icon name="play" /></span>
-					{/if}
-					{#if duration}
-						<span class={['dur', { odd: oddDuration }]}>{duration}</span>
-					{/if}
-				</div></Item.Media
-			>
+			<!-- No thumbnail on a flat row (owner ruling): fewer bytes and decodes per keystroke. -->
+			{#if !flat}
+				<Item.Media
+					><div class="thumb">
+						{#if thumbSrc}
+							<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
+							<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
+						{:else}
+							<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
+							<span class="ph"><Icon name="play" /></span>
+						{/if}
+						{#if duration}
+							<span class={['dur', { odd: oddDuration }]}>{duration}</span>
+						{/if}
+					</div></Item.Media
+				>
+			{/if}
 
 			<Item.Content>
 				<!-- THE MARK MUST STAY A SIBLING of `.t`, never a child: `.t` is a two-line clamp with overflow hidden, so a
@@ -227,46 +237,49 @@
 				</div>
 				<!-- THE BYLINE NOW CARRIES THE MEASUREMENTS — see `metaFacts`. One expression and no inline `{#if}`, so it
 					cannot contribute a stray newline to the element's text. -->
-				{#if metaFacts}<div class="byline">{metaFacts}</div>{/if}
-				{#if kindLabel || stateChip || durationNote || showTags}
-					<div class="chips">
-						{#if stateChip}
-							<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
-							<Badge
-								variant={readiness === 'ready'
-									? 'ok'
-									: readiness === 'processing'
-										? 'warn'
-										: readiness === 'failed'
-											? 'bad'
-											: 'neutral'}
-								wrap>{stateChip}</Badge
-							>
-						{/if}
-						<!-- `official` IS THE NEUTRAL CASE, not an --ok chip. It used to be green, which put a second --ok pill
+				<!-- `display: contents` except on a flat row, where the byline and chips share one line. -->
+				<div class="meta">
+					{#if metaFacts}<div class="byline">{metaFacts}</div>{/if}
+					{#if kindLabel || stateChip || durationNote || showTags}
+						<div class="chips">
+							{#if stateChip}
+								<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
+								<Badge
+									variant={readiness === 'ready'
+										? 'ok'
+										: readiness === 'processing'
+											? 'warn'
+											: readiness === 'failed'
+												? 'bad'
+												: 'neutral'}
+									wrap>{stateChip}</Badge
+								>
+							{/if}
+							<!-- `official` IS THE NEUTRAL CASE, not an --ok chip. It used to be green, which put a second --ok pill
 							immediately beside "Karaoke ready" in this same chips row, meaning something completely different — and with
 							the card's --ok border gone the ready pill is now the row's ONE statement of readiness, so a green
 							neighbour defeats it. Only the EXCEPTIONAL kinds are toned: red for "Not music", amber for "Live", accent
 							for "Lyric video". "Official video" is the common, expected kind and should not shout. -->
-						{#if kindLabel}<Badge
-								variant={kind === 'lyric'
-									? 'accent'
-									: kind === 'live'
-										? 'warn'
-										: kind === 'suspect'
-											? 'bad'
-											: 'neutral'}>{kindLabel}</Badge
-							>{/if}
-						<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
+							{#if kindLabel}<Badge
+									variant={kind === 'lyric'
+										? 'accent'
+										: kind === 'live'
+											? 'warn'
+											: kind === 'suspect'
+												? 'bad'
+												: 'neutral'}>{kindLabel}</Badge
+								>{/if}
+							<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
 							one recording. The tone change is the whole fix here: red is the failure colour and this is a mild metadata
 							note. It is the one measurement that keeps a pill, because it is the one that does not fit the byline —
 							`durationNote`'s note has the numbers. -->
-						{#if durationNote}<Badge variant="warn" wrap>{durationNote}</Badge>{/if}
-						<!-- TAGS ARE THE OTHER SURVIVING PILL, and they earn it: a tag is a describing WORD, which is what a pill is
+							{#if durationNote}<Badge variant="warn" wrap>{durationNote}</Badge>{/if}
+							<!-- TAGS ARE THE OTHER SURVIVING PILL, and they earn it: a tag is a describing WORD, which is what a pill is
 							for. The key and the view count used to sit here and have moved to the byline — see `metaFacts`. -->
-						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
-					</div>
-				{/if}
+							{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
+						</div>
+					{/if}
+				</div>
 				{#if readiness === 'processing' && !stalled}
 					<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
 					<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
@@ -525,6 +538,67 @@
 		border-color: var(--line);
 		color: var(--ink-dim);
 		opacity: 0.65;
+	}
+
+	/* THE FLAT ROW: ink on the ground, a hairline between rows, and nothing ellipsised at 320 (G2). */
+	.row.flat {
+		margin: 0;
+		padding: var(--step-8) 0;
+		min-height: 64px;
+		border: 0;
+		border-bottom: 1px solid var(--role-rule);
+		border-radius: 0;
+		background: none;
+	}
+	.flat .t {
+		display: block;
+		-webkit-line-clamp: none;
+		line-clamp: none;
+		overflow: visible;
+		overflow-wrap: anywhere;
+		font-size: var(--type-title);
+	}
+	/* The chips read as toned words on the byline's own line, as in the prototype, so a row is one title and one
+	   meta line (64 px) and about five fit above the dock at 320. */
+	.meta {
+		display: contents;
+	}
+	.flat .meta {
+		display: block;
+	}
+	.flat .byline,
+	.flat .chips {
+		display: inline;
+		margin: 0;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		font-size: var(--type-meta);
+	}
+	.flat :global([data-slot='badge']) {
+		padding: 0;
+		border: 0;
+		background: none;
+		font-size: var(--type-meta);
+		white-space: normal;
+		margin-right: var(--step-8);
+	}
+	.flat .byline + .chips {
+		margin-left: var(--step-8);
+	}
+	/* Outlined, so the Spotlight keeps the screen's one accent. */
+	.flat :global([data-slot='button'][data-testid]) {
+		border-radius: var(--round-pill);
+		border: 1.5px solid var(--role-control);
+		background: none;
+		color: var(--role-ink);
+	}
+	.flat :global([data-slot='button'][data-row-state='queued']) {
+		border-color: var(--role-accent);
+		color: var(--role-accent-ink);
+	}
+	.flat :global([data-slot='button'][data-row-state='unavailable']) {
+		border-color: var(--role-rule);
+		color: var(--role-ink-dim);
 	}
 
 	/* Below the narrow breakpoint the title gains a third line, because the version marker this row exists to show is

@@ -15,7 +15,6 @@
 		meta,
 		colour,
 		busy = false,
-		busyLabel = 'Working',
 		children
 	}: {
 		moment?: Moment;
@@ -24,10 +23,10 @@
 		/** The owner's singer colour. Snapped to its registry stop, whose on_fill is the only ink certified on it. */
 		colour?: string;
 		busy?: boolean;
-		busyLabel?: string;
 		children?: Snippet;
 	} = $props();
 
+	const uid = $props.id();
 	const stop = $derived(colour ? nearestPaletteStop(colour) : null);
 	const lit = $derived(moment === 'on-deck' || moment === 'your-turn');
 
@@ -41,8 +40,8 @@
 	class="spotlight {moment}"
 	class:lit={lit}
 	data-moment={moment}
-	aria-label={title}
-	aria-busy={busy}
+	aria-labelledby="{uid}-title"
+	aria-busy={showBusy}
 	style:--spot={stop?.fill}
 	style:--on-spot={stop?.on_fill}
 >
@@ -50,11 +49,12 @@
 	{#if meta || showBusy}
 		<p class="meta">
 			{#if meta}<span>{meta}</span>{/if}
-			<!-- Not ui/spinner: importing it from here split cn() into its own chunk, +6 KB gz JS on every route. -->
-			{#if showBusy}<span class="busy" role="status" aria-label={busyLabel} data-slot="spinner"></span>{/if}
+			<!-- Not ui/spinner: importing it from here split cn() into its own chunk, +6 KB gz JS on every route.
+				Hidden: the region's aria-busy is what a screen reader hears, and it follows the same grace. -->
+			{#if showBusy}<span class="busy" aria-hidden="true" data-slot="spinner"></span>{/if}
 		</p>
 	{/if}
-	<h2 class="title">{title}</h2>
+	<h2 class="title" id="{uid}-title">{title}</h2>
 	{#if children}<div class="body">{@render children()}</div>{/if}
 </section>
 
@@ -64,8 +64,8 @@
 		isolation: isolate;
 		display: flex;
 		flex-direction: column;
-		gap: var(--step-1);
-		padding: var(--step-4) var(--step-4) var(--step-3);
+		gap: var(--step-4);
+		padding: var(--step-16) var(--step-16) var(--step-12);
 		border-radius: var(--round-spot);
 		background: var(--role-raise);
 		color: var(--role-ink);
@@ -98,12 +98,12 @@
 		box-shadow: inset 0 0 0 2px var(--role-danger-line);
 	}
 	.your-turn {
-		padding: var(--step-7) var(--step-4) var(--step-6);
+		padding: var(--step-48) var(--step-16) var(--step-32);
 	}
 	.meta {
 		display: flex;
 		align-items: center;
-		gap: var(--step-2);
+		gap: var(--step-8);
 		margin: 0;
 		font-size: var(--type-meta);
 		font-weight: 600;
@@ -143,7 +143,7 @@
 		line-height: var(--lh-none);
 	}
 	.body {
-		margin-top: var(--step-2);
+		margin-top: var(--step-8);
 		font-size: var(--type-body);
 		line-height: var(--lh-normal);
 	}

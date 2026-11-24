@@ -151,8 +151,8 @@ divide one length by another), so moving either lands the mark between rungs wit
 **Above 2xl the ladder ends 24 → 41.6px, and that gap is deliberately left open.** `--ph-text-3xl` is the
 `2.6rem` DISPLAY size and its one caller is `/stats`' primary tile; the step from that page's secondary tiles
 at 2xl to its single hero number is the hierarchy, not a hole. An intermediate `2rem` rung was tried and
-removed because nothing spelled it, and a rung declared and read by nothing is the defect `--shadow-md` and the
-refused 32px `--space` rung already name. The next rung here is minted WITH its first caller, and the 1.733
+removed because nothing spelled it, and a rung declared and read by nothing is the defect the deleted
+`--shadow-md` and the refused 32px `--space` rung already name. The next rung here is minted WITH its first caller, and the 1.733
 ratio is a measurement to take at that point, not before.
 **Left open is not the same as done, and the review's type-scale finding is therefore HALF addressed.** That
 finding named two defects — the crowded bottom and this hole — and only the bottom one landed: the 10.88px rung is
@@ -336,8 +336,8 @@ authored CSS, and the rules are:
 ### Spotlight tokens
 
 The redesign's tokens (step 2 of the Spotlight rollout, #1106) live in `core/src/tokens.css`, which `app.css`
-imports. They are additive: no shipped screen reads them yet, and step 3 moves each screen onto them, Sing first.
-The old names stay until then.
+imports. Sing (step 3) is the first screen on them; the others move one step at a time, and an old name goes once
+nothing spells it.
 
 **Colour roles.** In the dark theme every role but `--role-raise` aliases a name `app.css` already declares, so
 moving a rule onto its role changes no pixel. That way round, not the other: the palette generator and the
@@ -377,8 +377,21 @@ separate ladder from `--ph-text-*`, which step 3 retires screen by screen.
 | `--type-display` | 2.125  | 34 | The On deck headline ("You're next")        |
 | `--type-hero`    | 3.5    | 56 | The You're up headline: the phone's biggest moment |
 
-**Space and radius.** `--step-1` to `--step-5` alias `--space-2xs`, `sm`, `lg`, `2xl` and `5xl` (4, 8, 12, 16 and
-24 px). `--step-6` (32) and `--step-7` (48) are new, and their first caller is You're up's padding. `--round-spot`
+**Space and radius.** Each step is named by its px value, so a rung added between two renames nothing. Each one
+retires the old name it aliases once no rule spells that name:
+
+| Step        | px | Retires         |
+| ----------- | -- | --------------- |
+| `--step-4`  | 4  | `--space-2xs`   |
+| `--step-8`  | 8  | `--space-sm`    |
+| `--step-12` | 12 | `--space-lg`    |
+| `--step-16` | 16 | `--space-2xl`   |
+| `--step-24` | 24 | `--space-5xl`   |
+| `--step-32` | 32 | nothing (new)   |
+| `--step-48` | 48 | nothing (new)   |
+
+`--space-3xs` (2), `--space-xs` (6), `--space-md` (10) and `--space-4xl` (20) have no step: a screen moving onto the
+steps rounds those to a neighbour. `--step-32` and `--step-48` are new, and their first caller is You're up's padding. `--round-spot`
 is `--radius` (18 px; the prototype drew 20, and a seventh radius value is the bug `app.css` names), and
 `--round-pill` is `--radius-pill`. Each `--type-*` and `--step-*` rung must have a reader, and the guard checks it.
 
@@ -387,6 +400,11 @@ the queue's existing timings at their old values, so the rows are frame-identica
 `.pop-in`), `--motion-slide` (160 ms, the live sort) and `--motion-roll` (180 ms, the number roll). They are off the
 120/250/400 ladder in tenet 3, and step 3 snaps them (#1069, #1076). Easings: `--ease-out` is the Spotlight's
 entrance, `--ease-pop` is `.pop-in` and `.rise-in`, and `--ease-slide` is the slide and the roll.
+
+**Flat surfaces.** Step 3 retired the chrome blur (`--chrome-blur`, `--chrome-fill`), the lit edge (`--edge-hi`)
+and the shadow ladder (`--shadow-sm`, `-md`, `-lg`): every phone surface is a flat fill, and the sticky header and
+the dock are opaque. `--shadow` stays for two floating callers: the TV's join badge over a music video, and the
+alert dialog over the page.
 
 **The TV safe area** stays `--tv-safe-x` / `--tv-safe-y` in `app.css` (48 px or 5vw, 40 px or 6vh). The redesign
 reuses it unchanged.
@@ -595,9 +613,13 @@ because a `class:` directive is not valid on a component. Their common contracts
 ### The Spotlight and the Guide segments
 
 `src/lib/ui/Spotlight.svelte` is the redesign's one lit surface. A screen has at most one, and it holds the next
-thing to do. No screen uses it yet. Its story is `/components/spotlight` (dev-only), filmed by the `spotlight-*`
-rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Four things
+thing to do. Sing is its first screen (the search box). Its story is `/components/spotlight` (dev-only), filmed by
+the `spotlight-*` rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Five things
 keep it steady, each found as a flake:
+- **No file watching.** The gallery sets `ENCORE_VITE_NO_WATCH`, and `vite.config.ts` then ignores every path
+  (`server.watch.ignored: ['**/*']`; `watch: null` does not survive config resolution and left the watcher on). A
+  watcher per instance ran the box out of file handles (`EMFILE`), and a trace written under `.artifacts` reloaded
+  open pages; the `spotlight` probe writes one and asserts no reload.
 - **One server, serially.** The story rows share one `vite dev` and run serially, and so does the probe file.
   Parallel instances share `.svelte-kit/` and reload each other's pages.
 - **A cache per instance.** Each instance gets its own cache dir (`ENCORE_VITE_CACHE_DIR`, unset in normal use), so
@@ -626,8 +648,10 @@ The `spotlight` probe holds these on the same story:
   animation. On mount the card fades in from `scale(.98)` over `--motion-base`. On deck to You're up animates only
   the headline, which pops from `scale(.92)` over `--motion-slow`. The fill is already lit, and a flood restarting
   from 0 blinked the card dark (seen in the ui:review filmstrip). Reduced motion cuts.
+- **Names.** The region is `aria-labelledby` its own heading, so its name is said once.
 - **`busy`** shows a spinner only through `src/lib/ui/grace.ts`: nothing for a wait under `PENDING_GRACE_MS`, and
-  once shown it stays at least that long (tenet 2). The ring is its own, not `ui/spinner`. Importing that one from
+  once shown it stays at least that long (tenet 2). `aria-busy` follows the same grace, and the ring is
+  `aria-hidden`: the region's busy state is what a screen reader hears. The ring is its own, not `ui/spinner`. Importing that one from
   here moved `cn()` into a chunk of its own and cost every shipped route about 6 KB of gzipped JS (CLAIM 13).
 
 `src/lib/ui/GuideSegments.svelte` is Guide as Off / Low / Full (an owner ruling; the song page keeps the slider for
@@ -998,16 +1022,31 @@ the first sync or a reconnect, or under reduced motion. Those cases are cuts, an
 ### The Sing tab
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its
-own wordmark — the topbar is for joined singers only). Joined, it is three things: the search field,
-the result groups, and one idle state. The rotation and the library rows it used to carry are the other two tabs now.
+own wordmark — the topbar is for joined singers only). `JoinLanding` is imported on demand there, so a joined phone
+never downloads the join screen's CSS (about 1.8 KB gz, CLAIM 13). Joined, it is two things: the Spotlight and the
+result groups. The rotation and the library rows it used to carry are the other two tabs now.
 
-`searchActive` (a non-empty query) is still the SOLE switch, and it now switches between the idle state and the
-results rather than between two halves of an app — which is why the template body is a single
-`{#if searchActive} … {:else} … {/if}`. A surface with exactly two states should say so in its structure; the
-four-term boolean that used to gate the first-run screen named the queue, the library rows and the processing group,
-and two of those three terms no longer exist here. There is still no browse mode on this column, no `?browse=1` and
-no history entry for a search, so Back always means leave the room — and clearing the field now lands on the idle
-state rather than restoring a second view.
+**The Spotlight is Sing's one lit surface (redesign step 3), and it is the field alone**, as in the owner-picked
+prototype: `<Spotlight>` at `idle` around the search field, about 60 px tall. Its title, `What do you want to sing?`,
+names the region but is not drawn, so the results start right under it (about five rows above the dock at 320). Its
+accent ring is the field's boundary, and on focus that ring becomes the focus ring: one ring, not two. The promise line
+sits under it only with an empty box. The old idle block (a mark, a title, a promise and a second `Search for a song`
+button) said the same thing three ways. The rows under it are `SongRow flat`:
+
+- no card and no thumbnail (an owner ruling: fewer bytes and decodes per keystroke); the duration joins the byline;
+- one title line and one meta line (64 px): the chips are toned words on the byline's own line, not pills;
+- a hairline between rows, and title and byline wrap instead of ellipsising, so nothing is cut at 320 (G2);
+- the action is an outlined circle, so the Spotlight's accent ring is the screen's one accent; queued is the accent
+  outline with a check.
+
+The group headings are dim sentence case, not uppercase eyebrows. While a search is out, nothing shows for
+`PENDING_GRACE_MS`; past it, flat skeleton rows stand in, and the rows replace them the moment the answer lands: there
+is no minimum hold, because holding content behind an indicator is a new wait (#1091, `sing-slow-search`). The field
+has no spinner of its own (#1126).
+
+`searchActive` (a non-empty query) is still the SOLE switch, between the Spotlight alone and the results. There is
+still no browse mode on this column, no `?browse=1` and no history entry for a search, so Back always means leave the
+room — and clearing the field lands on the Spotlight alone rather than restoring a second view.
 
 With a query, in order: `Making karaoke…`, `Ready to sing`, `Needs karaoke`, `Can't make this one right now` /
 `Can't make these right now`, the widen escape hatch, then at most one zero-state. Every heading is gated on having
@@ -1020,11 +1059,12 @@ needs a fetcher. The row keeps the button's empty box, so a maker dropping mid-s
 match, `See all ready songs` (a link to `/library`) comes LAST, after the `Can't make…` rows and the widen: arriving
 mid-search it must push nothing from under a thumb on its way to Sing. The idle line `Find any song and we'll make
 the karaoke track for it.` needs both verdicts, because it promises search results; an uploads-only box reads `Only
-ready songs can play right now.` although its unready uploads still offer Sing, which is rare and intended. The
+ready songs can play right now.` although its unready uploads still offer Sing, which is rare and intended. That line
+sits in the Spotlight under the field, so it stays true while you search. The
 escape hatch (`Not it? Search everything`) is deliberately NOT gated on an empty result: YouTube Music's `songs`
 filter never returns nothing, so a widen offered only inside the zero-state would be unreachable exactly when it is
 needed. The zero-state's way out is a LINK to `/library` printing the library count, not a `clearSearch()` — clearing
-would land on the idle state, which shows no songs, so the old label promised what the tap no longer delivers. **Any
+would land on the Spotlight alone, which shows no songs, so the old label promised what the tap no longer delivers. **Any
 surface that prints a count prints its noun in agreement**: this label shipped as `Show my 1 songs` on a one-ready
 library — the ordinary state the first time a song finishes processing — while `/library`'s own count line, one tap
 away, read `1 song`. `showAllCount` carries a bare number, so agreement is the caller's to supply.
@@ -1050,12 +1090,9 @@ paints no door at all, which is what makes that 1,235ms the column rather than t
 NOT touched and is a separate decision for the owner: `q=a` is still a 1,058,948-byte body for one debounced
 keystroke, and it grows with the catalog it persists.
 
-With an empty box, the idle state is the whole screen. Its title names this tab's job
-(`What do you want to sing?`), and it is deliberately not `Nothing queued yet`: that is false on the Sing tab and is
-word for word `/queue`'s own idle headline, and two tabs wearing one zero-state headline is the same defect as one
-library counted three ways. The action is in the state — a button that focuses the field at the top of the same
-screen, not an `href`, because the destination is a control and not a route. No `/library` link here: the zero state
-never had one, and the Library tab is in the dock at the foot of the screen already.
+The Spotlight's title names this tab's job (`What do you want to sing?`), and it is deliberately not `Nothing queued
+yet`: that is false on the Sing tab and is word for word `/queue`'s own idle headline. No `/library` link with an empty
+box: the Library tab is in the dock at the foot of the screen already.
 
 **The processing group is SEARCH-SCOPED, and that is the one behavioural ruling in the rebuild.** With a query, the
 server has already scoped `j.processing` to it, so each row is a RESULT — the row that tells a guest "this one is
@@ -1082,7 +1119,7 @@ with the placeholder adrift from the mark that labels it. `/library`'s twin is c
 but from `--bp-lg` up it is bounded by the ROW GRID instead — see the library page's wide head.
 
 **And from `--bp-md` the topbar carries a `--line` bottom rule** with `padding-bottom: var(--space-lg)`: the
-bounded-band form of the header surface every `PageHeader` route already wears, without the pill's fill and blur,
+bounded-band form of the header surface every `PageHeader` route already wears, without the pill's fill,
 which are earned by being sticky. The rule deliberately spans the shell's content box rather than the rows' column,
 so it reads as page structure and not as a row boundary. The wide gap between the wordmark and the identity cluster
 is NOT closed: leading brand / trailing account is a desktop header form, the cluster on the far edge leaves the way

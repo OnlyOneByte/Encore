@@ -116,11 +116,12 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
   that table are **automated** (`gate:measured` CLAIM 9, 10 and 13). For any other row, measure on `main` and on
   the branch; a regression is the branch's median above `main`'s maximum (motion check 9's rule).
 - **S3.** No spinner or skeleton is on screen for less than 300 ms: it is never painted, or it stays at least
-  300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. **Automated** (`gate:measured`
+  300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. A placeholder that the real
+  content replaces is not a flash: content is never held back behind an indicator (an owner ruling, #1171). **Automated** (`gate:measured`
   CLAIM 12) on cold loads, the Sing search and a slow or lost `/api/me` (words not before 3 s; the 4 s upper bound
   races, #1093, and is the reviewer's). Today's breaks are expected failures that a fix flips, one per cause:
-  "Finding the room…" on the QR link (#1089), "Loading the queue…" on `/queue` (#1090), and on a Sing search **two**:
-  the "Searching…" skeleton rows (#1091) and the search field's own "Searching" spinner (#1126).
+  "Finding the room…" on the QR link (#1089) and "Loading the queue…" on `/queue` (#1090). The Sing search's two
+  (the skeleton rows and the field's spinner) are fixed and gate as plain tests.
 - **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
   table with the owner's ruling. Read from the diff.
 

@@ -42,9 +42,6 @@
 		border: 1px solid var(--singer);
 		border-radius: var(--radius-sm);
 		background: var(--your-turn-surface);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 var(--edge-hi);
 	}
 	.who {
 		display: flex;

@@ -152,9 +152,9 @@
 
 	<h2 class="section">Primitives · Card.Root beside .card, identical content</h2>
 	<p class="note">
-		THE PAIR. <code>app.css</code> gives <code>.card</code> the lit edge (<code>--shadow-sm</code> +
-		<code>--edge-hi</code>, a pair its own comment calls load-bearing); <code>Card.Root</code> runs on the registry's keys.
-		Any difference in surface, border or radius between these two boxes is the seam.
+		THE PAIR. <code>app.css</code> gives <code>.card</code> a flat fill and a <code>--line</code> border;
+		<code>Card.Root</code> runs on the registry's keys. Any difference in surface, border or radius between these two boxes
+		is the seam.
 	</p>
 	<div class="gal-row gal-row--stretch">
 		<Card.Root>
@@ -217,7 +217,6 @@
 			bind:value={galFind}
 			ariaLabel="Gallery search"
 			placeholder="Search a song or artist…"
-			busy={galFind.length > 0}
 			clearable={galFind.length > 0}
 			clearLabel="Clear"
 			onclear={() => (galFind = '')}

@@ -10,7 +10,7 @@ import { at } from '$test';
  * the lowest 10.88px) and a rung minted in the hole at the top before anything reads it (the hole is one step of
  * 1.7333 where nothing else on the ladder steps wider than 1.2). The hole stays open BY RULING: `--ph-text-3xl` has
  * a single font-size site in the whole app and is a DISPLAY size rather than the ladder's next reading step — so an
- * intermediate rung would be declared and read by nothing, which is the defect `--shadow-md` already is.
+ * intermediate rung would be declared and read by nothing, the defect `--shadow-md` was until it was deleted.
  *
  * An open-by-ruling gap makes the RECORD the deliverable, and a record is the thing that rots. So this file pins the
  * arithmetic app.css declares, the ladder table docs/UI-DESIGN.md §3 quotes from it, and the one fact the
@@ -182,7 +182,7 @@ test("docs/UI-DESIGN.md §3's ladder table quotes app.css's names, rem and px ex
 
 test("every rung on the ladder is read, and `sm`'s three non-sites are each accounted for", () => {
 	const rungs = ladder();
-	/* A RUNG NOTHING READS is the `--shadow-md` defect this file's prose and `app.css`'s both refuse by name, and it
+	/* A RUNG NOTHING READS is the defect the deleted `--shadow-md` was, which this file's prose refuses by name, and it
 	   is the ground the 2rem rung was removed on. Asserted over the WHOLE ladder rather than as `sm`'s tally, which
 	   is what used to sit here: `expect(ruleSites('sm')).toHaveLength(20)` reddened on every component that
 	   legitimately took a secondary line, and the comment beside it reasoned about a leading term it described as
