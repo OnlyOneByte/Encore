@@ -99,7 +99,7 @@ test('the @theme spacing bridge is 1:1 with the ladder, so no utility name outli
  *  above REQUIRES one alias per declared rung — so counting the alias gave every rung a floor of 1 by
  *  construction, and the dead-rung zero below could not fail. Verified by falsification: with the bridge counted,
  *  rewriting away all three real `var(--space-5xl)` sites — a rung declared, aliased, and read by no rule, which is
- *  the `--shadow-md` defect exactly — left this file 5 pass / 0 fail. With it stripped, the same edit reds.
+ *  the defect the deleted `--shadow-md` was — left this file 5 pass / 0 fail. With it stripped, the same edit reds.
  *  Net effect on this tree: each of the nine rungs loses exactly its one alias, so `2xl` lands at 32 sizing rules of
  *  that 33, and the ladder's total at 221 of 230. */
 function spends(): Record<string, number> {
@@ -123,7 +123,7 @@ test('no rung is dead and no spelled rung is undeclared', () => {
 	// A SPELLING OF A RUNG THAT DOES NOT EXIST resolves to nothing and collapses the box to zero on that axis. This
 	// generalises the two named retirements above to every typo and every resurrection at once.
 	expect(Object.keys(counts).filter((n) => !rungs.some((r) => r.name === n))).toEqual([]);
-	// AND THE CONVERSE: a declared rung nothing reads is the `--shadow-md` defect this file's prose refuses by name,
+	// AND THE CONVERSE: a declared rung nothing reads is the defect the deleted `--shadow-md` was, refused by name,
 	// and the ground the 2rem type rung was removed on. It bites only because `spends()` drops the `@theme` bridge —
 	// see its comment, and the falsification recorded there. `5xl` is the rung with the least room: three rules.
 	expect(rungs.filter((r) => !counts[r.name])).toEqual([]);

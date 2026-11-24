@@ -4,7 +4,7 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
-	import { failureNoticeId } from '$lib/stores/room';
+	import { failureNoticeId, PENDING_GRACE_MS } from '$lib/stores/room';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -31,7 +31,6 @@
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
 	import Spotlight from '$lib/ui/Spotlight.svelte';
-	import { createGrace } from '$lib/ui/grace';
 	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
 	import * as Empty from '$lib/components/ui/empty';
 	import { rememberedKey } from '$lib/stores/remembered-key';
@@ -158,11 +157,16 @@
 	let rawResults = $state<Media[]>([]);
 	let processingResults = $state<Media[]>([]);
 	let searching = $state(false);
-	// Tenet 2: no skeleton for a search under PENDING_GRACE_MS, and once shown it holds that long (#1091).
+	// Tenet 2: no skeleton for a search under PENDING_GRACE_MS (#1091). No hold after: rows replace it as they land.
 	let showSkeleton = $state(false);
-	const searchGrace = createGrace({ onShow: (shown) => (showSkeleton = shown) });
-	$effect(() => searchGrace.set(searching));
-	$effect(() => () => searchGrace.dispose());
+	$effect(() => {
+		if (!searching) return;
+		const timer = setTimeout(() => (showSkeleton = true), PENDING_GRACE_MS);
+		return () => {
+			clearTimeout(timer);
+			showSkeleton = false;
+		};
+	});
 	/* A FAILED SEARCH IS A THIRD STATE, not an empty one. Without this the catch below wiped the rows and the
 	   zero-state then asserted `Nothing matches "<query>"` — the review's only blocks-the-party finding. Reset
 	   wherever a new attempt begins, so the failure cannot outlive the query it belongs to. */
@@ -482,6 +486,12 @@
 		<!-- Loaded on demand: a joined phone opens Sing all night and never needs the join screen's ~1.8 KB gz of CSS. -->
 		{#await import('$lib/components/JoinLanding.svelte') then { default: JoinLanding }}
 			<JoinLanding />
+		{:catch}
+			<!-- The chunk can fail on bad wifi or after an update renamed it: never a blank screen. -->
+			<div class="join-lost">
+				<p>Couldn't load the join screen.</p>
+				<Button variant="secondary" size="tap" onclick={() => location.reload()}>Try again</Button>
+			</div>
 		{/await}
 	</main>
 {:else}
@@ -522,8 +532,8 @@
 					<Button variant="ghost" size="tap" href={resolve('/queue')}>Cancel</Button>
 				</div>
 			{/if}
-			<!-- THE SPOTLIGHT: this screen's one lit surface holds its one job. It stays put whether or not there is a
-					query, so typing never moves it. -->
+			<!-- THE SPOTLIGHT is the field alone, as in the chosen prototype; its title names the region but is not
+					drawn, so the results start right under it. -->
 			<div class="find-row">
 				<div class="field-slot">
 					<Spotlight title="What do you want to sing?">
@@ -537,16 +547,16 @@
 							onclear={clearSearch}
 							oninput={onQueryInput}
 						/>
-						<!-- NEITHER LINE UNTIL THE VERDICT IS KNOWN, and both in one grid cell so the box is always the taller
-								one's height: a cold load printed the promise, then took it back 120 ms later (CLS 0.0039). -->
-						<p class="promise">
-							<span class:shown={verdictKnown && !onlyReady}
-								>Find any song and we'll make the karaoke track for it.</span
-							>
-							<span class:shown={verdictKnown && onlyReady}>Only ready songs can play right now.</span>
-						</p>
 					</Spotlight>
 				</div>
+				{#if !searchActive}
+					<!-- NEITHER LINE UNTIL THE VERDICT IS KNOWN, and both in one grid cell so the box is always the taller
+							one's height: a cold load printed the promise, then took it back 120 ms later (CLS 0.0039). -->
+					<p class="promise">
+						<span class:shown={verdictKnown && !onlyReady}>Find any song and we'll make the karaoke track for it.</span>
+						<span class:shown={verdictKnown && onlyReady}>Only ready songs can play right now.</span>
+					</p>
+				{/if}
 			</div>
 
 			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. With no query the Spotlight is the whole
@@ -763,7 +773,7 @@
 		min-width: 0;
 		display: flex;
 	}
-	/* The size's rem `px-2.5 gap-1.5` out-merge the variant's own, so at a 32px root the button outgrew
+	/* Button's `size` classes (rem) win over the variant's padding and gap, so at a 32px root the button outgrew
 	   `.me-cluster`'s floor and the dot slid under the gear. These are the values that floor sums. */
 	.me-slot :global([data-slot='button']) {
 		padding-inline: var(--space-xs);
@@ -865,10 +875,37 @@
 	/* Both wordings stacked in one cell: the box is the taller one's height whichever shows, or while neither does. */
 	.promise {
 		display: grid;
+		flex-basis: 100%;
 	}
-	/* The field inside the lit card sits on the card's own surface: one lit thing, not a box in a box. */
+	/* THE SPOTLIGHT IS THE FIELD: its ring is the field's boundary and, on focus, the one focus ring. The title
+	   stays as the region's name and is not drawn. */
+	.field-slot :global(.spotlight) {
+		padding: var(--step-8) var(--step-4);
+	}
+	.field-slot :global(.spotlight > .title) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	.field-slot :global(.spotlight .body) {
+		margin-top: 0;
+	}
+	.field-slot :global(.spotlight:has(input:focus-visible)) {
+		box-shadow: none;
+		outline: 2px solid var(--role-focus);
+		outline-offset: 0;
+	}
 	.field-slot :global(.findbox) {
-		background: var(--role-ground);
+		min-height: var(--tap);
+		padding-block: 0;
+		border-color: transparent;
+		background: none;
+	}
+	.field-slot :global(.findbox:has(input:focus-visible)) {
+		outline: none;
 	}
 	.promise > span {
 		grid-area: 1 / 1;
@@ -974,10 +1011,19 @@
 		max-width: 100%;
 	}
 
-	/* The Spotlight's second line, dim: the field above it is the thing to read. */
+	/* Under the Spotlight with an empty box, dim: the field is the thing to read. */
 	.promise {
-		margin: var(--step-8) 0 0;
+		margin: 0;
+		padding-inline: var(--step-4);
 		font-size: var(--type-meta);
+		color: var(--role-ink-dim);
+	}
+	.join-lost {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--step-12);
+		padding: var(--step-48) var(--step-16);
 		color: var(--role-ink-dim);
 	}
 	/* NO EYEBROWS on a Spotlight screen: the group headings are dim sentence case, not uppercase letterspaced. */
@@ -986,6 +1032,8 @@
 		font-weight: 600;
 		letter-spacing: normal;
 		text-transform: none;
+		/* Under the find row's 24 px, so the controls -> results break still out-ranks one group -> the next. */
+		margin-top: var(--step-16);
 		margin-bottom: 0;
 	}
 
@@ -999,7 +1047,8 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-md);
-		padding: var(--space-2xl) var(--space-2xl) var(--space-sm);
+		/* An 8 px top, not 16: the 44 px gear already sets the row, and the results need the height at 320. */
+		padding: var(--step-8) var(--space-2xl) var(--space-sm);
 	}
 	/* A ZERO BASIS AND AN EXPLICIT FLOOR, so the wrap above is decided by the smallest the cluster can be, not by
 	   the full name. With `auto` the line broke on the name's max-content width, so at 320 any name of 6+

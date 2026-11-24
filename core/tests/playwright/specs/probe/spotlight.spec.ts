@@ -1,8 +1,12 @@
-// THE SPOTLIGHT PRIMITIVE AND THE GUIDE SEGMENTS, on their dev-only story (no screen uses them yet). Tenet 3: only
+// THE SPOTLIGHT PRIMITIVE AND THE GUIDE SEGMENTS, on their dev-only story. Tenet 3: only
 // transform and opacity animate, and reduced motion cuts. Tenet 2: no spinner for a wait under 300 ms, and one
-// that shows stays 300 ms. Tenet 1: a segment tap presses in the next frame. Plus AA ink on every lit card.
+// that shows stays 300 ms. Tenet 1: a segment tap presses in the next frame. Plus AA ink on every lit card, and
+// the story server watches no file, so a test artifact written mid-run reloads nothing.
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { startGallery, type Gallery } from '../../world/gallery';
+import { repoRoot } from '../../world/core';
 import { contrastRatio } from '$lib/contract/presentation/colors';
 import { PENDING_GRACE_MS } from '$lib/stores/room';
 
@@ -41,6 +45,22 @@ const animated = (page: Page) =>
 		}
 		return { props: [...props].sort(), names };
 	});
+
+test('a file written under the test artifacts mid-run reloads no page', async ({ page }) => {
+	await open(page);
+	let navs = 0;
+	page.on('framenavigated', (f) => void (f === page.mainFrame() && navs++));
+	const dir = join(repoRoot, 'tests/playwright/.artifacts/gallery-watch');
+	mkdirSync(dir, { recursive: true });
+	try {
+		writeFileSync(join(dir, 'x.html'), '<p>trace</p>');
+		await page.waitForTimeout(2_000);
+		expect(navs, 'the page reloaded').toBe(0);
+		expect(gallery.log()).not.toContain('page reload');
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 test('mount and handoff animate transform and opacity only; reduced motion cuts both', async ({ page }) => {
 	await open(page);

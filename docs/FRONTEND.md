@@ -403,7 +403,8 @@ entrance, `--ease-pop` is `.pop-in` and `.rise-in`, and `--ease-slide` is the sl
 
 **Flat surfaces.** Step 3 retired the chrome blur (`--chrome-blur`, `--chrome-fill`), the lit edge (`--edge-hi`)
 and the shadow ladder (`--shadow-sm`, `-md`, `-lg`): every phone surface is a flat fill, and the sticky header and
-the dock are opaque. `--shadow` stays for one caller, the TV's join badge over a music video.
+the dock are opaque. `--shadow` stays for two floating callers: the TV's join badge over a music video, and the
+alert dialog over the page.
 
 **The TV safe area** stays `--tv-safe-x` / `--tv-safe-y` in `app.css` (48 px or 5vw, 40 px or 6vh). The redesign
 reuses it unchanged.
@@ -615,8 +616,10 @@ because a `class:` directive is not valid on a component. Their common contracts
 thing to do. Sing is its first screen (the search box). Its story is `/components/spotlight` (dev-only), filmed by
 the `spotlight-*` rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Five things
 keep it steady, each found as a flake:
-- **No file watching.** The gallery sets `ENCORE_VITE_NO_WATCH`, so `vite dev` runs with `server.watch: null`. One
-  watcher per instance ran the box out of file handles (`EMFILE`).
+- **No file watching.** The gallery sets `ENCORE_VITE_NO_WATCH`, and `vite.config.ts` then ignores every path
+  (`server.watch.ignored: ['**/*']`; `watch: null` does not survive config resolution and left the watcher on). A
+  watcher per instance ran the box out of file handles (`EMFILE`), and a trace written under `.artifacts` reloaded
+  open pages; the `spotlight` probe writes one and asserts no reload.
 - **One server, serially.** The story rows share one `vite dev` and run serially, and so does the probe file.
   Parallel instances share `.svelte-kit/` and reload each other's pages.
 - **A cache per instance.** Each instance gets its own cache dir (`ENCORE_VITE_CACHE_DIR`, unset in normal use), so
@@ -1023,20 +1026,23 @@ own wordmark — the topbar is for joined singers only). `JoinLanding` is import
 never downloads the join screen's CSS (about 1.8 KB gz, CLAIM 13). Joined, it is two things: the Spotlight and the
 result groups. The rotation and the library rows it used to carry are the other two tabs now.
 
-**The Spotlight is Sing's one lit surface (redesign step 3).** It is `<Spotlight>` at `idle`, titled `What do you want
-to sing?`, holding the search field and the promise line under it. It is the same with and without a query, so
-typing moves nothing, and with an empty box it is the whole screen: the old idle block (a mark, a title, a promise and
-a second `Search for a song` button) said the same thing three ways. The rows under it are `SongRow flat`:
+**The Spotlight is Sing's one lit surface (redesign step 3), and it is the field alone**, as in the owner-picked
+prototype: `<Spotlight>` at `idle` around the search field, about 60 px tall. Its title, `What do you want to sing?`,
+names the region but is not drawn, so the results start right under it (about five rows above the dock at 320). Its
+accent ring is the field's boundary, and on focus that ring becomes the focus ring: one ring, not two. The promise line
+sits under it only with an empty box. The old idle block (a mark, a title, a promise and a second `Search for a song`
+button) said the same thing three ways. The rows under it are `SongRow flat`:
 
 - no card and no thumbnail (an owner ruling: fewer bytes and decodes per keystroke); the duration joins the byline;
+- one title line and one meta line (64 px): the chips are toned words on the byline's own line, not pills;
 - a hairline between rows, and title and byline wrap instead of ellipsising, so nothing is cut at 320 (G2);
-- the chips are toned words, not pills;
 - the action is an outlined circle, so the Spotlight's accent ring is the screen's one accent; queued is the accent
   outline with a check.
 
 The group headings are dim sentence case, not uppercase eyebrows. While a search is out, nothing shows for
-`PENDING_GRACE_MS`; past it, flat skeleton rows stand in and hold at least that long, and the rows wait for them
-(#1091). The field has no spinner of its own (#1126).
+`PENDING_GRACE_MS`; past it, flat skeleton rows stand in, and the rows replace them the moment the answer lands: there
+is no minimum hold, because holding content behind an indicator is a new wait (#1091, `sing-slow-search`). The field
+has no spinner of its own (#1126).
 
 `searchActive` (a non-empty query) is still the SOLE switch, between the Spotlight alone and the results. There is
 still no browse mode on this column, no `?browse=1` and no history entry for a search, so Back always means leave the

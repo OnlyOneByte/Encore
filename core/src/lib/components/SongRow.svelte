@@ -237,46 +237,49 @@
 				</div>
 				<!-- THE BYLINE NOW CARRIES THE MEASUREMENTS — see `metaFacts`. One expression and no inline `{#if}`, so it
 					cannot contribute a stray newline to the element's text. -->
-				{#if metaFacts}<div class="byline">{metaFacts}</div>{/if}
-				{#if kindLabel || stateChip || durationNote || showTags}
-					<div class="chips">
-						{#if stateChip}
-							<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
-							<Badge
-								variant={readiness === 'ready'
-									? 'ok'
-									: readiness === 'processing'
-										? 'warn'
-										: readiness === 'failed'
-											? 'bad'
-											: 'neutral'}
-								wrap>{stateChip}</Badge
-							>
-						{/if}
-						<!-- `official` IS THE NEUTRAL CASE, not an --ok chip. It used to be green, which put a second --ok pill
+				<!-- `display: contents` except on a flat row, where the byline and chips share one line. -->
+				<div class="meta">
+					{#if metaFacts}<div class="byline">{metaFacts}</div>{/if}
+					{#if kindLabel || stateChip || durationNote || showTags}
+						<div class="chips">
+							{#if stateChip}
+								<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
+								<Badge
+									variant={readiness === 'ready'
+										? 'ok'
+										: readiness === 'processing'
+											? 'warn'
+											: readiness === 'failed'
+												? 'bad'
+												: 'neutral'}
+									wrap>{stateChip}</Badge
+								>
+							{/if}
+							<!-- `official` IS THE NEUTRAL CASE, not an --ok chip. It used to be green, which put a second --ok pill
 							immediately beside "Karaoke ready" in this same chips row, meaning something completely different — and with
 							the card's --ok border gone the ready pill is now the row's ONE statement of readiness, so a green
 							neighbour defeats it. Only the EXCEPTIONAL kinds are toned: red for "Not music", amber for "Live", accent
 							for "Lyric video". "Official video" is the common, expected kind and should not shout. -->
-						{#if kindLabel}<Badge
-								variant={kind === 'lyric'
-									? 'accent'
-									: kind === 'live'
-										? 'warn'
-										: kind === 'suspect'
-											? 'bad'
-											: 'neutral'}>{kindLabel}</Badge
-							>{/if}
-						<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
+							{#if kindLabel}<Badge
+									variant={kind === 'lyric'
+										? 'accent'
+										: kind === 'live'
+											? 'warn'
+											: kind === 'suspect'
+												? 'bad'
+												: 'neutral'}>{kindLabel}</Badge
+								>{/if}
+							<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
 							one recording. The tone change is the whole fix here: red is the failure colour and this is a mild metadata
 							note. It is the one measurement that keeps a pill, because it is the one that does not fit the byline —
 							`durationNote`'s note has the numbers. -->
-						{#if durationNote}<Badge variant="warn" wrap>{durationNote}</Badge>{/if}
-						<!-- TAGS ARE THE OTHER SURVIVING PILL, and they earn it: a tag is a describing WORD, which is what a pill is
+							{#if durationNote}<Badge variant="warn" wrap>{durationNote}</Badge>{/if}
+							<!-- TAGS ARE THE OTHER SURVIVING PILL, and they earn it: a tag is a describing WORD, which is what a pill is
 							for. The key and the view count used to sit here and have moved to the byline — see `metaFacts`. -->
-						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
-					</div>
-				{/if}
+							{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
+						</div>
+					{/if}
+				</div>
 				{#if readiness === 'processing' && !stalled}
 					<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
 					<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
@@ -555,19 +558,32 @@
 		overflow-wrap: anywhere;
 		font-size: var(--type-title);
 	}
-	.flat .byline {
+	/* The chips read as toned words on the byline's own line, as in the prototype, so a row is one title and one
+	   meta line (64 px) and about five fit above the dock at 320. */
+	.meta {
+		display: contents;
+	}
+	.flat .meta {
+		display: block;
+	}
+	.flat .byline,
+	.flat .chips {
+		display: inline;
+		margin: 0;
 		white-space: normal;
 		overflow-wrap: anywhere;
 		font-size: var(--type-meta);
-	}
-	/* The chips read as toned words, not pills: no fill on a flat row. */
-	.flat .chips {
-		column-gap: var(--step-12);
 	}
 	.flat :global([data-slot='badge']) {
 		padding: 0;
 		border: 0;
 		background: none;
+		font-size: var(--type-meta);
+		white-space: normal;
+		margin-right: var(--step-8);
+	}
+	.flat .byline + .chips {
+		margin-left: var(--step-8);
 	}
 	/* Outlined, so the Spotlight keeps the screen's one accent. */
 	.flat :global([data-slot='button'][data-testid]) {

@@ -220,13 +220,28 @@ async function searchFlashes(world: World) {
 	const ben = await world.openPhone('Ben');
 	await ben.goto('/?source=local');
 	await instrument(ben);
+	// When result rows appear: a skeleton that real rows replace is not a flash (owner ruling on #1171).
+	await ben.evaluate(() => {
+		const w = window as unknown as { rowsAt: number[] };
+		w.rowsAt = [];
+		let had = false;
+		new MutationObserver(() => {
+			const has = !!document.querySelector('.row');
+			if (has && !had) w.rowsAt.push(performance.timeOrigin + performance.now());
+			had = has;
+		}).observe(document, { subtree: true, childList: true });
+	});
 	for (let i = 0; i < 3; i++) {
 		if (await ben.locator(SEL.clearSearch).count()) await ben.locator(SEL.clearSearch).first().click();
 		await ben.locator(SEL.search).fill(track.title);
 		await expect(ben.locator(SEL.songRow).first()).toBeVisible();
 	}
 	await ben.waitForTimeout(400);
-	return flashes((await readState(ben)).indicators);
+	const rowsAt = await ben.evaluate(() => (window as unknown as { rowsAt: number[] }).rowsAt);
+	const replaced = (end: number | null) => end !== null && rowsAt.some((t) => Math.abs(t - end) < 50);
+	return flashes((await readState(ben)).indicators).filter(
+		(i) => !(SEARCH_FLASHES[0]!.match.test(i.what) && replaced(i.end))
+	);
 }
 
 for (const flash of SEARCH_FLASHES) {

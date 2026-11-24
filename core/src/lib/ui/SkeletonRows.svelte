@@ -28,11 +28,8 @@
 	reorder, so the index IS their stable identity. -->
 <div class="skels" role="status" aria-busy="true" aria-label={label}>
 	{#each Array.from({ length: count }, (_, i) => i) as i (i)}
-		<!-- THE ROW'S GEOMETRY IS COMPOSED, NEVER RE-DECLARED. A local copy of `.card` + `.list-row` stood here and had
-			drifted off both: `padding: 12px 14px` against the row's 11px 12px, so every bar sat 2px further inside the
-			row than the text that replaced it, and no `box-shadow` at all, so the placeholder read as a flat outline while
-			the arriving rows read as lit objects. Neither shared rule carries hover or state colour — SongRow keeps those
-			in its own file — so there is nothing here a placeholder must avoid inheriting. -->
+		<!-- THE ROW'S GEOMETRY IS COMPOSED, NEVER RE-DECLARED: a local copy of `.card` + `.list-row` once drifted 2px off
+			the rows it stood in for. `flat` mirrors SongRow's `.row.flat` box. -->
 		<div class={['list-row', { card: !flat, flat }]}>
 			{#if !flat}<Skeleton variant="thumb" />{/if}
 			<div class="skel-text">
