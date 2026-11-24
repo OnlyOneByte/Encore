@@ -442,8 +442,9 @@ tree; any non-zero exit is a real finding.
 above) on the exact commit, with no new failures against `main`. A UI change also carries its phone and TV
 frames, and `bun run ui:review` GIFs for anything that moves.
 
-[`.github/workflows/`](.github/workflows/) holds four workflow definitions: `ci.yml` (core) and
-`ci-worker.yml` (worker) on pull requests, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. The two
+[`.github/workflows/`](.github/workflows/) holds five workflow definitions: `ci.yml` (core) and
+`ci-worker.yml` (worker) on pull requests, an advisory `probes.yml` (the probe set, sharded) on pull requests
+and `main`, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. The two
 PR workflows run on every PR, a fork's included, with a read-only token and no secrets; each skips its heavy
 job when no path it covers changed. Their `core-gate` and `worker-gate` checks pass when that job passed or
 was skipped, and they are the required checks on `main`, alongside the local gate run above.
