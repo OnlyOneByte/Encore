@@ -1,7 +1,15 @@
 import { expect, it } from 'bun:test';
 import { read } from '$test';
 import { MAX_TV_SCREENS } from '$lib/contract';
-import { DRIFT_FRESH_MS, NEW_SCREEN_MS, TvScreens, cleanScreenName } from '$lib/server/rooms/tv-screens';
+import {
+	DRIFT_FRESH_MS,
+	MAX_COOKIELESS_SCREENS,
+	NEW_SCREEN_MS,
+	REMEMBER_MAX,
+	REMEMBER_MS,
+	TvScreens,
+	cleanScreenName
+} from '$lib/server/rooms/tv-screens';
 
 const R = 'room';
 const clock = () => {
@@ -43,7 +51,7 @@ it('a removed screen forgets its name and comes back as a new one', () => {
 	s.forget(R, 'tvA');
 	s.disconnect(R, 1);
 	s.connect(R, 2, 'tvA');
-	expect(s.list(R, null)[0]).toMatchObject({ name: 'Screen 2', isNew: true });
+	expect(s.list(R, null)[0]).toMatchObject({ name: 'Screen 1', isNew: true });
 });
 
 it('only an open screen can be renamed', () => {
@@ -80,15 +88,69 @@ it('drift is a copy-only, finite, fresh report', () => {
 	expect(s.list(R, 1)[1]!.driftMs).toBeNull();
 });
 
-it('the room fills at MAX_TV_SCREENS screens, and a screen already open is never "one more"', () => {
+it('the room fills at MAX_TV_SCREENS cookied screens, and a screen already open is never "one more"', () => {
 	const s = new TvScreens(clock().now);
 	for (let i = 0; i < MAX_TV_SCREENS; i++) s.connect(R, i + 1, `tv${i}`);
-	expect(s.isFull(R, 'tvNew')).toBe(true);
-	expect(s.isFull(R, undefined)).toBe(true);
-	expect(s.isFull(R, 'tv3')).toBe(false);
-	expect(s.isFull('another room', 'tvNew')).toBe(false);
+	expect(s.isFull(R, 'tvNew', 'tv0')).toBe(true);
+	expect(s.isFull(R, 'tv3', 'tv0')).toBe(false);
+	expect(s.isFull('another room', 'tvNew', 'tv0')).toBe(false);
 	s.disconnect(R, 1);
-	expect(s.isFull(R, 'tvNew')).toBe(false);
+	expect(s.isFull(R, 'tvNew', 'tv0')).toBe(false);
+});
+
+// The review of #1204: scripted cookieless sockets filled the room, the TV was off past the seat wait, and the TV
+// was then turned away with nothing holding the seat.
+it('a screen that can hold the seat is never turned away while the seat is free or kept for it', () => {
+	const s = new TvScreens(clock().now);
+	for (let i = 0; i < MAX_TV_SCREENS; i++) s.connect(R, i + 1, `copy${i}`);
+	expect(s.isFull(R, 'theTv', null)).toBe(false);
+	expect(s.isFull(R, 'theTv', 'theTv')).toBe(false);
+	expect(s.isFull(R, 'theTv', 'copy0')).toBe(true);
+});
+
+it('cookieless sockets fill a pool of their own and never count against a cookied screen', () => {
+	const s = new TvScreens(clock().now);
+	for (let i = 0; i < MAX_COOKIELESS_SCREENS; i++) s.connect(R, i + 1, undefined);
+	expect(s.isFull(R, undefined, 'theTv')).toBe(true);
+	expect(s.isFull(R, 'theTv', 'someone else')).toBe(false);
+	for (let i = 1; i < MAX_TV_SCREENS; i++) s.connect(R, 100 + i, `copy${i}`);
+	expect(s.isFull(R, 'theTv', 'someone else')).toBe(false);
+	s.connect(R, 200, 'copyLast');
+	expect(s.isFull(R, 'theTv', 'someone else')).toBe(true);
+});
+
+it('closed screens are remembered for a day and at most REMEMBER_MAX of them; numbers stay small', () => {
+	const c = clock();
+	const s = new TvScreens(c.now);
+	s.connect(R, 1, 'kitchen');
+	s.rename(R, 'kitchen', 'Kitchen');
+	s.disconnect(R, 1);
+	// Cookies minted by a script: each is closed at once, and none grows the numbers past the cap.
+	for (let i = 0; i < REMEMBER_MAX + 50; i++) {
+		s.connect(R, 10 + i, `minted${i}`);
+		s.disconnect(R, 10 + i);
+	}
+	s.connect(R, 9999, 'fresh');
+	const n = Number(s.list(R, null)[0]!.name.replace('Screen ', ''));
+	expect(n).toBeLessThanOrEqual(REMEMBER_MAX + 1);
+	s.disconnect(R, 9999);
+	// The oldest, Kitchen, was the first to go.
+	s.connect(R, 2, 'kitchen');
+	expect(s.list(R, null)[0]!.name).not.toBe('Kitchen');
+	s.disconnect(R, 2);
+	// A name within the day survives; past it, it is gone.
+	const t = new TvScreens(c.now);
+	t.connect(R, 1, 'hall');
+	t.rename(R, 'hall', 'Hall');
+	t.disconnect(R, 1);
+	c.t += REMEMBER_MS - 1;
+	t.connect(R, 2, 'hall');
+	expect(t.list(R, null)[0]!.name).toBe('Hall');
+	t.disconnect(R, 2);
+	c.t += REMEMBER_MS + 1;
+	t.connect(R, 3, 'other');
+	t.connect(R, 4, 'hall');
+	expect(t.list(R, null).map((v) => v.name)).toEqual(['Screen 1', 'Screen 2']);
 });
 
 it('cleanScreenName trims, folds space, drops control characters and caps the length', () => {
@@ -103,7 +165,7 @@ it('server.ts turns a screen too many away at open and takes drift from copies o
 	const src = read('server.ts');
 	const open = src.split('open(ws) {')[1]!.split('message(ws, raw)')[0]!;
 	expect(open.indexOf('tvScreens.isFull(')).toBeLessThan(open.indexOf('ws.subscribe('));
-	expect(open).toContain('app.rooms.tvSeat(roomId) !== tvId');
+	expect(open).toContain('tvScreens.isFull(roomId, tvId, app.rooms.tvSeat(roomId))');
 	const drift = src.split("case 'tv:drift':")[1]!.split('break;')[0]!;
 	expect(drift).toContain('!seated(ws)');
 	expect(src).toContain('if (ws.data.refused) return;');

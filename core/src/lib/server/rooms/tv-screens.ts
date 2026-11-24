@@ -11,9 +11,22 @@ export const DRIFT_FRESH_MS = 10_000;
 export const NEW_SCREEN_MS = 60_000;
 /** A drift past this is not a measurement; the copy is lost and will seek. */
 const DRIFT_MAX_MS = 60_000;
+/** Cookieless sockets (a script, a browser with cookies off) can never hold the seat, so they get a pool of their own
+ *  and can never fill the room against a screen that can. */
+export const MAX_COOKIELESS_SCREENS = 4;
+/** A closed screen's number and name are kept this long, so it comes back as itself; then they are dropped. */
+export const REMEMBER_MS = 24 * 60 * 60 * 1000;
+/** And at most this many closed screens are remembered, oldest dropped first, however many cookies were minted. */
+export const REMEMBER_MAX = 64;
 
 type Socket = { key: number; screenId: string; tvId?: string; openedAt: number; driftMs?: number; driftAt?: number };
-type Room = { sockets: Socket[]; names: Map<string, string>; numbers: Map<string, number>; next: number };
+type Room = {
+	sockets: Socket[];
+	names: Map<string, string>;
+	numbers: Map<string, number>;
+	/** When each remembered screen was last open. */
+	seen: Map<string, number>;
+};
 
 /** Trim, fold whitespace and drop control characters; null when nothing is left. */
 export function cleanScreenName(raw: unknown): string | null {
@@ -37,23 +50,30 @@ export class TvScreens {
 
 	#room(roomId: string): Room {
 		let r = this.#rooms.get(roomId);
-		if (!r) this.#rooms.set(roomId, (r = { sockets: [], names: new Map(), numbers: new Map(), next: 1 }));
+		if (!r) this.#rooms.set(roomId, (r = { sockets: [], names: new Map(), numbers: new Map(), seen: new Map() }));
 		return r;
 	}
 
-	/** Whether a new screen would be one too many. A screen already open (another tab, a reload) is never "new". */
-	isFull(roomId: string, tvId: string | undefined): boolean {
+	/**
+	 * Whether a new screen would be one too many. `seatHolder` is the screen the seat is kept for (`rooms.tv_seat`).
+	 * A screen with a cookie is never turned away while the seat is free or kept for it, and only screens with a
+	 * cookie count against it; cookieless ones fill their own, smaller pool. A screen already open is never "new".
+	 */
+	isFull(roomId: string, tvId: string | undefined, seatHolder: string | null): boolean {
 		const r = this.#rooms.get(roomId);
 		if (!r) return false;
-		if (tvId && r.sockets.some((s) => s.tvId === tvId)) return false;
-		return new Set(r.sockets.map((s) => s.screenId)).size >= MAX_TV_SCREENS;
+		if (!tvId) return r.sockets.filter((s) => !s.tvId).length >= MAX_COOKIELESS_SCREENS;
+		if (seatHolder === null || seatHolder === tvId || r.sockets.some((s) => s.tvId === tvId)) return false;
+		return new Set(r.sockets.filter((s) => s.tvId).map((s) => s.tvId)).size >= MAX_TV_SCREENS;
 	}
 
 	connect(roomId: string, key: number, tvId: string | undefined): void {
 		const r = this.#room(roomId);
 		const screenId = tvId ?? `s${key}`;
 		r.sockets.push({ key, screenId, tvId, openedAt: this.#now() });
-		if (!r.numbers.has(screenId)) r.numbers.set(screenId, r.next++);
+		this.#prune(r);
+		if (!r.numbers.has(screenId)) r.numbers.set(screenId, this.#lowestFree(r));
+		r.seen.set(screenId, this.#now());
 	}
 
 	disconnect(roomId: string, key: number): void {
@@ -61,8 +81,34 @@ export class TvScreens {
 		if (!r) return;
 		const gone = r.sockets.find((s) => s.key === key);
 		r.sockets = r.sockets.filter((s) => s.key !== key);
+		if (!gone) return;
 		// A cookieless screen is its socket: nothing can bring it back, so its number goes with it.
-		if (gone && !gone.tvId) r.numbers.delete(gone.screenId);
+		if (!gone.tvId) this.#drop(r, gone.screenId);
+		else if (r.numbers.has(gone.screenId)) r.seen.set(gone.screenId, this.#now());
+	}
+
+	/** The smallest number no remembered screen has, so numbers stay small however many screens come and go. */
+	#lowestFree(r: Room): number {
+		const taken = new Set(r.numbers.values());
+		let n = 1;
+		while (taken.has(n)) n++;
+		return n;
+	}
+
+	#drop(r: Room, screenId: string): void {
+		r.numbers.delete(screenId);
+		r.names.delete(screenId);
+		r.seen.delete(screenId);
+	}
+
+	/** Forget closed screens unseen for `REMEMBER_MS`, and the oldest past `REMEMBER_MAX`. An open one is kept. */
+	#prune(r: Room): void {
+		const live = new Set(r.sockets.map((s) => s.screenId));
+		const closed = [...r.seen].filter(([id]) => !live.has(id)).sort((a, b) => a[1] - b[1]);
+		const cutoff = this.#now() - REMEMBER_MS;
+		closed.forEach(([id, at], i) => {
+			if (at < cutoff || closed.length - i > REMEMBER_MAX) this.#drop(r, id);
+		});
 	}
 
 	/** A copy's own measure of its distance from the TV's clock. Ignored unless it is a finite number. */
@@ -85,8 +131,7 @@ export class TvScreens {
 	/** A removed screen loses its name and number; opened again, it arrives as a new screen. Not a ban. */
 	forget(roomId: string, screenId: string): void {
 		const r = this.#rooms.get(roomId);
-		r?.names.delete(screenId);
-		r?.numbers.delete(screenId);
+		if (r) this.#drop(r, screenId);
 	}
 
 	/** The screen's live sockets, oldest first. */
@@ -103,7 +148,7 @@ export class TvScreens {
 		for (const s of r.sockets) {
 			const v = views.get(s.screenId) ?? {
 				id: s.screenId,
-				name: r.names.get(s.screenId) ?? `Screen ${r.numbers.get(s.screenId) ?? r.next}`,
+				name: r.names.get(s.screenId) ?? `Screen ${r.numbers.get(s.screenId) ?? '?'}`,
 				isTv: false,
 				driftMs: null,
 				isNew: !r.names.has(s.screenId),

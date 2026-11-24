@@ -624,8 +624,10 @@ The host's Screens page (`docs/FRONTEND.md#the-screens-page`) lists every `/tv` 
 it socket edges and wires the actions to the sockets and the seat (`app.screens`).
 
 - **A screen** is its `tvId`, the hash the seat uses. A cookieless `/tv` is one socket, and it can never be the TV.
-  Each screen is numbered in the order it first opened ("Screen 2"), and a name the host gives it replaces the
-  number.
+  Each screen gets the lowest number no remembered screen has ("Screen 2"), and a name the host gives it replaces
+  the number. A closed screen keeps its number and name for a day (`REMEMBER_MS`), so it comes back as itself. At
+  most 64 closed screens are remembered (`REMEMBER_MAX`), and the oldest goes first, so a script minting cookies
+  cannot grow the maps or the numbers.
   shortcut: names live in core's memory, so they survive a screen's reload but not a core restart. Persist them per
   room if hosts mind.
 - **Drift.** A copy sends `tv:drift { ms }` (copy minus TV) every 2 s at most, from the error it measures while
@@ -637,9 +639,14 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
 - **Remove** closes every socket of a copy with `TV_REMOVED_CLOSE_CODE` (4002) and forgets its name and number. The
   screen stops redialling and says "This screen was removed" with **Open again**; opened again, it is a new screen.
   It is not a ban. The TV cannot be removed (`409 is-tv`).
-- **At most `MAX_TV_SCREENS` (8) screens per room.** One more is closed at open with `TV_FULL_CLOSE_CODE` (4003)
-  before it subscribes to anything, and it says so. Another tab of an open screen, or the seat's own screen, is never
-  turned away.
+- **At most `MAX_TV_SCREENS` (8) screens with a cookie, and `MAX_COOKIELESS_SCREENS` (4) without one, per room.** One
+  more is closed at open with `TV_FULL_CLOSE_CODE` (4003) before it subscribes to anything, and it says so.
+  - The two pools are counted apart. A cookieless socket can never hold the seat, so it can never fill the room
+    against a screen that can.
+  - A screen with a cookie is never turned away while the seat is free or kept for it (`rooms.tv_seat`).
+  - Another tab of an open screen is never turned away either.
+  - So a script filling the room, with the TV switched off past its seat's wait, cannot keep the TV out when it comes
+    back (#1204's review).
 
 None of this is on `/ws` for the host: a socket never carries the host. A copy can report its drift and nothing else
 here.
@@ -689,7 +696,7 @@ exposure to the internet. What each attack gets:
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
-| A `/tv` socket lying in `tv:drift`, or opening screens to fill the room | A drift report sets one number on its own row of the host's Screens page, clamped, and moves nothing. A room takes [at most 8 screens](#screens); the TV itself is never turned away, and the host can remove any copy. |
+| A `/tv` socket lying in `tv:drift`, or opening screens to fill the room | A drift report sets one number on its own row of the host's Screens page, clamped, and moves nothing. A room takes [at most 8 screens with a cookie and 4 without](#screens), counted apart. A screen with a cookie is never turned away while the seat is free or kept for it, and the host can remove any copy. |
 | A guest renaming, removing or promoting screens | Refused (403): `/api/screens` is host only, and nothing on `/ws` does any of it. |
 | A rogue worker | `role=worker` needs core's token (constant-time compare). See [The worker token](#the-worker-token) (#1196). Like `ENCORE_ADMIN_TOKEN`, a set `ENCORE_WORKER_TOKEN` under 24 characters stops core from starting. The Origin check passes the worker, which sends no Origin. The token rides in the `ws://` query, so it stops "connect to the port", not someone sniffing the Wi-Fi. |
 

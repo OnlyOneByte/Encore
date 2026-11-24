@@ -2130,8 +2130,12 @@ lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
 - **The actions** are **Make this the TV**, **Rename** (inline, 32 characters at most) and **Remove**. Copies only
   get Make this the TV and Remove; the TV gets Rename alone. While a song is on, Make this the TV is disabled and one
   line says why: a screen becomes the TV mid-song only when someone taps it there.
-- **Polled every 2 s while the page is visible**, not pushed, because a socket never carries the host. A refused
-  action says what to do instead, in the page's status line.
+- **The first list comes with the page** from its host-gated load, so the page paints whole (CLS 0). After that it
+  is polled every 2 s while the page is visible, not pushed, because a socket never carries the host.
+- **The status line** (`role="status"`) is in the DOM from the start, empty, so a screen reader catches its first
+  message. A refused action says what to do instead there.
+- A row's buttons wait while its action is in flight, so a double tap sends one request. A Remove that finds the
+  screen already gone counts as done. Escape cancels a rename.
 - The page ends with where to add a screen: the join address with `/tv`.
 
 The layouts per screen (Everything, Words only, Up next) come with proposal 34's PR 4.

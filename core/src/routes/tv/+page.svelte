@@ -8,7 +8,6 @@
 		isPlayable,
 		effectiveSongIntroMs,
 		SKIP_NOTICE_MS,
-		MAX_TV_SCREENS,
 		TV_FULL_CLOSE_CODE,
 		TV_REMOVED_CLOSE_CODE
 	} from '$lib/contract';
@@ -567,7 +566,7 @@
 	// A screen the host removed, or one too many for the room: the socket is closed for good until it is opened again.
 	let shutOut = $state<'removed' | 'full' | null>(null);
 	const shutOutLine = $derived(
-		shutOut === 'removed' ? 'This screen was removed' : `This room already has ${MAX_TV_SCREENS} screens`
+		shutOut === 'removed' ? 'This screen was removed' : 'This room has all the screens it can show'
 	);
 	// Said in the page's one live region, which is mounted before any of it.
 	$effect(() => {

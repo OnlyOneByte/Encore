@@ -263,9 +263,10 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
-			// One screen too many is turned away before it hears anything; the seat's own screen never is.
+			// One screen too many is turned away before it hears anything. A screen that could take the seat never is
+			// while the seat is free or kept for it (tv-screens.ts `isFull`).
 			const { role, roomId, tvId } = ws.data;
-			if (role === 'tv' && roomId && tvScreens.isFull(roomId, tvId) && app.rooms.tvSeat(roomId) !== tvId) {
+			if (role === 'tv' && roomId && tvScreens.isFull(roomId, tvId, app.rooms.tvSeat(roomId))) {
 				ws.data.refused = true;
 				ws.close(TV_FULL_CLOSE_CODE, 'this room has its fill of screens');
 				return;
