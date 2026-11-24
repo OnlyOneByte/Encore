@@ -15,6 +15,7 @@ import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../worl
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
+import { startGallery, type Gallery } from '../../world/gallery';
 import type { RealtimeReport } from '../../world/motion-realtime';
 import { burst, putRoom, stage } from '../../world/reactions';
 import { DEMO_LIBRARY } from '../../world/seed';
@@ -29,6 +30,9 @@ type Make = (browser: Browser, world: World, cleanup: (fn: () => Promise<unknown
 /** Rows whose honest record today is a CUT: the capture must catch NO animation. Flip a row out of here in the
  *  PR that gives it motion, so the strip it makes is the before/after of that change. */
 const CUTS = new Set([
+	'spotlight-guide-390',
+	'spotlight-guide-320',
+	'spotlight-guide-tv',
 	'phone-sing-widen-390',
 	'phone-sing-widen-320',
 	'phone-reorder-held-390',
@@ -308,7 +312,7 @@ async function awaitReady(phone: Page, id: string): Promise<void> {
 /** Maya drags the LAST queued row toward the top while Theo is On deck (proposal 14). The drop stops at 2nd, under
  *  Theo's row, which has no grip on her phone, and on release "Theo’s on deck. Ana goes right after." appears under
  *  "Queued" — a CUT: the line has no animation. The rows' own slide and number roll are the existing reorder motion,
- *  outside `only` (their literal 160/180/220 ms timings predate this row). The last row is whichever of Ana's two
+ *  outside `only` (--motion-slide, --motion-roll and --motion-pop). The last row is whichever of Ana's two
  *  songs a previous run left there, so every run makes the same move. */
 function reorderHeld(width: number): Make {
 	return (browser, world, cleanup) => {
@@ -495,8 +499,6 @@ function queueYourSong(width: number): Make {
 			},
 			// `.youre-up` too: the sheet rises over the dock in the same moment, so a capture without it froze it mid-fade.
 			only: 'main .grouphead, main .qrow, .youre-up',
-			// The rule the hold outranks, not its timing: a row also matches app.css's `.pop-in` (its entrance, 0.22s).
-			literalsAllowed: { match: 'literal timing 0.22s', reason: 'QueueRow’s .pop-in entrance, outranked by the hold' },
 			stripClip: async () => ({ x: 0, y: 0, width, height: 844 }),
 			observe: (page) =>
 				page.evaluate(() => ({
@@ -918,7 +920,78 @@ function restartRest(width: number, back: boolean): Make {
 	};
 }
 
+/** The one `vite dev` every story row shares; the rows run serially in one worker (see their describe below). */
+let storyGallery: Promise<Gallery> | undefined;
+
+/** The Spotlight story (`/components/spotlight`, dev-only, so on `vite dev`): its entrance, the On deck to You're up
+ *  handoff, and a Guide segment tap, which is a cut. Only transform and opacity may move (tenet 3). */
+function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: number; height: number }): Make {
+	const tv = viewport.width > 1000;
+	const at = tv ? 'tv' : String(viewport.width);
+	const ROW = {
+		enter: {
+			what: 'the four Spotlight states mount: each card fades in from scale(.98) over --motion-base (--ease-out)',
+			button: 'replay',
+			only: '.spotlight',
+			subject: '[data-testid="spot-on-deck"] .spotlight'
+		},
+		handoff: {
+			what: 'On deck becomes You’re up: the fill stays lit and the headline pops (opacity, scale .92), --motion-slow',
+			button: 'handoff-toggle',
+			only: '[data-testid="spot-handoff"] .spotlight, [data-testid="spot-handoff"] .spotlight *',
+			subject: '[data-testid="spot-handoff"] .spotlight'
+		},
+		guide: {
+			what: 'tapping Low on the Guide segments: the press lands in the next frame, a cut with no animation',
+			button: null,
+			only: '.segments, .segments *',
+			subject: '[data-testid="guide-plain"] .segments'
+		}
+	}[kind];
+	return (browser) => {
+		return {
+			name: `spotlight-${kind}-${at}`,
+			what: `${tv ? 'TV 1920x1080' : `Phone ${viewport.width}x${viewport.height}`}: ${ROW.what}`,
+			stepMs: kind === 'guide' ? 16 : 33,
+			scale: tv ? 0.5 : 1,
+			columns: 6,
+			open: async (opts) => {
+				storyGallery ??= startGallery();
+				const ctx = await browser.newContext({ ...opts, viewport });
+				const page = await ctx.newPage();
+				await (await storyGallery).open(page, '/components/spotlight', ROW.subject);
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				// Past the cards' own mount entrance, so the trigger's motion is the only one caught.
+				await page.waitForTimeout(600);
+				return page;
+			},
+			trigger: async (page) => {
+				if (ROW.button) await page.getByTestId(ROW.button).click();
+				else await page.getByTestId('guide-plain').getByRole('radio', { name: 'Low' }).click();
+			},
+			only: ROW.only,
+			subject: ROW.subject,
+			observe: (page) =>
+				page.evaluate(() => ({
+					handoff: document.querySelector('[data-testid="spot-handoff"] .spotlight')?.getAttribute('data-moment'),
+					guide: [...document.querySelectorAll('[data-testid="guide-plain"] [role="radio"]')].map(
+						(b) => `${b.textContent}:${b.getAttribute('aria-checked')}`
+					)
+				}))
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
+	'spotlight-enter-390': spotlightStory('enter', { width: 390, height: 844 }),
+	'spotlight-enter-320': spotlightStory('enter', { width: 320, height: 568 }),
+	'spotlight-enter-tv': spotlightStory('enter', { width: 1920, height: 1080 }),
+	'spotlight-handoff-390': spotlightStory('handoff', { width: 390, height: 844 }),
+	'spotlight-handoff-320': spotlightStory('handoff', { width: 320, height: 568 }),
+	'spotlight-handoff-tv': spotlightStory('handoff', { width: 1920, height: 1080 }),
+	'spotlight-guide-390': spotlightStory('guide', { width: 390, height: 844 }),
+	'spotlight-guide-320': spotlightStory('guide', { width: 320, height: 568 }),
+	'spotlight-guide-tv': spotlightStory('guide', { width: 1920, height: 1080 }),
 	'phone-sing-widen-390': singWiden(390),
 	'phone-sing-widen-320': singWiden(320),
 	'phone-restart-rest-390': restartRest(390, false),
@@ -1581,7 +1654,7 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 	};
 }
 
-for (const [name, make] of Object.entries(SCENARIOS)) {
+function register(name: string, make: Make) {
 	// An anonymous describe per row, so a row's `test.use` reaches its own test and no other.
 	test.describe(() => {
 		// The tuple form: Playwright reads any array whose second item is an object as `[value, options]`.
@@ -1641,3 +1714,13 @@ for (const [name, make] of Object.entries(SCENARIOS)) {
 		});
 	});
 }
+
+const isStory = (name: string) => name.startsWith('spotlight-');
+// shortcut: one `vite dev` at a time keeps the story rows from reloading each other's pages (they share
+// `.svelte-kit/`). Running the `spotlight` probe in the same invocation still starts a second one.
+test.describe('spotlight story', () => {
+	test.describe.configure({ mode: 'serial' });
+	test.afterAll(async () => (await storyGallery)?.stop());
+	for (const [name, make] of Object.entries(SCENARIOS)) if (isStory(name)) register(name, make);
+});
+for (const [name, make] of Object.entries(SCENARIOS)) if (!isStory(name)) register(name, make);

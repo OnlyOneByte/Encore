@@ -1,0 +1,48 @@
+/* Spotlight design tokens (redesign step 2). Roles alias today's app.css names where the values match, so nothing
+   moves until a screen opts in; tables and when-to-use are in docs/FRONTEND.md#spotlight-tokens. */
+:root {
+	--role-ground: var(--bg);
+	--role-raise: #161622;
+	--role-rule: var(--line);
+	--role-ink: var(--ink);
+	--role-ink-dim: var(--ink-dim);
+	--role-control: var(--control-line);
+	--role-accent: var(--accent);
+	--role-on-accent: var(--on-accent);
+	--role-accent-ink: var(--accent-ink);
+	--role-focus: var(--focus);
+	--role-danger: var(--danger-ink);
+	--role-danger-surface: var(--danger-bg);
+	--role-danger-line: var(--danger-line);
+	--role-ok: var(--ok);
+	--role-warn: var(--warn);
+	/* The moment's owner: a singer's registry fill and its certified on_fill, set inline by <Spotlight>. */
+	--spot: var(--role-accent);
+	--on-spot: var(--role-on-accent);
+
+	--type-meta: 0.8125rem;
+	--type-body: 0.9375rem;
+	--type-title: 1.0625rem;
+	--type-lead: 1.375rem;
+	--type-display: 2.125rem;
+	--type-hero: 3.5rem;
+
+	--step-1: var(--space-2xs);
+	--step-2: var(--space-sm);
+	--step-3: var(--space-lg);
+	--step-4: var(--space-2xl);
+	--step-5: var(--space-5xl);
+	--step-6: 32px;
+	--step-7: 48px;
+
+	--round-spot: var(--radius);
+	--round-pill: var(--radius-pill);
+
+	/* Off the 120/250/400 ladder on purpose: they keep today's queue motion frame-identical until step 3 snaps them. */
+	--motion-pop: 0.22s;
+	--motion-slide: 160ms;
+	--motion-roll: 180ms;
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--ease-pop: cubic-bezier(0.2, 0.9, 0.3, 1.3);
+	--ease-slide: cubic-bezier(0.32, 0.72, 0, 1);
+}
