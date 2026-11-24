@@ -14,12 +14,27 @@ Four kinds of artifact; the gate's timing half runs as its own project:
 | `gate`       | **Yes** — leg 8 of `bun run gates`, and a step in CI     | CLAIM 1-8 and 15 on real resolved geometry, plus the register's own shape                                                      |
 | `gate-speed` | **Yes** — the rest of `gate:measured`                    | the speed budget, CLAIM 9-14 (`measured-speed-*`): one worker, after `gate`, so the timings do not race the gate's own workers |
 | `flow`       | `fuzz.spec.ts` runs in CI on its known seeds (see below) | long multi-client scenarios: party, playback, lobby, fuzz                                                                      |
-| `probe`      | no — run when you want the answer; nightly in CI         | one subject per spec                                                                                                           |
+| `probe`      | no — advisory `probes` check on every PR; nightly in CI  | one subject per spec                                                                                                           |
 | `shot`       | **cannot** — a screenshot cannot fail a build            | frames, each driven INTO its state                                                                                             |
 
 CI is `.github/workflows/ci.yml` (`gate:measured`, then `--project=flow fuzz.spec.ts`) on every pull request
 that touches more than `worker/**` and the worker/nightly/ml workflow files (its `changes` path filter), and
 `.github/workflows/nightly.yml` (`--project=gate --project=flow --project=probe`).
+
+### Probes on GitHub
+
+`.github/workflows/probes.yml` runs `--project=probe` in four shards, plus `gate:measured`, on every pull request
+and every push to `main`. It runs them in the Playwright image on an internal Docker network, as
+[Running in Docker](#running-in-docker) prescribes. Its `probes` job lists every failure by file:line in the run
+summary, then the flaky tests. Each shard's `probes-<job>` artifact holds the HTML report, `results.json` and
+every test's `core.log`. The check is advisory, not required.
+
+**Reviewers read that job instead of re-running the probe set locally.** Run locally only the specs the PR
+touches, or that exercise a path it changes (grep the probes for the changed functions and UI actions). A
+failure there that also fails on `main`, or a flaky test, is not the PR's.
+
+A probe that needs YouTube cannot pass on a network with no route out. Tag it `{ tag: '@youtube' }`: the
+hermetic run leaves it out and lists it, and `nightly.yml`, which has a network, still runs it.
 
 Motion is `shot` too: `bun run ui:review` records each row of `specs/shot/motion.spec.ts` as a GIF, a
 ms-labelled filmstrip and `metrics.json`. What a reviewer checks it against is [UI-CHECKLIST.md](UI-CHECKLIST.md).
