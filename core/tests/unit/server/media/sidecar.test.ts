@@ -15,9 +15,11 @@ import {
 	readAllSidecars,
 	rebuildIndexFromMeta,
 	clearArtifacts,
+	updateSidecar,
 	SIDECAR_SCHEMA,
 	type MediaSidecar
 } from '$lib/server/media/sidecar';
+import { setKeep } from '$lib/server/media/library-manage';
 import { assignParams } from '$lib/server/jobs/dispatch';
 
 const NOW = 1_788_400_000_000;
@@ -478,6 +480,43 @@ describe('clearArtifacts (eviction must stick) (§1)', () => {
 	it('is a no-op when the song has no sidecar yet', async () => {
 		await clearArtifacts('ghost'); // must not throw
 		expect(await readSidecar('ghost')).toBeNull();
+	});
+});
+
+describe('concurrent writers of one record (#1188, #1185)', () => {
+	it('a Keep and a library save at the same moment keep the Keep', async () => {
+		const m = media();
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		for (let round = 0; round < 20; round++) {
+			const save = () => updateSidecar(m.id, (prev) => sidecarFromMedia(m, NOW, prev));
+			// Both orders: a save that read before the Keep wrote must not put the old library back.
+			await Promise.all(round % 2 ? [save(), setKeep(m.id, true)] : [setKeep(m.id, true), save()]);
+			expect((await readSidecar(m.id))?.library.keep).toBe(true);
+			await setKeep(m.id, false);
+		}
+	});
+
+	it('a reader never sees a half-written record while it is being replaced', async () => {
+		const m = media();
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		let writing = true;
+		// Each write is longer than the last, the case a read cut at the old length breaks.
+		const writer = (async () => {
+			for (let i = 1; i <= 150; i++) {
+				await updateSidecar(m.id, (s) =>
+					s ? { ...s, library: { ...s.library, tags: [...s.library.tags, `t${i}`] } } : null
+				);
+			}
+			writing = false;
+		})();
+		let reads = 0;
+		while (writing) {
+			expect(await readSidecar(m.id)).not.toBeNull();
+			reads++;
+		}
+		await writer;
+		expect(reads).toBeGreaterThan(0);
+		expect((await readSidecar(m.id))?.library.tags).toHaveLength(150);
 	});
 });
 

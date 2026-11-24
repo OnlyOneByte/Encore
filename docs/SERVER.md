@@ -896,6 +896,11 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   partial record must be rejected by the well-formedness check before any section is dereferenced. A MISSING
   sidecar is normal and silent; one that exists and will not parse is logged, because that song's source of
   truth is gone.
+- **Every write to a song's sidecar goes through `updateSidecar`**, which runs them one at a time per song:
+  the library save, plays, Keep, rename, eviction, backfill and lyrics edits. Two writers that both read
+  before either writes lose one change, such as a Keep (#1188). Delete unlinks again behind the queue, so a
+  queued write cannot re-create the record. A sidecar is read with one `readFile`, never `Bun.file`: that
+  caches the size at `exists()`, so a file renamed over in between is read cut short and fails to parse (#1185).
 - **Clearing artifacts must NULL the sidecar fields directly**, never rely on a merge that falls back to the
   previous sidecar — that resurrects just-deleted refs and republishes an evicted song as processed with
   refs to files no longer on disk.

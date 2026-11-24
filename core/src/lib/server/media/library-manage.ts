@@ -4,7 +4,7 @@ import { DELETE_UNDO_MS, readinessOf, type LibrarySizes, type Media, type QueueE
 import type { MediaStore } from './store';
 import { candidateAudioRefs } from './paths';
 import { derivedRefsOf } from './retention';
-import { readSidecar, sidecarFromMedia, writeSidecar, type FieldProvenance, type MediaSidecar } from './sidecar';
+import { readSidecar, sidecarFromMedia, updateSidecar, type FieldProvenance, type MediaSidecar } from './sidecar';
 
 export const NAME_MAX = 200;
 
@@ -49,11 +49,13 @@ export async function renameSong(
 	name: { title: string; artist: string | null },
 	upsert: (m: Media) => void
 ): Promise<void> {
-	const side = (await readSidecar(m.id)) ?? sidecarFromMedia(m, Date.now());
 	const manual: FieldProvenance = { by: 'manual', confidence: 'high' };
-	side.canonical = { ...side.canonical, title: name.title, artist: name.artist, artistCredit: name.artist };
-	side.provenance = { ...side.provenance, title: manual, artist: manual };
-	await writeSidecar(side);
+	await updateSidecar(m.id, (prev) => {
+		const side = prev ?? sidecarFromMedia(m, Date.now());
+		side.canonical = { ...side.canonical, title: name.title, artist: name.artist, artistCredit: name.artist };
+		side.provenance = { ...side.provenance, title: manual, artist: manual };
+		return side;
+	});
 	m.title = name.title;
 	m.titleCanonical = name.title;
 	m.artistCanonical = name.artist ?? undefined;
@@ -64,12 +66,13 @@ export async function renameSong(
 
 /** False when the song has no sidecar to record it in. */
 export async function setKeep(mediaId: string, keep: boolean): Promise<boolean> {
-	const side = await readSidecar(mediaId);
-	if (!side) return false;
-	if (keep) side.library.keep = true;
-	else delete side.library.keep;
-	await writeSidecar(side);
-	return true;
+	const side = await updateSidecar(mediaId, (s) => {
+		if (!s) return null;
+		if (keep) s.library.keep = true;
+		else delete s.library.keep;
+		return s;
+	});
+	return side !== null;
 }
 
 /** Every file a delete would free, sized by the store, so an object store reports its own bytes. */
