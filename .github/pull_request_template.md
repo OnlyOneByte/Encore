@@ -6,8 +6,7 @@ Closes #
 
 Areas this PR touches (server and routes, phone UI, TV, worker, security, tests, process):
 
-- [ ] Self-review: [docs/PR-CHECKLIST.md](https://github.com/OnlyOneByte/Encore/blob/main/docs/PR-CHECKLIST.md)
-      done for those areas
+- [ ] Self-review: [docs/PR-CHECKLIST.md](https://github.com/OnlyOneByte/Encore/blob/main/docs/PR-CHECKLIST.md) done for those areas
 
 ## Gates
 

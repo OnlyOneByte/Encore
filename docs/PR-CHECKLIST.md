@@ -1,7 +1,7 @@
 # PR self-review checklist
 
-Run this before you open a pull request. Every line is a must-fix that a reviewer found in a real PR, and the link
-goes to that PR. Answer the sections the PR touches and name them in the PR body. A UI PR also answers the
+Run this before you open a pull request. Every line comes from a review finding on a real PR, a must-fix or a
+should-fix, and the link goes to that PR; a line with no link is a standing project rule. Answer the sections the PR touches and name them in the PR body. A UI PR also answers the
 [UI checklist](UI-CHECKLIST.md). The review still happens; this list is for catching the repeats before it does.
 
 ## Server and routes
@@ -16,7 +16,6 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
   behaviour? [#1161]
 - Is there an `await` between a check and the act it guards, where another request can slip in? [#1179]
 - Does every writer of a shared file such as `meta/<id>.json` go through the per-id write queue? [#1179] [#1183]
-- Does the change reach every screen that shows it, phones and the TV, while they are open? [#1179] [#1161]
 - Does the route refuse a song that is mid-process, evicted or pending delete, rather than report it ready? [#1179]
 - Does changing or deleting something in tonight's queue refuse, or tell the singer? [#1179]
 - Does a metric count only finished work, tested through the real repository rather than hand-made rows? [#1135]
@@ -31,7 +30,7 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
   CLS 0. [#1204]
 - If the response is lost or the tab closes mid-request, does the phone keep a working state? [#1193]
 - Two tabs or a double tap at once: is the second one harmless, with buttons disabled while a request is in
-  flight? [#1193] [#1204]
+  flight? [#1204]
 - Does content ever wait behind an indicator, such as a skeleton's minimum hold? [#1171]
 - With a slow answer (over 300 ms), does focus still land where it should? Is there a probe with a slowed
   response? [#1171]
@@ -46,7 +45,8 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
 - Can a hidden or sleeping control take a touch tap or a double click as it wakes? Test with `hasTouch` and
   `touchscreen.tap`, not only a mouse. [#1195]
 - Can the real TV always get back in after its seat lapses, whatever extra screens or guests do? [#1204]
-- Does the TV get the change live, or only at its next full sync? [#1179]
+- Does the change reach every open screen live, phones and the TV, or only at the next full sync? [#1179] [#1161]
+- Does every new timer, listener or effect clean up on unmount and when its condition flips? [#1174] [#1195]
 - Can a moving marker, such as the current lyric row, step back across a swap or a nudge? [#1183]
 - Does state set from a stream (a rate trim) reset when the stream stops? [#1174]
 
@@ -80,10 +80,14 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
 - Does each new test fail on the old code? Revert the fix, or apply a mutant, and watch it go red. [#1161] [#1145]
 - Does the test drive the real input (touch, a slow network, a real key set), not only the happy path? [#1195]
   [#1171] [#1137]
+- Does the guarding test act at the risky spot itself, such as the sleeping button's own coordinates rather than
+  the screen's centre? [#1195]
+- Is every "fails on main too" or "flaky" claim backed by alternating runs, main and head at similar
+  load? [#1174] [#1195] [#1208]
 - Did you run every probe that exercises the changed path (grep the probes for the changed functions and UI
   actions), and `bun run test`? [#1043] [#1140]
 - Do Docker test containers run with `--network encore-hermetic` and `--user $(id -u):$(id -g)`, so scratch
-  folders stay deletable? [#1200] [#1174]
+  folders stay deletable? (A standing rule since Nov 24.)
 - Can parallel test workers race on a shared cache, such as vite's deps folder? [#1139]
 - Does a dev or test flag do what it says? Check by watching it work. [#1171]
 
@@ -96,7 +100,8 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
   [#1139] [#1171]
 - Are links in the PR template and body absolute? [#1111]
 - Does the body say `Closes #N` only when every "done when" line is met, and `Part of #N` otherwise? [#1171]
-- Do the body's claims (gate counts, "every probe passed", a clean merge) hold on the head commit? [#1140] [#1174]
+- Do the body's claims (gate counts, "every probe passed", a clean merge-tree) hold on the head commit and on
+  current `origin/main`? [#1140] [#1174]
 - Is UI media recorded on the head commit? [#1183]
 - Are commits by OnlyOneByte's no-reply address, with no personal data in the diff, body, logs or
   screenshots? [#1189] [#1202]
@@ -126,3 +131,4 @@ goes to that PR. Answer the sections the PR touches and name them in the PR body
 [#1202]: https://github.com/OnlyOneByte/Encore/pull/1202
 [#1204]: https://github.com/OnlyOneByte/Encore/pull/1204
 [#1207]: https://github.com/OnlyOneByte/Encore/pull/1207
+[#1208]: https://github.com/OnlyOneByte/Encore/pull/1208
