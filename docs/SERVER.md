@@ -798,9 +798,10 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   `library/`) for its own. The leaf dirs carry no sticky bit, because there the worker replaces its own files
   over ones core may have made. Bun 1.3's `chmod` drops the sticky bit, so core sets `0775` through the API,
   then runs `chmod 1775 --` on the dir; when the bit still isn't set it logs a warning naming the command to
-  run (#1222 removes the workaround). A `MEDIA_DIR` that is the home dir, the temp dir or `/` keeps its own
-  mode, with a warning: core re-modes only a directory that is media's alone. Core re-modes a `0777` dir it owns on its next boot; a dir the
-  worker created stays as it is, since only its owner can change it.
+  run (#1222 removes the workaround). Any dir core would re-mode (`MEDIA_DIR` or an `ENCORE_*_DIR`) that
+  is, or sits above, the home dir, the temp dir or `/` keeps its own mode, with a warning: core re-modes only
+  a directory that is media's alone. Core re-modes a `0777` dir it owns on its next boot; a dir the worker
+  created stays as it is, since only its owner can change it.
 - **A store answers BYTES, never a URL.** There is no presigned or direct link and no `url()` member to
   re-add, which is what keeps media same-origin.
 - **The raw audio's real extension is recorded nowhere.** Any consumer must enumerate every known extension

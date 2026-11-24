@@ -262,17 +262,41 @@ describe('migration off the legacy layout', () => {
 		expect(statSync(join(root, 'work')).mode & 0o7777).toBe(0o775);
 	});
 
+	// A child Bun, so HOME (read by os.homedir) can be a dir this test owns.
+	const layoutIn = (env: Record<string, string>) => {
+		const layout = join(import.meta.dir, '../../../../src/lib/server/media/migrate-layout.ts');
+		return Bun.spawnSync(
+			[process.execPath, '-e', `const m = await import(${JSON.stringify(layout)}); m.ensureLayout();`],
+			{ cwd: root, env: { MEDIA_DIR: root, PATH: process.env.PATH ?? '', ...env }, stderr: 'pipe' }
+		);
+	};
+
 	it('a MEDIA_DIR that is the home dir keeps its own mode, and the warning says why', () => {
 		chmodSync(root, 0o700);
-		const layout = join(import.meta.dir, '../../../../src/lib/server/media/migrate-layout.ts');
-		const child = Bun.spawnSync(
-			[process.execPath, '-e', `const m = await import(${JSON.stringify(layout)}); m.ensureLayout();`],
-			{ cwd: root, env: { MEDIA_DIR: root, HOME: root, PATH: process.env.PATH ?? '' }, stderr: 'pipe' }
-		);
+		const child = layoutIn({ HOME: root });
 		expect(child.exitCode).toBe(0);
 		expect(statSync(root).mode & 0o7777).toBe(0o700);
 		expect(child.stderr.toString()).toContain('shared directory');
 	});
+
+	// R3-M1: each configurable class dir, at the home dir or above it, is left alone too.
+	for (const [envVar, at] of [
+		['ENCORE_AUDIO_DIR', 'home'],
+		['ENCORE_DERIVED_DIR', 'home'],
+		['ENCORE_META_DIR', 'home'],
+		['ENCORE_META_DIR', 'above home']
+	] as const) {
+		it(`an ${envVar} at the ${at} dir keeps its own mode`, () => {
+			const home = join(root, 'up', 'home');
+			mkdirSync(home, { recursive: true });
+			const dir = at === 'home' ? home : join(root, 'up');
+			chmodSync(dir, 0o700);
+			const child = layoutIn({ HOME: home, [envVar]: dir });
+			expect(child.exitCode).toBe(0);
+			expect(statSync(dir).mode & 0o7777).toBe(0o700);
+			expect(child.stderr.toString()).toContain(`${dir} is a shared directory`);
+		});
+	}
 
 	it('with no chmod(1) on PATH, the parents still lose the world bit and the missing sticky bit is said out loud', () => {
 		for (const d of ['', 'derived']) {

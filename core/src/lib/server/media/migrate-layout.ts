@@ -211,14 +211,7 @@ export const PARENT_DIR_MODE = 0o1775;
 /** The API first (at least 0775 on any Bun), then chmod(1) for the sticky bit, then a loud warning if it still
  *  isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs out. */
 function chmodParent(dir: string): void {
-	// A MEDIA_DIR set to the home dir, /tmp or / is shared with everything else: never re-mode it.
-	const real = realpathSync(dir);
-	if ([homedir(), tmpdir(), '/'].some((shared) => realpathOr(shared) === real)) {
-		console.warn(
-			`[core] MEDIA_DIR ${dir} is a shared directory, so core leaves its mode alone. Give media its own dir.`
-		);
-		return;
-	}
+	if (leftAlone(dir)) return;
 	try {
 		chmodSync(dir, PARENT_DIR_MODE);
 	} catch {
@@ -237,6 +230,16 @@ function chmodParent(dir: string): void {
 			`[core] ${dir} is ${now.toString(8)}, not 1775, so the worker can rename core's meta/ out of the way. Run: chmod 1775 ${dir}`
 		);
 	}
+}
+
+/** True, with a warning, for a dir that is or sits above the home dir, the temp dir or /, by real path: those
+ *  are shared with everything else, so core never re-modes them (any MEDIA_DIR or ENCORE_*_DIR may point there). */
+function leftAlone(dir: string): boolean {
+	const real = realpathSync(dir);
+	const above = real.endsWith('/') ? real : `${real}/`;
+	if (![homedir(), tmpdir(), '/'].map(realpathOr).some((s) => s === real || s.startsWith(above))) return false;
+	console.warn(`[core] ${dir} is a shared directory, so core leaves its mode alone. Give media its own dir.`);
+	return true;
 }
 
 const modeOf = (dir: string) => statSync(dir).mode & 0o7777;
@@ -266,6 +269,7 @@ export function ensureLayout(): void {
 	];
 	for (const dir of shared) {
 		mkdirSync(dir, { recursive: true });
+		if (leftAlone(dir)) continue;
 		try {
 			chmodSync(dir, SHARED_DIR_MODE);
 		} catch {
@@ -280,6 +284,7 @@ export function ensureLayout(): void {
 	}
 	// Core-only: the authoritative sidecar records. Set explicitly, since the worker shares core's group.
 	mkdirSync(metaDir(), { recursive: true });
+	if (leftAlone(metaDir())) return;
 	try {
 		chmodSync(metaDir(), 0o755);
 	} catch {
