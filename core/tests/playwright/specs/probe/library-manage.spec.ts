@@ -102,6 +102,67 @@ test('a guest sees no Manage; the host renames, keeps, deletes and undoes', asyn
 	}
 });
 
+test('bulk: pick songs, Keep them, Select all and Delete with one Undo; a kept song stays', async ({
+	world
+}, testInfo) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const guest = await world.openPhone('Cy');
+		for (const track of ['caroline', 'bohemian', 'prayer']) await readySong(world, guest, track);
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		const rows = host.locator('[data-testid="manage-row"]');
+		await expect(rows).toHaveCount(3);
+		const bar = host.locator('[data-testid="bulk-bar"]');
+		await expect(bar).toHaveCount(0);
+
+		// Two picked: the bar names the count and sits clear of the dock.
+		await rows.nth(0).getByRole('checkbox').click();
+		await rows.nth(1).getByRole('checkbox').click();
+		await expect(bar).toContainText('2 picked');
+		const dockTop = await host
+			.locator(SEL.dock)
+			.first()
+			.evaluate((d) => d.getBoundingClientRect().top);
+		const barBox = await bar.boundingBox();
+		expect(barBox && barBox.y + barBox.height).toBeLessThanOrEqual(dockTop);
+		await frame(host, testInfo, 'two-picked');
+
+		// Keep both, then the bar offers Keep off.
+		await bar.getByRole('button', { name: 'Keep', exact: true }).click();
+		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(2);
+		await expect(bar.getByRole('button', { name: 'Keep off' })).toBeVisible();
+		await bar.getByRole('button', { name: 'Keep off' }).click();
+		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(0);
+
+		// Keep just one, then Select all and Delete: the kept one stays and the toast says so.
+		await rows.nth(1).getByRole('checkbox').click(); // un-pick
+		await bar.getByRole('button', { name: 'Keep', exact: true }).click();
+		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(1);
+		await host.getByTestId('pick-all').click();
+		await expect(bar).toContainText('3 picked');
+		await bar.getByRole('button', { name: 'Delete' }).click();
+		await expect(host.getByText('2 songs deleted')).toBeVisible();
+		await expect(host.getByText('1 song stayed: kept, or in tonight')).toBeVisible();
+		await expect(rows).toHaveCount(1);
+		await expect(bar).toHaveCount(0); // out of the Undo toast's way
+		// The frame shows the settled toast, not its slide-in.
+		await host
+			.locator('[data-sonner-toast]')
+			.first()
+			.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+		await frame(host, testInfo, 'bulk-deleted-toast');
+
+		await host.getByRole('button', { name: 'Undo' }).click();
+		await expect(rows).toHaveCount(3);
+		expect((await libraryIds(guest)).length).toBe(3);
+	} finally {
+		await worker.stop();
+	}
+});
+
 test("a song in tonight's queue cannot be deleted, and a rename reaches the TV at once", async ({
 	world
 }, testInfo) => {

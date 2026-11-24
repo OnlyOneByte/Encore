@@ -22,6 +22,7 @@ import { POST as rename } from '$routes/api/library/manage/rename/+server';
 import { POST as keep } from '$routes/api/library/manage/keep/+server';
 import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server';
 import { POST as undoDelete } from '$routes/api/library/manage/undo/+server';
+import { POST as bulk } from '$routes/api/library/manage/bulk/+server';
 import { GET as getSizes } from '$routes/api/library/sizes/+server';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { MediaRepository } from '$lib/server/media/repository';
@@ -128,6 +129,11 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 			await keep(event('/api/library/manage/keep', 'POST', cookies, { mediaId: 'm1', keep: true })),
 			await libraryDelete(event('/api/library/manage/delete', 'POST', cookies, { mediaId: 'm1' })),
 			await undoDelete(event('/api/library/manage/undo', 'POST', cookies, { mediaId: 'm1' })),
+			...(await Promise.all(
+				(['keep', 'unkeep', 'delete', 'undo', 'bogus'] as const).map((action) =>
+					bulk(event('/api/library/manage/bulk', 'POST', cookies, { action, mediaIds: ['m1'] }))
+				)
+			)),
 			await getSizes(event('/api/library/sizes', 'GET', cookies))
 		];
 		expect(

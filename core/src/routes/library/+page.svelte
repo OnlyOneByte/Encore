@@ -19,7 +19,8 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
-	import { originalKeyLabel, songDisplay, type LibrarySizes } from '$lib/contract';
+	import { DELETE_UNDO_MS, originalKeyLabel, songDisplay, type LibrarySizes } from '$lib/contract';
+	import { SvelteSet } from 'svelte/reactivity';
 	import {
 		artistFacetsOf,
 		browseLibrary,
@@ -110,12 +111,79 @@
 	function toggleManage() {
 		managing = !managing;
 		openId = null;
+		picked.clear();
 		if (managing) void loadSizes();
 		else if (sort === 'biggest' || sort === 'least-sung') sort = 'title';
 	}
 	function onManaged() {
 		void room.refreshLibrary();
 		void loadSizes();
+	}
+
+	/** The bulk selection. "Select all" takes the whole filtered match list, not only the rows rendered so far. */
+	const picked = new SvelteSet<string>();
+	let bulkBusy = $state(false);
+	function togglePick(mediaId: string) {
+		if (!picked.delete(mediaId)) picked.add(mediaId);
+	}
+	function pickAll() {
+		if (allPicked) picked.clear();
+		else for (const m of rows) picked.add(m.id);
+	}
+	const allKept = $derived([...picked].every((id) => sizes?.songs[id]?.kept === true));
+
+	type BulkOut = { done: string[]; skipped: { mediaId: string; reason: string }[]; libraryFile: boolean };
+	async function bulk(action: 'keep' | 'unkeep' | 'delete' | 'undo', mediaIds: string[]): Promise<BulkOut | null> {
+		bulkBusy = true;
+		try {
+			const res = await fetch('/api/library/manage/bulk', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ action, mediaIds })
+			});
+			const out = (await res.json().catch(() => ({}))) as BulkOut & { error?: string };
+			if (!res.ok) {
+				toast.error(out.error ?? "Couldn't change those songs", { duration: 4000 });
+				return null;
+			}
+			return out;
+		} catch {
+			toast.error("Couldn't reach the server", { duration: 4000 });
+			return null;
+		} finally {
+			bulkBusy = false;
+		}
+	}
+	const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
+
+	// No toast: it would sit over the bar, and each row's "Kept" and the bar's own label already say it landed.
+	async function bulkKeep() {
+		if (await bulk(allKept ? 'unkeep' : 'keep', [...picked])) onManaged();
+	}
+
+	async function bulkDelete() {
+		const out = await bulk('delete', [...picked]);
+		if (!out) return;
+		// The bar steps aside, so the Undo toast in its place is the one thing to tap.
+		picked.clear();
+		onManaged();
+		const held = out.skipped.length ? `${songs(out.skipped.length)} stayed: kept, or in tonight's queue` : undefined;
+		if (!out.done.length) {
+			toast.error(held ?? 'Nothing was deleted', { duration: 4000 });
+			return;
+		}
+		toast(`${songs(out.done.length)} deleted`, {
+			duration: DELETE_UNDO_MS,
+			description: [held, out.libraryFile ? 'Library-folder files stay in the folder' : null]
+				.filter(Boolean)
+				.join('. '),
+			action: {
+				label: 'Undo',
+				onClick: async () => {
+					if (await bulk('undo', out.done)) onManaged();
+				}
+			}
+		});
 	}
 
 	let query = $state('');
@@ -173,6 +241,7 @@
 	});
 	/** The window actually rendered, and what the reveal control still has behind it. */
 	const view = $derived(libraryWindow(rows, revealed));
+	const allPicked = $derived(rows.length > 0 && rows.every((m) => picked.has(m.id)));
 	/** What the ROWS reflect — the count line must never describe a query the list has not applied yet. */
 	const filtering = $derived(appliedQuery.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
 	/** What is in the BOX, and now only that. `query` rather than `appliedQuery` is still the point — the clear
@@ -437,6 +506,11 @@
 							{managing ? 'Done' : 'Manage'}
 						</Button>
 					{/if}
+					{#if managing && rows.length}
+						<Button variant="eyebrow" data-testid="pick-all" onclick={pickAll}>
+							{allPicked ? 'Clear picks' : filtering ? `Select all ${rows.length}` : 'Select all'}
+						</Button>
+					{/if}
 
 					<!-- COLLAPSED BY DEFAULT, and that is the page's main design decision. Expanded, the chip rows are
 							~420px of chrome on a nine-song library — seven artists, six tags and three sorts, each with its own
@@ -532,6 +606,8 @@
 								info={sizes?.songs[m.id]}
 								open={openId === m.id}
 								queued={entries.some((e) => e.mediaId === m.id && e.status !== 'done')}
+								picked={picked.has(m.id)}
+								onpick={() => togglePick(m.id)}
 								ontoggle={() => (openId = openId === m.id ? null : m.id)}
 								onchanged={onManaged}
 							/>
@@ -574,6 +650,22 @@
 					</Empty.Root>
 				{/if}
 			{/if}
+			<!-- Mounted for all of Manage, so the count it announces arrives after the region exists. -->
+			{#if managing}
+				<p class="vh" role="status">{picked.size ? `${picked.size} picked` : ''}</p>
+			{/if}
+			<!-- The screen's one fill (the Spotlight), above the dock, only while songs are picked. -->
+			{#if managing && picked.size}
+				<!-- Room for the bar, so the last row scrolls clear of it. -->
+				<div class="bar-room" aria-hidden="true"></div>
+				<div class="actbar" role="toolbar" aria-label="Picked songs" data-testid="bulk-bar">
+					<span class="n" aria-hidden="true">{picked.size} picked</span>
+					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
+						{allKept ? 'Keep off' : 'Keep'}
+					</Button>
+					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
+				</div>
+			{/if}
 		</main>
 	</div>
 {:else if status === 'not-joined'}
@@ -587,6 +679,32 @@
 {/if}
 
 <style>
+	.actbar {
+		position: fixed;
+		inset-inline: var(--sheet-gutter);
+		inset-block-end: calc(var(--dock-h, 0px) + var(--space-md));
+		z-index: var(--z-dock);
+		max-width: var(--sheet-max);
+		margin-inline: auto;
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		padding: var(--space-2xs) var(--space-xs) var(--space-2xs) var(--space-lg);
+		border-radius: var(--radius-sm);
+		background: var(--accent);
+		color: var(--on-accent);
+		font-weight: 800;
+	}
+	.actbar .n {
+		flex: 1;
+	}
+	.bar-room {
+		height: calc(var(--tap) + var(--space-md) + 2 * var(--space-2xs));
+	}
+	.actbar :global(button) {
+		color: inherit;
+		font-weight: 800;
+	}
 	.library-page {
 		/* The grid measure, not the prose one: this is a column of song rows, so it must agree with `/`. */
 		--page-measure: var(--measure-grid);

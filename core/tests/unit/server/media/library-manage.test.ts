@@ -7,6 +7,7 @@ import { EMPTY_SONG_PROFILE, type Media, type QueueEntry } from '$lib/contract';
 import { mediaFromSidecar, readSidecar, sidecarFromMedia, writeSidecar } from '$lib/server/media/sidecar';
 import {
 	PendingDeletes,
+	bulkManage,
 	inTonightsQueue,
 	librarySizes,
 	librarySong,
@@ -181,6 +182,54 @@ describe('requestDelete', () => {
 		expect(scheduled).toEqual([]);
 		expect(await requestDelete(app, 'm1', async () => false)).toEqual({ media: ready });
 		expect(scheduled).toEqual(['m1']);
+	});
+});
+
+describe('bulkManage', () => {
+	const ready = (id: string, over: Partial<Media> = {}) =>
+		song({ id, lyricsStatus: 'ready', songProfile: EMPTY_SONG_PROFILE, ...over });
+	const harness = async () => {
+		const songs = [ready('m1'), ready('m2', { source: 'youtube', sourceRef: 'x' }), ready('m3'), ready('m4')];
+		for (const m of songs) await writeSidecar(sidecarFromMedia(m, NOW));
+		await setKeep('m3', true);
+		const pendingDeletes = new PendingDeletes(() => {}, 60_000);
+		const app = {
+			mediaById: new Map(songs.map((m) => [m.id, m])),
+			pendingDeletes,
+			state: {
+				entries: [
+					{ id: 'e1', mediaId: 'm4', singerId: 's', status: 'queued', rotationSeq: 0, addedAt: 0 }
+				] as QueueEntry[]
+			}
+		};
+		return { app, pendingDeletes };
+	};
+
+	it('Keep and Keep off reach every song once, and an unknown id is skipped', async () => {
+		const { app } = await harness();
+		const out = await bulkManage(app, 'keep', ['m1', 'm2', 'm1', 'nope']);
+		expect(out.done).toEqual(['m1', 'm2']);
+		expect(out.skipped).toEqual([{ mediaId: 'nope', reason: 'unknown' }]);
+		expect((await readSidecar('m2'))?.library.keep).toBe(true);
+		await bulkManage(app, 'unkeep', ['m1', 'm2']);
+		expect((await readSidecar('m1'))?.library.keep).toBeUndefined();
+	});
+
+	it('Delete refuses kept and queued songs as a single delete does, and Undo brings the rest back', async () => {
+		const { app, pendingDeletes } = await harness();
+		const out = await bulkManage(app, 'delete', ['m1', 'm2', 'm3', 'm4', 'nope']);
+		expect(out.done).toEqual(['m1', 'm2']);
+		expect(out.skipped).toEqual([
+			{ mediaId: 'm3', reason: 'kept' },
+			{ mediaId: 'm4', reason: 'queued' },
+			{ mediaId: 'nope', reason: 'unknown' }
+		]);
+		expect(out.libraryFile).toBe(true); // m1 is a library-folder file
+		expect(pendingDeletes.has('m1') && pendingDeletes.has('m2')).toBe(true);
+		const undone = await bulkManage(app, 'undo', ['m1', 'm2', 'm3']);
+		expect(undone.done).toEqual(['m1', 'm2']);
+		expect(undone.skipped).toEqual([{ mediaId: 'm3', reason: 'gone' }]);
+		expect(pendingDeletes.has('m1')).toBe(false);
 	});
 });
 

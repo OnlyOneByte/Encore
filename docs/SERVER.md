@@ -1198,6 +1198,7 @@ each one, in every spelling, from a guest, a cookieless caller and another site.
 | `POST /api/library/manage/keep` | `{ mediaId, keep }` | `library.keep` in `meta/<id>.json`. |
 | `POST /api/library/manage/delete` | `{ mediaId }` | 409 `queued` while the song is playing or still to come tonight, 409 `kept` for a kept song. Otherwise the song leaves every screen at once and is deleted when the Undo window closes. |
 | `POST /api/library/manage/undo` | `{ mediaId }` | Cancels a pending delete; 409 once the window has closed. |
+| `POST /api/library/manage/bulk` | `{ action, mediaIds }` | PR 2. `keep`, `unkeep`, `delete` or `undo` over 1 to 5,000 ids, song by song through the single-song paths, so a kept or queued song is refused exactly as above. Answers `{ done, skipped: [{ mediaId, reason }], libraryFile }`; a guest gets 403 before the body is read. |
 
 Rename, Keep and delete act only on a ready song outside an Undo window (`librarySong`); anything else is 404.
 
