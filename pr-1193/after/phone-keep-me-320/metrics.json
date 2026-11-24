@@ -1,0 +1,82 @@
+{
+  "scenario": "phone-keep-me-320",
+  "what": "Phone 320: Keep me tapped after a first song; the offer gives way to \"<name> is kept on this phone\" (a cut)",
+  "capturedAt": "2026-11-24T10:39:26.180Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "kept": true
+  },
+  "subject": {
+    "selector": "#kept",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "kept": true
+    },
+    "droppedFrames": {
+      "median": 34,
+      "min": 19,
+      "max": 37
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 4
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 33.4,
+      "min": 33.3,
+      "max": 50
+    },
+    "clsMax": 0.0266
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 3,
+    "observed": {
+      "kept": true
+    }
+  },
+  "timingsMs": {
+    "seekMs": 18906,
+    "encodeMs": 1073,
+    "liveMs": 43426,
+    "reducedMs": 12943,
+    "reducedEncodeMs": 809
+  },
+  "files": {
+    "clip.gif": 26420,
+    "clip-slow4x.gif": 26420,
+    "filmstrip.png": 83595,
+    "filmstrip-reduced.png": 82020
+  }
+}

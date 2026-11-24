@@ -1,0 +1,82 @@
+{
+  "scenario": "phone-welcome-back-390",
+  "what": "Phone 390: a kept phone's \"Welcome back\" join, then \"I'm someone else\" swapping in the name field and ring (a cut)",
+  "capturedAt": "2026-11-24T11:59:59.817Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "welcome": false
+  },
+  "subject": {
+    "selector": "input[placeholder^=\"e.g.\"]",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "welcome": false
+    },
+    "droppedFrames": {
+      "median": 3,
+      "min": 1,
+      "max": 9
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.7,
+      "max": 33.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "welcome": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 17684,
+    "encodeMs": 554,
+    "liveMs": 11156,
+    "reducedMs": 1201,
+    "reducedEncodeMs": 552
+  },
+  "files": {
+    "clip.gif": 27569,
+    "clip-slow4x.gif": 27569,
+    "filmstrip.png": 103731,
+    "filmstrip-reduced.png": 110904
+  }
+}
