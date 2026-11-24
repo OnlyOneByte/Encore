@@ -280,7 +280,7 @@ test('bursts stay inside the safe area and clear of the lyrics and TV chrome, at
 	}
 });
 
-test('on a copy TV the lane stands above "Make this the TV", which holds the join card\'s corner', async ({
+test('on a copy TV the lane stands above the join card, as on the TV, and never crosses the chip top-right', async ({
 	world,
 	browser
 }) => {
@@ -291,27 +291,29 @@ test('on a copy TV the lane stands above "Make this the TV", which holds the joi
 		const copy = await ctx.newPage();
 		await copy.goto('/tv');
 		await copy.locator(SEL.tvConnected).waitFor({ state: 'attached' });
-		await expect(copy.locator('.copy-slot .copy-chip')).toBeVisible({ timeout: 30_000 });
-		await expect(copy.locator('.corner'), 'a copy still shows the join card').toHaveCount(0);
+		await expect(copy.locator('.copy-slot .copy-chip')).toBeAttached({ timeout: 30_000 });
 		await expect(copy.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
+		await expect(copy.locator('.corner'), 'a copy shows the join card').toBeVisible();
 		await countMounts(copy);
 		const hits: unknown[] = [];
 		const cases = [
 			{ w: 1920, h: 1080, grow: false },
 			{ w: 1280, h: 720, grow: false },
-			// At its natural size the chip is only a few px shorter than the lower-third, so the band alone happens to
-			// clear it. A chip that grows (a wrap, a bigger type step) must lift the lane too: only the measure does that.
+			// A chip that grows (a wrap, a bigger type step) still stays out of the lane's column of rising discs.
 			{ w: 1920, h: 1080, grow: true }
 		];
 		for (const c of cases) {
 			const label = `${c.w}x${c.h}${c.grow ? ', a taller chip' : ''}`;
 			await copy.setViewportSize({ width: c.w, height: c.h });
 			if (c.grow) await copy.addStyleTag({ content: '.copy-chip { min-height: 25vh; }' });
-			await copy.waitForTimeout(3_200);
-			const [lane, chip] = await copy.evaluate(() =>
-				['.reaction-lane', '.copy-slot'].map((q) => document.querySelector(q)!.getBoundingClientRect().toJSON())
+			// A tap wakes the chip for 10 s, so it is on screen for the whole window measured below.
+			await copy.mouse.click(c.w / 2, c.h / 2);
+			await expect(copy.locator('.copy-slot .copy-chip')).toBeVisible();
+			await copy.waitForTimeout(SETTLE_MS);
+			const [lane, corner] = await copy.evaluate(() =>
+				['.reaction-lane', '.corner'].map((q) => document.querySelector(q)!.getBoundingClientRect().toJSON())
 			);
-			expect(lane.bottom, `${label}: the lane stands on the chip`).toBeLessThanOrEqual(chip.top + 0.5);
+			expect(lane.bottom, `${label}: the lane stands on the join card`).toBeLessThanOrEqual(corner.top + 0.5);
 			await burst(fans);
 			const samples = await sampleWindow(copy, SAMPLE_WINDOW_MS);
 			expect(peakOf(samples), `${label}: no reaction reached the copy`).toBeGreaterThan(0);
@@ -326,8 +328,7 @@ test('on a copy TV the lane stands above "Make this the TV", which holds the joi
 		}
 		expect(hits, 'a reaction disc on the copy intersected the chip, the lyrics or the TV chrome').toEqual([]);
 
-		// A PHONE reading along as a copy: the chip sits top-left, not in the lane's corner, so measuring it can lift the
-		// lane at bottom-right by at most the chip's own height above the band it stands on anyway.
+		// A PHONE reading along as a copy: no join card (it has joined), the chip top-left, and the lane on the band.
 		await copy.evaluate(() =>
 			document.querySelectorAll('style').forEach((s) => s.textContent?.includes('25vh') && s.remove())
 		);
@@ -337,6 +338,7 @@ test('on a copy TV the lane stands above "Make this the TV", which holds the joi
 		]) {
 			await copy.setViewportSize({ width: w, height: h });
 			await copy.waitForTimeout(1_000);
+			await expect(copy.locator('.corner'), `${w}x${h}: a phone copy shows no join card`).toBeHidden();
 			const m = await copy.evaluate((sel) => {
 				const probe = document.createElement('div');
 				probe.style.cssText = 'position:absolute;visibility:hidden;height:var(--tv-chrome-h)';
@@ -345,13 +347,10 @@ test('on a copy TV the lane stands above "Make this the TV", which holds the joi
 				probe.remove();
 				const lane = document.querySelector('.reaction-lane')!.getBoundingClientRect();
 				const chip = document.querySelector('.copy-slot')!.getBoundingClientRect();
-				return { band, laneLift: innerHeight - lane.bottom, chipH: chip.height, chipTop: chip.top, laneTop: lane.top };
+				return { band, laneLift: innerHeight - lane.bottom, chipTop: chip.top, laneTop: lane.top };
 			}, SEL.tvRoot);
 			expect(m.chipTop, `${w}x${h}: the chip is not top-left`).toBeLessThan(m.laneTop);
 			expect(m.laneLift, `${w}x${h}: the lane fell below the chrome band`).toBeGreaterThanOrEqual(m.band - 0.5);
-			expect(m.laneLift, `${w}x${h}: the lane lifted by more than the chip`).toBeLessThanOrEqual(
-				m.band + m.chipH + 0.5
-			);
 		}
 	} finally {
 		await ctx.close();

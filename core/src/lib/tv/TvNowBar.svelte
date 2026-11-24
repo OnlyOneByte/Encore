@@ -43,6 +43,8 @@
 		oncardsize: (px: number) => void;
 		/** The "Up next" block's rendered height, `--tv-upnext-h`. */
 		onupnextsize: (px: number) => void;
+		/** A copy's chip is showing: it stands in this block's place, so the block steps aside. */
+		yieldUpnext?: boolean;
 	}
 
 	let {
@@ -57,7 +59,8 @@
 		cardPainted,
 		next,
 		oncardsize,
-		onupnextsize
+		onupnextsize,
+		yieldUpnext = false
 	}: Props = $props();
 
 	// Canonical title/artist when a confident parse produced them, NEVER the uploader. Artist is null when
@@ -104,7 +107,7 @@
 {/if}
 <!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. -->
 {#if next}
-	<div class="upnext" bind:this={upnextEl}>
+	<div class={['upnext', { yielded: yieldUpnext }]} bind:this={upnextEl}>
 		<span class="un-label">{UP_NEXT}</span>
 		<span class="un-name"
 			><span class="un-dot" style="--singer: {next.color ?? 'var(--ink-dim)'}"></span>{next.name}</span
@@ -114,6 +117,10 @@
 {/if}
 
 <style>
+	/* The copy chip's place on a TV, and its neighbour across a narrow phone. A cut, as below. */
+	.upnext.yielded {
+		visibility: hidden;
+	}
 	/* A cut, not a fade: fading re-rasterises the blurred shadow every frame (docs/FRONTEND.md). */
 	.lower-third.under-card {
 		visibility: hidden;

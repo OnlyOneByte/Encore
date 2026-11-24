@@ -548,7 +548,7 @@ copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds i
 
 Each TV socket hears `tv:seat { mine, tvOnline }` on connect and whenever either changes. `tvOnline` is
 whether the seat's screen has a live socket, so while the TV is gone a copy says "The TV is reconnecting..."
-instead of "Another screen is the TV". It is one boolean and changes nothing about who may hold or claim the
+instead of "This screen is quiet". It is one boolean and changes nothing about who may hold or claim the
 seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
 
 **The seat is an identity, not an auth gate.** Only the cookie's shape is checked, so a planted or known
