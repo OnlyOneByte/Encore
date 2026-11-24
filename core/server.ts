@@ -36,6 +36,7 @@ import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-ori
 import { fromOurOrigin } from './src/lib/server/http/same-origin';
 import { refuseForeignHost, requestUrl, unreadableHost } from './src/lib/server/http/allowed-host';
 import { adminTokenProblem } from './src/lib/server/host-key';
+import { cleanToken } from './src/lib/server/secret-text';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -46,17 +47,15 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 // When set, a role=worker upgrade must present a matching `token` query param or get 401 — otherwise any
 // LAN device could register as a worker and fabricate job completions. Unset means unauthenticated.
-const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
+const WORKER_TOKEN = cleanToken(process.env.ENCORE_WORKER_TOKEN) || null;
 
 // Refused before anything boots: a short fixed key or worker token is one a LAN device could guess.
-for (const refusal of [
+const refusals = [
 	adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN),
 	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN)
-]) {
-	if (!refusal) continue;
-	console.error(`[core] ${refusal}`);
-	process.exit(1);
-}
+].filter(Boolean);
+for (const refusal of refusals) console.error(`[core] ${refusal}`);
+if (refusals.length) process.exit(1);
 
 // The SAME authoritative state instance the SvelteKit /api routes use.
 const app = getApp();
