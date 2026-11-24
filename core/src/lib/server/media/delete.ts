@@ -9,6 +9,7 @@ import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
 import { reconcileOnReady, emitNowPlaying, publishQueue } from '../realtime/player';
 import type { MediaRepository } from './repository';
 import { derivedRefsOf } from './retention';
+import { queueSidecarTask } from './sidecar';
 import {
 	metaKey,
 	candidateAudioRefs,
@@ -113,6 +114,8 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		unlinked.push(ref);
 	};
 	unlink(metaKey(mediaId));
+	// A sidecar write already queued would re-create the record after this, so unlink again behind it.
+	void queueSidecarTask(mediaId, async () => del(metaKey(mediaId)));
 	// The raw audio's real extension is recorded NOWHERE, so every candidate is unlinked rather than one
 	// guessed key. This is the one unrecoverable class if missed.
 	for (const ref of candidateAudioRefs(mediaId)) unlink(ref);

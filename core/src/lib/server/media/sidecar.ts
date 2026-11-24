@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md §6. The pure half is split from the I/O half to unit-test without a filesystem.
 
 import { mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Media, LyricsCandidate } from '../../contract';
 import { resolveLyricsRef } from '../../contract';
@@ -307,21 +308,26 @@ function isWellFormedSidecar(parsed: unknown): parsed is MediaSidecar {
  *  missing sidecar is normal for an index-only song. */
 export async function readSidecar(mediaId: string): Promise<MediaSidecar | null> {
 	const path = sidecarPath(mediaId);
-	let existed = false;
+	let text: string;
 	try {
-		const file = Bun.file(path);
-		if (!(await file.exists())) return null;
-		existed = true;
-		const parsed = JSON.parse(await file.text()) as unknown;
+		// One open + read, never `Bun.file`: it caches the size at `exists()`, so a write renamed in between
+		// is read cut short at the OLD length and fails to parse (#1185).
+		text = await readFile(path, 'utf8');
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+			console.warn(`[sidecar] authoritative record ${path} exists but could not be read; returning null:`, err);
+		}
+		return null;
+	}
+	try {
+		const parsed = JSON.parse(text) as unknown;
 		if (isWellFormedSidecar(parsed)) return parsed;
 		console.warn(
 			`[sidecar] authoritative record ${path} exists but failed the shape check (not a complete sidecar); returning null`
 		);
 		return null;
 	} catch (err) {
-		if (existed) {
-			console.warn(`[sidecar] authoritative record ${path} exists but could not be parsed; returning null:`, err);
-		}
+		console.warn(`[sidecar] authoritative record ${path} exists but could not be parsed; returning null:`, err);
 		return null;
 	}
 }
@@ -354,19 +360,10 @@ const pendingUpdates: Map<string, Promise<unknown>> = ((globalThis as Record<sym
 	Promise<unknown>
 >()) as Map<string, Promise<unknown>>;
 
-/** A read-modify-write of one record, run one at a time per id: two writers that read the same record lose
- *  one's change, and an Undo entry is not a field the runtime can restore. `change` returning null writes nothing. */
-export function updateSidecar(
-	mediaId: string,
-	change: (prev: MediaSidecar | null) => MediaSidecar | null
-): Promise<MediaSidecar | null> {
-	const run = (pendingUpdates.get(mediaId) ?? Promise.resolve())
-		.catch(() => undefined)
-		.then(async () => {
-			const next = change(await readSidecar(mediaId));
-			if (next) await writeSidecar(next);
-			return next;
-		});
+/** Runs `task` after every earlier queued task for this id has settled. Every write to a record goes through
+ *  here, or a writer that read before another's write lands puts the old fields back. */
+export function queueSidecarTask<T>(mediaId: string, task: () => Promise<T>): Promise<T> {
+	const run = (pendingUpdates.get(mediaId) ?? Promise.resolve()).catch(() => undefined).then(task);
 	pendingUpdates.set(mediaId, run);
 	const settle = () => {
 		if (pendingUpdates.get(mediaId) === run) pendingUpdates.delete(mediaId);
@@ -375,25 +372,39 @@ export function updateSidecar(
 	return run;
 }
 
+/** A read-modify-write of one record, run one at a time per id: two writers that read the same record lose
+ *  one's change, and an Undo entry is not a field the runtime can restore. `change` returning null writes nothing. */
+export function updateSidecar(
+	mediaId: string,
+	change: (prev: MediaSidecar | null) => MediaSidecar | null
+): Promise<MediaSidecar | null> {
+	return queueSidecarTask(mediaId, async () => {
+		const next = change(await readSidecar(mediaId));
+		if (next) await writeSidecar(next);
+		return next;
+	});
+}
+
 /**
  * Eviction must call THIS, never a bare upsert: `sidecarFromMedia`'s `?? prev` merge would restore the
  * just-deleted refs, resurrecting the song as processed with refs to files that are gone. Weakening the
  * merge is not an option — an index-only hydrate depends on it.
  */
 export async function clearArtifacts(mediaId: string): Promise<void> {
-	const side = await readSidecar(mediaId);
-	if (!side) return;
-	side.artifacts = {
-		...side.artifacts,
-		// A fetched original is re-acquirable, so eviction takes it too; an upload's never is.
-		...(side.origin.source === 'local' ? {} : { audio: null, audioBytes: null }),
-		instrumental: null,
-		vocals: null,
-		guideMix: null, // the mix IS the two evicted stems, in one file
-		lyrics: null,
-		lyricsCandidates: []
-	};
-	await writeSidecar(side);
+	await updateSidecar(mediaId, (side) => {
+		if (!side) return null;
+		side.artifacts = {
+			...side.artifacts,
+			// A fetched original is re-acquirable, so eviction takes it too; an upload's never is.
+			...(side.origin.source === 'local' ? {} : { audio: null, audioBytes: null }),
+			instrumental: null,
+			vocals: null,
+			guideMix: null, // the mix IS the two evicted stems, in one file
+			lyrics: null,
+			lyricsCandidates: []
+		};
+		return side;
+	});
 }
 
 /** Every media id that has a sidecar on disk. */
@@ -439,9 +450,8 @@ export async function rebuildIndexFromMeta(deps: {
 export async function backfillSidecars(all: Media[], now: number): Promise<number> {
 	let written = 0;
 	for (const m of all) {
-		if (await readSidecar(m.id)) continue; // already described — never clobber a curated file
-		await writeSidecar(sidecarFromMedia(m, now));
-		written++;
+		// An existing file is already described: never clobber a curated one.
+		if (await updateSidecar(m.id, (prev) => (prev ? null : sidecarFromMedia(m, now)))) written++;
 	}
 	return written;
 }

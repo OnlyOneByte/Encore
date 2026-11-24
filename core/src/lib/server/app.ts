@@ -46,7 +46,6 @@ import { cancelJobsForMedia } from './jobs/cancel';
 import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
 	readSidecar,
-	writeSidecar,
 	updateSidecar,
 	sidecarFromMedia,
 	rebuildIndexFromMeta,
@@ -470,16 +469,12 @@ export function getApp(): EncoreApp {
 	// TWICE, deliberately: the SIDECAR carries the lifetime total retention's LRU reads, the LOG one row per performance — the only source that can answer WHEN, since queue_entries is wiped every flush. The log write is synchronous; the sidecar stays fire-and-forget so file I/O never delays the song starting.
 	const plays = new PlayTracker((mediaId, entryId) => {
 		playLog.record(mediaId, entryId, app.now());
-		void (async () => {
-			try {
-				const side = await readSidecar(mediaId);
-				if (!side) return; // not in the library (a plain search result) — nothing to record against
-				side.library = { ...side.library, ...bumpPlay(side.library, app.now()) };
-				await writeSidecar(side);
-			} catch {
-				/* a lost play count is not worth a failed playback */
-			}
-		})();
+		// No sidecar means not in the library (a plain search result): nothing to record against.
+		updateSidecar(mediaId, (side) =>
+			side ? { ...side, library: { ...side.library, ...bumpPlay(side.library, app.now()) } } : null
+		).catch(() => {
+			/* a lost play count is not worth a failed playback */
+		});
 	});
 
 	const roomSync = () => roomSyncOf(app);
