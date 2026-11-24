@@ -485,6 +485,8 @@ export class RoomLink {
 
 	#dropSocket(): void {
 		clearTimeout(this.#unreachableTimer);
+		if (this.#libraryRereadSoon) clearTimeout(this.#libraryRereadSoon);
+		this.#libraryRereadSoon = null;
 		this.#ws?.close();
 		this.#ws = undefined;
 	}
@@ -617,6 +619,14 @@ export class RoomLink {
 		if (status === 'ready') {
 			clearScar(mediaId);
 			void this.refreshLibrary();
+		}
+		// A canceled song may have left Library too (an evicted one has), so the shelf is re-read, once per burst:
+		// eviction cancels every song it resets.
+		if (status === 'canceled' && !this.#libraryRereadSoon) {
+			this.#libraryRereadSoon = setTimeout(() => {
+				this.#libraryRereadSoon = null;
+				void this.refreshLibrary();
+			}, 250);
 		}
 		// Surface a died process instead of leaving the row stuck, and persist a per-device scar so it survives a reload.
 		if (status === 'failed') {
@@ -774,6 +784,7 @@ export class RoomLink {
 	}
 	#processInFlight = new Set<string>();
 	#toldWhileProcessing = new Set<string>();
+	#libraryRereadSoon: ReturnType<typeof setTimeout> | null = null;
 	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
 	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
 	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so

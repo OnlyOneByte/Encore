@@ -16,6 +16,7 @@ import { AuthoritativeState } from '$lib/server/state/store';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { migratedDb } from '$lib/server/db/test-db';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { LocalMediaStore } from '$lib/server/media/store';
 import type { Media } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
@@ -45,6 +46,7 @@ function installApp(mediaById: Map<string, Media>) {
 		// every deployment — which is how the fetcher dep went unpassed for a release without a test noticing.
 		settings: new SettingsRepository(db),
 		media: { upsert: () => {} },
+		mediaStore: new LocalMediaStore(),
 		publish: () => {},
 		workerHub: { dispatch: () => {}, isUnservable: () => false }
 	};

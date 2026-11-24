@@ -11,6 +11,7 @@ import { AuthoritativeState } from '$lib/server/state/store';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { migratedDb } from '$lib/server/db/test-db';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { LocalMediaStore } from '$lib/server/media/store';
 import type { Media, ServerEvent } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
@@ -39,6 +40,7 @@ function installApp() {
 		singers: { bySessionToken: () => ({ id: 's1', displayName: 'Ada' }) },
 		settings: new SettingsRepository(db),
 		media: { upsert: () => {} },
+		mediaStore: new LocalMediaStore(),
 		publish: (e: ServerEvent) => heard.push(e),
 		workerHub: {
 			isUnservable: (id: string) => seen.has(id),

@@ -4,9 +4,33 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
-import { processState, requestProcess, maxProcessesPerSinger } from '$lib/server/jobs/process';
+import {
+	processState,
+	requestProcess,
+	maxProcessesPerSinger,
+	claimsStems,
+	claimedStemsRef,
+	stemsMissing
+} from '$lib/server/jobs/process';
+import { clearArtifacts } from '$lib/server/media/sidecar';
+import type { MediaStore } from '$lib/server/media/store';
 import { readJsonBody, requiredString } from '$lib/server/http/json-body';
 import type { MediaStatus } from '$lib/contract';
+
+const STORE_CHECK_MS = 2_000;
+
+/** A store that errors or doesn't answer in time trusts the status, as picks did before the file check. */
+async function storeHas(store: MediaStore, ref: string): Promise<boolean> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(true), STORE_CHECK_MS)));
+	try {
+		return await Promise.race([store.exists(ref), late]);
+	} catch {
+		return true;
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -18,9 +42,13 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// With a durable catalog, "already processed" is the common happy path (a song separated on a previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast. getSettings is passed to BOTH processState (the over-limit check, against the configured cap) and requestProcess (to choose the fetcher via needsFetch) — one dependency, so neither path can drift from the deployment's actual settings. getGlobal(), not getEffective(): this is typed `() => GlobalSettings`, and effective settings are `{ global, room }`, which type-checks nowhere useful.
 	const getSettings = () => app.settings.getGlobal();
+	// Checked once here because the store is async: a `ready` song whose stems were evicted must be made again.
+	const media = app.mediaById.get(mediaId);
+	const present = media && claimsStems(media, app.jobs) ? await storeHas(app.mediaStore, claimedStemsRef(media)) : true;
+	const stemsOnDisk = () => present;
 	const state = processState(
 		mediaId,
-		{ mediaById: app.mediaById, state: app.state, jobs: app.jobs, getSettings },
+		{ mediaById: app.mediaById, state: app.state, jobs: app.jobs, getSettings, stemsOnDisk },
 		singer.id
 	);
 	if (state === 'ready') {
@@ -50,9 +78,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		);
 	}
 
+	const missing = !!media && stemsMissing(media, { jobs: app.jobs, stemsOnDisk });
 	const job = requestProcess(
 		mediaId,
-		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now, getSettings },
+		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now, getSettings, stemsOnDisk },
 		singer.id
 	);
 	if (!job) return json({ error: 'could not start process' }, { status: 409 });
@@ -60,6 +89,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	// The media just flipped to a processing file — persist it so a restart mid-process still knows this song is a file whose stems are pending (the reaper requeues the job; the catalog agrees).
 	const m = app.mediaById.get(mediaId);
 	if (m) app.media.upsert(m);
+	// upsert's sidecar merge keeps the old refs; see clearArtifacts.
+	if (missing) await clearArtifacts(mediaId);
 
 	// Show the live bar now, THEN kick the dispatcher in case a worker is already connected + idle. The order is
 	// load-bearing: dispatch's unservable sweep broadcasts `unservable: true` once, on first sight, and a status

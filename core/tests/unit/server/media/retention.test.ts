@@ -337,9 +337,10 @@ describe('evictDerived', () => {
 });
 
 describe('forgetEvicted (what the boot eviction pass clears on the row)', () => {
+	const noJobs = { supersedeForRerun: () => false };
 	it("clears a fetched song's kept original with its stems and lyrics, so the next process uses the URL", () => {
 		const m = media('a', { originalRef: 'audio/a.webm', originalBytes: 900, lyricsRef: 'derived/lyrics/a.json' });
-		forgetEvicted(m);
+		forgetEvicted(m, noJobs);
 		expect(m).toMatchObject({ originalRef: undefined, originalBytes: undefined, instrumentalRef: undefined });
 		expect(m.lyricsRef).toBeUndefined();
 		expect(m.stemStatus).toBe('none');
@@ -349,15 +350,16 @@ describe('forgetEvicted (what the boot eviction pass clears on the row)', () => 
 
 	it("keeps an upload's own original, which eviction never deletes", () => {
 		const m = media('a', { source: 'local', sourceRef: 'library/a.flac', originalRef: 'audio/a.webm' });
-		forgetEvicted(m);
+		forgetEvicted(m, noJobs);
 		expect(m.originalRef).toBe('audio/a.webm');
 	});
 
 	it('is what the boot eviction pass in app.ts calls on every evicted song, before persisting it', () => {
 		// `getApp()` has no unit harness, so the wiring is pinned as a source scan (as boot-maintenance.test.ts).
+		// evictSong's own order is covered in evicted-song-ready.test.ts.
 		const app = stripComments(read('src/lib/server/app.ts'));
 		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
-		expect(pass).toMatch(/evictDerived\(live\)[\s\S]*forgetEvicted\(live\);\s*mediaRepo\.upsert\(live\)/);
+		expect(pass).toMatch(/evictSong\(live, \{ jobs, upsert: \(m\) => mediaRepo\.upsert\(m\) \}\)/);
 	});
 });
 
