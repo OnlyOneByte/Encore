@@ -22,6 +22,27 @@ export function inTonightsQueue(entries: readonly QueueEntry[], mediaId: string)
 	return entries.some((e) => e.mediaId === mediaId && e.status !== 'done');
 }
 
+/** The host's delete. Keep is read first, so the queue check and the start of the window run with no await
+ *  between them, and an add cannot land in that gap. */
+export async function requestDelete(
+	app: {
+		mediaById: Map<string, Media>;
+		pendingDeletes: Pick<PendingDeletes, 'has' | 'schedule'>;
+		state: { entries: readonly QueueEntry[] };
+	},
+	mediaId: string,
+	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecar(id))?.library.keep === true
+): Promise<{ refused: 'unknown' | 'kept' | 'queued' } | { media: Media }> {
+	if (!librarySong(app, mediaId)) return { refused: 'unknown' };
+	const kept = await isKept(mediaId);
+	const m = librarySong(app, mediaId);
+	if (!m) return { refused: 'unknown' };
+	if (inTonightsQueue(app.state.entries, mediaId)) return { refused: 'queued' };
+	if (kept) return { refused: 'kept' };
+	app.pendingDeletes.schedule(mediaId);
+	return { media: m };
+}
+
 /** Writes the sidecar FIRST with `by: 'manual'`, so the upsert's own sidecar merge keeps the name. */
 export async function renameSong(
 	m: Media,

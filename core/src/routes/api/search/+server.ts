@@ -75,7 +75,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// Empty query returns recent + popular from this session; the readiness groups still come back empty, so the client renders one shape in both states.
 	if (!q) {
-		const byId = (id: string) => app.mediaById.get(id);
+		// A song waiting out its delete Undo window is not offered here either.
+		const byId = (id: string) => (app.pendingDeletes.has(id) ? undefined : app.mediaById.get(id));
 		const recent = app.popularity.recent(6).map(byId).filter(Boolean);
 		const popular = app.popularity.popular(6).map(byId).filter(Boolean);
 		return json({ ready: [], processing: [], results: [], recent, popular });

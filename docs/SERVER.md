@@ -826,9 +826,10 @@ Rename, Keep and delete act only on a ready song outside an Undo window (`librar
   repeats it. `/admin`'s two-step confirm is unchanged. A hard kill (SIGKILL, OOM) inside the window skips the
   flush, so the song stays, which is the safe way to fail.
 - **No one is cut off.** A song in tonight's queue is never deleted from here (`inTonightsQueue`); the sheet
-  says "In tonight's queue. Delete it after its turn."
+  says "In tonight's queue. Delete it after its turn." `requestDelete` reads Keep first, then checks the
+  queue and starts the window with no await between them, so a turn added meanwhile is always seen.
 - **During the Undo window the song is offered nowhere.** `/api/library`, `/api/library/sizes` and
-  `/api/search` leave it out, and the hub refuses an add of it as `unknown media` (`HubDeps.isDeleting`), so a
+  `/api/search` (Sing's recent and popular lists included) leave it out, and the hub refuses an add of it as `unknown media` (`HubDeps.isDeleting`), so a
   phone says the song is gone.
 - **Every screen follows.** Scheduling a delete broadcasts `media:status` `canceled`, and Undo `ready`, so each
   phone re-reads Library. A rename broadcasts `ready` (true, as only a ready song can be renamed) and a

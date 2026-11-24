@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '../../world/fixtures';
 import { queueReady, readySong } from '../../world/actors';
+import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page, TestInfo } from '@playwright/test';
 import type { Media } from '$lib/contract';
@@ -121,12 +122,26 @@ test("a song in tonight's queue cannot be deleted, and a rename reaches the TV a
 		expect(refused.status()).toBe(409);
 		expect(((await refused.json()) as { reason?: string }).reason).toBe('queued');
 
+		// The shortest phone: the opened sheet scrolls clear of the dock, so its message is readable without a scroll.
+		await host.setViewportSize({ width: 320, height: 568 });
 		await host.goto('/library');
 		await host.getByRole('button', { name: 'Manage' }).click();
 		const row = host.locator('[data-testid="manage-row"]', { hasText: 'prayer' });
 		await row.locator('button.open').click();
 		const sheet = host.locator('[data-testid="song-sheet"]');
-		await expect(sheet).toContainText("In tonight's queue. Delete it after its turn.");
+		const message = sheet.getByText("In tonight's queue. Delete it after its turn.");
+		await expect(message).toBeVisible();
+		const dockTop = await host
+			.locator(SEL.dock)
+			.first()
+			.evaluate((d) => d.getBoundingClientRect().top);
+		await expect
+			.poll(async () => {
+				const box = await message.boundingBox();
+				return box ? box.y + box.height : Infinity;
+			})
+			.toBeLessThanOrEqual(dockTop);
+		await host.setViewportSize({ width: 390, height: 844 });
 		await expect(sheet.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 		await frame(host, testInfo, 'queued-sheet');
 

@@ -44,6 +44,11 @@
 	let by = $state('');
 	let busy = $state(false);
 
+	/** On a short phone a sheet opened low would sit under the dock; bring all of it into view. */
+	function reveal(el: HTMLElement) {
+		el.scrollIntoView({ block: 'nearest' });
+	}
+
 	async function post(path: string, body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
 		busy = true;
 		try {
@@ -112,7 +117,7 @@
 </div>
 
 {#if open}
-	<section class="sheet" aria-label={`Manage ${shown.title}`} data-testid="song-sheet">
+	<section class="sheet" aria-label={`Manage ${shown.title}`} data-testid="song-sheet" use:reveal>
 		<h2 class="sheet-t">{shown.title}</h2>
 		<p class="sheet-facts">{facts}</p>
 
@@ -199,6 +204,8 @@
 		padding: var(--space-md);
 		border-radius: var(--radius-sm);
 		background: var(--card2);
+		/* The dock covers the bottom of the viewport, so `reveal` stops above it. */
+		scroll-margin-bottom: calc(var(--dock-h, 0px) + var(--space-md));
 	}
 	.sheet-t {
 		margin: 0;

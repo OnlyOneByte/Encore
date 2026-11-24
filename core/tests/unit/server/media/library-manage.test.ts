@@ -11,6 +11,7 @@ import {
 	librarySizes,
 	librarySong,
 	renameSong,
+	requestDelete,
 	setKeep
 } from '$lib/server/media/library-manage';
 import { applyAnnotation } from '$lib/server/jobs/process';
@@ -146,6 +147,40 @@ describe('what the host may manage', () => {
 		expect(librarySong(app, 'raw')).toBeUndefined();
 		expect(librarySong(app, 'gone')).toBeUndefined();
 		expect(librarySong(app, 'nope')).toBeUndefined();
+	});
+});
+
+describe('requestDelete', () => {
+	const ready = song({ lyricsStatus: 'ready', songProfile: EMPTY_SONG_PROFILE });
+	const harness = () => {
+		const scheduled: string[] = [];
+		const entries: QueueEntry[] = [];
+		const app = {
+			mediaById: new Map([['m1', ready]]),
+			pendingDeletes: { has: (id: string) => scheduled.includes(id), schedule: (id: string) => scheduled.push(id) },
+			state: { entries }
+		};
+		return { app, scheduled, entries };
+	};
+
+	it('a turn added while Keep is being read is seen: the delete answers queued and no window starts', async () => {
+		const { app, scheduled, entries } = harness();
+		const slowKeepRead = async () => {
+			await Bun.sleep(5);
+			entries.push({ id: 'e1', mediaId: 'm1', singerId: 's', status: 'queued', rotationSeq: 0, addedAt: 0 });
+			return false;
+		};
+		expect(await requestDelete(app, 'm1', slowKeepRead)).toEqual({ refused: 'queued' });
+		expect(scheduled).toEqual([]);
+	});
+
+	it('starts the window for a ready, unkept song nobody has queued; refuses kept and unknown songs', async () => {
+		const { app, scheduled } = harness();
+		expect(await requestDelete(app, 'nope', async () => false)).toEqual({ refused: 'unknown' });
+		expect(await requestDelete(app, 'm1', async () => true)).toEqual({ refused: 'kept' });
+		expect(scheduled).toEqual([]);
+		expect(await requestDelete(app, 'm1', async () => false)).toEqual({ media: ready });
+		expect(scheduled).toEqual(['m1']);
 	});
 });
 
