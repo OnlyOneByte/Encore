@@ -23,6 +23,7 @@
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 	import { WsClient } from '$lib/ws/client';
+	import { ClockOffset, clientNow, type TvClock } from '$lib/tv/copy-clock';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import TvCopyChip, { copyLine } from '$lib/tv/TvCopyChip.svelte';
@@ -67,6 +68,11 @@
 	const isCopy = $derived(seatMine === false);
 	// Whether the seat's screen is live (`tv:seat`'s `tvOnline`), so a copy never points at a TV that is gone.
 	let tvOnline = $state(true);
+	// A copy's view of the TV's clock: its last `tv:clock`, and its offset to core from `tv:ping`. See copy-clock.ts.
+	let tvClock = $state<TvClock | null>(null);
+	const clockOffset = new ClockOffset();
+	let offsetMs = $state<number | null>(null);
+	const follow = $derived(isCopy && tvClock && offsetMs !== null ? { clock: tvClock, offsetMs } : null);
 	// The page's ONE live region for the seat, mounted empty with the page, so only its text changes and it is heard.
 	let seatAnnounce = $state('');
 	const SEAT_ANNOUNCE_MS = 4000;
@@ -393,6 +399,11 @@
 
 	function handleEvent(e: ServerEvent) {
 		if (e.type === 'room:reacted') reactions?.add(e);
+		if (e.type === 'tv:clock') tvClock = { entryId: e.entryId, positionSec: e.positionSec, serverAt: e.serverAt };
+		if (e.type === 'tv:pong') {
+			clockOffset.add(e.t0, e.serverAt, clientNow());
+			offsetMs = clockOffset.offsetMs;
+		}
 		if (e.type === 'tv:seat') {
 			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
 			// the copy's line when this screen becomes a copy (on load too, since the region was mounted empty) or when the
@@ -538,6 +549,23 @@
 		ws.open();
 		void seedFromLibrary();
 		return () => ws?.close();
+	});
+
+	// A copy times its offset to core: a short burst on connect fills the min-RTT window, then one ping every 30 s.
+	const PING_BURST = 5;
+	const PING_BURST_GAP_MS = 250;
+	const PING_EVERY_MS = 30_000;
+	$effect(() => {
+		if (!isCopy || !connected) return;
+		let sent = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const ping = () => {
+			ws?.send({ type: 'tv:ping', t0: clientNow() }, { quiet: true });
+			sent++;
+			timer = setTimeout(ping, sent < PING_BURST ? PING_BURST_GAP_MS : PING_EVERY_MS);
+		};
+		ping();
+		return () => clearTimeout(timer);
 	});
 
 	// The lower third's and "Up next"'s rendered heights, MEASURED by TvNowBar and handed back here.
@@ -829,6 +857,7 @@
 			guideLevel={seatMine ? guideLevel : 0}
 			masterLevel={seatMine ? masterLevel[slot] : 0}
 			silent={!seatMine}
+			follow={follow}
 			onready={() => {
 				ctl.onVisibleReady();
 				tvState = ctl.state;

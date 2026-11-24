@@ -122,7 +122,11 @@ export type ServerEvent =
 	| { type: 'player:stale'; cmd: TargetedCommand['cmd']; singerOnly?: true }
 	// To ONE TV socket, on connect and whenever its answer moves: `mine: false` is a copy, whose telemetry the server
 	// ignores; `tvOnline: false` means the seat's screen has no live socket right now. See server/rooms/tv-seat.ts.
-	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean };
+	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean }
+	// TV-ONLY, ~4 Hz: the seat's playhead as core received it (`serverAt`, core's ms clock), for copies to follow.
+	| { type: 'tv:clock'; entryId: string; positionSec: number; serverAt: number }
+	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.
+	| { type: 'tv:pong'; t0: number; serverAt: number };
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.
@@ -154,6 +158,8 @@ export type ClientEvent =
 	| { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
 	// "Make this the TV": the sending screen takes the room's seat.
 	| { type: 'tv:claim' }
+	// A copy timing its offset to core's clock; `t0` is echoed back in `tv:pong`.
+	| { type: 'tv:ping'; t0: number }
 	| { type: 'hello'; lastRev: number }
 	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
 	| { type: 'room:react'; kind: ReactionKind };

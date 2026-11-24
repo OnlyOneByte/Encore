@@ -1947,8 +1947,9 @@ party. An unknown code falls through to the served room, so a stale code never d
 The binding is load-bearing.
 
 The TV holds NO queue rev of its own: it never handles `queue:patch` and adopts server truth wholesale
-from each `queue:sync`, so the hello handshake always sends `lastRev 0`. It writes only `tv:telemetry`, and
-only while the server says it holds the room's seat (`tv:seat`, see `docs/SERVER.md#the-tv-seat`). A COPY, or a screen still
+from each `queue:sync`, so the hello handshake always sends `lastRev 0`. It writes `tv:telemetry` only
+while the server says it holds the room's seat (`tv:seat`, see `docs/SERVER.md#the-tv-seat`), and a copy writes
+`tv:ping` (see "A copy on the TV's clock"). A COPY, or a screen still
 waiting for that answer, plays `muted` at volume 0 and makes no AudioContext (`TvPlayer`'s `silent`), with every frame
 dropped SILENTLY when the socket is not open — a ~4Hz ephemeral stream whose next frame is 250ms away,
 where warning per drop floods the console on every reconnect. Every frame carries the ENTRY id, because
@@ -1971,6 +1972,39 @@ on-screen say; a failure no tap can lift moves the room on instead (see "A song 
 
 Motion on this surface lives inside `@media (prefers-reduced-motion: no-preference)` or is gated in JS.
 Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide because the transition runtime never consults the media query.
+
+### A copy on the TV's clock
+
+A copy plays the song on its own muted element, which drifts from the TV's. So it follows the TV's clock as core
+relays it (`tv:clock`, `docs/SERVER.md#the-tv-clock-relay`). The rules are in `src/lib/tv/copy-clock.ts`.
+
+1. **Offset to core.** The copy sends a short burst of `tv:ping`s on connect and then one every 30 s. It keeps the
+   minimum-RTT sample of the last 8 (NTP's rule): offset = `serverAt - (t0 + rtt / 2)`.
+2. **Target.** The TV is at `positionSec + (now + offset - serverAt)`, re-read on each `tv:clock` frame.
+3. **Correction**, on the active slot only, while it plays the frame's entry:
+   - under 20 ms off, it is left alone;
+   - from 20 ms to 100 ms, `playbackRate` is trimmed by up to 3% (`1 ± min(0.03, error / 2 s)`), with
+     `preservesPitch` off because the element is muted;
+   - over 100 ms, it seeks. A seek needs two frames in a row to agree, so one stale frame from before a room seek
+     cannot hop the words back. It aims ahead by the lag the last seek landed with (`nextSeekLead`, at most 300 ms);
+   - a trim lasts only while frames keep coming: with no frame for 1 s (`CLOCK_STALE_MS`, the seat's socket dropped),
+     or as soon as the copy stops following (another entry, paused, seeking), the rate goes back to 1, so a stale
+     trim cannot drift the copy 30 ms a second.
+
+   The proposal said 250 ms for the seek line. At 250 ms, a copy that started 150 ms late on a 4x-CPU device took
+   5 s of trimming to catch up, and that start alone put p95 at 103 ms.
+4. **The seat never follows.** Only a copy is handed `follow` (`isCopy` on the page). A slot without it goes back
+   to rate 1 with pitch preserved, so a copy promoted mid-song becomes the room's clock exactly as it plays.
+   `p34-copy-drift.spec.ts` checks that the TV's element never sees a `ratechange`.
+
+Song changes and the "Now singing" card still come from the copy's own playback. Because the copy now ends
+within its drift of the TV, its card goes up within ~30 ms of the TV's (the probe's `cardGapMs`).
+
+**Measured** by `p34-copy-drift.spec.ts`, which runs a 60 s song with a pause, a resume, a seek and a natural end,
+and the copy at 1x and 4x CPU. It reports the p95 |copy - TV|, the card gap and the share of time both screens light
+the same line. Headless Chromium on a shared host paints both screens at only 7-12 fps, so two screens on one clock
+still light a new line up to a frame apart. That is why the probe's floor for the same line is 98%, not the
+proposal's 99.5%. Judge the 99.5% on real devices.
 
 ### A song that won't play
 
