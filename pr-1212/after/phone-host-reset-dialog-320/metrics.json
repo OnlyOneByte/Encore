@@ -1,0 +1,174 @@
+{
+  "scenario": "phone-host-reset-dialog-320",
+  "what": "Phone 320: the host's \"Reset Theo's phones\" confirm opening (encore-alert-in + encore-scrim-in, --motion-fast)",
+  "capturedAt": "2026-11-24T17:49:09.708Z",
+  "stepMs": 12,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-150odgq-encore-alert-in",
+      "target": "div[data-slot=alert-dialog-content].bg-popover.text-popover-foreground.gap-[var(--space-2xl)]",
+      "durationMs": 120,
+      "delayMs": 0,
+      "endTimeMs": 120,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity",
+        "scale"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-150odgq-encore-alert-in var(--motion-fast) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-1k914gh-encore-scrim-in",
+      "target": "div[data-slot=alert-dialog-overlay].fixed.inset-0.z-50",
+      "durationMs": 120,
+      "delayMs": 0,
+      "endTimeMs": 120,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "svelte-1k914gh-encore-scrim-in var(--motion-fast) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 120,
+  "seekFrames": 12,
+  "seekObserved": {
+    "dialogOpen": true
+  },
+  "subject": {
+    "selector": "[role=\"alertdialog\"]",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-150odgq-encore-alert-in",
+        "target": "div[data-slot=alert-dialog-content].bg-popover.text-popover-foreground.gap-[var(--space-2xl)]",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "scale"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-150odgq-encore-alert-in var(--motion-fast) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-1k914gh-encore-scrim-in",
+        "target": "div[data-slot=alert-dialog-overlay].fixed.inset-0.z-50",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-1k914gh-encore-scrim-in var(--motion-fast) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "dialogOpen": true
+    },
+    "droppedFrames": {
+      "median": 6,
+      "min": 6,
+      "max": 30
+    },
+    "longAnimationFrames": {
+      "median": 2,
+      "min": 2,
+      "max": 7
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 66.7,
+      "min": 66.7,
+      "max": 100
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 3,
+    "observed": {
+      "dialogOpen": true
+    }
+  },
+  "timingsMs": {
+    "seekMs": 20109,
+    "encodeMs": 1366,
+    "liveMs": 7232,
+    "reducedMs": 3284,
+    "reducedEncodeMs": 568
+  },
+  "files": {
+    "clip.gif": 221928,
+    "clip-slow4x.gif": 221928,
+    "filmstrip.png": 544080,
+    "filmstrip-reduced.png": 96380
+  }
+}
