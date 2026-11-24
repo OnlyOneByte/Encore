@@ -7,7 +7,7 @@
 // room-reset endpoint, not a shared world.
 import { test as base, expect, type Page, type Browser } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCore, TEST_HOST_KEY, type Core } from './core';
@@ -190,6 +190,8 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 		if (testInfo.status !== testInfo.expectedStatus) {
 			await testInfo.attach('core.log', { body: core.log(), contentType: 'text/plain' });
 		}
+		// A passing test can still hide a server error, so this keeps every test's log (docs/E2E.md#keeping-cores-log).
+		if (process.env.ENCORE_KEEP_CORE_LOG === '1') writeFileSync(testInfo.outputPath('core.log'), core.log());
 		for (const page of opened)
 			await page
 				.context()
