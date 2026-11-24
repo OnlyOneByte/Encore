@@ -583,6 +583,31 @@ async def test_a_duet_reaches_the_tv_as_parts_and_a_solo_does_not() -> None:
         assert not any("speaker" in line for line in doc["doc"]["lines"]), doc["name"]
 
 
+async def test_a_duet_rewrite_that_fails_midway_leaves_the_old_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The TV reads this file, so a crash or full disk mid-rewrite must not leave it truncated."""
+    _, doc, turns = _DOCUMENTS[0]
+    ref = f"derived/lyrics/{MEDIA}-lrclib-word.json"
+    path = tmp_path / ref
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    before = path.read_bytes()
+
+    def half_then_full_disk(obj: object, fp: Any, **_: object) -> None:
+        fp.write(json.dumps(obj)[:10])
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(json, "dump", half_then_full_disk)
+    impl = AlignStepsImpl(config=CONFIG, adapters=Adapters(diarizer=_Turns(turns)), reporter=Reporter())
+    record = TimedDoc(ref=ref, timing=TIMING_WORD, confidence="high", report=CLEAN, tier=Tier.CANDIDATE)
+    job = JobRef(job_id="j-diarize", media_id=MEDIA, media_dir=str(tmp_path))
+    await impl.diarize(job, AudioRef(path=str(tmp_path / "mix.wav"), duration_sec=60.0), record)
+
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in path.parent.iterdir()) == [path.name]
+
+
 if __name__ == "__main__":
     path = _fixture_path()
     path.write_text(dump(asyncio.run(build())), encoding="utf-8")

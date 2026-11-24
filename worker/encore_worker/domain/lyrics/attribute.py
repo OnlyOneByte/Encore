@@ -150,5 +150,5 @@ def _num(value: object) -> float | None:
 
 
 def speaker_count(turns: Sequence[Segment]) -> int:
-    """How many distinct voices the diarizer found. Recorded on the completion facts."""
+    """How many distinct voices the diarizer found. Not recorded on the job yet; nothing calls it."""
     return len({str(t.get("speaker")) for t in turns if t.get("speaker") is not None})
