@@ -1,6 +1,7 @@
 # The worker's full suite with the real ML stack: every test, the `ml` ones included, so each test
 # the fast suite skips for want of models is still checked. Twice a month; it downloads several GB
 # a run. The cadence is the one cron line below.
+# CI probe (neither path), do not merge.
 # Skipped when main has not moved since the last successful run; running it by hand always runs.
 #
 # Actions are pinned by commit SHA (the tag is the comment beside it). No secrets: the token is read-only.
