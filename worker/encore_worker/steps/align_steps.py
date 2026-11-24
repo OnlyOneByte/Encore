@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 from encore_worker.adapters import cli, ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts import keys
+from encore_worker.artifacts.local import write_json_atomically
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics import (
     attribute,
@@ -2542,12 +2543,9 @@ class AlignStepsImpl:
             annotated = attribute.attribute(loaded, list(turns))
             if annotated is loaded:
                 return doc  # nothing trustworthy to add: one voice, or not a confident duet (`attribute`)
-            with open(absolute, "w", encoding="utf-8") as handle:
-                json.dump(annotated, handle, ensure_ascii=False)
+            write_json_atomically(absolute, annotated)
         except (OSError, ValueError):
-            # The document is already published-shaped and correct without parts, and `json.dump` to a fresh
-            # handle either replaces the file or leaves the previous bytes.
-            return doc
+            return doc  # the document on disk is already correct without parts
         return doc
 
     # ── publication ──────────────────────────────────────────────────────────────────────────────

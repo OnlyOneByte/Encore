@@ -51,8 +51,8 @@ MAX_PROSE_RATIO = 0.55
 RATIO_MIN_CODE = 100
 
 #: Rule 7, the aggregates that hold the modules rule 6 is too coarse for. The worst layer is
-#: `encore_worker/artifacts` at 0.545 and the package is 0.489; the package bound sits below the layer bound
-#: because every layer being at its bound would be a different package from this one.
+#: `encore_worker/domain/audio` at 0.535 and the package is 0.489; the package bound sits below the layer
+#: bound because every layer being at its bound would be a different package from this one.
 MAX_LAYER_RATIO = 0.55
 MAX_PACKAGE_RATIO = 0.52
 
@@ -76,7 +76,7 @@ TIGHTEST = {
     "attribute": "encore_worker/adapters/ml.py",
     "block": "forced-alignment/e2e.py",
     "ratio": "encore_worker/domain/lyrics/policy.py",
-    "layer": "encore_worker/artifacts",
+    "layer": "encore_worker/domain/audio",
 }
 
 #: Every directory of the package holding Python, NESTED ONES INCLUDED — a top-level-only list left

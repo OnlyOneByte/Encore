@@ -6,6 +6,7 @@ Per-class roots, atomic publication and refusing to escape the root are what mak
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -13,6 +14,28 @@ from dataclasses import dataclass
 
 from encore_worker.artifacts import keys
 from encore_worker.artifacts.ports import ArtifactStoreError
+
+
+def write_json_atomically(path: str, obj: object) -> None:
+    """Write `obj` as JSON over `path`, all or nothing: a synced sibling temp file, then `os.replace`."""
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except FileNotFoundError:
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+    handle, staged = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".writing-", suffix=".part")
+    try:
+        # mkstemp makes the file 0600, and core may run as another user that must still read it.
+        os.fchmod(handle, mode)
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            json.dump(obj, out, ensure_ascii=False)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(staged, path)
+    finally:
+        if os.path.exists(staged):
+            os.unlink(staged)
 
 
 @dataclass(frozen=True, slots=True)
