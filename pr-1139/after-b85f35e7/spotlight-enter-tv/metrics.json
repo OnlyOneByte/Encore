@@ -1,0 +1,283 @@
+{
+  "scenario": "spotlight-enter-tv",
+  "what": "TV 1920x1080: the four Spotlight states mount: each card fades in from scale(.98) over --motion-base (--ease-out)",
+  "capturedAt": "2026-11-24T00:45:51.134Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-j7l2rm-spot-in",
+      "target": "section.spotlight.idle",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-j7l2rm-spot-in",
+      "target": "section.spotlight.on-deck.lit",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-j7l2rm-spot-in",
+      "target": "section.spotlight.on-deck.lit",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-j7l2rm-spot-in",
+      "target": "section.spotlight.error",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform",
+        "opacity"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "handoff": "on-deck",
+    "guide": [
+      "Off:true",
+      "Low:false",
+      "Full:false"
+    ]
+  },
+  "subject": {
+    "selector": "[data-testid=\"spot-on-deck\"] .spotlight",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-j7l2rm-spot-in",
+        "target": "section.spotlight.idle",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-j7l2rm-spot-in",
+        "target": "section.spotlight.on-deck.lit",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-j7l2rm-spot-in",
+        "target": "section.spotlight.on-deck.lit",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-j7l2rm-spot-in",
+        "target": "section.spotlight.error",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform",
+          "opacity"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-j7l2rm-spot-in var(--motion-base) var(--ease-out)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:true",
+        "Low:false",
+        "Full:false"
+      ]
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 3
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 33.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:true",
+        "Low:false",
+        "Full:false"
+      ]
+    }
+  },
+  "timingsMs": {
+    "seekMs": 2866,
+    "encodeMs": 1347,
+    "liveMs": 7391,
+    "reducedMs": 2731,
+    "reducedEncodeMs": 397
+  },
+  "files": {
+    "clip.gif": 173878,
+    "clip-slow4x.gif": 173878,
+    "filmstrip.png": 90950,
+    "filmstrip-reduced.png": 34565
+  }
+}

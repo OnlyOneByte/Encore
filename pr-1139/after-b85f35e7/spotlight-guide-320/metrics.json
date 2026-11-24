@@ -1,0 +1,97 @@
+{
+  "scenario": "spotlight-guide-320",
+  "what": "Phone 320x568: tapping Low on the Guide segments: the press lands in the next frame, a cut with no animation",
+  "capturedAt": "2026-11-24T00:47:32.521Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "handoff": "on-deck",
+    "guide": [
+      "Off:false",
+      "Low:true",
+      "Full:false"
+    ]
+  },
+  "subject": {
+    "selector": "[data-testid=\"guide-plain\"] .segments",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:false",
+        "Low:true",
+        "Full:false"
+      ]
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "handoff": "on-deck",
+      "guide": [
+        "Off:false",
+        "Low:true",
+        "Full:false"
+      ]
+    }
+  },
+  "timingsMs": {
+    "seekMs": 5054,
+    "encodeMs": 370,
+    "liveMs": 15433,
+    "reducedMs": 2926,
+    "reducedEncodeMs": 699
+  },
+  "files": {
+    "clip.gif": 28770,
+    "clip-slow4x.gif": 28770,
+    "filmstrip.png": 120707,
+    "filmstrip-reduced.png": 124130
+  }
+}
