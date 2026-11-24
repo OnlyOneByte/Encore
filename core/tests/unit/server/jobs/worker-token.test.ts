@@ -102,7 +102,6 @@ describe('resolveWorkerToken', () => {
 		for (const junk of ['', '   \n', 'short\n']) {
 			writeFileSync(file, junk);
 			const got = resolveWorkerToken(undefined, file, false);
-			expect(got.refusal).toBeUndefined();
 			expect(got.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 			expect(readFileSync(file, 'utf8').trim()).toBe(got.token!);
 			expect(got.note).toContain('replaced an unusable token');
@@ -110,7 +109,6 @@ describe('resolveWorkerToken', () => {
 		expect(readdirSync(dir)).toEqual(['worker-token']); // no temp file left behind
 		const open = resolveWorkerToken(undefined, join(file, 'nested'), false); // its parent is a file
 		expect(open.token).toBeNull();
-		expect(open.refusal).toBeUndefined();
 		expect(open.note).toContain('could not read or make');
 	});
 
@@ -150,20 +148,19 @@ describe('resolveWorkerToken', () => {
 			expect(inTmp.note).toContain('group- or world-writable');
 		}));
 
-	test('a token file inside MEDIA_DIR (MEDIA_DIR=X, DATA_DIR=X/data) stops boot before anything is written', () =>
+	// /media refuses the token and DATA_DIR there (#1213), so the one-folder layout boots with zero setup.
+	test('a token file inside MEDIA_DIR (MEDIA_DIR=X, DATA_DIR=X/data) is made, with a warning', () =>
 		withEnv({ MEDIA_DIR: dir, DATA_DIR: join(dir, 'data') }, () => {
 			const file = workerTokenFile();
 			expect(file).toBe(join(dir, 'auth', 'worker-token'));
 			const got = resolveWorkerToken(undefined, file, false);
-			expect(got.token).toBeNull();
-			expect(got.refusal).toContain('ENCORE_WORKER_TOKEN_FILE to a path outside MEDIA_DIR');
-			expect(got.refusal).toContain('move DATA_DIR out of MEDIA_DIR');
-			expect(existsSync(join(dir, 'auth'))).toBe(false);
-			// An explicit ENCORE_WORKER_TOKEN needs no file, so that layout still boots with one.
-			expect(resolveWorkerToken('y'.repeat(24), file, false).refusal).toBeUndefined();
+			expect(got.token).not.toBeNull();
+			expect(readFileSync(file, 'utf8').trim()).toBe(got.token!);
+			expect(got.note).toContain(`warning: ${file} is inside`);
+			expect(got.note).toContain('/media never serves it');
 		}));
 
-	test('the same layout through a symlink, either way round, is refused too (real paths)', () => {
+	test('the same layout through a symlink, either way round, is warned about too (real paths)', () => {
 		const disk = join(dir, 'disk');
 		const link = join(dir, 'link');
 		mkdirSync(disk);
@@ -174,8 +171,8 @@ describe('resolveWorkerToken', () => {
 		]) {
 			withEnv(env, () => {
 				const got = resolveWorkerToken(undefined, workerTokenFile(), false);
-				expect(got.refusal, JSON.stringify(env)).toContain('which /media serves');
-				expect(existsSync(join(disk, 'auth'))).toBe(false);
+				expect(got.note, JSON.stringify(env)).toContain('/media never serves it');
+				rmSync(join(disk, 'auth'), { recursive: true, force: true });
 			});
 		}
 	});

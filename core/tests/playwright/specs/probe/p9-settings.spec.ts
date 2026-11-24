@@ -32,7 +32,7 @@ import { startFakeWorker, startObservingWorker } from '../../world/workers';
 import { startCore, TEST_HOST_KEY } from '../../world/core';
 import { WebSocket } from 'ws';
 import { request as httpRequest } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { World } from '../../world/fixtures';
@@ -558,34 +558,23 @@ test('the operator JSON is the host only, and the worker socket is open by desig
 	expect(world.core.log(), 'core logs where the token is, never the token').not.toContain(token!);
 });
 
-test('with MEDIA_DIR=X and DATA_DIR=X/data the token is never served: core refuses that path, and /media 404s it', async () => {
-	// Core's default puts the token at DATA_DIR/../auth, which this layout places inside MEDIA_DIR (#1202 review M1).
+test('with MEDIA_DIR=X and DATA_DIR=X/data core boots with a warning, and /media 404s the token it made', async () => {
+	// Core's default puts the token at DATA_DIR/../auth, which this layout places inside MEDIA_DIR (#1202, #1213).
 	const root = mkdtempSync(join(tmpdir(), 'enc-p9-layout-'));
 	const dataDir = join(root, 'data');
 	mkdirSync(dataDir, { recursive: true });
 	const real = join(root, 'auth', 'worker-token');
 	try {
 		// An empty ENCORE_WORKER_TOKEN_FILE is core's default, as on a hand-configured box.
-		const refused = await startCore({ mediaDir: root, dataDir, env: { ENCORE_WORKER_TOKEN_FILE: '' } }).then(
-			() => 'booted',
-			(err: Error) => err.message
-		);
-		expect(refused, 'core must not boot with its token inside MEDIA_DIR').toContain('which /media serves');
-		expect(existsSync(real), 'and must write nothing there').toBe(false);
-
-		// With a token set it boots; a file at the real path (planted, as an older build would have made) stays unserved.
-		mkdirSync(join(root, 'auth'), { recursive: true });
-		writeFileSync(real, 'planted-token-value-not-to-be-served\n');
-		const core = await startCore({
-			mediaDir: root,
-			dataDir,
-			env: { ENCORE_WORKER_TOKEN_FILE: '', ENCORE_WORKER_TOKEN: 'p9-layout-token-0123456789abcdef' }
-		});
+		const core = await startCore({ mediaDir: root, dataDir, env: { ENCORE_WORKER_TOKEN_FILE: '' } });
 		try {
+			expect(core.log(), 'the one-folder layout is said at boot').toContain('/media never serves it');
+			const token = readFileSync(real, 'utf8').trim();
+			expect(token.length).toBeGreaterThanOrEqual(24);
 			for (const ref of ['auth/worker-token', 'auth%2Fworker-token', 'AUTH/worker-token', 'auth/']) {
 				const served = await fetch(`${core.baseURL}/media/${ref}`);
 				expect(served.status, `GET /media/${ref}`).toBe(404);
-				expect(await served.text()).not.toContain('planted-token-value');
+				expect(await served.text()).not.toContain(token);
 			}
 		} finally {
 			await core.stop();

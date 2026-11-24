@@ -20,10 +20,16 @@ export function openDb(path: string): { db: DB; sqlite: Database } {
 	return { db, sqlite };
 }
 
+/** Core's own state dir: the database lives here. */
+export function dataDir(): string {
+	return process.env.DATA_DIR ?? './data';
+}
+
+export const DB_FILE = 'encore.sqlite';
+
 /** Default app DB path (overridable for tests / env). */
 export function defaultDbPath(): string {
-	const dir = process.env.DATA_DIR ?? './data';
-	return `${dir}/encore.sqlite`;
+	return `${dataDir()}/${DB_FILE}`;
 }
 
 export { schema };

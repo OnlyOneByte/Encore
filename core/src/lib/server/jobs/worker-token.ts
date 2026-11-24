@@ -55,8 +55,6 @@ export type WorkerToken = {
 	token: string | null;
 	/** For the boot log. Names the file, never the token. */
 	note: string | null;
-	/** Set when core must not start. */
-	refusal?: string;
 };
 
 /**
@@ -71,20 +69,13 @@ export function resolveWorkerToken(
 ): WorkerToken {
 	const fromEnv = cleanToken(raw);
 	if (fromEnv) return { token: fromEnv, note: null };
-	const served = servedRootHolding(file);
-	if (served) {
-		const data = servedRootHolding(process.env.DATA_DIR ?? './data')
-			? ' DATA_DIR inside MEDIA_DIR serves your database too: move DATA_DIR out of MEDIA_DIR.'
-			: '';
-		return {
-			token: null,
-			note: null,
-			refusal: `The worker token file ${file} is inside ${served}, which /media serves to anyone. Set ENCORE_WORKER_TOKEN_FILE to a path outside MEDIA_DIR, or set ENCORE_WORKER_TOKEN.${data}`
-		};
-	}
 	const mode = inContainer ? 0o640 : 0o600;
 	const dirMode = inContainer ? 0o750 : 0o700;
 	const notes: string[] = [];
+	// Only a warning: safeMediaPath refuses the token, its temp files, its auth/ dir and DATA_DIR (#1213).
+	const served = servedRootHolding(file);
+	if (served)
+		notes.push(`warning: ${file} is inside ${served}; /media never serves it, but a path outside MEDIA_DIR is tidier`);
 	const dir = dirname(file);
 	let created: string | undefined;
 	try {
