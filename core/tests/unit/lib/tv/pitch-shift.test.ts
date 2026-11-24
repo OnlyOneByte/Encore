@@ -285,8 +285,14 @@ test('safety: a retry that STILL cannot resume stays audible (degraded, not rout
 const RATE = 48000;
 const BLOCK = 128; // what a browser hands an AudioWorkletProcessor
 
-/** Evaluate the worklet source in a stub scope and return the registered processor class. */
-function loadProcessor(): new () => {
+/** The worklet source, evaluated ONCE in a stub scope; each test makes its own instance. Re-evaluating per run made
+ *  every run JIT `process()` from cold, which overran the 5 s budget on a loaded host (#1073). */
+let processorClass: ReturnType<typeof evaluateWorklet> | undefined;
+function loadProcessor(): ReturnType<typeof evaluateWorklet> {
+	return (processorClass ??= evaluateWorklet());
+}
+
+function evaluateWorklet(): new () => {
 	ratio: number;
 	readPos: number;
 	writePos: number;
@@ -305,7 +311,7 @@ function loadProcessor(): new () => {
 		RATE
 	);
 	if (!registered) throw new Error('worklet source registered no processor');
-	return registered as ReturnType<typeof loadProcessor>;
+	return registered as ReturnType<typeof evaluateWorklet>;
 }
 
 /** Drive `seconds` of a sine through the processor, returning the concatenated output. */
