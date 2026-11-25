@@ -77,6 +77,7 @@ export function keepSinger(
 	const { person, token } = app.people.create(singer.displayName, singer.color, app.now());
 	const singerToken = app.singers.linkPerson(singer.id, person.id);
 	app.nights.linkPerson(singer.id, person.id, app.now());
+	app.savedSongs.linkPerson(singer.id, person.id);
 	return { person, deviceToken: token, singerToken };
 }
 
@@ -114,16 +115,15 @@ export function dailyPersonPrune(app: EncoreApp, since: number): () => void {
 	};
 }
 
-/** Delete me: the person, every device and every past night. `keepSingerId` stays in the room tonight as a guest;
+/** Delete me: the person, every device, every past night and every saved song. `keepSingerId` stays in the room tonight as a guest;
  *  a night still holding a turn is unlinked rather than deleted, so the queue keeps its singer. */
 export function forgetPerson(app: EncoreApp, personId: string, keepSingerId: string | null = null): void {
 	endOtherSessions(app, personId, keepSingerId ?? '');
 	const holding = new Set(app.state.entries.map((e) => e.singerId));
 	const theirs = app.singers.byPerson(personId);
-	app.nights.forgetPerson(
-		personId,
-		theirs.map((s) => s.id)
-	);
+	const singerIds = theirs.map((s) => s.id);
+	app.nights.forgetPerson(personId, singerIds);
+	app.savedSongs.forgetPerson(personId, singerIds);
 	for (const s of theirs) {
 		if (s.id === keepSingerId || holding.has(s.id)) app.singers.unlinkPerson(s.id);
 		else app.singers.delete(s.id);

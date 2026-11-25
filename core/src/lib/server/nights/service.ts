@@ -46,7 +46,7 @@ export function recordTurn(
 }
 
 /** Tonight's singer from the session cookie, and their kept person only when this phone's device cookie names them,
- *  as for Delete me. Never an id from the URL or the body. */
+ *  as for Delete me. Never an id from the URL or the body: a copied singer cookie must not become the whole person. */
 export function historyOwner(
 	app: EncoreApp,
 	cookies: Pick<Cookies, 'get' | 'set'>,
@@ -74,5 +74,12 @@ export function sweepGuestNights(app: EncoreApp): void {
 		if (gone > 0) console.log(`[core] guest nights: deleted ${gone} turn(s) older than 90 days`);
 	} catch (err) {
 		console.warn(`[core] guest nights sweep skipped: ${(err as Error).message}`);
+	}
+	// The same 90-day rule for a guest's saved songs, in its own try so one table's failure never skips the other.
+	try {
+		const gone = app.savedSongs.sweepGuests(app.now());
+		if (gone > 0) console.log(`[core] guest saved songs: deleted ${gone} after 90 days unused`);
+	} catch (err) {
+		console.warn(`[core] guest saved songs sweep skipped: ${(err as Error).message}`);
 	}
 }

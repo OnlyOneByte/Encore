@@ -61,6 +61,7 @@ import { JobRepository } from './jobs/repository';
 import { ATTEMPT_PRUNE_EVERY_MS, ATTEMPT_RETENTION_MS, AttemptLedger } from './jobs/attempts';
 import { PlayLog } from './media/play-log';
 import { NightLog } from './nights/repository';
+import { SavedSongs } from './songs/repository';
 import { dailyNightSweep, recordTurn, sweepGuestNights } from './nights/service';
 import type { ScreensControl } from './rooms/tv-screens';
 import { JobReaper } from './jobs/reaper';
@@ -93,6 +94,8 @@ export interface EncoreApp {
 	playLog: PlayLog;
 	/** Each singer's own turns, for their recap; never served to anyone else. */
 	nights: NightLog;
+	/** Songs each singer or kept person saved; read only by their owner. */
+	savedSongs: SavedSongs;
 	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
@@ -613,6 +616,7 @@ export function getApp(): EncoreApp {
 		attempts,
 		playLog,
 		nights: new NightLog(db),
+		savedSongs: new SavedSongs(db),
 		settings,
 		reaper,
 		workers,

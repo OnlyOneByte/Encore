@@ -389,6 +389,26 @@ export const nightOptOuts = sqliteTable('night_opt_outs', {
 	createdAt: integer('created_at').notNull()
 });
 
+// A song someone saved to sing later, keyed on its origin so it outlives a library delete. See docs/SERVER.md#your-songs.
+export const savedSongs = sqliteTable(
+	'saved_songs',
+	{
+		id: text('id').primaryKey(),
+		// A guest's saves are their singer row's; Keep me moves them to the person.
+		ownerKind: text('owner_kind', { enum: ['singer', 'person'] }).notNull(),
+		ownerId: text('owner_id').notNull(),
+		source: text('source', { enum: ['youtube', 'local', 'spotify'] }).notNull(),
+		sourceRef: text('source_ref').notNull(),
+		// A snapshot, so the row still reads after the song leaves the library.
+		title: text('title').notNull(),
+		artist: text('artist'),
+		savedAt: integer('saved_at').notNull()
+	},
+	(t) => ({
+		uniq: uniqueIndex('saved_songs_owner_song_idx').on(t.ownerKind, t.ownerId, t.source, t.sourceRef)
+	})
+);
+
 /** The sidecar's `library.playCount` stays the authoritative total and drives LRU retention; this answers WHEN, which a counter cannot and `queue_entries` cannot either, being wiped every flush. Deliberately no `singer_id`. */
 export const plays = sqliteTable(
 	'plays',

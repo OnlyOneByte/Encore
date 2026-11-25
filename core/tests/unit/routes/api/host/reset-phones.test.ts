@@ -6,6 +6,8 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { SingerRepository, SESSION_COOKIE } from '$lib/server/singers/repository';
 import { PeopleRepository, DEVICE_COOKIE } from '$lib/server/people/repository';
 import { NightLog } from '$lib/server/nights/repository';
+import { SavedSongs } from '$lib/server/songs/repository';
+import type { Media } from '$lib/contract';
 import { HostKey, HOST_COOKIE } from '$lib/server/host-key';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
@@ -34,6 +36,7 @@ function installApp() {
 		singers: new SingerRepository(db),
 		people: new PeopleRepository(db),
 		nights: new NightLog(db),
+		savedSongs: new SavedSongs(db),
 		hostKey: new HostKey(db, KEY),
 		settings: new SettingsRepository(db),
 		state: new AuthoritativeState(),
@@ -168,13 +171,20 @@ test("Reset phones deletes the person's recorded nights, tonight's included, and
 	turn(night.id, theo.person.id, 'e-tonight', T0 - 600_000);
 	turn(bo.id, null, 'e-bo', T0 - 300_000);
 	const theosOwner = { singerId: night.id, personId: theo.person.id };
+	const bosOwner = { singerId: bo.id, personId: null };
 	expect(app.nights.nightsFor(theosOwner).length).toBeGreaterThan(0);
+	// Saved songs go with the person too.
+	const song = { source: 'youtube', sourceRef: 'r1', title: 'Song', artist: null } as unknown as Media;
+	app.savedSongs.save(theosOwner, song, T0);
+	app.savedSongs.save(bosOwner, song, T0);
 
 	const host = await hostJar();
 	expect((await reset(event('/api/host/people/reset', host, { personId: theo.person.id }))).status).toBe(200);
 	expect(app.nights.nightsFor(theosOwner)).toEqual([]);
 	expect(app.nights.nightsFor({ singerId: past.id, personId: null })).toEqual([]);
-	expect(app.nights.nightsFor({ singerId: bo.id, personId: null })).toHaveLength(1);
+	expect(app.nights.nightsFor(bosOwner)).toHaveLength(1);
+	expect(app.savedSongs.listFor(theosOwner)).toEqual([]);
+	expect(app.savedSongs.listFor(bosOwner)).toHaveLength(1);
 });
 
 test('Reset phones refuses a guest, the kept person themselves, the TV and a caller with no key', async () => {
