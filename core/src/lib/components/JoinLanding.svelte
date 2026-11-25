@@ -14,7 +14,7 @@
 	import { roomPresenceSentence, type RoomPreview } from '$lib/phrasing/room-presence-sentence';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import { room, PENDING_GRACE_MS } from '$lib/stores/room';
+	import { room } from '$lib/stores/room';
 
 	/* A phone the room STOPPED knowing mid-party (Leave on another tab, cookies cleared, a reset room): it says why it
 	   is here and keeps the name, so the name step is already filled in. The room code is still asked for: the phone
@@ -64,24 +64,14 @@
 	let renaming = $state(false);
 	const returning = $derived(someoneElse ? null : (preview?.returning ?? null));
 
-	/* Tenet 2 (#1089): "Finding the room…" is seen only past PENDING_GRACE_MS (`.finding`, in CSS), and a lookup that
-	   answers after it is seen holds it for that long again, so it is never painted for less. Timed from mount, which is
-	   when the scanned lookup starts. */
+	/* Tenet 2 (#1089): "Finding the room…" is seen only past the 300 ms grace (`.finding`, in CSS), timed from mount,
+	   which is when the scanned lookup starts. An answer that lands once it is seen is applied when it has been seen
+	   for 300 ms (`loadPreview`), so it is never painted for less. */
 	const mountedAt = performance.now();
-	let resolvingHeld = $state(false);
-	let resolved = false;
-	$effect(() => {
-		if (resolved || !arrivedWithCode || (!preview && !previewError)) return;
-		resolved = true;
-		const seen = performance.now() - mountedAt;
-		if (seen < PENDING_GRACE_MS || seen >= 2 * PENDING_GRACE_MS) return;
-		resolvingHeld = true;
-		setTimeout(() => (resolvingHeld = false), 2 * PENDING_GRACE_MS - seen);
-	});
 
 	/* DERIVED from `preview`, so no state can show an identity pane for a room that was never confirmed. */
 	const pane = $derived<'resolving' | 'code' | 'identity'>(
-		resolvingHeld ? 'resolving' : preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
+		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
 	);
 
 	/* The colour sits behind "change" (redesign step 7, #1157): the ring opens in a modal dialog over the card, so
@@ -119,6 +109,8 @@
 		try {
 			const res = await fetch(`/api/room-preview?code=${encodeURIComponent(code)}`);
 			const body = await res.json();
+			const hold = mountedAt + 600 - performance.now();
+			if (arrivedWithCode && hold > 0 && hold < 300) await new Promise((r) => setTimeout(r, hold));
 			if (!res.ok) {
 				previewError = body.error ?? 'That room could not be found.';
 			} else {

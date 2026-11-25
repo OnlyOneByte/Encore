@@ -25,7 +25,7 @@
 		type PlaybackState,
 		type MediaStatus
 	} from '$lib/contract';
-	import { room, PENDING_GRACE_MS } from '$lib/stores/room';
+	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns, type MakerVerdicts } from '$lib/readiness';
 	import { resolve } from '$app/paths';
@@ -48,7 +48,6 @@
 	import { tuneLine } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
-	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -108,18 +107,10 @@
 	   without this the first real sync read as N additions. See `QueueStore.synced`. */
 	let queueSynced = $state(false);
 	let playbackSynced = $state(false);
-	/* Tenet 2 (#1090): the list's skeleton is seen only past PENDING_GRACE_MS (`.skels-wait`, in CSS), and a sync that
-	   lands after it is seen holds it for that long again, so it is never painted for less. */
-	let waitFrom = 0;
-	let skelsHeld = $state(false);
-	$effect(() => {
-		if (!queueSynced) return void (waitFrom = performance.now());
-		const seen = performance.now() - waitFrom;
-		if (seen < PENDING_GRACE_MS || seen >= 2 * PENDING_GRACE_MS) return;
-		skelsHeld = true;
-		const t = setTimeout(() => (skelsHeld = false), 2 * PENDING_GRACE_MS - seen);
-		return () => clearTimeout(t);
-	});
+	/* Tenet 2 (#1090): the list's skeleton is seen only past the 300 ms grace (`.skels-wait`, in CSS). A first sync that
+	   lands once it is seen is applied when it has been seen for 300 ms, so it is never painted for less. */
+	const pageAt = performance.now();
+	let holding: unknown = 0;
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -146,6 +137,12 @@
 
 	onMount(() => {
 		const sync = () => {
+			if (holding) return;
+			const hold = pageAt + 600 - performance.now();
+			if (room.queue?.synced && !queueSynced && hold > 0 && hold < 300) {
+				holding = setTimeout(() => ((holding = 0), sync()), hold);
+				return;
+			}
 			me = room.me ?? null;
 			status = room.status;
 			entries = room.entries;
@@ -826,7 +823,7 @@
 				</div>
 			{/if}
 
-			{#if queued.length && !skelsHeld}
+			{#if queued.length}
 				<h2
 					class="grouphead"
 					data-hold={holds.grouphead?.turn}
@@ -951,7 +948,7 @@
 						/>
 					{/if}
 				{/each}
-			{:else if !queueSynced || skelsHeld}
+			{:else if !queueSynced}
 				<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
 			said "Nothing queued yet" over a full queue for that whole window on every cold load. Its box is there from
 			the first frame, so nothing shifts; it is only seen past the grace. -->
@@ -1001,7 +998,16 @@
 	the gate with the list it describes: an unjoined visitor has no queue to announce. -->
 	<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 {:else if status === 'not-joined'}
-	<JoinLanding />
+	<!-- Loaded on demand, as `/` does: a joined phone never needs the join screen's ~4.6 KB gz of JS. -->
+	{#await import('$lib/components/JoinLanding.svelte') then { default: JoinLanding }}
+		<JoinLanding />
+	{:catch}
+		<!-- The chunk can fail on bad wifi or after an update renamed it: never a blank screen. -->
+		<main>
+			<p>Couldn't load the join screen.</p>
+			<Button variant="secondary" size="tap" onclick={() => location.reload()}>Try again</Button>
+		</main>
+	{/await}
 {:else}
 	<PageHeader title="Queue" icon="clock" />
 	<main><RoomPending unreachable={status === 'unreachable'} /></main>
