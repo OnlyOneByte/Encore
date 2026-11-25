@@ -283,9 +283,10 @@ End to end, 3 songs picked at once through core on the same box, runs alternatin
 | main, `-j 1` | 205.1 / 218.9 / 126.7 s | 982.5 s | 45.6 | 4.0 GB |
 | pool, `-j 4` | 136.1 / 142.4 / 108.0 s | 929.6 s | 60.3 | 7.1 GB |
 
-In the second pair the pool ran under more load and still separated each song 15–35% sooner. Every stem
-of all 12 songs was within 0.1 dB of the others' loudness, none silent. The cost is RAM: about 1 GB more
-per worker while a song separates.
+In the second pair the pool ran under more load and still separated each song 15–35% sooner. Picked
+alone, Chosen was ready in 842.7 s on main (separation 365.4 s, load 68) and 470.1 s with the pool
+(separation 118.6 s, load 60). Every stem of all 14 songs was within 0.1 dB of the others' loudness,
+none silent. The cost is RAM: about 1 GB more per worker while a song separates.
 
 ## 3. The audio profile
 
