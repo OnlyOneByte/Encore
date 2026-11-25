@@ -686,10 +686,13 @@ its turn after the stem, and if neither yields words the job publishes no lyrics
 `lyricsNote: "asr-babble"`. The host's song page says so and offers the paste ([`../SERVER.md`](../SERVER.md)
 "Lyrics fixes").
 
-**The rule.** Split each line at spaces and hyphens. A run of 20 or more letters drawn from 4 or fewer
-distinct letters is not a word in any script. A transcript is babble when such runs hold half its letters or
-more. Hyphens split because sung chains (`la-la-la`, `wo-oh-oh`) are written with them; a script written
-without spaces stays clear because its runs use many distinct characters.
+**The rule.** Split each line at spaces and hyphens, and look for runs of 20 or more letters drawn from 4 or
+fewer distinct letters. A transcript is babble when such runs hold half its letters or more. Hyphens split
+because sung chains (`la-la-la`, `wo-oh-oh`) are written with them, and a script written without spaces
+mostly stays clear because its runs use many distinct characters. Unspaced chants do match (`啦啦啦…`,
+`ららら…`, `ลาลาลา…`, `Lalalala…`, `Nooooo…`): real songs pass because of the 0.5 share, since their words
+outweigh such lines. A transcript dominated by chants is withheld on purpose, and the host can still paste
+the lyrics.
 
 **What it was measured on** (#1288), as the share of letters in such runs:
 

@@ -12,9 +12,10 @@ from collections.abc import Iterable
 _BREAK = re.compile(r"[\s\-‐-―]+")
 #: A run of at least this many letters, with no break in it...
 RUN_LETTERS = 20
-#: ...drawn from this few distinct letters, is not a word in any script.
+#: ...drawn from this few distinct letters, is babble or an unspaced chant (`啦啦啦…`, `Nooooo…`).
 RUN_DISTINCT = 4
-#: The share of a transcript's letters in such runs at which it is babble rather than lyrics.
+#: The share at which a transcript is withheld. Real songs stay under it; one dominated by chants is withheld
+#: on purpose, and the host can still paste.
 BABBLE_SHARE = 0.5
 
 
@@ -37,5 +38,5 @@ def babble(texts: Iterable[str]) -> str | None:
         return None
     return (
         f"{share:.0%} of its letters are runs of {RUN_LETTERS}+ letters drawn from {RUN_DISTINCT} or fewer, "
-        "which no language writes"
+        "so it is babble or a chant rather than lyrics"
     )

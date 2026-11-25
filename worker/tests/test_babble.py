@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import pathlib
 
+import pytest
+
 from encore_worker import __main__ as main
 from encore_worker.domain.lyrics.babble import BABBLE_SHARE, babble, babble_share
 from encore_worker.domain.lyrics.policy import Tier
@@ -15,13 +17,21 @@ from tests.test_align_flow import CLEAN, JOB, Fake, asr_text
 
 BABBLE = json.loads((pathlib.Path(__file__).parent / "babble_transcript.json").read_text(encoding="utf-8"))
 
-#: Real sung lines the rule must keep: chains, elongations and scripts written without spaces.
-REAL = (
+#: Real sung lines with no run at all: words, hyphenated chains, and a script written without spaces.
+WORDS = (
     "Come and fly away with me",
     "La-la-la-la-la-la-la-la-la-la-la-la-la",
     "Wo-oh-oh-oh-oh-oh-oh-oh Woh-oh-oh-oh-oh-oh",
-    "Nooooooooooooooooooooooooo",
     "无法成为六边形战士的我们让你快乐也是件了不起的事",
+)
+
+#: Unspaced chants: each one is a run by itself, so a transcript of nothing else is withheld.
+CHANTS = (
+    "啦" * 21,
+    "ら" * 21,
+    "ลา" * 11,
+    "La" + "la" * 10,
+    "N" + "o" * 25,
     "にゃにゃにゃーにゃにゃにゃーにゃにゃにゃーにゃにゃー",
 )
 
@@ -36,12 +46,30 @@ def heard(lines: list[str], label: str = "asr:vocals") -> TextRef:
     )
 
 
-def test_the_bench_transcript_is_babble_and_real_lines_are_not() -> None:
+def test_the_bench_transcript_is_babble() -> None:
     assert babble_share(BABBLE["lines"]) > 0.85
     assert babble(BABBLE["lines"]) is not None
-    assert babble_share(REAL) < BABBLE_SHARE
-    assert babble(REAL) is None
     assert babble([]) is None
+
+
+@pytest.mark.parametrize("line", WORDS)
+def test_a_line_of_words_holds_no_run(line: str) -> None:
+    assert babble_share([line]) == 0.0
+
+
+@pytest.mark.parametrize("line", CHANTS)
+def test_an_unspaced_chant_is_all_run(line: str) -> None:
+    assert babble_share([line]) == 1.0
+
+
+def test_a_song_with_a_chant_passes_on_the_share() -> None:
+    assert babble([*WORDS, CHANTS[0]]) is None
+
+
+def test_a_transcript_dominated_by_a_chant_is_withheld() -> None:
+    lines = ["我爱你", "你好吗", "啦" * 21]
+    assert babble_share(lines) >= BABBLE_SHARE
+    assert babble(lines) is not None
 
 
 async def test_a_babbled_transcript_is_not_published_and_says_why() -> None:
