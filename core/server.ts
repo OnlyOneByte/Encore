@@ -6,6 +6,8 @@
 import {
 	graceMsOf,
 	roomTvTopic,
+	TV_FULL_CLOSE_CODE,
+	TV_REMOVED_CLOSE_CODE,
 	type ClientEvent,
 	type ServerEvent,
 	type WorkerMessage,
@@ -36,6 +38,7 @@ import { createReactionLimiter, handleReaction } from './src/lib/server/realtime
 import { clockFrame, pongFrame, serverNow } from './src/lib/server/realtime/tv-clock';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
+import { TvScreens } from './src/lib/server/rooms/tv-screens';
 import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
@@ -80,6 +83,8 @@ type SocketData = {
 	roomId?: string;
 	tvId?: string;
 	tvKey?: number;
+	/** A `/tv` turned away at open (the room's screen cap): its close has nothing to undo. */
+	refused?: boolean;
 };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
@@ -103,16 +108,43 @@ const tvSeats = new TvSeats({
 	save: (roomId, holder) => app.rooms.setTvSeat(roomId, holder),
 	now: () => app.now(),
 	schedule: (ms, run) => setTimeout(run, ms).unref?.(),
-	announce: (notices) => announceSeat(notices)
+	announce: (notices) => announceSeat(notices),
+	midSong: () => state.playback.currentEntryId !== null
 });
 const tvSockets = new Map<number, import('bun').ServerWebSocket<SocketData>>();
 let nextTvKey = 0;
 function announceSeat(notices: SeatNotice[]): void {
 	for (const n of notices) {
-		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline } satisfies ServerEvent;
+		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline, next: n.next } satisfies ServerEvent;
 		tvSockets.get(n.key)?.send(JSON.stringify(e));
 	}
 }
+// Every /tv open in a room, for the host's Screens page (src/lib/server/rooms/tv-screens.ts).
+const tvScreens = new TvScreens(() => app.now());
+app.screens = {
+	list: () => tvScreens.list(app.activeRoomId, tvSeats.holderKey(app.activeRoomId), tvSeats.roomTv(app.activeRoomId)),
+	midSong: () => state.playback.currentEntryId !== null,
+	rename: (id, name) => tvScreens.rename(app.activeRoomId, id, name),
+	remove: (id) => {
+		const keys = tvScreens.socketsOf(app.activeRoomId, id);
+		if (!keys.length) return 'unknown';
+		if (id === tvSeats.roomTv(app.activeRoomId)) return 'is-tv';
+		// A screen standing in for the room's TV: the seat waits for that TV again before it closes.
+		announceSeat(tvSeats.release(app.activeRoomId, id));
+		tvScreens.forget(app.activeRoomId, id);
+		for (const k of keys) tvSockets.get(k)?.close(TV_REMOVED_CLOSE_CODE, 'removed by the host');
+		return 'ok';
+	},
+	makeTv: (id) => {
+		const keys = tvScreens.socketsOf(app.activeRoomId, id);
+		const key = keys.findLast((k) => tvSockets.get(k)?.data.tvId);
+		if (!keys.length) return 'unknown';
+		if (key === undefined) return 'no-cookie';
+		if (app.screens!.midSong()) return 'mid-song';
+		announceSeat(tvSeats.claim(app.activeRoomId, key));
+		return 'ok';
+	}
+};
 // A Leave reaches every socket of the leaver, not just the tab that asked (src/lib/server/realtime/singer-sockets.ts).
 const singerSockets = new SingerSockets<import('bun').ServerWebSocket<SocketData>>();
 app.releaseSinger = (singerId) => singerSockets.release(singerId);
@@ -234,6 +266,14 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
+			// One cookieless screen too many is turned away before it hears anything. A screen with a cookie never is
+			// (tv-screens.ts `isFull`).
+			const { role, roomId, tvId } = ws.data;
+			if (role === 'tv' && roomId && tvScreens.isFull(roomId, tvId)) {
+				ws.data.refused = true;
+				ws.close(TV_FULL_CLOSE_CODE, 'this room has its fill of screens');
+				return;
+			}
 			// A Leave that landed after the upgrade ended this token, so the socket opens as a spectator.
 			singerSockets.bindAtOpen(ws, (token) => app.singers.bySessionToken(token));
 			// Own room topic only: isolation is between rooms, not against a viewer of the room this box
@@ -246,6 +286,7 @@ const server = Bun.serve<SocketData>({
 				ws.data.tvKey = ++nextTvKey;
 				tvSockets.set(ws.data.tvKey, ws);
 				announceSeat(tvSeats.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId));
+				tvScreens.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId);
 			}
 			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
@@ -354,6 +395,10 @@ const server = Bun.serve<SocketData>({
 					if (pong) ws.send(JSON.stringify(pong));
 					break;
 				}
+				case 'tv:drift':
+					// A copy's report for the host page, and only that: it moves nothing, and the seat has no drift to report.
+					if (ws.data.tvKey !== undefined && !seated(ws)) tvScreens.drift(ws.data.roomId!, ws.data.tvKey, evt.ms);
+					break;
 				case 'tv:claim':
 					if (ws.data.tvKey !== undefined) announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey));
 					// The new seat is the TV now: a hold left waiting for one starts here, as on the seat's hello.
@@ -387,9 +432,12 @@ const server = Bun.serve<SocketData>({
 				app.workerHub.workerLeft(() => releaseWorkerSocket(workerSockets, app.workers, workerId, ws));
 				return;
 			}
+			// A screen turned away at open never joined anything, so it has nothing to leave.
+			if (ws.data.refused) return;
 			if (ws.data.tvKey !== undefined) {
 				tvSockets.delete(ws.data.tvKey);
 				announceSeat(tvSeats.disconnect(ws.data.roomId!, ws.data.tvKey));
+				tvScreens.disconnect(ws.data.roomId!, ws.data.tvKey);
 			}
 			singerSockets.remove(ws);
 			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
@@ -400,7 +448,14 @@ const server = Bun.serve<SocketData>({
 });
 
 // Wired via setPublish so app-driven publishes route through the same instance `deps` uses.
-const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
+// Every song boundary passes through here: a room's TV that came back mid-song takes its seat at the next one.
+let seatEntryId: string | null = null;
+const broadcast = (e: ServerEvent) => {
+	server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
+	if (state.playback.currentEntryId === seatEntryId && seatEntryId !== null) return;
+	seatEntryId = state.playback.currentEntryId;
+	announceSeat(tvSeats.boundary(app.activeRoomId));
+};
 setPublish(broadcast);
 
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();

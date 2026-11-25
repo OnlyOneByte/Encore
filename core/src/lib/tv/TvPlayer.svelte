@@ -49,6 +49,8 @@
 		silent?: boolean;
 		/** A COPY's view of the TV's clock: when set, this slot trims its rate or seeks to follow it. The seat never gets one. */
 		follow?: { clock: TvClock; offsetMs: number } | null;
+		/** Each `follow` frame's measure, copy minus TV in ms, before it is corrected. */
+		ondrift?: (ms: number) => void;
 		/** Gated on VISIBILITY: the hidden slot buffers a song ahead, so firing there flips the room over a black frame. */
 		onready?: () => void;
 		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
@@ -84,6 +86,7 @@
 		masterLevel = 1,
 		silent = false,
 		follow = null,
+		ondrift,
 		onready,
 		onprewarmed,
 		onended,
@@ -481,6 +484,7 @@
 		// Muted, so pitch is moot: plain resampling is the cheaper trim on a slow device.
 		el.preservesPitch = false;
 		const tvSec = tvPositionAt(f.clock, f.offsetMs, clientNow());
+		ondrift?.((el.currentTime - tvSec) * 1000);
 		if (followSeeked) {
 			followSeekLead = nextSeekLead(followSeekLead, el.currentTime - tvSec);
 			followSeeked = false;

@@ -3,7 +3,14 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, SKIP_NOTICE_MS } from '$lib/contract';
+	import {
+		chosenCandidate,
+		isPlayable,
+		effectiveSongIntroMs,
+		SKIP_NOTICE_MS,
+		TV_FULL_CLOSE_CODE,
+		TV_REMOVED_CLOSE_CODE
+	} from '$lib/contract';
 	import { GaplessController, type EndStatus, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -68,6 +75,8 @@
 	const isCopy = $derived(seatMine === false);
 	// Whether the seat's screen is live (`tv:seat`'s `tvOnline`), so a copy never points at a TV that is gone.
 	let tvOnline = $state(true);
+	// The room's TV, back mid-song: it takes the seat when this song ends (`tv:seat`'s `next`), and its chip says so.
+	let seatNext = $state(false);
 	// A copy's view of the TV's clock: its last `tv:clock`, and its offset to core from `tv:ping`. See copy-clock.ts.
 	let tvClock = $state<TvClock | null>(null);
 	const clockOffset = new ClockOffset();
@@ -408,13 +417,14 @@
 			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
 			// the copy's line when this screen becomes a copy (on load too, since the region was mounted empty) or when the
 			// TV drops or comes back. Cleared once read, so the next change is announced again, however soon it comes.
-			if (e.mine ? seatMine === false : seatMine !== false || e.tvOnline !== tvOnline) {
-				seatAnnounce = e.mine ? 'This screen is now the TV' : copyLine(e.tvOnline);
+			if (e.mine ? seatMine === false : seatMine !== false || e.tvOnline !== tvOnline || e.next !== seatNext) {
+				seatAnnounce = e.mine ? 'This screen is now the TV' : copyLine(e.tvOnline, e.next);
 				clearTimeout(seatAnnounceTimer);
 				seatAnnounceTimer = setTimeout(() => (seatAnnounce = ''), SEAT_ANNOUNCE_MS);
 			}
 			seatMine = e.mine;
 			tvOnline = e.tvOnline;
+			seatNext = e.next;
 			// A claim at a song boundary: this screen's song ended while it was a copy (so it sent nothing), and the old TV
 			// heard `mine:false` before its own `ended`. Nobody has told the server, which would sit on the finished song.
 			// Say it now; if the old TV's `ended` got there first, the server drops this one by its entry stamp.
@@ -532,7 +542,12 @@
 			// -1, not 0, so EVERY patch reads as a gap and fetches a sync: with 0 the room's rev-1 patch was the one it
 			// let through unread, so the first song queued after a boot never reached the TV lobby.
 			getLastRev: () => -1,
-			onConnectionChange: (c) => {
+			onConnectionChange: (c, closeCode) => {
+				// Removed by the host, or one screen too many: stop redialling and say so (`shutOut` below).
+				if (closeCode === TV_REMOVED_CLOSE_CODE || closeCode === TV_FULL_CLOSE_CODE) {
+					shutOut = closeCode === TV_REMOVED_CLOSE_CODE ? 'removed' : 'full';
+					ws?.close();
+				}
 				// A RE-connect re-seeds: frames sent while the socket was down (a core restart) are lost, and the
 				// lobby must say what a reload would.
 				if (c && wasConnected) {
@@ -550,6 +565,26 @@
 		void seedFromLibrary();
 		return () => ws?.close();
 	});
+
+	// A screen the host removed, or one too many for the room: the socket is closed for good until it is opened again.
+	let shutOut = $state<'removed' | 'full' | null>(null);
+	const shutOutLine = $derived(
+		shutOut === 'removed' ? 'This screen was removed' : 'This room has all the screens it can show'
+	);
+	// Said in the page's one live region, which is mounted before any of it.
+	$effect(() => {
+		if (shutOut) seatAnnounce = shutOutLine;
+	});
+
+	// A copy tells core how far it runs from the TV, for the host's Screens page: the latest measure, every 2 s at most.
+	const DRIFT_REPORT_MS = 2_000;
+	let driftSentAt = 0;
+	function reportDrift(ms: number) {
+		const now = clientNow();
+		if (!isCopy || now - driftSentAt < DRIFT_REPORT_MS) return;
+		driftSentAt = now;
+		ws?.send({ type: 'tv:drift', ms }, { quiet: true });
+	}
 
 	// A copy times its offset to core: a short burst on connect fills the min-RTT window, then one ping every 30 s.
 	const PING_BURST = 5;
@@ -638,7 +673,9 @@
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
-	const chipAsleep = $derived(isCopy && !chipAwake && tvOnline && screen !== 'lobby' && screen !== 'attract');
+	const chipAsleep = $derived(
+		isCopy && !chipAwake && tvOnline && !seatNext && screen !== 'lobby' && screen !== 'attract'
+	);
 	// "Up next" comes back once the chip's fade is over, so the two never draw text on text.
 	let chipFadedOut = $state(false);
 	$effect(() => {
@@ -909,6 +946,7 @@
 			masterLevel={seatMine ? masterLevel[slot] : 0}
 			silent={!seatMine}
 			follow={follow}
+			ondrift={reportDrift}
 			onready={() => {
 				ctl.onVisibleReady();
 				tvState = ctl.state;
@@ -1082,11 +1120,23 @@
 	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
 	     it stands where "Up next" does, top-right; in attract (nobody here yet), in attract's free band. -->
 	{#snippet copyChip()}
-		<TvCopyChip tvOnline={tvOnline} onclaim={claimUnlessJustWoken} />
+		<TvCopyChip tvOnline={tvOnline} next={seatNext} onclaim={claimUnlessJustWoken} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
 		<div class={['copy-slot', { 'on-attract': screen === 'attract', asleep: chipAsleep }]} bind:this={copySlotEl}>
 			{@render copyChip()}
+		</div>
+	{/if}
+
+	{#if shutOut}
+		<div class="shut-out">
+			<p class="shut-line">{shutOutLine}</p>
+			<p class="shut-sub">
+				{shutOut === 'removed'
+					? 'The host took it off the Screens page. It can come back.'
+					: 'Close one of them, then open this one again.'}
+			</p>
+			<button type="button" class="shut-again" onclick={() => location.reload()}>Open again</button>
 		</div>
 	{/if}
 
@@ -1218,6 +1268,41 @@
 		box-shadow: 0 0 0 max(5px, 0.17rem) color-mix(in srgb, var(--ok) 18%, transparent);
 	}
 
+	/* A removed (or one-too-many) screen covers its stale stage: nothing behind it is live any more. */
+	.shut-out {
+		position: absolute;
+		inset: 0;
+		z-index: calc(var(--z-tv-affordance) + 1);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--tv-space-lg);
+		padding: var(--tv-safe-y) var(--tv-safe-x);
+		background: var(--role-ground);
+		color: var(--role-ink);
+		text-align: center;
+	}
+	.shut-line {
+		font-size: var(--tv-name);
+		font-weight: 800;
+	}
+	.shut-sub {
+		font-size: var(--tv-body);
+		color: var(--role-ink-dim);
+	}
+	.shut-again {
+		margin-top: var(--tv-space-lg);
+		padding: var(--tv-space-2xs) var(--tv-space-4xl);
+		border: 0;
+		border-radius: var(--round-pill);
+		background: var(--role-ink);
+		color: var(--role-ground);
+		font: inherit;
+		font-size: var(--tv-body);
+		font-weight: 700;
+		cursor: pointer;
+	}
 	/* `pointer-events` drops with the fade, so a hidden button cannot eat a tap meant for the stage. The clamp's
 	   floor is `var(--tap)`, named rather than restated. */
 	.fs-btn {

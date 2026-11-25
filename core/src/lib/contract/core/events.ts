@@ -61,6 +61,10 @@ export type PublicSinger = Omit<Singer, 'sessionToken'>;
 /** The WebSocket close code for "this socket's singer left the room" (server.ts, on a Leave from any tab). The phone
  *  reads it as a session ending, not a dropped link, so it asks /api/me without showing "Reconnecting…". */
 export const LEFT_CLOSE_CODE = 4001;
+/** A `/tv` the host removed on the Screens page: it stops reconnecting and says so. Opened again, it is a new screen. */
+export const TV_REMOVED_CLOSE_CODE = 4002;
+/** A cookieless `/tv` turned away because the room has its fill of those. A screen with a cookie never is. */
+export const TV_FULL_CLOSE_CODE = 4003;
 
 // core -> all clients (broadcasts)
 export type ServerEvent =
@@ -121,8 +125,9 @@ export type ServerEvent =
 	// `singerOnly`: the song IS current, but its key and guide are its singer's and the sender is someone else.
 	| { type: 'player:stale'; cmd: TargetedCommand['cmd']; singerOnly?: true }
 	// To ONE TV socket, on connect and whenever its answer moves: `mine: false` is a copy, whose telemetry the server
-	// ignores; `tvOnline: false` means the seat's screen has no live socket right now. See server/rooms/tv-seat.ts.
-	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean }
+	// ignores; `tvOnline: false` means the seat's screen has no live socket right now; `next`: this copy is the room's
+	// TV, back mid-song, and takes the seat at the next song. See server/rooms/tv-seat.ts.
+	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean; next: boolean }
 	// TV-ONLY, ~4 Hz: the seat's playhead as core received it (`serverAt`, core's ms clock), for copies to follow.
 	| { type: 'tv:clock'; entryId: string; positionSec: number; serverAt: number }
 	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.
@@ -160,6 +165,8 @@ export type ClientEvent =
 	| { type: 'tv:claim' }
 	// A copy timing its offset to core's clock; `t0` is echoed back in `tv:pong`.
 	| { type: 'tv:ping'; t0: number }
+	// A copy's own distance from the TV's clock (copy minus TV, ms), every few seconds, for the host's Screens page.
+	| { type: 'tv:drift'; ms: number }
 	| { type: 'hello'; lastRev: number }
 	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
 	| { type: 'room:react'; kind: ReactionKind };

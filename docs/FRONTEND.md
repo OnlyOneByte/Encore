@@ -2080,8 +2080,9 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
   a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
   lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
   wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
-- **It stays up** in the lobby (where it stands in the QR's place), in attract, and while the TV is gone ("The TV
-  is reconnecting...").
+- **It stays up** in the lobby (where it stands in the QR's place), in attract, while the TV is gone ("The TV
+  is reconnecting..."), and on the room's TV back mid-song while another screen stands in ("Back as the TV after
+  this song", `tv:seat`'s `next`). A tap there still makes it the TV at once.
 
 `p34-room-screen.spec.ts` holds each of these.
 
@@ -2117,6 +2118,30 @@ and the copy at 1x and 4x CPU. It reports the p95 |copy - TV|, the card gap and 
 the same line. Headless Chromium on a shared host paints both screens at only 7-12 fps, so two screens on one clock
 still light a new line up to a frame apart. That is why the probe's floor for the same line is 98%, not the
 proposal's 99.5%. Judge the 99.5% on real devices.
+
+### The Screens page
+
+`/settings/screens` is host only. Its door, **Screens**, is on the room scope and is shown to the host alone. It
+lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
+
+- **Each row** has the screen's name and one tag: "The TV · sound", or for a copy "Quiet · 12 ms behind", "ahead",
+  "in step", or "Quiet" with no fresh report (`screenTag`, `$lib/screens`).
+- **A screen opened in the last minute that nobody has named** is a `Spotlight` headed "Just opened", so the host
+  can tell which one they just switched on.
+- **The actions** are **Make this the TV**, **Rename** (inline, 32 characters at most) and **Remove**. Copies only
+  get Make this the TV, and every screen but the room's TV gets Remove (`canRemove`), so a screen standing in for the
+  TV while it is off can go. While a song is on, Make this the TV is disabled and one
+  line says why: a screen becomes the TV mid-song only when someone taps it there.
+- **The first list comes with the page** from its host-gated load, so the page paints whole (CLS 0). After that it
+  is polled every 2 s while the page is visible, not pushed, because a socket never carries the host.
+- **The status line** (`role="status"`) is in the DOM from the start, empty, so a screen reader catches its first
+  message. A refused action says what to do instead there.
+- A row's buttons wait while its action is in flight, so a double tap sends one request. A Remove that finds the
+  screen already gone counts as done. Escape cancels a rename.
+- The page ends with where to add a screen: the join address with `/tv`.
+
+The layouts per screen (Everything, Words only, Up next) come with proposal 34's PR 4.
+`p34-screens.spec.ts` covers the page, the API, the removed screen, the cookieless cap and a script minting cookies.
 
 ### A song that won't play
 
