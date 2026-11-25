@@ -628,6 +628,7 @@
 			// The full-screen button clears whichever is taller of "Up next" and the copy chip standing in its place.
 			upnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(upnextPx)}px`,
 			measuredCornerPx === null ? undefined : `--tv-corner-h: ${Math.ceil(measuredCornerPx)}px`,
+			isCopy && measuredChipPx !== null ? `--tv-copy-chip-h: ${Math.ceil(measuredChipPx)}px` : undefined,
 			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
 			settings.room.tvReactions ? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))' : undefined
 		]
@@ -883,7 +884,7 @@
 	});
 </script>
 
-<div class="tv" style={tvStyle}>
+<div class={['tv', { 'copy-stage': isCopy && screen !== 'lobby' && screen !== 'attract' }]} style={tvStyle}>
 	<!-- The stage background, beneath both player slots. First child so document order matches paint order. -->
 	<div class={['stage-bg', { shown: !isAttract }]} style="background: {stageBg}">
 		<!--
@@ -1170,6 +1171,11 @@
 			right: auto;
 			bottom: auto;
 			max-width: calc(100vw - 2 * var(--tv-safe-x) - var(--tv-reaction-w) - var(--tv-space-lg));
+		}
+		/* The lyrics start below the chip's band all song, asleep or not, so no line sits under it and the reel never
+		   jumps when it wakes (#1205). */
+		.tv.copy-stage {
+			--tv-top-reserve: calc(var(--tv-safe-y) + var(--tv-copy-chip-h, 0px) + var(--tv-space-lg));
 		}
 		/* Attract on a phone: the wordmark and the QR fill the top, and the bottom band is empty. */
 		.copy-slot.on-attract {

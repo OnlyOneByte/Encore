@@ -346,7 +346,7 @@
 		position: absolute;
 		/* NOT `inset: 0`: the bottom is pulled up by the chrome band the join corner and the lower-third occupy. The
 		   box stays CENTRED, so reserving that band also raises the centreline into the freed space. */
-		top: 0;
+		top: var(--tv-top-reserve);
 		left: 0;
 		right: 0;
 		bottom: var(--tv-chrome-h);
@@ -452,7 +452,7 @@
 		 * `--tv-chrome-h` already contains one. The cap is ACTIVE at the default five rows on short panels (they want
 		 * ~79.8vh against ~76vh of band at 720p); seating all five there needs the type budget itself to change.
 		 */
-		max-height: calc(100vh - var(--tv-chrome-h));
+		max-height: calc(100vh - var(--tv-chrome-h) - var(--tv-top-reserve));
 		overflow: hidden;
 		/* DELIBERATE LITERALS, not scrims: a mask reads only the LUMINANCE/alpha of each stop, so these are the edge
 		   fade's opacity ramp and not the black wash that lifts text off video. */
