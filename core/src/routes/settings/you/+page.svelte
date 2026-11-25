@@ -3,7 +3,7 @@
 	`/api/me` — so this route loads no settings object at all. docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
@@ -18,17 +18,25 @@
 	import { room } from '$lib/stores/room';
 	import type { PublicSinger } from '$lib/contract';
 	import Spotlight from '$lib/ui/Spotlight.svelte';
+	import { Switch } from '$lib/components/ui/switch';
+	import Icon from '$lib/ui/Icon.svelte';
+	import { resolve } from '$app/paths';
 
 	interface KeepState {
 		kept: boolean;
 		canKeep: boolean;
 		otherPhones: number;
 	}
+	interface NightsState {
+		recording: boolean;
+		list: { id: string; when: string; songs: number }[];
+	}
 	interface Props {
 		data: {
 			/** You, without the session token — the load strips it before the page is serialised. */
 			me: PublicSinger;
 			keep: KeepState;
+			nights: NightsState;
 		};
 	}
 	let { data }: Props = $props();
@@ -221,6 +229,63 @@
 		);
 	}
 
+	/* YOUR NIGHTS: the list, keeping them, and Delete my history. Same shape as Keep me: the outcome shows at once and
+	   a refusal rolls it back with one line. */
+	let nights = $state<NightsState>(untrack(() => data.nights));
+	let nightsRefusal = $state('');
+	let confirmingForget = $state(false);
+	/* ONE PATCH IN FLIGHT: a second tap while one is out is remembered, not sent alongside it, so two writes can never
+	   land out of order; the last tap is what gets sent once the first answers. */
+	let recordingInFlight = false;
+	let recordingWanted: boolean | null = null;
+	async function setRecording(recording: boolean) {
+		nights = { ...nights, recording };
+		nightsRefusal = '';
+		if (recordingInFlight) {
+			recordingWanted = recording;
+			return;
+		}
+		recordingInFlight = true;
+		let saved = !recording;
+		try {
+			for (let want: boolean | null = recording; want !== null;) {
+				const res: Response = await fetch('/api/me/nights', {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ recording: want })
+				});
+				if (!res.ok) throw new Error(String(res.status));
+				saved = (await res.json()).recording;
+				want = recordingWanted !== null && recordingWanted !== saved ? recordingWanted : null;
+				recordingWanted = null;
+			}
+			nights = { ...nights, recording: saved };
+		} catch {
+			nights = { ...nights, recording: saved };
+			nightsRefusal = 'Could not change that — try again.';
+		} finally {
+			recordingInFlight = false;
+			recordingWanted = null;
+		}
+	}
+	async function forgetNights() {
+		confirmingForget = false;
+		const before = nights;
+		nights = { ...nights, list: [] };
+		nightsRefusal = '';
+		// The trigger went with the list, so focus goes to the switch, not the page.
+		await tick();
+		document.getElementById('keep-nights')?.focus();
+		try {
+			const res = await fetch('/api/me/nights', { method: 'DELETE' });
+			if (!res.ok) throw new Error(String(res.status));
+		} catch {
+			nights = before;
+			nightsRefusal = 'Could not delete your history — try again.';
+		}
+	}
+	const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
+
 	/* Counts, not adjectives — and a cost that has not answered is UNKNOWN, never zero. The sentence itself lives in
 	   $lib/phrasing so that unknown arm can be asserted without mounting anything; leave-cost-sentence.ts carries the
 	   reasoning for why the `?? 0` that used to be here was the defect. */
@@ -326,6 +391,57 @@
 		</Card.Content>
 	</Card.Root>
 
+	<!-- YOUR NIGHTS: only ever yours (the load reads this phone's cookies), and no one else's numbers beside them. -->
+	<Card.Root id="nights">
+		<Card.Header>
+			<Card.Title role="heading" aria-level={2}>Your nights</Card.Title>
+		</Card.Header>
+		<Card.Content>
+			{#if nights.list.length}
+				<ul class="nights">
+					{#each nights.list as n (n.id)}
+						<li>
+							<a href={resolve('/settings/you/nights/[id]', { id: n.id })}>
+								<span>{n.when}</span><span class="n">{songs(n.songs)}<Icon name="chevron-right" /></span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="keep-copy">
+					{nights.recording ? 'Sing a song and your night shows up here.' : 'Your nights are not being kept.'}
+				</p>
+			{/if}
+			<label class="keep-toggle" for="keep-nights">
+				<Switch id="keep-nights" checked={nights.recording} onCheckedChange={setRecording} />
+				Keep my nights
+			</label>
+			<p class="hint">Only you can see them. Off, and no new songs are kept.</p>
+			{#if nights.list.length}
+				<AlertDialog.Root bind:open={confirmingForget}>
+					<AlertDialog.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="ghost" size="block">Delete my history</Button>
+						{/snippet}
+					</AlertDialog.Trigger>
+					<AlertDialog.Content>
+						<AlertDialog.Header>
+							<AlertDialog.Title>Delete your history?</AlertDialog.Title>
+							<AlertDialog.Description>
+								Every night you sang is removed, here and on any phone that keeps you. Your name stays.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+						<AlertDialog.Footer>
+							<AlertDialog.Cancel variant="ghost">Don't delete</AlertDialog.Cancel>
+							<AlertDialog.Action variant="destructive" onclick={forgetNights}>Yes, delete it</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Root>
+			{/if}
+			{#if nightsRefusal}<p class="err" role="alert">{nightsRefusal}</p>{/if}
+		</Card.Content>
+	</Card.Root>
+
 	<!-- Its own card: leaving cannot be undone, so the boundary is drawn rather than implied. -->
 	<Card.Root id="leaving">
 		<Card.Header>
@@ -398,5 +514,45 @@
 	}
 	.save-slot {
 		margin-top: var(--space-lg);
+	}
+	.nights {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.nights a {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: var(--space-sm);
+		min-height: 44px;
+		color: inherit;
+		font-size: var(--type-body);
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.nights li + li {
+		border-top: 1px solid var(--role-rule);
+	}
+	.nights .n {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2xs);
+		color: var(--role-ink-dim);
+		font-weight: 400;
+	}
+	.keep-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
+		min-height: 44px;
+		margin-top: var(--space-sm);
+		font-size: var(--type-body);
+	}
+	.hint {
+		margin: 0;
+		font-size: var(--ph-text-xs);
+		color: var(--role-ink-dim);
 	}
 </style>
