@@ -3,7 +3,7 @@
 	`/api/me` — so this route loads no settings object at all. docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
@@ -27,9 +27,18 @@
 		canKeep: boolean;
 		otherPhones: number;
 	}
+	interface YearState {
+		year: number;
+		nights: number;
+		songs: number;
+		mostSung: { title: string | null; times: number } | null;
+	}
 	interface NightsState {
 		recording: boolean;
 		list: { id: string; when: string; songs: number }[];
+		year: YearState;
+		/** The core's zone, which `year` was counted in. */
+		zone: string;
 	}
 	interface Props {
 		data: {
@@ -271,7 +280,7 @@
 	async function forgetNights() {
 		confirmingForget = false;
 		const before = nights;
-		nights = { ...nights, list: [] };
+		nights = { ...nights, list: [], year: { ...nights.year, nights: 0, songs: 0, mostSung: null } };
 		nightsRefusal = '';
 		// The trigger went with the list, so focus goes to the switch, not the page.
 		await tick();
@@ -285,6 +294,20 @@
 		}
 	}
 	const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
+
+	/* YOUR YEAR is "this year" on this phone's calendar. The load counted it in the core's zone; when the phone's
+	   differs, ask once more with `?tz=` and take that answer. Best-effort: a failure keeps the core's numbers. */
+	onMount(() => {
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (!tz || tz === nights.zone) return;
+		void fetch(`/api/me/nights?tz=${encodeURIComponent(tz)}`)
+			.then((res) => (res.ok ? res.json() : null))
+			.then((body: { year?: YearState } | null) => {
+				// A Delete my history since the load wins: its zeros are the truth now.
+				if (body?.year && nights.list.length) nights = { ...nights, year: body.year };
+			})
+			.catch(() => {});
+	});
 
 	/* Counts, not adjectives — and a cost that has not answered is UNKNOWN, never zero. The sentence itself lives in
 	   $lib/phrasing so that unknown arm can be asserted without mounting anything; leave-cost-sentence.ts carries the
@@ -397,6 +420,19 @@
 			<Card.Title role="heading" aria-level={2}>Your nights</Card.Title>
 		</Card.Header>
 		<Card.Content>
+			<!-- YOUR YEAR: your own counts, never beside anyone else's. Shown once there is a night in it. -->
+			{#if nights.year.nights > 0}
+				<div class="year" id="your-year">
+					<p class="year-head">Your {nights.year.year}</p>
+					<p class="year-count">
+						{nights.year.nights}
+						{nights.year.nights === 1 ? 'night' : 'nights'} · {songs(nights.year.songs)}
+					</p>
+					{#if nights.year.mostSung?.title}
+						<p class="hint">Most sung: {nights.year.mostSung.title}, {nights.year.mostSung.times} times</p>
+					{/if}
+				</div>
+			{/if}
 			{#if nights.list.length}
 				<ul class="nights">
 					{#each nights.list as n (n.id)}
@@ -514,6 +550,24 @@
 	}
 	.save-slot {
 		margin-top: var(--space-lg);
+	}
+	.year {
+		padding-bottom: var(--space-sm);
+		margin-bottom: var(--space-xs);
+		border-bottom: 1px solid var(--role-rule);
+	}
+	.year p {
+		margin: 0;
+	}
+	.year-head {
+		font-size: var(--ph-text-xs);
+		font-weight: 600;
+		color: var(--role-ink-dim);
+	}
+	.year-count {
+		font-size: var(--type-title);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
 	}
 	.nights {
 		margin: 0;

@@ -27,6 +27,14 @@ export function keyLine(turns: readonly StoryTurn[]): string | null {
 	return `You like it ${n} ${n === 1 ? 'key' : 'keys'} ${shift < 0 ? 'down' : 'up'}.`;
 }
 
+/** "3rd night in a row" on the cover, from two nights in a row up; one night on its own is no streak. */
+export function streakLine(streak: number): string | null {
+	if (streak < 2) return null;
+	const teen = streak % 100 >= 11 && streak % 100 <= 13;
+	const suffix = teen ? 'th' : (['th', 'st', 'nd', 'rd'][streak % 10] ?? 'th');
+	return `${streak}${suffix} night in a row`;
+}
+
 /** The songs you sang: a turn that failed before anyone heard it is not one. */
 export function sung(turns: readonly StoryTurn[]): StoryTurn[] {
 	return turns.filter((t) => t.end !== 'failed');

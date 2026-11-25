@@ -8,7 +8,15 @@
 	import { saveNightPicture, type PictureSlide } from '$lib/night-picture';
 
 	interface Props {
-		data: { name: string; colour: string; day: string; from: string; to: string; slides: Slide[] };
+		data: {
+			name: string;
+			colour: string;
+			day: string;
+			from: string;
+			to: string;
+			streak: string | null;
+			slides: Slide[];
+		};
 	}
 	let { data }: Props = $props();
 
@@ -42,7 +50,7 @@
 			return {
 				kick: `${data.name}, here's your night`,
 				big: plural(s.songs, 'song', 'songs'),
-				sub: [`${data.from} to ${data.to}`]
+				sub: data.streak ? [`${data.from} to ${data.to}`, data.streak] : [`${data.from} to ${data.to}`]
 			};
 		if (s.kind === 'loudest')
 			return {
@@ -93,6 +101,7 @@
 				<p class="kick">{data.name}, here's your night</p>
 				<h1 class="hero">{plural(slide.songs, 'song', 'songs')}</h1>
 				<p class="sub">{data.from} to {data.to}</p>
+				{#if data.streak}<p class="sub">{data.streak}</p>{/if}
 			{:else if slide.kind === 'loudest'}
 				<p class="kick">The room loved</p>
 				<p class="big">{slide.cheers}</p>

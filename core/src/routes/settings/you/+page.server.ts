@@ -7,7 +7,8 @@ import { getApp } from '$lib/server/app';
 import { settingsSinger } from '$lib/server/settings-gate';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { keepState, readDevice } from '$lib/server/people/keep';
-import { historyOwner } from '$lib/server/nights/service';
+import { historyOwner, yourYear } from '$lib/server/nights/service';
+import { zoneOrServer } from '$lib/server/nights/year';
 
 // shortcut: the server's zone, as on the story page.
 const when = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -29,7 +30,10 @@ export const load: PageServerLoad = (event) => {
 			// The same list GET /api/me/nights serves: sung songs only, newest first.
 			list: app.nights
 				.nightsFor(caller.owner)
-				.map((n) => ({ id: n.id, when: when.format(n.startedAt), songs: n.songs }))
+				.map((n) => ({ id: n.id, when: when.format(n.startedAt), songs: n.songs })),
+			// Your year in the core's zone; the page asks again with the phone's (`?tz=`) only when the two differ.
+			year: yourYear(app, caller.owner, null),
+			zone: zoneOrServer(null)
 		}
 	};
 };
