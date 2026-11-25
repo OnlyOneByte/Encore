@@ -119,9 +119,10 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
   300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. A placeholder that the real
   content replaces is not a flash: content is never held back behind an indicator (an owner ruling, #1171). **Automated** (`gate:measured`
   CLAIM 12) on cold loads, the Sing search and a slow or lost `/api/me` (words not before 3 s; the 4 s upper bound
-  races, #1093, and is the reviewer's). Today's breaks are expected failures that a fix flips, one per cause:
-  "Finding the room…" on the QR link (#1089) and "Loading the queue…" on `/queue` (#1090). The Sing search's two
-  (the skeleton rows and the field's spinner) are fixed and gate as plain tests.
+  races, #1093, and is the reviewer's). "Finding the room…" on the QR link (#1089), "Loading the queue…" on
+  `/queue` (#1090) and the Sing search's two (the skeleton rows and the field's spinner) are fixed and gate as plain
+  tests. The two load lines keep their box from the first frame, are seen only past 300 ms (a CSS delay), and an
+  answer that lands once they are seen is applied when they have been seen for 300 ms.
 - **S4.** A new or longer timer on a budget moment is in the [deliberate waits](UI-TENETS.md#deliberate-waits)
   table with the owner's ruling. Read from the diff.
 
@@ -130,8 +131,8 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 - **M1.** Nothing runs longer than `--motion-slow` (400 ms), and no content is held at opacity 0 for longer than
   `--motion-base` (250 ms), beyond the ruled exceptions in tenet 3. This tightens motion check 3. **Automated**
   for the phone's search, add, tab and On deck moments (`gate:measured` CLAIM 14, declared duration plus delay of
-  every animation that runs; loops and the strip's `--motion-tick` progress fill are not motion). The `/queue` Now
-  card's 500 ms `arrive` is an expected failure a fix flips (#1092). For other motion, read `metrics.json`'s
+  every animation that runs; loops and the strip's `--motion-tick` progress fill are not motion), the `/queue` Now
+  card's `arrive` included (370 ms, #1092). For other motion, read `metrics.json`'s
   `declared[].durationMs`.
 - **M2.** CLS 0 on the cold loads and the phone moments above, counting **every** shift, the ones within 500 ms of
   the tap that caused them included (a tap does not license a jump). **Automated** (`gate:measured` CLAIM 11,
