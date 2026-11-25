@@ -29,6 +29,8 @@ interface Sample {
 	t: number;
 	row: number;
 	pos: number;
+	/** Rows of the version on screen: the automatic words have 9, a fix 45. */
+	rows: number;
 }
 
 async function rev(page: Page, mediaId: string): Promise<number> {
@@ -70,7 +72,8 @@ async function startSampling(tv: Page): Promise<void> {
 					w.samples.push({
 						t: Date.now(),
 						row: rows.indexOf(cur),
-						pos: media.currentTime
+						pos: media.currentTime,
+						rows: rows.length
 					});
 			};
 			const tick = () => {
@@ -99,12 +102,13 @@ function expectedRow(cue: number): number | null {
 	return i;
 }
 
-/** How many samples after time `from` disagree with the grid. */
+/** How many samples after time `from` disagree with the grid. Past the version's last line, that line stays lit
+ *  (`activeLineIndex`): the automatic words end at 7.2 s, and a slow box brings them back after that (#1270). */
 function offGrid(all: Sample[], from: number): number {
 	return all.filter((s) => {
 		if (s.t < from) return false;
 		const want = expectedRow(s.pos);
-		return want !== null && want < 45 && s.row !== want;
+		return want !== null && s.row !== Math.min(want, s.rows - 1);
 	}).length;
 }
 
