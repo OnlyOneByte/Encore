@@ -8,7 +8,7 @@ import { error, json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { can } from '$lib/server/capabilities';
 import { isHost } from '$lib/server/host-gate';
-import { groupProcesses } from './audit-shape';
+import { groupProcesses, latestLyricsNote } from './audit-shape';
 import { keptCount } from '$lib/server/jobs/lyrics-edit';
 
 export const GET: RequestHandler = async ({ params, cookies }) => {
@@ -30,6 +30,8 @@ export const GET: RequestHandler = async ({ params, cookies }) => {
 		// ledger existed shows an empty timeline — saying so beats it reading as "never processed".
 		hasHistory: attempts.length > 0,
 		// How many lyrics changes Undo can still go back through.
-		lyricsUndo: await keptCount(mediaId)
+		lyricsUndo: await keptCount(mediaId),
+		// Why there are no lyrics, when the worker said (LYRICS_NOTES); the song page tells the host.
+		lyricsNote: latestLyricsNote(attempts)
 	});
 };

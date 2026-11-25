@@ -56,6 +56,13 @@ export function groupProcesses(attempts: JobAttempt[]) {
 		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
+/** Why the song has no lyrics, from its LATEST finished align attempt: an older note is stale once a later align ran. */
+export function latestLyricsNote(attempts: JobAttempt[]): string | null {
+	const aligns = attempts.filter((a) => a.jobType === 'align' && a.finishedAt !== null);
+	const last = aligns.reduce<JobAttempt | null>((acc, a) => (!acc || a.finishedAt! >= acc.finishedAt! ? a : acc), null);
+	return last?.lyricsNote ?? null;
+}
+
 /** One word for how a process went, chosen so a partial failure never reads as success. */
 function processOutcome(list: JobAttempt[]): 'running' | 'ready' | 'failed' | 'canceled' {
 	if (list.some((a) => a.outcome === null)) return 'running';

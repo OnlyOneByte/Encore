@@ -256,7 +256,14 @@ export interface JobAttempt {
 	 *  rejected. Stored whole because nothing queries inside it. This is the
 	 *  answer to "why did this job publish THESE lyrics" weeks later, which no counter can give. */
 	trail: string | null;
+
+	/** Why an align job published no lyrics, when the worker knows (`LYRICS_NOTES`). Null otherwise. */
+	lyricsNote: string | null;
 }
+
+/** The reasons a worker may give for publishing no lyrics; anything else it sends is dropped. `asr-offline`: the
+ *  worker is offline and its whisper checkpoint isn't cached, so it could not listen for words (#1221). */
+export const LYRICS_NOTES = ['asr-offline'] as const;
 
 /** [] for absent or malformed JSON: a corrupt diagnostic must never throw inside a dashboard render. */
 export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; ms: number }[] {

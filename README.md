@@ -351,7 +351,7 @@ Everything else is an **override**, with a default that suits one worker beside 
   English alignment bundle; unset = this device's default), `ENCORE_LRCMUX_URL` and `ENCORE_LRCLIB_URL`
   (the two lyrics providers, both self-hostable), `ENCORE_HTTPS_PROXY` (for those lookups; unset falls back
   to the standard proxy variables), `ENCORE_OFFLINE` (`1` skips the providers instead of paying their
-  timeout per song; captions and Whisper still work), `ENCORE_ANNOTATE` (`1`; `0`, `false` or `no`
+  timeout per song; captions and Whisper still work, if Whisper's model is already cached), `ENCORE_ANNOTATE` (`1`; `0`, `false` or `no`
   turns off MusicBrainz lookups, and any other value leaves them on)
 - **Jobs** — `ENCORE_DBOS_DB` (`encore-worker.sqlite`; the durable job state, per box, never shared),
   `ENCORE_JOB_CEILING_SEC` (`21600`; the backstop for a job nothing else can stop),

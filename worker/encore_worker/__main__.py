@@ -41,6 +41,18 @@ from encore_worker.workflows.stems import StemsOutcome
 _T = TypeVar("_T")
 
 
+def asr_off(config: Config, checkpoint: str) -> str | None:
+    """Why ASR is off for `checkpoint`, or None. Offline, an uncached checkpoint fails every load against the
+    Hub, and a failed align is retried: no transcriber completes the job with no lyrics, once (#1221)."""
+    return ml.asr_offline_gap(checkpoint) if config.offline else None
+
+
+def _transcriber(config: Config, device: str, checkpoint: str) -> ml.WhisperTranscriber | None:
+    if asr_off(config, checkpoint):
+        return None
+    return ml.build_transcriber(device=device, checkpoint=checkpoint, compute=config.asr_compute)
+
+
 def build_adapters(config: Config, *, device: str) -> Adapters:
     """Everything this box can actually do. An absent adapter is None, never a stub that fails later.
 
@@ -53,13 +65,9 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         probe=cli.FfmpegProbe(config.ffmpeg_bin) if hardware.binary_available(config.ffmpeg_bin) else None,
         captions=cli.YtDlpCaptions(config.ytdlp_bin) if hardware.binary_available(config.ytdlp_bin) else None,
         providers=build_providers(config),
-        transcriber=ml.build_transcriber(
-            device=device, checkpoint=config.asr_model, compute=config.asr_compute
-        ),
+        transcriber=_transcriber(config, device, config.asr_model),
         # A job's own `asrModel`: built on demand, the weights cached per checkpoint in `ml`.
-        transcriber_for=lambda checkpoint: ml.build_transcriber(
-            device=device, checkpoint=checkpoint, compute=config.asr_compute
-        ),
+        transcriber_for=lambda checkpoint: _transcriber(config, device, checkpoint),
         # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
         aligner=ml.build_aligner(
             device=device,
@@ -213,6 +221,8 @@ async def main() -> None:
     print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
     if diarize_off:
         print(f"[worker] diarize off: {diarize_off}", flush=True)
+    if "align" in caps and (lyrics_off := asr_off(config, config.asr_model)):
+        print(f"[worker] auto lyrics off: {lyrics_off}; a pasted sheet still aligns", flush=True)
     if "fetch:ytdlp" in caps and (gap := hardware.youtube_gap(config.ytdlp_config_paths)):
         print(f"[worker] WARNING: YouTube downloads will fail without {gap}", flush=True)
     if not caps:
@@ -534,7 +544,13 @@ def _align_facts(
         # What RAN: `lines` on a stemless song is aligned (`workflows.align._sync_mode_note`). A record
         # checkpointed before the field existed restores it as None (`restore_appended`): the job's param.
         "syncMode": outcome.sync_mode or sync_mode_of(job).value,
+        # WHY there are none, when this box could not listen: core shows it on the song page (#1221).
+        **({"lyricsNote": "asr-offline"} if outcome.no_lyrics and _asr_off_for(job, config) else {}),
     }
+
+
+def _asr_off_for(job: JobRef, config: Config) -> bool:
+    return asr_off(config, asr_model_of(job, config.asr_model)) is not None
 
 
 def _fetch_completion(job: JobRef, config: Config, fetched: FetchOutcome) -> f.Complete | f.Failed:

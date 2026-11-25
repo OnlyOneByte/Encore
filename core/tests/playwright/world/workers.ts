@@ -113,6 +113,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	/** Real-length lyric lines: six words, about 35 characters, as wide as a sung line on the TV. The default is one
 	 *  word a line, which no card or chrome can ever overlap, so a spec checking text against text needs this. */
 	longLyricLines?: boolean;
+	/** An offline worker whose whisper checkpoint isn't cached (#1221): an unpinned align completes once with no lyrics
+	 *  and `lyricsNote: 'asr-offline'`, as the real one does; a pasted sheet still aligns. */
+	offlineAsr?: boolean;
 	/** Overrides `MEDIA_DIR`. Defaults to the world's, which is what core was booted with. */
 	mediaDir?: string;
 	/**
@@ -191,7 +194,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		guideMix = false,
 		loudnessLufs = null,
 		seconds = 8,
-		longLyricLines = false
+		longLyricLines = false,
+		offlineAsr = false
 	} = options;
 
 	let output = '';
@@ -393,6 +397,19 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				await progress('aligning', 50);
 				// A host's fix arrives pinned, as the real worker gets it: its own lines, on the same grid, under its ref.
 				const pinned = typeof params.pinnedRef === 'string' && typeof params.pinnedText === 'string';
+				if (offlineAsr && !pinned) {
+					// The real worker's no-lyrics frame: an empty uri, and the reason in its facts.
+					send({
+						type: 'job:complete',
+						workerId,
+						jobId,
+						mediaUri: '',
+						artifacts: { lyrics: { uri: '' } },
+						facts: { asrModel: params.asrModel ?? 'base', lyricsNote: 'asr-offline' },
+						stages: [{ stage: 'align', ms: slowMs }]
+					});
+					return;
+				}
 				const pasted = pinned ? String(params.pinnedText).split('\n') : null;
 				const ref = pinned ? String(params.pinnedRef) : `derived/lyrics/${mediaId}.json`;
 				// Word-level timings inside the fixture's 8 seconds, so the overlay has something to bounce a

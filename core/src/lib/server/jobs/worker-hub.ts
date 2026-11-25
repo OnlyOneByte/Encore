@@ -16,7 +16,7 @@ import type {
 	WorkerProfile
 } from '../../contract';
 import { publishStemFormat } from '../media/paths';
-import { resolveProcessSeparator } from '../../contract';
+import { LYRICS_NOTES, resolveProcessSeparator } from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
 import type { AttemptFacts, AttemptLedger } from './attempts';
@@ -193,6 +193,8 @@ export function resolvedFacts(facts: unknown): AttemptFacts {
 		const v = f[k];
 		if (isProfileName(v)) out[k] = v;
 	}
+	// A known reason only: it reaches the song page, so free text from a worker never does.
+	if ((LYRICS_NOTES as readonly unknown[]).includes(f.lyricsNote)) out.lyricsNote = f.lyricsNote as string;
 	return out;
 }
 

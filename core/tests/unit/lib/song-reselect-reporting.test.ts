@@ -41,7 +41,9 @@ test('the self-write re-read is QUIET: no skeleton, and no error arm from a blip
 	/* The commit a quiet pass makes: the row if it got one, and nothing else. Flipping `loading` would unmount
 	   LyricsReselect and collapse the disclosure the guest is standing in; writing `loadError` would replace a
 	   working screen with an apology because one refresh missed. */
-	expect(songPage).toMatch(/if \(quiet\) \{\s*if \(row\) \{\s*media = row;\s*lyricsUndo = undo;\s*\}\s*return;\s*\}/);
+	expect(songPage).toMatch(
+		/if \(quiet\) \{\s*if \(row\) \{\s*media = row;\s*lyricsUndo = undo;\s*lyricsNote = note;\s*\}\s*return;\s*\}/
+	);
 });
 
 test('a refusal releases the pending flag, since nothing is broadcast for one', () => {

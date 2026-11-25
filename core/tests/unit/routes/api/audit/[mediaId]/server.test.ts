@@ -3,7 +3,7 @@
 // it carries selection through. RED on base: toAudit has no selection field (and attemptSelection does
 // not exist), so a reverted mapper drops it.
 import { describe, expect, it } from 'bun:test';
-import { toAudit } from '$routes/api/audit/[mediaId]/audit-shape';
+import { latestLyricsNote, toAudit } from '$routes/api/audit/[mediaId]/audit-shape';
 import type { JobAttempt } from '$lib/contract';
 
 function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
@@ -32,9 +32,20 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		stages: null,
 		selection: null,
 		trail: null,
+		lyricsNote: null,
 		...over
 	};
 }
+
+describe('latestLyricsNote — why a song has no lyrics (#1221)', () => {
+	it('reads the latest FINISHED align attempt, so a later align clears an older reason', () => {
+		const offline = attempt({ id: 'a1', finishedAt: 10, lyricsNote: 'asr-offline' });
+		expect(latestLyricsNote([offline])).toBe('asr-offline');
+		expect(latestLyricsNote([offline, attempt({ id: 'a2', finishedAt: 20 })])).toBeNull();
+		expect(latestLyricsNote([offline, attempt({ id: 'a3', finishedAt: null })])).toBe('asr-offline');
+		expect(latestLyricsNote([attempt({ jobType: 'stems', finishedAt: 30, lyricsNote: 'asr-offline' })])).toBeNull();
+	});
+});
 
 describe('toAudit — selection provenance', () => {
 	it('surfaces the parsed selection record when the attempt recorded one', () => {

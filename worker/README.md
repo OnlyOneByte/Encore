@@ -348,7 +348,7 @@ On a GPU or MPS device the separators take that lock too, so two jobs never shar
 | `ENCORE_JOB_CEILING_SEC` | `21600` | how long, from job start, the keepalive vouches for a job |
 | `ENCORE_PUBLISH_STEM_FORMAT` | `flac` | a fallback only: core announces the live value in `welcome` |
 | `ENCORE_FLAC_LEVEL` | `8` | FLAC compression level |
-| `ENCORE_OFFLINE` | off | no outbound internet: skip the lyrics providers; captions and ASR still run |
+| `ENCORE_OFFLINE` | off | no outbound internet: skip the lyrics providers; captions and ASR still run. When the `ENCORE_ASR_MODEL` checkpoint isn't cached, the worker logs `auto lyrics off: ...` at start and skips ASR, so a song with no other words completes with no lyrics and the host can paste them |
 | `ENCORE_LRCMUX_URL` | `https://api.lrcmux.dev` | the lyrics multiplexer, tried first |
 | `ENCORE_LRCLIB_URL` | `https://lrclib.net/api/get` | the direct provider |
 | `ENCORE_HTTPS_PROXY` | unset | an explicit proxy for provider lookups; unset falls back to the standard variables |

@@ -330,7 +330,9 @@ export const jobAttempts = sqliteTable(
 		// The worker's own decision trail: which text was tried, which knob was varied, and why each attempt
 		// was rejected. One JSON column for the same reason as `stages` — nothing queries inside it, and it is
 		// the answer to "why did this job publish THESE lyrics" weeks later, which no counter can give.
-		trail: text('trail')
+		trail: text('trail'),
+		// Why an align job published no lyrics, when the worker says (`LYRICS_NOTES`), for the song page.
+		lyricsNote: text('lyrics_note')
 	},
 	(t) => ({
 		byMedia: index('job_attempts_media_idx').on(t.mediaId, t.enqueuedAt),

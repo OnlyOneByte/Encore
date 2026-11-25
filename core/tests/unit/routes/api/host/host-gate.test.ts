@@ -190,7 +190,8 @@ test('a song history is the host only; a guest gets the catalog row the song pag
 		'processes',
 		'plays',
 		'hasHistory',
-		'lyricsUndo'
+		'lyricsUndo',
+		'lyricsNote'
 	]);
 });
 
