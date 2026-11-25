@@ -573,8 +573,8 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   lyrics re-pick to the host alone. Everything that mutates a caller's own record or queues work is
   session-gated: `POST /api/process` stays a singer's, because picking a song to sing is the party.
   KEPT-ONLY: `DELETE /api/me/person` and `DELETE /api/me/person/others` need the singer cookie AND this
-  phone's device cookie, naming the same person ([Kept people](#kept-people)). `/api/me/nights` is the
-  caller's own and session-gated ([Your night](#your-night)). `/api/thumb` is bounded by an https-only host allowlist rather than by a
+  phone's device cookie, naming the same person ([Kept people](#kept-people)). `/api/me/nights`, `/api/me/songs`
+  and `/api/me/export` are the caller's own and session-gated ([Your night](#your-night), [Your songs](#your-songs)). `/api/thumb` is bounded by an https-only host allowlist rather than by a
   session, which is the SSRF boundary and not a convenience.
 - **`plays` carries no singer column, structurally.** That is what makes the public stats endpoints
   aggregate-only by construction rather than by a filter, so no per-singer figure can be served from them
@@ -767,7 +767,7 @@ as the same person. There is no email, no password and no signup screen.
 - **Delete me** (`DELETE /api/me/person`) deletes the person, every device, and every past night's `singers`
   row. Tonight's row stays, unlinked, so the guest is still in the room; a night still holding a queue entry is
   unlinked instead of deleted, so the queue keeps its singer. `forgetPerson` also deletes every
-  [night](#your-night) of the person, tonight's included; anything else later keyed on a singer or a person
+  [night](#your-night) and [saved song](#your-songs) of the person, tonight's included; anything else later keyed on a singer or a person
   must be deleted there too.
 - **Reset phones** (`POST /api/host/people/reset { personId }`, host only, `people:reset`) is the host's way to
   clear a kept person when their own phone can't: it does what Delete me does with no night kept (every device
@@ -825,8 +825,9 @@ screens come in later PRs. `src/lib/server/nights/` owns it.
 - **Reading.** `GET /api/me/nights` lists your nights, newest first, with `recording`. `GET /api/me/nights/:id`
   returns your own turns in one night, with titles from the catalog. Both answer only about the caller: the
   singer from `encore_singer`, and the kept person only when the device cookie names them too, as for Delete
-  me. A night you sang nothing in is 404, even if others did, and its times are your own turns', never the
-  room's. No cookie, a forged one, or one ended by Leave is 401.
+  me (`historyOwner`). A copied singer cookie is not the person: once the owner's device token rotates, the
+  copy reads and deletes only its own night. A night you sang nothing in is 404, even if others did, and its
+  times are your own turns', never the room's. No cookie, a forged one, or one ended by Leave is 401.
 - **Changing it.** `PATCH /api/me/nights { recording }` and `DELETE /api/me/nights` (Delete my history, every
   row you can read) are the caller's own, behind the same Origin and JSON checks as every write. Keep me
   stamps tonight's rows with the person (`performances.person_id`), and Delete me deletes them all.
@@ -835,6 +836,39 @@ screens come in later PRs. `src/lib/server/nights/` owns it.
   Delete me, or until the person is pruned after 180 days with no phone. Both periods are constants for now.
 - **Nothing reaches another phone or the TV.** No frame carries a performance, and the host has no route to a
   guest's history: the host cookie is not a singer cookie.
+
+### Your songs
+
+Proposal 36, PR 1 (#1167). The songs you sang and the songs you saved, for the Sing tab's "Your songs" (its
+screen is PR 2). `src/lib/server/songs/` owns it.
+
+- **One new table.** `saved_songs`: an owner (`singer` for a guest, `person` once kept), the song's origin
+  (`source`, `source_ref`), a title and artist snapshot, and when it was saved, unique per owner and song. It
+  takes the place of the `favourites` table proposal 30 planned. Keyed on the origin, a save outlives the
+  song's library row and finds it again when the song is made again under a new id. No device data.
+- **Sung songs are a query,** never a copy: the owner's `performances` (above). Your key and guide for a song
+  are those of your last finished turn of it, so "Don't keep my nights" and "Delete my history" govern the
+  sung half too. A sung song whose library row is gone drops out of the list.
+- **`GET /api/me/songs`** returns one row per song, sung and saved together, most used first and then most
+  recent, with your last key and guide. **`PUT` and `DELETE /api/me/songs/:mediaId`** save and unsave a song in
+  the library; the song's origin and title come from the catalog, never the body, and an unknown id or a song
+  you never saved is 404. **`DELETE /api/me/songs`** is "Forget my songs": every save you can read.
+- **`GET /api/me/export`** is "Download my data", one JSON file with `content-disposition: attachment` and
+  `no-store`: your name and colour, your phones' kept and last-seen times (kept people only), your saves, and
+  your nights with their turns. Every field is listed by name: it carries no token, hash or salt, and no
+  internal id of any kind (night, turn, song, singer or person).
+- **Whose songs.** The same rule as [Your night](#your-night): tonight's singer from `encore_singer`, and the
+  kept person only when the device cookie names them too. A kept caller's saves go to the person, so every
+  phone of theirs has them. A save made without the device cookie lands on that singer row; the guest sweep
+  never takes it while the row is linked to a person, and Delete me does.
+- **Keep me** moves a guest's saves to the new person in one transaction (`UPDATE OR IGNORE`, so a song the
+  person already saved keeps that one). **Delete me** deletes the person's saves and every singer row's of
+  theirs.
+- **Retention.** The guest nights sweep also deletes a guest's saves once the singer has not joined, sung or
+  saved for 90 days, and skips any singer row linked to a person. A kept person's saves stay until Delete me,
+  or until the person is pruned after 180 days with no phone. A guest who taps Leave can no longer reach their
+  saves (the session is ended), and they stay in the table until that 90-day sweep, as the guest's nights do.
+- **Nothing reaches another phone or the TV.** No frame carries a save, and saving broadcasts nothing.
 
 ### Requests from other sites
 

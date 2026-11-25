@@ -917,3 +917,9 @@ Known and accepted, not an oversight:
   carries it to another phone or the TV, and `plays` and `/stats` do not read it. Recording is on by default
   for home parties; a singer can opt out or delete it all, a guest's rows go after 90 days, and Delete me
   takes a kept person's (`docs/SERVER.md#your-night`).
+- **Personal data has one owner and one way out.** The only per-person data is a kept person's name, colour
+  and phones, each singer's nights, and their saved songs (`saved_songs`, a song's origin and a title
+  snapshot; sung songs are read from `performances`, never copied). Every read and write of it goes through
+  `/api/me/*`, which takes the owner from the cookies and never from the URL or body, so another owner's row is
+  404 and no frame carries it to the room. Delete me removes all of it, a guest's goes after 90 days unused,
+  and `/api/me/export` hands it back as one file with no token or hash (`docs/SERVER.md#your-songs`).

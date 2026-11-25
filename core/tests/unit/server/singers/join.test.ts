@@ -34,6 +34,7 @@ import type { EncoreApp } from '$lib/server/app';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { PlayLog } from '$lib/server/media/play-log';
 import { NightLog } from '$lib/server/nights/repository';
+import { SavedSongs } from '$lib/server/songs/repository';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRepository; activeRoomId: string } {
 	const db = migratedDb();
@@ -60,6 +61,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		attempts,
 		playLog: new PlayLog(db),
 		nights: new NightLog(db),
+		savedSongs: new SavedSongs(db),
 		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,

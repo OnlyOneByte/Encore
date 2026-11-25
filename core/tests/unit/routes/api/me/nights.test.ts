@@ -11,6 +11,7 @@ import { PresenceTracker } from '$lib/server/realtime/presence';
 import { PlayLog } from '$lib/server/media/play-log';
 import { GUEST_NIGHTS_RETENTION_MS, NIGHT_GAP_MS, NightLog } from '$lib/server/nights/repository';
 import { recordTurn, sweepGuestNights } from '$lib/server/nights/service';
+import { SavedSongs } from '$lib/server/songs/repository';
 import { handlePlayerCommand, handleTelemetry } from '$lib/server/realtime/player';
 import { performances, singers } from '$lib/server/db/schema';
 import { handle } from '$routes/../hooks.server';
@@ -47,6 +48,7 @@ function installApp() {
 		singers: new SingerRepository(db),
 		people: new PeopleRepository(db),
 		nights: new NightLog(db),
+		savedSongs: new SavedSongs(db),
 		playLog: new PlayLog(db),
 		settings: new SettingsRepository(db),
 		state: new AuthoritativeState(),

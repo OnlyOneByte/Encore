@@ -14,6 +14,7 @@ import {
 import { dailyPersonPrune, PERSON_PRUNE_EVERY_MS, pruneIdlePeople } from '$lib/server/people/keep';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { NightLog } from '$lib/server/nights/repository';
+import { SavedSongs } from '$lib/server/songs/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { PresenceTracker } from '$lib/server/realtime/presence';
@@ -42,6 +43,7 @@ function installApp() {
 		singers: new SingerRepository(db),
 		people: new PeopleRepository(db),
 		nights: new NightLog(db),
+		savedSongs: new SavedSongs(db),
 		settings: new SettingsRepository(db),
 		state: new AuthoritativeState(),
 		presence: new PresenceTracker(),

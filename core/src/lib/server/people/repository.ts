@@ -145,6 +145,25 @@ export class PeopleRepository {
 		this.#db.update(personDevices).set({ lastSeenAt: now }).where(eq(personDevices.id, deviceId)).run();
 	}
 
+	byId(personId: string): Person | null {
+		return (
+			this.#db
+				.select({ id: people.id, displayName: people.displayName, color: people.color })
+				.from(people)
+				.where(eq(people.id, personId))
+				.all()[0] ?? null
+		);
+	}
+
+	/** When each phone was kept and last used, for the export. Never the token or its hash. */
+	devicesOf(personId: string): { keptAt: number; lastSeenAt: number }[] {
+		return this.#db
+			.select({ keptAt: personDevices.createdAt, lastSeenAt: personDevices.lastSeenAt })
+			.from(personDevices)
+			.where(eq(personDevices.personId, personId))
+			.all();
+	}
+
 	exists(personId: string): boolean {
 		return this.#db.select({ id: people.id }).from(people).where(eq(people.id, personId)).all().length > 0;
 	}

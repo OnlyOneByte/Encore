@@ -163,6 +163,11 @@ export class NightLog {
 		return { night, turns };
 	}
 
+	/** Every turn the owner can read, oldest first: what "Your songs" and the export are built from. */
+	turnsFor(owner: HistoryOwner): Performance[] {
+		return this.#db.select().from(performances).where(this.#owns(owner)).orderBy(performances.endedAt).all();
+	}
+
 	/** Delete my history: every row the owner can read. Returns how many went. */
 	deleteFor(owner: HistoryOwner): number {
 		return this.#db.delete(performances).where(this.#owns(owner)).returning({ id: performances.id }).all().length;
