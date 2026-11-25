@@ -1044,6 +1044,14 @@ own wordmark — the topbar is for joined singers only). `JoinLanding` is import
 never downloads the join screen's CSS (about 1.8 KB gz, CLAIM 13). Joined, it is two things: the Spotlight and the
 result groups. The rotation and the library rows it used to carry are the other two tabs now.
 
+**A search survives a trip to another tab (#1245).** Since Queue holds pause and skip, a host often leaves Sing
+halfway through a search. On unmount the page keeps its text, its three result groups, the widen and a failure in
+module scope (`$lib/sing-search-keep.ts`), and the next mount starts from them, so the same rows show with no new
+`/api/search`. A search still in the air (or inside its 150 ms debounce) when the tab was left starts as searching
+and is asked again once on the way back, because no answer was kept. Only the same singer, under the same
+`?source=`, gets it back; with no one joined nothing is kept, so a shared phone never hands one singer's search to
+the next. A reload starts clean. Rows the room deleted meanwhile drop out through the same catalog check as a live answer.
+
 **The Spotlight is Sing's one lit surface (redesign step 3), and it is the field alone**, as in the owner-picked
 prototype: `<Spotlight>` at `idle` around the search field, about 60 px tall. Its title, `What do you want to sing?`,
 names the region but is not drawn, so the results start right under it (about five rows above the dock at 320). Its

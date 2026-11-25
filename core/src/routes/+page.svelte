@@ -34,6 +34,7 @@
 	import { LIBRARY_PAGE, libraryWindow } from '$lib/library-browse';
 	import * as Empty from '$lib/components/ui/empty';
 	import { rememberedKey } from '$lib/stores/remembered-key';
+	import { keepSearch, keptSearch } from '$lib/sing-search-keep';
 
 	let me = $state<PublicSinger | null>(null);
 	let status = $state<RoomStatus>('checking');
@@ -85,7 +86,19 @@
 		sync();
 		const stopMirror = room.subscribe(sync);
 		void room.connect();
+		// Left mid-search, so no answer was kept: ask again rather than show an empty box as "nothing found".
+		if (restored?.pending && query.trim()) void announce(query.trim());
 		return () => {
+			keepSearch(room.me?.id, urlSource, {
+				query,
+				widened,
+				ready: $state.snapshot(readyResults),
+				raw: $state.snapshot(rawResults),
+				processing: $state.snapshot(processingResults),
+				failed: searchFailed,
+				answeredFor,
+				pending: searching || debounceTimer !== undefined
+			});
 			stopMirror();
 			/* THE SEARCH DEBOUNCE DIES WITH THE TAB. 150 ms is easy to leave inside — typing, then thumbing the
 			   Queue or Library tab — and an uncleared timer fires `/api/search` from a component that is already
@@ -141,7 +154,9 @@
 	   The widen still shows under a narrowed URL, so a shared `/?source=local` link is never a search with no way
 	   wider; only `source=all` hides it, because there is nothing wider than all. */
 	const urlSource = $derived(page.url.searchParams.get('source') ?? '');
-	let widened = $state(false);
+	// Only this singer's search, made under this same `?source=`: another narrowing would show rows it did not ask for.
+	const restored = keptSearch(room.me?.id, page.url.searchParams.get('source') ?? '');
+	let widened = $state(restored?.widened ?? false);
 	/** The widened answer's count, described on the element the widen focuses. Empty once a newer search starts. */
 	let widenCount = $state('');
 	let widenTarget: HTMLElement | null = null;
@@ -152,11 +167,12 @@
 		widenTarget = null;
 	}
 	const searchSource = $derived(widened ? 'all' : urlSource);
-	let query = $state('');
-	let readyResults = $state<Media[]>([]);
-	let rawResults = $state<Media[]>([]);
-	let processingResults = $state<Media[]>([]);
-	let searching = $state(false);
+	let query = $state(restored?.query ?? '');
+	let readyResults = $state<Media[]>(restored?.ready ?? []);
+	let rawResults = $state<Media[]>(restored?.raw ?? []);
+	let processingResults = $state<Media[]>(restored?.processing ?? []);
+	// A restore left mid-search starts as searching, so its first render never reads as "nothing found".
+	let searching = $state(restored?.pending ?? false);
 	// Tenet 2: no skeleton for a search under PENDING_GRACE_MS (#1091). No hold after: rows replace it as they land.
 	let showSkeleton = $state(false);
 	$effect(() => {
@@ -170,10 +186,10 @@
 	/* A FAILED SEARCH IS A THIRD STATE, not an empty one. Without this the catch below wiped the rows and the
 	   zero-state then asserted `Nothing matches "<query>"` — the review's only blocks-the-party finding. Reset
 	   wherever a new attempt begins, so the failure cannot outlive the query it belongs to. */
-	let searchFailed = $state(false);
+	let searchFailed = $state(restored?.failed ?? false);
 	// The text the rows on screen answer. "Nothing matches" only for that text: typed text the debounce has not
 	// sent yet has no answer, so it says nothing (#1192).
-	let answeredFor = $state<string | null>(null);
+	let answeredFor = $state<string | null>(restored?.answeredFor ?? null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
 	const searchActive = $derived(query.trim().length > 0);
@@ -223,6 +239,7 @@
 
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
+		debounceTimer = undefined;
 		widened = false;
 		clearWidenCount();
 		const q = query.trim();
@@ -237,6 +254,7 @@
 
 	/** Runs the search and reads its answer out: every path but the widen, which ties it to the focus it moves. */
 	async function announce(q: string) {
+		debounceTimer = undefined;
 		const msg = await runSearch(q);
 		if (msg) liveMsg = msg;
 	}
@@ -247,6 +265,7 @@
 		// The pending keystroke's timer is cancelled first, or one widen fires two full searches:
 		// this one now, and the debounced one 150 ms later — two resolver fan-outs for one query.
 		clearTimeout(debounceTimer);
+		debounceTimer = undefined;
 		widened = true;
 		const q = query.trim();
 		if (!q) return;
