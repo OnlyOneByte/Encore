@@ -9,6 +9,7 @@ seconds slower, against whatever the public API returned that day. Nothing in th
 from __future__ import annotations
 
 import importlib.util
+import os
 import socket
 import sys
 from collections.abc import Iterator
@@ -16,6 +17,9 @@ from typing import Any
 
 import numpy as np
 import pytest
+
+# Before anything imports onnxruntime: its telemetry writes `:memory:.ses` into the working directory (#1303).
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
 
 _REAL_CONNECT = socket.socket.connect
 

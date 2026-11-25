@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import io
 import re
+import shutil
 import subprocess
 import tokenize
 from collections.abc import Callable, Mapping
@@ -460,6 +461,7 @@ def test_no_citation_leads_to_a_gitignored_working_document(repo: Path) -> None:
     )
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git; the worker image ships none (#1303)")
 def test_the_working_documents_are_not_committed(repo: Path) -> None:
     """`WORKING_DOCUMENTS` says a fresh clone has none of them, which holds only while git tracks none.
 
