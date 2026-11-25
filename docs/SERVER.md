@@ -1138,7 +1138,12 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   queued write cannot re-create the record. A sidecar is read with one `readFile`, never `Bun.file`: that
   caches the size at `exists()`, so a file renamed over in between is read cut short and fails to parse (#1185).
   A decision that reads Keep (delete, eviction) uses `readSidecarInOrder`, which waits behind the song's
-  queued writes, so a Keep tapped a moment earlier is seen. Boot removes write temps (`.<id>…tmp`) left in
+  queued writes, so a Keep tapped a moment earlier is seen. Removal reads it again as it acts (#1241): the end of
+  a delete's Undo window (`finishDelete`) puts a song kept during the window back instead of deleting it, and
+  eviction (`evictUnlessKept`) skips a song kept since the pass made its plan. The step after each re-read stays
+  synchronous, so no queued Keep runs between check and removal. A delete counts as pending until its finish
+  settles, so the song never reads as ready mid-finish. Shutdown waits up to 5 s for every delete, waiting or
+  already running, logs any still unfinished, then flushes state; a second signal exits at once. Boot removes write temps (`.<id>…tmp`) left in
   `meta/` by a crash, once they are over a minute old (#1230).
 - **Clearing artifacts must NULL the sidecar fields directly**, never rely on a merge that falls back to the
   previous sidecar — that resurrects just-deleted refs and republishes an evicted song as processed with

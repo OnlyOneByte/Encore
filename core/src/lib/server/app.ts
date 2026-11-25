@@ -27,7 +27,7 @@ import {
 	recompressLegacyStems,
 	ffmpegTranscoder,
 	planEviction,
-	evictSong,
+	evictUnlessKept,
 	derivedBytesOf,
 	transcodeDiagnostics
 } from './media/retention';
@@ -72,7 +72,7 @@ import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent, type HubDeps, type Publish } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
-import { PendingDeletes } from './media/library-manage';
+import { PendingDeletes, finishDelete } from './media/library-manage';
 import { deleteMediaEntirely, type DeleteMediaResult } from './media/delete';
 import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '../contract';
 
@@ -427,16 +427,20 @@ export function getApp(): EncoreApp {
 				if (currentMediaId) protectedIds.add(currentMediaId);
 				const doomed = planEviction(candidates, cap, protectedIds);
 				let freed = 0;
+				let evicted = 0;
 				for (const id of doomed) {
 					const live = mediaById.get(id);
 					if (!live) continue;
-					freed += await evictSong(live, { jobs, upsert: (m) => mediaRepo.upsert(m) });
+					const bytes = await evictUnlessKept(live, { jobs, upsert: (m) => mediaRepo.upsert(m) });
+					if (bytes === null) continue; // kept since the plan was made
+					freed += bytes;
+					evicted++;
 					// `canceled` is the quiet exit: open phones settle the song to not made and re-read Library.
 					app.publish({ type: 'media:status', mediaId: id, status: 'canceled', pct: 0 });
 				}
-				if (doomed.length > 0) {
+				if (evicted > 0) {
 					console.log(
-						`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`
+						`[core] retention: evicted derived artifacts for ${evicted} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`
 					);
 				}
 				if (keptBytes > 0.9 * cap) {
@@ -630,7 +634,16 @@ export function getApp(): EncoreApp {
 		popularity: createPopularityTracker(),
 		mediaStore,
 		mediaStoreConfig,
-		pendingDeletes: new PendingDeletes((mediaId) => deleteSongNow(app, mediaId)),
+		pendingDeletes: new PendingDeletes((mediaId) =>
+			finishDelete(mediaId, {
+				remove: (id) => deleteSongNow(app, id),
+				// Kept inside the window: back on every screen, as an Undo would bring it.
+				restore: (id) => {
+					console.log(`[core] library: ${id} was kept during its Undo window, so it was not deleted`);
+					app.publish({ type: 'media:status', mediaId: id, status: 'ready', pct: 100 });
+				}
+			})
+		),
 		// No-op sinks until server.ts wires Bun.serve; routes and state still work without them.
 		publish: () => {},
 		toWorker: () => {},
