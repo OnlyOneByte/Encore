@@ -141,9 +141,14 @@ class Jobs:
     why: str
 
 
-#: Auto `-j` is 1: threaded chunks came back NaN, saved as silence (worker/README.md, `ENCORE_DEMUCS_JOBS`).
-#: shortcut: about 2x slower on CPU; raise only for a parallel path proven NaN-free, say a model per process.
-DEMUCS_JOBS_UNSAFE = "demucs -j above 1 can return NaN on CPU, saved as a silent song"
+#: `-j` above 1 on CPU runs chunks in processes, each with its own model (`adapters.demucs_pool`, #1130):
+#: demucs's own threads over one model returned NaN chunks, saved as silence (#1125).
+DEMUCS_POOL = "chunks in worker processes, a model each"
+
+#: Separator cores per `-j` worker. shortcut: measured on 32 cores only (worker/README.md,
+#: `ENCORE_DEMUCS_JOBS`); smaller boxes stay at 1 until measured there.
+_CORES_PER_DEMUCS_JOB = 8
+_MAX_DEMUCS_JOBS = 4
 
 
 CGROUP_ROOT = "/sys/fs/cgroup"
@@ -184,17 +189,20 @@ def cpu_count(*, root: str | None = None) -> int:
     return min(n, quota) if quota else n
 
 
-def resolve_demucs_jobs(configured: int | None, *, device: str) -> Jobs:
-    """How many chunks torch demucs separates at once: 1 unless `ENCORE_DEMUCS_JOBS` says otherwise.
+def resolve_demucs_jobs(configured: int | None, *, device: str, cores: int = 1) -> Jobs:
+    """How many chunks torch demucs separates at once. `cores` is the separator's share of the box.
 
-    demucs pools `-j` on CPU alone, and there it is unsafe (`DEMUCS_JOBS_UNSAFE`), so auto never picks more.
+    demucs pools `-j` on CPU alone, so auto is 1 elsewhere; on CPU it is one worker per 8 cores, up to 4.
     """
     if configured:
-        warn = f": {DEMUCS_JOBS_UNSAFE}" if configured > 1 and device == "cpu" else ""
-        return Jobs(configured, f"explicitly configured {configured} (ENCORE_DEMUCS_JOBS){warn}")
+        how = f": {DEMUCS_POOL}" if configured > 1 and device == "cpu" else ""
+        return Jobs(configured, f"explicitly configured {configured} (ENCORE_DEMUCS_JOBS){how}")
     if device != "cpu":
         return Jobs(1, f"auto 1 ({device}: demucs runs -j on CPU only)")
-    return Jobs(1, f"auto 1 (cpu: {DEMUCS_JOBS_UNSAFE})")
+    picked = max(1, min(_MAX_DEMUCS_JOBS, cores // _CORES_PER_DEMUCS_JOB))
+    if picked == 1:
+        return Jobs(1, f"auto 1 (cpu, {cores} separator cores; one worker per {_CORES_PER_DEMUCS_JOB})")
+    return Jobs(picked, f"auto {picked} (cpu, {cores} separator cores: {DEMUCS_POOL})")
 
 
 def resolve_concurrency(configured: int | None) -> Jobs:
@@ -271,7 +279,7 @@ def resolve_profile(
     return Profile(
         concurrency=jobs,
         threads=picked_threads,
-        demucs_jobs=resolve_demucs_jobs(demucs_jobs, device=device),
+        demucs_jobs=resolve_demucs_jobs(demucs_jobs, device=device, cores=child.count or n),
         asr_compute=compute,
         asr_compute_why=compute_why,
         warmup=warmup,

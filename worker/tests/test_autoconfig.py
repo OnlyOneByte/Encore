@@ -1,7 +1,7 @@
 """Settings the worker picks for itself, and the env override that beats each pick.
 
-Demucs `-j` (one: more returned silent stems), the engines run from THIS install rather than PATH, and the
-two publish encodes at once.
+Demucs `-j` (a worker process per 8 cores: threads returned silent stems), the engines run from THIS
+install rather than PATH, and the two publish encodes at once.
 """
 
 from __future__ import annotations
@@ -28,17 +28,34 @@ from encore_worker.workflows import durable
 # ── AC-01: demucs -j ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_a_big_cpu_box_still_runs_one_demucs_job(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`-j 8` on 32 cores returned NaN chunks, so MAYDAY and Fly Away came back as silent stems."""
-    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
-    picked = hardware.resolve_demucs_jobs(None, device="cpu")
-    assert picked.count == 1
-    assert "NaN" in picked.why, "the startup line says why the box is not using its cores"
+@pytest.mark.parametrize(("cores", "jobs"), [(4, 1), (8, 1), (16, 2), (32, 4), (64, 4)])
+def test_a_cpu_box_runs_a_demucs_worker_per_eight_cores(cores: int, jobs: int) -> None:
+    """Measured on 32 cores (#1130); a smaller box keeps 1, and 4 is as fast as 8 at half the memory."""
+    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=cores)
+    assert picked.count == jobs
+    assert (hardware.DEMUCS_POOL in picked.why) == (jobs > 1), "the startup line says how -j runs"
 
 
-def test_an_explicit_cpu_demucs_jobs_is_warned_about() -> None:
-    assert hardware.DEMUCS_JOBS_UNSAFE in hardware.resolve_demucs_jobs(8, device="cpu").why
-    assert hardware.DEMUCS_JOBS_UNSAFE not in hardware.resolve_demucs_jobs(1, device="cpu").why
+def test_two_jobs_at_once_split_the_demucs_workers() -> None:
+    """The separator's share of the box decides `-j`, not the whole box: two songs at once halve it."""
+
+    def jobs(concurrency: int | None) -> int:
+        return hardware.resolve_profile(
+            concurrency=concurrency,
+            threads=None,
+            demucs_jobs=None,
+            asr_compute=None,
+            warmup=False,
+            device="cpu",
+            cores=32,
+        ).demucs_jobs.count
+
+    assert (jobs(None), jobs(2)) == (4, 2)
+
+
+def test_an_explicit_cpu_demucs_jobs_says_it_runs_in_processes() -> None:
+    assert hardware.DEMUCS_POOL in hardware.resolve_demucs_jobs(8, device="cpu").why
+    assert hardware.DEMUCS_POOL not in hardware.resolve_demucs_jobs(1, device="cpu").why
 
 
 @pytest.mark.parametrize("device", ["cuda", "mps"])
@@ -244,11 +261,11 @@ def test_main_hands_the_client_and_the_config_the_resolved_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The hello's threads are what was PINNED (the probe ran before), and the slots are the picked count.
-    At two jobs the models keep every core and each separator child gets half."""
+    At two jobs the models keep every core and each separator child gets half, so two demucs workers."""
     monkeypatch.setattr(hardware, "cpu_count", lambda **_: 32)
     got = boot(monkeypatch, Config(media_dir=str(tmp_path), concurrency=2))
     wired = got["client"].wired
-    assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 32, 1, 32)
+    assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 32, 2, 32)
     cfg = wired["config"]
     assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 32, 1, "float32")
     got["stems_steps_for"](JobRef(job_id="j", media_id="m", media_dir=str(tmp_path)))
