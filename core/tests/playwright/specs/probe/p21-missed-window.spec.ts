@@ -32,69 +32,83 @@ const matcherFor = (m: ReadyMedia) => (src: string) =>
 
 /**
  * Delay every outgoing `ended` (or `failed`) telemetry frame by `ms`, so the server learns of the end late. Logs each (and one that
- * finds its socket closed, so it is lost), the server's frames, and media errors and seeks. Keeps the socket for a test
- * that drops it.
+ * finds its socket closed, so it is lost), the server's frames, and media errors and seeks. `drop` closes the socket as the first end is held; `untilFrame` holds each end until a server frame
+ * lands inside the hold too (at most 5 s). Both act in the page: a test acting from Node can miss a 150 ms window (#1226).
  */
-async function holdEnded(tv: Page, ms: number) {
-	await tv.evaluate((hold) => {
-		type Log = { ev: string; src: string; t: number }[];
-		const log = () => (window as unknown as { probeMediaLog?: Log }).probeMediaLog;
-		const send = WebSocket.prototype.send;
-		WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
-			(window as unknown as { probeWs?: WebSocket }).probeWs = this;
-			// `failed` is an end too (a song that won't play): held with `ended`, as one socket keeps their order.
-			if (typeof data === 'string' && /"status":"(ended|failed)"/.test(data)) {
-				const src = `entryId=${JSON.parse(data).entryId}`;
-				log()?.push({ ev: 'ws-ended', src, t: performance.now() });
-				setTimeout(() => {
-					if (this.readyState !== WebSocket.OPEN) log()?.push({ ev: 'ws-ended-lost', src, t: performance.now() });
-					send.call(this, data);
-				}, hold);
-				return;
-			}
-			const ws = this as WebSocket & { probeLogged?: boolean };
-			if (!ws.probeLogged) {
-				ws.probeLogged = true;
-				// The server's frames, so a failure's timeline shows which one moved the stage.
-				ws.addEventListener('message', (m) => {
-					let f: {
-						type?: string;
-						rev?: number;
-						current?: { id: string };
-						upNext?: { id: string } | null;
-						state?: { currentEntryId?: string };
-					};
-					try {
-						f = JSON.parse(String(m.data));
-					} catch {
-						return;
+async function holdEnded(tv: Page, ms: number, mode?: 'drop' | 'untilFrame') {
+	await tv.evaluate(
+		([hold, mode]) => {
+			type Log = { ev: string; src: string; t: number }[];
+			const log = () => (window as unknown as { probeMediaLog?: Log }).probeMediaLog;
+			const send = WebSocket.prototype.send;
+			let lastFrameAt = -Infinity;
+			let drop = mode === 'drop';
+			WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+				// `failed` is an end too (a song that won't play): held with `ended`, as one socket keeps their order.
+				if (typeof data === 'string' && /"status":"(ended|failed)"/.test(data)) {
+					const src = `entryId=${JSON.parse(data).entryId}`;
+					const heldAt = performance.now();
+					log()?.push({ ev: 'ws-ended', src, t: heldAt });
+					if (drop) {
+						drop = false;
+						this.close();
 					}
-					if (f.type === 'nowplaying:changed' || f.type === 'playback:state')
-						log()?.push({
-							ev: `ws-${f.type}`,
-							src: `entryId=${f.current?.id ?? f.state?.currentEntryId}${f.rev === undefined ? '' : ` rev=${f.rev}`}${f.upNext ? ` next=${f.upNext.id}` : ''}`,
-							t: performance.now()
-						});
-				});
+					const release = () => {
+						const waiting = mode === 'untilFrame' && lastFrameAt <= heldAt && performance.now() - heldAt < 5000;
+						if (waiting) return void setTimeout(release, 10);
+						if (this.readyState !== WebSocket.OPEN) log()?.push({ ev: 'ws-ended-lost', src, t: performance.now() });
+						send.call(this, data);
+					};
+					setTimeout(release, hold);
+					return;
+				}
+				const ws = this as WebSocket & { probeLogged?: boolean };
+				if (!ws.probeLogged) {
+					ws.probeLogged = true;
+					// The server's frames, so a failure's timeline shows which one moved the stage.
+					ws.addEventListener('message', (m) => {
+						let f: {
+							type?: string;
+							rev?: number;
+							current?: { id: string };
+							upNext?: { id: string } | null;
+							state?: { currentEntryId?: string };
+						};
+						try {
+							f = JSON.parse(String(m.data));
+						} catch {
+							return;
+						}
+						if (f.type === 'nowplaying:changed' || f.type === 'playback:state') {
+							lastFrameAt = performance.now();
+							log()?.push({
+								ev: `ws-${f.type}`,
+								src: `entryId=${f.current?.id ?? f.state?.currentEntryId}${f.rev === undefined ? '' : ` rev=${f.rev}`}${f.upNext ? ` next=${f.upNext.id}` : ''}`,
+								t: lastFrameAt
+							});
+						}
+					});
+				}
+				return send.call(this, data);
+			};
+			for (const ev of ['error', 'seeking']) {
+				document.addEventListener(
+					ev,
+					(e) => {
+						const el = e.target;
+						if (el instanceof HTMLMediaElement)
+							log()?.push({
+								ev,
+								src: `${el.getAttribute('src') ?? ''} @${el.currentTime.toFixed(2)}`,
+								t: performance.now()
+							});
+					},
+					true
+				);
 			}
-			return send.call(this, data);
-		};
-		for (const ev of ['error', 'seeking']) {
-			document.addEventListener(
-				ev,
-				(e) => {
-					const el = e.target;
-					if (el instanceof HTMLMediaElement)
-						log()?.push({
-							ev,
-							src: `${el.getAttribute('src') ?? ''} @${el.currentTime.toFixed(2)}`,
-							t: performance.now()
-						});
-				},
-				true
-			);
-		}
-	}, ms);
+		},
+		[ms, mode] as const
+	);
 }
 
 /**
@@ -106,7 +120,8 @@ async function playUntilSong1Ends(
 	holdMs: number,
 	song2Route?: (r: Route) => Promise<void>,
 	whileSong1Plays?: (alice: Page) => Promise<void>,
-	song3 = false
+	song3 = false,
+	holdMode?: 'drop' | 'untilFrame'
 ) {
 	const alice = await world.openPhone('Alice');
 	const bob = await world.openPhone('Bob');
@@ -122,7 +137,7 @@ async function playUntilSong1Ends(
 	await expect(tv.locator(SEL.tvRoot)).toBeAttached();
 	await tapStage(tv);
 	await armMediaLog(tv);
-	await holdEnded(tv, holdMs);
+	await holdEnded(tv, holdMs, holdMode);
 	await queueReadyTrack(alice, TRACKS.caroline);
 	await returnHomeFromBrowse(alice);
 	await queueReadyTrack(bob, TRACKS.believin);
@@ -319,7 +334,8 @@ for (const shape of ['dead', 'remove', 'reconnect'] as const) {
 				holdMs,
 				shape === 'dead' ? dead : undefined,
 				(a) => sendPlayerCommand(a, { cmd: 'background', style: null }),
-				shape === 'remove'
+				shape === 'remove',
+				shape === 'reconnect' ? 'drop' : 'untilFrame'
 			);
 			const before = await readMediaLog(tv);
 			const endA = before.find((e) => e.ev === 'ended' && is1(e.src))!;
@@ -330,7 +346,6 @@ for (const shape of ['dead', 'remove', 'reconnect'] as const) {
 			expect(s1Entry && s2Entry, `no pair before song 1 ended: ${pairBefore}`).toBeTruthy();
 			if (shape === 'dead') await sendPlayerCommand(alice, { cmd: 'background', style: null });
 			if (shape === 'remove') await queueOp(bob, { op: 'remove', id: s2Entry });
-			if (shape === 'reconnect') await tv.evaluate(() => (window as unknown as { probeWs: WebSocket }).probeWs.close());
 			if (shape === 'dead') {
 				// The notice names song 2's singer, and has no "Up next" line: in this window `upNext` IS the skipped song.
 				const n = tv.locator(SEL.stateError);
