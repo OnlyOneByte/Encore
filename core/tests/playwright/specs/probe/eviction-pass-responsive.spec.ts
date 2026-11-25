@@ -9,6 +9,9 @@
  */
 import { test, expect } from '../../world/fixtures';
 
+// One at a time: two 3,000-song boots side by side starve each other and the 500 ms bar fails on load, not on code.
+test.describe.configure({ mode: 'serial' });
+
 // About 1.5 MB of derived files (seedMadeLibrary), which the 0.001 GB cap overflows.
 test.use({ madeSongs: [3000, { scope: 'test' }], coreEnv: { ENCORE_MEDIA_MAX_GB: '0.001' } });
 
