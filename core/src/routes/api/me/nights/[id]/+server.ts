@@ -11,6 +11,8 @@ export const GET: RequestHandler = async ({ cookies, request, url, params }) => 
 	const found = app.nights.night(caller.owner, params.id ?? '');
 	if (!found) return json({ error: 'no such night' }, { status: 404 });
 	return json({
+		// This room's nights in a row, up to this one, that you sang in. Yours alone; no one else's count.
+		streak: app.nights.streakAt(caller.owner, found.night.id),
 		night: found.night,
 		turns: found.turns.map((t) => {
 			const media = app.mediaById.get(t.mediaId);

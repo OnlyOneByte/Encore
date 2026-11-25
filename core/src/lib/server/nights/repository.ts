@@ -1,6 +1,6 @@
 // Your night: each singer's own turns, grouped into nights, for their recap. See docs/SERVER.md#your-night.
 
-import { and, desc, eq, inArray, isNull, lte, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { nightOptOuts, nights, performances } from '../db/schema';
 import { ulid } from '../../contract';
@@ -45,6 +45,12 @@ export interface NightSummary {
 }
 
 export type Performance = typeof performances.$inferSelect;
+
+export interface YearSummary {
+	nights: number;
+	songs: number;
+	mostSung: { mediaId: string; times: number } | null;
+}
 
 export class NightLog {
 	#db: DB;
@@ -164,6 +170,65 @@ export class NightLog {
 		return { night, turns };
 	}
 
+	/** How many of this room's nights in a row, ending at `nightId`, the owner sang in: 0 when they sang none of it.
+	 *  Only a turn that played counts, so a night with no row of theirs (opted out, deleted, or nothing played) ends it. */
+	streakAt(owner: HistoryOwner, nightId: string): number {
+		const at = this.#db.select().from(nights).where(eq(nights.id, nightId)).all()[0];
+		if (!at) return 0;
+		const roomNights = this.#db
+			.select({ id: nights.id })
+			.from(nights)
+			.where(and(eq(nights.roomId, at.roomId), lte(nights.startedAt, at.startedAt)))
+			.orderBy(desc(nights.startedAt))
+			.all();
+		const mine = new Set(
+			this.#db
+				.selectDistinct({ id: performances.nightId })
+				.from(performances)
+				.where(and(this.#owns(owner), ne(performances.end, 'failed')))
+				.all()
+				.map((r) => r.id)
+		);
+		let n = 0;
+		for (const r of roomNights) {
+			if (!mine.has(r.id)) break;
+			n++;
+		}
+		return n;
+	}
+
+	/** The owner's own year, `[from, to)`: nights and songs that played, and the song they sang most when they sang it
+	 *  twice or more. Compared only with their own songs, never anyone else's. A night is in the year it started, with
+	 *  every song of it, so one that crosses midnight on Dec 31 is not split between two years. */
+	yearFor(owner: HistoryOwner, from: number, to: number): YearSummary {
+		const played = and(
+			this.#owns(owner),
+			ne(performances.end, 'failed'),
+			gte(nights.startedAt, from),
+			lt(nights.startedAt, to)
+		);
+		const totals = this.#db
+			.select({ nights: sql<number>`count(distinct ${performances.nightId})`, songs: sql<number>`count(*)` })
+			.from(performances)
+			.innerJoin(nights, eq(nights.id, performances.nightId))
+			.where(played)
+			.all()[0];
+		const top = this.#db
+			.select({ mediaId: performances.mediaId, times: sql<number>`count(*)` })
+			.from(performances)
+			.innerJoin(nights, eq(nights.id, performances.nightId))
+			.where(played)
+			.groupBy(performances.mediaId)
+			.orderBy(desc(sql`count(*)`), sql`min(${performances.startedAt})`)
+			.limit(1)
+			.all()[0];
+		return {
+			nights: Number(totals?.nights ?? 0),
+			songs: Number(totals?.songs ?? 0),
+			mostSung: top && Number(top.times) >= 2 ? { mediaId: top.mediaId, times: Number(top.times) } : null
+		};
+	}
+
 	/** Every turn the owner can read, oldest first: what "Your songs" and the export are built from. */
 	turnsFor(owner: HistoryOwner): Performance[] {
 		return this.#db.select().from(performances).where(this.#owns(owner)).orderBy(performances.endedAt).all();
@@ -218,20 +283,14 @@ export class NightLog {
 			this.#db.insert(nightOptOuts).values({ subjectId, createdAt: now }).onConflictDoNothing().run();
 	}
 
-	/** Daily: guests' turns past the retention window, then nights left with no turns. Opt-outs stay: one is only an id. */
+	/** Daily: guests' turns past the retention window. The night rows stay (a room id and times, no one's data): a
+	 *  streak counts the room's nights, and deleting an emptied one would join the two around it. Opt-outs stay too. */
 	sweepGuests(now: number): number {
 		const cutoff = now - GUEST_NIGHTS_RETENTION_MS;
-		return this.#db.transaction((tx) => {
-			const gone = tx
-				.delete(performances)
-				.where(and(isNull(performances.personId), lte(performances.endedAt, cutoff)))
-				.returning({ id: performances.id })
-				.all().length;
-			const inUse = tx.selectDistinct({ id: performances.nightId }).from(performances);
-			tx.delete(nights)
-				.where(and(lte(nights.endedAt, cutoff), notInArray(nights.id, inUse)))
-				.run();
-			return gone;
-		});
+		return this.#db
+			.delete(performances)
+			.where(and(isNull(performances.personId), lte(performances.endedAt, cutoff)))
+			.returning({ id: performances.id })
+			.all().length;
 	}
 }
