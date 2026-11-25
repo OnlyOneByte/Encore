@@ -20,6 +20,7 @@ import types
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from encore_worker.adapters.cli import OutOfMemory
@@ -491,3 +492,22 @@ def test_the_composition_root_refuses_a_model_nothing_calibrated() -> None:
     assert "[worker] align bundle {align_model_for(config, device)}" in startup, (
         "the startup banner must name the bundle every emission-scale threshold is read off"
     )
+
+
+def test_a_voice_checkpoint_pyannote_answers_none_for_is_model_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pyannote's `Model.from_pretrained` returns None rather than raising for a checkpoint it can't load."""
+    from encore_worker.adapters import ml
+
+    audio = types.ModuleType("pyannote.audio")
+    audio.Model = types.SimpleNamespace(from_pretrained=lambda _checkpoint: None)  # type: ignore[attr-defined]
+    audio.Inference = object  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setitem(sys.modules, "pyannote", types.ModuleType("pyannote"))
+    monkeypatch.setitem(sys.modules, "pyannote.audio", audio)
+    monkeypatch.setattr(ml, "_allow_pyannote_checkpoints", lambda: None)
+    monkeypatch.setattr(ml, "load_audio_mono_16k", lambda _path: np.zeros(16000, dtype=np.float32))
+    clear_cache()
+    with pytest.raises(ModelUnavailable, match="pyannote could not load"):
+        ml.LineVoiceEmbedder().embed("vocals.wav", [(0.0, 1.0)])
