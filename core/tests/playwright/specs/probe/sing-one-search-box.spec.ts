@@ -57,10 +57,14 @@ test('the Spotlight holds the search field alone at 390 and 320', async ({ world
 		// The region is named by its heading alone (aria-labelledby), so the name is said once.
 		const spot = page.getByRole('region', { name: 'What do you want to sing?', exact: true });
 		await expect(spot).toHaveCount(1);
-		const body = await spot.locator('.body').boundingBox();
-		const field = await spot.locator(SEL.findBox).boundingBox();
-		expect(body && field, 'the Spotlight and its field both render').toBeTruthy();
-		expect(Math.round(field!.width), `the field spans the card at ${vp.width}`).toBe(Math.round(body!.width));
+		// ONE read, unrounded: two `boundingBox()` calls landed on two frames of the card's `spot-in` scale, 0.3-0.5 px
+		// apart, and rounded to a 1 px "gap" (#1227). In one task both boxes carry the same transform, so they are equal.
+		const widths = await spot.evaluate((el, findBox) => {
+			const w = (sel: string) => el.querySelector(sel)?.getBoundingClientRect().width ?? null;
+			return { body: w('.body'), field: w(findBox) };
+		}, SEL.findBox);
+		expect(widths.body !== null && widths.field !== null, 'the Spotlight and its field both render').toBe(true);
+		expect(widths.field, `the field spans the card at ${vp.width}`).toBe(widths.body);
 		await expect(spot.locator('input, select, button, a'), "the field is the card's only control").toHaveCount(1);
 		await shoot(page, `idle-${vp.width}`);
 	}
