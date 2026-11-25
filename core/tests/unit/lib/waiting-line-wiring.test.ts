@@ -68,9 +68,17 @@ test('the strip is worded by the same fold, and prints it where it wraps', () =>
 	expect(layout).toMatch(/waitingTurns\([^;]*room\.verdicts\.canMake\s*\)/);
 	// And /queue's cards, every classification of a queued row: none says "Making karaoke…" under it (#1255 review).
 	expect(queuePage).toContain('verdicts = room.verdicts;');
-	const calls = queuePage.split('\n').filter((l) => l.includes('queueCardKind('));
+	// Each WHOLE call, read to its closing parenthesis, so a call wrapped across lines is still one call (#1266 review).
+	const calls = [...queuePage.matchAll(/queueCardKind\(/g)].map((m) => {
+		let depth = 0;
+		for (let i = m.index! + 'queueCardKind'.length; i < queuePage.length; i++) {
+			depth += queuePage[i] === '(' ? 1 : queuePage[i] === ')' ? -1 : 0;
+			if (depth === 0) return queuePage.slice(m.index!, i + 1);
+		}
+		return queuePage.slice(m.index!);
+	});
 	expect(calls.length).toBeGreaterThan(0);
-	expect(calls.filter((l) => !l.includes('verdicts.canMake'))).toEqual([]);
+	expect(calls.filter((c) => !/,\s*verdicts\.canMake\s*\)$/.test(c))).toEqual([]);
 	expect(queuePage).toMatch(/waitingTurns\([^;]*verdicts\.canMake\s*\)/);
 	expect(layout).toContain('waitingLine={waitingLine}');
 	expect(strip).toContain(`<span class="status">{canStart ? 'Ready when you are' : waitingLine}</span>`);
