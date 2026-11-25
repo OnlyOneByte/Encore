@@ -113,6 +113,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	/** Real-length lyric lines: six words, about 35 characters, as wide as a sung line on the TV. The default is one
 	 *  word a line, which no card or chrome can ever overlap, so a spec checking text against text needs this. */
 	longLyricLines?: boolean;
+	/** How many lines the automatic words have, on the same 0.8 s grid. Default 9 (7.2 s): a spec whose song runs
+	 *  past that and Undoes back to them mid-song needs them to reach as far, or they end before it does (#1270). */
+	lyricLines?: number;
 	/** An offline worker whose whisper checkpoint isn't cached (#1221): an unpinned align completes once with no lyrics
 	 *  and `lyricsNote: 'asr-offline'`, as the real one does; a pasted sheet still aligns. */
 	offlineAsr?: boolean;
@@ -195,6 +198,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		loudnessLufs = null,
 		seconds = 8,
 		longLyricLines = false,
+		lyricLines = 9,
 		offlineAsr = false
 	} = options;
 
@@ -416,7 +420,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				// ball along. FIELD NAMES ARE LOAD-BEARING: the TV's parser reads `start`, `end` and — inside
 				// `words` — `word`. Anything else parses to an empty reel with no active word, which reads as a
 				// broken overlay when the FIXTURE is what is wrong.
-				const words = pasted ?? ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
+				const sung = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
+				const words = pasted ?? Array.from({ length: lyricLines }, (_, i) => sung[i % sung.length]!);
 				const lines = words.map((w, i) => {
 					const said = pasted
 						? w.split(' ')

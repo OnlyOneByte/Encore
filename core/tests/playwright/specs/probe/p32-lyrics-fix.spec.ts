@@ -6,8 +6,8 @@
  * row never steps back, shift nothing on the page, and Undo must land with no worker.
  *
  * One 40 s song, because every step has to happen inside one turn. The fake worker times a pinned paste on the
- * same 0.8 s grid as its automatic words (lines 0.7 s long, 0.1 s gaps), so a row index means the same slot in
- * every version and "never steps back" is checkable.
+ * same 0.8 s grid as its automatic words (lines 0.7 s long, 0.1 s gaps), and both have 45 lines, so a row index
+ * means the same slot in every version and "never steps back" is checkable.
  */
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
@@ -109,7 +109,9 @@ function offGrid(all: Sample[], from: number): number {
 }
 
 async function stage(world: World) {
-	await startFakeWorker(world, { seconds: 40 });
+	// Automatic words as long as the fixes (45 lines, 36 s): the last Undo brings them back wherever the song is, and
+	// 9 lines ended at 7.2 s, so a slow box undid past them and graded the reel against lines it did not have (#1270).
+	await startFakeWorker(world, { seconds: 40, lyricLines: 45 });
 	const phone = await world.openPhone('P32Host');
 	await world.becomeHost(phone);
 	const track = await world.awaitDemoTrack('lyric-fix');
