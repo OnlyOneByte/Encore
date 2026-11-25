@@ -144,6 +144,11 @@ export function isTaggedStemOf(mediaId: string, fileName: string): boolean {
 	return /^[0-9a-z]+-(instrumental|vocals|guidemix)\.[0-9a-z]+$/.test(fileName.slice(mediaId.length + 1));
 }
 
+/** The tag of one of this song's tagged stems (`stemOutputTag` of the job that wrote it), else null. */
+export function stemTagOf(mediaId: string, fileName: string): string | null {
+	return isTaggedStemOf(mediaId, fileName) ? (fileName.slice(mediaId.length + 1).split('-')[0] ?? null) : null;
+}
+
 /** Newest first: a row's on-disk extension depends on VOCALS_EXT at the time it was processed. */
 export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
 

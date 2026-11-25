@@ -143,15 +143,21 @@ export function reSeparates(jobType: JobType): boolean {
 	return jobType === 'stems-upgrade' || jobType === 'stems-remake';
 }
 
-/** A re-separation waits while the song is queued or playing, so its swap and the old files' delete never
- *  happen under a screen that is about to play them, or playing them now (proposal 33: "after its turn"). */
+type TurnEntries = readonly { id?: string; mediaId: string; status: QueueEntry['status'] | string }[];
+
+/** The song is queued (on deck included) or playing: a screen may be about to play its files, or playing them. */
+export function inTurn(mediaId: string, entries: TurnEntries, currentEntryId: string | null | undefined): boolean {
+	return entries.some((e) => e.mediaId === mediaId && (e.status === 'queued' || e.id === currentEntryId));
+}
+
+/** The host's remake starts after the song's turn (proposal 33). An upgrade does not wait, so it can land before
+ *  the first turn; the hub holds back whatever a screen still needs (`WorkerHub.settle`). */
 export function waitsForTurn(
 	job: Pick<Job, 'jobType' | 'mediaId'>,
-	entries: readonly { id?: string; mediaId: string; status: QueueEntry['status'] | string }[],
+	entries: TurnEntries,
 	currentEntryId: string | null | undefined
 ): boolean {
-	if (!reSeparates(job.jobType)) return false;
-	return entries.some((e) => e.mediaId === job.mediaId && (e.status === 'queued' || e.id === currentEntryId));
+	return job.jobType === 'stems-remake' && inTurn(job.mediaId, entries, currentEntryId);
 }
 
 /** Controls the process id AND singer attribution together — see docs/SERVER.md#idempotency-and-the-process-cap. */
@@ -243,7 +249,9 @@ const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
 export function planAssignments(
 	queued: Job[],
 	workers: WorkerSession[],
-	capabilityFor: CapabilityFor = defaultCapabilityFor
+	capabilityFor: CapabilityFor = defaultCapabilityFor,
+	/** A worker that already refused this job as an action it does not know. */
+	refused: (jobId: string, workerId: string) => boolean = () => false
 ): Assignment[] {
 	// Local slot view, so one planning pass cannot over-assign.
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
@@ -255,7 +263,7 @@ export function planAssignments(
 		const cap = capabilityFor(job);
 		let best: WorkerSession | null = null;
 		for (const w of workers) {
-			if (!w.capabilities.includes(cap)) continue;
+			if (!w.capabilities.includes(cap) || refused(job.id, w.workerId)) continue;
 			if ((slots.get(w.workerId) ?? 0) <= 0) continue;
 			if (!best || slots.get(w.workerId)! > slots.get(best.workerId)!) best = w;
 		}

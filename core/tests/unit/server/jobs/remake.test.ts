@@ -1,13 +1,18 @@
 // Make it again -> Sound (proposal 33 PR 3a) and the re-separation path it shares with `stems-upgrade`: new names,
-// one swap, the old files deleted after it, accepted whatever the rank, and held while the song is queued or playing.
+// one swap, the old files deleted after it once no screen needs them, accepted whatever the rank.
 import { test, expect } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { migratedDb } from '$lib/server/db/test-db';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { assignParams, waitsForTurn, separatorFor } from '$lib/server/jobs/dispatch';
 import { requestRemake } from '$lib/server/jobs/process';
-import { instrumentalKey, isTaggedStemOf, stemOutputTag } from '$lib/server/media/paths';
+import { instrumentalKey, isTaggedStemOf, stemOutputTag, stemTagOf } from '$lib/server/media/paths';
+import { staleStemsOnDisk } from '$lib/server/media/retention';
+import { queueSidecarTask } from '$lib/server/media/sidecar';
 import { readyToSing, type Media, type ServerEvent, type WorkerCommand } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
@@ -16,6 +21,7 @@ const OLD = {
 	vocalsRef: 'derived/stems/m1-vocals.flac',
 	guideMixRef: 'derived/stems/m1-guidemix.flac'
 };
+const OLD_REFS = [OLD.instrumentalRef, OLD.vocalsRef, OLD.guideMixRef];
 
 const ready = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -32,55 +38,71 @@ const ready = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-function harness(queue: { id: string; status: string; mediaId: string }[] = [], current: string | null = null) {
+type Entry = { id: string; status: string; mediaId: string };
+
+function harness(queue: Entry[] = [], current: { current: string | null } = { current: null }) {
 	const jobs = new JobRepository(migratedDb());
 	const mediaById = new Map<string, Media>([['m1', ready()]]);
 	const sent: WorkerCommand[] = [];
 	const broadcasts: ServerEvent[] = [];
 	const deleted: string[][] = [];
 	const persisted: Media[] = [];
+	const order: string[] = [];
 	const hub = new WorkerHub({
 		jobs,
 		registry: new WorkerRegistry(),
 		mediaById,
 		toWorker: (_w, cmd) => sent.push(cmd),
 		broadcast: (e) => broadcasts.push(e),
-		persistMedia: (id) => persisted.push({ ...mediaById.get(id)! }),
-		deleteRefs: (refs) => deleted.push(refs),
+		// As app.ts's upsert does: the sidecar write is QUEUED, and lands later.
+		persistMedia: (id) => {
+			persisted.push({ ...mediaById.get(id)! });
+			void queueSidecarTask(id, async () => {
+				await new Promise((r) => setTimeout(r, 1));
+				order.push('sidecar');
+			});
+		},
+		deleteRefs: (refs) => {
+			order.push('delete');
+			deleted.push(refs);
+		},
 		now: () => T0,
 		queueEntries: () => queue,
-		currentEntryId: () => current
+		currentEntryId: () => current.current
 	});
-	const hello = () =>
+	const hello = (workerId = 'w1') =>
 		hub.handle({
 			type: 'worker:hello',
-			workerId: 'w1',
+			workerId,
 			// `stems` for a remake (tonight's default, demucs, which ranks BELOW the published roformer), the other
 			// for an auto-upgrade.
 			capabilities: ['stems', 'stems:roformer'],
 			concurrency: 1,
 			version: '1'
 		});
-	return { hub, jobs, mediaById, sent, broadcasts, deleted, persisted, hello };
+	return { hub, jobs, mediaById, sent, broadcasts, deleted, persisted, order, hello };
 }
+
+/** Every delete is queued behind the song's sidecar writes. */
+const drained = () => queueSidecarTask('m1', async () => {});
 
 const assigns = (sent: WorkerCommand[]) =>
 	sent.filter((c) => c.type === 'job:assign') as Extract<WorkerCommand, { type: 'job:assign' }>[];
 
-function complete(h: ReturnType<typeof harness>, jobId: string, tag: string) {
-	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+const tagged = (tag: string) => [
+	`derived/stems/m1-${tag}-instrumental.flac`,
+	`derived/stems/m1-${tag}-vocals.flac`,
+	`derived/stems/m1-${tag}-guidemix.flac`
+];
+
+function complete(h: ReturnType<typeof harness>, jobId: string, refs: string[], workerId = 'w1') {
+	h.hub.handle({ type: 'job:accept', workerId, jobId });
 	h.hub.handle({
 		type: 'job:complete',
-		workerId: 'w1',
+		workerId,
 		jobId,
 		mediaUri: 'x',
-		artifacts: {
-			stems: {
-				instrumental: `derived/stems/m1-${tag}-instrumental.flac`,
-				vocals: `derived/stems/m1-${tag}-vocals.flac`,
-				guideMix: `derived/stems/m1-${tag}-guidemix.flac`
-			}
-		}
+		artifacts: { stems: { instrumental: refs[0], vocals: refs[1], guideMix: refs[2] } }
 	});
 }
 
@@ -97,60 +119,155 @@ test('a remake is dispatched with its own output tag and tonight’s separator',
 	expect(assignParams('stems-upgrade', h.mediaById.get('m1'), undefined, 'J1').outputTag).toBe('j1');
 });
 
-test('a same-rank remake is swapped in by one write, the song stays ready, and the old files go after', () => {
+test('a same-rank remake is swapped in by one write, the song stays ready, and the old files go after the sidecar', async () => {
 	const h = harness();
 	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
 	h.hello();
 	const tag = assigns(h.sent)[0]!.params.outputTag!;
 	expect(readyToSing(h.mediaById.get('m1')!)).toBe(true);
-	complete(h, job.id, tag);
+	complete(h, job.id, tagged(tag));
 
 	const m = h.mediaById.get('m1')!;
 	expect(m.instrumentalRef).toBe(instrumentalKey('m1', 'flac', tag));
 	expect(m.vocalsRef).toBe(`derived/stems/m1-${tag}-vocals.flac`);
 	expect(m.guideMixRef).toBe(`derived/stems/m1-${tag}-guidemix.flac`);
 	expect(readyToSing(m)).toBe(true);
-	// Persisted with the new refs BEFORE the old files are deleted.
 	expect(h.persisted.at(-1)!.instrumentalRef).toBe(m.instrumentalRef);
-	expect(h.deleted).toEqual([[OLD.instrumentalRef, OLD.vocalsRef, OLD.guideMixRef]]);
+	await drained();
+	expect(h.deleted).toEqual([OLD_REFS]);
+	// Behind the queued sidecar write, so `meta/` never names a deleted file.
+	expect(h.order).toEqual(['sidecar', 'delete']);
 	// No "Making karaoke" on any phone for a song that never stopped being ready.
 	expect(h.broadcasts.some((e) => e.type === 'media:status' && e.status !== 'ready')).toBe(false);
 });
 
-test('a refused upgrade keeps the playing stems and deletes only the files it wrote', () => {
+test('queued after dispatch: the refs swap, and the old files stay until its turn is over', async () => {
+	const queue: Entry[] = [];
+	const now = { current: null as string | null };
+	const h = harness(queue, now);
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	const tag = assigns(h.sent)[0]!.params.outputTag!;
+	// Someone queues it mid-remake: on deck.
+	queue.push({ id: 'e1', status: 'queued', mediaId: 'm1' });
+	complete(h, job.id, tagged(tag));
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(tagged(tag)[0]);
+	h.hub.settle();
+	await drained();
+	expect(h.deleted).toEqual([]);
+	// Playing it now.
+	now.current = 'e1';
+	h.hub.settle();
+	await drained();
+	expect(h.deleted).toEqual([]);
+	// The turn is over.
+	queue[0]!.status = 'done';
+	now.current = null;
+	h.hub.settle();
+	await drained();
+	expect(h.deleted).toEqual([OLD_REFS]);
+});
+
+test('finished while the song plays: the swap waits for the turn to end, since the TV would reload from 0', async () => {
+	const queue: Entry[] = [{ id: 'e1', status: 'queued', mediaId: 'm1' }];
+	const now = { current: null as string | null };
+	const h = harness(queue, now);
+	// An auto-upgrade does not wait for the turn, so this one is dispatched with the song queued.
+	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
+	h.mediaById.get('m1')!.separator = { engine: 'demucs', model: 'htdemucs' }; // below the upgrade
+	h.hello();
+	expect(waitsForTurn(job, queue, null)).toBe(false);
+	const tag = assigns(h.sent)[0]!.params.outputTag!;
+	now.current = 'e1';
+	complete(h, job.id, tagged(tag));
+	expect(h.jobs.byId(job.id)!.status).toBe('ready');
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	h.hub.settle();
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	queue[0]!.status = 'done';
+	now.current = null;
+	h.hub.settle();
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(tagged(tag)[0]);
+	await drained();
+	expect(h.deleted).toEqual([OLD_REFS]);
+});
+
+test('a refused upgrade keeps the playing stems and deletes only the files it wrote', async () => {
 	const h = harness();
 	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
 	h.hello();
 	const tag = assigns(h.sent)[0]!.params.outputTag!;
-	complete(h, job.id, tag); // same rank as the published separator: refused
-	const m = h.mediaById.get('m1')!;
-	expect(m.instrumentalRef).toBe(OLD.instrumentalRef);
-	expect(h.deleted).toEqual([
-		[
-			`derived/stems/m1-${tag}-instrumental.flac`,
-			`derived/stems/m1-${tag}-vocals.flac`,
-			`derived/stems/m1-${tag}-guidemix.flac`
-		]
-	]);
+	complete(h, job.id, tagged(tag)); // same rank as the published separator: refused
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	await drained();
+	expect(h.deleted.flat().sort()).toEqual(tagged(tag).sort());
 });
 
-test('an untagged report (a worker older than the tag) never deletes the files the song names', () => {
+test('core deletes no file a worker names but this job’s own output', async () => {
 	const h = harness();
-	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.mediaById.set('OTHER', ready({ id: 'OTHER', ...OLD }));
+	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
 	h.hello();
+	const tag = assigns(h.sent)[0]!.params.outputTag!;
+	// Refused (same rank), naming another song's stems and its unrecoverable original.
 	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
 	h.hub.handle({
 		type: 'job:complete',
 		workerId: 'w1',
 		jobId: job.id,
 		mediaUri: 'x',
-		artifacts: { stems: { instrumental: OLD.instrumentalRef, vocals: OLD.vocalsRef, guideMix: OLD.guideMixRef } }
+		artifacts: {
+			stems: {
+				instrumental: 'derived/stems/OTHER-instrumental.flac',
+				vocals: 'audio/OTHER.webm',
+				guideMix: `derived/stems/OTHER-${tag}-guidemix.flac`
+			}
+		}
 	});
-	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	await queueSidecarTask('OTHER', async () => {});
+	await drained();
 	expect(h.deleted).toEqual([]);
 });
 
-test('a re-separation waits while its song is queued or playing, and runs once the turn is over', () => {
+test('a completion naming this song’s files under another job’s tag deletes none of them', async () => {
+	const h = harness();
+	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
+	h.hello();
+	complete(h, job.id, tagged('01someoneelse')); // refused (same rank): not its own names
+	await drained();
+	expect(h.deleted).toEqual([]);
+});
+
+test('a cancelled remake’s late completion deletes only its own new files', async () => {
+	const h = harness();
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	const tag = assigns(h.sent)[0]!.params.outputTag!;
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	h.jobs.cancel(job.id, T0); // the song was deleted or evicted mid-run
+	h.hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId: job.id,
+		mediaUri: 'x',
+		artifacts: { stems: { instrumental: tagged(tag)[0], vocals: OLD.vocalsRef, guideMix: 'audio/m1.webm' } }
+	});
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	await drained();
+	expect(h.deleted).toEqual([[tagged(tag)[0]]]);
+});
+
+test('an untagged report (a worker older than the tag) never deletes the files the song names', async () => {
+	const h = harness();
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	complete(h, job.id, OLD_REFS);
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+	await drained();
+	expect(h.deleted).toEqual([]);
+});
+
+test('a remake waits while its song is queued or playing, and runs once the turn is over', () => {
 	const queue = [{ id: 'e1', status: 'queued', mediaId: 'm1' }];
 	const h = harness(queue);
 	requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
@@ -161,10 +278,10 @@ test('a re-separation waits while its song is queued or playing, and runs once t
 	queue[0]!.status = 'done';
 	h.hub.dispatch();
 	expect(assigns(h.sent)).toHaveLength(1);
-	// A first separation is never held: it IS the song's turn.
-	expect(waitsForTurn({ jobType: 'stems', mediaId: 'm1' }, [{ id: 'e2', status: 'queued', mediaId: 'm1' }], null)).toBe(
-		false
-	);
+	// A first separation, and an auto-upgrade, are never held.
+	const queued = [{ id: 'e2', status: 'queued', mediaId: 'm1' }];
+	expect(waitsForTurn({ jobType: 'stems', mediaId: 'm1' }, queued, null)).toBe(false);
+	expect(waitsForTurn({ jobType: 'stems-upgrade', mediaId: 'm1' }, queued, 'e2')).toBe(false);
 });
 
 test('a second Make again while one is waiting is the same job, and a finished one can be asked again', () => {
@@ -172,13 +289,13 @@ test('a second Make again while one is waiting is the same job, and a finished o
 	const first = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
 	expect(requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }).id).toBe(first.id);
 	h.hello();
-	complete(h, first.id, assigns(h.sent)[0]!.params.outputTag!);
+	complete(h, first.id, tagged(assigns(h.sent)[0]!.params.outputTag!));
 	const again = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 + 1 });
 	expect(again.id).not.toBe(first.id);
 	expect(again.status).toBe('queued');
 });
 
-test('a worker older than core refuses the remake once: it fails with a reason, the song stays ready', () => {
+test('a worker older than core refuses the remake once: with no other worker it fails with a reason', () => {
 	const h = harness();
 	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
 	h.hello();
@@ -192,10 +309,68 @@ test('a worker older than core refuses the remake once: it fails with a reason, 
 	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
 });
 
+test('an old worker’s refusal goes to a newer worker that is connected, not to a failure', () => {
+	const h = harness();
+	h.hello('w1');
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hub.dispatch();
+	expect(assigns(h.sent).map((a) => a.jobId)).toEqual([job.id]);
+	h.hello('w2'); // busy with nothing, but the job is already w1's
+	h.hub.handle({ type: 'job:reject', workerId: 'w1', jobId: job.id, reason: 'unknown action: stems-remake' });
+	expect(h.jobs.byId(job.id)!.status).toBe('assigned');
+	expect(h.jobs.byId(job.id)!.workerId).toBe('w2');
+	// w1 is never offered it again.
+	expect(
+		assigns(h.sent)
+			.filter((a) => a.jobId === job.id)
+			.map((a) => a.jobId)
+	).toHaveLength(2);
+});
+
+test('at boot, what a restart kept from deleting is found: replaced and lost stems, never a live job’s', () => {
+	const saved = process.env.MEDIA_DIR;
+	const root = mkdtempSync(join(tmpdir(), 'encore-stale-'));
+	process.env.MEDIA_DIR = root;
+	try {
+		mkdirSync(join(root, 'derived/stems'), { recursive: true });
+		const files = [
+			'm1-instrumental.flac', // replaced by the remake that landed
+			'm1-vocals.m4a', // an older ext, replaced too
+			'm1-new-instrumental.flac', // what plays
+			'm1-new-vocals.flac',
+			'm1-lost-guidemix.flac', // a remake that finished and lost
+			'm1-live-instrumental.flac', // a remake still running
+			'm2-instrumental.flac', // another song, untagged and playing
+			'm2-gone-vocals.flac' // that song's lost remake
+		];
+		for (const f of files) writeFileSync(join(root, 'derived/stems', f), 'x');
+		const m1 = ready({
+			instrumentalRef: 'derived/stems/m1-new-instrumental.flac',
+			vocalsRef: 'derived/stems/m1-new-vocals.flac',
+			guideMixRef: undefined
+		});
+		const m2 = ready({ id: 'm2', instrumentalRef: 'derived/stems/m2-instrumental.flac' });
+		const stale = staleStemsOnDisk([m1, m2], (id) => (id === 'm1' ? ['live'] : []));
+		expect(stale.get('m1')?.sort()).toEqual(
+			[
+				'derived/stems/m1-instrumental.flac',
+				'derived/stems/m1-lost-guidemix.flac',
+				'derived/stems/m1-vocals.m4a'
+			].sort()
+		);
+		expect(stale.get('m2')).toEqual(['derived/stems/m2-gone-vocals.flac']);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+		if (saved === undefined) delete process.env.MEDIA_DIR;
+		else process.env.MEDIA_DIR = saved;
+	}
+});
+
 test('a tagged stem file is recognised for delete, and another song’s is not', () => {
 	expect(isTaggedStemOf('M1', 'M1-01jx-instrumental.flac')).toBe(true);
 	expect(isTaggedStemOf('M1', 'M1-01jx-guidemix.m4a')).toBe(true);
 	expect(isTaggedStemOf('M1', 'M1-instrumental.flac')).toBe(false); // untagged: named by the id already
 	expect(isTaggedStemOf('M1', 'M12-01jx-instrumental.flac')).toBe(false);
 	expect(isTaggedStemOf('M1', 'M1-01jx-instrumental.flac.part')).toBe(false);
+	expect(stemTagOf('M1', 'M1-01jx-vocals.flac')).toBe('01jx');
 });

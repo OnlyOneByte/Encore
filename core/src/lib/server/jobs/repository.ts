@@ -204,6 +204,12 @@ export class JobRepository {
 		return new Set(rows.map((r) => r.mediaId));
 	}
 
+	/** Every song's latest job of one type, any status, by media id. */
+	latestOfType(jobType: JobType): Map<string, Job> {
+		const rows = this.#db.select().from(jobs).where(eq(jobs.jobType, jobType)).orderBy(jobs.updatedAt).all();
+		return new Map(rows.map((j) => [j.mediaId, j]));
+	}
+
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];

@@ -15,7 +15,8 @@ import {
 	rawCaptionKey,
 	CAPTION_KINDS,
 	KNOWN_CAPTION_EXTS,
-	resolveBase
+	resolveBase,
+	stemTagOf
 } from './paths';
 import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
@@ -217,6 +218,41 @@ export function editRefsByMedia(): Map<string, string[]> {
 		if (id) byId.set(id, [...(byId.get(id) ?? []), `derived/lyrics/${name}`]);
 	}
 	return byId;
+}
+
+/** At boot, each song's stem files that a re-separation replaced or lost and a restart kept from deleting: tagged
+ *  files the song does not name and no live job (`writing`, its tags) still writes, and the untagged ones once the
+ *  song plays tagged stems. From ONE listing; empty when the folder can't be read. */
+export function staleStemsOnDisk(
+	songs: Iterable<Media>,
+	writing: (mediaId: string) => readonly string[]
+): Map<string, string[]> {
+	const out = new Map<string, string[]>();
+	const { base, rest } = resolveBase('derived/stems');
+	let names: string[];
+	try {
+		names = readdirSync(resolve(join(base, rest)));
+	} catch {
+		return out;
+	}
+	for (const m of songs) {
+		const named = new Set([m.instrumentalRef, m.vocalsRef, m.guideMixRef]);
+		const own = names.filter((n) => n.startsWith(`${m.id}-`) && !named.has(`derived/stems/${n}`));
+		if (own.length === 0) continue;
+		const tags = writing(m.id);
+		const playsTagged = !!m.instrumentalRef && stemTagOf(m.id, m.instrumentalRef.split('/').pop()!) !== null;
+		const stale = own.filter((n) => {
+			const tag = stemTagOf(m.id, n);
+			if (tag) return !tags.includes(tag);
+			return playsTagged && /^-(instrumental|vocals|guidemix)\.[0-9a-z]+$/.test(n.slice(m.id.length));
+		});
+		if (stale.length > 0)
+			out.set(
+				m.id,
+				stale.map((n) => `derived/stems/${n}`)
+			);
+	}
+	return out;
 }
 
 /** One song's fix documents on disk. */

@@ -78,7 +78,8 @@ export interface Media {
 
 /** GET /api/library/sizes, host only: what each ready song holds in the media store. See docs/SERVER.md#managing-the-library. */
 export interface LibrarySizes {
-	songs: Record<string, { bytes: number; plays: number; kept: boolean }>;
+	/** `remakeFailed`: why the song's last Make again didn't work, while that is still the latest. */
+	songs: Record<string, { bytes: number; plays: number; kept: boolean; remakeFailed?: string }>;
 	totalBytes: number;
 	keptBytes: number;
 	/** ENCORE_MEDIA_MAX_GB in bytes, or null when unset. */

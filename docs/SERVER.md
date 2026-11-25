@@ -1287,13 +1287,29 @@ Rename, Keep, delete and remake act only on a ready song outside an Undo window 
     job id) and the worker writes `derived/stems/<id>-<tag>-instrumental.<ext>` and its siblings. The playing
     files are never overwritten.
   - **One swap, then the delete.** The completion sets the three refs in one media write (`persistMedia`),
-    then deletes the files they replaced. A refused or silent re-separation deletes only what it wrote. An
-    untagged report from an older worker deletes nothing, since its names are the song's own.
-  - **After its turn.** A re-separation is not dispatched while its song is queued or playing
-    (`waitsForTurn`), and the 3 s dispatch tick picks it up when the turn is over. So the swap and the delete
-    never happen under a screen that is playing the old file, and an auto-upgrade of a song picked tonight
-    waits too.
+    then retires the files they replaced. A refused or silent re-separation retires only what it wrote. An
+    untagged report from an older worker retires nothing, since its names are the song's own.
+  - **Core deletes only a job's own output.** Of the files a worker reports, only those under
+    `derived/stems/` named `<id>-<that job's tag>-…` are ever deleted, so a buggy worker cannot point core at
+    another song's stems or an original. A cancelled re-separation (the song deleted or evicted mid-run) that
+    still reports deletes its own new files the same way.
+  - **Retired files wait for the turn.** A TV streams the file it plays by range requests, and preloads the one
+    on deck, so the hub keeps a retired file while its song is queued or playing and deletes it on the first
+    3 s tick after (`WorkerHub.settle`). Each delete is queued behind the song's sidecar write
+    (`queueSidecarTask`), so `meta/<id>.json` never names a deleted file. The list is in memory: at boot,
+    `staleStemsOnDisk` finds again what a restart kept from deleting (a song's tagged files it does not name
+    and no live job writes, and its untagged ones once it plays tagged stems), and those wait for the turn too.
+  - **Never a swap mid-song.** The TV reloads a changed src from 0, so a re-separation that finishes while its
+    song is playing is held and swapped in when the turn ends. One held across a restart is lost, and its files
+    are swept at boot.
+  - **The host's remake starts after the turn** (`waitsForTurn`): it is not dispatched while its song is
+    queued or playing. An auto-upgrade does not wait, so a song picked tonight can get the better stems before
+    its first turn.
   - **Behind every pick**: at `NO_QUEUE_PRIORITY`. A second tap while one waits returns the same job.
+  - **A failed remake says so.** The room hears nothing (the song stays ready), so `GET /api/library/sizes`
+    carries `remakeFailed` while the song's latest remake has failed, and the song sheet shows it under Sound.
+  - **An older worker** rejects a remake as an unknown action. The job goes to another connected worker that
+    can serve it, and fails with "update the worker" only when none is left.
   - **Nothing is orphaned.** Eviction and delete read the stored refs, which name the tagged files, and delete
     also removes any tagged stem left on disk by a crash before its swap (`isTaggedStemOf`).
 - Not yet: Make it again for lyrics (PR 3b), bulk remake, same-song pairs (PR 4) and the folder watch (PR 5).

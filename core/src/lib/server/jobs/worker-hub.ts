@@ -15,8 +15,9 @@ import type {
 	EffectiveSettings,
 	WorkerProfile
 } from '../../contract';
-import { publishStemFormat, toRelativeKey } from '../media/paths';
-import { LYRICS_NOTES, resolveProcessSeparator } from '../../contract';
+import { publishStemFormat, toRelativeKey, stemOutputTag, stemTagOf } from '../media/paths';
+import { queueSidecarTask } from '../media/sidecar';
+import { LYRICS_NOTES, resolveProcessSeparator, isTerminalJob } from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
 import type { AttemptFacts, AttemptLedger } from './attempts';
@@ -31,6 +32,7 @@ import {
 	publishesInstrumental,
 	reSeparates,
 	waitsForTurn,
+	inTurn,
 	inheritsProcess,
 	hasCapableWorker,
 	type CapabilityFor
@@ -62,6 +64,20 @@ function stemRefsOf(m: Media | undefined): string[] {
 function reportedStemRefs(msg: Extract<WorkerMessage, { type: 'job:complete' }>): string[] {
 	const s = msg.artifacts?.stems;
 	return [s?.instrumental, s?.vocals, s?.guideMix].map((u) => toRelativeKey(u)).filter((r): r is string => !!r);
+}
+
+const STEMS_DIR = 'derived/stems/';
+
+/** The reported refs that are job `jobId`'s own output: in `derived/stems/`, named `<mediaId>-<its tag>-…`. The only
+ *  worker-named files core deletes, so a worker cannot point it at another song's files. */
+function ownStemOutput(refs: string[], jobId: string, mediaId?: string): { mediaId: string; ref: string }[] {
+	const tag = stemOutputTag(jobId);
+	return refs.flatMap((ref) => {
+		const name = ref.startsWith(STEMS_DIR) ? ref.slice(STEMS_DIR.length) : '';
+		const owner = name.slice(0, Math.max(0, name.indexOf(`-${tag}-`)));
+		if (!owner || (mediaId && owner !== mediaId) || stemTagOf(owner, name) !== tag) return [];
+		return [{ mediaId: owner, ref }];
+	});
 }
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
@@ -151,7 +167,8 @@ export interface WorkerHubDeps {
 	queueEntries: () => readonly { id?: string; status: string; mediaId: string }[];
 	/** The playing entry, so a re-separation waits until the song's turn is over (`waitsForTurn`). */
 	currentEntryId?: () => string | null;
-	/** Deletes stem files a re-separation replaced, or wrote and lost. Optional so the hub unit-tests bare. */
+	/** Deletes stem files a re-separation replaced, or wrote and lost, once no screen needs them (`settle`). Optional
+	 *  so the hub unit-tests bare. */
 	deleteRefs?: (refs: string[]) => void;
 	/** Fired when `canMake()` or `canFetch()` flips, so app.ts can re-send the room its `queue:sync`. */
 	onMakerChange?: () => void;
@@ -298,6 +315,13 @@ export class WorkerHub {
 	#verdict: Record<MakerVerdict, boolean> = { canMake: true, canFetch: true };
 	/** Armed while the fleet lacks one and the room still reads it true (MAKER_GRACE_MS). */
 	#grace: Record<MakerVerdict, ReturnType<typeof setTimeout> | null> = { canMake: null, canFetch: null };
+	/** Stem files a re-separation replaced or lost, by song, deleted once the song is out of its turn (`settle`). */
+	#stale = new Map<string, Set<string>>();
+	/** Re-separations that finished while their song was playing: the TV reloads a changed src from 0, so the new
+	 *  stems go in when the turn ends. In memory only; one lost to a restart is swept as stale at boot. */
+	#held: { job: Job; msg: Extract<WorkerMessage, { type: 'job:complete' }> }[] = [];
+	/** Workers that refused a job as an action they do not know, so it is offered to another. */
+	#unknownTo = new Map<string, Set<string>>();
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
@@ -647,9 +671,14 @@ export class WorkerHub {
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
 		// REJECT frees the slot via the machine's slot-release hook (reads the owner pre-write)...
 		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT');
-		// A worker older than core refuses an action it does not know, and that comes back every dispatch tick
-		// forever (one attempt row each): end the job, saying what to do, as the worker would if it had accepted it.
-		if (msg.reason.startsWith('unknown action')) {
+		// A worker older than core refuses an action it does not know, and would get it back every dispatch tick (one
+		// attempt row each). It goes to a worker that has not refused it; with none left, the job ends saying what to do.
+		const refusedBy = this.#unknownTo.get(msg.jobId) ?? new Set<string>();
+		const cap = requiredCapability(job.jobType, this.#processSettings());
+		if (msg.reason.startsWith('unknown action')) this.#unknownTo.set(msg.jobId, refusedBy.add(msg.workerId));
+		const another = this.#d.registry.list().some((w) => !refusedBy.has(w.workerId) && w.capabilities.includes(cap));
+		if (msg.reason.startsWith('unknown action') && !another) {
+			this.#unknownTo.delete(msg.jobId);
 			const failed = this.#d.jobs.fail(
 				msg.jobId,
 				`this worker does not know '${job.jobType}' jobs yet — update the worker to the same version as core`,
@@ -742,7 +771,7 @@ export class WorkerHub {
 	/** running → ready (terminal): publish the instrumental, free the slot, reconcile playback. */
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
-		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return this.#dropCancelled(msg, job); // stale
 
 		// Verifying spawns ffmpeg and decodes the whole file, so it gates completion ASYNCHRONOUSLY and
 		// re-checks staleness on entry — the reaper can fail this job while the probe is still decoding.
@@ -789,13 +818,72 @@ export class WorkerHub {
 			`[core] refused a silent instrumental for media ${job.mediaId}: the worker reported ${ref}, ` +
 				'which measures at or below the silence floor. The song keeps the stems it had.'
 		);
-		// A refused re-separation's files are named nowhere else, so they go now.
-		if (reSeparates(job.jobType)) {
-			const live = stemRefsOf(this.#d.mediaById.get(job.mediaId));
-			const lost = reportedStemRefs(msg).filter((r) => !live.includes(r));
-			if (lost.length > 0) this.#d.deleteRefs?.(lost);
-		}
+		// A refused re-separation's files are named nowhere else.
+		if (reSeparates(job.jobType)) this.#retireOwnOutput(msg, job.mediaId);
 		reportTerminalFailure(updated, 'worker', this.#failureSinks());
+	}
+
+	/** A completion for a re-separation that was cancelled (song deleted or evicted, or the job superseded, which
+	 *  deletes its row) is ignored, but the files it wrote are named nowhere: they go. */
+	#dropCancelled(msg: Extract<WorkerMessage, { type: 'job:complete' }>, job: Job | null): void {
+		// A job that is still live, or finished, may be another worker's under the same names.
+		if (job && (job.status === 'ready' || !isTerminalJob(job.status) || !reSeparates(job.jobType))) return;
+		this.#retireOwnOutput(msg, job?.mediaId);
+	}
+
+	/** A completion's own files that its song does not name, retired (`#retire`). */
+	#retireOwnOutput(msg: Extract<WorkerMessage, { type: 'job:complete' }>, mediaId?: string): void {
+		for (const own of ownStemOutput(reportedStemRefs(msg), msg.jobId, mediaId)) {
+			if (!stemRefsOf(this.#d.mediaById.get(own.mediaId)).includes(own.ref)) this.#retire(own.mediaId, [own.ref]);
+		}
+	}
+
+	/** Deletes `refs` once their song is out of its turn: a TV streams a file by range requests while it plays, and
+	 *  preloads it on deck. Each delete is queued behind the song's sidecar write, so `meta/` never names a deleted file. */
+	#retire(mediaId: string, refs: string[]): void {
+		if (refs.length === 0) return;
+		const set = this.#stale.get(mediaId) ?? new Set<string>();
+		for (const ref of refs) set.add(ref);
+		this.#stale.set(mediaId, set);
+		this.#deleteStale();
+	}
+
+	/** Boot: what a restart left (`staleStemsOnDisk`), deleted when the song is out of its turn. */
+	retireStale(byMedia: ReadonlyMap<string, readonly string[]>): void {
+		for (const [mediaId, refs] of byMedia) this.#retire(mediaId, [...refs]);
+	}
+
+	/** Every tick and on every retire: swap in what was held while its song played, then delete what no song in
+	 *  its turn still needs. */
+	settle(): void {
+		const playing = this.#playingMediaId();
+		const held = this.#held;
+		this.#held = held.filter((h) => h.job.mediaId === playing);
+		for (const h of held) if (h.job.mediaId !== playing) this.#swapHeld(h.job, h.msg);
+		this.#deleteStale();
+	}
+
+	#playingMediaId(): string | undefined {
+		const current = this.#d.currentEntryId?.() ?? null;
+		return current ? this.#d.queueEntries().find((e) => e.id === current)?.mediaId : undefined;
+	}
+
+	#deleteStale(): void {
+		const entries = this.#d.queueEntries();
+		const current = this.#d.currentEntryId?.() ?? null;
+		for (const [mediaId, refs] of this.#stale) {
+			if (inTurn(mediaId, entries, current)) continue;
+			this.#stale.delete(mediaId);
+			const doomed = [...refs];
+			void queueSidecarTask(mediaId, async () => this.#d.deleteRefs?.(doomed));
+		}
+	}
+
+	#swapHeld(job: Job, msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
+		// Deleted or evicted meanwhile: nothing to swap into, so its files are lost output.
+		if (!this.#d.mediaById.get(job.mediaId)?.instrumentalRef) return this.#retireOwnOutput(msg, job.mediaId);
+		this.#applyCompletion(job, msg, this.#processSettings());
+		this.#d.onMediaReady?.(job.mediaId);
 	}
 
 	/** The completion body proper, reached once the reported instrumental is not measurably silent. */
@@ -814,11 +902,41 @@ export class WorkerHub {
 			trail: this.#trailJson(msg.jobId, msg.trail)
 		});
 		this.#trails.delete(msg.jobId);
+		this.#unknownTo.delete(msg.jobId);
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#processSettings();
+		const hold = reSeparates(job.jobType) && this.#playingMediaId() === job.mediaId;
+		if (hold) this.#held.push({ job, msg });
+		else this.#applyCompletion(job, msg, settings);
+		cleanJobWork(msg.jobId);
+		// Follow-ups enqueue AFTER cleanJobWork, so each gets its own scratch dir.
+		for (const next of followUps(job.jobType, settings)) {
+			// `inheritsProcess` carries the process id AND the singer attribution together; see
+			// docs/SERVER.md#idempotency-and-the-process-cap.
+			this.#d.jobs.enqueue(
+				job.mediaId,
+				next,
+				job.priority,
+				this.#d.now(),
+				inheritsProcess(next) ? job.processingId : undefined,
+				inheritsProcess(next) ? (job.singerId ?? undefined) : undefined
+			);
+			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
+		}
+		this.#emitStatus(updated);
+		if (!hold) this.#d.onMediaReady?.(job.mediaId);
+		this.dispatch();
+	}
+
+	/** What a completion changes on its song, persisted; a re-separation's replaced or lost files are retired. */
+	#applyCompletion(
+		job: Job,
+		msg: Extract<WorkerMessage, { type: 'job:complete' }>,
+		settings: GlobalSettings | undefined
+	): void {
 		const separator = separatorFor(job.jobType, settings);
-		// A re-separation's files to delete once the swap below is persisted: the ones it replaced, or its own if it lost.
-		let staleStems: string[] = [];
+		let replaced: string[] = [];
+		let lost = false;
 		if (publishesInstrumental(job.jobType)) {
 			const before = stemRefsOf(this.#d.mediaById.get(job.mediaId));
 			// Every setter below is guarded on `accepted`: markMediaReady returns false for a stems-upgrade
@@ -844,10 +962,11 @@ export class WorkerHub {
 			}
 			if (reSeparates(job.jobType)) {
 				const live = stemRefsOf(this.#d.mediaById.get(job.mediaId));
-				staleStems = (accepted ? before : reportedStemRefs(msg)).filter((ref) => !live.includes(ref));
+				replaced = before.filter((ref) => !live.includes(ref));
+				lost = !accepted;
 			}
 		}
-		// Before cleanJobWork below: the kept download lives under `audio/`, not the scratch dir it deletes.
+		// Before the caller's cleanJobWork: the kept download lives under `audio/`, not the scratch dir it deletes.
 		if (job.jobType === 'fetch') {
 			setMediaOriginal(job.mediaId, msg.mediaUri, msg.artifacts?.original?.bytes, this.#d.mediaById);
 		}
@@ -857,25 +976,9 @@ export class WorkerHub {
 		// so the artifact is already attached when there is one.
 		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
 		this.#d.persistMedia?.(job.mediaId);
-		if (staleStems.length > 0) this.#d.deleteRefs?.(staleStems);
-		cleanJobWork(msg.jobId);
-		// Follow-ups enqueue AFTER cleanJobWork, so each gets its own scratch dir.
-		for (const next of followUps(job.jobType, settings)) {
-			// `inheritsProcess` carries the process id AND the singer attribution together; see
-			// docs/SERVER.md#idempotency-and-the-process-cap.
-			this.#d.jobs.enqueue(
-				job.mediaId,
-				next,
-				job.priority,
-				this.#d.now(),
-				inheritsProcess(next) ? job.processingId : undefined,
-				inheritsProcess(next) ? (job.singerId ?? undefined) : undefined
-			);
-			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
-		}
-		this.#emitStatus(updated);
-		this.#d.onMediaReady?.(job.mediaId);
-		this.dispatch();
+		// After the persist, so each delete queues behind the sidecar write it makes.
+		this.#retire(job.mediaId, replaced);
+		if (lost) this.#retireOwnOutput(msg, job.mediaId);
 	}
 
 	/** running → requeue (retryable, attempts left) or failed (terminal). Frees the slot either way. */
@@ -883,6 +986,7 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		this.#unservableSince.delete(msg.jobId); // terminal or requeue — prune stale unservable tracking
+		this.#unknownTo.delete(msg.jobId);
 		const attempts = job.attempts + 1;
 		if (msg.retryable && !attemptsExhausted(attempts, job.maxAttempts)) {
 			// Released EXPLICITLY, not via the slot-release hook, which never fires for FAIL or
@@ -957,7 +1061,8 @@ export class WorkerHub {
 		const entries = this.#d.queueEntries();
 		const current = this.#d.currentEntryId?.() ?? null;
 		const runnable = queued.filter((j) => !waitsForTurn(j, entries, current));
-		for (const { jobId, workerId } of planAssignments(runnable, workers, capabilityFor)) {
+		const refused = (jobId: string, workerId: string) => this.#unknownTo.get(jobId)?.has(workerId) === true;
+		for (const { jobId, workerId } of planAssignments(runnable, workers, capabilityFor, refused)) {
 			this.#unservableSince.delete(jobId); // it found a worker; a later stall is a fresh event
 			const pending = this.#d.jobs.byId(jobId);
 			if (!pending) continue; // vanished between planning and dispatch

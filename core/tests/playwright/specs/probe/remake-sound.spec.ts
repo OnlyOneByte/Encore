@@ -84,6 +84,87 @@ test('Make again keeps the song ready throughout, swaps in new files, and the op
 	}
 });
 
+test('queued and playing mid-remake: the TV plays the old file to the end, then the new one is in and the old goes', async ({
+	world
+}) => {
+	const maker = await startFakeWorker(world, { seconds: 20 });
+	const guest = await world.openPhone('Ana');
+	await readySong(world, guest, 'caroline');
+	await maker.stop();
+	const id = (await world.awaitDemoTrack('caroline')).id;
+	const before = (await libraryRow(guest, id))!.instrumentalRef!;
+	const tv = await world.openTv();
+	// Slow enough that the song is queued, and then playing, before the remake finishes.
+	const worker = await startFakeWorker(world, { slowMs: 6_000, seconds: 20 });
+	try {
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		const res = await host.request.post('/api/library/manage/remake', { data: { mediaId: id } });
+		expect((await res.json()).afterTurn).toBe(false); // idle: dispatched now
+		await queueReady(guest, 'caroline');
+		await expect.poll(async () => (await tvSources(tv)).some((src) => src.includes(before))).toBe(true);
+
+		// THE CLAIM: while the turn lasts, the song names the old file, the file is there, and the TV keeps playing it.
+		let after = before;
+		const deadline = Date.now() + 60_000;
+		while (Date.now() < deadline) {
+			const ref = (await libraryRow(guest, id))?.instrumentalRef;
+			const playingOld = (await tvSources(tv)).some((src) => src.includes(before));
+			if (ref && ref !== before) {
+				after = ref;
+				break;
+			}
+			if (playingOld) expect((await guest.request.get(`/media/${before}`)).status()).toBe(200);
+			await new Promise((r) => setTimeout(r, 250));
+		}
+		expect(after, 'the remake never swapped in after the turn').not.toBe(before);
+		expect((await guest.request.get(`/media/${after}`)).status()).toBe(200);
+		await expect.poll(async () => (await guest.request.get(`/media/${before}`)).status()).toBe(404);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('a remake that fails says so on the song sheet, and the old sound stays', async ({ world }, testInfo) => {
+	const maker = await startFakeWorker(world);
+	const guest = await world.openPhone('Ana');
+	await readySong(world, guest, 'caroline');
+	await maker.stop();
+	const id = (await world.awaitDemoTrack('caroline')).id;
+	const before = (await libraryRow(guest, id))!.instrumentalRef!;
+	const worker = await startFakeWorker(world, { fail: 'stems-remake' });
+	try {
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		await host.locator('[data-testid="manage-row"] button.open').first().click();
+		await host.getByRole('button', { name: 'Make again' }).click();
+		await expect
+			.poll(
+				async () => {
+					await host.reload();
+					await host.getByRole('button', { name: 'Manage' }).click();
+					await host.locator('[data-testid="manage-row"] button.open').first().click();
+					return host.getByTestId('remake-failed').isVisible();
+				},
+				{ timeout: 30_000, message: 'the sheet never said the remake failed' }
+			)
+			.toBe(true);
+		await expect(host.getByTestId('remake-failed')).toContainText("didn't work");
+		for (const width of [390, 320]) {
+			await host.setViewportSize({ width, height: 844 });
+			const path = testInfo.outputPath(`remake-failed-${width}.png`);
+			await host.locator('[data-testid="song-sheet"]').screenshot({ path });
+			await testInfo.attach(`remake-failed-${width}.png`, { path, contentType: 'image/png' });
+		}
+		expect((await libraryRow(guest, id))!.instrumentalRef).toBe(before);
+		expect((await guest.request.get(`/media/${before}`)).status()).toBe(200);
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('a song queued tonight is remade after its turn, not under it', async ({ world }) => {
 	const worker = await startFakeWorker(world);
 	try {

@@ -30,13 +30,14 @@ import {
 	evictUnlessKept,
 	derivedBytesOf,
 	editRefsByMedia,
+	staleStemsOnDisk,
 	transcodeDiagnostics
 } from './media/retention';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
 import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
-import { guideMixKey, mediaRoot } from './media/paths';
+import { guideMixKey, mediaRoot, stemOutputTag } from './media/paths';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -76,6 +77,7 @@ import { ObjectMediaStore, bunS3Client } from './media/object-store';
 import { PendingDeletes, finishDelete } from './media/library-manage';
 import { deleteMediaEntirely, type DeleteMediaResult } from './media/delete';
 import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '../contract';
+import { isTerminalJob } from '../contract';
 
 export interface EncoreApp {
 	db: DB;
@@ -602,6 +604,7 @@ export function getApp(): EncoreApp {
 		// The dead-turn sweep rides the SAME tick rather than taking a timer of its own: core has exactly two periodic timers (this 3s reaper and MEMBERSHIP_SWEEP_MS in server.ts), and `onTick`'s own doc is written for precisely this class of purely time-based check. Dispatch runs FIRST because it is what fails an unservable job, so a turn that dies on this tick is seen dead on this tick rather than one tick later.
 		onTick: () => {
 			workerHub.dispatch();
+			workerHub.settle();
 			sweepDeadTurns();
 			const now = app.now();
 			if (now - lastAttemptPrune >= ATTEMPT_PRUNE_EVERY_MS) {
@@ -671,6 +674,15 @@ export function getApp(): EncoreApp {
 
 	// A restart drops every worker WS session, so an assigned/running row is orphaned. One-shot, before server.ts starts the reaper tick loop.
 	app.reaper.recoverOnBoot();
+	// What a re-separation replaced or lost but a restart kept from deleting; still held while the song is in its turn.
+	workerHub.retireStale(
+		staleStemsOnDisk(mediaById.values(), (mediaId) =>
+			(['stems-upgrade', 'stems-remake'] as const)
+				.map((t) => jobs.findLive(mediaId, t))
+				.filter((j) => j && !isTerminalJob(j.status))
+				.map((j) => stemOutputTag(j!.id))
+		)
+	);
 
 	// A person whose every phone went idle can never come back, so their nights go too.
 	pruneIdlePeople(app);

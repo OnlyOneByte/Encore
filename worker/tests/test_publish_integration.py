@@ -168,6 +168,17 @@ async def test_a_re_separation_publishes_beside_the_stems_it_replaces(media: Pat
     assert (media / first.instrumental).read_bytes() == before
 
 
+@pytest.mark.parametrize("bad", ["../x", "R1X", "a-b", 7])
+async def test_a_malformed_tag_fails_the_job_not_overwriting_the_live_stems(media: Path, bad: object) -> None:
+    first = await steps_for(media, Reporter()).publish_stems(job(media), separated(media))
+    before = (media / first.instrumental).read_bytes()
+    remake = JobRef(job_id="j1", media_id=MEDIA_ID, media_dir=str(media), params={"outputTag": bad})
+    with pytest.raises(RuntimeError, match="refusing outputTag") as raised:
+        await steps_for(media, Reporter()).publish_stems(remake, separated(media))
+    assert getattr(raised.value, "retryable", True) is False
+    assert (media / first.instrumental).read_bytes() == before
+
+
 async def test_nothing_is_published_into_job_scratch(media: Path) -> None:
     """The ORIGINAL BUG, asserted directly. `work/` is transient — retention evicts it — so a ref pointing
     there is a row that looks healthy and a song that stops working later."""
