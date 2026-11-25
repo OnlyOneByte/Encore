@@ -4,6 +4,9 @@
 // ALL singers, since there is no FK cascade. PLAYING-SONG SKIP: deleting the playing song skips to the next
 // entry — it neither refuses nor leaves a dangling current.
 import { test, expect } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { deleteMediaEntirely, type DeleteMediaDeps } from '$lib/server/media/delete';
 import { AuthoritativeState } from '$lib/server/state/store';
 import type { HubDeps } from '$lib/server/realtime/hub';
@@ -73,6 +76,29 @@ test('unlinks the sidecar FIRST, before audio and derived artifacts', () => {
 	expect(metaIdx).toBeGreaterThanOrEqual(0);
 	expect(audioIdx).toBeGreaterThan(metaIdx);
 	expect(unlinked.some((r) => r.startsWith('derived/stems/m1-instrumental'))).toBe(true);
+});
+
+test('unlinks every fix document of the song by id, named or not, and no other song’s (#1238)', () => {
+	const saved = process.env.MEDIA_DIR;
+	const root = mkdtempSync(join(tmpdir(), 'encore-del-'));
+	process.env.MEDIA_DIR = root;
+	try {
+		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
+		for (const name of ['m1-edit-r1.json', 'm1-edit-r3.json', 'm10-edit-r1.json', 'm1-edit-rx.json'])
+			writeFileSync(join(root, 'derived', 'lyrics', name), '{}');
+		const { deps, unlinked, hub } = harness(['m1']);
+		// Evicted, then Undo: the row names no candidate, and r1 (replaced by r3, then r3 by Undo) is named nowhere.
+		Object.assign(hub.mediaById.get('m1')!, { lyricsCandidates: [], lyricsOverrideRef: undefined });
+		deleteMediaEntirely('m1', deps);
+		expect(unlinked).toContain('derived/lyrics/m1-edit-r1.json');
+		expect(unlinked).toContain('derived/lyrics/m1-edit-r3.json');
+		expect(unlinked).not.toContain('derived/lyrics/m10-edit-r1.json');
+		expect(unlinked).not.toContain('derived/lyrics/m1-edit-rx.json');
+	} finally {
+		if (saved === undefined) delete process.env.MEDIA_DIR;
+		else process.env.MEDIA_DIR = saved;
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("removes EVERY queue entry for the media, including another singer's turn", () => {

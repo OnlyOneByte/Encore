@@ -72,8 +72,9 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 			? {
 					pinnedRef: media.lyricsOverrideRef,
 					...(media.lyricsOverrideText ? { pinnedText: media.lyricsOverrideText } : {}),
-					// `lyricsRef` moves only when the re-time lands, so until then it is the document being fixed.
-					...(media.lyricsOverrideText && media.lyricsRef ? { pinnedFrom: media.lyricsRef } : {})
+					// `lyricsRef` moves only when the re-time lands, so until then it is the document being fixed. After
+					// an eviction it is gone, and the fix's own document, which eviction keeps, seeds the remake.
+					...(media.lyricsOverrideText ? { pinnedFrom: media.lyricsRef ?? media.lyricsOverrideRef } : {})
 				}
 			: {})
 	};

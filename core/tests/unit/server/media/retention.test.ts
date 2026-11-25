@@ -14,6 +14,7 @@ import {
 	evictDerived,
 	forgetEvicted,
 	derivedBytesOf,
+	derivedRefsOf,
 	ffmpegTranscoder,
 	transcodeDiagnostics
 } from '$lib/server/media/retention';
@@ -189,6 +190,44 @@ describe('evictDerived', () => {
 		expect(bytes).toBe(900);
 		expect(removed.length).toBe(2);
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
+	});
+
+	it("keeps a host's fix, so the remake re-times from it rather than from scratch (#1199)", () => {
+		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
+		put('derived/stems/a-instrumental.m4a', 500);
+		put('derived/lyrics/a-asr-word.json', 30);
+		put('derived/lyrics/a-edit-r2.json', 20);
+		const fix = 'derived/lyrics/a-edit-r2.json';
+		const candidates = [{ ref: 'derived/lyrics/a-asr-word.json' }, { ref: fix }] as Media['lyricsCandidates'];
+		const m = media('a', {
+			lyricsRef: fix,
+			lyricsOverrideRef: fix,
+			lyricsOverrideText: 'the words',
+			lyricsCandidates: candidates
+		});
+
+		expect(derivedBytesOf(m)).toBe(530); // the plan counts only what eviction frees
+		expect(evictDerived(m).bytes).toBe(530);
+		expect(existsSync(join(root, fix))).toBe(true);
+		expect(existsSync(join(root, 'derived/lyrics/a-asr-word.json'))).toBe(false);
+		// A picked candidate (no pasted words) is the worker's own output, made again with the song.
+		put('derived/lyrics/b-x.json', 10);
+		const picked = media('b', { lyricsRef: 'derived/lyrics/b-x.json', lyricsOverrideRef: 'derived/lyrics/b-x.json' });
+		expect(evictDerived(picked).bytes).toBe(10);
+	});
+
+	it('an evicted song with a host fix still names it among the refs a delete unlinks (#1238 review)', () => {
+		const fix = 'derived/lyrics/a-edit-r2.json';
+		const candidates = [{ ref: 'derived/lyrics/a-asr-word.json' }, { ref: fix }] as Media['lyricsCandidates'];
+		const m = media('a', {
+			lyricsRef: fix,
+			lyricsOverrideRef: fix,
+			lyricsOverrideText: 'the words',
+			lyricsCandidates: candidates
+		});
+		expect(derivedRefsOf(m)).toContain(fix); // before eviction, a delete removes it
+		forgetEvicted(m, { supersedeForRerun: () => {} } as never);
+		expect(derivedRefsOf(m)).toContain(fix);
 	});
 
 	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {

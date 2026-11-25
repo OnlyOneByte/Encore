@@ -14,6 +14,7 @@ import { SEL } from '../../world/selectors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
 import { queueReady } from '../../world/actors';
+import { sendPlayerCommand } from './audio-probe-support';
 import type { Page } from '@playwright/test';
 
 test.use({
@@ -159,4 +160,29 @@ test('P32 · fixes and Undo reach the TV mid-song, between lines, with nothing s
 	const graded = all.filter((s) => s.t >= startedAt && expectedRow(s.pos) !== null).length;
 	expect(offGrid(all, startedAt), 'off the words timing').toBeLessThanOrEqual(Math.max(2, graded / 5));
 	expect(cls, 'layout shift across the swaps').toBe(0);
+});
+
+test('P32 · on a paused song a fix lands at once, without waiting for play', async ({ world }) => {
+	test.setTimeout(120_000);
+	const { phone, tv, mediaId } = await stage(world);
+	await sendPlayerCommand(phone, { cmd: 'pause' });
+	const paused = () =>
+		tv.evaluate(() => [...document.querySelectorAll<HTMLMediaElement>('audio,video')].every((m) => m.paused));
+	await expect.poll(paused, { timeout: 15_000, message: 'the pause never reached the TV' }).toBe(true);
+	const current = () =>
+		tv.evaluate(
+			({ row, rowCurrent }) => {
+				const cur = document.querySelector(rowCurrent);
+				const text = cur?.textContent?.replace(/\s+/g, ' ').trim();
+				return { at: [...document.querySelectorAll(row)].indexOf(cur!), text };
+			},
+			{ row: SEL.lyricsRow, rowCurrent: SEL.lyricsRowCurrent }
+		);
+	const before = await current();
+
+	await change(phone, '/api/lyrics-edit', mediaId, { lines: fixLines((i) => `paused ${i} words`) });
+	await tvShows(tv, 'paused');
+	expect(await paused(), 'the fix waited for play').toBe(true);
+	// The same row stays current, now in the fix's words.
+	expect(await current()).toEqual({ at: before.at, text: `paused ${before.at} words` });
 });

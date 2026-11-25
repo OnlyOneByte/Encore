@@ -108,7 +108,7 @@ from encore_worker.steps.align_text import (
     _provider_label,
     _stored_lines,
     _timing_of,
-    _with_source_lines,
+    _written,
     seeded,
 )
 from encore_worker.steps.align_unsung import (
@@ -2512,7 +2512,7 @@ class AlignStepsImpl:
         absolute = os.path.join(req.job.media_dir, ref)
         os.makedirs(os.path.dirname(absolute), exist_ok=True)
         with open(absolute, "w", encoding="utf-8") as handle:
-            json.dump(_with_source_lines(doc, req.text.segments), handle, ensure_ascii=False)
+            json.dump(_written(doc, req.text.segments), handle, ensure_ascii=False)
         return TimedDoc(
             ref=ref,
             timing=timing,
