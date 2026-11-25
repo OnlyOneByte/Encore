@@ -9832,3 +9832,55 @@ other nine cells a measurement rather than a tautology; ja's `mms-roman` cell RE
 `syllable-pm250-not-below-seventy` (66.23), the single clause that encodes §3.12's reject-if for it. Line ±500
 clears the restated ko floor of 72.0 everywhere: zh 97.47 / 96.46, ja 87.36 on all three arms, ko 75.00 (both
 whisperx arms) and **85.45** under the route.
+
+## Voices: who sings which line (2026-11-25)
+
+Proposal 35's first measurement (#1166): can a model tell which singer sang each line well enough to colour a
+song by voice, with **no false multi-voice song on a solo**? Script `scripts/voices.py`, results
+`results/voices-line-voices-cpu.json`.
+
+**The set is built, not collected.** No bench corpus was on this box, so the 24 items come from the repo's
+three TheFatRat vocal stems, which are three different singers (Chosen, Fly Away dry, MAYDAY a cappella),
+with each line's span taken from its `truth-lines.json`:
+- **12 multi-voice items.** Whole sung lines from two singers (3 pairs) or all three, spliced into one vocal
+  track: alternating lines, 4-line verses, and a lead with answers. Every line's voice is known.
+- **12 solos.** Each singer's lines straight, later lines, every other line up 3 semitones (one voice in two
+  registers), and every other line with an echo double. These are the shapes most likely to pass for a
+  second voice.
+- Every model gets the truth line spans, so this scores the voice call alone, not the aligner.
+- **Caveats:** the singers are all women, and the splices have clean gaps. A real duet overlaps, shares
+  reverb and mixes the voices, so this set is easier than a real one, and it is calibrated and scored on the
+  same items.
+
+**`line-voices`** (`pyannote/wespeaker-voxceleb-resnet34-LM`, CC-BY-4.0, ungated): one embedding per line,
+then average-linkage clustering on cosine distance (`domain/lyrics/voices.py`), then the existing
+confident-duet checks (`attribute.py`).
+
+| distance | false multi on solos | multi-voice coloured | voice count right | worst line accuracy, coloured |
+|---|---|---|---|---|
+| 0.30 | 0/12 | 0/12 | 0/12 | – |
+| 0.35 | 0/12 | 0/12 | 1/12 | – |
+| 0.40 | 1/12 | 0/12 | 1/12 | – |
+| 0.50 | 3/12 | 1/12 | 3/12 | 0.375 |
+| 0.60 | 2/12 | 3/12 | 0/12 | 0.50 |
+| 0.70 | 5/12 | 6/12 | 3/12 | 0.50 |
+
+- **It fails the gate.** A solo turns multi-voice before any duet is coloured, and the duets it colours are
+  near chance (37–50% of lines right). The gate needs 0/12, ≥ 8/12 and ≥ 90%.
+- **Why:** on sung lines this embedding tracks the line more than the singer.
+  - Cosine distance between two lines of the same singer: median 0.63 (p10 0.32, p90 0.91).
+  - Between two lines of different singers: median 0.78 (p10 0.53, p90 0.94).
+  - Between two lines of one solo: median 0.71.
+  - Even an oracle 2-way split (2-means on centred embeddings) gets only 50–74% of a two-singer item's lines
+    right, and three solos separate more cleanly than most duets do.
+- **Cost on CPU:** 916 s for 1,705 s of audio, 0.54× song length, on this 32-core host at load ~70–90. Run in
+  align, that would add over half a song's length to pick-to-ready; it belongs in its own job after ready.
+- **`SAME_VOICE_DISTANCE` is 0.35:** the widest distance with no false multi-voice solo. It colours nothing
+  here, which is the safe failure.
+
+**`pyannote-3.1`** (`pyannote/speaker-diarization-3.1`, MIT, **gated**): not run. This box has no Hugging Face
+token, and Encore never ships gated weights. The lane runs where `HF_TOKEN` is set; its number is owed.
+
+**So:** no ungated model in the worker's current dependencies clears the gate. The TV stays one colour, and
+PR 2 (the off-path job) waits for a model that does: pyannote 3.1 on a host with a token, or another ungated
+embedding (SpeechBrain ECAPA, Apache-2.0, is a new dependency).

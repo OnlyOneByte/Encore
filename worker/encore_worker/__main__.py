@@ -546,6 +546,12 @@ def _align_facts(
         "syncMode": outcome.sync_mode or sync_mode_of(job).value,
         # WHY there are none, when this box could not listen: core shows it on the song page (#1221).
         **({"lyricsNote": "asr-offline"} if outcome.no_lyrics and _asr_off_for(job, config) else {}),
+        # Only where a diarizer ran: how many voices it heard, and how many coloured parts were written.
+        **(
+            {"voices": published.voices, "voiceParts": published.parts}
+            if (published := outcome.published) is not None and published.voices is not None
+            else {}
+        ),
     }
 
 

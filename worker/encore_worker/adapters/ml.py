@@ -690,6 +690,63 @@ class WhisperXAligner:
 #: Gated on Hugging Face: loading it needs a token whose account accepted its terms, or a cached copy.
 DIARIZE_CHECKPOINT = "pyannote/speaker-diarization-3.1"
 
+#: An ungated speaker embedding, one per aligned line (`LineVoiceEmbedder`).
+LINE_VOICE_CHECKPOINT = "pyannote/wespeaker-voxceleb-resnet34-LM"
+
+
+@dataclass(frozen=True)
+class VoiceModel:
+    """A model that can tell who sings which line, with the licence shown beside it (#1166)."""
+
+    checkpoint: str
+    licence: str
+    #: Needs the host's own Hugging Face token; Encore never ships gated weights.
+    gated: bool
+
+
+VOICE_MODELS = {
+    "line-voices": VoiceModel(LINE_VOICE_CHECKPOINT, licence="CC-BY-4.0", gated=False),
+    "pyannote-3.1": VoiceModel(DIARIZE_CHECKPOINT, licence="MIT", gated=True),
+}
+
+#: A line shorter than this, or quieter than this RMS on the vocal stem, holds too little voice to judge.
+MIN_VOICE_LINE_SEC = 1.0
+MIN_VOICE_LINE_RMS = 0.01
+
+
+class LineVoiceEmbedder:
+    """One speaker embedding per aligned line of the vocal stem, or None for a line too short or quiet."""
+
+    def __init__(self, *, device: str = "cpu", checkpoint: str = LINE_VOICE_CHECKPOINT) -> None:
+        self._device = device
+        self._checkpoint = checkpoint
+
+    def embed(self, audio_path: str, spans: Sequence[tuple[float, float]]) -> list[Any | None]:
+        import torch  # noqa: PLC0415
+
+        signal = load_audio_mono_16k(audio_path)
+        # ML_LOCK covers LOADING AND RUNNING (docs/arch/05-worker.md §9.1).
+        with ML_LOCK:
+
+            def build() -> Any:
+                from pyannote.audio import Inference, Model  # noqa: PLC0415
+
+                _allow_pyannote_checkpoints()
+                model = Model.from_pretrained(self._checkpoint)
+                return Inference(model, window="whole", device=torch.device(self._device))
+
+            inference = _cached(self._device, f"voices:{self._checkpoint}", build)
+            out: list[Any | None] = []
+            for start, end in spans:
+                clip = signal[int(start * _EMISSION_SAMPLE_RATE) : int(end * _EMISSION_SAMPLE_RATE)]
+                quiet = clip.size == 0 or float((clip**2).mean() ** 0.5) < MIN_VOICE_LINE_RMS
+                if end - start < MIN_VOICE_LINE_SEC or quiet:
+                    out.append(None)
+                    continue
+                waveform = torch.from_numpy(clip.astype("float32", copy=False))[None, :]
+                out.append(inference({"waveform": waveform, "sample_rate": _EMISSION_SAMPLE_RATE}))
+            return out
+
 
 def diarizer_blocked(checkpoint: str = DIARIZE_CHECKPOINT) -> str | None:
     """Why the diarizer cannot load on this box, or None. Checked ONCE at boot and without importing pyannote.

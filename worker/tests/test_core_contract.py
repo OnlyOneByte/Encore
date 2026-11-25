@@ -626,6 +626,26 @@ async def test_a_duet_rewrite_keeps_the_document_readable_by_core(tmp_path: Path
     assert path.stat().st_mode & 0o777 == 0o644
 
 
+async def test_the_completion_facts_say_what_the_diarizer_heard(tmp_path: Path) -> None:
+    """`voices` and `voiceParts` ride on the align facts where a diarizer ran, and not where none did."""
+    from encore_worker.__main__ import _align_facts
+    from encore_worker.steps.records import AlignOutcome
+
+    _, doc, turns = _DOCUMENTS[0]
+    ref = f"derived/lyrics/{MEDIA}-lrclib-word.json"
+    path = tmp_path / ref
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    impl = AlignStepsImpl(config=CONFIG, adapters=Adapters(diarizer=_Turns(turns)), reporter=Reporter())
+    record = TimedDoc(ref=ref, timing=TIMING_WORD, confidence="high", report=CLEAN, tier=Tier.CANDIDATE)
+    job = JobRef(job_id="j-diarize", media_id=MEDIA, media_dir=str(tmp_path))
+    heard = await impl.diarize(job, AudioRef(path=str(tmp_path / "mix.wav"), duration_sec=60.0), record)
+
+    facts = _align_facts(job, CONFIG, AlignOutcome(published=heard, why="ok"))
+    assert (facts["voices"], facts["voiceParts"]) == (2, 2)
+    assert "voices" not in _align_facts(job, CONFIG, AlignOutcome(published=record, why="ok"))
+
+
 if __name__ == "__main__":
     path = _fixture_path()
     path.write_text(dump(asyncio.run(build())), encoding="utf-8")

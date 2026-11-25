@@ -166,6 +166,10 @@ class TimedDoc:
     #: Whether a WRONG-TEXT gate READ these words and did not doubt them — a POSITIVE claim, never merely
     #: "none complained", and a field of its own rather than the timing grade (XA-14).
     vouched: bool = field(default=True, kw_only=True)
+    #: What the diarizer found, for the completion facts: voices heard, and parts written (0 is one colour).
+    #: None when no diarizer ran.
+    voices: int | None = field(default=None, kw_only=True)
+    parts: int | None = field(default=None, kw_only=True)
 
     def __setstate__(self, state: Sequence[object]) -> None:
         # An older checkpoint has no tier (the one its label was acquired at) and no `vouched` (True, its

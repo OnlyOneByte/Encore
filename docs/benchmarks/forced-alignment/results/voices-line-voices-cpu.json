@@ -1,0 +1,1825 @@
+{
+ "models": {
+  "line-voices": {
+   "checkpoint": "pyannote/wespeaker-voxceleb-resnet34-LM",
+   "licence": "CC-BY-4.0",
+   "device": "cpu",
+   "seconds_per_audio_second": null,
+   "sweep": [
+    {
+     "distance": 0.3,
+     "false_multi_on_solos": "0/12",
+     "multi_coloured": "0/12",
+     "voice_count_right_on_multi": "0/12",
+     "min_line_accuracy_coloured": null,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      }
+     ]
+    },
+    {
+     "distance": 0.35,
+     "false_multi_on_solos": "0/12",
+     "multi_coloured": "0/12",
+     "voice_count_right_on_multi": "1/12",
+     "min_line_accuracy_coloured": null,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      }
+     ]
+    },
+    {
+     "distance": 0.4,
+     "false_multi_on_solos": "1/12",
+     "multi_coloured": "0/12",
+     "voice_count_right_on_multi": "1/12",
+     "min_line_accuracy_coloured": null,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      }
+     ]
+    },
+    {
+     "distance": 0.45,
+     "false_multi_on_solos": "2/12",
+     "multi_coloured": "0/12",
+     "voice_count_right_on_multi": "1/12",
+     "min_line_accuracy_coloured": null,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      }
+     ]
+    },
+    {
+     "distance": 0.5,
+     "false_multi_on_solos": "3/12",
+     "multi_coloured": "1/12",
+     "voice_count_right_on_multi": "3/12",
+     "min_line_accuracy_coloured": 0.375,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 0,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.375
+      }
+     ]
+    },
+    {
+     "distance": 0.55,
+     "false_multi_on_solos": "2/12",
+     "multi_coloured": "1/12",
+     "voice_count_right_on_multi": "6/12",
+     "min_line_accuracy_coloured": 0.375,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.375
+      }
+     ]
+    },
+    {
+     "distance": 0.6,
+     "false_multi_on_solos": "2/12",
+     "multi_coloured": "3/12",
+     "voice_count_right_on_multi": "0/12",
+     "min_line_accuracy_coloured": 0.5,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      }
+     ]
+    },
+    {
+     "distance": 0.65,
+     "false_multi_on_solos": "3/12",
+     "multi_coloured": "5/12",
+     "voice_count_right_on_multi": "2/12",
+     "min_line_accuracy_coloured": 0.417,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 4,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.417
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.417
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 1,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      }
+     ]
+    },
+    {
+     "distance": 0.7,
+     "false_multi_on_solos": "5/12",
+     "multi_coloured": "6/12",
+     "voice_count_right_on_multi": "3/12",
+     "min_line_accuracy_coloured": 0.5,
+     "rows": [
+      {
+       "id": "solo-C-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-C-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-C-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-F-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-F-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-straight",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-M-later-lines",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "solo-M-two-registers",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "solo-M-echo-double",
+       "kind": "solo",
+       "true_voices": 1,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.0
+      },
+      {
+       "id": "multi-CF-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-CF-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-FM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 3,
+       "coloured": false,
+       "line_accuracy": null
+      },
+      {
+       "id": "multi-MC-alternate",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-MC-verses",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      },
+      {
+       "id": "multi-MC-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 2,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.542
+      },
+      {
+       "id": "multi-CFM-alternate",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.542
+      },
+      {
+       "id": "multi-CFM-verses",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.542
+      },
+      {
+       "id": "multi-CFM-lead-and-answer",
+       "kind": "multi",
+       "true_voices": 3,
+       "found_voices": 2,
+       "coloured": true,
+       "line_accuracy": 0.5
+      }
+     ]
+    }
+   ]
+  },
+  "pyannote-3.1": {
+   "skipped": "pyannote/speaker-diarization-3.1 is gated on Hugging Face and this box has no token or cached copy: set HF_TOKEN"
+  }
+ },
+ "items": 24
+}
