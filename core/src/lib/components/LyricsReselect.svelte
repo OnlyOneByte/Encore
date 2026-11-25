@@ -32,6 +32,8 @@
 		changed?: boolean;
 		onundo?: () => void;
 		onauto?: () => void;
+		/** Shown with the paste control when there are NO candidates; without it the control renders nothing. */
+		emptyNote?: string;
 	}
 	let {
 		candidates,
@@ -44,7 +46,8 @@
 		undoable = false,
 		changed = false,
 		onundo,
-		onauto
+		onauto,
+		emptyNote
 	}: Props = $props();
 
 	let open = $state(false);
@@ -133,19 +136,7 @@
 					{/each}
 				</Item.Group>
 
-				{#if pasting}
-					<div class="reselect-paste">
-						<Textarea bind:value={draft} rows={5} placeholder="Paste the lyrics…" aria-label="Paste lyrics" />
-						<div class="reselect-acts">
-							<Button data-act="confirm" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</Button>
-							<Button data-act="cancel" variant="outline" onclick={() => (pasting = false)}>Cancel</Button>
-						</div>
-					</div>
-				{:else}
-					<button class="reselect-paste-open" onclick={() => (pasting = true)}>
-						<Icon name="chevron-right" /> Paste my own
-					</button>
-				{/if}
+				{@render pasteFlow()}
 				{#if undoable || changed}
 					<div class="reselect-back">
 						{#if undoable}
@@ -161,7 +152,29 @@
 			</div>
 		{/if}
 	</div>
+{:else if emptyNote}
+	<!-- No candidates at all: say why, and keep the one way to lyrics a host still has (#1221). -->
+	<div class="reselect">
+		<p class="reselect-empty">{emptyNote}</p>
+		{@render pasteFlow()}
+	</div>
 {/if}
+
+{#snippet pasteFlow()}
+	{#if pasting}
+		<div class="reselect-paste">
+			<Textarea bind:value={draft} rows={5} placeholder="Paste the lyrics…" aria-label="Paste lyrics" />
+			<div class="reselect-acts">
+				<Button data-act="confirm" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</Button>
+				<Button data-act="cancel" variant="outline" onclick={() => (pasting = false)}>Cancel</Button>
+			</div>
+		</div>
+	{:else}
+		<button class="reselect-paste-open" onclick={() => (pasting = true)}>
+			<Icon name="chevron-right" /> Paste my own
+		</button>
+	{/if}
+{/snippet}
 
 <style>
 	.reselect {
@@ -242,6 +255,11 @@
 	.reselect-quiet:disabled {
 		cursor: default;
 		opacity: 0.5;
+	}
+	.reselect-empty {
+		margin: 0;
+		color: var(--ink-dim);
+		font-size: var(--ph-text-sm);
 	}
 	.reselect-paste-open {
 		margin-top: var(--space-xs);

@@ -285,6 +285,14 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
 The host can change a song's lyrics; guests can't (proposal 32). Every change is data on the media, never baked
 into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs/lyrics-edit.ts`).
 
+- **A song that settled with no lyrics** offers the host the paste control too, with a sentence saying why.
+  - The reason is the latest align attempt's `lyricsNote`. `/api/audit` returns it to the host only.
+  - Core keeps a worker's note only when it is one of `LYRICS_NOTES` (#1221). Today that is `asr-offline`: an
+    offline worker whose whisper checkpoint isn't cached completes align once with no lyrics instead of failing it
+    three times.
+  - Without a note, the page says no lyrics were found. Either way a paste aligns as any fix does.
+  - `probe/offline-lyrics.spec.ts` covers it.
+
 - **The state** is three fields on the media, indexed in SQLite and kept in `meta/<id>.json`: the pin
   (`lyricsOverrideRef`), the host's words (`lyricsOverrideText`) and `lyricsEditRev`, which counts changes. Once
   a song has a rev, the sidecar writes these as the runtime holds them, so clearing one really clears it. The

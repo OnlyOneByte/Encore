@@ -22,6 +22,7 @@ export interface AttemptFacts {
 	stages?: string | null; // per-stage breakdown, serialized, from job:complete
 	selection?: string | null; // variant-pick provenance, serialized, from job:complete on align
 	trail?: string | null; // the worker's decision history, serialized, from job:state / job:complete
+	lyricsNote?: string | null; // why align published no lyrics, one of LYRICS_NOTES, from job:complete
 }
 
 const DAY_MS = 86_400_000;
@@ -65,7 +66,8 @@ export class AttemptLedger {
 			audioSec: null,
 			stages: null,
 			selection: null,
-			trail: null
+			trail: null,
+			lyricsNote: null
 		};
 		this.#db.insert(jobAttempts).values(row).run();
 		return row;
@@ -201,7 +203,8 @@ function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 		'audioSec',
 		'stages',
 		'trail',
-		'selection'
+		'selection',
+		'lyricsNote'
 	] as const) {
 		if (facts[k] !== undefined) out[k] = facts[k] as never;
 	}

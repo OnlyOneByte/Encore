@@ -23,6 +23,8 @@
 	let media = $state<Media | null>(null);
 	/** How many lyrics changes Undo can go back through; the audit row tells the host only. */
 	let lyricsUndo = $state(0);
+	/** Why the song has no lyrics, when the worker said (LYRICS_NOTES); the audit row tells the host only. */
+	let lyricsNote = $state<string | null>(null);
 	let loading = $state(true);
 	/** A load that failed, as distinct from a song that is genuinely unknown — the two read differently. */
 	let loadError = $state<string | null>(null);
@@ -91,6 +93,7 @@
 		// unset, and the empty state says so. Only a thrown error is a failed load.
 		let row: Media | null = null;
 		let undo = 0;
+		let note: string | null = null;
 		let failed: string | null = null;
 		try {
 			const res = await fetch(`/api/audit/${encodeURIComponent(id)}`);
@@ -98,6 +101,7 @@
 				const body = await res.json();
 				row = body.media ?? null;
 				undo = typeof body.lyricsUndo === 'number' ? body.lyricsUndo : 0;
+				note = typeof body.lyricsNote === 'string' ? body.lyricsNote : null;
 			} else if (res.status !== 404) throw new Error(`HTTP ${res.status}`);
 		} catch {
 			failed = "Couldn't load this song.";
@@ -111,11 +115,13 @@
 			if (row) {
 				media = row;
 				lyricsUndo = undo;
+				lyricsNote = note;
 			}
 			return;
 		}
 		media = row;
 		lyricsUndo = undo;
+		lyricsNote = note;
 		loadError = failed;
 		loading = false;
 		/* NO TOAST FOR THIS SENTENCE. The failure arm below is a `role="alert"` carrying the same words AND the control
@@ -137,6 +143,14 @@
 	// Every fix is kept as a document; only the one showing is listed, and Undo walks the rest.
 	const candidates = $derived(
 		(media?.lyricsCandidates ?? []).filter((c) => c.textSource !== 'manual' || c.ref === media?.lyricsRef)
+	);
+	// The lyrics step finished and found none: the host is told why, and can still paste them (#1221).
+	const noLyricsNote = $derived(
+		media?.lyricsStatus === 'ready' && !media.lyricsRef && !candidates.length
+			? lyricsNote === 'asr-offline'
+				? "No lyrics: the karaoke maker is offline and hasn't downloaded its speech model, so it couldn't listen for the words. Paste them and they'll be timed to the song."
+				: "No lyrics were found for this song. Paste them and they'll be timed to the song."
+			: undefined
 	);
 
 	/** Undo and Back to automatic. A re-time they start holds the control through the live `aligning` status;
@@ -226,7 +240,7 @@
 			</section>
 
 			<!-- Quick-select only: picking among the ranker's versions. Authoring one is a separate surface. -->
-			{#if candidates.length && data.host}
+			{#if (candidates.length || noLyricsNote) && data.host}
 				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one reads as
 						possibly-null to the checker. -->
 				{@const songId = media.id}
@@ -264,6 +278,7 @@
 						changed={!!media.lyricsOverrideRef}
 						onundo={() => void change('undo', songId)}
 						onauto={() => void change('auto', songId)}
+						emptyNote={noLyricsNote}
 					/>
 				</section>
 			{/if}

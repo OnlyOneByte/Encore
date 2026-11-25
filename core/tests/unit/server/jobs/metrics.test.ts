@@ -44,6 +44,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		stages: null,
 		selection: null,
 		trail: null,
+		lyricsNote: null,
 		...over
 	};
 }

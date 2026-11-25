@@ -366,6 +366,7 @@ module = [
     "cutlet",
     "demucs.*",
     "docx2txt",
+    "faster_whisper.*",
     "fugashi",
     "huggingface_hub",
     "imageio_ffmpeg",

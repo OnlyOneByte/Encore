@@ -302,6 +302,8 @@ export interface ResolvedFacts {
 	device?: string;
 	asrModel?: string;
 	syncMode?: string;
+	/** An align job's reason for publishing no lyrics, one of `LYRICS_NOTES`; core drops anything else. */
+	lyricsNote?: string;
 }
 
 /** What a worker RESOLVED for itself at boot. Stamped on every attempt the worker is assigned, so each
