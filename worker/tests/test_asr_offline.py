@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import types
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -17,20 +18,44 @@ OFFLINE = Config(offline=True)
 JOB = JobRef(job_id="j1", media_id="m1", media_dir="/media", params={"asrModel": "base"})
 
 
-def fake_faster_whisper(monkeypatch: pytest.MonkeyPatch, *, cached: bool) -> list[tuple[str, bool]]:
+class LocalEntryNotFoundError(Exception):
+    """Stands in for huggingface_hub's cache-miss error."""
+
+
+def fake_faster_whisper(
+    monkeypatch: pytest.MonkeyPatch, *, cached: bool, fails: Exception | None = None
+) -> list[tuple[str, bool]]:
     calls: list[tuple[str, bool]] = []
 
     def download_model(checkpoint: str, *, local_files_only: bool = False) -> str:
         calls.append((checkpoint, local_files_only))
+        if fails is not None:
+            raise fails
         if not cached:
-            raise RuntimeError("LocalEntryNotFoundError: cannot find the requested files in the local cache")
+            raise LocalEntryNotFoundError("cannot find the requested files in the local cache")
         return f"/cache/{checkpoint}"
 
     utils = types.ModuleType("faster_whisper.utils")
     utils.download_model = download_model  # type: ignore[attr-defined]
+    errors = types.ModuleType("huggingface_hub.errors")
+    errors.LocalEntryNotFoundError = LocalEntryNotFoundError  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "faster_whisper", types.ModuleType("faster_whisper"))
     monkeypatch.setitem(sys.modules, "faster_whisper.utils", utils)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.ModuleType("huggingface_hub"))
+    monkeypatch.setitem(sys.modules, "huggingface_hub.errors", errors)
     return calls
+
+
+def test_any_other_lookup_error_surfaces_instead_of_reading_uncached(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_faster_whisper(monkeypatch, cached=False, fails=ValueError("Invalid model size 'bsae'"))
+    with pytest.raises(ValueError, match="Invalid model size"):
+        ml.asr_offline_gap("bsae")
+
+
+def test_a_local_model_directory_is_never_a_gap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = fake_faster_whisper(monkeypatch, cached=False)
+    assert ml.asr_offline_gap(str(tmp_path)) is None
+    assert calls == [], "a directory is the model itself: nothing to look up"
 
 
 def test_an_uncached_checkpoint_is_found_without_the_network(monkeypatch: pytest.MonkeyPatch) -> None:

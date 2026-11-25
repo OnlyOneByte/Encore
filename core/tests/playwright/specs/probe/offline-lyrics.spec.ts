@@ -56,8 +56,15 @@ test('offline without a speech model: one align, no lyrics, the song page says w
 		await expect(note).toContainText('Paste them');
 		await frame(host, testInfo, 'no-lyrics-offline');
 
-		await host.locator('.reselect-paste-open').click();
-		await host.locator('[data-slot="textarea"]').fill('Sweet Caroline\nGood times never seemed so good');
+		// Focus follows the disclosure: into the box on open, back to the opener on Cancel.
+		const opener = host.locator('.reselect-paste-open');
+		const box = host.locator('[data-slot="textarea"]');
+		await opener.click();
+		await expect(box).toBeFocused();
+		await host.locator('[data-act="cancel"]').click();
+		await expect(opener).toBeFocused();
+		await opener.click();
+		await box.fill('Sweet Caroline\nGood times never seemed so good');
 		await frame(host, testInfo, 'no-lyrics-pasting');
 		await host.locator('[data-act="confirm"]').click();
 		await expect.poll(async () => !!(await audit()).media?.lyricsRef, { timeout: 30_000 }).toBe(true);

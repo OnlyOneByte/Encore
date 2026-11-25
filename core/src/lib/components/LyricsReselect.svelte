@@ -53,6 +53,21 @@
 	let open = $state(false);
 	let pasting = $state(false);
 	let draft = $state('');
+	// Focus follows the disclosure: opening lands in the box, Cancel goes back to the button that opened it.
+	let field = $state<HTMLTextAreaElement | null>(null);
+	let opener = $state<HTMLButtonElement | null>(null);
+	let backToOpener = false;
+	$effect(() => field?.focus());
+	$effect(() => {
+		if (opener && backToOpener) {
+			backToOpener = false;
+			opener.focus();
+		}
+	});
+	function cancelPaste() {
+		pasting = false;
+		backToOpener = true;
+	}
 
 	/* PER-INSTANCE, because two of these can share a screen and a hardcoded id would make the second one's
 	   `aria-controls` point at the first. Without it the toggle announces a state and not what holds it. */
@@ -163,14 +178,20 @@
 {#snippet pasteFlow()}
 	{#if pasting}
 		<div class="reselect-paste">
-			<Textarea bind:value={draft} rows={5} placeholder="Paste the lyrics…" aria-label="Paste lyrics" />
+			<Textarea
+				bind:ref={field}
+				bind:value={draft}
+				rows={5}
+				placeholder="Paste the lyrics…"
+				aria-label="Paste lyrics"
+			/>
 			<div class="reselect-acts">
 				<Button data-act="confirm" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</Button>
-				<Button data-act="cancel" variant="outline" onclick={() => (pasting = false)}>Cancel</Button>
+				<Button data-act="cancel" variant="outline" onclick={cancelPaste}>Cancel</Button>
 			</div>
 		</div>
 	{:else}
-		<button class="reselect-paste-open" onclick={() => (pasting = true)}>
+		<button class="reselect-paste-open" bind:this={opener} onclick={() => (pasting = true)}>
 			<Icon name="chevron-right" /> Paste my own
 		</button>
 	{/if}

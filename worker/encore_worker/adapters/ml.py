@@ -756,13 +756,16 @@ class PyannoteDiarizer:
 
 def asr_offline_gap(checkpoint: str) -> str | None:
     """Why ASR can't run OFFLINE, or None: faster-whisper's own lookup finds `checkpoint` in no cache."""
+    if os.path.isdir(checkpoint):
+        return None
     try:
         from faster_whisper.utils import download_model  # noqa: PLC0415
+        from huggingface_hub.errors import LocalEntryNotFoundError  # noqa: PLC0415
     except ImportError:
         return None
     try:
         download_model(checkpoint, local_files_only=True)
-    except Exception:  # noqa: BLE001
+    except LocalEntryNotFoundError:
         return f"whisper {checkpoint} isn't cached and this worker is offline"
     return None
 
