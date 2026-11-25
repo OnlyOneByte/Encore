@@ -245,6 +245,15 @@ class Search:
         self._note("give-up", why)
         return GiveUp(why)
 
+    def asr_babbled(self, babble: str) -> Next:
+        """ASR heard something, but not words (`domain.lyrics.babble`): no lyrics beats wrong ones (#1288)."""
+        why = (
+            "no publishable lyrics: every candidate was exhausted and the audio's transcript was withheld "
+            f"as babble ({babble})"
+        )
+        self._note("give-up", why)
+        return GiveUp(why)
+
     # ── internals ────────────────────────────────────────────────────────────────────────────────
 
     def _current(self) -> Candidate:

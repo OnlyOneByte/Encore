@@ -9,9 +9,10 @@ See docs/arch/04-alignment.md §2 for the pipeline and §3 for the ladder.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import assert_never
 
+from encore_worker.domain.lyrics.babble import babble
 from encore_worker.domain.lyrics.policy import corroboration
 from encore_worker.domain.lyrics.report import TimingReport
 from encore_worker.domain.lyrics.search import (
@@ -53,6 +54,10 @@ STATE_PUBLISH = "publish"
 #: one decision function covers it. Neither a gate refusal nor a machinery fault comes through here
 #: (invariant XA-17).
 NOTHING_TIMED = TimingReport(words=0, coverage=0.0)
+
+#: The completion's `lyricsNote` when the song has no lyrics because whisper's words were babble (core's
+#: `LYRICS_NOTES`).
+LYRICS_NOTE_BABBLE = "asr-babble"
 
 
 async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
@@ -99,6 +104,7 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
     #: The texts a gate refused, by label: the frame withdraws what earlier jobs stored for their words
     #: (`AlignOutcome.refused`). A pin is never judged a wrong text, so a pinned job refuses none.
     refused: dict[str, TextRef] = {}
+    lyrics_note: str | None = None
     step = search.begin()
 
     while True:
@@ -143,11 +149,15 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                 attempt_no += 1
                 await steps.note(job, STATE_ASR, attempt_no, "asr-fallback", why, None)
                 # The stem first when there is one: it transcribes materially better than the mix.
-                heard = await steps.transcribe(job, audio, on_vocals=audio.vocals_path is not None)
-                if heard is None and audio.vocals_path is not None:
-                    # A stem that yields nothing is often over-suppressed rather than silent, so the
-                    # mix gets its own turn before the song is called instrumental.
-                    heard = await steps.transcribe(job, audio, on_vocals=False)
+                heard = await _words_heard(job, audio, steps, on_vocals=audio.vocals_path is not None)
+                if not isinstance(heard, TextRef) and audio.vocals_path is not None:
+                    # A stem that yields nothing (or babble) is often over-suppressed rather than silent, so
+                    # the mix gets its own turn before the song is called instrumental.
+                    heard = await _words_heard(job, audio, steps, on_vocals=False) or heard
+                if isinstance(heard, Babble):
+                    step = search.asr_babbled(heard.why)
+                    lyrics_note = LYRICS_NOTE_BABBLE
+                    continue
                 if heard is None:
                     step = search.asr_produced_nothing()
                     continue
@@ -174,7 +184,7 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                 verdict = "no-lyrics" if pin is None else "pin-declined"
                 await steps.note(job, STATE_PUBLISH, attempt_no, verdict, why, None)
                 outcome = await _publish(job, steps, None, why, search, written, pin, refused.values())
-                return replace(outcome, sync_mode=_ran_as(line_only).value)
+                return replace(outcome, sync_mode=_ran_as(line_only).value, lyrics_note=lyrics_note)
 
             case _ as unreachable:
                 assert_never(unreachable)
@@ -215,6 +225,28 @@ async def _publish(
         candidates=tuple(replace(d, ref=store_ref(job, d.ref)) for d in placed),
         refused=tuple(refused),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Babble:
+    """A transcript withheld because it is not words (`domain.lyrics.babble`)."""
+
+    label: str
+    why: str
+
+
+async def _words_heard(
+    job: JobRef, audio: AudioRef, steps: AlignSteps, *, on_vocals: bool
+) -> TextRef | Babble | None:
+    """One transcription, withheld from the pool when it is babble (#1288)."""
+    heard = await steps.transcribe(job, audio, on_vocals=on_vocals)
+    if heard is None:
+        return None
+    why = babble(str(segment.get("text") or "") for segment in heard.segments)
+    if why is None:
+        return heard
+    await steps.note(job, STATE_ASR, 0, "asr-babble", f"{heard.label} withheld: {why}", None)
+    return Babble(heard.label, why)
 
 
 async def _acquire_pinned(job: JobRef, pin: Pin, steps: AlignSteps) -> list[TextRef]:

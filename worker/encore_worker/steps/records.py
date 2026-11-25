@@ -207,6 +207,8 @@ class AlignOutcome:
     #: True when publication was REFUSED for ownership (`NotOurJob`), so `published is None` means "never
     #: placed", not "found no lyrics". The transport sends it as a retryable failure, not a completion.
     abandoned: bool = False
+    #: Why there are no lyrics, when this job knows (core's `LYRICS_NOTES`): `asr-babble`. None otherwise.
+    lyrics_note: str | None = None
 
     def __setstate__(self, state: Sequence[object]) -> None:
         restore_appended(self, state)
