@@ -2128,8 +2128,9 @@ the element paused, a stall mid-file and a file that never arrives. It never run
 
 Three readings the watchdog does NOT count. The time inside a gap of more than 1 s between its own ticks (a frozen
 tab, a TV out of standby) is forgiven, less one normal tick, so a single sleep does not fail a song on wake while
-throttled 1 Hz ticks still add up to a failure. A first load still downloading at 4 s, or with its fetch open and
-nothing arrived yet, is not reloaded, because the reload restarts it from zero; the 8 s failure still stands. And a
+throttled 1 Hz ticks still add up to a failure. A first load still downloading, or with its fetch open and nothing
+arrived yet, is not reloaded until it has been still for 4 s after that too, because the reload restarts it from zero:
+a file that lands after 4 s gets until the 8 s failure to start, rather than being thrown away the moment it lands. And a
 `play()` still unanswered after 4 s on a TV nobody has touched, for media that is READY to play, is treated as an
 autoplay refusal (some TV browsers leave a refused play() pending rather than rejecting it): the tap screen shows and
 nothing is skipped. Media that never loaded is the song's stall, not the tap screen's, and a media error is the song's

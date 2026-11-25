@@ -175,10 +175,23 @@ describe('StallWatchdog: time nobody watched, slow loads, seeks (code review of 
 		expect(run(new StallWatchdog(), 0, 10_000, { downloading: true })).toEqual([[STALL_FAIL_MS, 'fail']]);
 	});
 
-	test('the reload waits for the download to stop, then runs once', () => {
+	test('the reload waits for 4 s of stillness after the last byte, then runs once', () => {
+		const w = new StallWatchdog();
+		expect(run(w, 0, 1_000, { downloading: true })).toEqual([]);
+		expect(run(w, 1_250, 6_000)).toEqual([[5_000, 'retry']]);
+	});
+
+	test('a slow first load that lands after 4 s is not reloaded the moment it lands: it gets until 8 s to start', () => {
+		// #1116: the reload one tick after a 5 s download threw the file away, the refetch took 5 s more, and a song
+		// about to play failed at 8 s.
 		const w = new StallWatchdog();
 		expect(run(w, 0, 5_000, { downloading: true })).toEqual([]);
-		expect(run(w, 5_250, 6_000)).toEqual([[5_250, 'retry']]);
+		expect(run(w, 5_250, 7_750)).toEqual([]);
+		expect(run(w, 8_000, 9_000)).toEqual([[STALL_FAIL_MS, 'fail']]);
+		const started = new StallWatchdog();
+		run(started, 0, 5_000, { downloading: true });
+		for (let t = 5_250; t <= 20_000; t += 250)
+			expect(started.tick(at(t, { position: (t - 5_250) / 1000 }))).toBe('none');
 	});
 
 	test('a phone seek after the retry, back to or below the stuck spot, is not a stall', () => {

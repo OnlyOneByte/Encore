@@ -75,16 +75,14 @@ test('Accept-Encoding: gzip, wildcard and q-values, with q=0 a refusal', () => {
 	expect(acceptsGzip('')).toBe(false);
 });
 
-test('the compression yields the event loop: a macrotask queued before it runs before it resolves', async () => {
-	// A synchronous gzipSync finishes before gzipJson returns, so its promise settles in a MICROtask and the
-	// immediate below cannot have run. The async gzip completes on the pool, a later turn, so it has. ~4 MB of
-	// poorly compressible text keeps the compression well past one turn of the loop.
-	let seed = 1;
-	const word = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) >>> 0).toString(36);
-	const body = { rows: Array.from({ length: 200_000 }, () => word() + word() + word()) };
-	let yielded = false;
-	setImmediate(() => (yielded = true));
-	const res = await gzipJson(new Request('http://x', { headers: { 'accept-encoding': 'gzip' } }), body);
-	expect(yielded, 'gzipJson compressed synchronously and held the event loop').toBe(true);
-	expect(res.headers.get('content-encoding')).toBe('gzip');
+test('the compression yields the event loop: it cannot settle until the loop takes a turn', async () => {
+	// A synchronous gzipSync settles within a few microtasks; the pool's answer needs a task, and none runs while
+	// microtasks are queued. A setImmediate is no witness: Bun drains pool completions in one tick under load (#1211).
+	const body = { rows: Array.from({ length: 2_000 }, (_, i) => `row ${i}`) };
+	let settled = false;
+	const pending = gzipJson(new Request('http://x', { headers: { 'accept-encoding': 'gzip' } }), body);
+	void pending.then(() => (settled = true));
+	for (let i = 0; i < 100; i++) await Promise.resolve();
+	expect(settled, 'gzipJson compressed synchronously and held the event loop').toBe(false);
+	expect((await pending).headers.get('content-encoding')).toBe('gzip');
 });
