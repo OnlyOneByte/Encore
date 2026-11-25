@@ -236,7 +236,7 @@ test("the host's turn comes while songs are picked: You're up sits over the bar,
 
 		// The guest's song ends early: the host's turn starts while the bar is up.
 		await transportTap(guest, 'skip');
-		const card = host.locator('.youre-up');
+		const card = host.getByTestId('youre-up-flood');
 		await expect(card).toBeVisible({ timeout: 5_000 });
 		// No edge of the bar shows outside the card, measured once the card has finished arriving.
 		await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
@@ -246,11 +246,11 @@ test("the host's turn comes while songs are picked: You're up sits over the bar,
 		expect(barBox.x).toBeGreaterThanOrEqual(cardBox.x - 0.5);
 		expect(barBox.x + barBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
 		await frame(host, testInfo, 'bar-under-youre-up');
-		// The card is on top wherever the two share space, so its OK button is what a tap reaches.
-		const ok = card.getByRole('button').first();
+		// The flood is on top wherever the two share space, so its Restart button is what a tap reaches.
+		const ok = card.getByRole('button', { name: 'Restart' });
 		const box = (await ok.boundingBox())!;
 		const hit = await host.evaluate(
-			([x, y]) => !!document.elementFromPoint(x, y)?.closest('.youre-up'),
+			([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-testid="youre-up-flood"]'),
 			[box.x + box.width / 2, box.y + box.height / 2]
 		);
 		expect(hit).toBe(true);

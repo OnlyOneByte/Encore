@@ -17,6 +17,8 @@
 		/** A held turn's way back, the singer's own only: Try again (absent once the song failed twice) and Pick another. */
 		onretry?: () => void;
 		pickAnotherHref?: string;
+		/** "Your song didn't play" is up for this turn and carries the filled next step, so these two go quiet. */
+		quietNext?: boolean;
 		/** The singer is in the room but unreachable. Surfaced here because the room decides BY HAND whether
 		 * to skip an absent singer's turn, and without it there is nothing to say a decision is due. */
 		singerAway?: boolean;
@@ -57,6 +59,7 @@
 		held = false,
 		onretry,
 		pickAnotherHref,
+		quietNext = false,
 		singerAway = false,
 		subtitle = '',
 		pending = null,
@@ -191,7 +194,7 @@
 					{#if onretry}
 						<Button
 							size="tap"
-							variant="secondary"
+							variant={quietNext ? 'ghost' : 'secondary'}
 							data-testid="row-retry"
 							aria-label={tryAgainName(title)}
 							onclick={onretry}>Try again</Button
@@ -200,7 +203,7 @@
 					{#if pickAnotherHref}
 						<Button
 							size="tap"
-							variant="secondary"
+							variant={quietNext ? 'ghost' : 'secondary'}
 							data-testid="row-pick-another"
 							aria-label={pickAnotherName(title)}
 							href={pickAnotherHref}>Pick another</Button

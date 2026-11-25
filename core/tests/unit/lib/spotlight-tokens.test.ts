@@ -149,9 +149,9 @@ test('a focused Guide segment keeps its pill and a 3:1 ring on every surface the
 			expect(contrastRatio(hex(theme, '--role-focus'), hex(theme, bg))).toBeGreaterThanOrEqual(NON_TEXT);
 	}
 	const seg = strip(readFileSync(at('src/lib/ui/GuideSegments.svelte'), 'utf8'));
-	expect(seg).toMatch(
-		/button:focus-visible \{\s*outline-color: var\(--seg-focus, var\(--role-focus\)\);\s*border-radius: var\(--round-pill\);/
-	);
+	// The segments are inline-styled: the group points the global ring's `--focus` at the card's own ring colour.
+	expect(seg).toContain('style:--focus="var(--seg-focus, var(--role-focus))"');
+	expect(seg).toContain('style:border-radius="var(--round-pill)"');
 	expect(strip(readFileSync(at('src/lib/ui/Spotlight.svelte'), 'utf8'))).toMatch(
 		/\.lit \{[^}]*--seg-focus: var\(--on-spot\);/
 	);

@@ -3,7 +3,7 @@
   tab stop and arrow keys. A pick shows at once; the room's answer, or PRESS_HOLD_MS without one, replaces it.
 -->
 <script lang="ts">
-	import { GUIDE_PRESETS, guidePresetOf, type GuidePresetId } from '$lib/guide-preset';
+	import { GUIDE_PRESETS, nearestGuidePreset, type GuidePresetId } from '$lib/guide-preset';
 
 	type Preset = (typeof GUIDE_PRESETS)[number];
 
@@ -39,7 +39,8 @@
 	});
 	$effect(() => () => clearTimeout(hold));
 
-	const checked = $derived(draft ?? guidePresetOf(level));
+	// The nearest preset, so a room default between them (0.2) still shows one picked (#1295 review).
+	const checked = $derived(draft ?? nearestGuidePreset(level));
 	const tabStop = $derived(GUIDE_PRESETS.findIndex((p) => p.id === checked));
 
 	function pick(p: Preset) {
@@ -60,7 +61,19 @@
 	}
 </script>
 
-<div class="segments" role="radiogroup" aria-label={label} aria-disabled={disabled}>
+<!-- INLINE, with no <style> block: the You're up flood renders these too, and SvelteKit would link a stylesheet of theirs
+	into every route (CLAIM 13). The global ring draws in `--focus`, which the group sets to the card's own ring colour:
+	on a lit card the default is under 3:1. The pill radius is inline, so it wins over the ring rule's. -->
+<div
+	class="segments"
+	role="radiogroup"
+	aria-label={label}
+	aria-disabled={disabled}
+	style:display="inline-flex"
+	style:border="2px solid currentColor"
+	style:border-radius="var(--round-pill)"
+	style:--focus="var(--seg-focus, var(--role-focus))"
+>
 	{#each GUIDE_PRESETS as p, i (p.id)}
 		<button
 			type="button"
@@ -70,43 +83,19 @@
 			disabled={disabled}
 			bind:this={buttons[i]}
 			onclick={() => pick(p)}
-			onkeydown={(e) => onkeydown(e, i)}><span>{p.label}</span></button
+			onkeydown={(e) => onkeydown(e, i)}
+			style:min-width="var(--tap)"
+			style:min-height="var(--tap)"
+			style:padding="0 var(--step-12)"
+			style:border="0"
+			style:border-radius="var(--round-pill)"
+			style:background={checked === p.id ? 'currentColor' : 'none'}
+			style:color="inherit"
+			style:font-size="var(--type-meta)"
+			style:font-weight="700"
+			style:cursor={disabled ? 'default' : 'pointer'}
+			style:opacity={disabled ? '0.5' : undefined}
+			><span style:color={checked === p.id ? 'var(--seg-ink, var(--role-ground))' : undefined}>{p.label}</span></button
 		>
 	{/each}
 </div>
-
-<style>
-	.segments {
-		display: inline-flex;
-		border: 2px solid currentColor;
-		border-radius: var(--round-pill);
-	}
-	button {
-		min-width: var(--tap);
-		min-height: var(--tap);
-		padding: 0 var(--step-12);
-		border: 0;
-		border-radius: var(--round-pill);
-		background: none;
-		color: inherit;
-		font-size: var(--type-meta);
-		font-weight: 700;
-		cursor: pointer;
-	}
-	/* The global ring is --focus and a 12px box: on a lit card it is under 3:1, so the card names its own ring. */
-	button:focus-visible {
-		outline-color: var(--seg-focus, var(--role-focus));
-		border-radius: var(--round-pill);
-	}
-	[aria-checked='true'] {
-		background: currentColor;
-	}
-	/* On the span, not the button: the fill above is the button's own currentColor. */
-	[aria-checked='true'] span {
-		color: var(--seg-ink, var(--role-ground));
-	}
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-</style>

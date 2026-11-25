@@ -676,8 +676,13 @@ The `spotlight` probe holds these on the same story:
 fine control).
 
 - **Levels** are in `src/lib/guide-preset.ts`. Low is 0.3, the owner's accepted default, and it is tunable there:
-  change `GUIDE_PRESETS` and `guide-preset.test.ts` together. A level the slider set between presets checks no
-  segment, rather than the nearest one.
+  change `GUIDE_PRESETS` and `guide-preset.test.ts` together. A level between presets (a room default of 0.2, or one
+  the song page's slider set) shows the NEAREST segment checked (`nearestGuidePreset`, a tie to the quieter one), so
+  the control never reads as unset (#1295 review). `guidePresetOf`, which says whether a level IS a preset, keeps
+  returning null there for the song list.
+- **No `<style>` block:** its look is inline, because the You're up flood renders it too and SvelteKit would link a
+  stylesheet of its into every route (CLAIM 13). The group sets the global ring's `--focus` to `--seg-focus`, so a
+  lit card still names its own ring.
 - **It is an APG radio group:** `role="radiogroup"`, `role="radio"` with `aria-checked`, and one tab stop (the
   checked segment, or the first when none is). The arrow keys move and select, wrapping, and Home and End jump to the
   ends. Each segment is a 44 px target.
@@ -858,8 +863,9 @@ why.)
 
 A call site can owe one of two things, and which one depends on whether it holds an optimistic value:
 
-- **An optimistic value may not move on a drop.** Two controls hold one, both on /queue: the ± keycaps
-  (`keyDraft`) and the Guide segments (their own pick, `GuideSegments`). Both are "no local opinion" drafts —
+- **An optimistic value may not move on a drop.** Two controls hold one, on /queue's card and the You're up flood: the
+  ± keycaps (`keyDraft`, in `$lib/live-tune.svelte.ts`, which both share) and the Guide segments (their own pick,
+  `GuideSegments`). Both are "no local opinion" drafts —
   cleared when the room answers and on a song change, set only by a command that reached the wire.
   **A DRAFT IS ONLY HALF OF IT WHERE THE CONTROL IS A THIRD-PARTY WIDGET**, and the slider (`GuidingTrack`, which
   /queue drove until redesign step 5b) shipped on that half
@@ -1043,6 +1049,34 @@ Guide pick never carries onto the next turn (`GuideSegments`' `scope` is the ent
 handoff at 390 and 320: the card above the Now row, the key between the header and the dock (G1), the same element,
 the same height, no layout shift inside `main`, and the same card after a reload. Being first, it needs no
 "your card comes to you" scroll; only a failed queued card does.
+
+### You're up on every other tab: the flood
+
+On any tab but Queue, your turn starting floods the whole phone in your colour (redesign step 6, #1156,
+`YoureUpFlood.svelte`). It says "Theo, grab the mic", **You're up** at `--type-hero` and the song. Below that are the
+card's two rows in the card's order, Key (its words and the ± keycaps) then Guide (Off / Low / Full), both driving the
+live song through `$lib/live-tune.svelte.ts` as /queue's card does, and then Restart. On Queue nothing pops over the
+card, because the card already says it (an owner ruling).
+- **The colour** is your stop at 85% of its lightness (`floodColors`, `$lib/youre-up`): one step darker than the fill,
+  so a lit phone in a dark room glares less. The ink is whichever of the dark ground and white reads better on it, and
+  it is also the focus ring. `youre-up.test.ts` holds every one of the 48 stops to 4.5:1. Today every stop takes the
+  dark ink, at 4.66:1 to 5.63:1.
+- **It is its own chunk, with no stylesheet.** SvelteKit links even a lazily imported component's stylesheet into the
+  importing route, so the flood's look is inline and its motion is the Web Animations API; GuideSegments is inline for
+  the same reason. The layout imports it with `import()`, once this phone has a queued or playing turn. By the time a skip makes it yours it is already parsed. A failed fetch
+  is tried again on the next room update; meanwhile the live region still says it and the TV shows the card.
+  `youre-up-flood.spec.ts` times skip to the first painted frame against the 300 ms handoff budget, on a page that
+  has never shown it and on one that has, and checks the chunk was fetched before the turn.
+- **It goes** on the `youreUpMs` timer, or on a tap anywhere but a control, so the first touch after the moment never
+  lands on the page under it. There is no OK button. A key or guide tap leaves it up.
+- **What the layout reads for it** (the playing media, key and guide) is read only while it is up, so every other
+  surface, `/tv` included, reads nothing more.
+- **Restart** is the transport's own `restart`, which every guest may send; the flood adds no permission.
+- **It is said once**, from the layout's region that was mounted empty (`data-youre-up-live`). The flood's words are
+  hidden from assistive tech, so its accessibility tree is its controls: the keycaps, the Guide radio group and Restart. On Queue that region stays empty: the
+  card's own status line is the announcement.
+- **Motion:** opacity in over `--motion-slow`, the headline popping from `scale(0.92)`; under reduced motion it simply
+  appears.
 
 ### The Queued list holds still
 
@@ -2315,7 +2349,8 @@ this page has not closed; it is not edge-triggered, so a phone that slept throug
 hears about a turn that is waiting on it. A second failure of the same song is a new key and brings the sheet back,
 with Pick another alone (`canRetryPlay`). One button is filled, the next step to take: Try again while it is
 offered, and Pick another (quiet beside it) once it is the only one (redesign step 6, #1156; `wont-play.spec.ts`
-checks the painted fills). It has no timer: it stays until the singer acts or closes it, and toasts
+checks the painted fills on the whole page). While it is up, the held /queue row's own pair goes quiet (`quietNext`,
+from the layout's `didntPlayFor` context), so the screen still has one filled next step. It has no timer: it stays until the singer acts or closes it, and toasts
 stack above it for as long as it is up. The held /queue row carries the same two buttons on the owner's phone; other
 phones see "Didn't play" with no buttons, and nothing else.
 

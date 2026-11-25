@@ -1,6 +1,31 @@
 import { expect, test } from 'bun:test';
-import { youreUpTurn, youreUpMs } from '$lib/youre-up';
+import { youreUpTurn, youreUpMs, floodColors } from '$lib/youre-up';
 import type { QueueEntry } from '$lib/contract';
+import { contrastRatio } from '$lib/contract/presentation/colors';
+import { PALETTE_STOPS } from '$lib/contract/presentation/player-palette';
+
+test('the flood reads on every one of the 48 singer colours: text at 4.5:1, the focus ring at 3:1', () => {
+	const worst: { name: string; ratio: number }[] = [];
+	for (const stop of PALETTE_STOPS) {
+		const { bg, ink } = floodColors(stop.fill);
+		const ratio = contrastRatio(bg, ink);
+		// The ink is the text and the focus ring, so the text floor covers both.
+		expect(ratio, `${stop.name}: ink ${ink} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+		expect(ratio, `${stop.name}: focus ring`).toBeGreaterThanOrEqual(3);
+		worst.push({ name: stop.name, ratio });
+	}
+	expect(worst).toHaveLength(48);
+});
+
+test('the flood is darker than the singer colour, in the same hue family', () => {
+	const stop = PALETTE_STOPS[0]!;
+	const { bg } = floodColors(stop.fill);
+	expect(bg).not.toBe(stop.fill);
+	// Darker: against black, the flood has less contrast than the fill.
+	expect(contrastRatio(bg, '#000000')).toBeLessThan(contrastRatio(stop.fill, '#000000'));
+	// A colour off the ring snaps to its nearest stop first, so two shades of one stop flood alike.
+	expect(floodColors('#ff7363')).toEqual(floodColors(stop.fill));
+});
 
 const entry = (id: string, singerId: string): QueueEntry => ({
 	id,
