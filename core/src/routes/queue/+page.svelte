@@ -1020,16 +1020,15 @@
 		gap: var(--space-sm);
 	}
 
-	/* Two --motion-base long, held at 0 for the first (the holds'), so the row is invisible while the rows under it
-	   pass through its box. */
+	/* Held at 0 for one --motion-base (the holds'), so the row is invisible while the rows under it pass through its
+	   box, then a --motion-fast fade: 370 ms in all, inside CLAIM 14's 400 (#1092). */
 	@media (prefers-reduced-motion: no-preference) {
 		.now.arrive {
-			animation: arrive calc(var(--motion-base) * 2) ease-out;
+			animation: arrive var(--motion-fast) ease-out var(--motion-base) backwards;
 		}
 	}
 	@keyframes arrive {
-		from,
-		50% {
+		from {
 			opacity: 0;
 		}
 	}
