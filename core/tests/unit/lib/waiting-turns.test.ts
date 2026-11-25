@@ -151,8 +151,10 @@ test('waitingTurns: with nothing able to make karaoke, an empty queue is already
 			false
 		)
 	).toEqual({ making: 0, stuckSingerIds: ['maya'], noMaker: true });
-	// #1235: an in-flight turn under no maker is not being made, so the first paint already says so rather than
-	// "Making karaoke…" until the turn's own `unservable` lands.
+});
+
+// #1235: the first paint already says no maker, rather than "Making karaoke…" until the turn's own `unservable` lands.
+test('waitingTurns: an in-flight turn under no maker is stuck, not making (#1235)', () => {
 	const inFlight = OUTCOMES.find((o) => o.name === 'in flight')!;
 	const cooking = waitingTurns(
 		[{ singerId: 'maya', mediaId: 'cooking' }],
@@ -162,6 +164,16 @@ test('waitingTurns: with nothing able to make karaoke, an empty queue is already
 	);
 	expect(cooking).toEqual({ making: 0, stuckSingerIds: ['maya'], noMaker: true });
 	expect(stuckTurnsLines(cooking, () => 'Maya')?.headline).toBe("Can't make new karaoke right now");
+});
+
+// The /queue card reads the same verdict, so it cannot say "Making karaoke… %" under the dock's "Can't make new
+// karaoke right now", say with a stems-only worker separating it (#1255 review).
+test('queueCardKind: an in-flight card under no maker is stalled, and the default keeps it in flight', () => {
+	const inFlight = OUTCOMES.find((o) => o.name === 'in flight')!;
+	expect(queueCardKind(inFlight.media, inFlight.live, false)).toBe('stalled');
+	expect(queueCardKind(undefined, { status: 'separating' }, false)).toBe('stalled');
+	expect(queueCardKind(inFlight.media, inFlight.live)).toBe('processing');
+	expect(queueCardKind(undefined, { status: 'separating' })).toBe('processing');
 });
 
 test('the room line: no maker needs no stuck turn, but a turn being made still wins', () => {

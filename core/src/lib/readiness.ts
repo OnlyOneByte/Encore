@@ -42,7 +42,9 @@ export type QueueCardKind = 'processing' | 'failed' | 'stalled' | 'plain';
 
 export function queueCardKind(
 	media: Media | undefined,
-	live?: { status: MediaStatus; unservable?: boolean }
+	live?: { status: MediaStatus; unservable?: boolean },
+	/** The room's maker verdict (`queue:sync`'s `canMake`): with nothing able to make karaoke, nothing is in flight. */
+	canMake = true
 ): QueueCardKind {
 	/* A media missing from the catalog cannot be asked whether it is singable, so the live status is the only
 	   witness — take it at its word rather than silently downgrading a dead process to plain. These are the answers
@@ -51,7 +53,7 @@ export function queueCardKind(
 	   media for every entry it sends, and /queue classifies only rows inside `{#each queued}`. */
 	if (!media) {
 		if (!live || live.status === 'ready' || live.status === 'canceled') return 'plain';
-		return live.status === 'failed' ? 'failed' : 'processing';
+		return live.status === 'failed' ? 'failed' : canMake ? 'processing' : 'stalled';
 	}
 	/* ONE EXPRESSION OVER THE READINESS, which is what this function's own docstring asks for. The readiness
 	   already folds the live status in (a `ready` event beats a stale catalog; a `failed` one is swallowed on a
@@ -66,7 +68,8 @@ export function queueCardKind(
 		   `lib/tv/catalog.ts` has treated it as terminal all along (`processIsTerminal`). The phone threw it away,
 		   so it drew "Making karaoke… 0%" with a live bar for the whole 120s TTL on a job already known to be
 		   unrunnable. */
-		return live?.unservable ? 'stalled' : 'processing';
+		// And the room's verdict, before this turn's own `unservable` lands: a stems-only worker can be separating it (#1235).
+		return live?.unservable || !canMake ? 'stalled' : 'processing';
 	}
 	/* UNACQUIRED IS THE DEAD TURN: no instrumental, nothing in flight to produce one, and a queued entry pointing
 	   at it. QUEUED-NESS IS A PRECONDITION of calling this — the one call site is inside `{#each queued}` on
@@ -105,9 +108,8 @@ export function waitingTurns(
 	const out: WaitingTurns = { making: 0, stuckSingerIds: [], noMaker: !canMake };
 	for (const e of queued) {
 		const live = liveOf(e.mediaId);
-		const kind = queueCardKind(mediaOf(e.mediaId), live);
-		// Nothing connected can make it, so an in-flight turn is stuck before its own `unservable` arrives (#1235).
-		if (kind === 'processing' && canMake) out.making++;
+		const kind = queueCardKind(mediaOf(e.mediaId), live, canMake);
+		if (kind === 'processing') out.making++;
 		else if (kind !== 'plain') {
 			if (!out.stuckSingerIds.includes(e.singerId)) out.stuckSingerIds.push(e.singerId);
 			if (live?.unservable) out.noMaker = true;
