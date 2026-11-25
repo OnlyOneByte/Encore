@@ -4,7 +4,7 @@ import { gzipSync } from 'node:zlib';
 import type { Browser, BrowserContext, Cookie } from '@playwright/test';
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { best, flashes, instrumentScript, knownBreak, readState, report, throttle } from './speed-measure';
+import { best, flashes, instrumentScript, readState, report, throttle } from './speed-measure';
 
 const PHONE = { width: 390, height: 844 };
 const TV = { width: 1920, height: 1080 };
@@ -18,8 +18,8 @@ interface LoadRow {
 	budgetMs: number;
 	reps: number;
 	cookies?: 'tv' | 'joined';
-	/** This row's CLAIM 12 is a known break, gated in its own test. */
-	flashBreak?: string;
+	/** This row's CLAIM 12 is gated in its own test, named for the issue that fixed it, so a regression says which. */
+	flashGate?: string;
 }
 
 const ROWS: LoadRow[] = [
@@ -49,7 +49,7 @@ const ROWS: LoadRow[] = [
 		cpu: 1,
 		budgetMs: 1000,
 		reps: 5,
-		flashBreak: '"Finding the room…" flashes on the QR link, #1089'
+		flashGate: '"Finding the room…" on the QR link, #1089'
 	},
 	{
 		name: 'open the QR (/?room=CODE) cold, name field ready, CPU 4x',
@@ -59,7 +59,7 @@ const ROWS: LoadRow[] = [
 		cpu: 4,
 		budgetMs: 1000,
 		reps: 3,
-		flashBreak: 'gated on the 1x row, #1089'
+		flashGate: 'gated on the 1x row, #1089'
 	},
 	{
 		name: 'TV /tv cold, room code ready',
@@ -90,7 +90,7 @@ const ROWS: LoadRow[] = [
 		budgetMs: 500,
 		reps: 5,
 		cookies: 'joined',
-		flashBreak: '"Loading the queue…" flashes on a cold /queue, #1090'
+		flashGate: '"Loading the queue…" on a cold /queue, #1090'
 	}
 ];
 
@@ -174,7 +174,7 @@ test('CLAIM 9 / 11 / 12 cold loads: primary action within budget, CLS 0, no indi
 			const r = await coldLoad(browser, world, row, joined);
 			ready.push(r.ready);
 			expect.soft(r.cls, `CLAIM 11 ${row.name}: layout shifts ${JSON.stringify(r.shifts)}`).toBe(0);
-			if (row.flashBreak) continue; // gated on its own, below
+			if (row.flashGate) continue; // gated on its own, below
 			expect.soft(r.flashes, `CLAIM 12 ${row.name}: an indicator flashed for under 300 ms`).toEqual([]);
 		}
 		// Reported only: a throttled load swings 2-3x between runs on a loaded host.
@@ -191,12 +191,11 @@ test('CLAIM 9 / 11 / 12 cold loads: primary action within budget, CLS 0, no indi
 	await test.info().attach('speed-loads.txt', { body: lines.join('\n'), contentType: 'text/plain' });
 });
 
-for (const row of ROWS.filter((r) => r.flashBreak && r.cpu === 1)) {
-	test(`CLAIM 12 KNOWN BREAK no indicator flash: ${row.name}`, async ({ world, browser }) => {
+for (const row of ROWS.filter((r) => r.flashGate && r.cpu === 1)) {
+	test(`CLAIM 12 no indicator flash: ${row.flashGate}`, async ({ world, browser }) => {
 		const joined = row.cookies === 'joined' ? await joinedCookies(browser, world) : [];
 		const seen: unknown[] = [];
 		for (let i = 0; i < 3; i++) seen.push(...(await coldLoad(browser, world, { ...row, cpu: 1 }, joined)).flashes);
-		knownBreak(row.flashBreak!);
 		expect(seen, `CLAIM 12 ${row.name}: an indicator flashed for under 300 ms`).toEqual([]);
 	});
 }

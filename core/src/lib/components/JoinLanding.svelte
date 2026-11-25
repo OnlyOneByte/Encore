@@ -14,7 +14,7 @@
 	import { roomPresenceSentence, type RoomPreview } from '$lib/phrasing/room-presence-sentence';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import { room } from '$lib/stores/room';
+	import { room, PENDING_GRACE_MS } from '$lib/stores/room';
 
 	/* A phone the room STOPPED knowing mid-party (Leave on another tab, cookies cleared, a reset room): it says why it
 	   is here and keeps the name, so the name step is already filled in. The room code is still asked for: the phone
@@ -64,9 +64,24 @@
 	let renaming = $state(false);
 	const returning = $derived(someoneElse ? null : (preview?.returning ?? null));
 
+	/* Tenet 2 (#1089): "Finding the room…" is seen only past PENDING_GRACE_MS (`.finding`, in CSS), and a lookup that
+	   answers after it is seen holds it for that long again, so it is never painted for less. Timed from mount, which is
+	   when the scanned lookup starts. */
+	const mountedAt = performance.now();
+	let resolvingHeld = $state(false);
+	let resolved = false;
+	$effect(() => {
+		if (resolved || !arrivedWithCode || (!preview && !previewError)) return;
+		resolved = true;
+		const seen = performance.now() - mountedAt;
+		if (seen < PENDING_GRACE_MS || seen >= 2 * PENDING_GRACE_MS) return;
+		resolvingHeld = true;
+		setTimeout(() => (resolvingHeld = false), 2 * PENDING_GRACE_MS - seen);
+	});
+
 	/* DERIVED from `preview`, so no state can show an identity pane for a room that was never confirmed. */
 	const pane = $derived<'resolving' | 'code' | 'identity'>(
-		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
+		resolvingHeld ? 'resolving' : preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
 	);
 
 	/* The colour sits behind "change" (redesign step 7, #1157): the ring opens in a modal dialog over the card, so
@@ -219,7 +234,8 @@
 		{#if pane === 'resolving'}
 			<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
 				it says nothing, so the region would announce nothing at all. -->
-			<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
+			<!-- Its box from the first frame, so the sentence that replaces it moves nothing; seen only past the grace. -->
+			<p class="confirm finding" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
 		{:else if pane === 'identity'}
 			<!-- IDENTITY. No code input here: both paths have already taken the code. -->
 			<p class="confirm" role="status">{confirmSentence}</p>
@@ -405,6 +421,15 @@
 		font-size: var(--ph-text-lg);
 		color: var(--ink);
 		font-weight: 600;
+	}
+	/* Hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, then seen: no motion, so not behind reduced motion. */
+	.finding {
+		animation: finding 0s 0.3s backwards;
+	}
+	@keyframes finding {
+		from {
+			visibility: hidden;
+		}
 	}
 	/* --warn, not --danger-ink: nothing failed, the room simply does not know this phone any more. */
 	.lost {
