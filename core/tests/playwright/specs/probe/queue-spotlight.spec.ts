@@ -78,6 +78,9 @@ for (const [width, height] of [
 		await theo.screenshot({ path: testInfo.outputPath(`queue-on-deck-${width}.png`) });
 
 		// The handoff: the same element, the same height, nothing shifted.
+		// The time left's first tick on a 60 s song ("~1 min" -> "under a minute") is a text shift of its own, so the
+		// watch starts after it (#1316).
+		await expect(card.getByRole('region', { name: 'On deck' })).toContainText('under a minute');
 		const before = (await card.boundingBox())!;
 		await card.evaluate((el) => ((el as HTMLElement).dataset.probe = 'same'));
 		await watchShifts(theo);
