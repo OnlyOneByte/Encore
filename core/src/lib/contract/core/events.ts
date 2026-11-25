@@ -380,8 +380,8 @@ export const PROFILE_SETTINGS = [
 export type ProfileSetting = (typeof PROFILE_SETTINGS)[number];
 
 /** The ones the worker picks from its hardware when not set by hand; the rest keep a fixed default. A
- *  worker change that makes a setting pick itself adds it here (#1284 for demucsJobs). */
-export const PICKED_AT_BOOT: readonly ProfileSetting[] = ['device', 'backend', 'threads', 'asrCompute'];
+ *  worker change that makes a setting pick itself adds it here (demucsJobs: one per 8 cores, #1284). */
+export const PICKED_AT_BOOT: readonly ProfileSetting[] = ['device', 'backend', 'threads', 'demucsJobs', 'asrCompute'];
 
 /** Mirrors the worker's `config.ASR_COMPUTE_TYPES`; anything else is dropped. */
 export const ASR_COMPUTE_TYPES = ['float32', 'float16', 'bfloat16', 'int8', 'int8_float16', 'int8_float32'] as const;

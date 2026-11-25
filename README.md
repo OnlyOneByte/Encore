@@ -338,7 +338,7 @@ Everything else is an **override**, with a default that suits one worker beside 
 - **Placement** — `ENCORE_WORKER_TOKEN` (must match core's; a worker on another machine copies core's token
   file here), `ENCORE_WORKER_TOKEN_FILE` (read at every dial when the token is unset), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
   `ENCORE_WORKER_CONCURRENCY` (`1`; 2 overlaps a queue of songs, and the separators' threads are split between the jobs)
-- **Speed** — `ENCORE_THREADS` and `ENCORE_ASR_COMPUTE` (auto at boot), `ENCORE_DEMUCS_JOBS` (`1`) and
+- **Speed** — `ENCORE_THREADS`, `ENCORE_ASR_COMPUTE` and `ENCORE_DEMUCS_JOBS` (auto at boot), and
   `ENCORE_WARMUP=0` (skip loading the models right after boot)
 - **Device** — `ENCORE_DEVICE` (unset = CUDA, then Apple MPS, then CPU, as torch finds them; otherwise a
   torch device string such as `cuda:1` or `xpu`), `ENCORE_SEPARATOR_BACKEND` (`torch` or `mlx`; unset picks

@@ -187,10 +187,10 @@ test('every attempt records the jobs at once, the demucs jobs, the speech comput
 	expect([audit.models.concurrency, audit.models.demucsJobs, audit.handSet]).toEqual(['2', '4', ['concurrency']]);
 	const facts = modelFacts(audit.models, audit.handSet);
 	expect(facts).toContainEqual(['jobs at once', '2 (set by hand)']);
-	// The box picks the compute type and the threads; demucs jobs keeps a fixed default until #1284.
+	// The box picks the compute type, the threads and the demucs jobs (#1284).
 	expect(facts).toContainEqual(['speech compute', 'float16 (auto)']);
 	expect(facts).toContainEqual(['torch threads', '16 (auto)']);
-	expect(facts).toContainEqual(['demucs jobs', '4 (default)']);
+	expect(facts).toContainEqual(['demucs jobs', '4 (auto)']);
 });
 
 test('a worker too old to say what it set by hand records null, not "all auto"', () => {
@@ -207,7 +207,7 @@ test('/metrics marks each setting of a worker as set by hand, picked by the box,
 	expect(workerFacts({ ...profile, handSet: ['threads'] }, null)).toEqual([
 		['hardware', 'cpu (auto)'],
 		['torch threads', '6 (set by hand)'],
-		['demucs jobs', '4 (default)'],
+		['demucs jobs', '4 (auto)'],
 		['jobs at once', '1 (default)'],
 		['speech compute', 'float32 (auto)'],
 		['warm-up at boot', 'on (default)']

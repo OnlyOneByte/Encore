@@ -55,6 +55,8 @@ test('the profile a worker sends in hello is on /api/metrics and the /metrics pa
 		await expect(worker).toContainText('16 (set by hand)');
 		// Neither set nor picked by the box: a fixed default, never "auto" (goal 2 counts the auto ones).
 		await expect(worker).toContainText('1 (default)');
+		// demucs jobs is picked from the cores (#1284).
+		await expect(worker).toContainText('4 (auto)');
 		await expect(worker).toContainText('demucs jobs');
 		await expect(worker).toContainText('jobs at once');
 		await expect(worker).toContainText('NVIDIA RTX 4070');

@@ -89,6 +89,17 @@ def test_torch_demucs_asks_for_two_stems_only() -> None:
     assert argv[-1] == "/w/input.wav"
 
 
+def test_parallel_cpu_chunks_run_in_processes_never_demucs_threads() -> None:
+    """demucs's `-j` threads share one model and returned NaN chunks on CPU, saved as silence (#1130)."""
+
+    def module(argv: list[str]) -> str:
+        return argv[argv.index("-m") + 1]
+
+    assert module(demucs_argv("/w/i.wav", "/w/o", jobs=4)) == "encore_worker.adapters.demucs_pool"
+    assert module(demucs_argv("/w/i.wav", "/w/o", jobs=1)) == "demucs.separate"
+    assert module(demucs_argv("/w/i.wav", "/w/o", device="cuda", jobs=4)) == "demucs.separate"
+
+
 def test_job_count_is_never_below_one() -> None:
     """A zero would make demucs use no workers and hang rather than run single-threaded."""
     assert "-j" in demucs_argv("/w/i.wav", "/w/o", jobs=0)

@@ -84,11 +84,13 @@ def demucs_argv(
     `vocals.wav` and `no_vocals.wav` directly, so no mix-minus pass is needed. `-n` is the model and
     reaches a subprocess, which is why `resolve_model` gates it. `sys.executable`, not `python` from PATH:
     `capabilities` probed demucs in THIS interpreter, and a service manager's PATH may have no `python`.
+    `-j` above 1 on CPU runs through `demucs_pool`: demucs's own threads share one model and returned NaN.
     """
+    pooled = jobs > 1 and device == "cpu"
     return [
         sys.executable,
         "-m",
-        "demucs.separate",
+        "encore_worker.adapters.demucs_pool" if pooled else "demucs.separate",
         "-n",
         model,
         "--two-stems=vocals",

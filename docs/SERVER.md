@@ -1360,7 +1360,8 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   boolean, and `handSet` an array of at most 32 entries, of which only known names are kept, so nothing but
   the allowlist reaches the column. The warm-up is a boot step with no effect on one attempt, so it stays on
   the worker card only. /metrics and the song history mark each value "set by hand", "auto" when the box
-  picks it (`PICKED_AT_BOOT`), or "default" for a fixed default; both are [host only](#the-host-key), and a
+  picks it (`PICKED_AT_BOOT`: device, backend, threads, demucs jobs and speech compute), or "default" for a
+  fixed default (jobs at once and the warm-up); both are [host only](#the-host-key), and a
   guest's `/api/audit` gets the catalog row alone. On an align row the mark on `device` is about
   `ENCORE_DEVICE`, even where the completion replaced the device with the transcriber's (`cpu` on a Mac).
 - **`audioSec` is snapshotted onto the attempt**, not joined from `media`, because a media row's duration
