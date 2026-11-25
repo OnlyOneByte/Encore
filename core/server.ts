@@ -61,8 +61,7 @@ const WORKER_TOKEN = workerToken.token;
 // Refused before anything boots: a short fixed key or worker token is one a LAN device could guess.
 const refusals = [
 	adminTokenProblem(process.env.ENCORE_ADMIN_TOKEN),
-	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN),
-	workerToken.refusal
+	workerTokenProblem(process.env.ENCORE_WORKER_TOKEN)
 ].filter(Boolean);
 for (const refusal of refusals) console.error(`[core] ${refusal}`);
 if (refusals.length) process.exit(1);

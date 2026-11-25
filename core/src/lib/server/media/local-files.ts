@@ -8,6 +8,7 @@ import { dirname, resolve, join, sep } from 'node:path';
 import { mediaRoot, resolveBase, metaDir, derivedDir } from './paths';
 import { isTokenDir, workerTokenFile } from '../jobs/worker-token';
 import { realPath } from '../real-path';
+import { DB_FILE, dataDir } from '../db';
 
 const under = (p: string, dir: string) => p === dir || p.startsWith(dir + sep);
 
@@ -40,20 +41,24 @@ export function safeMediaPath(ref: string): string | null {
 
 	// Never serve caches or the authoritative sidecar records through the public media route. `meta/`
 	// is the library's source of truth, not media to stream — and carries retained raw uploader metadata.
-	const hidden = [metaDir(), join(mediaRoot(), '.thumbs'), join(derivedDir(), 'thumbs')];
-	for (const dir of hidden) {
-		const realDir = realPath(dir) ?? dir;
-		if (under(candidate, dir) || under(real, dir) || under(real, realDir)) return null;
-	}
-	// Never the worker token, its temp files, or its own auth/ dir (a hand-set file's dir may hold media), compared
-	// by real path both ways so a linked MEDIA_DIR or DATA_DIR cannot alias them back in.
+	// Nor core's own state (#1213): the database and token by name always; DATA_DIR and auth/ whole only when strictly
+	// inside the root, or every song hides. Plain and real paths, case-folded for a case-insensitive volume (macOS).
+	// Upper then lower: lowercasing alone leaves ſ and ı, which a case-insensitive volume matches to s and i.
+	const forms = (p: string) => [p, realPath(p) ?? p].map((f) => f.toUpperCase().toLowerCase());
+	const paths = forms(candidate).concat(forms(real));
+	const roots = forms(base);
+	const inside = (dir: string) => forms(dir).some((d) => roots.some((r) => d !== r && under(d, r)));
+	const data = resolve(dataDir());
 	const tokenFile = workerTokenFile();
 	const tokenDir = dirname(tokenFile);
-	const paths = [candidate, real];
-	const files = [tokenFile, realPath(tokenFile) ?? tokenFile];
-	if (paths.some((p) => files.some((f) => p === f || p.startsWith(`${f}.tmp-`)))) return null;
-	const dirs = isTokenDir(tokenDir) ? [tokenDir, realPath(tokenDir) ?? tokenDir] : [];
-	if (paths.some((p) => dirs.some((d) => under(p, d)))) return null;
+	const dirs = [metaDir(), join(mediaRoot(), '.thumbs'), join(derivedDir(), 'thumbs')];
+	if (inside(data)) dirs.push(data);
+	if (isTokenDir(tokenDir) && inside(tokenDir)) dirs.push(tokenDir);
+	if (dirs.some((dir) => forms(dir).some((d) => paths.some((p) => under(p, d))))) return null;
+	// A file and its siblings by suffix: the token's `.tmp-` half-writes, the database's -wal, -shm and -journal.
+	const files = [join(data, DB_FILE), tokenFile];
+	const family = (p: string, f: string) => p === f || p.startsWith(`${f}.`) || p.startsWith(`${f}-`);
+	if (files.some((file) => forms(file).some((f) => paths.some((p) => family(p, f))))) return null;
 
 	return candidate;
 }

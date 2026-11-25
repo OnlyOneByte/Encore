@@ -25,6 +25,119 @@ function withTree(run: (dirs: { media: string; secret: string }) => void) {
 	}
 }
 
+test('a one-folder install (MEDIA_DIR=X, DATA_DIR=X/data) never serves the database or the worker token', () => {
+	withTree(({ media }) => {
+		const saved = process.env.DATA_DIR;
+		mkdirSync(join(media, 'data'));
+		mkdirSync(join(media, 'auth'));
+		writeFileSync(join(media, 'data', 'encore.sqlite'), 'db');
+		writeFileSync(join(media, 'auth', 'worker-token'), 'secret');
+		// Reached through a linked MEDIA_DIR or DATA_DIR too, so the check must compare real paths (#1213).
+		const linked = join(media, '..', 'linked-media');
+		symlinkSync(media, linked);
+		try {
+			for (const [root, data] of [
+				[media, join(media, 'data')],
+				[linked, join(media, 'data')],
+				[media, join(linked, 'data')]
+			] as const) {
+				process.env.MEDIA_DIR = root;
+				process.env.DATA_DIR = data;
+				expect(safeMediaPath('data/encore.sqlite')).toBeNull();
+				expect(safeMediaPath('data/encore.sqlite-wal')).toBeNull();
+				expect(safeMediaPath('data')).toBeNull();
+				expect(safeMediaPath('auth/worker-token')).toBeNull();
+				expect(safeMediaPath('song.mp3')).toBe(join(root, 'song.mp3'));
+			}
+		} finally {
+			if (saved === undefined) delete process.env.DATA_DIR;
+			else process.env.DATA_DIR = saved;
+		}
+	});
+});
+
+function withDataDir(data: string, run: () => void) {
+	const saved = process.env.DATA_DIR;
+	process.env.DATA_DIR = data;
+	try {
+		run();
+	} finally {
+		if (saved === undefined) delete process.env.DATA_DIR;
+		else process.env.DATA_DIR = saved;
+	}
+}
+
+test('DATA_DIR equal to MEDIA_DIR still serves every song, and never the database family', () => {
+	withTree(({ media }) =>
+		withDataDir(media, () => {
+			writeFileSync(join(media, 'encore.sqlite'), 'db');
+			expect(safeMediaPath('song.mp3')).toBe(join(media, 'song.mp3'));
+			expect(safeMediaPath('derived/stems/m1-instrumental.flac')).not.toBeNull();
+			for (const ref of ['encore.sqlite', 'encore.sqlite-wal', 'encore.sqlite-shm', 'encore.sqlite-journal']) {
+				expect(safeMediaPath(ref), ref).toBeNull();
+			}
+		})
+	);
+});
+
+test('DATA_DIR above MEDIA_DIR (DATA_DIR=X, MEDIA_DIR=X/media) still serves every song', () => {
+	withTree(({ media }) =>
+		withDataDir(join(media, '..'), () => {
+			writeFileSync(join(media, '..', 'encore.sqlite'), 'db');
+			expect(safeMediaPath('song.mp3')).toBe(join(media, 'song.mp3'));
+			expect(safeMediaPath('derived/stems/m1-instrumental.flac')).not.toBeNull();
+			expect(safeMediaPath('../encore.sqlite')).toBeNull();
+		})
+	);
+});
+
+// shortcut: Linux is case-sensitive, so these pin the folded comparison; a real macOS volume was not run.
+test('case variants of every hidden path are refused, as a case-insensitive volume would open them', () => {
+	withTree(({ media }) =>
+		withDataDir(join(media, 'data'), () => {
+			for (const ref of [
+				'DATA/encore.sqlite',
+				'Data/Encore.SQLITE-wal',
+				'data/ENCORE.sqlite',
+				'AUTH/worker-token',
+				'auth/WORKER-TOKEN.tmp-1',
+				'META/m1.json',
+				'derived/THUMBS/x.jpg'
+			]) {
+				expect(safeMediaPath(ref), ref).toBeNull();
+			}
+			expect(safeMediaPath('SONG.mp3')).toBe(join(media, 'SONG.mp3'));
+		})
+	);
+});
+
+// ſ upper-cases to S and ı to I: a full case fold, as macOS and NTFS apply, matches them to the real files.
+test('the database and token names are refused under a full case fold too (ſ, ı)', () => {
+	withTree(({ media }) => {
+		// DATA_DIR = MEDIA_DIR, so only the file names guard the database here, not a hidden folder.
+		withDataDir(media, () => {
+			for (const ref of ['encore.ſqlite', 'encore.sqlıte-wal', 'ENCORE.ſQLITE-shm']) {
+				expect(safeMediaPath(ref), ref).toBeNull();
+			}
+		});
+		const saved = process.env.ENCORE_WORKER_TOKEN_FILE;
+		process.env.ENCORE_WORKER_TOKEN_FILE = join(media, 'library', 'worker-secret');
+		try {
+			for (const ref of [
+				'library/worker-ſecret',
+				'library/worker-secret.tmp-1',
+				'library/worker-ſecret.tmp-1',
+				'library/worker-secret'.replace('i', 'ı')
+			]) {
+				expect(safeMediaPath(ref), ref).toBeNull();
+			}
+		} finally {
+			if (saved === undefined) delete process.env.ENCORE_WORKER_TOKEN_FILE;
+			else process.env.ENCORE_WORKER_TOKEN_FILE = saved;
+		}
+	});
+});
+
 test('a symlink inside media that points outside it is refused', () => {
 	withTree(({ media, secret }) => {
 		symlinkSync(secret, join(media, 'link-to-token'));

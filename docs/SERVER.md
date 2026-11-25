@@ -911,14 +911,12 @@ a guest phone on the Wi-Fi must not be able to open one. There is always a token
   reused on every later boot. The default is `auth/worker-token` beside `DATA_DIR`.
   - The write is whole or not at all: a temp file beside it, linked into place.
   - An empty or short file (under 24 characters) is replaced the same way, so it cannot become a crash loop.
-- **Never inside what `/media/...` serves.** Under compose the file is `/app/auth/worker-token` on the `worker-auth`
+- **Never served by `/media/...`.** Under compose the file is `/app/auth/worker-token` on the `worker-auth`
   named volume, which core mounts read-write and the worker read-only. Under `dev.sh` it is `<repo>/auth/worker-token`.
-  - **If the path falls inside `MEDIA_DIR` or a storage class directory, core refuses to start**, unless
-    `ENCORE_WORKER_TOKEN` is set. A hand-set `ENCORE_WORKER_TOKEN_FILE` gets the same check. The default does land
-    there in the layout `MEDIA_DIR=X`, `DATA_DIR=X/data`. In that layout `/media` also serves the database, so the
-    message says to move `DATA_DIR` out too. Keeping core from booting there is deliberate.
-  - `safeMediaPath` refuses the token file and its temp files wherever they are, and the whole default `auth/`
-    directory.
+  - `safeMediaPath` refuses the token file and its temp files wherever they are, and the database files; and, when
+    they sit inside a served root, the whole default `auth/` directory and `DATA_DIR` (#1213, below).
+  - So a path inside `MEDIA_DIR` or a storage class directory only logs a warning at boot. The default lands there
+    in the one-folder layout `MEDIA_DIR=X`, `DATA_DIR=X/data`, which still starts with zero setup.
   - Both checks compare **real paths**, with every symlink followed on both sides. So `MEDIA_DIR` as a link to the
     disk that `DATA_DIR` names directly, or the reverse, is caught too.
   - Separately, `safeMediaPath` refuses any dot-file segment, because no media ref is one.
@@ -946,9 +944,9 @@ a guest phone on the Wi-Fi must not be able to open one. There is always a token
 - **The caveat.** The token rides in the `ws://` query, so it stops a device that merely reaches the port. It does
   not stop someone who can sniff the Wi-Fi.
 - `probe/p9-settings.spec.ts` dials with no token (401), a wrong one (401) and core's (opens), and checks core's log
-  never holds the token. In the `MEDIA_DIR=X`, `DATA_DIR=X/data` layout, it checks that core refuses to start. With
-  a token set and a file planted at the real `X/auth/worker-token`, it checks that `/media/auth/worker-token` is a
-  404.
+  never holds the token. In the `MEDIA_DIR=X`, `DATA_DIR=X/data` layout, it checks that core boots with the warning
+  and that `/media/auth/worker-token` (and its spellings) is a 404. `probe/media-data-dir.spec.ts` checks the
+  database is a 404 there too.
 
 ### Schema and migrations
 
@@ -1042,6 +1040,19 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   globally, because a class directory may legitimately point outside it. It is the single containment
   authority, shared by the `/media` route and its test so "what is safe to serve" cannot drift; a join that
   skips it serves any file the process can read.
+- **Core's own state is never media (#1213).** Where `DATA_DIR` sits decides what `/media` hides:
+
+  | `DATA_DIR` | Example | Refused | Songs |
+  | --- | --- | --- | --- |
+  | inside `MEDIA_DIR` (one-folder) | `MEDIA_DIR=X`, `DATA_DIR=X/data` | all of `DATA_DIR` and the token's `auth/` dir | served |
+  | equal to `MEDIA_DIR` | `MEDIA_DIR=X`, `DATA_DIR=X` | `encore.sqlite` and its `-wal`, `-shm`, `-journal` | served |
+  | above `MEDIA_DIR` | `DATA_DIR=X`, `MEDIA_DIR=X/media` | nothing extra: the database is outside media | served |
+
+  - The database and token files are refused by name in every layout. A whole directory is hidden only when it is
+    strictly inside the ref's root, because hiding `DATA_DIR` at or above the root would hide every song.
+  - Each comparison uses the plain and the real path, case-folded, as do `meta/` and the thumbnail caches. A
+    case-insensitive volume (macOS, or a Docker Desktop bind mount) would otherwise open `DATA/encore.sqlite`. Only
+    the folded comparison is tested; no case-insensitive filesystem was run.
 - **Symlinks are resolved, not trusted (#1206).** The check runs on the real path too: a ref's real path
   must stay inside the real path of its class root, and outside `meta/` and the thumbnail caches. A link that
   leads out (to the worker token, the SQLite file, `/etc`) or dangles is a 404. A link that stays inside
