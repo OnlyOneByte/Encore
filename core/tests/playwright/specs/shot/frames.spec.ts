@@ -23,7 +23,7 @@
 // purpose ("a television grants no gesture"). They are dropped rather than skipped: this repo ruled a
 // permanently-skipped test is indistinguishable from rot, so a frame that cannot be produced is absent and
 // named here, not present and yellow.
-import { test, expect } from '../../world/fixtures';
+import { test, expect, pickColour } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { openQueue } from '../../world/actors';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
@@ -189,6 +189,7 @@ const FRAMES: Frame[] = [
 		viewport: PHONE,
 		setup: async (page, world) => {
 			await openIdentityPane(page, world);
+			await page.locator(SEL.colourChange).click();
 			// `End` walks the ring to its last stop: a real interaction, and visibly not the default. The ring is
 			// one `role="slider"` over 48 stops, so there is no per-colour element to click — and `aria-valuenow`
 			// reaching `aria-valuemax` is the state to wait for, rather than a repaint interval.
@@ -207,7 +208,7 @@ const FRAMES: Frame[] = [
 		setup: async (page, world) => {
 			await openIdentityPane(page, world);
 			await page.locator(SEL.nameInput).fill('Maya');
-			await page.locator(SEL.colourRing).press('Home');
+			await pickColour(page, 'Home');
 			await expect(page.getByRole('button', { name: SEL.submit })).toBeEnabled();
 		}
 	},

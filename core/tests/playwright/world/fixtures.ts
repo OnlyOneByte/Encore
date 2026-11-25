@@ -20,6 +20,13 @@ export interface JoinOptions {
 	stop?: string;
 }
 
+/** The join screen's colour sits behind "change" (redesign step 7): open the ring, press `key` on it, close it. */
+export async function pickColour(page: Page, key: string): Promise<void> {
+	await page.locator(SEL.colourChange).click();
+	await page.locator(SEL.colourRing).press(key);
+	await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+}
+
 export interface DemoTrack {
 	id: string;
 	source: string;
@@ -122,7 +129,7 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string>;
 			// name field does not exist — the single most common way a flow times out against nothing.
 			await page.goto(`/?room=${encodeURIComponent(code)}`);
 			await page.locator(SEL.nameInput).fill(name);
-			if (stop) await page.locator(SEL.colourRing).press(stop);
+			if (stop) await pickColour(page, stop);
 			// The label IS the regex source, so the button is derived rather than re-typed.
 			await page.getByRole('button', { name: SEL.submit }).click();
 			// The join reloads `/` by hand — a client-side goto from `/` to `/` is a no-op — so wait for the

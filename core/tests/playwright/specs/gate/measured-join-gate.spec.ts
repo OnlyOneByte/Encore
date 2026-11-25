@@ -1,6 +1,7 @@
 /*
  * CLAIM 7: the join gate lands in the SAME PLACE on both of its hosts, and that place is the one its own
- * component declares — CENTRED from --bp-md up, FILLED and bottom-docked below it.
+ * component declares — CENTRED from --bp-md up, FILLED below it — with the CTA inside the join card at every
+ * width (redesign step 7, #1157; it was docked to the screen's bottom edge, far from the boxes it acts on).
  *
  * IT HAS TWO HOSTS, which is what made them disagree: `/` renders `<JoinLanding />` inside the home route's
  * `main` (src/routes/+page.svelte), `/library` renders it as a direct child of `.app-shell` with no `main` at
@@ -19,8 +20,8 @@
  * WHAT IT ADDS TO WHAT THE PROBE ASSERTED. The probe held three DELTAS at zero. Equality alone cannot fail on
  * a tree where BOTH hosts break the same way — delete `justify-content: center` and the two routes agree
  * perfectly on a top-aligned gate — so the absolute half is asserted too: from --bp-md up the free space above
- * the gate equals the free space below it ON EACH HOST, below it the gate starts at the shell's content top and
- * the CTA docks. Two premises are asserted rather than assumed: that the hosts are still DIFFERENT (an
+ * the gate equals the free space below it ON EACH HOST, below it the gate starts at the shell's content top.
+ * Two premises are asserted rather than assumed: that the hosts are still DIFFERENT (an
  * equality between two identical hosts measures nothing), and that the host `main` is really being neutralised
  * (`display: flex`, no route padding, `flex-grow` 0 at >=--bp-md and 1 below) — which is the declaration that
  * regressed, so naming it turns "head left 164 vs 148" into "the route's padding is back".
@@ -36,16 +37,9 @@
  *   drop `justify-content: center`                12 arms red, and ONLY the absolute ones — every delta stayed 0
  *                                                  while at 1024x900 BOTH hosts read 0px above the brand band and
  *                                                  525.17px below the column, which is the hole this file closes
- *   make `flex: 0 0 auto` unconditional            8 arms red; the CTA undocks to y=353.05 of 844 at 390x844
  *   drop the whole neutralising rule              29 arms red; the mechanism arm names it — the host resolves
  *                                                  `display: block`/`grid` with `padding: 6px 16px 28px` back
- *
- * WHAT IS STILL NOT GATE-ABLE, and stays a note rather than becoming a weak assertion: `.submit-slot` is
- * `position: sticky` as well as auto-margined, and the case that needs the sticky offset is the on-screen
- * keyboard shrinking the LAYOUT viewport (`app.html`'s interactive-widget mode). Headless Chromium has no soft
- * keyboard, so no measured gate can drive that state — recorded already in docs/FRONTEND.md#the-join-screen and
- * in the rule's own comment. This gate measures the resting placement, which is the half a layout engine can
- * answer for.
+ * (those counts predate the CTA moving into the card).
  */
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
@@ -65,8 +59,9 @@ interface Placement {
 	headTop: number;
 	headLeft: number;
 	columnBottom: number;
-	/** `.join-main`'s own bottom inset — what "the CTA is docked to the bottom of the column" means in px. */
-	columnPadBottom: number;
+	cardBottom: number;
+	/** The join card's own bottom inset — what "the CTA is the last thing in the card" means in px. */
+	cardPadBottom: number;
 	ctaBottom: number;
 	innerHeight: number;
 	/** Read off `:root`, so the breakpoint this gate drives is the token and not a second copy of 768. */
@@ -80,7 +75,7 @@ async function readPlacement(ctx: BrowserContext, baseURL: string, route: string
 	await page.goto(baseURL + route);
 	await page.locator(SEL.joinHead).waitFor();
 	const reading = await page.evaluate(
-		({ appShell, mainColumn, joinHead, joinColumn, joinCta }) => {
+		({ appShell, mainColumn, joinHead, joinColumn, joinCard, joinCta }) => {
 			const box = (sel: string) => {
 				const el = document.querySelector(sel);
 				if (!el) throw new Error(`the join gate is missing ${sel} — its placement is UNMEASURED, not passed`);
@@ -106,7 +101,8 @@ async function readPlacement(ctx: BrowserContext, baseURL: string, route: string
 				headTop: box(joinHead).top,
 				headLeft: box(joinHead).left,
 				columnBottom: columnEl.getBoundingClientRect().bottom,
-				columnPadBottom: parseFloat(getComputedStyle(columnEl).paddingBottom),
+				cardBottom: box(joinCard).bottom,
+				cardPadBottom: parseFloat(getComputedStyle(document.querySelector(joinCard)!).paddingBottom),
 				ctaBottom: box(joinCta).bottom,
 				innerHeight: window.innerHeight,
 				bpMd: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bp-md'))
@@ -117,6 +113,7 @@ async function readPlacement(ctx: BrowserContext, baseURL: string, route: string
 			mainColumn: SEL.mainColumn,
 			joinHead: SEL.joinHead,
 			joinColumn: SEL.joinColumn,
+			joinCard: SEL.joinCard,
 			joinCta: SEL.joinCta
 		}
 	);
@@ -146,7 +143,7 @@ const ARMS: { width: number; height: number; centred: boolean }[] = [
 	{ width: 1920, height: 1080, centred: true }
 ];
 
-test('CLAIM 7 the join gate lands identically on / and /library, centred from --bp-md up and docked below it', async ({
+test('CLAIM 7 the join gate lands identically on / and /library, centred from --bp-md up, the CTA in its card', async ({
 	browser,
 	world
 }) => {
@@ -207,7 +204,7 @@ test('CLAIM 7 the join gate lands identically on / and /library, centred from --
 				.soft(
 					`${home.host.display} ${home.host.padding} ${home.host.flexGrow}`,
 					`CLAIM 7 at ${at} the home route's host is NEUTRALISED — a flex column, no route padding, and ` +
-						`${vp.centred ? 'no growth so the centring has free space to distribute' : 'growing so the column has a bottom for the CTA to reach'}: ` +
+						`${vp.centred ? 'no growth so the centring has free space to distribute' : 'growing so the column fills it'}: ` +
 						`resolved display ${home.host.display}, padding ${home.host.padding}, flex-grow ${home.host.flexGrow} ` +
 						'(the route declares `flex: 1` and `6px 16px calc(var(--dock-h, 0px) + 28px)`, so any of those reappearing is the route winning the cascade)'
 				)
@@ -243,28 +240,24 @@ test('CLAIM 7 the join gate lands identically on / and /library, centred from --
 							`starts at the shell's content top, it is not centred: ${above.toFixed(2)}px above it`
 					)
 					.toBeLessThanOrEqual(1);
-				// DOCKED, by the column's own inset rather than by a number written here: `.join-main` keeps its
-				// `--space-2xl` bottom padding below the arm (0 above it), so "docked" is the CTA sitting exactly that
-				// far off the shell's content floor — 828 of 844 at 390x844, 884 of 900 at 767x900.
-				expect
-					.soft(
-						Math.abs(p.contentBottom - p.ctaBottom - p.columnPadBottom),
-						`CLAIM 7 at ${at} the CTA is docked to the bottom of the column on ${p.route}: its bottom edge is ` +
-							`${(p.contentBottom - p.ctaBottom).toFixed(2)}px off the shell's content floor against the column's own ` +
-							`${p.columnPadBottom}px bottom inset`
-					)
-					.toBeLessThanOrEqual(1);
-				// THE CRITERION behind the docking, and the one a user feels: the app's first button is reachable
-				// without a regrip. Same thumb-zone line CLAIM 3 holds the transport to.
-				expect
-					.soft(
-						p.ctaBottom,
-						`CLAIM 7 at ${at} the CTA is in the thumb zone on ${p.route} — the bottom third of the viewport: ` +
-							`its bottom edge is at y=${p.ctaBottom.toFixed(2)} of ${p.innerHeight}px, and the zone starts at ` +
-							`${((p.innerHeight * 2) / 3).toFixed(1)}`
-					)
-					.toBeGreaterThan((p.innerHeight * 2) / 3);
 			}
+			// IN THE CARD, right under the field it acts on (redesign step 7, #1157), at every width: the CTA's bottom
+			// edge sits exactly the card's own bottom inset off the card's bottom, and the card is on screen.
+			expect
+				.soft(
+					Math.abs(p.cardBottom - p.ctaBottom - p.cardPadBottom),
+					`CLAIM 7 at ${at} the CTA is the last thing in the join card on ${p.route}: its bottom edge is ` +
+						`${(p.cardBottom - p.ctaBottom).toFixed(2)}px off the card's bottom against the card's own ` +
+						`${p.cardPadBottom}px bottom inset`
+				)
+				.toBeLessThanOrEqual(1);
+			expect
+				.soft(
+					p.ctaBottom,
+					`CLAIM 7 at ${at} the CTA is on screen with no scroll on ${p.route}: bottom edge y=${p.ctaBottom.toFixed(2)} ` +
+						`of ${p.innerHeight}px`
+				)
+				.toBeLessThanOrEqual(p.innerHeight);
 		}
 	}
 

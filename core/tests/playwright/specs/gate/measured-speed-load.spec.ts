@@ -26,7 +26,7 @@ const ROWS: LoadRow[] = [
 	{
 		name: 'open / cold, code box ready',
 		url: () => '/',
-		ready: '.code-pane input',
+		ready: '.join-card input',
 		viewport: PHONE,
 		cpu: 1,
 		budgetMs: 1000,
@@ -35,7 +35,7 @@ const ROWS: LoadRow[] = [
 	{
 		name: 'open / cold, code box ready, CPU 4x',
 		url: () => '/',
-		ready: '.code-pane input',
+		ready: '.join-card input',
 		viewport: PHONE,
 		cpu: 4,
 		budgetMs: 1000,

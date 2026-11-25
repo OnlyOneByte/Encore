@@ -1450,9 +1450,17 @@ Spotlight Library step (#1159), so this UI stays minimal.
 and which one is on screen is DERIVED from the resolved room preview rather than from a hand-advanced counter, so
 no state can show an identity pane for a room that was never confirmed. Step 1 is the CODE pane, a FALLBACK
 reached only by a guest with no code in the URL or whose scanned code did not resolve. Step 2 is the IDENTITY
-pane — the room confirmed IN WORDS, the name field, the colour ring, the CTA — and the only pane a guest who
+pane — the room confirmed IN WORDS, the name field, the colour, the CTA — and the only pane a guest who
 scanned the television's QR ever sees. The room has no NAME in the schema, so "confirmed in words" is who is
 here, from the room-preview endpoint.
+
+**Both panes are one Spotlight card** (redesign step 7, #1157): the idle look (the raise surface ringed in the
+accent, then in the colour you will sing in), drawn inline rather than with `<Spotlight>` for the CSS reason under
+"A kept phone" below. The code, then the name, fill the same card, and the CTA is the card's last row, right under
+the field it acts on, so it stays in reach with the keyboard up. Start singing is filled in your colour, inked in
+that stop's certified `on_fill`. **The colour waits behind "change"**: a row reads "Your color Aqua · change" and
+opens the ring in a modal `<dialog>` with a Done button, so picking moves nothing on the page and the ring no longer
+outsizes the name field. The colour is a suggestion until the ring is touched, and an untouched one is never sent.
 
 **Both paths must stay offered, never one instead of the other.** A typed code alone is a cognitive-function test
 under SC 3.3.8, and the scan path is what makes this screen conformant. There is nonetheless NO scan affordance
@@ -1471,8 +1479,6 @@ What the two panes put on state and markup:
   synchronously from inside its own input handler while its `value` binding arrives an `$effect` later, so
   reading the local copy sees one character too few, fails the length check and returns silently — which is how
   the last character of a typed code and a whole pasted code both do nothing.
-- **The step dots are gated on having SEEN step 1**, set from the pane and not from the code path, because "step
-  2 of 2" otherwise reports a step the scanning guest never skipped as skipped.
 - **ONE reason string and ONE live region for both panes.** The inventory rule
   enumerates every phone live region with its purpose, and the disabled reason is a single duty however many
   panes state it (SC 3.3.2). It is ANNOUNCED, not printed: shown, it is a third sentence telling a guest who can
@@ -1497,39 +1503,34 @@ because a percentage inside a `transform` resolves against the transformed eleme
 is `--ph-text-base` over `--ph-text-2xl` written as a RATIO, because CSS cannot divide one length by another.
 
 THE GATE'S PLACEMENT IS ONE DECISION IN ONE PLACE, and that place is this component's stylesheet: below
-`--bp-md` the gate fills its host and the CTA docks to the bottom; from 768 up `.app-shell:has(.join-main)`
-centres a 420px column. Because the gate has two hosts, the host is NEUTRALISED rather than trusted —
+`--bp-md` the gate fills its host; from 768 up `.app-shell:has(.join-main)` centres a 420px column. Because the gate has two hosts, the host is NEUTRALISED rather than trusted —
 `:global(.app-shell > main:has(.join-main))` makes it a flex column, zeroes its route padding, and at 768 up
 takes away its `flex: 1` so the centring has free space to distribute. Without that last declaration the same
 gate measured y=6 on `/` and y=263 on `/library` at 1024x900, because `main { flex: 1 }` grew to the whole shell
 and left nothing to centre. The `.app-shell >` anchor is for SPECIFICITY, not reach: the route's scoped `main`
-rule ties a bare `main:has(.join-main)` at 0,1,1 and its chunk loads later, so the route would win. The CTA then
-docks to the bottom of `.join-main` by an auto margin, which only works because the host is that flex column — a
-block child shrinks to its content and an auto margin has no free space to consume. No route may state the
-gate's alignment, padding or measure. The dock is load-bearing
-beyond tidiness: `app.html` sets the interactive-widget mode that shrinks the LAYOUT viewport when the on-screen
-keyboard opens, so bottom-anchored content rides above the keyboard instead of under it. Headless Chromium has no
-soft keyboard, so no measured gate can verify that placement.
+rule ties a bare `main:has(.join-main)` at 0,1,1 and its chunk loads later, so the route would win. No route may
+state the gate's alignment, padding or measure. (Until redesign step 7 the CTA docked to the screen's bottom edge,
+far from the boxes it acts on; it is in the card now.)
 
 THE RESTING PLACEMENT, THOUGH, IS A GATE — `tests/playwright/specs/gate/measured-join-gate.spec.ts`, CLAIM 7, leg
 7 of `bun run gates`. It drives both hosts at five widths and holds the brand band's top, the gutter and the CTA's
 bottom edge identical between them; from `--bp-md` up it also holds the free space above the gate equal to the free
-space below it ON EACH HOST, and below `--bp-md` it holds the band at the shell's content top and the CTA docked by
-`.join-main`'s own bottom inset. The absolute half is there because equality is blind to a break both hosts share:
+space below it ON EACH HOST, below `--bp-md` it holds the band at the shell's content top, and at every width it
+holds the CTA as the join card's last row (its own bottom inset off the card's bottom) and on screen. The absolute half is there because equality is blind to a break both hosts share:
 with `justify-content: center` deleted the two routes agree perfectly on a top-aligned gate and all three deltas
 stay at zero. Two of its five widths are 767 and 768, and it reads `--bp-md` off `:root`, which makes it the one
 place in this tree where a media literal is checked against the token it is supposed to be. It reads the host's
 resolved `display`, `padding` and `flex-grow` back as well, because a specificity argument that is only asserted is
 not checked — with the neutralising rule deleted the host resolves `display: block` below `--bp-md` and `grid`
 above it, with `padding: 6px 16px 28px` back. Measured while it ran: `.join-head` at y=262.58 at 768 and at 1024
-wide, y=352.58 at 1920x1080, and the CTA's bottom edge at y=828 of 844 at 390x844 — digits the arms DERIVE rather
+wide, y=352.58 at 1920x1080 — digits the arms DERIVE rather
 than pin, so a spacing rung can still move them with nothing red. What cannot happen again is the two hosts
 drifting apart.
 
 **A kept phone is welcomed back** (proposal 30, PR 2). When the room preview carries `returning`, the identity
-pane swaps the name field and the colour ring for an idle Spotlight look in the person's colour, its one heading
-"Welcome back, Theo" at the Spotlight title size, so it cannot read as a field to type in. It is drawn inline
-rather than with `<Spotlight>`: this screen also renders on `/queue`, which does not otherwise ship Spotlight's
+card swaps the name field and the colour row for its one heading "Welcome back, Theo" at the Spotlight title size,
+ringed in the person's colour, so it cannot read as a field to type in. The card is drawn inline rather than with
+`<Spotlight>`: this screen also renders on `/queue`, which does not otherwise ship Spotlight's
 stylesheet, and importing it there costs about 750 B gz of CSS against 170 B of headroom (#1198). The one CTA,
 Start singing, joins with `returning: true`. Arriving there costs no extra request: the
 preview already answers it, so nothing flashes a name field first. "I'm someone else" (a borrowed phone) drops to
@@ -1540,8 +1541,8 @@ pane with the reason. See docs/SERVER.md#kept-people.
 Finally `.confirm`, `.err` and `.cta-reason` stay
 ordinary elements rather than Field primitives: `tests/playwright/world/selectors.ts` addresses `.err` as a class on the
 alerting element and a class handed to a component carries no scoped rule; `.confirm` is the scanned path's
-headline and the primitive would dim and shrink it; `.cta-reason` needs its gap BELOW and centred text, and the
-only way to override the primitive reaches settings' own descriptions too.
+headline and the primitive would dim and shrink it; `.cta-reason` is never painted, only announced, and sits
+outside the card so the card growing as the room resolves moves nothing that was already there.
 
 ### Settings
 

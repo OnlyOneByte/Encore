@@ -43,13 +43,17 @@ export const SEL = {
 	nameInput: 'input[placeholder^="e.g."]',
 	/** One `role="slider"` over 48 stops: a driver picks with `Home`/`End`/arrows, there is nothing to click. */
 	colourRing: '.colour-ring',
+	/** "Your color <name> · change": opens the ring's dialog on the join screen. */
+	colourChange: '.join-card button.colour',
+	/** The join screen's one Spotlight card, holding the code and then the name. */
+	joinCard: '.join-card',
 	submit: /Start singing/,
 	/** How p8 tells a duplicate-name rejection from a clean join: both leave the form sitting there. */
 	joinError: '.err[role=alert]',
 	/* The join gate's three LAYOUT boxes, addressed by class because a layout box owes a user no aria contract
 	   and because these are the exact classes JoinLanding's own placement rules (and its two `:has()` selectors)
 	   key on — see docs/FRONTEND.md#the-join-screen. `joinHead` is the reserved brand band, `joinColumn` the
-	   flex column the CTA docks against, both present on either pane. */
+	   column the card sits in, both present on either pane. */
 	joinHead: '.join-head',
 	joinColumn: '.join-main',
 	/** The CTA by its SLOT, not by `submit` above: that key is the accessible name `Start singing`, which exists

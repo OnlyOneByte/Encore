@@ -119,7 +119,8 @@ test('UI-03: a guest who moves the ring away and back keeps the start colour, ev
 	await jo.goto(`/?room=${world.code}`);
 	await jo.locator(SEL.nameInput).fill('Jo');
 	// The ring's suggestion, read from its own accessible value before anyone else joins.
-	// `.colour-ring` IS the slider (the disc carries the role).
+	// `.colour-ring` IS the slider (the disc carries the role); it waits behind "change".
+	await jo.locator(SEL.colourChange).click();
 	const ring = jo.locator(SEL.colourRing);
 	const suggested = await ring.getAttribute('aria-valuenow');
 	// Theo joins untouched in the meantime, and the room hands him the same free colour Jo is being shown.
@@ -127,6 +128,7 @@ test('UI-03: a guest who moves the ring away and back keeps the start colour, ev
 	await ring.press('ArrowRight');
 	await ring.press('ArrowLeft');
 	await expect(ring).toHaveAttribute('aria-valuenow', suggested!);
+	await jo.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
 	await jo.getByRole('button', { name: SEL.submit }).click();
 	await jo.locator(SEL.dock).waitFor({ state: 'attached' });
 	const { names, colors } = await colours();
