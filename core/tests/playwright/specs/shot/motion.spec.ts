@@ -929,7 +929,7 @@ function tvCopyOffline(width: number, height: number): Make {
 			subject: '.copy-chip',
 			only: '.copy-chip, .copy-chip *',
 			observe: (page) =>
-				page.evaluate(() => ({ chip: document.querySelector('.copy-chip')?.textContent?.trim() ?? null }))
+				page.evaluate(() => ({ line: document.querySelector('.copy-line')?.textContent?.trim() ?? null }))
 		};
 	};
 }
