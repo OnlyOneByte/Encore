@@ -244,3 +244,89 @@ test('STALE PAIR: the re-send repeats how the guarded entry ended, so a lost `fa
 	expect(sung.isBehind('q3')).toBe(true);
 	expect(sung.endedStatus).toBe('failed');
 });
+
+test('SKIP onto the warmed upNext (#1258): swaps to the buffered slot, as a natural end does', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onHiddenReady('q2');
+	c.onNowPlaying(e('q2'), e('q3')); // the server skipped q1
+	expect(c.visible).toBe('B');
+	expect(c.assignment()).toMatchObject({ visible: 'B', hidden: 'A', visibleEntryId: 'q2', hiddenEntryId: 'q3' });
+	expect(c.slotEntries(e('q2'), e('q3'))).toEqual({ visible: e('q2'), hidden: e('q3') });
+	expect(c.state).toBe('loading'); // until the buffered slot, now visible, reports ready
+	c.onVisibleReady();
+	expect(c.state).toBe('playing');
+});
+
+test('SKIP onto a song that is not warmed yet keeps the visible slot and loads it there', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onNowPlaying(e('q2'), e('q3'));
+	expect(c.visible).toBe('A');
+	expect(c.state).toBe('loading');
+	// Skipped past the warmed song altogether: no swap either.
+	const d = new GaplessController();
+	d.onNowPlaying(e('q1'), e('q2'));
+	d.onHiddenReady('q2');
+	d.onNowPlaying(e('q3'), null);
+	expect(d.visible).toBe('A');
+});
+
+test('a warmed file that errored marks that song dead, until the slot warms something else', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onHiddenFailed('q9'); // not what the slot is warming: ignored
+	c.onHiddenReady('q2');
+	c.onHiddenFailed('q2');
+	expect(c.isNextReady('q2')).toBe(false);
+	c.onNowPlaying(e('q2'), e('q3'));
+	expect(c.currentIsDead).toBe(true);
+	expect(c.visible).toBe('A'); // a dead file is never swapped in
+	// q3 warms next: a fresh target is not dead, and neither is a re-warm of the same entry later.
+	c.onEnded(e('q3'), 'failed');
+	c.onNowPlaying(e('q3'), e('q2'));
+	expect(c.currentIsDead).toBe(false);
+	c.onNowPlaying(e('q2'), null);
+	expect(c.currentIsDead).toBe(false);
+});
+
+test('a stale failure report, then the song buffers: the skip swaps to it and it is not dead (#1265 review M1)', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onHiddenFailed('q2'); // the slot still held an older dead file's error
+	c.onHiddenReady('q2'); // q2's own file buffers
+	c.onNowPlaying(e('q2'), e('q3'));
+	expect(c.visible).toBe('B');
+	expect(c.currentIsDead).toBe(false);
+});
+
+test('two quick skips: the first swaps to the warmed slot, the second loads the not-yet-warm song in place', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onHiddenReady('q2');
+	c.onNowPlaying(e('q2'), e('q3')); // skip 1
+	expect(c.visible).toBe('B');
+	expect(c.assignment()).toMatchObject({ visibleEntryId: 'q2', hiddenEntryId: 'q3' });
+	c.onNowPlaying(e('q3'), e('q4')); // skip 2, before q3 has buffered
+	expect(c.visible).toBe('B');
+	expect(c.state).toBe('loading');
+	expect(c.assignment()).toMatchObject({ visibleEntryId: 'q3', hiddenEntryId: 'q4' });
+	expect(c.currentIsDead).toBe(false);
+});
+
+test('a reorder after the warm is ready re-targets the hidden slot, so the stale warm is never swapped in', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onHiddenReady('q2');
+	c.onNowPlaying(e('q1'), e('q3')); // q3 moved ahead of q2
+	expect(c.isNextReady('q2')).toBe(false);
+	expect(c.assignment().hiddenEntryId).toBe('q3');
+	c.onNowPlaying(e('q2'), e('q3')); // a skip lands on q2 anyway, whose buffer was dropped
+	expect(c.visible).toBe('A');
+	expect(c.state).toBe('loading');
+});

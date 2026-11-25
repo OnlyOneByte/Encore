@@ -228,6 +228,12 @@
 			return;
 		}
 		ctl.onNowPlaying(cur, next);
+		// The hidden slot already found this file dead: say so now, with no card and no refetch (#1258). Not over another
+		// song's notice, which the server holds this one behind: that would cut it short, so it fails after, as before.
+		if (entryChanged && cur && ctl.currentIsDead && !skipNotice) {
+			onVisibleFailed(cur.id);
+			return;
+		}
 		// ONE HANDOFF, however the last song ended. A natural end already raised the card in `onVisibleEnded`; a skip
 		// or a removal arrives only here, and used to drop the next singer straight into their song with no card (UI-02).
 		// It names `cur`, the entry ACTUALLY starting, never `upNext`. Not before the evening's first song, which
@@ -965,6 +971,7 @@
 				ctl.onHiddenReady(slotEntryId[slot] ?? '');
 				tvState = ctl.state;
 			}}
+			onprewarmfailed={() => ctl.onHiddenFailed(slotEntryId[slot] ?? '')}
 			onended={() => onVisibleEnded(slotEntryId[slot])}
 			onfailed={() => onVisibleFailed(slotEntryId[slot])}
 			onposition={(s, d) => {

@@ -21,6 +21,7 @@ export class GaplessController {
 	#current: string | null = null; // entryId in the visible slot
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
+	#deadId: string | null = null; // entryId the hidden slot already got a media error for
 	// The entry `onEnded` moved past, until a server frame does too. Until then a frame naming it predates the TV's own
 	// `ended`: a phone command made the server re-send its old pair (#1001).
 	#endedFrom: string | null = null;
@@ -82,17 +83,30 @@ export class GaplessController {
 			return;
 		}
 		if (current.id !== this.#current) {
+			// A skip onto the song the hidden slot has buffered swaps to it, as a natural end does (#1258); the slot still
+			// reports ready once it is visible, so the state stays `loading` until then.
+			if (this.isNextReady(current.id)) this.#swapToHidden();
 			this.#current = current.id;
-			this.#state = 'loading'; // visible slot must (re)load the new current
+			this.#state = 'loading'; // visible slot must (re)load the new current, or report its buffer ready
 			this.#introOverLoad = false;
 		}
 		if (upNext && upNext.id !== this.#warmingId && upNext.id !== this.#readyId) {
-			this.#warmingId = upNext.id;
-			this.#readyId = null;
+			this.#warm(upNext.id);
 		} else if (!upNext) {
-			this.#warmingId = null;
-			this.#readyId = null;
+			this.#warm(null);
 		}
+	}
+
+	#warm(entryId: string | null): void {
+		this.#warmingId = entryId;
+		this.#readyId = null;
+		// Warming the next song keeps the mark: the skip that reaches the dead one comes after. A re-warm of it retries.
+		if (entryId === this.#deadId) this.#deadId = null;
+	}
+
+	#swapToHidden(): void {
+		this.#visible = this.hidden;
+		this.#warm(null);
 	}
 
 	/**
@@ -114,7 +128,22 @@ export class GaplessController {
 
 	/** Hidden slot reports it's buffered for its warming target. */
 	onHiddenReady(entryId: string): void {
-		if (entryId === this.#warmingId) this.#readyId = entryId;
+		if (entryId !== this.#warmingId) return;
+		this.#readyId = entryId;
+		// A file that buffered is not dead, whatever a stale error said before it loaded.
+		if (this.#deadId === entryId) this.#deadId = null;
+	}
+
+	/** Hidden slot got a media error for its warming target: that file is dead before anyone hears it. */
+	onHiddenFailed(entryId: string): void {
+		if (entryId !== this.#warmingId) return;
+		this.#deadId = entryId;
+		this.#readyId = null;
+	}
+
+	/** The current song is one the hidden slot already found dead: fail it now rather than reload and refetch it. */
+	get currentIsDead(): boolean {
+		return !!this.#current && this.#current === this.#deadId;
 	}
 
 	/** Is the hidden slot gapless-ready for the given upNext entry? */
@@ -133,6 +162,7 @@ export class GaplessController {
 			this.#endedFrom = this.#current;
 			this.#endedStatus = status;
 		}
+		if (this.#current === this.#deadId) this.#deadId = null; // its failure is reported: the mark is spent
 		if (!upNext) {
 			this.#current = null;
 			this.#state = 'attract';
@@ -140,10 +170,8 @@ export class GaplessController {
 		}
 		if (this.isNextReady(upNext.id)) {
 			// swap roles — the warmed hidden slot is already buffered at t=0
-			this.#visible = this.hidden;
+			this.#swapToHidden();
 			this.#current = upNext.id;
-			this.#warmingId = null;
-			this.#readyId = null;
 			this.#state = 'interstitial'; // page shows the intro card, then -> playing
 			this.#introOverLoad = false; // the warmed slot is buffered already
 		} else {

@@ -347,7 +347,7 @@ Nothing on the TV reads the audio: there is no `AudioContext` on that surface, a
 anywhere on `/tv` to start one. The visualizers are therefore time-driven, and the registry
 **deliberately excludes spectrum bars and an oscilloscope** — those assert they are drawing the signal,
 and drawing them from a timer is the defect the lyrics overlay refuses by name ("a lie dressed as
-precision"). Adding real analysis means adding a `MediaElementAudioSourceNode` per `<video>`, which
+precision"). Adding real analysis means adding a `MediaElementAudioSourceNode` per `<audio>`, which
 must reach `ctx.destination` or the song goes silent.
 
 **Motion budget.** This is the second `requestAnimationFrame` loop on the TV — `LyricsOverlay` already
@@ -393,9 +393,10 @@ ATTRACT → LOADING → PLAYING ── ended ──► INTERSTITIAL → SWAP →
                          └─ next not ready ─► WAITING ─► next ready/rotation advances
 ```
 
-Every surface is a `<video preload="auto">` loading a separated instrumental. There is no second
+Every surface is an `<audio preload="auto">` loading a separated instrumental. There is no second
 player: nothing plays unprocessed, so there is nothing to embed. If up-next changes, B rewarm starts
-for the new entry. Skip is a synthetic `ended`. Switching the room's **Song intro** off gives a pure hard-cut; default is
+for the new entry. A skip onto the song B has buffered swaps to B as `ended` does; if B's warm already hit a media
+error, the skip fails that song at once, with no intro card and no refetch (#1258). Switching the room's **Song intro** off gives a pure hard-cut; default is
 the short singer-reveal moment.
 
 Implementation: `core/src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.
