@@ -23,6 +23,12 @@ async function openScreen(browser: Browser, world: World, real = false, w = 1920
 	await page.locator('.status.on').waitFor({ state: 'attached', timeout: 15_000 });
 	return page;
 }
+/** The lyric box's top and bottom, rounded to whole pixels. */
+const reelBox = (p: Page) =>
+	p.evaluate(() => {
+		const r = document.querySelector('.lyrics')!.getBoundingClientRect();
+		return [Math.round(r.top), Math.round(r.bottom)];
+	});
 const shot = async (page: Page, name: string) => {
 	if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
 };
@@ -230,7 +236,44 @@ test("the room's TV back mid-song takes its seat when the song ends, not before"
 		await expect(standIn.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
 		const back = await openScreen(browser, world, true);
 		await expect(back.locator('.shut-out')).toHaveCount(0);
-		await expect(back.locator('.copy-line')).toHaveText('Back as the TV after this song');
+		await expect(back.locator('.copy-line')).toHaveText('TV again after this song');
+		// On a phone the longest line takes no more room than the quiet one: the room's TV, phone-sized, keeps its
+		// lyrics exactly where a quiet copy at the same width has them (#1205), at 390 and 320.
+		const quiet = await openScreen(browser, world, false, 390, 844);
+		for (const [w, h] of [
+			[390, 844],
+			[320, 568]
+		] as const) {
+			for (const p of [back, quiet]) await p.setViewportSize({ width: w, height: h });
+			for (const p of [back, quiet]) await p.locator('.lyrics .row').first().waitFor({ timeout: 30_000 });
+			await expect(back.locator('.copy-line')).toHaveText('TV again after this song');
+			// Polled until both have measured their chips after the resize; then the two boxes must be the same.
+			await expect
+				.poll(async () => `${await reelBox(back)}` === `${await reelBox(quiet)}`, {
+					message: `the lyrics sit lower under "TV again" at ${w}`
+				})
+				.toBe(true);
+			// At 390 every line fits one row, so the line is one row tall: no longest-line sizer adds an empty one.
+			if (w === 390) {
+				// The shown TEXT's box, not its span's: a grid item stretches to the row the tallest sizer sets.
+				const { line, text, rows } = await back.evaluate(() => {
+					const range = document.createRange();
+					range.selectNodeContents(document.querySelector('.copy-line > span')!);
+					return {
+						line: document.querySelector('.copy-line')!.getBoundingClientRect().height,
+						text: range.getBoundingClientRect().height,
+						rows: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size
+					};
+				});
+				expect(rows, '"TV again" fits one row at 390').toBe(1);
+				// A line box is a little taller than its glyphs; a second row would make it about twice the text.
+				expect(line, 'the copy line is one row at 390').toBeLessThan(text * 1.5);
+			}
+			await shot(back, `tv-again-${w}`);
+			await shot(quiet, `quiet-${w}`);
+		}
+		await quiet.context().close();
+		await back.setViewportSize({ width: 1920, height: 1080 });
 		await back.waitForTimeout(5_000);
 		expect((await tvRow(host))?.id, 'no handover mid-song').toBe(standInId);
 		await sendPlayerCommand(ana, { cmd: 'skip' });

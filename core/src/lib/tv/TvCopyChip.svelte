@@ -2,7 +2,8 @@
 	/** A copy's line: quiet while the seat's screen is live, and honest while it is gone (`tv:seat`'s `tvOnline`).
 	 *  `next`: the room's TV back mid-song, which takes the seat when this song ends. */
 	export function copyLine(tvOnline: boolean, next = false): string {
-		if (next) return 'Back as the TV after this song';
+		// Shorter than "The TV is reconnecting...", the line the phone chip sizes itself to; only 320 wraps.
+		if (next) return 'TV again after this song';
 		return tvOnline ? 'This screen is quiet' : 'The TV is reconnecting...';
 	}
 </script>
@@ -15,7 +16,7 @@
 
 <div class="copy-chip">
 	<!-- No live region here: the page's own (mounted empty with the page) announces every seat change. -->
-	<span class="copy-line">{copyLine(tvOnline, next)}</span>
+	<span class="copy-line" data-sizer={copyLine(false)}><span>{copyLine(tvOnline, next)}</span></span>
 	<button type="button" class="copy-claim" onclick={onclaim}>Make this the TV</button>
 </div>
 
@@ -54,6 +55,20 @@
 		}
 		.copy-claim {
 			padding-inline: var(--tv-space-2xs);
+		}
+		/* Mid-song the line takes the height of the longest one it can show (reconnecting, laid under it unseen), so the
+		   reel below never moves when it changes. Lobby and attract lay the chip in their own flow, so there it keeps its own height. */
+		:global(.copy-stage) .copy-line {
+			display: inline-grid;
+			justify-items: end;
+		}
+		:global(.copy-stage) .copy-line > * {
+			grid-area: 1 / 1;
+		}
+		:global(.copy-stage) .copy-line::before {
+			grid-area: 1 / 1;
+			content: attr(data-sizer);
+			visibility: hidden;
 		}
 	}
 </style>
