@@ -3,7 +3,8 @@
 // legacy WAV stems in place, and EVICT derived artifacts over a soft cap. Both planning halves are pure, so the
 // policy tests without a filesystem.
 
-import { existsSync, statSync, rmSync } from 'node:fs';
+import { existsSync, statSync, rmSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import type { Media } from '../../contract';
 import { safeMediaPath } from './local-files';
 import {
@@ -13,7 +14,8 @@ import {
 	siblingVocalsRef,
 	rawCaptionKey,
 	CAPTION_KINDS,
-	KNOWN_CAPTION_EXTS
+	KNOWN_CAPTION_EXTS,
+	resolveBase
 } from './paths';
 import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
@@ -194,20 +196,52 @@ export function derivedRefsOf(m: Media): string[] {
 	].filter((r): r is string => !!r);
 }
 
+/** Every song's fix documents on disk, by media id. */
+export type EditRefs = ReadonlyMap<string, readonly string[]>;
+
+const EDIT_FILE = /^(.+)-edit-r\d+\.json$/;
+
+/** `derived/lyrics/<id>-edit-r<n>.json` files on disk (`editLyricsRef`), grouped by id, from ONE listing; empty
+ *  when the folder can't be read. A pass over the library takes this once, never a listing per song. */
+export function editRefsByMedia(): Map<string, string[]> {
+	const byId = new Map<string, string[]>();
+	const { base, rest } = resolveBase('derived/lyrics');
+	let names: string[];
+	try {
+		names = readdirSync(resolve(join(base, rest)));
+	} catch {
+		return byId;
+	}
+	for (const name of names) {
+		const id = EDIT_FILE.exec(name)?.[1];
+		if (id) byId.set(id, [...(byId.get(id) ?? []), `derived/lyrics/${name}`]);
+	}
+	return byId;
+}
+
+/** One song's fix documents on disk. */
+export function editRefsOnDisk(mediaId: string): string[] {
+	return editRefsByMedia().get(mediaId) ?? [];
+}
+
 /** What eviction frees: every derived file but a host's fix (small), which the remake re-times from, so a
- *  fix comes back as good as it went. Deleting the song still removes it (`derivedRefsOf`, `delete.ts`). */
-function evictableRefsOf(m: Media): Set<string> {
-	const refs = new Set(derivedRefsOf(m));
-	if (m.lyricsOverrideText && m.lyricsOverrideRef) refs.delete(m.lyricsOverrideRef);
+ *  fix comes back as good as it went. That is a pin with pasted words, or one naming a fix document by ref.
+ *  Every other fix document goes by id, even one nothing names any more (Undo re-times when its document is
+ *  gone). Deleting the song removes the kept one too (`delete.ts`). */
+function evictableRefsOf(m: Media, edits?: EditRefs): Set<string> {
+	const refs = new Set([...derivedRefsOf(m), ...(edits ? (edits.get(m.id) ?? []) : editRefsOnDisk(m.id))]);
+	const pin = m.lyricsOverrideRef;
+	const pinnedFix = pin && EDIT_FILE.exec(pin.slice('derived/lyrics/'.length))?.[1] === m.id;
+	if (pin && (m.lyricsOverrideText || pinnedFix)) refs.delete(pin);
 	return refs;
 }
 
 /** NEVER touches `meta/`, or `audio/` beyond a fetched song's kept original. `evictSong` resets the media to
- *  un-processed, so rotation stops treating it as playable. */
-export function evictDerived(m: Media): { removed: string[]; bytes: number } {
+ *  un-processed, so rotation stops treating it as playable. `edits` is the pass's one listing, when it has one. */
+export function evictDerived(m: Media, edits?: EditRefs): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
-	for (const ref of evictableRefsOf(m)) {
+	for (const ref of evictableRefsOf(m, edits)) {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {
@@ -237,9 +271,9 @@ export function forgetEvicted(m: Media, jobs: Pick<JobRepository, 'supersedeForR
 /** One song's eviction: the files, then the DB row and the sidecar, so no screen still calls it made. */
 export async function evictSong(
 	m: Media,
-	deps: { jobs: Pick<JobRepository, 'supersedeForRerun'>; upsert: (m: Media) => void }
+	deps: { jobs: Pick<JobRepository, 'supersedeForRerun'>; upsert: (m: Media) => void; edits?: EditRefs }
 ): Promise<number> {
-	const { bytes } = evictDerived(m);
+	const { bytes } = evictDerived(m, deps.edits);
 	forgetEvicted(m, deps.jobs);
 	deps.upsert(m);
 	// upsert's sidecar merge would RESTORE the refs just cleared — see clearArtifacts.
@@ -260,9 +294,9 @@ export async function evictUnlessKept(
 }
 
 /** MUST agree with evictDerived. */
-export function derivedBytesOf(m: Media): number {
+export function derivedBytesOf(m: Media, edits?: EditRefs): number {
 	let n = 0;
-	for (const ref of evictableRefsOf(m)) {
+	for (const ref of evictableRefsOf(m, edits)) {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {

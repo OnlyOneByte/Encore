@@ -8,7 +8,7 @@ import type { HubDeps } from '../realtime/hub';
 import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
 import { reconcileOnReady, emitNowPlaying, publishQueue } from '../realtime/player';
 import type { MediaRepository } from './repository';
-import { derivedRefsOf } from './retention';
+import { derivedRefsOf, editRefsOnDisk } from './retention';
 import { queueSidecarTask } from './sidecar';
 import {
 	metaKey,
@@ -25,7 +25,7 @@ import {
 	CAPTION_KINDS,
 	resolveBase
 } from './paths';
-import { readdirSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
 /** `cancel` is the cancelJobsForMedia bag MINUS the fields this module supplies itself. `deleteFile` is
@@ -79,19 +79,6 @@ function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 		for (const r of legacyVocalsRefs(m.instrumentalRef)) refs.add(r);
 	}
 	return [...refs];
-}
-
-/** `derived/lyrics/<id>-edit-r<n>.json` files on disk (`editLyricsRef`); none when the folder can't be read. */
-function editRefsOnDisk(mediaId: string): string[] {
-	const prefix = `${mediaId}-edit-r`;
-	const { base, rest } = resolveBase('derived/lyrics');
-	try {
-		return readdirSync(resolve(join(base, rest)))
-			.filter((name) => name.startsWith(prefix) && /^\d+\.json$/.test(name.slice(prefix.length)))
-			.map((name) => `derived/lyrics/${name}`);
-	} catch {
-		return [];
-	}
 }
 
 /** In the load-bearing order documented above. Idempotent for a media absent from the runtime catalog,

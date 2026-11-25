@@ -320,9 +320,12 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   before, which on two of the three in-repo songs trailed the automatic document's timing.
 - **Eviction keeps a host's fix.** `evictDerived` frees every derived file but the fix's own document (pasted
   words only, small, left out of the cap's count too). The remake's dispatch sends it as `pinnedFrom` when
-  `lyricsRef` is gone, so the fix is re-timed from its own line timings, not blind. Deleting the song removes it
-  and every other `<id>-edit-r*` document by id, so a fix that Undo or Back to automatic replaced, and Undo
-  could still restore, is not left behind once the song is gone.
+  `lyricsRef` is gone, so the fix is re-timed from its own line timings, not blind. A pin that names one of the
+  song's fix documents by ref, with no pasted words, keeps that document too. Every other `<id>-edit-r*`
+  document goes by id, named or not, so a fix that Undo or Back to automatic replaced after an eviction doesn't
+  pile up: each song keeps at most one uncounted document. Undo to one of them times its words again. Deleting
+  the song removes the kept fix too. The eviction pass lists `derived/lyrics` once (`editRefsByMedia`) and
+  hands that listing to every song's count and eviction; one listing per song was quadratic in the library.
 - **Every change keeps the state it replaced** (pin, words, rev) in the sidecar's `lyricsEditHistory`,
   the newest 20, never on the wire. Undo puts the newest back. If its document is still stored, it shows at once;
   if eviction took it, the words are timed again. A pick or paste through `/api/lyrics-reselect` is kept the same

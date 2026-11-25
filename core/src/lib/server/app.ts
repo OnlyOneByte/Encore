@@ -29,6 +29,7 @@ import {
 	planEviction,
 	evictUnlessKept,
 	derivedBytesOf,
+	editRefsByMedia,
 	transcodeDiagnostics
 } from './media/retention';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
@@ -409,7 +410,9 @@ export function getApp(): EncoreApp {
 				const cap = retentionCapBytes();
 				if (cap === null) return;
 				const ready = mediaRepo.listReady();
-				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m), lastUsedAt: 0 }));
+				// One listing of the fix documents for the whole pass: one per song was quadratic (#1279 review).
+				const edits = editRefsByMedia();
+				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m, edits), lastUsedAt: 0 }));
 				// Recency from the sidecar: lastPlayedAt, else addedAt for a never-played song.
 				const kept = new Set<string>();
 				let keptBytes = 0;
@@ -431,7 +434,7 @@ export function getApp(): EncoreApp {
 				for (const id of doomed) {
 					const live = mediaById.get(id);
 					if (!live) continue;
-					const bytes = await evictUnlessKept(live, { jobs, upsert: (m) => mediaRepo.upsert(m) });
+					const bytes = await evictUnlessKept(live, { jobs, upsert: (m) => mediaRepo.upsert(m), edits });
 					if (bytes === null) continue; // kept since the plan was made
 					freed += bytes;
 					evicted++;
