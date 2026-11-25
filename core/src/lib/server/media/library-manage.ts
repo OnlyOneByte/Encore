@@ -83,6 +83,43 @@ export async function setKeep(mediaId: string, keep: boolean): Promise<boolean> 
 	return side !== null;
 }
 
+/** A whole library fits in one bulk call; a body past this is refused rather than looped over. */
+export const BULK_MAX = 5_000;
+
+export type BulkAction = 'keep' | 'unkeep' | 'delete' | 'undo';
+export type BulkSkip = { mediaId: string; reason: 'unknown' | 'kept' | 'queued' | 'gone' };
+
+/** One action over a selection, song by song through the same paths the single-song routes use, so a bulk
+ *  Delete refuses a kept or queued song exactly as a single one does. */
+export async function bulkManage(
+	app: {
+		mediaById: Map<string, Media>;
+		pendingDeletes: Pick<PendingDeletes, 'has' | 'schedule' | 'undo'>;
+		state: { entries: readonly QueueEntry[] };
+	},
+	action: BulkAction,
+	mediaIds: readonly string[]
+): Promise<{ done: string[]; skipped: BulkSkip[]; libraryFile: boolean }> {
+	const done: string[] = [];
+	const skipped: BulkSkip[] = [];
+	let libraryFile = false;
+	for (const mediaId of new Set(mediaIds)) {
+		if (action === 'undo') {
+			if (app.pendingDeletes.undo(mediaId)) done.push(mediaId);
+			else skipped.push({ mediaId, reason: 'gone' });
+		} else if (action === 'delete') {
+			const result = await requestDelete(app, mediaId);
+			if ('refused' in result) skipped.push({ mediaId, reason: result.refused });
+			else {
+				done.push(mediaId);
+				if (result.media.source === 'local') libraryFile = true;
+			}
+		} else if (librarySong(app, mediaId) && (await setKeep(mediaId, action === 'keep'))) done.push(mediaId);
+		else skipped.push({ mediaId, reason: 'unknown' });
+	}
+	return { done, skipped, libraryFile };
+}
+
 /** Every file a delete would free, sized by the store, so an object store reports its own bytes. */
 export async function songBytes(m: Media, store: Pick<MediaStore, 'size'>): Promise<number> {
 	const refs = new Set([...derivedRefsOf(m), ...candidateAudioRefs(m.id)]);

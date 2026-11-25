@@ -1395,7 +1395,19 @@ when a cap is set and "Kept songs use X of Y GB" past 90% of it. Sort gains `Big
 leave with Manage. Tapping a row opens its sheet in place: Name and artist (Change), Lyrics (Fix, the song page),
 Keep on this machine, and Delete. A song in tonight's queue says "In tonight's queue. Delete it after its turn."
 instead, and a kept one says to turn Keep off. Delete has no dialog: the row goes, and a 10 s toast offers Undo.
-Deleting the last song shows the empty Library; the toast's Undo still brings it back. The sizes,
+Deleting the last song shows the empty Library; the toast's Undo still brings it back.
+**Bulk (PR 2):** each row has a checkbox, and `Select all` beside `Done` picks the whole filtered match list, not
+only the rows rendered so far. While songs are picked, an action bar above the dock is the screen's one fill:
+"N picked", `Keep` (`Keep off` when every pick is kept) and `Delete`. The bar sits one layer under "You're up"
+and "Your song didn't play", at their offset above the dock, so a turn covers it with no edge showing. A filter
+change drops the picks, so a Delete never reaches a song out of view. Keep gives no toast, because one would cover
+the bar; its "N songs kept" goes to the live region, which stays mounted for all of Manage. Delete clears the picks
+so its "N songs deleted · Undo" toast is the only thing in that spot, and says how many stayed (kept, or in
+tonight's queue) and how many were already gone. After Delete and after Undo, once the rows are re-read, focus
+moves to `Select all`; to `Done` when no rows are left to select; and to the empty screen's `Find a song` when the
+whole library is gone, because the control that had it is gone. A burst of `media:status ready` (a bulk Undo)
+costs each phone at most two Library reads, not one per song (`#rereadLibrary` in `room.ts`). Bulk Remake waits
+for PR 3's Make it again. The sizes,
 plays and Keep come from `GET /api/library/sizes`, fetched only when Manage opens. The server side is
 `docs/SERVER.md#managing-the-library`. This is PR 1 of proposal 33. The proposal's own screens wait for the
 Spotlight Library step (#1159), so this UI stays minimal.

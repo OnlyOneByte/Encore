@@ -22,6 +22,7 @@ import { POST as rename } from '$routes/api/library/manage/rename/+server';
 import { POST as keep } from '$routes/api/library/manage/keep/+server';
 import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server';
 import { POST as undoDelete } from '$routes/api/library/manage/undo/+server';
+import { POST as bulk } from '$routes/api/library/manage/bulk/+server';
 import { GET as getSizes } from '$routes/api/library/sizes/+server';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { MediaRepository } from '$lib/server/media/repository';
@@ -128,6 +129,11 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 			await keep(event('/api/library/manage/keep', 'POST', cookies, { mediaId: 'm1', keep: true })),
 			await libraryDelete(event('/api/library/manage/delete', 'POST', cookies, { mediaId: 'm1' })),
 			await undoDelete(event('/api/library/manage/undo', 'POST', cookies, { mediaId: 'm1' })),
+			...(await Promise.all(
+				(['keep', 'unkeep', 'delete', 'undo', 'bogus'] as const).map((action) =>
+					bulk(event('/api/library/manage/bulk', 'POST', cookies, { action, mediaIds: ['m1'] }))
+				)
+			)),
 			await getSizes(event('/api/library/sizes', 'GET', cookies))
 		];
 		expect(
@@ -295,6 +301,24 @@ test('POST /api/host answers a null body with 400, and wrong keys never lock the
 		expect((await hostPost(event('/api/host', 'POST', jar(), { key: 'x' }))).status).toBe(403);
 	// A guest behind the host's NAT cannot lock the host out.
 	expect((await hostPost(event('/api/host', 'POST', jar(), { key: KEY }))).status).toBe(200);
+});
+
+test('the host bulk route answers a malformed body with 400, not a 500', async () => {
+	installApp();
+	const host = await unlock();
+	for (const body of [
+		'null',
+		{ action: '__proto__', mediaIds: ['m1'] },
+		{ action: 'keep', mediaIds: [] },
+		{ action: 'keep', mediaIds: 'm1' },
+		{ action: 'keep', mediaIds: [''] },
+		{ action: 'keep', mediaIds: ['x'.repeat(129)] },
+		{ action: 'keep', mediaIds: Array.from({ length: 5001 }, (_, i) => `m${i}`) }
+	])
+		expect(
+			(await bulk(event('/api/library/manage/bulk', 'POST', host, body))).status,
+			JSON.stringify(body).slice(0, 60)
+		).toBe(400);
 });
 
 test('the hook refuses another site and a non-JSON body', async () => {

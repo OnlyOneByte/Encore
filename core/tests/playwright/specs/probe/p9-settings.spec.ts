@@ -687,6 +687,7 @@ test('no spelling of a mutating path lets another site, or a no-cors post, act w
 		['POST', '/api/library/manage/keep', '{"mediaId":"nope","keep":true}'],
 		['POST', '/api/library/manage/delete', '{"mediaId":"nope"}'],
 		['POST', '/api/library/manage/undo', '{"mediaId":"nope"}'],
+		['POST', '/api/library/manage/bulk', '{"action":"delete","mediaIds":["nope"]}'],
 		['POST', '/api/join', '{"displayName":"Evil","color":"#ff0000"}'],
 		['PUT', '/api/settings', '{"joinOrigin":"http://evil.example"}'],
 		['PUT', '/api/settings/room', '{"queueOrder":"fcfs"}'],
@@ -737,6 +738,8 @@ const HOST_ONLY_WRITES: [string, string, (mediaId: string) => string][] = [
 	['POST', '/api/library/manage/delete', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/library/manage/undo', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/host/people/reset', () => '{"personId":"anyone"}'],
+	['POST', '/api/library/manage/bulk', (id) => JSON.stringify({ action: 'delete', mediaIds: [id] })],
+	['POST', '/api/library/manage/bulk', (id) => JSON.stringify({ action: 'keep', mediaIds: [id] })],
 	['DELETE', '/api/host', () => '']
 ];
 

@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { toast } from 'svelte-sonner';
 
 	let {
@@ -12,7 +13,9 @@
 		info,
 		open,
 		queued,
+		picked,
 		ontoggle,
+		onpick,
 		onchanged
 	}: {
 		media: Media;
@@ -20,7 +23,10 @@
 		open: boolean;
 		/** Playing or still to come tonight; the server refuses its delete. */
 		queued: boolean;
+		/** In the bulk selection. */
+		picked: boolean;
 		ontoggle: () => void;
+		onpick: () => void;
 		/** The library or the sizes changed; re-read both. */
 		onchanged: () => void;
 	} = $props();
@@ -109,6 +115,9 @@
 </script>
 
 <div class="card list-row manage-row" data-testid="manage-row">
+	<label class="pick">
+		<Checkbox checked={picked} onCheckedChange={onpick} aria-label={`Pick ${shown.title}`} />
+	</label>
 	<button class="open" aria-expanded={open} onclick={ontoggle}>
 		<span class="t">{shown.title}</span>
 		{#if byline}<span class="by">{byline}</span>{/if}
@@ -167,6 +176,16 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);
+	}
+	/* The label, not the 18px box, is the tap target. */
+	.pick {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: var(--tap);
+		min-height: var(--tap);
+		margin-inline-start: calc(-1 * var(--space-sm));
+		cursor: pointer;
 	}
 	.open {
 		flex: 1;
