@@ -47,6 +47,12 @@ const buttonCentre = (p: Page) =>
 const shot = async (page: Page, name: string) => {
 	if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
 };
+/** The lyric box's top and bottom: on a phone-shaped copy it must not move when the chip wakes or its line changes. */
+const reelBox = (p: Page) =>
+	p.evaluate(() => {
+		const r = document.querySelector('.lyrics')!.getBoundingClientRect();
+		return [Math.round(r.top), Math.round(r.bottom)];
+	});
 const asleep = (p: Page) => expect(p.locator(`${SLOT}.asleep`)).toBeAttached({ timeout: 30_000 });
 const awake = (p: Page) => expect(p.locator(`${SLOT}:not(.asleep) ${CHIP}`)).toBeVisible();
 
@@ -92,6 +98,8 @@ test('a copy mid-song is a room screen: its QR in the corner, and the chip only 
 		await shot(tv, 'tv-1920');
 		await shot(phones[0]!, 'copy-390-idle');
 		await shot(phones[1]!, 'copy-320-idle');
+		for (const p of phones) await p.locator('.lyrics .row').first().waitFor({ timeout: 30_000 });
+		const reelAsleep = await Promise.all(phones.map(reelBox));
 
 		// A tap wakes it top-right, in "Up next"'s place, and does not claim: the seat and the sound stay on the TV.
 		await copy.mouse.click(960, 540);
@@ -115,6 +123,8 @@ test('a copy mid-song is a room screen: its QR in the corner, and the chip only 
 			await expect(p.locator('.upnext')).toBeHidden();
 			await shot(p, `copy-${p.viewportSize()!.width}-tap`);
 		}
+		const reelAwake = await Promise.all(phones.map(reelBox));
+		expect(reelAwake, 'the lyrics moved when the chip woke (390, 320)').toEqual(reelAsleep);
 
 		// Ten seconds after the tap it sleeps again, and "Up next" is back.
 		const left = tappedAt + 8_000 - Date.now();
@@ -137,6 +147,10 @@ test('a copy mid-song is a room screen: its QR in the corner, and the chip only 
 		await tv.context().close();
 		await expect(copy.locator(CHIP)).toContainText('The TV is reconnecting...', { timeout: 5_000 });
 		await expect(copy.locator(CHIP)).toBeVisible();
+		// A longer line, which wraps at 320, still leaves the lyrics where they were (#1205).
+		for (const p of phones) await expect(p.locator('.copy-line')).toHaveText('The TV is reconnecting...');
+		for (const p of phones) await shot(p, `copy-${p.viewportSize()!.width}-reconnecting`);
+		expect(await Promise.all(phones.map(reelBox)), 'the lyrics moved when the chip line changed').toEqual(reelAsleep);
 	} finally {
 		await worker.stop();
 	}

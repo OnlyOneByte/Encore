@@ -15,7 +15,9 @@
 
 <div class="copy-chip">
 	<!-- No live region here: the page's own (mounted empty with the page) announces every seat change. -->
-	<span class="copy-line">{copyLine(tvOnline, next)}</span>
+	<span class="copy-line" data-sizer-a={copyLine(false)} data-sizer-b={copyLine(true, true)}
+		><span>{copyLine(tvOnline, next)}</span></span
+	>
 	<button type="button" class="copy-claim" onclick={onclaim}>Make this the TV</button>
 </div>
 
@@ -54,6 +56,24 @@
 		}
 		.copy-claim {
 			padding-inline: var(--tv-space-2xs);
+		}
+		/* Mid-song the line takes the height of the longest one it can show, so the reel below never moves when it
+		   changes. Lobby and attract lay the chip in their own flow, so there it keeps its own height. */
+		:global(.tv.copy-stage) .copy-line {
+			display: inline-grid;
+		}
+		:global(.tv.copy-stage) .copy-line > span,
+		:global(.tv.copy-stage) .copy-line::before,
+		:global(.tv.copy-stage) .copy-line::after {
+			grid-area: 1 / 1;
+		}
+		:global(.tv.copy-stage) .copy-line::before {
+			content: attr(data-sizer-a);
+			visibility: hidden;
+		}
+		:global(.tv.copy-stage) .copy-line::after {
+			content: attr(data-sizer-b);
+			visibility: hidden;
 		}
 	}
 </style>

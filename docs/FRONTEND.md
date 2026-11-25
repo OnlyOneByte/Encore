@@ -2246,7 +2246,10 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
   top-left, and "Up next" steps aside there too, because the two meet across a 320 screen.
 - **On a phone the lyrics start below the chip** (`--tv-top-reserve`, the chip slot's measured height plus a gap),
   so it never covers a line (#1205). The reserve holds all song, asleep or awake, so the reel never jumps when a
-  tap wakes the chip. A TV-shaped copy keeps the reel at full height, with the chip where "Up next" stands on the TV.
+  tap wakes the chip. Mid-song on a phone the chip's line is as tall as the longest line it can show ("The TV is
+  reconnecting...", "Back as the TV after this song", laid under it unseen), so the reel stays put when the line
+  changes too. `p34-room-screen.spec.ts` reads the lyric box asleep, awake and after the line changes. A
+  TV-shaped copy keeps the reel at full height, with the chip where "Up next" stands on the TV.
 - **Asleep** it is `visibility: hidden` and takes no pointer. Hiding alone does not make the waking press harmless:
   a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
   lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
