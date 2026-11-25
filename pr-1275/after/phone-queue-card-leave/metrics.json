@@ -1,0 +1,154 @@
+{
+  "scenario": "phone-queue-card-leave",
+  "what": "Phone 390x844: /queue as the last song is skipped — the card goes at once (a cut) and the empty state eases up from where it was (transform, --motion-base), no jump",
+  "capturedAt": "2026-11-25T06:37:45.902Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-settle-a",
+      "target": "div.below",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-qegr5c-settle-a var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "card": false,
+    "underTop": 76
+  },
+  "subject": {
+    "selector": "main > .below",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-settle-a",
+        "target": "div.below",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-qegr5c-settle-a var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 133.33899999558918,
+        "delayMs": 0,
+        "endTimeMs": 133.33899999558918,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "card": false,
+      "underTop": 76
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 7,
+    "observed": {
+      "card": false,
+      "underTop": 76
+    }
+  },
+  "timingsMs": {
+    "seekMs": 5994,
+    "encodeMs": 1466,
+    "liveMs": 7756,
+    "reducedMs": 2694,
+    "reducedEncodeMs": 492
+  },
+  "files": {
+    "clip.gif": 108695,
+    "clip-slow4x.gif": 108695,
+    "filmstrip.png": 232146,
+    "filmstrip-reduced.png": 121729
+  }
+}
