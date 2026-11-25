@@ -11,8 +11,8 @@ export interface YourSong {
 	artist: string | null;
 	sung: number;
 	lastSungAt: number | null;
-	/** From your last finished turn of it; 0 and null when there is none. */
-	keyShift: number;
+	/** From your last finished turn of it; both null when there is none, so a turn finished at 0 still counts. */
+	keyShift: number | null;
 	guideLevel: number | null;
 	saved: { id: string; savedAt: number } | null;
 }
@@ -31,7 +31,7 @@ export function yourSongs(app: EncoreApp, owner: HistoryOwner): YourSong[] {
 		artist: m ? (m.artist ?? null) : artist,
 		sung: 0,
 		lastSungAt: null,
-		keyShift: 0,
+		keyShift: null,
 		guideLevel: null,
 		saved: null,
 		lastAt: 0

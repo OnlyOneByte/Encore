@@ -12,6 +12,7 @@ import { PlayLog } from '$lib/server/media/play-log';
 import { GUEST_NIGHTS_RETENTION_MS, NightLog } from '$lib/server/nights/repository';
 import { recordTurn, sweepGuestNights } from '$lib/server/nights/service';
 import { SavedSongs } from '$lib/server/songs/repository';
+import { PendingDeletes } from '$lib/server/media/library-manage';
 import { handlePlayerCommand, handleTelemetry } from '$lib/server/realtime/player';
 import { savedSongs } from '$lib/server/db/schema';
 import { handle } from '$routes/../hooks.server';
@@ -57,6 +58,7 @@ function installApp() {
 		state: new AuthoritativeState(),
 		presence: new PresenceTracker(),
 		mediaById: new Map(['m1', 'm2', 'm3'].map((id) => [id, song(id)])),
+		pendingDeletes: new PendingDeletes(() => {}),
 		publish: (e: ServerEvent) => void published.push(e),
 		releaseSinger: (_id: string) => {},
 		clock: T0,
@@ -181,6 +183,9 @@ test('sung songs list themselves, in the key of the last finished turn, ranked b
 	const songs = await list(p);
 	expect(songs.map((s: { mediaId: string }) => s.mediaId)).toEqual(['m1', 'm3', 'm2']);
 	expect(songs[0]).toMatchObject({ sung: 2, keyShift: -2, saved: null });
+	// Finished at 0 is a key; never finished is none, so the phone's remembered key can stand in.
+	expect(songs[2]).toMatchObject({ keyShift: 0 });
+	expect(songs[1]).toMatchObject({ keyShift: null, guideLevel: null });
 });
 
 test('"Don\'t keep my nights" keeps a guest\'s sung songs out too, since they are the same rows', async () => {
@@ -189,6 +194,26 @@ test('"Don\'t keep my nights" keeps a guest\'s sung songs out too, since they ar
 	app.nights.setRecording([singer.id], false, app.now());
 	sing(app, deps, singer.id, 'm1', 'ended');
 	expect(await list(p)).toEqual([]);
+});
+
+test('each row carries its catalog song, and canKeep says when the Keep me line belongs under the list', async () => {
+	const { app, deps } = installApp();
+	const { singer, p } = guest(app, 'Theo');
+	const body = async () => (await listSongs(event('/api/me/songs', 'GET', p))).json();
+	await save(p, 'm2');
+	// Saved but never sung: Keep me is not offered yet, so neither is the line.
+	expect(await body()).toEqual({ songs: [expect.objectContaining({ media: song('m2') })], canKeep: false });
+	sing(app, deps, singer.id, 'm1', 'ended');
+	expect((await body()).canKeep).toBe(true);
+	await keepPost(event('/api/me/person', 'POST', p));
+	expect((await body()).canKeep).toBe(false);
+	// A song inside its delete's Undo window is already hidden, as search and the library hide it.
+	app.pendingDeletes.schedule('m2');
+	expect((await body()).songs.find((s: { title: string }) => s.title === 'Song m2').media).toBeNull();
+	app.pendingDeletes.undo('m2');
+	// A save whose song left the library has no catalog row.
+	app.mediaById.delete('m2');
+	expect((await body()).songs.find((s: { title: string }) => s.title === 'Song m2').media).toBeNull();
 });
 
 test('Keep me takes the saves to the person, every phone of theirs sees them, and Delete me removes them', async () => {

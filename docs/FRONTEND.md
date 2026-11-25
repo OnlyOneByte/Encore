@@ -1053,8 +1053,8 @@ the first sync or a reconnect, or under reduced motion. Those cases are cuts, an
 
 `/` is one scrolling column, and unjoined it is the join screen instead (`JoinLanding`, which paints its
 own wordmark — the topbar is for joined singers only). `JoinLanding` is imported on demand there, so a joined phone
-never downloads the join screen's CSS (about 1.8 KB gz, CLAIM 13). Joined, it is two things: the Spotlight and the
-result groups. The rotation and the library rows it used to carry are the other two tabs now.
+never downloads the join screen's CSS (about 1.8 KB gz, CLAIM 13). Joined, it is the Spotlight, with Your songs under it
+while the box is empty and the result groups once it is not. The rotation and the library rows it used to carry are the other two tabs now.
 
 **A search survives a trip to another tab (#1245).** Since Queue holds pause and skip, a host often leaves Sing
 halfway through a search. On unmount the page keeps its text, its three result groups, the widen and a failure in
@@ -1083,9 +1083,22 @@ is no minimum hold, because holding content behind an indicator is a new wait (#
 has no spinner of its own (#1126). The zero-state speaks only for the text a search has answered (`answeredFor`), so
 text still waiting on the 150 ms debounce never reads "Nothing matches" (#1192).
 
-`searchActive` (a non-empty query) is still the SOLE switch, between the Spotlight alone and the results. There is
+**Your songs (proposal 36) sit under the empty box**: up to `YOUR_SONGS_SHOWN` (12) `SongRow flat` rows under one
+`Your songs` heading, from `GET /api/me/songs` (`$lib/your-songs.ts`). Each row's byline says what is not zero:
+`2 keys down · guide low · sung 3 times`, or `saved`. Its `+` queues the song in the key and guide of your last
+finished turn of it, ahead of this phone's remembered key; a song not made yet carries the usual ✦. A guest Keep me is
+offered to gets one dim line under the list: `On this phone only. Keep <name> to have them on any phone.` Someone with
+nothing yet sees the box exactly as before, with no heading and no explainer. The list is fetched once you have joined
+and cached for the tab under that singer's id (like the kept search), so a return paints it at once and a Leave
+followed by someone else's join never shows them the last singer's list; it is the last thing on the idle screen, so arriving after first
+paint moves nothing (`your-songs` probe, CLS 0 at 390 and 320). A search kept across a trip to Queue (#1259) comes back
+with its results, so Your songs waits until the box is cleared. Rows are drawn from the room's catalog only, so a song
+the room refuses as deleted (`#songGone`) leaves the list with its one notice. A save whose song left the library is not
+listed yet ("needs making" is PR 3).
+
+`searchActive` (a non-empty query) is still the SOLE switch, between the empty box (with Your songs) and the results. There is
 still no browse mode on this column, no `?browse=1` and no history entry for a search, so Back always means leave the
-room — and clearing the field lands on the Spotlight alone rather than restoring a second view.
+room — and clearing the field lands on the empty box rather than restoring a second view.
 
 With a query, in order: `Making karaoke…`, `Ready to sing`, `Needs karaoke`, `Can't make this one right now` /
 `Can't make these right now`, the widen escape hatch, then at most one zero-state. Every heading is gated on having

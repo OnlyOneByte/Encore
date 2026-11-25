@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import type { QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
@@ -35,6 +35,15 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import { rememberedKey } from '$lib/stores/remembered-key';
 	import { keepSearch, keptSearch } from '$lib/sing-search-keep';
+	import {
+		cachedYourSongs,
+		forgetYourSongs,
+		loadYourSongs,
+		yourSongLine,
+		YOUR_SONGS_SHOWN,
+		type YourSong,
+		type YourSongs
+	} from '$lib/your-songs';
 
 	let me = $state<PublicSinger | null>(null);
 	let status = $state<RoomStatus>('checking');
@@ -111,6 +120,47 @@
 			inflight?.abort();
 		};
 	});
+
+	let yours = $state<YourSongs | null>(cachedYourSongs(room.me?.id));
+	// Once joined, not before (the route answers 401 to a visitor). Below everything on the idle screen, so
+	// arriving after first paint moves nothing; a return paints the cache.
+	const meId = $derived(me?.id);
+	// A new singer on this phone (a Leave, then a join) starts from their own cache or nothing, never the last one's.
+	$effect(() => {
+		const id = meId;
+		untrack(() => {
+			yours = cachedYourSongs(id);
+			if (id) refreshYours();
+			else forgetYourSongs();
+		});
+	});
+	// One of my turns just left the queue (sung, skipped or failed), so the list a reload would show has changed.
+	let mineBefore = new Set<string>();
+	$effect(() => {
+		const mine = new Set(entries.filter((e) => e.singerId === me?.id).map((e) => e.id));
+		const gone = [...mineBefore].some((id) => !mine.has(id));
+		mineBefore = mine;
+		if (gone) refreshYours();
+	});
+	function refreshYours() {
+		const id = meId;
+		void loadYourSongs(id).then((r) => {
+			// Dropped if the singer changed while it was in the air.
+			if (!r || meId !== id) return;
+			room.mergeMedia(r.songs.flatMap((s) => (s.media ? [s.media] : [])));
+			yours = r;
+		});
+	}
+	/** A save whose song left the library has no row here yet: "needs making" is proposal 36, PR 3. */
+	const yourRows = $derived(
+		(yours?.songs ?? [])
+			.flatMap((s) => {
+				// The catalog alone, so a song the room refused as deleted (`#songGone`) leaves the list too.
+				const media = s.mediaId ? mediaCatalog.get(s.mediaId) : undefined;
+				return media ? [{ song: s, media }] : [];
+			})
+			.slice(0, YOUR_SONGS_SHOWN)
+	);
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
 	/** The turn "Pick another" was tapped on, while it is still mine and still waiting. Anything else drops the mode,
@@ -440,21 +490,23 @@
 	const rawView = $derived(libraryWindow(makeRows, revealedRaw));
 	const cantView = $derived(libraryWindow(cantRows, revealedCant));
 
-	function addSong(mediaId: string) {
+	/** `last` is a Your songs row's key and guide from your last finished turn of it, which beat this phone's memory. */
+	function addSong(mediaId: string, last?: Pick<YourSong, 'keyShift' | 'guideLevel'>) {
+		const key = last?.keyShift ?? rememberedKey(mediaId);
 		/* PICK ANOTHER: the same turn, another song, so the spot the dead song held is kept — carrying THIS song's
 		   remembered key, never the dead one's. Back to /queue, where the turn now reads as the new song's card, and
 		   the dead song's "try again" notice is dismissed: it names a song that is no longer in the queue. */
 		if (replacing) {
 			// Read BEFORE the swap: the optimistic op rewrites the entry `replacing` derives from.
 			const deadMediaId = replacing.mediaId;
-			store?.replaceMedia(replacing.id, mediaId, rememberedKey(mediaId) ?? 0);
+			store?.replaceMedia(replacing.id, mediaId, key ?? 0, last?.guideLevel);
 			toast.dismiss(failureNoticeId(deadMediaId));
 			liveMsg = `${room.titleOf(mediaId)} takes your spot`;
 			if (navigator.vibrate) navigator.vibrate(8);
 			void goto(resolve('/queue'));
 			return;
 		}
-		store?.addSong(mediaId, rememberedKey(mediaId));
+		store?.addSong(mediaId, key, last?.guideLevel);
 		/* SAID HERE, because the row that confirms an add is on ANOTHER TAB now. The queue's announcer
 		   ($lib/phrasing/queue-announcement, which /queue drives) is deliberately silent about my own adds — "the row
 		   appearing is its own confirmation" — and no row appears on this screen at all, so a screen-reader guest
@@ -465,12 +517,12 @@
 	}
 	// Plain, not reactive: nothing renders from it, it only drops a second tap while the first one's POST is out.
 	const singing = new Set<string>();
-	function singThis(mediaId: string) {
+	function singThis(mediaId: string, last?: Pick<YourSong, 'keyShift' | 'guideLevel'>) {
 		void processAndQueue({
 			mediaId,
 			inFlight: singing,
 			process: () => processMedia(mediaId),
-			queue: () => addSong(mediaId),
+			queue: () => addSong(mediaId, last),
 			hasQueuedTurn: inMyQueue(mediaId)
 		});
 	}
@@ -584,9 +636,38 @@
 				{/if}
 			</div>
 
-			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. With no query the Spotlight is the whole
-					screen. While the skeleton is up it is the only answer, so it never sits above rows it is about to leave. -->
-			{#if searchActive && showSkeleton}
+			<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. With no query there is the Spotlight and, if you
+					have any, your songs. While the skeleton is up it is the only answer, so it never sits above rows it is about to leave. -->
+			{#if !searchActive && yourRows.length}
+				<!-- YOUR SONGS: what you sang and saved, in your last key, so a return to the party is one tap. Nothing at all
+						for a guest with none yet, so a first visit is the bare box. -->
+				<h2 class="grouphead">Your songs</h2>
+				{#each yourRows as { song, media } (media.id)}
+					{@const r = readinessFor(media)}
+					<SongRow
+						{...rowMeta(media)}
+						durationSec={undefined}
+						viewCount={undefined}
+						keyName={undefined}
+						detail={yourSongLine(song)}
+						flat
+						readiness={r}
+						pct={liveOf(media.id)?.pct ?? 0}
+						status={liveOf(media.id)?.status}
+						unservable={liveOf(media.id)?.unservable}
+						inQueue={inMyQueue(media.id)}
+						processable={isProcessableSource(media.source)}
+						cantMake={cantMakeRow(media)}
+						onadd={() => addSong(media.id, song)}
+						onmake={canProcess(media, r) ? () => singThis(media.id, song) : undefined}
+					/>
+				{/each}
+				{#if yours?.canKeep}
+					<p class="keep-line">
+						On this phone only. <a href={resolve('/settings/you')}>Keep {me.displayName}</a> to have them on any phone.
+					</p>
+				{/if}
+			{:else if searchActive && showSkeleton}
 				<SkeletonRows flat label="Searching…" />
 			{:else if searchActive}
 				<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
@@ -753,7 +834,7 @@
 						</Empty.Header>
 					</Empty.Root>
 					<!-- A LINK TO /library, not a `clearSearch()`. It used to clear the query, which restored a visible
-							library in place; clearing now lands on the idle state, which shows no songs — so the label would
+							library in place; clearing now lands on the idle state, which shows no library — so the label would
 							have promised what the tap does not deliver. `showAllCount` is non-null only when the library has
 							rows ("only promise the way back when there is something to go back TO"), and it is PRINTED here:
 							the count is the only thing that makes this an offer rather than a direction, and it is the one
@@ -1042,6 +1123,18 @@
 		padding-inline: var(--step-4);
 		font-size: var(--type-meta);
 		color: var(--role-ink-dim);
+	}
+	/* Dim and below the rows: a fact about where the list lives, with the one way to change it. */
+	.keep-line {
+		margin: var(--step-16) 0 0;
+		padding-inline: var(--step-4);
+		font-size: var(--type-meta);
+		color: var(--role-ink-dim);
+	}
+	.keep-line a {
+		color: var(--role-ink);
+		font-weight: 600;
+		text-decoration: underline;
 	}
 	.join-lost {
 		display: flex;

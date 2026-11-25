@@ -182,7 +182,8 @@ Rotation lives in `src/lib/contract/queue/rotation.ts`, the policies in
   counts `playFailures`; at `MAX_PLAY_FAILURES` (2) the hub refuses `retry-play` and the phone offers only Pick
   another. Its `replace-media` lifts the hold and starts the count again for a DIFFERENT song; the same song keeps
   its count and is refused past the limit, like a Try again. On a HELD turn `replace-media` is owner-only too: its
-  `remove-any` gate applies only to a turn that is not held. Those two ops are the only client ops that clear
+  `remove-any` gate applies only to a turn that is not held. Its optional `guideLevel` (the new song's, from Your
+  songs; absent is the room default) is a preset, so it is checked like one and only the singer may send it. Those two ops are the only client ops that clear
   `playFailed`. Both fields are server-owned: a re-sent `add` keeps the server's values.
 - **`DEFAULT_QUEUE_ORDER` is what an unconfigured room does**, so changing it re-orders every existing room
   that never chose. An unknown or de-whitelisted id degrades to it rather than throwing.
@@ -885,7 +886,10 @@ screen is PR 2). `src/lib/server/songs/` owns it.
   are those of your last finished turn of it, so "Don't keep my nights" and "Delete my history" govern the
   sung half too. A sung song whose library row is gone drops out of the list.
 - **`GET /api/me/songs`** returns one row per song, sung and saved together, most used first and then most
-  recent, with your last key and guide. **`PUT` and `DELETE /api/me/songs/:mediaId`** save and unsave a song in
+  recent, with your last key and guide (both null with no finished turn, so a turn finished at 0 still counts),
+  each with its catalog `media` (null once the song has left the library, and while its delete's Undo window is
+  open, the same rule as `/api/search` and `/api/library`),
+  and `canKeep`: whether this caller is a guest Keep me is offered to, for the Sing tab's line. **`PUT` and `DELETE /api/me/songs/:mediaId`** save and unsave a song in
   the library; the song's origin and title come from the catalog, never the body, and an unknown id or a song
   you never saved is 404. **`DELETE /api/me/songs`** is "Forget my songs": every save you can read.
 - **`GET /api/me/export`** is "Download my data", one JSON file with `content-disposition: attachment` and

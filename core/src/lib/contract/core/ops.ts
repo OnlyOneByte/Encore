@@ -17,9 +17,9 @@ export type QueueOp =
 	| { op: 'not-yet'; id: string; toIdx: number }
 	// SAME TURN, ANOTHER SONG: "Pick another, keep your spot" for a song that could not be made. id, singer,
 	// addedAt, rotationSeq and `deferred` stay, so the turn holds the place the held-slot rule kept for it. The
-	// PREFS do not: `keyShift` is the NEW song's remembered key (absolute, as in `set-entry-prefs`) and the guide
-	// goes back to the room default, or the new song would start in a key the singer chose for the dead one.
-	| { op: 'replace-media'; id: string; mediaId: string; keyShift: number }
+	// PREFS do not: `keyShift` is the NEW song's remembered key (absolute, as in `set-entry-prefs`) and the guide is
+	// the NEW song's (its last finished turn, from Your songs) or else the room default, never the dead one's.
+	| { op: 'replace-media'; id: string; mediaId: string; keyShift: number; guideLevel?: number | null }
 	// SERVER-OWNED, like `status`: the TV reported the playing song failed. Back to `queued` in the SAME slot, held.
 	| { op: 'play-failed'; id: string }
 	// "Try again" (OWNER ONLY): lift a held turn so its song plays next. Nothing moves: the turn's slot is already
@@ -84,7 +84,7 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 							...e,
 							mediaId: op.mediaId,
 							keyShift: op.keyShift,
-							guideLevel: null,
+							guideLevel: op.guideLevel ?? null,
 							playFailed: false,
 							playFailures: op.mediaId === e.mediaId ? e.playFailures : 0
 						}

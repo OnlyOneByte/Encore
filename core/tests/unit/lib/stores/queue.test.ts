@@ -352,6 +352,14 @@ test('moveToIndex emits move-to-index and pulls the entry to the global index th
 	expect(store.pendingKindById.get('b1')).toBe('move'); // shown as a pending reorder, not an add
 });
 
+test('addSong carries a key and guide on the add itself, so a turn that starts at once still has them', () => {
+	const { store, sent } = makeStore();
+	store.addSong('m1', -2, 0.3);
+	expect(sent.at(-1)!.op).toMatchObject({ op: 'add', entry: { mediaId: 'm1', keyShift: -2, guideLevel: 0.3 } });
+	store.addSong('m2');
+	expect((sent.at(-1)!.op as { entry: object }).entry).not.toHaveProperty('guideLevel');
+});
+
 test('replaceMedia swaps the song this frame and shows the row as a pending add', () => {
 	const { store, sent } = makeStore();
 	store.onServerEvent({
