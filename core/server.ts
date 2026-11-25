@@ -469,12 +469,17 @@ setPublish(broadcast);
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 // State write-behinds on a 250ms debounce, so a `docker stop` inside that window drops the pending write
-// unless flushed here. A second signal exits at once.
+// unless flushed here. A second signal flushes state and exits at once, without waiting for deletes.
 const SHUTDOWN_DELETE_WAIT_MS = 5_000;
 let shuttingDown = false;
 async function gracefulShutdown(signal: string): Promise<void> {
 	if (shuttingDown) {
-		console.warn(`[core] second ${signal}: exiting without waiting.`);
+		console.warn(`[core] second ${signal}: flushing state and exiting without waiting.`);
+		try {
+			state.flushNow();
+		} catch (err) {
+			console.error('[core] state flush on second signal failed:', err);
+		}
 		process.exit(1);
 	}
 	shuttingDown = true;

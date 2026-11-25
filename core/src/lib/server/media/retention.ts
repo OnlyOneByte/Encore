@@ -255,7 +255,7 @@ export async function evictUnlessKept(
 	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecarInOrder(id))?.library.keep === true
 ): Promise<number | null> {
 	if (await isKept(m.id)) return null;
-	// Keep evictSong synchronous: a queued Keep must not run between the check and the eviction.
+	// Keep evictSong's steps before its first await synchronous: a queued Keep must not run between check and eviction.
 	return evictSong(m, deps);
 }
 
