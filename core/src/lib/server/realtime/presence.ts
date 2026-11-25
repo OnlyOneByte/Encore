@@ -12,6 +12,8 @@ interface SingerPresence {
 	sockets: number;
 	awaySince?: number;
 	clockStartedAt?: number;
+	/** The session was ended on the server: nobody can come back as them, so the name is held only by a turn. */
+	ended?: boolean;
 }
 
 export interface MembershipSnapshot {
@@ -70,8 +72,18 @@ export class PresenceTracker {
 	/** One singer's membership, without advancing any clock. */
 	stateOf(singerId: string, now: number, graceMs: number, hasPendingSongs: boolean): MemberState {
 		const r = this.#rec.get(singerId);
-		if (!r) return 'gone';
+		if (!r || (r.ended && !hasPendingSongs)) return 'gone';
 		return memberState({ ...r, hasPendingSongs }, now, graceMs);
+	}
+
+	/** A session ended on the server (Reset phones, Sign out other phones, Delete me): its sockets no longer count,
+	 *  and its name is held while it has a queued or playing turn, then freed with no grace window. */
+	endSession(singerId: string, now: number): void {
+		const r = this.#rec.get(singerId);
+		if (!r) return;
+		r.sockets = 0;
+		r.awaySince ??= now;
+		r.ended = true;
 	}
 
 	/** What an EXPLICIT leave uses: telling us removes the ambiguity the grace window exists for, so the
@@ -90,6 +102,11 @@ export class PresenceTracker {
 
 		for (const [id, r] of [...this.#rec]) {
 			const facts: MemberFacts = { ...r, hasPendingSongs: hasPendingSongs(id) };
+			if (r.ended && !facts.hasPendingSongs) {
+				gone.push(id);
+				this.#rec.delete(id);
+				continue;
+			}
 			if (shouldClearClock(facts)) {
 				r.clockStartedAt = undefined;
 				facts.clockStartedAt = undefined;

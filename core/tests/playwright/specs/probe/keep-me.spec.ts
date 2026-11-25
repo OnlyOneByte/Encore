@@ -2,7 +2,7 @@
 // never welcomed back by name alone, and gone after Delete me. The TV never hears of a person. Proposal 30, PR 2.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { readySong, singOnce } from '../../world/actors';
+import { queueReady, readySong, singOnce } from '../../world/actors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page } from '@playwright/test';
 
@@ -126,6 +126,106 @@ test('Keep me after the first song, back in one tap, and gone after Delete me', 
 		// Nothing about a person, a device or a token reached the TV.
 		expect(tvFrames.length).toBeGreaterThan(0);
 		expect(tvFrames.join('\n')).not.toMatch(/personId|person_id|deviceId|sessionToken|encore_device/);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('after a reset, a turn still queued under the name keeps the name until it is done', async ({
+	world,
+	browser
+}) => {
+	test.setTimeout(240_000);
+	const worker = await startFakeWorker(world);
+	try {
+		await world.openTv();
+		const theo = await world.openPhone('Theo');
+		await readySong(world, theo, 'caroline');
+		await theo.goto('/');
+		await singOnce(theo, 'caroline');
+		await theo.goto('/settings/you');
+		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
+		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
+
+		// Ana has not sung yet, so her song plays first and Theo's waits, queued, behind it.
+		const ana = await world.openPhone('Ana');
+		await queueReady(ana, 'caroline');
+		await theo.goto('/');
+		await queueReady(theo, 'caroline');
+
+		const host = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
+		await world.becomeHost(host);
+		await host.goto('/host');
+		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await host.getByRole('button', { name: 'Yes, reset' }).click();
+		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
+
+		const stranger = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
+		const tryTheo = () => stranger.request.post('/api/join', { data: { displayName: 'Theo', code: world.code } });
+		expect((await tryTheo()).status(), "a new guest took the name Theo's queued turn waits under").toBe(409);
+
+		// Both songs play out (8 s each); once Theo's turn is done, the name is free with no grace window.
+		await expect.poll(async () => (await tryTheo()).status(), { timeout: 90_000, intervals: [1_000] }).toBe(200);
+		await stranger.context().close();
+		await host.context().close();
+	} finally {
+		await worker.stop();
+	}
+});
+
+test("the host's Reset phones signs out every phone of a kept person, and they can keep themselves again", async ({
+	world,
+	browser
+}) => {
+	test.setTimeout(240_000);
+	const worker = await startFakeWorker(world);
+	try {
+		await world.openTv();
+		const theo = await world.openPhone('Theo');
+		await readySong(world, theo, 'caroline');
+		await theo.goto('/');
+		await singOnce(theo, 'caroline');
+		await theo.goto('/settings/you');
+		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
+		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		// His song is over, so nothing holds the name once he is reset (the held case is the test above).
+		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
+		const device = (await theo.context().cookies()).find((c) => c.name === 'encore_device')!;
+		const copy = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
+		await copy.context().addCookies([{ ...device, sameSite: 'Lax' }]);
+
+		// A guest has no Reset control and the route refuses them.
+		await theo.goto('/host');
+		await expect(theo.getByRole('heading', { name: 'Kept phones' })).toHaveCount(0);
+		const refused = await theo.request.post('/api/host/people/reset', { data: { personId: 'anyone' } });
+		expect(refused.status()).toBe(403);
+
+		const host = await (
+			await browser.newContext({ baseURL: world.baseURL, viewport: { width: 390, height: 844 } })
+		).newPage();
+		await world.becomeHost(host);
+		await host.goto('/host');
+		await expect(host.getByRole('heading', { name: 'Kept phones' })).toBeVisible();
+		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await expect(host.locator('[role="alertdialog"]')).toContainText('Every phone kept as Theo is signed out');
+		await host.getByRole('button', { name: 'Yes, reset' }).click();
+		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
+
+		// Neither the phone nor the copy is welcomed back; Theo's night ended, so the phone is back at the join.
+		for (const page of [theo, copy]) {
+			const preview = await page.request.get(`/api/room-preview?code=${world.code}`).then((r) => r.json());
+			expect(preview.returning).toBeNull();
+		}
+		await expect.poll(async () => (await theo.request.get('/api/me')).status()).toBe(401);
+
+		// Theo joins fresh and, after a song, is offered Keep me again.
+		await world.joinAs(theo, 'Theo');
+		await singOnce(theo, 'caroline');
+		await theo.goto('/settings/you');
+		await expect(theo.getByRole('heading', { name: KEEP('Theo') })).toBeVisible();
+		await copy.context().close();
+		await host.context().close();
 	} finally {
 		await worker.stop();
 	}

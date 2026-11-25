@@ -1,7 +1,7 @@
 // Kept people and the phones they are kept on. See docs/SERVER.md#kept-people.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, lte, ne, notInArray, or } from 'drizzle-orm';
+import { and, eq, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { people, personDevices } from '../db/schema';
 import { hashToken } from '../singers/repository';
@@ -166,6 +166,22 @@ export class PeopleRepository {
 			.delete(personDevices)
 			.where(and(eq(personDevices.personId, personId), ne(personDevices.id, deviceId)))
 			.run();
+	}
+
+	/** Every kept person, with how many phones they are kept on, for the host page. */
+	list(): (Person & { phones: number })[] {
+		return this.#db
+			.select({
+				id: people.id,
+				displayName: people.displayName,
+				color: people.color,
+				phones: sql<number>`count(${personDevices.id})`
+			})
+			.from(people)
+			.leftJoin(personDevices, eq(personDevices.personId, people.id))
+			.groupBy(people.id)
+			.orderBy(people.displayName)
+			.all();
 	}
 
 	/** The person and every device of theirs. Their nights are the caller's: see `forgetPerson`. */

@@ -8,7 +8,8 @@ const HOST: Capability[] = [
 	'settings:write-global',
 	'operator:read',
 	'media:delete',
-	'media:edit'
+	'media:edit',
+	'people:reset'
 ];
 const ALL = [...PARTY, ...HOST];
 
