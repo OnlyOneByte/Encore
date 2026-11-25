@@ -15,7 +15,7 @@
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
-import { queueReady } from '../../world/actors';
+import { queueReady, transportTap } from '../../world/actors';
 import { parseLyricsDoc } from '$lib/tv/lyrics';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -255,7 +255,7 @@ test('the active word is drawn, walks the line and tracks the audio clock', asyn
 		await expect(stage.tv.locator(SEL.lyrics)).toBeAttached({ timeout: 25_000 });
 		// Back to the top of the song through the REAL transport, so the series starts where the word table does
 		// and the 8s fixture is not half spent before the first sample.
-		await stage.phone.getByRole(SEL.restart.role, { name: SEL.restart.name }).click();
+		await transportTap(stage.phone, 'restart');
 
 		const samples: TrackSample[] = [];
 		const started = Date.now();

@@ -7,7 +7,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { goOffline, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 type Shift = { value: number; hadRecentInput: boolean; inDock: string[] };
@@ -60,7 +60,7 @@ for (const [width, height] of [
 			await theo.waitForTimeout(1_000);
 			const dock = theo.locator(SEL.dock);
 			const box = await dock.boundingBox();
-			const skip = (p: Page) => p.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			const skip = (p: Page) => transportTap(p, 'skip');
 			await world.becomeHost(ana);
 			const reactions = (on: boolean) => ana.request.put('/api/settings/room', { data: { tvReactions: on } });
 
@@ -80,6 +80,7 @@ for (const [width, height] of [
 				() => expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 })
 			);
 			await expect(theo.locator(SEL.npCheerKey)).not.toHaveAttribute('inert');
+			await expect(theo.locator(SEL.dockTransport), 'the dock is a now-line: no transport').toHaveCount(0);
 
 			// Theo's own turn, queued between the measured transitions: his taps are input, so they are not measured.
 			await theo.goto('/');
@@ -119,6 +120,7 @@ for (const [width, height] of [
 				() => expect(theo.locator(SEL.npStripIdle)).toHaveText('Nothing playing', { timeout: 5_000 })
 			);
 			await expect(theo.locator(SEL.npTransport), 'an idle room shows no transport').toHaveCount(0);
+			await expect(theo.locator(SEL.dockTransport)).toHaveCount(0);
 			await across(
 				'7 the link drops',
 				() => goOffline(theo),

@@ -7,7 +7,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue, queueReady } from '../../world/actors';
+import { openBrowseFromHome, openQueue, queueReady, transportTap } from '../../world/actors';
 import { autoplayIsBlocked, requireActivationForPlayback } from '../../world/autoplay';
 import { serverPlayback } from './audio-probe-support';
 import type { Page, TestInfo } from '@playwright/test';
@@ -162,8 +162,10 @@ async function skipMaya(
 	await sampleFrames(ana, { youreUp: ['.youre-up', ''] });
 	await sampleFrames(theo, { didntPlay: ['[data-testid="song-didnt-play"]', ''] });
 	await recordStarts(tv);
-	await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+	await transportTap(maya, 'skip');
 	const t0 = Date.now();
+	// Back to Sing, where she was before the transport moved to Queue: Queue's list shows Theo's held turn by design.
+	await maya.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
 	await expect.poll(() => current(world), { timeout: 10_000 }).not.toBe(mayaId);
 	return { t0, theoId };
 }
@@ -283,7 +285,7 @@ async function tryAgain(world: World, r: Awaited<ReturnType<typeof room>>, theoI
 	await expect(row).not.toContainText('Didn’t play');
 	await expect(row).toHaveClass(/\bup\b/);
 	// Ana's song is cut short, and the room plays his next.
-	await r.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+	await transportTap(r.maya, 'skip');
 }
 
 test('a dead file: the TV says whose song it was at once, and Theo keeps his spot', async ({ world }, testInfo) => {
@@ -518,7 +520,7 @@ test('three dead files in a row: every one moves the room on, so a reused slot n
 		await queueReady(ana, 'prayer');
 		await queueReady(bo, 'bohemian');
 		await expect(tv.locator(SEL.stateNext)).toBeHidden({ timeout: 10_000 });
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		// Each failure holds the next song behind its 4 s notice, then that song fails at once: well inside 8 s apiece.
 		for (const who of ['Theo', 'Ana', 'Bo'])
 			await expect(tv.locator(SEL.stateError)).toContainText(`${who}'s song wouldn't play`, { timeout: 8_000 });
@@ -544,7 +546,7 @@ test('a play() left pending on a TV nobody touched shows "Tap anywhere" and skip
 			}, id)
 		);
 		const theoId = (await theoEntry(world.baseURL))!.id;
-		await r.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(r.maya, 'skip');
 		await expect(r.tv.locator(SEL.autoplayHint)).toBeVisible({ timeout: 8_000 });
 		await r.tv.waitForTimeout(10_000); // past the watchdog's 8 s
 		expect(await current(world)).toBe(theoId);
@@ -568,7 +570,7 @@ test('a TV that drops off during the notice: the room waits, and the TV that com
 		const r = await room(world, (tv, id) =>
 			tv.route(`**/*${id}*`, (route) => route.fulfill({ status: 404, body: '' }))
 		);
-		await r.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(r.maya, 'skip');
 		await expect(r.tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 8_000 });
 		// The SAME screen goes and comes back (#990's seat is its `encore_tv` cookie): a different screen would be a copy
 		// for the seat's grace, and a copy rightly starts nothing.
@@ -848,7 +850,7 @@ test('Try again goes ahead of whoever is On deck, and Bo is told "Theo’s going
 		await queueReady(ana, 'prayer');
 		await queueReady(bo, 'bohemian');
 		await expect(tv.locator(SEL.stateNext)).toBeHidden({ timeout: 10_000 });
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
 		// Ana sings next and Bo is On deck: the server's up-next says so.
 		const boId = await entryOf(world, 'Bo');

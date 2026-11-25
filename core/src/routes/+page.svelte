@@ -171,6 +171,9 @@
 	   zero-state then asserted `Nothing matches "<query>"` — the review's only blocks-the-party finding. Reset
 	   wherever a new attempt begins, so the failure cannot outlive the query it belongs to. */
 	let searchFailed = $state(false);
+	// The text the rows on screen answer. "Nothing matches" only for that text: typed text the debounce has not
+	// sent yet has no answer, so it says nothing (#1192).
+	let answeredFor = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
 	const searchActive = $derived(query.trim().length > 0);
@@ -206,6 +209,8 @@
 		readyResults = [];
 		rawResults = [];
 		processingResults = [];
+		// The rows that answered are gone, so nothing is answered: the same text typed again waits for its own answer.
+		answeredFor = null;
 		/* THE WINDOWS RESET WITH THE ROWS, and only here — the rule /library's own `applyQuery` states. This is the
 		   one seam where all three groups are already dropped, so a guest who revealed 180 rows never watches them
 		   collapse on a keystroke that has not resolved into an answer yet; they collapse with the rows they belong
@@ -303,6 +308,7 @@
 			// suspension point, and an abort landing inside it would otherwise let a superseded query
 			// assign its rows over the live one.
 			if (ctrl.signal.aborted) return;
+			answeredFor = q;
 			readyResults = j.ready ?? [];
 			rawResults = j.results ?? [];
 			processingResults = j.processing ?? [];
@@ -720,7 +726,7 @@
 							</Button>
 						</div>
 					</Empty.Root>
-				{:else if showsNoRows( { searching, failed: searchFailed, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
+				{:else if showsNoRows( { searching: searching || answeredFor !== query.trim(), failed: searchFailed, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
 					{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
 					<Empty.Root>
 						<Empty.Header>

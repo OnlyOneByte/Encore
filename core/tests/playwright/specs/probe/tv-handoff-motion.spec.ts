@@ -18,7 +18,14 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, queueReady, readySong, returnHomeFromBrowse } from '../../world/actors';
+import {
+	openBrowseFromHome,
+	openQueue,
+	queueReady,
+	readySong,
+	returnHomeFromBrowse,
+	transportTap
+} from '../../world/actors';
 import {
 	armMediaLog,
 	processTrack,
@@ -298,6 +305,8 @@ async function room(world: World, reduced: boolean, songIntroMs?: number) {
 	// The evening's first song opens on its own card; wait until it has given way to the song.
 	await expect(tv.locator(SEL.stateNext)).toContainText('Maya', { timeout: 30_000 });
 	await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 15_000 });
+	// Maya skips from Queue, where the transport is: there before any timed tap.
+	await openQueue(maya);
 	return { maya, theo, ana, tv };
 }
 
@@ -313,7 +322,7 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 
 		// 1. A SKIP: Maya taps skip on her own strip.
 		let t0 = await now(tv);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.stateNext)).toContainText('Theo', { timeout: 5_000 });
 		await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 10_000 });
 		await reelSettled(tv);
@@ -328,6 +337,7 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 
 		// 2. A NATURAL END: Maya queues again, and Theo's 8 s song is sought near its end and ends by itself.
 		await queueReady(maya, 'caroline');
+		await openQueue(maya);
 		await expect(tv.locator('.upnext')).toContainText('Maya', { timeout: 10_000 });
 		t0 = await now(tv);
 		await sendPlayerCommand(theo, { cmd: 'seek', positionSec: 6.8 });
@@ -452,7 +462,7 @@ for (const introMs of [500, 700, 1000]) {
 			await queueReady(theo, 'believin');
 			await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
 			const t0 = await now(tv);
-			await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(maya, 'skip');
 			await expect(tv.locator(SEL.stateNext)).toContainText('Theo', { timeout: 5_000 });
 			await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 10_000 });
 			await reelSettled(tv);
@@ -493,8 +503,10 @@ test('a skip during the led exit raises the next card to full', async ({ world }
 		await queueReady(theo, 'believin');
 		await queueReady(ana, 'prayer');
 		await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
+		// On Queue already, so the second skip lands inside the exit window.
+		await openQueue(theo);
 		const t0 = await now(tv);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 5_000 });
 		// The led exit has begun: the layer has dropped `shown` with Theo's card still mounted.
 		await tv.waitForFunction(
@@ -504,7 +516,7 @@ test('a skip during the led exit raises the next card to full', async ({ world }
 			undefined,
 			{ polling: 'raf', timeout: 10_000 }
 		);
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(tv.locator(SEL.stateNext)).toContainText('Ana', { timeout: 10_000 });
 		await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 10_000 });
 		const anaFrames = (await frames(tv, t0)).filter((f) => f.name === 'Ana');
@@ -527,7 +539,7 @@ test('reduced motion switched on mid-hold: the card stays up and cuts at the hol
 		await queueReady(theo, 'believin');
 		await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
 		const t0 = await now(tv);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 5_000 });
 		await tv.waitForTimeout(1_000);
 		await tv.emulateMedia({ reducedMotion: 'reduce' });
@@ -558,7 +570,7 @@ test('reduced motion switched on during the led fade: the card comes back, the s
 		const { maya, theo, tv } = await room(world, false);
 		await queueReady(theo, 'believin');
 		await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 5_000 });
 		// The led exit is part-way: `shown` dropped, Theo's card still mounted, the layer between 0.2 and 0.9.
 		await tv.waitForFunction(
@@ -596,7 +608,7 @@ test('a change of singer while the card comes up re-rises only the lines; the la
 		// The skip socket is open before the first skip, so the second lands inside Theo's fade-in.
 		await sendPlayerCommand(ana, { cmd: 'play' });
 		const t0 = await now(tv);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.stateNext)).toContainText('Theo', { timeout: 5_000 });
 		// Once Theo's lines have started rising, so the swap lands part-way through it.
 		await expect
@@ -642,7 +654,7 @@ test('under prefers-reduced-motion: reduce the card cuts in and out, and nothing
 		await queueReady(theo, 'believin');
 		await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
 		const t0 = await now(tv);
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.stateNext)).toContainText('Theo', { timeout: 5_000 });
 		await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 10_000 });
 		await reelSettled(tv);
@@ -687,7 +699,7 @@ for (const atOpacity of [0.5, 0.75]) {
 			await cdp.send('Animation.enable');
 			await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.2 });
 			const t0 = await now(tv);
-			await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(maya, 'skip');
 			await expect(tv.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 5_000 });
 			await tv.waitForFunction(
 				(o) => Number(getComputedStyle(document.querySelector('.takeover-layer')!).opacity) >= o,

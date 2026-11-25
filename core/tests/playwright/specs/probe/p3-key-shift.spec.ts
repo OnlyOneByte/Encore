@@ -22,7 +22,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue } from '../../world/actors';
+import { openBrowseFromHome, openQueue, transportTap } from '../../world/actors';
 import {
 	attachTap,
 	awaitMaster,
@@ -111,7 +111,7 @@ async function shiftTo(phone: Page, target: number): Promise<{ value: number | n
 }
 
 async function restart(phone: Page): Promise<void> {
-	await phone.getByRole(SEL.restart.role, { name: SEL.restart.name }).click();
+	await transportTap(phone, 'restart');
 }
 
 /**
@@ -327,15 +327,13 @@ test('at +2 the pitch survives a pause and resume', async ({ world }) => {
 		expect(tap.ok, `analyser tap: ${JSON.stringify(tap)}`).toBe(true);
 		const before = await measureAtShift(phone, tv, 2);
 
-		// The strip's filled button is the app's ONLY play/pause, and it is in the dock — so it is reachable from
-		// /queue, where `shiftTo` has just left this phone, without navigating back. Not
-		// `[aria-label="play/pause"]`, a label nothing carries (world/selectors.ts).
-		await phone.locator(SEL.npPlayPause).click();
+		// Play/pause is on /queue's Now card, where `shiftTo` has just left this phone.
+		await transportTap(phone, 'playPause');
 		await phone.waitForTimeout(700);
 		const paused = await awaitMaster(tv);
 		expect(paused.paused, `paused=${paused.paused}, currentTime=${paused.currentTime.toFixed(2)}`).toBe(true);
 
-		await phone.locator(SEL.npPlayPause).click();
+		await transportTap(phone, 'playPause');
 		await phone.waitForTimeout(1200);
 		const resumed = await awaitMaster(tv);
 		expect(
@@ -359,8 +357,8 @@ test('a song change resets the shift and the fresh song still decodes', async ({
 	const { worker, phone, tv } = await stage(world, [TRACKS.caroline, TRACKS.believin]);
 	try {
 		expect((await shiftTo(phone, 2)).value).toBe(2);
-		// Skip is in the dock too, so `shiftTo` has already put this phone somewhere it can be pressed.
-		await phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).click();
+		// Skip is on the same card, so `shiftTo` has already put this phone where it can be pressed.
+		await transportTap(phone, 'skip');
 		// The reset is a server broadcast, so poll the label rather than dwelling on a guess.
 		await expect
 			.poll(async () => readKeyLabel(phone), {

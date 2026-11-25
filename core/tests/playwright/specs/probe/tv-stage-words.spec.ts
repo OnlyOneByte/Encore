@@ -5,7 +5,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, transportTap } from '../../world/actors';
 
 const NOTICE = "Phones can't open this address";
 const FIX = 'Fix it in Settings -> This machine';
@@ -52,7 +52,7 @@ test('the unreachable-address notice shows on attract and the lobby, and never o
 		await expect(left, 'time left in the card is not an ASCII -m:ss').toHaveText(/^-\d+:\d\d$/, { timeout: 20_000 });
 
 		// BACK TO THE LOBBY: the room drained, so the host's notice returns.
-		await phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).click();
+		await transportTap(phone, 'skip');
 		await expect(tv.locator(SEL.lobby)).toBeVisible({ timeout: 20_000 });
 		await expect(tv.locator(SEL.badQrTitle), 'the drained lobby did not bring the notice back').toHaveText(NOTICE);
 

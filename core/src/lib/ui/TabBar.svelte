@@ -50,8 +50,8 @@
 		   bar whose hit areas vary with copy length is the shape that makes one tab feel broken. */
 		grid-auto-flow: column;
 		grid-auto-columns: 1fr;
-		background: var(--card);
-		border-top: 1px solid var(--line);
+		/* The same ground as the now-line above: one piece of chrome under the strip's one rule. */
+		background: var(--role-ground);
 		/* THE HOME-INDICATOR INSET LIVES HERE, once, because this is the app's bottom-most element. The strip above
 		   composes none, which is why the two are siblings in one fixed container rather than separately fixed. */
 		padding-block-end: env(safe-area-inset-bottom);
@@ -77,9 +77,8 @@
 		letter-spacing: 0.01em;
 	}
 
-	/* THE CURRENT TAB IS AN INK CHANGE, not a fill. A filled pill under the active tab is the other convention and
-	   it was rejected here: the strip directly above already carries one fill (play/pause), and two fills a few
-	   pixels apart read as two primary actions rather than as one location and one control. */
+	/* THE CURRENT TAB IS AN INK CHANGE, not a fill: a location, not an action, so it spends none of the screen's one
+	   accent. */
 	.tab.current {
 		color: var(--ink);
 	}
@@ -94,7 +93,7 @@
 		inline-size: var(--space-4xl);
 		block-size: var(--space-3xs);
 		border-radius: var(--radius-pill);
-		background: var(--accent);
+		background: var(--role-ink);
 	}
 
 	.tab {

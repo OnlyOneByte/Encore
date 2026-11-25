@@ -11,7 +11,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openQueue, queueReady, readySong } from '../../world/actors';
+import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -89,7 +89,7 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 
 		// Theo's turn ends; the TV hands the stage to Maya. Shot once her card has gone: the card's scrim is clear at
 		// the edges, so over it the lower third names her a second time.
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(tv.locator(SEL.stateNext)).toBeVisible({ timeout: 30_000 });
 		await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: 30_000 });
 		await expect(tv.locator(SEL.nowNameScoped)).toHaveText('Maya');

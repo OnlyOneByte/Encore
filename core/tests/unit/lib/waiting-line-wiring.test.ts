@@ -66,7 +66,7 @@ test('the strip is worded by the same fold, and prints it where it wraps', () =>
 	// With the room's verdict, as the TV's: without it the first paint said "Making karaoke…" under no maker (#1235).
 	expect(layout).toMatch(/waitingTurns\([^;]*room\.verdicts\.canMake\s*\)/);
 	expect(layout).toContain('waitingLine={waitingLine}');
-	expect(strip).toContain(`<span class="status">{canPlay ? 'Ready when you are' : waitingLine}</span>`);
+	expect(strip).toContain(`<span class="status">{canStart ? 'Ready when you are' : waitingLine}</span>`);
 	// The hard-coded line that sat under two "Couldn't make karaoke" rows.
 	expect(strip).not.toContain(": 'Making karaoke…'}");
 });

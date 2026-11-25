@@ -8,7 +8,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openQueue, queueReady, readySong } from '../../world/actors';
+import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -49,7 +49,7 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 		}
 
 		// Theo's turn ends; Maya's starts in the key she set.
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/caroline/i);
 		await expect(deck).toHaveCount(0);
 		await maya.screenshot({ path: join(out, 'phone-singing-after-preset.png') });
@@ -114,7 +114,7 @@ test('on deck: Not yet lets the next singer go first, once', async ({ world }, t
 		await maya.screenshot({ path: join(out, 'phone-after-not-yet.png') });
 
 		// Ana sings; Maya is on deck again, and the button is gone for good.
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(deck).toBeVisible();
 		await expect(deck.getByRole('button', { name: /Not yet/ })).toHaveCount(0);
 		await deck.evaluate((el) => el.scrollIntoView({ block: 'center' }));

@@ -17,9 +17,11 @@
 	   ONE HEIGHT, ALWAYS (proposal 13). It renders on every joined phone surface, and nothing inside it changes its
 	   height: every state is one var(--tap) row. The dock used to have three heights (tabs alone, strip + tabs, and
 	   the reaction row on top), and each step moved the fixed dock's top edge 45 to 116 px on every phone in the
-	   room (CLS up to 0.24 at 320). So the reactions live behind the Cheer key in the transport, the "Reconnecting…"
-	   cue takes the title slot, and an idle room reads "Nothing playing" with NO transport — the old band's fault
-	   was a bright Play button that did nothing beside that copy, not the copy. */
+	   room (CLS up to 0.24 at 320). So the reactions live behind the Cheer key, the "Reconnecting…" cue takes the
+	   title slot, and an idle room reads "Nothing playing".
+
+	   A NOW-LINE, NOT A REMOTE (redesign step 4, an owner ruling): pause, restart and skip live on the Queue tab's
+	   Now card. The strip says who is singing what, keeps the one tap to cheer, and with nothing playing the one Play. */
 	import Icon from '$lib/ui/Icon.svelte';
 	import ReactionGlyph from '$lib/ui/ReactionGlyph.svelte';
 	import ReactionRow, { CHEER_TRAY_MS } from '$lib/ui/ReactionRow.svelte';
@@ -32,7 +34,6 @@
 		title,
 		singerName,
 		singerColor,
-		isPlaying,
 		elapsedSec,
 		durationSec,
 		hasSong,
@@ -41,16 +42,13 @@
 		waitingLine = processStageLabel('queued'),
 		entryId = null,
 		connected = true,
-		onrestart,
-		ontoggleplay,
-		onskip,
 		onreact,
-		reactResting = false
+		reactResting = false,
+		onplay
 	}: {
 		title: string | null;
 		singerName: string | null;
 		singerColor: string | null;
-		isPlaying: boolean;
 		elapsedSec: number;
 		durationSec: number;
 		hasSong: boolean;
@@ -63,30 +61,17 @@
 		entryId?: string | null;
 		/** False while the link is down: "Reconnecting…" takes the title slot. */
 		connected?: boolean;
-		onrestart: () => void;
-		ontoggleplay: () => void;
-		onskip: () => void;
 		onreact?: (kind: ReactionKind) => void;
 		/** Your song, or the room switched reactions off: the Cheer key keeps its slot but is hidden and inert. */
 		reactResting?: boolean;
+		/** Starts the next playable song: the strip's one transport key, shown only with nothing playing. */
+		onplay?: () => void;
 	} = $props();
 
 	const fraction = $derived(progressFraction(elapsedSec, durationSec));
-	/* THREE STATES, not two, and getting this to two cost a real defect in each direction.
-	   PRESENCE is `hasSong || queueCount > 0`: anything in the rotation means the dock has something to say. The
-	   first version keyed presence on `canStart` instead — a PLAYABLE queued song — which fixed the dead-bright-button
-	   half and broke the other: queueing a song starts its stem separation, so for the minute that takes the dock
-	   went BLANK immediately after the guest's one action, and the gate that drives exactly that state measured no
-	   strip at all.
-	   ENABLEMENT is separate and is `hasSong || canStart`. `canStart` is the server's own `nextPlayable` predicate,
-	   so the play button is live only when a tap will actually start something. Before, it was always enabled: with
-	   a queued-but-cooking song the server's `play` handler sets `isPlaying: false`, emits no error and raises no
-	   toast, so the brightest element on the screen silently did nothing — the exact fault this component's header
-	   claims to have removed.
-	   And the COPY follows enablement rather than presence, because a strip that says "Ready when you are" over a
-	   song that is still cooking is the same lie told in words. */
+	/* Anything in the rotation gives the line something to say; "Ready when you are" and its Play only when a song can
+	   really start (`canStart` is the server's own `nextPlayable`), or they would promise a song that is still cooking. */
 	const live = $derived(hasSong || queueCount > 0);
-	const canPlay = $derived(hasSong || canStart);
 	/* `connected` too: offline the link is what the strip must say, so the key rests and an open tray closes rather
 	   than covering "Reconnecting…" with four buttons whose taps would be dropped. */
 	const canCheer = $derived(hasSong && !!onreact && !reactResting && connected);
@@ -102,11 +87,12 @@
 	/* EVERY CLOSE HANDS FOCUS BACK, not only ✕: the tray's buttons leave the page, so focus held inside them would
 	   fall to <body> on the timeout, a song change or the link dropping. Back to the key when it is live, else to the
 	   /queue link that takes the tray's place. */
+	const refocus = () => (cheerKey && !cheerKey.inert ? cheerKey : metaLink)?.focus();
 	function closeCheers() {
 		clearTimeout(cheerTimer);
-		const refocus = cheering && !!strip?.contains(document.activeElement);
+		const had = cheering && !!strip?.contains(document.activeElement);
 		cheering = false;
-		if (refocus) void tick().then(() => (cheerKey && !cheerKey.inert ? cheerKey : metaLink)?.focus());
+		if (had) void tick().then(refocus);
 	}
 	function holdCheers() {
 		clearTimeout(cheerTimer);
@@ -120,6 +106,14 @@
 		void entryId;
 		if (!canCheer) return;
 		return closeCheers;
+	});
+	/* Play gives its slot to the Cheer key once the song starts: focus follows it there (or to the link when the key
+	   rests, on your own song), never to <body>. */
+	let playTapped = false;
+	$effect(() => {
+		if (!hasSong || !playTapped) return;
+		playTapped = false;
+		if (document.activeElement === document.body) refocus();
 	});
 </script>
 
@@ -167,19 +161,16 @@
 				<!-- `.status`, which WRAPS to two lines inside its box, never `.who`, which does not shrink: the waiting line
 					can be a whole sentence, and at 320px it ran under the restart button. Not `.song` either, which means
 					"a song is playing" to every spec reading the strip. -->
-				<span class="status">{canPlay ? 'Ready when you are' : waitingLine}</span>
+				<span class="status">{canStart ? 'Ready when you are' : waitingLine}</span>
 			{:else}
 				<span class="idle">Nothing playing</span>
 			{/if}
 		</a>
 
-		<!-- NO TRANSPORT IN AN IDLE ROOM: a disabled Play beside "Nothing playing" is the design review's "the
-			brightest element on screen does nothing". The meta row's own var(--tap) floor keeps the height. -->
-		{#if live}
+		<!-- THE CHEER KEY'S SLOT IS HERE for the whole song, as #986 did for the row: on your song or with reactions
+			off it is hidden and inert in place, so nothing in the line moves at the handoff or when the host flips it. -->
+		{#if hasSong}
 			<div class="tp">
-				<!-- THE CHEER KEY'S SLOT IS ALWAYS HERE while the transport is, as #986 did for the row: on your song or
-					with reactions off it is hidden and inert in place, so nothing in the strip moves at the handoff or
-					when the host flips the setting. -->
 				<button
 					class="btn cheer-key"
 					class:resting={!canCheer}
@@ -190,29 +181,14 @@
 				>
 					<span class="pic"><ReactionGlyph kind="clap" /></span>
 				</button>
-				<!-- With no song there is nothing to restart, and the waiting line runs on over this slot as over the
-					Cheer key's: resting in place, so the key comes back at the handoff without moving anything. -->
-				<button
-					class="btn restart"
-					class:resting={!hasSong}
-					onclick={onrestart}
-					disabled={!hasSong}
-					inert={!hasSong}
-					aria-label="Restart"
+			</div>
+		{:else if canStart && onplay}
+			<!-- "Ready when you are" keeps its Play here, in the Cheer key's slot: a room idle with a ready queue (after a
+				server restart) waits for a tap, and /queue's Now card only exists once a song plays. -->
+			<div class="tp">
+				<button class="btn primary play" onclick={() => ((playTapped = true), onplay())} aria-label="Play"
+					><Icon name="play" /></button
 				>
-					<Icon name="restart" />
-				</button>
-				<button
-					class="btn primary"
-					onclick={ontoggleplay}
-					disabled={!canPlay}
-					aria-label={isPlaying ? 'Pause' : 'Play'}
-				>
-					<Icon name={isPlaying ? 'pause' : 'play'} />
-				</button>
-				<button class="btn" onclick={onskip} disabled={!hasSong} aria-label="Skip">
-					<Icon name="next" />
-				</button>
 			</div>
 		{/if}
 	{/if}
@@ -227,8 +203,9 @@
 		/* NO padding-block: the controls are var(--tap) tall and they set the height, so the strip is exactly one
 		   tap floor and the number lives in one place. */
 		padding-inline: var(--space-lg);
-		background: var(--card);
-		border-top: 1px solid var(--line);
+		/* Spotlight chrome: ink on the ground, one rule on top, no surface of its own. */
+		background: var(--role-ground);
+		border-top: 1px solid var(--role-rule);
 	}
 
 	.rail {
@@ -311,15 +288,8 @@
 
 	/* The waiting line, in the name's weight. It WRAPS, to two lines at most: it can be a whole sentence with two ways
 	   out in it ("Your song didn't work. Try again or pick another."), and on Sing and Library it is the singer's only
-	   notice, so an ellipsis cut the remedy off at 390 and both at 320. Two lines of this size and leading fit inside
-	   the strip's one tap floor, so the dock does not grow.
-	   IT RUNS ON OVER THE CHEER AND RESTART SLOTS, which are empty here: this line shows only with no song, when nobody
-	   can be cheered and nothing restarted, so both keys are hidden and inert in place. With the Cheer slot alone the
-	   line was 146px at 320, and the failure sentence took three lines in every common sans (Arial metrics included),
-	   not only in a wide fallback. The negative margin widens the line's box and moves nothing else, so the dock keeps
-	   its shape across the handoff. */
+	   notice. With no song the line has the strip's whole width, and two lines fit inside its one tap floor. */
 	.status {
-		margin-inline-end: calc(-2 * (var(--tap) + var(--space-2xs)));
 		min-width: 4ch;
 		overflow: hidden;
 		display: -webkit-box;
@@ -350,33 +320,20 @@
 		color: var(--ink);
 	}
 
-	/* Play/pause is the one control that carries a fill, because it is the only one whose state the fill encodes.
-	   The other two are momentary, so a resting fill on them would read as state they do not have. */
+	/* The idle Play, the strip's one fill. --on-accent: the one ink certified on --accent (5.09:1), and the glyph is
+	   the borderless key's identification. */
 	.btn.primary {
-		background: var(--accent);
-		/* --on-accent, NOT --accent-ink. app.css calls --on-accent "the only ink permitted on --accent" and this
-		   strip was the one site in the tree stacking --accent-ink on it instead: measured with the app's own
-		   contrastRatio, --accent-ink on --accent is 2.537:1 and --on-accent is 5.089:1. SC 1.4.11 wants 3:1 for the
-		   visual information identifying a control, and this button is borderless — the glyph IS the identification,
-		   so 2.54 was a real failure rather than a palette quibble. --accent-ink's own certification is against a
-		   SURFACE (--card2), never against --accent, which is how the misreading survived review. */
-		color: var(--on-accent);
+		background: var(--role-accent);
+		color: var(--role-on-accent);
 	}
 
-	/* DIMMED BY INK, never by opacity on the subtree: an ancestor alpha flattens the glyph and the surface into one
-	   buffer, so a token-level contrast check keeps passing while the guest sees worse. */
-	.btn:disabled {
-		color: var(--ink-dim);
-	}
-
-	/* The cheers' own surface, so the key reads as the way into them rather than as transport. */
+	/* The cheers' own surface, so the key reads as the way into them. */
 	.cheer-key {
 		background: var(--card2);
 	}
 
 	/* `visibility` too, so the hidden key is not hit-tested or found by a locator; it switches at the END of the fade
-	   out and at the start of the fade in, which is how a `visibility` transition interpolates. The Cheer key and,
-	   with no song, Restart. */
+	   out and at the start of the fade in, which is how a `visibility` transition interpolates. */
 	.btn.resting {
 		opacity: 0;
 		visibility: hidden;
@@ -393,10 +350,8 @@
 		.fill {
 			transition: transform var(--motion-tick) linear;
 		}
-		/* Resting is a fade in place, so it touches no layout. Only the two keys that rest carry it, so a later
-		   opacity change on Play or Skip does not fade by accident. */
-		.cheer-key,
-		.restart {
+		/* Resting is a fade in place, so it touches no layout. */
+		.cheer-key {
 			transition:
 				opacity var(--motion-base) ease-out,
 				visibility var(--motion-base);

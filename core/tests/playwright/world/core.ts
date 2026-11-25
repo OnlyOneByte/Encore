@@ -35,8 +35,9 @@ export interface Core {
 	log(): string;
 	stop(): Promise<void>;
 	/** Stop core and boot it again on the SAME port, DATA_DIR and env, as a host reboot or a deploy would. Only
-	 *  meaningful with `ENCORE_EPHEMERAL: '0'` in the env, or the new core boots an empty room. */
-	restart(): Promise<void>;
+	 *  meaningful with `ENCORE_EPHEMERAL: '0'` in the env, or the new core boots an empty room. `between` runs while
+	 *  core is down, for a test whose subject is what a reboot finds on disk. */
+	restart(between?: () => void | Promise<void>): Promise<void>;
 	/** The token core's role=worker gate checks: the spec's ENCORE_WORKER_TOKEN, else the file core made (#1196). */
 	workerToken(): string | null;
 }
@@ -138,8 +139,9 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 		}
 		return false;
 	};
-	const restart = async (): Promise<void> => {
+	const restart = async (between?: () => void | Promise<void>): Promise<void> => {
 		await kill();
+		await between?.();
 		output += '\n[world] core restarted\n';
 		proc = spawnCore();
 		capture(proc);

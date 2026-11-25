@@ -16,7 +16,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 type Shift = { value: number; sources: string[] };
@@ -143,7 +143,7 @@ for (const width of [390, 320]) {
 
 			// MOMENT 2: skipped, with nothing playable behind it, so the card leaves.
 			await watchPage(theo);
-			await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(maya, 'skip');
 			await expect(theo.locator(SEL.queueNowCard)).toHaveCount(0, { timeout: 10_000 });
 			await theo.waitForTimeout(1_000);
 			await expectStill(theo, 'as the card left');
@@ -205,7 +205,7 @@ test('390px: a reload during a song, and a reconnect after the song changed, are
 	);
 	await goOffline(theo);
 	await expect(theo.locator(SEL.npStripOffline)).toContainText('Reconnecting…', { timeout: 15_000 });
-	await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+	await transportTap(maya, 'skip');
 	await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 10_000 });
 	await theo.context().setOffline(false);
 	await expect(theo.locator(SEL.queueNowCard)).toContainText(/believin/i, { timeout: 15_000 });

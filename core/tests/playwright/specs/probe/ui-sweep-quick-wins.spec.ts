@@ -3,7 +3,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { queueReady, readySong } from '../../world/actors';
+import { queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
@@ -46,7 +46,7 @@ test('UI-05: a short name shows whole beside a long title, and a long name leave
 			expect(song.w, `${width}px: the long name took the title away`).toBeGreaterThanOrEqual(3 * song.chW);
 		}
 
-		await long.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(long, 'skip');
 		await expect(long.locator(SEL.npStripWho)).toHaveText('Bo');
 		for (const width of [320, 390]) {
 			await long.setViewportSize({ width, height: 844 });

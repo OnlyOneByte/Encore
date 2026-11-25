@@ -6,7 +6,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { queueReady, readySong } from '../../world/actors';
+import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -27,14 +27,16 @@ for (const [w, h] of [
 			await queueReady(maya, 'caroline');
 			await queueReady(ana, 'prayer');
 			await queueReady(theo, 'believin');
-			await theo.getByRole('link', { name: 'Library' }).click();
+			// The transport is on Queue (redesign step 4), so both phones skip from there.
+			await openQueue(theo);
+			await openQueue(ana);
 			await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i);
 			// Past the first song's opening second, so the next change is a real song change.
 			await theo.waitForTimeout(1_500);
 
-			await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(ana, 'skip');
 			await expect(theo.locator(SEL.npStripTitle)).not.toContainText(/caroline/i);
-			await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(theo, 'skip');
 
 			const toast = theo
 				.locator('[data-sonner-toast]')

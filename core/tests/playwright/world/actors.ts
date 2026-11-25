@@ -32,6 +32,9 @@ async function presentWithin(locator: Locator, timeout = ABSENCE_GRACE_MS): Prom
 		.catch(() => false);
 }
 
+// Pages a helper took to /queue, the one place `openBrowseFromHome` may bring a phone back from.
+const leftForQueue = new WeakSet<Page>();
+
 /**
  * From the JOINED home screen, reach the search box. Idempotent: called when the box is already up it returns
  * as soon as the locators resolve.
@@ -42,6 +45,15 @@ export async function openBrowseFromHome(page: Page, { timeout = DEFAULT_TIMEOUT
 	// nothing to CLICK — the field is the first element in the home column, so the rest of this WAITS. Three
 	// distinct waits, so a failure says which half is missing.
 	await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout });
+	// A phone left on another tab (`transportTap` leaves it on Queue) takes the Sing tab back, as a guest would.
+	const path = new URL(page.url()).pathname;
+	if (path !== '/') {
+		// Only a phone a helper took to /queue: anywhere else, a product step that should land on Sing did not.
+		if (!(leftForQueue.has(page) && path === '/queue')) throw new Error(`openBrowseFromHome: not on Sing but ${path}`);
+		leftForQueue.delete(page);
+		await page.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click({ timeout });
+		await page.waitForURL((url) => url.pathname === '/', { timeout });
+	}
 	await page.locator(SEL.findBox).first().waitFor({ state: 'attached', timeout });
 	await page.locator(SEL.search).first().waitFor({ state: 'attached', timeout });
 }
@@ -70,11 +82,23 @@ export async function openQueue(page: Page, { timeout = DEFAULT_TIMEOUT }: StepO
 		}
 		await page.waitForURL((url) => url.pathname === '/queue', { timeout });
 	}
+	leftForQueue.add(page);
 	// THE ROUTE'S OWN HEADING, not `SEL.queueNowCard`. The card is what most callers came for, but its absence
 	// is LEGITIMATE — it renders only with a current entry — so waiting on it would make a drained room burn the
 	// whole timeout before agreeing. The heading is unconditional, which makes it the "this route has painted"
 	// signal; a caller whose subject is the card asserts on it with a locator that auto-waits anyway.
 	await page.locator(SEL.pageHeading).first().waitFor({ state: 'attached', timeout });
+}
+
+/** Skip, restart or play/pause. The transport is on /queue's Now card (redesign step 4), so this opens /queue
+ *  first: a spec that needs the phone back on another tab after the tap navigates there itself. */
+export async function transportTap(page: Page, key: 'skip' | 'restart' | 'playPause'): Promise<void> {
+	await openQueue(page);
+	const button =
+		key === 'playPause'
+			? page.locator(SEL.npPlayPause)
+			: page.getByRole(SEL[key].role, { name: SEL[key].name, exact: false });
+	await button.first().click();
 }
 
 /**

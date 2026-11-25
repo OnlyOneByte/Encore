@@ -346,49 +346,49 @@ the dev story sets it. Its block lives in `src/lib/ui/tokens-light.css`, which o
 stylesheet doesn't carry it; the step that ships light moves it into `tokens.css`. `spotlight-tokens.test.ts` holds
 every pair below at WCAG AA in both themes.
 
-| Role                    | Dark aliases     | Light     | Use it for                                                      |
-| ----------------------- | ---------------- | --------- | --------------------------------------------------------------- |
-| `--role-ground`         | `--bg`           | `#f7f7fb` | The page. Everything that is not the Spotlight sits on it        |
-| `--role-raise`          | `#161622` (new)  | `#ffffff` | The Spotlight when it is idle: lit by its ring, not by a fill    |
-| `--role-rule`           | `--line`         | `#e1e1ea` | A decorative hairline between rows. Never a control's boundary   |
-| `--role-ink`            | `--ink`          | `#15151f` | Text                                                            |
-| `--role-ink-dim`        | `--ink-dim`      | `#5a5a72` | Secondary text (AA on ground and raise)                         |
-| `--role-control`        | `--control-line` | `#7a7a96` | A control's boundary (3:1, SC 1.4.11)                           |
-| `--role-accent`         | `--accent`       | `#6446de` | The one accent fill on a screen with no owner (Sing's search)   |
-| `--role-on-accent`      | `--on-accent`    | `#ffffff` | Ink on `--role-accent`, and nothing else                        |
-| `--role-accent-ink`     | `--accent-ink`   | `#5536cf` | Accent as text                                                  |
-| `--role-focus`          | `--focus`        | `#6a4bdb` | The focus ring                                                  |
-| `--role-danger`         | `--danger-ink`   | `#b42318` | Failure text                                                    |
-| `--role-danger-surface` | `--danger-bg`    | `#fdecea` | The error Spotlight's surface                                   |
-| `--role-danger-line`    | `--danger-line`  | `#f1b5ae` | The error Spotlight's ring                                      |
-| `--role-ok`             | `--ok`           | `#0e7a5a` | Success marks (3:1 on ground)                                   |
-| `--role-warn`           | `--warn`         | `#9a5b00` | Warning marks (3:1 on ground)                                   |
+| Role                    | Dark aliases     | Light     | Use it for                                                                                                             |
+| ----------------------- | ---------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--role-ground`         | `--bg`           | `#f7f7fb` | The page. Everything that is not the Spotlight sits on it                                                              |
+| `--role-raise`          | `#161622` (new)  | `#ffffff` | The Spotlight when it is idle: lit by its ring, not by a fill                                                          |
+| `--role-rule`           | `--line`         | `#e1e1ea` | A decorative hairline between rows. Never a control's boundary                                                         |
+| `--role-ink`            | `--ink`          | `#15151f` | Text                                                                                                                   |
+| `--role-ink-dim`        | `--ink-dim`      | `#5a5a72` | Secondary text (AA on ground and raise)                                                                                |
+| `--role-control`        | `--control-line` | `#7a7a96` | A control's boundary (3:1, SC 1.4.11)                                                                                  |
+| `--role-accent`         | `--accent`       | `#6446de` | The one accent fill on a screen with no owner (Sing's search)                                                          |
+| `--role-on-accent`      | `--on-accent`    | `#ffffff` | Ink on `--role-accent`, and nothing else                                                                               |
+| `--role-accent-ink`     | `--accent-ink`   | `#5536cf` | Accent as text                                                                                                         |
+| `--role-focus`          | `--focus`        | `#6a4bdb` | The focus ring                                                                                                         |
+| `--role-danger`         | `--danger-ink`   | `#b42318` | Failure text                                                                                                           |
+| `--role-danger-surface` | `--danger-bg`    | `#fdecea` | The error Spotlight's surface                                                                                          |
+| `--role-danger-line`    | `--danger-line`  | `#f1b5ae` | The error Spotlight's ring                                                                                             |
+| `--role-ok`             | `--ok`           | `#0e7a5a` | Success marks (3:1 on ground)                                                                                          |
+| `--role-warn`           | `--warn`         | `#9a5b00` | Warning marks (3:1 on ground)                                                                                          |
 | `--spot` / `--on-spot`  | the accent pair  | the same  | The moment's owner. `<Spotlight colour>` sets both from the singer's registry stop: its `fill` and certified `on_fill` |
 
 **Type.** A reading ladder of 13 / 15 / 17 / 22 px plus two display sizes, each minted with its caller. It is a
 separate ladder from `--ph-text-*`, which step 3 retires screen by screen.
 
-| Token            | rem    | px | Use it for                                  |
-| ---------------- | ------ | -- | ------------------------------------------- |
-| `--type-meta`    | 0.8125 | 13 | A meta line, a segment label                |
-| `--type-body`    | 0.9375 | 15 | Body copy inside a Spotlight                |
-| `--type-title`   | 1.0625 | 17 | A row or song title                         |
-| `--type-lead`    | 1.375  | 22 | The Spotlight's headline at rest            |
-| `--type-display` | 2.125  | 34 | The On deck headline ("You're next")        |
-| `--type-hero`    | 3.5    | 56 | The You're up headline: the phone's biggest moment |
+| Token            | rem    | px  | Use it for                                         |
+| ---------------- | ------ | --- | -------------------------------------------------- |
+| `--type-meta`    | 0.8125 | 13  | A meta line, a segment label                       |
+| `--type-body`    | 0.9375 | 15  | Body copy inside a Spotlight                       |
+| `--type-title`   | 1.0625 | 17  | A row or song title                                |
+| `--type-lead`    | 1.375  | 22  | The Spotlight's headline at rest                   |
+| `--type-display` | 2.125  | 34  | The On deck headline ("You're next")               |
+| `--type-hero`    | 3.5    | 56  | The You're up headline: the phone's biggest moment |
 
 **Space and radius.** Each step is named by its px value, so a rung added between two renames nothing. Each one
 retires the old name it aliases once no rule spells that name:
 
-| Step        | px | Retires         |
-| ----------- | -- | --------------- |
-| `--step-4`  | 4  | `--space-2xs`   |
-| `--step-8`  | 8  | `--space-sm`    |
-| `--step-12` | 12 | `--space-lg`    |
-| `--step-16` | 16 | `--space-2xl`   |
-| `--step-24` | 24 | `--space-5xl`   |
-| `--step-32` | 32 | nothing (new)   |
-| `--step-48` | 48 | nothing (new)   |
+| Step        | px  | Retires       |
+| ----------- | --- | ------------- |
+| `--step-4`  | 4   | `--space-2xs` |
+| `--step-8`  | 8   | `--space-sm`  |
+| `--step-12` | 12  | `--space-lg`  |
+| `--step-16` | 16  | `--space-2xl` |
+| `--step-24` | 24  | `--space-5xl` |
+| `--step-32` | 32  | nothing (new) |
+| `--step-48` | 48  | nothing (new) |
 
 `--space-3xs` (2), `--space-xs` (6), `--space-md` (10) and `--space-4xl` (20) have no step: a screen moving onto the
 steps rounds those to a neighbour. `--step-32` and `--step-48` are new, and their first caller is You're up's padding. `--round-spot`
@@ -507,11 +507,15 @@ are authored. The rules below are the ones an innocent edit breaks.
 ### The now-playing strip, and the sheet it replaced
 
 `src/lib/ui/NowPlayingStrip.svelte` is a fixed-height strip with **no open state at all**: no snap array, no
-drag, no geometry read. Its height is a function of nothing but whether it renders, and it renders only when
-`hasSong || canStart` — so an idle room shows no dead transport, which closes the design review's "the brightest
-element on screen does nothing". Everything the old sheet's expanded body held (the guiding track, the vocal
-range, key shift, the clock) is the now-playing card at the top of `/queue`, because that is the screen you are
-already on to see whose turn is next.
+drag, no geometry read. **Since redesign step 4 it is a now-line, not a remote** (an owner ruling): it says who is
+singing what, or what the queue waits on, and keeps the Cheer key, while pause, restart and skip are on the Queue
+tab's Now card. Its one transport key is Play, in the Cheer key's slot, only with nothing playing and a song that
+can start: the server starts the next song itself on any queue change or finished karaoke, but a room left idle
+with a ready queue (a restart) waits for that tap. When the song starts, focus on Play moves to the Cheer key (or to
+the link, on your own song) rather than falling to `<body>`. It is Spotlight chrome: ink on `--role-ground` under
+one `--role-rule`, with the tab bar on the same ground and no fill of its own. Everything the old sheet's expanded
+body held (the guiding track, the vocal range, key shift, the clock) is the now-playing card at the top of `/queue`,
+because that is the screen you are already on to see whose turn is next.
 
 **What was deleted, and why the account is kept.** `NowPlayingDrawer.svelte` (618 lines), `NowPlayingBand.svelte`
 (398) and `sheet-snap.ts` (57) are gone, with `src/lib/components/ui/drawer/` (263 lines across 13 files) and the
@@ -540,7 +544,7 @@ recognise rather than a line count:
   was the top of the content box rather than the row a thumb pulls.
 
 None of that applies to a strip. The replacement's own constraints are two lines of CSS: `.meta` keeps
-`min-width: 0` so the nowrap title ellipsises inside the flex item instead of sizing it (without it the transport
+`min-width: 0` so the nowrap title ellipsises inside the flex item instead of sizing it (without it the Cheer key
 is pushed off a 320px screen), and the TITLE is what gives up width rather than the singer's name — a truncated
 name reads as the wrong person where a truncated title still reads as the right song.
 
@@ -558,7 +562,7 @@ rung that throws. So:
 > measured subtree arrives as an ATTRIBUTE, because an attribute write re-renders nothing and cannot change the
 > measured height. The deleted sheet had two such boxes (`.band-slot` and `.np-fit`) and passed every piece of
 > sheet state as a callback or a getter to satisfy this; the dock has one, and the rule it has to satisfy is
-> harder rather than easier. **`.dock`'s own CONTENT is conditional** — the strip swaps its title, transport, cheer
+> harder rather than easier. **`.dock`'s own CONTENT is conditional** — the strip swaps its title, Cheer key, cheer
 > tray and offline cue as the room changes — so the binding genuinely re-runs, which is exactly the shape this
 > rung objects to. No unit test mounts the root layout today; one that does will need a layout engine, and that is
 > the constraint to honour rather than to work around. The layout's own comment says so at the binding.
@@ -616,6 +620,7 @@ because a `class:` directive is not valid on a component. Their common contracts
 thing to do. Sing is its first screen (the search box). Its story is `/components/spotlight` (dev-only), filmed by
 the `spotlight-*` rows of `bun run ui:review` on `vite dev` (`tests/playwright/world/gallery.ts`). Five things
 keep it steady, each found as a flake:
+
 - **No file watching.** The gallery sets `ENCORE_VITE_NO_WATCH`, and `vite.config.ts` then ignores every path
   (`server.watch.ignored: ['**/*']`; `watch: null` does not survive config resolution and left the watcher on). A
   watcher per instance ran the box out of file handles (`EMFILE`), and a trace written under `.artifacts` reloaded
@@ -629,6 +634,7 @@ keep it steady, each found as a flake:
 - **Every route is scanned at startup** (`optimizeDeps.entries`), so no late re-bundle breaks an open page.
 
 The `spotlight` probe holds these on the same story:
+
 - only transform and opacity move;
 - the spinner obeys the grace;
 - a Guide tap checks in the next frame;
@@ -782,13 +788,15 @@ home-indicator inset and the strip composes none — two fixed siblings would ea
 and would disagree the moment one of them changed height. The dock is NOT inside `.app-shell`: the shell is
 centred and width-capped, so on a tablet a dock inside it would float in the middle of the screen.
 
-**THE DOCK HAS ONE HEIGHT (proposal 13).** It is always the strip on the tab bar, **93px** at 390x844 and 320 (the
+**THE DOCK HAS ONE HEIGHT (proposal 13).** It is always the strip on the tab bar, **92px** at 390x844 and 320 (the
 ui:review dock rows), whether the room is idle, queued, playing, cheering or offline. Every strip state is one
-`var(--tap)` row — the four reactions sit behind a Cheer key and swap in for the title and transport, "Reconnecting…"
-takes the title slot, and an idle room reads "Nothing playing" with NO transport (the dead Play button the rebuild
-removed stays removed). Before, the dock had three heights (48, 93 and 164 with a reaction row), and each step moved
-its top edge on every phone in the room. `measured-dock.spec.ts` asserts the one height across states and surfaces;
-`dock-cls.spec.ts` asserts no layout shift from the dock across seven room transitions at 390x844 and 320x568.
+`var(--tap)` row — the four reactions sit behind a Cheer key and swap in for the now-line, "Reconnecting…" takes the
+title slot, and an idle room reads "Nothing playing". The dock carries no pause, restart or skip in any state
+(redesign step 4), only the idle Play in the Cheer key's slot; `measured-dock` and `dock-cls` assert that too, and
+`dock-idle-play` reaches the idle room through a reboot and taps that Play. Before, the dock had three heights (48,
+93 and 164 with a reaction row), and each step moved its top edge on every phone in the room.
+`measured-dock.spec.ts` asserts the one height across states and surfaces; `dock-cls.spec.ts` asserts no layout
+shift from the dock across seven room transitions at 390x844 and 320x568.
 Readings below that quote a 46px dock or a top edge of 854 (1440x900) / 798 (390x844) predate it.
 
 `src/routes/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
@@ -857,9 +865,10 @@ A call site can owe one of two things, and which one depends on whether it holds
   through a spread, which is why `FieldSlider` has to declare `value` instead of letting it ride `...rest`. Not
   `{#key}` on a refusal: re-creating the control drops focus, so a keyboard guest would be thrown out of it on
   every dropped keypress.
-- **A say is owed where failure is indistinguishable from success.** The strip's restart, play/pause and skip
-  hold no optimistic value, so there is nothing to roll back — but on SUCCESS they change nothing locally
-  either, since the next broadcast is what redraws them. Silence therefore cannot be read at all, and the
+- **A say is owed where failure is indistinguishable from success.** Restart, play/pause and skip (on /queue's Now
+  card, sent through the layout's `'transport'` context, typed in `src/lib/transport-controls.ts`) hold no optimistic
+  value, so there is nothing to roll back — but on SUCCESS they change nothing locally either, since the next
+  broadcast is what redraws them. Silence therefore cannot be read at all, and the
   guest's only remaining move is to tap again. `transport()` in `src/routes/+layout.svelte` answers with one
   `toast.error` carrying `id: 'transport-dropped'`: sonner keys toasts by id, so a mash updates the single
   notice and resets its timer instead of stacking a tower of them over the dock.
@@ -892,9 +901,9 @@ Three tabs because the home column already WAS three pages. It rendered six sect
 
 **The thesis the split rests on: Encore's now-playing surface is the TELEVISION.** The phone is a remote and a queue,
 so it never needed a multi-snap now-playing sheet. `src/lib/ui/NowPlayingStrip.svelte` is a fixed-height strip with no
-snap array, no drag and no geometry read, and it renders only when something is playing or something is queued, so an
-idle room shows no dead transport. Everything the sheet's body held — ± key, the guiding track, the range bar, a clock
-readout — is on the Queue tab, above the list it acts on, because those controls act on what is PLAYING and the
+snap array, no drag and no geometry read, and since redesign step 4 it is a now-line with no transport but the idle
+Play. Everything the sheet's body held, and now pause, restart and skip, — ± key, the guiding track, the range bar,
+a clock readout — is on the Queue tab, above the list it acts on, because those controls act on what is PLAYING and the
 playing song is not in the queued list. `vaul-svelte` is GONE: the `/components` gallery was its last importer, and
 once that section was replaced by the strip and the tab bar the dependency and the 13-file `components/ui/drawer/`
 wrapper were deleted with it. Measured on the build afterwards — `vaul` appears in no client artifact at all, and
@@ -980,7 +989,16 @@ Beating that wants a settled-state read on the link, applied to all three at onc
 
 ### The Now card
 
-The top of `/queue` while a song plays. The playing song's key and guide belong to its singer (ARCHITECTURE.md §10),
+The top of `/queue` while a song plays. **It holds the transport** (redesign step 4, an owner ruling, moved off the
+dock): restart, play/pause and skip, three 44 px keys under the clock in one `Playback` group, for every phone, as
+the strip had them. Play/pause is the card's one accent fill. They go through the root layout's `transport()` and tap
+target (the context in `src/lib/transport-controls.ts`), so the dropped-command notice and the settle window are
+unchanged. When the last Skip takes the card away, focus that fell to `<body>` goes to the dock's now-line link.
+With nothing playing but a song ready, the only Play is the strip's, beside `Ready when you are`: a row here instead
+flashed for the frames between the queue patch and `playback:state` as every first song started, and shifted the
+list under it.
+
+The playing song's key and guide belong to its singer (ARCHITECTURE.md §10),
 so only the singer's phone shows the keycaps, the Guide slider and the range bar. Every other phone reads the same facts
 as one line from `tuneLine` in `src/lib/song-facts.ts`: `Key +2 · Guide 40%`, the TV's wording in the phone's dress. The
 key part shows only while shifted, and a song with no guiding track names no guide. The line's slot is kept, blank,
@@ -1042,7 +1060,8 @@ button) said the same thing three ways. The rows under it are `SongRow flat`:
 The group headings are dim sentence case, not uppercase eyebrows. While a search is out, nothing shows for
 `PENDING_GRACE_MS`; past it, flat skeleton rows stand in, and the rows replace them the moment the answer lands: there
 is no minimum hold, because holding content behind an indicator is a new wait (#1091, `sing-slow-search`). The field
-has no spinner of its own (#1126).
+has no spinner of its own (#1126). The zero-state speaks only for the text a search has answered (`answeredFor`), so
+text still waiting on the 150 ms debounce never reads "Nothing matches" (#1192).
 
 `searchActive` (a non-empty query) is still the SOLE switch, between the Spotlight alone and the results. There is
 still no browse mode on this column, no `?browse=1` and no history entry for a search, so Back always means leave the
@@ -2109,6 +2128,7 @@ relays it (`tv:clock`, `docs/SERVER.md#the-tv-clock-relay`). The rules are in `s
 
    The proposal said 250 ms for the seek line. At 250 ms, a copy that started 150 ms late on a 4x-CPU device took
    5 s of trimming to catch up, and that start alone put p95 at 103 ms.
+
 4. **The seat never follows.** Only a copy is handed `follow` (`isCopy` on the page). A slot without it goes back
    to rate 1 with pitch preserved, so a copy promoted mid-song becomes the room's clock exactly as it plays.
    `p34-copy-drift.spec.ts` checks that the TV's element never sees a `ratechange`.

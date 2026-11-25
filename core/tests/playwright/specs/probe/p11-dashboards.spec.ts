@@ -356,7 +356,7 @@ async function driveFourPlays(world: World, phoneA: Page): Promise<number> {
 	).toHaveCount(3);
 
 	// `SEL.skip` is a ROLE + accessible name, not a CSS selector: the transport is addressed the way a screen
-	// reader sees it, and all three controls are in the dock, on every phone surface.
+	// reader sees it, on the Queue tab's Now card, where phoneA already is.
 	//
 	// WAITING ON A NEW currentEntryId, not on the rotation shrinking: a SKIPPED turn is recycled to the back of
 	// the rotation rather than dropped, so the waiting count is 3 before and after every skip. The play row is
