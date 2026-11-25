@@ -5,7 +5,17 @@
 	import { resolve } from '$app/paths';
 	import { onMount, setContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { SINGER_COLORS, canRetryPlay, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
+	import {
+		SINGER_COLORS,
+		canRetryPlay,
+		songDisplay,
+		effectiveGuideLevel,
+		hasGuidingTrack,
+		isPlayable,
+		type Media,
+		type PlayerCommand,
+		type QueueEntry
+	} from '$lib/contract';
 	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
 	import { processStageLabel, stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { room } from '$lib/stores/room';
@@ -82,6 +92,8 @@
 	let canReact = $state(false);
 	let waitingLine = $state('');
 	let entryId = $state<string | null>(null);
+	// What the You're up flood's Key and Guide rows read: only while it is up, so other surfaces read nothing more.
+	let flood = $state<{ media: Media | null; key: number; guide: number } | null>(null);
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
 	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
@@ -164,6 +176,13 @@
 				clearTimeout(youreUpTimer);
 				youreUpTimer = setTimeout(dismissYoureUp, youreUpMs(room.settings.room));
 			}
+			flood = youreUp
+				? {
+						media: media ?? null,
+						key: room.playback.keyShift,
+						guide: effectiveGuideLevel({ guideLevel: room.playback.guideLevel }, room.roomGuideDefault)
+					}
+				: null;
 			const failed = didntPlayTurn(room.entries, me, didntPlaySeen);
 			// It REPLACES "You're up" in the markup's one slot: on a song that would not start, that sheet said the opposite.
 			if (failed)
@@ -352,6 +371,8 @@
 		const entryId = tapTarget();
 		if (entryId) transport({ cmd, entryId });
 	}
+	// The turn "Your song didn't play" is up for, so /queue's row for it stays quiet beside the sheet's filled step.
+	setContext('didntPlayFor', () => didntPlay?.id ?? null);
 	// Drawn on the Queue tab's Now card (redesign step 4); sent from here, where the notice and tap target live.
 	setContext<TransportControls>('transport', {
 		restart: () => targeted('restart'),
@@ -568,6 +589,13 @@
 			name={room.me?.displayName ?? ''}
 			title={youreUp.title}
 			singerColor={youreUp.color}
+			entryId={youreUp.id}
+			mediaId={flood?.media?.id ?? null}
+			profile={flood?.media?.songProfile ?? null}
+			serverKey={flood?.key ?? 0}
+			guideLevel={flood?.guide ?? 0}
+			keyAvailable={!!flood?.media && isPlayable(flood.media)}
+			guideAvailable={!!flood?.media && hasGuidingTrack(flood.media)}
 			ondismiss={dismissYoureUp}
 			onrestart={() => targeted('restart')}
 		/>

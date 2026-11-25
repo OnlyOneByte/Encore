@@ -23,6 +23,8 @@ import { at } from '$test';
 
 const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
 const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+// The live key and guide that /queue and the You're up flood share (redesign step 6).
+const liveTuneSrc = readFileSync(at('src/lib/live-tune.svelte.ts'), 'utf8');
 
 /* THE WHOLE TREE, because the two files above are where the call sites happen to be TODAY and the exhaustiveness
    arm at the bottom claims something about tomorrow. Reading only those two was a hole a verifier walked
@@ -100,11 +102,13 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 test("the guide pick hands the command's boolean back, so a dropped pick drops at once", () => {
 	/* Guide is Off / Low / Full on /queue (redesign step 5b). GuideSegments drops its pick when `onpick` returns false,
 	   so the route must return what `room.command` said, and name the song so a pick after a skip is dropped as stale. */
-	expect(queuePage).toContain("return room.command({ cmd: 'guide', level, entryId: nowEntry.id });");
+	expect(liveTuneSrc).toContain("return room.command({ cmd: 'guide', level, entryId });");
+	expect(queuePage).toContain('const guidePick = tune.guidePick;');
 	expect(queuePage).toContain('if (spotLive) return guidePick(level);');
 	// The key draft still resets on a song change, keyed on the entry ID: a skip never passes through null.
 	expect(queuePage).not.toContain('|| !nowEntry)');
-	expect(queuePage).toContain('if (id === draftsFor) return;');
+	expect(liveTuneSrc).toContain('if (id === draftsFor) return;');
+	expect(queuePage).toContain('entryId: nowEntry?.id ?? null,');
 });
 
 test('the guide slider is CONTROLLED, so a refused command cannot leave the thumb out there', () => {
@@ -140,7 +144,8 @@ test('the guide slider is CONTROLLED, so a refused command cannot leave the thum
 
 test('the ± keycaps still refuse to move the draft on a dropped command', () => {
 	// The site that already had the treatment, pinned so the pattern cannot be undone at one of the five.
-	expect(queuePage).toContain("if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;");
+	expect(liveTuneSrc).toContain("if (!room.command({ cmd: 'key', semitones: next, entryId })) return;");
+	expect(liveTuneSrc.indexOf('keyDraft = next;')).toBeGreaterThan(liveTuneSrc.indexOf("cmd: 'key'"));
 });
 
 test('the scan this file rests on reaches every file that can host a call site', () => {

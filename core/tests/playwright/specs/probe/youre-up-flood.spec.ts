@@ -6,6 +6,7 @@ import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
+import { serverPlayback } from './audio-probe-support';
 import type { Page } from '@playwright/test';
 
 const FLOOD = '[data-testid="youre-up-flood"]';
@@ -23,6 +24,9 @@ const watchFlood = (page: Page) =>
 		};
 		requestAnimationFrame(tick);
 	}, FLOOD);
+const shot = async (page: Page, name: string) => {
+	if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
+};
 const floodAt = (page: Page) => page.evaluate(() => (window as unknown as { floodAt: number | null }).floodAt);
 
 test('skip → You’re up paints the flood inside 300 ms, cold and warm, from a chunk fetched before the turn', async ({
@@ -94,11 +98,12 @@ test('skip → You’re up paints the flood inside 300 ms, cold and warm, from a
 	}
 });
 
-test('the flood is in the singer’s colour, said once, has only Restart to press, and goes on a tap outside it', async ({
+test('the flood is in the singer’s colour, said once, drives Key and Guide live, and goes on a tap outside them', async ({
 	world
 }) => {
 	test.setTimeout(180_000);
-	const worker = await startFakeWorker(world, { seconds: 60 });
+	// A guide mix, so Guide is live on the flood as it is on the card.
+	const worker = await startFakeWorker(world, { seconds: 60, guideMix: true });
 	try {
 		const maya = await world.openPhone('Maya');
 		const theo = await world.openPhone('Theo');
@@ -121,7 +126,22 @@ test('the flood is in the singer’s colour, said once, has only Restart to pres
 		// Announced once, from the node that was mounted empty; the flood's own words are hidden from assistive tech.
 		await expect(live).toHaveText(/^You’re up, .*believin/i);
 		await expect(live).toHaveAttribute('data-probe-same', 'yes');
-		expect(await flood.ariaSnapshot()).toBe('- button "Restart"');
+		// The card's controls, in the card's order: Key's two keycaps, then Guide's three segments, then Restart.
+		const keyRow = flood.getByTestId('flood-key');
+		const guideRow = flood.getByTestId('flood-guide');
+		await expect(keyRow.getByRole('button', { name: /Lower .*believin.* by one semitone/i })).toBeEnabled();
+		await expect(keyRow.getByRole('button', { name: /Raise .*believin.* by one semitone/i })).toBeEnabled();
+		const guide = guideRow.getByRole('radiogroup', { name: 'Guide' });
+		await expect(guide.getByRole('radio')).toHaveCount(3);
+		await expect(guide.getByRole('radio', { name: 'Off' })).toBeEnabled();
+		expect((await keyRow.boundingBox())!.y).toBeLessThan((await guideRow.boundingBox())!.y);
+		// As on the card, the keycaps and the segments end on the same right edge.
+		const right = async (l: typeof keyRow) => {
+			const b = (await l.boundingBox())!;
+			return Math.round(b.x + b.width);
+		};
+		expect(await right(keyRow.getByRole('button').last())).toBe(await right(guide));
+		await expect(flood.getByRole('button', { name: 'Restart' })).toBeVisible();
 		// The whole phone, in a colour that is not the dark ground.
 		const box = (await flood.boundingBox())!;
 		expect(box).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
@@ -130,12 +150,29 @@ test('the flood is in the singer’s colour, said once, has only Restart to pres
 		// Nobody else is flooded.
 		await expect(maya.locator(FLOOD)).toHaveCount(0);
 
-		// A tap on Restart is a control: the flood stays. A tap anywhere else dismisses it.
+		// The controls drive the live song, as the card's do, and a tap on one leaves the flood up.
+		await keyRow.getByRole('button', { name: /Raise/ }).click();
+		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift).toBe(1);
+		await expect(keyRow).toContainText(/→/);
+		await guide.getByRole('radio', { name: 'Full' }).click();
+		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.guideLevel).toBe(1);
+		await expect(guide.getByRole('radio', { name: 'Full' })).toHaveAttribute('aria-checked', 'true');
+		await shot(theo, 'flood-390');
+		await theo.setViewportSize({ width: 320, height: 568 });
+		await shot(theo, 'flood-320');
+		await theo.setViewportSize({ width: 390, height: 844 });
 		await flood.getByRole('button', { name: 'Restart' }).click();
 		await expect(flood).toBeVisible();
+		// A tap anywhere else dismisses it.
 		await flood.click({ position: { x: 195, y: 120 } });
 		await expect(flood).toHaveCount(0);
 		await expect(live).toHaveText('');
+		// The same song on Queue: the filled card, Guide at Full (the #1295 review's frame), and no flood over it.
+		await theo.locator(SEL.tab).filter({ hasText: 'Queue' }).first().click();
+		const card = theo.locator('section[aria-label="Your song"]');
+		await expect(card.getByRole('radio', { name: 'Full' })).toHaveAttribute('aria-checked', 'true');
+		await expect(theo.locator(FLOOD)).toHaveCount(0);
+		await shot(theo, 'card-guide-full-390');
 	} finally {
 		await worker.stop();
 	}

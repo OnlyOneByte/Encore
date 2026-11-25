@@ -57,6 +57,7 @@
 	import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
 	import { cardScrollTarget, firstTimeFor, guestIsDriving } from '$lib/card-to-you';
 	import { rememberKey } from '$lib/stores/remembered-key';
+	import { liveTune } from '$lib/live-tune.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { DIDNT_PLAY, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -181,53 +182,24 @@
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 	// Pause, restart and skip live on the Now card, not the dock (redesign step 4, an owner ruling).
 	const tp = getContext<TransportControls>('transport');
+	// One filled next step per screen: while the sheet is up for a held turn, that row's own pair goes quiet.
+	const didntPlayFor = getContext<(() => string | null) | undefined>('didntPlayFor');
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
 	const nowDisplay = $derived(songDisplay(nowMedia));
 	const nowTitle = $derived(nowDisplay.title || nowMedia?.title || 'Untitled');
 	const nowDurationSec = $derived(nowMedia?.durationSec ?? 0);
 	const nowSinger = $derived(nowEntry ? singers.get(nowEntry.singerId) : undefined);
 
-	/* AN OPTIMISTIC KEY, for the same reason the guiding-track slider below holds `guideDraft`: a control that
-	   computes its next value from the last SERVER ECHO loses every tap made before the echo arrives. Both keycaps
-	   sent `keyShift ± 1` read off `playback.keyShift`, so five fast taps all computed from the same stale 0 and
-	   sent 1, 1, 1, 1, 1 — the key moved one semitone instead of five, and on party latency that is the normal
-	   result rather than the unlucky one. Nothing was disabled and nothing was said, so the guest simply mashed.
-	   THE WIRE VALUE STAYS ABSOLUTE. The `key` command is idempotent by design — it carries the target, not a
-	   delta — and that must not change: a delta protocol would turn a dropped or duplicated message into a key
-	   that is permanently wrong, where a repeated absolute is a no-op. So the draft moves the LOCAL view and the
-	   command still names where to land.
-	   `null` means "no local opinion", which is what lets a key change from the TV or another phone take over
-	   immediately rather than being pinned behind this phone's last tap. */
-	let keyDraft = $state<number | null>(null);
-	/* The draft is dropped the moment the server agrees with it, and when the song on the card changes: the reset
-	   effect below, keyed on the entry ID. It can't key on `nowEntry` going null: a skip goes straight from one entry
-	   to the next, so it never is, and the next singer's card would show the previous song's "+1" and the next tap
-	   would send +2 over their On deck preset. */
-	$effect(() => {
-		if (keyDraft !== null && playback.keyShift === keyDraft) keyDraft = null;
-	});
-	const keyShift = $derived(keyDraft ?? playback.keyShift);
-
-	/* ±7 is the range both keycaps already bound themselves to; named once here so the step, the two `disabled`
-	   tests and the clamp cannot drift apart. */
-	const KEY_LIMIT = 7;
-	function stepKey(delta: number): void {
-		const next = Math.max(-KEY_LIMIT, Math.min(KEY_LIMIT, keyShift + delta));
-		if (next === keyShift) return;
-		/* THE DRAFT ONLY MOVES IF THE COMMAND LEFT. Setting it unconditionally was a regression this very wave
-		   introduced: with no socket, `command()` silently no-ops, so the keycap showed a shift the server had
-		   never heard — and the clearing effect below only fires when the server AGREES with the draft, which
-		   offline it never does, so the wrong value stuck indefinitely. Before the draft existed the control was
-		   honest by accident (it read the server value and so simply did not move).
-		   A player command is fire-and-forget and is NOT resent on resync the way a queue add is, so "dropped"
-		   really does mean lost — there is nothing to be optimistic about. */
-		// The key is per-song, so it names the song: a tap that lands after a skip must not re-pitch the next one.
-		if (!nowEntry) return;
-		if (!room.command({ cmd: 'key', semitones: next, entryId: nowEntry.id })) return;
-		keyDraft = next;
-		// Your own song: this phone remembers the key for the next time you queue it.
-		if (nowEntry && nowEntry.singerId === me?.id) rememberKey(nowEntry.mediaId, next);
-	}
+	/* The live key and guide on the playing song, shared with the You're up flood ($lib/live-tune): an optimistic key
+	   draft that only moves when the command left, cleared when the room agrees or the song changes. */
+	const tune = liveTune(() => ({
+		entryId: nowEntry?.id ?? null,
+		mediaId: nowEntry?.mediaId ?? null,
+		mine: !!nowEntry && nowEntry.singerId === me?.id,
+		serverKey: playback.keyShift
+	}));
+	const keyShift = $derived(tune.keyShift);
+	const stepKey = tune.stepKey;
 	// Two different stem requirements, so a song can offer ±key without offering a guiding track.
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
 	const guideEnabled = $derived(!!nowMedia && hasGuidingTrack(nowMedia));
@@ -264,23 +236,8 @@
 	   is 0, and clamping to 0 would freeze the clock, so the cap only applies when there is a length to cap to. */
 	const drawnPos = $derived(nowDurationSec > 0 ? Math.min(displayPos, nowDurationSec) : displayPos);
 
-	/* THE GUIDE is Off / Low / Full (GuideSegments): one pick, one command naming the song, so a tap that lands after
-	   a skip is dropped as stale rather than moving the next singer's guide. The segments hold the pick until the
-	   room answers, and drop it at once when the command never left. */
-	function guidePick(level: number): boolean {
-		if (!nowEntry) return false;
-		return room.command({ cmd: 'guide', level, entryId: nowEntry.id });
-	}
-
-	/* THE SONG CHANGED: the key draft belonged to the last one. Keyed on the entry ID, not on `nowEntry` going null,
-	   which a skip never passes through. */
-	let draftsFor: string | undefined;
-	$effect(() => {
-		const id = nowEntry?.id;
-		if (id === draftsFor) return;
-		draftsFor = id;
-		keyDraft = null;
-	});
+	// THE GUIDE is Off / Low / Full (GuideSegments): one pick, one command naming the song (`tune.guidePick`).
+	const guidePick = tune.guidePick;
 
 	/* REORDERING, MOVED VERBATIM FROM THE HOME PAGE rather than re-derived. It is a live sort with no mode:
 	   `liveSortTarget` both places the rows and decides the commit, so a release cannot land somewhere the guest did
@@ -955,6 +912,7 @@
 							held={!!e.playFailed}
 							onretry={e.singerId === me?.id && canRetryPlay(e) ? () => store?.retryPlay(e.id) : undefined}
 							pickAnotherHref={e.playFailed && e.singerId === me?.id ? pickAnotherHref(resolve('/'), e.id) : undefined}
+							quietNext={didntPlayFor?.() === e.id}
 							title={mediaTitleOf(e.mediaId)}
 							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 							singerColor={s?.color ?? SINGER_COLORS[0]}

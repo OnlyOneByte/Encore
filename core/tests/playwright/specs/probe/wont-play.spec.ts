@@ -78,10 +78,15 @@ async function sampleFrames(page: Page, watch: Record<string, [selector: string,
 }
 const seen = (page: Page) =>
 	page.evaluate(() => (window as unknown as { seen: Record<string, { at: number; frames: number }> }).seen);
-/** The test ids of the "didn't play" sheet's next-step buttons that paint a fill: there must be exactly one (#1156). */
+/** The test ids of every next-step button on the page that paints a fill, the sheet's and the held row's: there must be
+ *  exactly one (#1156, and the #1271 review: the row goes quiet while the sheet is up). */
 const filledNextSteps = (page: Page) =>
 	page.evaluate(() =>
-		[...document.querySelectorAll<HTMLElement>('[data-testid="song-didnt-play"] .next > *')]
+		[
+			...document.querySelectorAll<HTMLElement>(
+				'[data-testid="song-didnt-play"] .next > *, [data-testid="row-retry"], [data-testid="row-pick-another"]'
+			)
+		]
 			.filter((b) => !/rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(b).backgroundColor))
 			.map((b) => b.dataset.testid)
 	);

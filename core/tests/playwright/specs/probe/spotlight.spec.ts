@@ -128,7 +128,7 @@ const checked = (where: Locator) => where.getByRole('radio', { checked: true }).
 const tabStops = (where: Locator) =>
 	where.getByRole('radio').evaluateAll((rs) => rs.filter((r) => r.tabIndex === 0).map((r) => r.textContent));
 
-test('a Guide tap checks its segment in the next frame; a dropped send and a custom level check none', async ({
+test('a Guide tap checks its segment in the next frame; a dropped send keeps the old one, a custom level the nearest', async ({
 	page
 }) => {
 	await open(page);
@@ -152,9 +152,10 @@ test('a Guide tap checks its segment in the next frame; a dropped send and a cus
 	await dropped.getByRole('radio', { name: 'Full' }).click();
 	expect(await checked(dropped)).toEqual(['Low']);
 	const custom = page.getByTestId('guide-custom');
-	expect(await checked(custom)).toEqual([]);
-	// A level no segment claims still leaves one way in: the first segment.
-	expect(await tabStops(custom)).toEqual(['Off']);
+	// A level between presets (60%) shows the nearest one checked, so the control never reads as unset (#1295 review),
+	// and that one is the group's tab stop.
+	expect(await checked(custom)).toEqual(['Low']);
+	expect(await tabStops(custom)).toEqual(['Low']);
 
 	for (const box of await plain.getByRole('radio').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect())))
 		expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
