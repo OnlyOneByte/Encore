@@ -1512,7 +1512,8 @@ keyboard: at 320x568 the keyboard leaves 308 px, and without the rule the button
 that stop's certified `on_fill`. **The colour waits behind "change"**: a row reads "Your color Aqua · change" and
 opens the ring in a modal `<dialog>` with a Done button, on its own surface (`--card2`, one step above the card) over
 a `--scrim-strong` backdrop, so picking moves nothing on the page and the ring no longer
-outsizes the name field. The colour is a suggestion until the ring is touched, and an untouched one is never sent.
+outsizes the name field. The dialog and its ring mount on the first "change", not with the card, so the QR's first
+render to the name field pays nothing for them (#1320; `join-ring-lazy` holds it). The colour is a suggestion until the ring is touched, and an untouched one is never sent.
 
 **Both paths must stay offered, never one instead of the other.** A typed code alone is a cognitive-function test
 under SC 3.3.8, and the scan path is what makes this screen conformant. There is nonetheless NO scan affordance
