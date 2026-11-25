@@ -65,8 +65,9 @@ export const LEFT_CLOSE_CODE = 4001;
 export const TV_REMOVED_CLOSE_CODE = 4002;
 /** A cookieless `/tv` turned away because the room has its fill of those. A screen with a cookie never is. */
 export const TV_FULL_CLOSE_CODE = 4003;
-/** What a `/tv` shows: the whole stage, or only the words (a singer's monitor). The room's TV always shows everything. */
-export const TV_SHOWS = ['everything', 'words'] as const;
+/** What a `/tv` shows: the whole stage, only the words (a singer's monitor), or the Up next board (who is singing,
+ *  the next turns and the QR, for a kitchen or a hallway). The room's TV always shows everything. */
+export const TV_SHOWS = ['everything', 'words', 'board'] as const;
 export type TvShow = (typeof TV_SHOWS)[number];
 
 // core -> all clients (broadcasts)

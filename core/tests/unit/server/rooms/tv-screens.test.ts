@@ -220,10 +220,11 @@ it('only an open screen takes a layout, and a removed screen forgets it', () => 
 	expect(s.screenOf(R, 99)).toBeUndefined();
 });
 
-it('parseTvShow takes the two layouts and nothing else', () => {
+it('parseTvShow takes the three layouts and nothing else', () => {
 	expect(parseTvShow('everything')).toBe('everything');
 	expect(parseTvShow('words')).toBe('words');
-	for (const bad of ['board', 'Words', '', null, undefined, 1, {}]) expect(parseTvShow(bad)).toBeNull();
+	expect(parseTvShow('board')).toBe('board');
+	for (const bad of ['lyrics', 'Words', 'BOARD', '', null, undefined, 1, {}]) expect(parseTvShow(bad)).toBeNull();
 });
 
 it('server.ts tells a screen its layout, keeps the TV on everything, and the API takes only a valid layout', () => {

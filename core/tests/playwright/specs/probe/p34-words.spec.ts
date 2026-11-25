@@ -81,7 +81,7 @@ test('Words only: the host sets it, the copy shows the words alone and who is ne
 		// The API refuses words only on the TV, and anything that is not a layout.
 		const onTv = await host.request.post('/api/screens', { data: { action: 'show', id: tvRow!.id, show: 'words' } });
 		expect(onTv.status()).toBe(409);
-		const bad = await host.request.post('/api/screens', { data: { action: 'show', id: copyRow!.id, show: 'board' } });
+		const bad = await host.request.post('/api/screens', { data: { action: 'show', id: copyRow!.id, show: 'lyrics' } });
 		expect(bad.status()).toBe(400);
 		const guest = await ana.request.post('/api/screens', { data: { action: 'show', id: copyRow!.id, show: 'words' } });
 		expect(guest.status()).toBe(403);

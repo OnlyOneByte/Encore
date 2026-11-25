@@ -2386,12 +2386,13 @@ lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
 - A row's buttons wait while its action is in flight, so a double tap sends one request. A Remove that finds the
   screen already gone counts as done. Escape cancels a rename.
 - The page ends with where to add a screen: the join address with `/tv`.
-- **What each copy shows**, **Everything** or **Words only**, is a radio group (`ScreenShowPicker`, one tab stop and
-  arrow keys, as `GuideSegments`). A pick shows at once and the copy follows within a second. The TV row has none: the
-  TV always shows the whole stage. The Up next board is proposal 34's PR 5.
+- **What each copy shows**, **Everything**, **Words only** or **Up next**, is a radio group (`ScreenShowPicker`, one
+  tab stop and arrow keys, as `GuideSegments`). A pick shows at once and the copy follows within a second. The TV row
+  has none: the TV always shows the whole stage. Each label keeps one line; where the three do not fit across (a
+  Spotlight at 320), a container query stacks them, each still a 44 px tap.
 
 `p34-screens.spec.ts` covers the page, the API, the removed screen, the cookieless cap and a script minting cookies;
-`p34-words.spec.ts` covers Words only.
+`p34-words.spec.ts` covers Words only and `p34-board.spec.ts` Up next.
 
 ### Words only
 
@@ -2416,6 +2417,21 @@ song's lyrics offset (Earlier/Later) exactly as the TV does.
 - **The switch:** the chrome cuts away, and the background fades out on its own `--motion-base` crossfade. The reel
   lands on the sung line at once rather than gliding there, as any change of its geometry does (the overlay's
   `snap`). ui:review row `tv-words-only`.
+
+### Up next
+
+A copy the host set to **Up next** (`/tv?show=board`) is a board for a kitchen or a hallway (`TvBoard`). Mid-song it
+shows "Singing now" with the singer and song in a pill of their colour, the next three turns in the stored rotation
+order (each with its singer's dot and song; a turn held after a failed play is left out, as the rotation skips it), and
+a big QR with "Scan to sing" and the room code. It never shows the words, so its drift from the TV does not matter.
+
+- **Everything else is as Words only:** only a copy mid-song, the lobby and attract unchanged, the seat always
+  everything, no lower-third, join corner, reactions or background, and no second QR on the song-change card.
+- **On a phone-shaped screen** the QR goes under the turns.
+- **Loaded on demand:** `TvBoard` is a dynamic import, so a screen never set to Up next does not ship its CSS
+  (CLAIM 13's `/tv` budget). Until it has loaded, and if it cannot load, the screen shows the whole stage.
+- **The switch:** the stage and the words cut away for the board, and the background fades out on its own
+  crossfade. ui:review row `tv-up-next`.
 
 ### A song that won't play
 
