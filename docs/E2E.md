@@ -319,6 +319,11 @@ browser or at `--workers=3`, with `analyser tap: {"ok":false, "why":"no-gain"}` 
 its build. Run the audio partition at `--workers=1`, and treat a `no-gain` failure as unattributed rather than as
 a product claim until that is understood.
 
+The demo songs last 8 s. A spec that checks a lot while one song is current pauses the room first, or on a slow
+runner the song ends by itself and the next step acts on the wrong song. A spec that skips on a phone whose strip
+just changed waits out `SETTLE_MS` (`$lib/transport-target`) first, because the phone drops that tap on purpose
+(one skip per tap). `reaction-row-return.spec.ts` does both.
+
 Concurrent runs must not share `outputDir` (`tests/playwright/.artifacts`): Playwright WIPES it at startup, so
 two runs corrupt each other's traces. Pass `--output=` when running alongside something else.
 
