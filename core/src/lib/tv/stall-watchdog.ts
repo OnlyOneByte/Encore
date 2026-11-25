@@ -30,7 +30,7 @@ export interface StallReading {
 	/** The element holds a media error (a missing or corrupt file), which no amount of waiting fixes. */
 	errored: boolean;
 	/** Bytes arrived since the last reading. A slow first load is not a hiccup: reloading it throws the buffer away, so
-	 *  the retry waits while it downloads and the 8 s failure still stands. */
+	 *  the retry waits for 4 s of stillness after the last byte and the 8 s failure still stands. */
 	downloading?: boolean;
 }
 
@@ -45,6 +45,8 @@ export class StallWatchdog {
 	#retried = false;
 	#failed = false;
 	#lastTick: number | null = null;
+	/** When the load last read as downloading while watching: the reload needs as long a stillness after that too. */
+	#lastByte = -Infinity;
 
 	/** A new song: one fresh retry, one fresh failure. */
 	reset(): void {
@@ -57,6 +59,7 @@ export class StallWatchdog {
 	rebase(): void {
 		this.#since = null;
 		this.#floor = -Infinity;
+		this.#lastByte = -Infinity;
 	}
 
 	tick({ now, position, watching, waitingForTap, errored, downloading = false }: StallReading): StallAction {
@@ -71,6 +74,7 @@ export class StallWatchdog {
 			return 'none';
 		}
 		if (errored) return this.#fail();
+		if (downloading) this.#lastByte = now;
 		const moved = position !== this.#at && position > this.#floor;
 		if (this.#since === null || moved) {
 			this.#since = now;
@@ -80,7 +84,9 @@ export class StallWatchdog {
 		}
 		const still = now - this.#since;
 		if (still >= STALL_FAIL_MS) return this.#fail();
-		if (still >= STALL_RETRY_MS && !this.#retried && !downloading) {
+		// Counted from the last byte too: a reload the tick a slow download finished threw away a file that had had no
+		// turn to start, and the refetch took as long again, so the song failed at 8 s anyway.
+		if (still >= STALL_RETRY_MS && now - this.#lastByte >= STALL_RETRY_MS && !this.#retried) {
 			this.#retried = true;
 			this.#floor = this.#at + RESUME_SLACK_SEC;
 			return 'retry';

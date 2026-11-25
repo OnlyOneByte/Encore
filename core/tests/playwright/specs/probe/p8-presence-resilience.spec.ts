@@ -155,6 +155,10 @@ async function openGuests(browser: Browser, world: World, names: string[]): Prom
 	return guests;
 }
 
+/** A maker that never takes a job: rows keep their Sing action and nothing turns ready and plays. Without one the
+ *  boot's maker grace (10 s) ran out mid-test on a loaded host and the first row had no action at all (#1117). */
+const holdMaker = (world: World) => startFakeWorker(world, { claim: 'none' });
+
 /**
  * Search, take the first row's action for real, then come back to the queue and confirm the row landed.
  *
@@ -394,6 +398,7 @@ test('a duplicate display name is refused in human words, and the form recovers'
 // queued WHILE the victim was down is what proves the resync.
 test('a hard-dropped phone reconnects and resyncs to the authoritative queue', async ({ browser, world }) => {
 	// A mid-list phone, so the drop is not at a boundary that might be special-cased.
+	const maker = await holdMaker(world);
 	const [victim, witness] = await openGuests(browser, world, ['Deb', 'Fin']);
 	try {
 		const before = await connectCount(victim!.page);
@@ -428,6 +433,7 @@ test('a hard-dropped phone reconnects and resyncs to the authoritative queue', a
 			.toBe(witnessRows);
 	} finally {
 		for (const g of [victim, witness]) await g?.context.close();
+		await maker.stop();
 	}
 });
 
@@ -436,6 +442,7 @@ test('a hard-dropped phone reconnects and resyncs to the authoritative queue', a
 // ONE test, three assertions, and they are one sequence: away, then the song surviving away, then coming back.
 // Split, the middle one would have to re-establish the away state it is about.
 test('a severed phone shows as AWAY, keeps its queued song, and returns as here', async ({ browser, world }) => {
+	const maker = await holdMaker(world);
 	const tv = await world.openTv();
 	const [away, observer] = await openGuests(browser, world, ['Han', 'Cai']);
 	try {
@@ -481,6 +488,7 @@ test('a severed phone shows as AWAY, keeps its queued song, and returns as here'
 			.toBe(false);
 	} finally {
 		for (const g of [away, observer]) await g?.context.close();
+		await maker.stop();
 	}
 });
 
@@ -558,6 +566,7 @@ test('a queue-add taken while the socket is severed reconciles on reconnect', as
 // ── 6. an explicit leave ─────────────────────────────────────────────────────────────────────────────────
 
 test('/api/leave un-queues that singer’s pending songs and frees the name', async ({ browser, world }) => {
+	const maker = await holdMaker(world);
 	const [leaver, observer] = await openGuests(browser, world, ['Eve', 'Cai']);
 	try {
 		await searchAndQueue(world, leaver!.page, 'caroline'); // so leave has real songs to handle
@@ -602,6 +611,7 @@ test('/api/leave un-queues that singer’s pending songs and frees the name', as
 		}
 	} finally {
 		for (const g of [leaver, observer]) await g?.context.close();
+		await maker.stop();
 	}
 });
 
@@ -611,6 +621,7 @@ test(`${NUM_BURST} phones queueing at once converge on one queue`, async ({ brow
 	// NUM_BURST shooters plus one phone that never taps. EVERY joined phone is read, because an origin renders
 	// its own row — a population of nothing but origins would look correct with every broadcast lost.
 	const names = ['Ada', 'Bea', 'Cai', 'Deb', 'Eve', 'Fin', 'Gio'].slice(0, NUM_BURST + 1);
+	const maker = await holdMaker(world);
 	const guests = await openGuests(browser, world, names);
 	try {
 		const shooters = guests.slice(0, NUM_BURST);
@@ -646,5 +657,6 @@ test(`${NUM_BURST} phones queueing at once converge on one queue`, async ({ brow
 		});
 	} finally {
 		for (const g of guests) await g.context.close();
+		await maker.stop();
 	}
 });

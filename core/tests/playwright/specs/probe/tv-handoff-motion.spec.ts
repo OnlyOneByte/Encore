@@ -65,6 +65,21 @@ interface Frame {
 	pointerEvents: string | null;
 }
 
+/** A `.lyrics` reel appearing, and whether it did so in the task of the layer's fade-out `transitionend`. */
+interface ReelMount {
+	t: number;
+	onFadeOut: boolean;
+}
+
+/** One of the layer's opacity transitions: when it really started on the page's clock, and its own delay + duration. */
+interface LayerFade {
+	start: number;
+	endTime: number;
+	/** The opacity it runs to. */
+	to: number;
+	shown: boolean;
+}
+
 /** One row per animation frame, from before the page's first script. Also stamps the HOLD'S END: every firing of a
  *  `setTimeout` whose delay is the room's intro hold, which is the page's own `interstitialTimer`; and every EXIT: the
  *  layer's opacity read the moment it drops `shown`, on the transition's own clock rather than a sampled frame. */
@@ -74,18 +89,47 @@ async function logFrames(tv: Page, holdMs = SONG_INTRO_MS): Promise<void> {
 			handoffFrames: unknown[];
 			holdEnds: number[];
 			exits: { t: number; opacity: number }[];
+			fadeOuts: number[];
+			reelMounts: ReelMount[];
+			shows: number[];
+			layerFades: LayerFade[];
 		};
 		w.handoffFrames = [];
 		w.holdEnds = [];
 		w.exits = [];
+		w.fadeOuts = [];
+		w.reelMounts = [];
+		w.shows = [];
+		w.layerFades = [];
+		// The layer's fade-out ending, and whether the reel mounted inside that same event's task: captured on the
+		// document, so this runs before the page's own handler, and cleared by the next task.
+		let inFadeOut = false;
+		document.addEventListener(
+			'transitionend',
+			(e) => {
+				const el = e.target as HTMLElement;
+				if (!el.classList?.contains('takeover-layer') || el.classList.contains('shown')) return;
+				w.fadeOuts.push(performance.now());
+				inFadeOut = true;
+				const ch = new MessageChannel();
+				ch.port1.onmessage = () => (inFadeOut = false);
+				ch.port2.postMessage(0);
+			},
+			true
+		);
+		let reelUp = false;
+		new MutationObserver(() => {
+			const up = !!document.querySelector('.lyrics');
+			if (up && !reelUp) w.reelMounts.push({ t: performance.now(), onFadeOut: inFadeOut });
+			reelUp = up;
+		}).observe(document, { subtree: true, childList: true });
 		new MutationObserver((records) => {
 			for (const r of records) {
 				const el = r.target as HTMLElement;
-				if (
-					el.classList.contains('takeover-layer') &&
-					/\bshown\b/.test(r.oldValue ?? '') &&
-					!el.classList.contains('shown')
-				)
+				if (!el.classList.contains('takeover-layer')) continue;
+				const was = /\bshown\b/.test(r.oldValue ?? '');
+				if (!was && el.classList.contains('shown')) w.shows.push(performance.now());
+				if (was && !el.classList.contains('shown'))
 					w.exits.push({ t: performance.now(), opacity: Number(getComputedStyle(el).opacity) });
 			}
 		}).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
@@ -125,6 +169,15 @@ async function logFrames(tv: Page, holdMs = SONG_INTRO_MS): Promise<void> {
 			const nameEl = card?.querySelector<HTMLElement>('.up-name') ?? null;
 			const ns = nameEl ? getComputedStyle(nameEl) : null;
 			const reel = document.querySelector<HTMLElement>('.lyrics');
+			for (const a of layer?.getAnimations() ?? [])
+				if (a instanceof CSSTransition && a.transitionProperty === 'opacity' && a.startTime !== null)
+					if (!w.layerFades.some((f) => f.start === a.startTime))
+						w.layerFades.push({
+							start: a.startTime as number,
+							endTime: Number(a.effect?.getComputedTiming().endTime),
+							to: Number((a.effect as KeyframeEffect).getKeyframes().at(-1)?.opacity),
+							shown: layer!.classList.contains('shown')
+						});
 			w.handoffFrames.push({
 				t: performance.now(),
 				layer: layer ? Number(getComputedStyle(layer).opacity) : card ? 1 : 0,
@@ -166,6 +219,18 @@ const exits = (tv: Page, since: number) =>
 		(s) => (window as unknown as { exits: { t: number; opacity: number }[] }).exits.filter((e) => e.t >= s),
 		since
 	);
+
+/** When the layer's fade-out ended (its `transitionend`), and when a reel mounted, since `since`. */
+const fadeOuts = (tv: Page, since: number) =>
+	tv.evaluate((s) => (window as unknown as { fadeOuts: number[] }).fadeOuts.filter((t) => t >= s), since);
+const reelMounts = (tv: Page, since: number) =>
+	tv.evaluate((s) => (window as unknown as { reelMounts: ReelMount[] }).reelMounts.filter((m) => m.t >= s), since);
+
+/** When the layer took `shown`, and its opacity transitions as they really ran, since `since`. */
+const shows = (tv: Page, since: number) =>
+	tv.evaluate((s) => (window as unknown as { shows: number[] }).shows.filter((t) => t >= s), since);
+const layerFades = (tv: Page, since: number) =>
+	tv.evaluate((s) => (window as unknown as { layerFades: LayerFade[] }).layerFades.filter((f) => f.start >= s), since);
 
 /** The frame log since `since`. Every read also checks rule 0: no frame draws card text over lyric text. */
 async function frames(tv: Page, since = 0): Promise<Frame[]> {
@@ -255,6 +320,11 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 		const skip = phases(await frames(tv, t0));
 		const skipHoldEnd = (await holdEnds(tv, t0))[0];
 		const skipExit = (await exits(tv, t0))[0];
+		const skipFade = {
+			out: (await fadeOuts(tv, t0))[0],
+			reel: (await reelMounts(tv, t0))[0],
+			ran: (await layerFades(tv, t0)).find((f) => !f.shown)
+		};
 
 		// 2. A NATURAL END: Maya queues again, and Theo's 8 s song is sought near its end and ends by itself.
 		await queueReady(maya, 'caroline');
@@ -267,6 +337,11 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 		const natural = phases(await frames(tv, t0));
 		const naturalHoldEnd = (await holdEnds(tv, t0))[0];
 		const naturalExit = (await exits(tv, t0))[0];
+		const naturalFade = {
+			out: (await fadeOuts(tv, t0))[0],
+			reel: (await reelMounts(tv, t0))[0],
+			ran: (await layerFades(tv, t0)).find((f) => !f.shown)
+		};
 
 		for (const [label, p] of Object.entries({ skip, natural })) {
 			expect(p.enter.length, `${label}: the card never came up`).toBeGreaterThan(1);
@@ -318,47 +393,47 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 			const mounted = p.after.find((f) => f.lyrics);
 			const rel = (t: number | undefined) => (t === undefined ? 'never' : Math.round(t - on.t));
 			const timeline = `card up 0, exit ${rel(p.after[0]?.t)}, card gone ${rel(gone?.t)}, reel mounted ${rel(mounted?.t)}, hold end ${rel(end)}, readable ${rel(readableAt)}, first sampled at 0.5 ${rel(sampled?.t)}`;
-			// Main's moment as main would PAINT it: its lyrics come up on the first frame at or after the hold's end, so
-			// a host that delivers that frame late delays main by the same gap.
-			const mainMoment = p.after.find((f) => f.t >= end!)?.t ?? end!;
-			// The reel needs two frames main does not: the one that delivers the card's `transitionend`, and the one that
-			// starts its own arrival. At 60 fps that is ~33 ms, inside the 100; a starved host (60-120 ms frames at load
-			// 60-80) stretches both, so the bound grows by those two frames' excess over 60 fps, measured from this run.
-			const gaps = p.after
-				.slice(1, 40)
-				.map((f, i) => f.t - p.after[i]!.t)
-				.sort((a, b) => a - b);
-			const frameMs = gaps[Math.floor(gaps.length / 2)] ?? 16.7;
-			const bound = 100 + 2 * Math.max(0, frameMs - 16.7);
+			// Each wait for a rendered frame (fade-out start, its `transitionend`, the reel's arrival) is measured and taken
+			// off, leaving the page's own schedule: a median-frame allowance missed one 270 ms frame (#1116).
+			const fade = label === 'skip' ? skipFade : naturalFade;
+			expect(fade.ran, `${label}: the layer's fade-out never ran (${timeline})`).toBeDefined();
+			expect(fade.out, `${label}: the layer's fade-out never ended (${timeline})`).toBeDefined();
+			expect(fade.reel, `${label}: no reel mounted after the card (${timeline})`).toBeDefined();
+			const exit = label === 'skip' ? skipExit : naturalExit;
+			expect(exit, `${label}: the layer never dropped \`shown\``).toBeDefined();
+			const lags = [
+				fade.ran!.start - exit!.t,
+				fade.out! - (fade.ran!.start + fade.ran!.endTime),
+				arrive!.reelArriveStart! - fade.reel!.t
+			].map((l) => Math.max(0, l));
+			const hostMs = lags.reduce((a, b) => a + b, 0);
+			const lagNote = `host waits ${lags.map(Math.round).join('+')} ms`;
 			expect(
-				Math.round(readableAt - mainMoment),
-				`${label}: the first lyric row was readable this long after main's moment (${timeline}, main's frame ${rel(mainMoment)}, median frame ${Math.round(frameMs)} ms, bound ${Math.round(bound)} ms)`
-			).toBeLessThanOrEqual(bound);
-			// THE REGRESSION PINS for a late reel. The readable bound above grows with the host's frames, so a lead of
-			// `--motion-base` alone (250 ms, 40-127 ms behind main) passes it at load; these two do not move with load.
+				Math.round(readableAt - hostMs - end!),
+				`${label}: the first lyric row was readable this long after the hold's end (${timeline}, ${lagNote})`
+			).toBeLessThanOrEqual(100);
+			// THE REGRESSION PINS for a late reel. A lead of `--motion-base` alone (250 ms) leaves the reel readable ~86 ms
+			// after the hold's end, inside the bound above, so these two hold the design itself.
 			// (a) The lead itself: from the layer dropping `shown` to the hold's end, both stamped by the page's own timers,
 			// so a busy host delays both alike. The design is `--motion-base` + `--motion-fast` (370 ms); 310 sits halfway
 			// to the 250 ms lead that let the reel come in late.
-			const exit = label === 'skip' ? skipExit : naturalExit;
-			expect(exit, `${label}: the layer never dropped \`shown\``).toBeDefined();
 			expect(
 				Math.round(end! - exit!.t),
 				`${label}: the exit led the hold's end by this much (${timeline})`
 			).toBeGreaterThanOrEqual(310);
 			// (b) The reel comes up as soon as the card has gone, in the hold's last moment, not only at the hold's end
-			// (mutant E3): on the frame the card's fade finished, or the next. A frame in a starved run can swallow the
-			// gap, so only when the card went before main's frame.
-			const goneAt = p.after.indexOf(gone!);
-			const mountedAt = p.after.indexOf(mounted!);
-			if (gone!.t < mainMoment)
+			// (mutant E3): in the task of the layer's own fade-out `transitionend`. Counting sampled frames between the two
+			// measured the host's frame rate instead (#1116). Only when the fade ended before the hold did.
+			if (fade.out! < end!)
 				expect(
-					mountedAt - goneAt,
-					`${label}: the reel mounted this many frames after the card had gone (${timeline}, main's frame ${rel(mainMoment)}, median frame ${Math.round(frameMs)} ms)`
-				).toBeLessThanOrEqual(1);
+					fade.reel!.onFadeOut,
+					`${label}: the reel mounted ${rel(fade.reel!.t)}, not on the card's fade-out ending at ${rel(fade.out)} (${timeline})`
+				).toBe(true);
 			expect(sampled, `${label}: no sampled frame showed the reel readable (${timeline})`).toBeDefined();
-			expect(Math.round(sampled!.t - end!), `${label}: sampled readable far behind (${timeline})`).toBeLessThanOrEqual(
-				300
-			);
+			expect(
+				Math.round(sampled!.t - hostMs - end!),
+				`${label}: sampled readable far behind (${timeline}, ${lagNote})`
+			).toBeLessThanOrEqual(300);
 		}
 	} finally {
 		await worker.stop();
@@ -367,9 +442,7 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 
 // A SHORT intro (the room allows 500 ms) leaves no room to lead the exit: the card must come up readable, then leave at
 // the hold's end. With the lead armed regardless, a 500 ms card never showed and a 700 ms one peaked at 0.68 (#1018
-// review, round 5). The card's opacity is read the moment the layer drops `shown`, on the transition's own clock (a
-// sampled peak depends on where the last frame before the exit lands): it must be full by then. The led exit gave 0.00
-// at 500 ms and 0.81 at 700 ms.
+// review, round 5). The card must have had its whole fade-in before the layer drops `shown`.
 for (const introMs of [500, 700, 1000]) {
 	test(`a ${introMs} ms intro: the card comes up full and leaves at the hold's end, not led`, async ({ world }) => {
 		test.setTimeout(180_000);
@@ -386,11 +459,19 @@ for (const introMs of [500, 700, 1000]) {
 			const p = phases(await frames(tv, t0));
 			const end = (await holdEnds(tv, t0))[0];
 			const exit = (await exits(tv, t0))[0];
+			const shownAt = (await shows(tv, t0))[0];
+			const fadeIn = (await layerFades(tv, t0)).find((f) => f.shown);
 			expect(exit, 'the layer never dropped `shown`').toBeDefined();
+			expect(shownAt, 'the layer never took `shown`').toBeDefined();
+			expect(fadeIn, 'the card never faded in').toBeDefined();
+			const note = `opacity ${exit!.opacity.toFixed(3)} at the exit, fade-in started ${Math.round(fadeIn!.start - shownAt!)} ms after \`shown\``;
+			// Full on the page's own schedule. The opacity read at the exit measured how late the host's next frame started
+			// the fade (16-200 ms after `shown` under load), not the page (#1116).
+			expect(fadeIn!.to, `the card faded in to less than full (${note})`).toBeGreaterThanOrEqual(0.95);
 			expect(
-				exit!.opacity,
-				`the card was not full when it left (opacity ${exit!.opacity.toFixed(3)}, up for ${p.holdMs} ms)`
-			).toBeGreaterThanOrEqual(0.95);
+				exit!.t - shownAt!,
+				`the card left before its ${fadeIn!.endTime} ms fade-in could finish (${note})`
+			).toBeGreaterThanOrEqual(fadeIn!.endTime);
 			// Not led: the card is up for the whole hold and leaves when it ends.
 			expect(end, 'the hold never ended').toBeDefined();
 			expect(Math.round(end! - p.after[0]!.t), 'the card left this long before its hold ended (a lead)').toBeLessThan(
