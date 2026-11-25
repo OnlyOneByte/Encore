@@ -30,6 +30,9 @@
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { tick } from 'svelte';
 
+	/** How long "<song> is in your songs" holds the line after a save. */
+	const SAVED_NOTE_MS = 2000;
+
 	let {
 		title,
 		singerName,
@@ -44,7 +47,10 @@
 		connected = true,
 		onreact,
 		reactResting = false,
-		onplay
+		onplay,
+		saved = false,
+		saveResting = true,
+		onsave
 	}: {
 		title: string | null;
 		singerName: string | null;
@@ -66,7 +72,38 @@
 		reactResting?: boolean;
 		/** Starts the next playable song: the strip's one transport key, shown only with nothing playing. */
 		onplay?: () => void;
+		/** The song on stage is in your songs (proposal 36). */
+		saved?: boolean;
+		/** Your own song, or the link down: the heart keeps its slot, hidden and inert, like the Cheer key. */
+		saveResting?: boolean;
+		/** Save or unsave the song on stage. The layout flips `saved` at once and undoes it if the server refuses. */
+		onsave?: () => void;
 	} = $props();
+
+	/* "VALERIE IS IN YOUR SONGS" takes the line's words for 2 s after a save, in place and at the same height, so the
+	   tap is answered where the eye already is. A song change ends it, since it named the song before. */
+	let savedNote = $state(false);
+	let noteTimer: ReturnType<typeof setTimeout> | undefined;
+	function tapHeart() {
+		clearTimeout(noteTimer);
+		savedNote = !saved;
+		if (savedNote) noteTimer = setTimeout(() => (savedNote = false), SAVED_NOTE_MS);
+		onsave?.();
+	}
+	// A refused save is rolled back by the layout, and the note must not outlive it.
+	$effect(() => {
+		if (!saved) {
+			clearTimeout(noteTimer);
+			savedNote = false;
+		}
+	});
+	$effect(() => {
+		void entryId;
+		return () => {
+			clearTimeout(noteTimer);
+			savedNote = false;
+		};
+	});
 
 	const fraction = $derived(progressFraction(elapsedSec, durationSec));
 	/* Anything in the rotation gives the line something to say; "Ready when you are" and its Play only when a song can
@@ -149,13 +186,18 @@
 			{:else if hasSong}
 				<!-- The singer dot is the one place the phone repeats the TV's colour coding, so whose turn it is
 					survives a glance at a strip two lines tall. -->
-				<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
+				<!-- Not in front of the note, which is about you, not the singer. -->
+				<span class="dot" hidden={savedNote} style:background={singerColor ?? 'var(--accent)'}></span>
 				<!-- KEYED ON THE ENTRY: a new song is new nodes, not the old title spans sliding sideways because the new
 					singer's name is a different width (a layout shift on every phone at every song change). -->
 				{#key entryId}
-					<span class="who">{singerName ?? 'Someone'}</span>
-					<span class="sep" aria-hidden="true">·</span>
-					<span class="song">{title ?? 'Untitled'}</span>
+					{#if savedNote}
+						<span class="song saved-note"><strong>{title ?? 'This song'}</strong> is in your songs</span>
+					{:else}
+						<span class="who">{singerName ?? 'Someone'}</span>
+						<span class="sep" aria-hidden="true">·</span>
+						<span class="song">{title ?? 'Untitled'}</span>
+					{/if}
 				{/key}
 			{:else if live}
 				<!-- `.status`, which WRAPS to two lines inside its box, never `.who`, which does not shrink: the waiting line
@@ -171,6 +213,19 @@
 			off it is hidden and inert in place, so nothing in the line moves at the handoff or when the host flips it. -->
 		{#if hasSong}
 			<div class="tp">
+				<!-- At the end of the line, before the Cheer key, and only while someone else sings: a save is "I want to do
+					that one". Its slot stays on your own song too, hidden, so the line never moves at the handoff. -->
+				<button
+					class="btn heart"
+					class:resting={saveResting}
+					class:saved={saved}
+					onclick={tapHeart}
+					inert={saveResting}
+					aria-pressed={saved}
+					aria-label="Save {title ?? 'this song'} to your songs"
+				>
+					<Icon name="heart" />
+				</button>
 				<button
 					class="btn cheer-key"
 					class:resting={!canCheer}
@@ -327,6 +382,15 @@
 		color: var(--role-on-accent);
 	}
 
+	/* Saved is the filled mark in the accent, so the state is the shape as well as the colour. */
+	.saved :global(svg) {
+		color: var(--role-accent);
+		fill: currentColor;
+	}
+	.saved-note {
+		color: var(--role-ink);
+	}
+
 	/* The cheers' own surface, so the key reads as the way into them. */
 	.cheer-key {
 		background: var(--card2);
@@ -351,7 +415,8 @@
 			transition: transform var(--motion-tick) linear;
 		}
 		/* Resting is a fade in place, so it touches no layout. */
-		.cheer-key {
+		.cheer-key,
+		.heart {
 			transition:
 				opacity var(--motion-base) ease-out,
 				visibility var(--motion-base);

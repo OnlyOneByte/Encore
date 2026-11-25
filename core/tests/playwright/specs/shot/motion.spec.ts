@@ -60,7 +60,8 @@ const CUTS = new Set([
 	'phone-welcome-back-390',
 	'phone-welcome-back-320',
 	// Redesign step 5: the card is in the singer's colour from On deck on, so the heads-up changes words, not colour.
-	'phone-on-deck-heads-up'
+	'phone-on-deck-heads-up',
+	'phone-heart-save'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -496,6 +497,43 @@ function fanDock(
 			only: row.only,
 			subject: row.subject,
 			// The tray's 6 s return is a wall-clock timeout: it would close the tray between seeked frames.
+			holdTimers: true,
+			stripClip: async () => ({ x: 0, y: 664, width: 390, height: 180 }),
+			observe: readDock
+		};
+	};
+}
+
+/** The now-line heart (proposal 36): a CUT. Theo, a fan while Maya sings, taps it; the mark fills and the words become
+ *  "<song> is in your songs", in place. Each run starts unsaved, since the harness opens the row more than once. */
+function heartSave(): Make {
+	return (browser, world, cleanup) => {
+		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
+		return {
+			name: 'phone-heart-save',
+			what: 'Phone 390x844: Theo taps the heart while Maya sings — the mark fills and the line reads "<song> is in your songs" in place, a cut; the dock does not move',
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				ph ??= await dockPhones(world, cleanup);
+				await drain(ph.ana);
+				await queueReady(ph.maya, 'caroline');
+				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
+				const page = await asSinger(browser, world, opts, ph.theo);
+				await page.request.delete(`/api/me/songs/${(await world.awaitDemoTrack('caroline')).id}`);
+				await page.goto('/');
+				await expect(page.locator(`${SEL.npStrip} .heart`)).toHaveAttribute('aria-pressed', 'false');
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				return page;
+			},
+			trigger: async (page) => {
+				await page.locator(`${SEL.npStrip} .heart`).click();
+				await page.locator(`${SEL.npStrip} .saved-note`).waitFor({ state: 'attached', timeout: 5_000 });
+			},
+			only: STRIP_CONTENT,
+			subject: SEL.npStrip,
+			// The note's 2 s return is a wall-clock timeout: it would end the note between seeked frames.
 			holdTimers: true,
 			stripClip: async () => ({ x: 0, y: 664, width: 390, height: 180 }),
 			observe: readDock
@@ -1216,6 +1254,7 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),
 	'phone-reorder-held-320': reorderHeld(320),
+	'phone-heart-save': heartSave(),
 	/** The Cheer key swaps the strip for the tray, in place and at the same height (`.rise-in`). */
 	'phone-cheers-open': fanDock(
 		'phone-cheers-open',

@@ -42,6 +42,8 @@ export function yourSongLine(s: Pick<YourSong, 'keyShift' | 'guideLevel' | 'sung
 
 // Keyed by singer, like sing-search-keep: a shared phone never shows one guest's songs to the next.
 let cached: { singer: string; songs: YourSongs } | null = null;
+// The singer the latest load was for, so an answer that lands after a Leave or another load is not kept.
+let asking: string | null = null;
 
 /** The last answer this tab saw for this singer, for an instant repaint; `load` refreshes it. */
 export const cachedYourSongs = (singer: string | undefined): YourSongs | null =>
@@ -50,16 +52,18 @@ export const cachedYourSongs = (singer: string | undefined): YourSongs | null =>
 /** No one is joined: keep nothing. */
 export function forgetYourSongs(): void {
 	cached = null;
+	asking = null;
 }
 
 /** Null with no singer, or when the request failed: the box then stays as it is with no list. */
 export async function loadYourSongs(singer: string | undefined): Promise<YourSongs | null> {
 	if (!singer) return null;
+	asking = singer;
 	try {
 		const res = await fetch('/api/me/songs');
 		if (!res.ok) return null;
 		const songs = (await res.json()) as YourSongs;
-		cached = { singer, songs };
+		if (asking === singer) cached = { singer, songs };
 		return songs;
 	} catch {
 		return null;

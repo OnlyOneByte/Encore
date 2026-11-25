@@ -3,7 +3,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { onMount, setContext } from 'svelte';
+	import { onMount, setContext, untrack } from 'svelte';
+	import { NowLineSaves } from '$lib/now-line-saves';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, canRetryPlay, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
 	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
@@ -83,6 +84,12 @@
 	let canReact = $state(false);
 	let waitingLine = $state('');
 	let entryId = $state<string | null>(null);
+
+	/* THE NOW-LINE HEART (proposal 36): save the song someone else is singing. The saved set is read once, then kept
+	   here: the fill flips on the tap and goes back only if the server refuses. */
+	let nowMediaId = $state<string | null>(null);
+	let canSave = $state(false);
+	const saves = new NowLineSaves({ fetch: (url, init) => fetch(url, init), refused: (m) => void toast.error(m) });
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
 	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
@@ -190,6 +197,8 @@
 			synced = room.queue?.synced ?? false;
 			lost = room.lostName !== null;
 			canReact = !!entry && room.settings.room.tvReactions && entry.singerId !== me;
+			canSave = !!entry && !!me && entry.singerId !== me;
+			nowMediaId = entry?.mediaId ?? null;
 			canStart =
 				nextPlayableEntryId(
 					room.entries.filter((e) => e.status === 'queued'),
@@ -257,6 +266,11 @@
 	   itself is what triggers it. Still gated, for the original reason: an ungated connect would open a second
 	   `role=phone` socket on /tv. `connect()` is idempotent, so re-running on any navigation within the phone
 	   surfaces is a no-op rather than a second socket. */
+	// Once per singer this phone is, so the heart is right on the first song (`NowLineSaves` empties it on a change).
+	$effect(() => {
+		const singer = isPhoneSurface ? me : null;
+		untrack(() => void saves.setSinger(singer));
+	});
 	$effect(() => {
 		if (!isPhoneSurface) return;
 		void room.connect();
@@ -527,6 +541,9 @@
 			onplay={() => transport({ cmd: 'play' })}
 			onreact={(kind) => room.react(kind)}
 			reactResting={!canReact}
+			saved={!!nowMediaId && saves.ids.has(nowMediaId)}
+			saveResting={!canSave || offline}
+			onsave={() => nowMediaId && void saves.toggle(nowMediaId)}
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>
