@@ -59,6 +59,8 @@
 		cantMake?: boolean;
 		/** The Spotlight row (Sing): no card, no thumbnail, text that wraps, an outlined action. */
 		flat?: boolean;
+		/** One more byline fact, after the rest: Your songs' "2 keys down · sung 3 times". */
+		detail?: string;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
 		onmake?: () => void;
@@ -80,6 +82,7 @@
 		processable = true,
 		cantMake = false,
 		flat = false,
+		detail,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -125,7 +128,9 @@
 	 * sees a direct reference and reports a block-scoped use before declaration.
 	 */
 	const metaFacts = $derived(
-		[byline, views ? `${views} views` : '', showKey ? keyName : '', flat ? duration : ''].filter(Boolean).join(' · ')
+		[byline, views ? `${views} views` : '', showKey ? keyName : '', flat ? duration : '', detail ?? '']
+			.filter(Boolean)
+			.join(' · ')
 	);
 	/* `durationNote` IS NOT IN THAT JOIN, and the measurement is why. It was demoted to byline text with the other two
 	   and it does not fit: the byline is 144px on a 390px phone and "Longer than a song" alone measures 116 of them.

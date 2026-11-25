@@ -191,6 +191,22 @@ test('"Don\'t keep my nights" keeps a guest\'s sung songs out too, since they ar
 	expect(await list(p)).toEqual([]);
 });
 
+test('each row carries its catalog song, and canKeep says when the Keep me line belongs under the list', async () => {
+	const { app, deps } = installApp();
+	const { singer, p } = guest(app, 'Theo');
+	const body = async () => (await listSongs(event('/api/me/songs', 'GET', p))).json();
+	await save(p, 'm2');
+	// Saved but never sung: Keep me is not offered yet, so neither is the line.
+	expect(await body()).toEqual({ songs: [expect.objectContaining({ media: song('m2') })], canKeep: false });
+	sing(app, deps, singer.id, 'm1', 'ended');
+	expect((await body()).canKeep).toBe(true);
+	await keepPost(event('/api/me/person', 'POST', p));
+	expect((await body()).canKeep).toBe(false);
+	// A save whose song left the library has no catalog row.
+	app.mediaById.delete('m2');
+	expect((await body()).songs.find((s: { title: string }) => s.title === 'Song m2').media).toBeNull();
+});
+
 test('Keep me takes the saves to the person, every phone of theirs sees them, and Delete me removes them', async () => {
 	const { app, deps } = installApp();
 	const { singer, p } = guest(app, 'Theo');

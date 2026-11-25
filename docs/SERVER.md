@@ -879,7 +879,8 @@ screen is PR 2). `src/lib/server/songs/` owns it.
   are those of your last finished turn of it, so "Don't keep my nights" and "Delete my history" govern the
   sung half too. A sung song whose library row is gone drops out of the list.
 - **`GET /api/me/songs`** returns one row per song, sung and saved together, most used first and then most
-  recent, with your last key and guide. **`PUT` and `DELETE /api/me/songs/:mediaId`** save and unsave a song in
+  recent, with your last key and guide, each with its catalog `media` (null once the song has left the library),
+  and `canKeep`: whether this caller is a guest Keep me is offered to, for the Sing tab's line. **`PUT` and `DELETE /api/me/songs/:mediaId`** save and unsave a song in
   the library; the song's origin and title come from the catalog, never the body, and an unknown id or a song
   you never saved is 404. **`DELETE /api/me/songs`** is "Forget my songs": every save you can read.
 - **`GET /api/me/export`** is "Download my data", one JSON file with `content-disposition: attachment` and

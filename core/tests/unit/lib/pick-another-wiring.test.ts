@@ -13,9 +13,11 @@ const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
 const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
 
 test('in replace mode Sing swaps the turn, carrying the NEW song key, and never adds a second turn', () => {
-	expect(home).toContain('store?.replaceMedia(replacing.id, mediaId, rememberedKey(mediaId) ?? 0);');
+	// The NEW song's key: its last finished turn's (Your songs), else this phone's memory of it.
+	expect(home).toContain('const key = last?.keyShift || rememberedKey(mediaId);');
+	expect(home).toContain('store?.replaceMedia(replacing.id, mediaId, key ?? 0);');
 	// The swap returns before the add, so one tap cannot do both.
-	expect(home).toMatch(/if \(replacing\) \{[\s\S]{0,500}return;\s*\}\s*store\?\.addSong\(/);
+	expect(home).toMatch(/if \(replacing\) \{[\s\S]{0,500}return;\s*\}\s*const id = store\?\.addSong\(/);
 	// Replace mode is only ever MY waiting turn.
 	expect(home).toContain('queued.find((e) => e.id === id && e.singerId === me?.id)');
 });
