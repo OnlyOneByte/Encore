@@ -5,6 +5,7 @@ import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { openQueue, readySong, singOnce } from '../../world/actors';
 import { startFakeWorker } from '../../world/workers';
+import { sendPlayerCommand, serverPlayback } from './audio-probe-support';
 import type { Page } from '@playwright/test';
 
 const YOURS = 'Your songs';
@@ -23,7 +24,7 @@ async function twoKeysDown(phone: Page): Promise<void> {
 	}
 }
 
-type Song = { mediaId: string | null; sung: number; keyShift: number };
+type Song = { mediaId: string | null; sung: number; keyShift: number | null; media: unknown };
 async function mySongs(phone: Page): Promise<Song[]> {
 	return ((await phone.request.get('/api/me/songs').then((r) => r.json())) as { songs: Song[] }).songs;
 }
@@ -44,9 +45,19 @@ async function coldLoadShift(phone: Page): Promise<number> {
 	return phone.evaluate(() => (window as unknown as { __cls: number }).__cls);
 }
 
+/** The playing entry's id, once the server has one. */
+async function playingEntry(baseURL: string): Promise<string> {
+	let id: string | null = null;
+	await expect
+		.poll(async () => (id = (await serverPlayback(baseURL)).state.currentEntryId as string | null), { timeout: 30_000 })
+		.toBeTruthy();
+	return id!;
+}
+
 test('a sung song comes back in its key, one + queues it there, and a saved song sits beside it', async ({ world }) => {
 	test.setTimeout(240_000);
-	const worker = await startFakeWorker(world);
+	// A guide mix, so the turn can finish with a guide on and the row can carry it back.
+	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		await world.openTv();
 		const theo = await world.openPhone('Theo');
@@ -58,11 +69,20 @@ test('a sung song comes back in its key, one + queues it there, and a saved song
 
 		await singOnce(theo, 'caroline');
 		await twoKeysDown(theo);
+		// Theo's own socket, so the guide is the singer's: low (0.3) for the rest of the turn.
+		await sendPlayerCommand(theo, { cmd: 'guide', level: 0.3, entryId: await playingEntry(world.baseURL) });
+		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.guideLevel).toBe(0.3);
 		// Back on Sing while the 8 s fixture plays out: the list arrives when the turn ends, with no reload (T1).
 		await theo.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
-		await expect(theo.locator(SEL.songRow, { hasText: caroline })).toContainText('2 keys down · sung once', {
-			timeout: 60_000
-		});
+		// The search that queued it comes back with its results (#1259), and Your songs waits for an empty box.
+		await expect(theo.getByRole('heading', { name: YOURS })).toHaveCount(0);
+		await theo.getByRole('button', { name: 'Clear the search' }).click();
+		await expect(theo.locator(SEL.songRow, { hasText: caroline })).toContainText(
+			'2 keys down · guide low · sung once',
+			{
+				timeout: 60_000
+			}
+		);
 		expect((await mySongs(theo)).find((s) => s.sung > 0)?.keyShift).toBe(-2);
 
 		const prayer = await world.awaitDemoTrack('prayer');
@@ -74,15 +94,10 @@ test('a sung song comes back in its key, one + queues it there, and a saved song
 		await theo.goto('/');
 		await expect(theo.getByRole('heading', { name: YOURS })).toBeVisible();
 		const sung = theo.locator(SEL.songRow, { hasText: caroline });
-		await expect(sung).toContainText('2 keys down · sung once');
+		await expect(sung).toContainText('2 keys down · guide low · sung once');
 		await expect(theo.locator(SEL.songRow, { hasText: prayer.title })).toContainText('saved');
 		// A guest who has sung can keep themselves, and the list says where it lives.
 		await expect(theo.getByRole('link', { name: 'Keep Theo' })).toHaveAttribute('href', '/settings/you');
-
-		// One + and the turn starts in the key Theo finished it in, as the server broadcasts it back.
-		await sung.locator(SEL.addAction).click();
-		await openQueue(theo);
-		await expect.poll(() => keyLabel(theo), { timeout: 30_000 }).toMatch(/[−-]2/);
 
 		// Someone else's phone shows none of it.
 		const ana = await world.openPhone('Ana');
@@ -90,6 +105,17 @@ test('a sung song comes back in its key, one + queues it there, and a saved song
 		await expect(ana.locator(SEL.findBox)).toBeVisible();
 		await expect(ana.getByRole('heading', { name: YOURS })).toHaveCount(0);
 		await expect(ana.getByText(caroline)).toHaveCount(0);
+
+		// One + and the turn starts in the key and guide Theo finished it in, as the server broadcasts them back.
+		await sung.locator(SEL.addAction).click();
+		// Paused once it starts, so the 8 s turn cannot end before both phones have read it.
+		await playingEntry(world.baseURL);
+		await sendPlayerCommand(theo, { cmd: 'pause' });
+		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.isPlaying).toBe(false);
+		await openQueue(theo);
+		await expect.poll(() => keyLabel(theo), { timeout: 30_000 }).toMatch(/[−-]2/);
+		await ana.goto('/queue');
+		await expect(ana.locator(SEL.queueNowTune)).toHaveText(/Key [−-]2 · Guide 30%/);
 
 		// The list arrives under everything on the idle screen, so it moves nothing at either width.
 		for (const size of [
@@ -105,6 +131,27 @@ test('a sung song comes back in its key, one + queues it there, and a saved song
 			expect(overflow, `nothing past the right edge at ${size.width}`).toBeLessThanOrEqual(0);
 			await page.close();
 		}
+
+		// The host deletes the saved song (made now, so it can be deleted) while it is on Theo's list: his + is refused,
+		// said once, and the row goes.
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await readySong(world, host, 'prayer');
+		await theo.goto('/');
+		const saved = theo.locator(SEL.songRow, { hasText: prayer.title });
+		await expect(saved.locator(SEL.addAction)).toBeVisible();
+		const deleted = await host.request.post('/api/library/manage/delete', { data: { mediaId: prayer.id } });
+		expect(deleted.status(), await deleted.text()).toBe(200);
+		await saved.locator(SEL.addAction).click();
+		await expect(
+			theo.locator('[data-sonner-toast]', { hasText: "That song isn't in the library any more." })
+		).toBeVisible();
+		await expect(saved).toHaveCount(0);
+		// Inside the Undo window the server already leaves it out, so a return to Sing does not bring it back.
+		expect((await mySongs(theo)).find((s) => s.mediaId === prayer.id)).toMatchObject({ media: null });
+		await theo.goto('/');
+		await expect(theo.locator(SEL.songRow, { hasText: caroline })).toBeVisible();
+		await expect(saved).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}

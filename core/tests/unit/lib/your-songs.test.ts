@@ -3,7 +3,7 @@ import { test, expect } from 'bun:test';
 import { yourSongLine } from '$lib/your-songs';
 
 const row = (o: Partial<Parameters<typeof yourSongLine>[0]> = {}) =>
-	yourSongLine({ keyShift: 0, guideLevel: null, sung: 0, saved: null, ...o });
+	yourSongLine({ keyShift: null, guideLevel: null, sung: 0, saved: null, ...o });
 
 test('a saved song you never sang says so and nothing else', () => {
 	expect(row({ saved: { id: 's', savedAt: 1 } })).toBe('saved');

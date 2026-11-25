@@ -10,7 +10,8 @@ export interface YourSong {
 	artist: string | null;
 	sung: number;
 	lastSungAt: number | null;
-	keyShift: number;
+	/** Null when you have not finished a turn of it. */
+	keyShift: number | null;
 	guideLevel: number | null;
 	saved: { id: string; savedAt: number } | null;
 	media: Media | null;
@@ -27,8 +28,9 @@ export const YOUR_SONGS_SHOWN = 12;
 
 /** "2 keys down · guide low · sung 3 times", or "saved". Only what is not zero, in guest words. */
 export function yourSongLine(s: Pick<YourSong, 'keyShift' | 'guideLevel' | 'sung' | 'saved'>): string {
-	const n = Math.abs(s.keyShift);
-	const key = s.keyShift ? `${n} ${n === 1 ? 'key' : 'keys'} ${s.keyShift < 0 ? 'down' : 'up'}` : '';
+	const shift = s.keyShift ?? 0;
+	const n = Math.abs(shift);
+	const key = shift ? `${n} ${n === 1 ? 'key' : 'keys'} ${shift < 0 ? 'down' : 'up'}` : '';
 	const preset = guidePresetOf(s.guideLevel);
 	const guide =
 		s.guideLevel && preset !== 'off'

@@ -483,7 +483,7 @@
 
 	/** `last` is a Your songs row's key and guide from your last finished turn of it, which beat this phone's memory. */
 	function addSong(mediaId: string, last?: Pick<YourSong, 'keyShift' | 'guideLevel'>) {
-		const key = last?.keyShift || rememberedKey(mediaId);
+		const key = last?.keyShift ?? rememberedKey(mediaId);
 		/* PICK ANOTHER: the same turn, another song, so the spot the dead song held is kept — carrying THIS song's
 		   remembered key, never the dead one's. Back to /queue, where the turn now reads as the new song's card, and
 		   the dead song's "try again" notice is dismissed: it names a song that is no longer in the queue. */
@@ -497,8 +497,7 @@
 			void goto(resolve('/queue'));
 			return;
 		}
-		const id = store?.addSong(mediaId, key);
-		if (id && last?.guideLevel != null) store?.setEntryPrefs(id, key ?? 0, last.guideLevel);
+		store?.addSong(mediaId, key, last?.guideLevel);
 		/* SAID HERE, because the row that confirms an add is on ANOTHER TAB now. The queue's announcer
 		   ($lib/phrasing/queue-announcement, which /queue drives) is deliberately silent about my own adds — "the row
 		   appearing is its own confirmation" — and no row appears on this screen at all, so a screen-reader guest

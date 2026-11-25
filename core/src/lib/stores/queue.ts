@@ -107,8 +107,9 @@ export class QueueStore {
 	}
 
 	/** Add a song to MY turn. Mints the id locally so the server echo reconciles with zero flicker. `keyShift` is the
-	 * key this phone last sang the song in, so a repeat song arrives already set. */
-	addSong(mediaId: string, keyShift?: number): string {
+	 * key this phone last sang the song in, so a repeat song arrives already set. `guideLevel` rides on the add too:
+	 * on an empty queue the turn starts at once, too late for a `set-entry-prefs`. */
+	addSong(mediaId: string, keyShift?: number, guideLevel?: number | null): string {
 		const id = (this.#deps.mintId ?? ulid)();
 		const entry: QueueEntry = {
 			id,
@@ -117,7 +118,8 @@ export class QueueStore {
 			status: 'queued',
 			rotationSeq: Number.MAX_SAFE_INTEGER, // placeholder; applyAndReseq assigns the real seq
 			addedAt: this.#nextAddedAt(), // monotonic — never collides under fast taps (Finding #4)
-			...(keyShift ? { keyShift } : {})
+			...(keyShift ? { keyShift } : {}),
+			...(guideLevel != null ? { guideLevel } : {})
 		};
 		this.#optimistic({ op: 'add', entry });
 		return id;

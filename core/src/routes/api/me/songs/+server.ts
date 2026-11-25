@@ -12,9 +12,10 @@ export const GET: RequestHandler = async ({ cookies, request, url }) => {
 	const caller = historyOwner(app, cookies, { request, url });
 	if (!caller) return json({ error: 'join first' }, { status: 401 });
 	// The catalog row rides along, so the Sing tab can draw a saved song it has not loaded yet with its real state.
+	// Not while its delete is pending, the same rule as /api/search and /api/library.
 	const songs = yourSongs(app, caller.owner).map((s) => ({
 		...s,
-		media: s.mediaId ? app.mediaById.get(s.mediaId) : null
+		media: s.mediaId && !app.pendingDeletes.has(s.mediaId) ? (app.mediaById.get(s.mediaId) ?? null) : null
 	}));
 	const canKeep = keepState(caller.me, readDevice(app, cookies, { request, url }), app).canKeep;
 	return json({ songs, canKeep });

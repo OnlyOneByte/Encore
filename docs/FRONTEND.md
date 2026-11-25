@@ -1076,10 +1076,12 @@ text still waiting on the 150 ms debounce never reads "Nothing matches" (#1192).
 `2 keys down · guide low · sung 3 times`, or `saved`. Its `+` queues the song in the key and guide of your last
 finished turn of it, ahead of this phone's remembered key; a song not made yet carries the usual ✦. A guest Keep me is
 offered to gets one dim line under the list: `On this phone only. Keep <name> to have them on any phone.` Someone with
-nothing yet sees the box exactly as before, with no heading and no explainer. The list is fetched on mount and cached for
-the tab, so a return paints it at once; it is the last thing on the idle screen, so arriving after first paint moves
-nothing (`your-songs` probe, CLS 0 at 390 and 320). A save whose song left the library is not listed yet ("needs making"
-is PR 3), and the now-line heart waits for the dock's now-line (#1242).
+nothing yet sees the box exactly as before, with no heading and no explainer. The list is fetched once you have joined
+and cached for the tab, so a return paints it at once; it is the last thing on the idle screen, so arriving after first
+paint moves nothing (`your-songs` probe, CLS 0 at 390 and 320). A search kept across a trip to Queue (#1259) comes back
+with its results, so Your songs waits until the box is cleared. Rows are drawn from the room's catalog only, so a song
+the room refuses as deleted (`#songGone`) leaves the list with its one notice. A save whose song left the library is not
+listed yet ("needs making" is PR 3).
 
 `searchActive` (a non-empty query) is still the SOLE switch, between the empty box (with Your songs) and the results. There is
 still no browse mode on this column, no `?browse=1` and no history entry for a search, so Back always means leave the
