@@ -254,6 +254,13 @@ describe('TvPlayer wiring', () => {
 		expect(tick).toContain('el.networkState === HTMLMediaElement.NETWORK_LOADING');
 	});
 
+	test('a hidden slot reports its pre-warm dead only while it holds that song’s own file (#1265 review M1)', () => {
+		// A guide-mix song's src waits on its mix, so until it lands the element's error is the previous file's;
+		// `idle` is exactly "this slot does not hold this entry's file".
+		const tick = src.split('function checkStall(): void {')[1]?.split('\n\t}\n')[0] ?? '';
+		expect(tick).toContain("if (!active && transport !== 'idle' && el?.error && !prewarmFailedFired) {");
+	});
+
 	test('one way out: no per-event error callback beside onfailed', () => {
 		// The element's own error event only asks the watchdog, so there is still ONE decision and one way out.
 		expect(src.match(/\bonerror=\{[^}]*\}/g)).toEqual(['onerror={() => checkStall()}']);

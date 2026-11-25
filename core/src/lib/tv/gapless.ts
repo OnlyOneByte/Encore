@@ -128,7 +128,10 @@ export class GaplessController {
 
 	/** Hidden slot reports it's buffered for its warming target. */
 	onHiddenReady(entryId: string): void {
-		if (entryId === this.#warmingId) this.#readyId = entryId;
+		if (entryId !== this.#warmingId) return;
+		this.#readyId = entryId;
+		// A file that buffered is not dead, whatever a stale error said before it loaded.
+		if (this.#deadId === entryId) this.#deadId = null;
 	}
 
 	/** Hidden slot got a media error for its warming target: that file is dead before anyone hears it. */

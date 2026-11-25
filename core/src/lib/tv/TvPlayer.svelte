@@ -338,7 +338,9 @@
 		const el = master;
 		const now = performance.now();
 		// The hidden slot never plays, so the watchdog below never judges it: a dead pre-warm is reported instead (#1258).
-		if (!active && el?.error && el.getAttribute('src') && !prewarmFailedFired) {
+		// Only while it holds THIS song's file (not `idle`): a guide-mix song waits on its src, and the element's error
+		// until then is the previous file's.
+		if (!active && transport !== 'idle' && el?.error && !prewarmFailedFired) {
 			prewarmFailedFired = true;
 			onprewarmfailed?.();
 		}
