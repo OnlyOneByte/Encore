@@ -117,14 +117,17 @@ export const SEL = {
 	npStripWho: '.dock .strip .who',
 	/** With a queue but nothing playing: "Ready when you are", "Making karaoke…", or why no karaoke is coming. */
 	npStripStatus: '.dock .strip .status',
-	/** The strip's ONLY filled control, which is why `.btn.primary` identifies it: play/pause is the one
-	 *  control whose state a resting fill encodes. The old `.disc` — artwork, progress ring and glyph in one
-	 *  element — has no successor; the progress is a separate `aria-hidden` hairline. */
-	npPlayPause: '.dock .strip .btn.primary',
-	/** THREE buttons, in source order: restart, play/pause, skip. Not the old band's flanking PAIR — the strip has
-	 *  no separate `.disc`, so all three of its controls are `.btn` inside `.tp` and a driver expecting two would
-	 *  reject a correct tree. The Cheer key shares `.tp .btn` and is not transport, hence the `:not`. */
-	npTransport: '.dock .strip .tp .btn:not(.cheer-key)',
+	/** THE TRANSPORT IS ON /queue's Now card since redesign step 4 (`transportTap` in actors.ts gets there).
+	 *  Play/pause is its one filled key; with nothing playing, the only Play is the strip's (`npStripPlay`). */
+	npPlayPause: '.now-tp .tp-btn.primary, .dock .strip .btn.play',
+	/** THREE buttons, in source order: restart, play/pause, skip. */
+	npTransport: '.now-tp .tp-btn',
+	/** "Ready when you are" with nothing playing: the strip's one transport key, in the Cheer key's slot. */
+	npStripPlay: '.dock .strip .btn.play',
+	/** What the dock must never carry again: pause, restart or skip in the strip. */
+	dockTransport: '.dock .strip .tp .btn:not(.cheer-key, .play)',
+	/** The now-line with something in the rotation: who is singing, or what the queue waits on. */
+	npStripLive: '.dock .strip .who, .dock .strip .status',
 	/** The whole metadata block is the link to /queue, so the target is the width the transport leaves. */
 	npStripLink: '.dock .strip a[href="/queue"]',
 	/* ── /queue ───────────────────────────────────────────────────────────────
@@ -228,7 +231,7 @@ export const SEL = {
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
-	// transport. All three sit in the strip, which needs no gesture — there is no open state to reach.
+	// transport, on /queue's Now card: drive it with `transportTap` (actors.ts), which opens /queue first.
 	skip: { role: 'button' as const, name: 'skip' },
 	/** Capitalised, unlike `skip` — the two accessible names do not share a convention. */
 	restart: { role: 'button' as const, name: 'Restart' },

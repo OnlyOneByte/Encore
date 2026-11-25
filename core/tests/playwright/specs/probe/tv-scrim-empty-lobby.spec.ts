@@ -10,7 +10,7 @@
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
+import { openBrowseFromHome, returnHomeFromBrowse, transportTap } from '../../world/actors';
 import { autoplayIsBlocked, requireActivationForPlayback } from '../../world/autoplay';
 import type { Page } from '@playwright/test';
 
@@ -236,7 +236,7 @@ async function driveToDrainedLobby(world: World): Promise<DrainedRoom> {
 	// The skip at the last entry — the drain, and the second of the two inputs that reach this state. The
 	// real transport button, because a `player:command` from an unjoined origin is refused and a synthetic
 	// click is not an input.
-	await phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).click();
+	await transportTap(phone, 'skip');
 	await expect
 		.poll(async () => await serverPlayback(phone), {
 			message: 'the SERVER never reported the room drained (currentEntryId null, isPlaying false)'

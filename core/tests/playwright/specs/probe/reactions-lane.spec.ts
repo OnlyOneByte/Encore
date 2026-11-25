@@ -139,7 +139,7 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 		await expect(fan.locator(SEL.npCheer)).toHaveCount(4);
 		// Focus follows the tap into the tray: the key that had it is gone.
 		await expect(fan.locator(SEL.npCheer).first()).toBeFocused();
-		await expect(fan.locator(SEL.npTransport), 'the tray takes the transport’s place').toHaveCount(0);
+		await expect(fan.locator(SEL.npStripLink), 'the tray takes the now-line’s place').toHaveCount(0);
 		// Every key in the tray clears the 44 px tap floor, at 320 too. measured-hit-extents sweeps an idle room only.
 		// The layout box (offset*), not the rect: the tray's rise-in scale is still settling at this point.
 		for (const width of [390, 320]) {
@@ -160,7 +160,7 @@ test('the server sends a reaction to the TV only, and refuses the singer and a r
 		await fan.waitForTimeout(Math.max(0, 5_000 - (Date.now() - tapped)));
 		await expect(fan.locator(SEL.npCheers), 'the tray closed before 6 s with no tap').toHaveCount(1);
 		await expect(fan.locator(SEL.npCheers)).toHaveCount(0, { timeout: 3_000 });
-		await expect(fan.locator(SEL.npTransport)).toHaveCount(3);
+		await expect(fan.locator(SEL.npStripLink)).toHaveCount(1);
 		// A tray that closes by itself hands focus back to the key, not to <body>.
 		await expect(fan.locator(SEL.npCheerKey), 'focus fell out of the strip when the tray timed out').toBeFocused();
 		// ✕ gives it back at once, with focus on the key that opened it.

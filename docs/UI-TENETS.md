@@ -159,8 +159,7 @@ because a throttled page on a shared, loaded box swings 2–3× between runs. Th
 (CLAIM 13, gzipped; `/` 19.6 + 122.5 KB, `/queue` 22.1 + 142.7 KB, `/tv` 20.6 + 130.7 KB today, with about 3%
 headroom); a PR that shrinks a route lowers its budget in the same PR. The bundle carries only the slice of the
 palette registry the app reads (`palette-slice.ts`), not the generator's whole record, which saved about 4.9 KB per
-route (#1246). Every other row is reported by the PR that
-touches it, measured on `main` and on the branch.
+route (#1246). Every other row is reported by the PR that touches it, measured on `main` and on the branch.
 
 | Moment                                              | Target                                    | Today (1×)       | Today (4×)    | Notes                                                                      |
 | --------------------------------------------------- | ----------------------------------------- | ---------------- | ------------- | -------------------------------------------------------------------------- |

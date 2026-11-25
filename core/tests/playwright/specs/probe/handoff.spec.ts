@@ -9,7 +9,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { queueReady, readySong } from '../../world/actors';
+import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import { serverPlayback } from './audio-probe-support';
 import type { Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
@@ -40,8 +40,9 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		// TWO REAL TAPS, the second 40-100 ms after the first and AFTER Theo's strip has already redrawn to his own
 		// song: the case the server's stale guard alone could not catch (review r2, 974-M2), because by then the
 		// tap named Theo's song. The settle window (`$lib/transport-target`) keeps it naming Maya's.
-		// Theo is on another tab: "You're up" must reach him wherever he is.
-		await theo.getByRole('link', { name: 'Library' }).click();
+		// Theo is off Sing, on Queue where the transport is: "You're up" must reach him wherever he is.
+		await openQueue(theo);
+		await openQueue(ana);
 		// The live region is MOUNTED EMPTY before the change, and the same node carries the words after it: a region
 		// inserted with its text already in it is one a screen reader often never announces.
 		const live = theo.locator('[data-youre-up-live]');
@@ -49,12 +50,12 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(live).toHaveText('');
 		await live.evaluate((el) => ((el as HTMLElement).dataset.probeSame = 'yes'));
 		const t0 = Date.now();
-		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(ana, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i, { timeout: 2_000 });
 		const wait = 60 - (Date.now() - t0);
 		if (wait > 0) await theo.waitForTimeout(wait);
 		const gapMs = Date.now() - t0;
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		expect(gapMs, 'the two taps must be a human double-tap apart, not seconds').toBeLessThan(1_000);
 
 		// Within half a second of the taps, the same card a natural end gets.
@@ -117,9 +118,9 @@ test('a stale skip through the strip changes nothing and tells THAT phone the so
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
 
 		hold = true;
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(ana, 'skip');
 		await ana.waitForTimeout(300);
 		hold = false;
 		for (const m of held.splice(0)) toAna!(m);
@@ -153,7 +154,7 @@ test('a guide drag begun on the last song does not carry onto the next song', as
 		await maya.mouse.down();
 		await maya.mouse.move(track.x + track.width * 0.6, y, { steps: 4 });
 
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await maya.waitForTimeout(200);
 		const nextStart = (await serverPlayback(world.baseURL)).state;
@@ -195,7 +196,7 @@ test('a guide draft the room never agreed with is not shown on the next card', a
 		const track = (await maya.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
 		const y = box.y + box.height / 2;
 		await hold!(true);
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await maya.mouse.move(box.x + box.width / 2, y);
 		await maya.mouse.down();
@@ -227,7 +228,7 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 		const { maya, theo } = await keyGuideRoom(world, true);
 		const keyLabel = (p: Page) => p.locator('.now .ctl .control-label').first().innerText();
 		await hold!(true);
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await maya
 			.getByRole('button', { name: /^Raise .+ by one semitone$/ })
@@ -356,11 +357,11 @@ test('a stale restart on your own new turn: its notice stacks above "You’re up
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
 
 		hold = true;
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		// A RESTART, not a skip: a stale skip on your own new turn says nothing (the IN-02 probe below), but a stale
 		// restart still gets its notice, and that one must stack.
-		await theo.getByRole(SEL.restart.role, { name: SEL.restart.name }).first().click();
+		await transportTap(theo, 'restart');
 		await theo.waitForTimeout(300);
 		hold = false;
 		for (const m of held.splice(0)) toTheo!(m);
@@ -464,9 +465,9 @@ test('a double skip onto your OWN turn shows only "You’re up", no stale notice
 		});
 
 		hold = true;
-		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(ana, 'skip');
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await theo.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(theo, 'skip');
 		await theo.waitForTimeout(300);
 		hold = false;
 		for (const m of held.splice(0)) toTheo!(m);
@@ -504,9 +505,9 @@ test('a stale skip in a room gone idle says the song already ended, as informati
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 15_000 });
 
 		hold = true;
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await expect.poll(() => serverPlayback(world.baseURL).then(({ state }) => state.currentEntryId)).toBeNull();
-		await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(ana, 'skip');
 		await ana.waitForTimeout(300);
 		hold = false;
 		for (const m of held.splice(0)) toAna!(m);

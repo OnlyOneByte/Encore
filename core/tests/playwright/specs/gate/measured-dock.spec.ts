@@ -2,11 +2,12 @@
  * CLAIM 3: THE DOCK — one fixed container holding two stacked rows, the now-playing strip and the tab bar —
  * publishes its REAL measured height as --dock-h, composes the home-indicator inset exactly once, is reserved
  * by every scrolling column, and has NO OPEN STATE. THE DOCK IS STRIP + TABS ON EVERY JOINED
- * SURFACE: one height whether the room is idle, queued or emptied again. Measured across both transport states
- * (none in an idle room, three buttons with a queue), both insets, and five surfaces.
+ * SURFACE: one height whether the room is idle, queued or emptied again. Measured across both now-line states
+ * ("Nothing playing", and a line naming the queue), both insets, and five surfaces. The dock carries no pause,
+ * restart or skip (redesign step 4: they are on /queue), and an arm says so in every state that matters.
  *
  * ONE TEST, because four of its arms are CROSS-STATE and no single-state reading can see any of them:
- *   · the published height must NOT MOVE as the transport appears and then goes again;
+ *   · the published height must NOT MOVE as the now-line fills and then empties again;
  *   · idle, queued and emptied must all publish the same height, strip + tabs;
  *   · the token must be the same on every surface, which is a comparison between surfaces;
  *   · at least one driven column must really have scrolled and at least one must not, which is the old spec's
@@ -83,8 +84,11 @@ interface DockReading {
 	stripPadBottom: number | null;
 	stripsInDock: number;
 	stripsOutsideDock: number;
+	/** The now-line's live content: 0 idle, 1 with something in the rotation. */
 	transportButtons: number;
-	/** Is the play control actually tappable? A bright-but-dead primary is the defect this file exists to catch. */
+	/** Pause, restart or skip keys in the dock: always 0 since redesign step 4. */
+	dockKeys: number;
+	/** The dock's idle Play, if shown: never over a song that cannot start. */
 	playEnabled: boolean | null;
 	tabsHeight: number;
 	tabsPadBottom: number;
@@ -109,7 +113,7 @@ interface DockReading {
  */
 async function readDock(page: Page, state: string, insetBottom: number): Promise<DockReading | null> {
 	return page.evaluate(
-		({ arg, dockSel, stripSel, tabsSel, shellSel, sheetSel, expandSel, bareStrip, transportSel }) => {
+		({ arg, dockSel, stripSel, tabsSel, shellSel, sheetSel, expandSel, bareStrip, transportSel, dockKeySel }) => {
 			const dock = document.querySelector(dockSel);
 			if (!dock) return null;
 			const dr = dock.getBoundingClientRect();
@@ -212,9 +216,10 @@ async function readDock(page: Page, state: string, insetBottom: number): Promise
 					const play = dock.querySelector('.strip .tp .btn.primary');
 					return play ? !(play as HTMLButtonElement).disabled : null;
 				})(),
-				// THROUGH THE REGISTRY, `SEL.npTransport`. It is already `.dock`-scoped by value, so it is the one
-				// reading here that needs none of the `dock.querySelectorAll` scoping the bare `.strip` above does.
+				// The now-line's live content (`SEL.npStripLive`, dock-scoped by value): 0 idle, 1 with a queue. The
+				// transport moved to /queue (redesign step 4), so this is the state the dock now changes between.
 				transportButtons: document.querySelectorAll(transportSel).length,
+				dockKeys: document.querySelectorAll(dockKeySel).length,
 				tabsHeight: tabs ? tabs.getBoundingClientRect().height : Number.NaN,
 				tabsPadBottom: tabs ? padBottom(tabs) : Number.NaN,
 				reserve,
@@ -237,7 +242,8 @@ async function readDock(page: Page, state: string, insetBottom: number): Promise
 			shellSel: SEL.appShell,
 			sheetSel: SHEET_MACHINERY,
 			expandSel: EXPAND_AFFORDANCES,
-			transportSel: SEL.npTransport,
+			transportSel: SEL.npStripLive,
+			dockKeySel: SEL.dockTransport,
 			// A BARE `.strip`, scoped in the query below rather than in the value, because this is the arm that
 			// counts strips INSIDE the dock against strips OUTSIDE it. `SEL.npStrip` is already dock-scoped, so it
 			// cannot express "and none anywhere else".
@@ -290,7 +296,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.soft(
 				atRest.stripPresent && atRest.transportButtons === 0,
 				'CLAIM 3 an IDLE room keeps the strip (one dock height) but shows NO transport: ' +
-					`strip present=${atRest.stripPresent}, ${atRest.transportButtons} ${SEL.npTransport} on a freshly joined ` +
+					`strip present=${atRest.stripPresent}, ${atRest.transportButtons} ${SEL.npStripLive} on a freshly joined ` +
 					'room with nothing playing and nothing queued — a transport here is a play button that does nothing'
 			)
 			.toBe(true);
@@ -392,7 +398,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.soft(
 				searched.transportButtons,
 				'CLAIM 3 FINDING a song is not the same as having one to play — no transport until the queue has ' +
-					`something in it: ${searched.transportButtons} ${SEL.npTransport} after a search with nothing queued`
+					`something in it: ${searched.transportButtons} ${SEL.npStripLive} after a search with nothing queued`
 			)
 			.toBe(0);
 	}
@@ -405,11 +411,11 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   swallowed the floor arms and the run reported four arms instead of the arms plus the count. */
 	await page.locator(SEL.songRow).first().locator(SEL.addOrSing).first().click({ timeout: 30_000 });
 	await page
-		.locator(SEL.npPlayPause)
+		.locator(SEL.npStripLive)
 		.first()
 		.waitFor({ state: 'attached', timeout: 20_000 })
 		.catch(() => {});
-	// A DWELL: the transport has just mounted, so the layout re-measures the container it is inside.
+	// A DWELL: the now-line has just changed, so the layout re-measures the container it is inside.
 	await page.waitForTimeout(800);
 
 	/* Measured at 390x844 with one queued entry: --dock-h 91px, dock 91/91.00, strip 45px, tab bar 46px —
@@ -424,21 +430,15 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 					'name is an unnamed region in the landmark list'
 			)
 			.toBeTruthy();
-		/* THE DEAD-BRIGHT-BUTTON ARM, and it is the one this file most nearly shipped without. The queued song here
-		   is a seeded WAV with NO STEMS, so it cannot play yet — the server's `play` handler finds no `nextPlayable`,
-		   writes `isPlaying: false`, emits no error and raises no toast. A play control that is enabled in this state
-		   is the brightest element on the screen doing nothing silently, which is the defect the strip replaced a
-		   whole vaul sheet to be rid of.
-		   DISABLED, NOT ABSENT, and both halves are asserted — keying the strip's PRESENCE on playability was tried
-		   and was worse: the dock went blank for the whole minute of separation, immediately after the guest's one
-		   action. The strip stays, the copy reads "Making karaoke…", and the control is dim. */
+		/* THE DOCK IS A NOW-LINE (redesign step 4): pause, restart and skip are on /queue, and its one Play shows only
+		   when a tap will start something. This song is stem-less, so it cooks: "Making karaoke…" and no Play. */
 		expect
 			.soft(
-				live.playEnabled,
-				'CLAIM 3 a queued song that cannot play yet leaves the play control DISABLED — present, dim, and not ' +
-					`a promise the server will break: playEnabled=${live.playEnabled} with one stem-less entry queued`
+				live.playEnabled === null && live.dockKeys === 0,
+				'CLAIM 3 the dock carries no transport, and no Play over a song that cannot start: ' +
+					`play control ${live.playEnabled === null ? 'absent' : 'present'}, ${live.dockKeys} ${SEL.dockTransport}`
 			)
-			.toBe(false);
+			.toBe(true);
 		// EXACTLY ONE, AND IT IS INSIDE. `.strip` is genuinely ambiguous unscoped — the TV lobby's roster carries
 		// the same class, which is why `SEL.npStrip` is dock-scoped and `SEL.strip`/`SEL.stripPerson` name that
 		// other element. Measured on a phone surface: 1 inside the dock, 0 outside it.
@@ -450,15 +450,12 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 					'same class, so an unscoped reading passes against the wrong element on /tv)'
 			)
 			.toBe(true);
-		// THREE, not the band's flanking pair: restart, play/pause and skip are all `.btn` inside `.tp` and there
-		// is no separate `.disc` any more. An arm demanding two would reject a correct tree.
 		expect
 			.soft(
 				live.transportButtons,
-				'CLAIM 3 the strip carries the whole transport — restart, play/pause and skip: ' +
-					`${live.transportButtons} matching ${SEL.npTransport}`
+				'CLAIM 3 the now-line says what the queue holds: ' + `${live.transportButtons} matching ${SEL.npStripLive}`
 			)
-			.toBe(3);
+			.toBe(1);
 		expect
 			.soft(
 				live.dockVar !== '' &&
@@ -809,7 +806,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	   half no single-state reading can reach. It is one number before, during and after. */
 	await page.goto('/queue');
 	await page
-		.locator(SEL.npPlayPause)
+		.locator(SEL.npStripLive)
 		.first()
 		.waitFor({ state: 'attached', timeout: 15_000 })
 		.catch(() => {});
@@ -826,7 +823,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 	if (removable > 0) {
 		await page.locator(SEL.queueRemove).first().click();
 		await page
-			.locator(SEL.npPlayPause)
+			.locator(SEL.npStripLive)
 			.first()
 			.waitFor({ state: 'detached', timeout: 15_000 })
 			.catch(() => {});
@@ -838,7 +835,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.soft(
 				emptied.stripPresent && emptied.transportButtons === 0,
 				'CLAIM 3 emptying the queue takes the TRANSPORT away again and keeps the strip: ' +
-					`strip present=${emptied.stripPresent}, ${emptied.transportButtons} ${SEL.npTransport} after the last ` +
+					`strip present=${emptied.stripPresent}, ${emptied.transportButtons} ${SEL.npStripLive} after the last ` +
 					'entry was removed'
 			)
 			.toBe(true);

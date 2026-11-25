@@ -73,11 +73,8 @@ async function awaitPlayhead(tv: Page, seconds: number): Promise<void> {
 		.toBeGreaterThan(seconds);
 }
 
+/** On /queue's Now card (redesign step 4); `stage` leaves every phone there. */
 const transport = {
-	/** The strip's only FILLED control, and the app's only play/pause. Where `.disc` was artwork, a progress ring
-	 *  and a glyph in one element, this is an icon button with an `--accent` fill — the fill is there because
-	 *  play/pause is the one control whose state a resting fill encodes — and the progress is a separate
-	 *  `aria-hidden` hairline across the top of the strip. */
 	playPause: (page: Page) => page.locator(SEL.npPlayPause),
 	restart: (page: Page) => page.getByRole(SEL.restart.role, { name: SEL.restart.name }),
 	skip: (page: Page) => page.getByRole(SEL.skip.role, { name: SEL.skip.name })
@@ -129,6 +126,7 @@ async function stage(
 			{ timeout: 20_000, message: 'the TV never started playing, so there is no transport to drive' }
 		)
 		.toBe(true);
+	for (const phone of phones) await openQueue(phone);
 	return { worker, phones, tv, media, master };
 }
 

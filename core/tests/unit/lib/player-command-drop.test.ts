@@ -38,10 +38,15 @@ test('the transport buttons go through one reporting helper, not three bare send
 	// One helper, because three copies of the same `if (!room.command(...))` is how two of them keep the old copy.
 	expect(layout).toContain('function transport(command: PlayerCommand): void {');
 	expect(layout).toContain('if (room.command(command)) return;');
-	expect(layout).toContain("onrestart={() => targeted('restart')}");
-	expect(layout).toContain("ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}");
-	expect(layout).toContain("onskip={() => targeted('skip')}");
+	expect(layout).toContain("restart: () => targeted('restart'),");
+	expect(layout).toContain("togglePlay: () => transport({ cmd: isPlaying ? 'pause' : 'play' }),");
+	expect(layout).toContain("skip: () => targeted('skip')");
+	expect(layout).toContain("onplay={() => transport({ cmd: 'play' })}");
 	expect(layout).toContain('if (entryId) transport({ cmd, entryId });');
+	// The keys on /queue's Now card reach the helper through the context, never through a bare send.
+	expect(queuePage).toContain('onclick={tp.restart}');
+	expect(queuePage).toContain('onclick={tp.togglePlay}');
+	expect(queuePage).toContain('onclick={tp.skip}');
 });
 
 test('the notice carries a stable id, so a mash is one notice rather than a tower of them', () => {

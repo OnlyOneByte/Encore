@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { onMount } from 'svelte';
+	import { onMount, setContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, canRetryPlay, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
 	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
@@ -12,6 +12,7 @@
 	import type { RoomStatus } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { NO_TARGET, observeShown, transportTarget, type TransportTarget } from '$lib/transport-target';
+	import type { TransportControls } from '$lib/transport-controls';
 	import { buzzOnce, deckStep, NO_DECK, rearmBuzz, type DeckMemo } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
 	import YoureUp from '$lib/components/YoureUp.svelte';
@@ -337,6 +338,12 @@
 		const entryId = tapTarget();
 		if (entryId) transport({ cmd, entryId });
 	}
+	// Drawn on the Queue tab's Now card (redesign step 4); sent from here, where the notice and tap target live.
+	setContext<TransportControls>('transport', {
+		restart: () => targeted('restart'),
+		togglePlay: () => transport({ cmd: isPlaying ? 'pause' : 'play' }),
+		skip: () => targeted('skip')
+	});
 
 	/* A guest on the landing page has no room to be a remote for. A joined phone gets the dock WHOLE: once the room's
 	   first sync has said what is in the rotation, so the strip is in it from the first frame instead of growing the
@@ -509,7 +516,6 @@
 			title={title}
 			singerName={singerName}
 			singerColor={singerColor}
-			isPlaying={isPlaying}
 			elapsedSec={livePos}
 			durationSec={durationSec}
 			hasSong={hasSong}
@@ -518,9 +524,7 @@
 			waitingLine={waitingLine}
 			entryId={entryId}
 			connected={!offline}
-			onrestart={() => targeted('restart')}
-			ontoggleplay={() => transport({ cmd: isPlaying ? 'pause' : 'play' })}
-			onskip={() => targeted('skip')}
+			onplay={() => transport({ cmd: 'play' })}
 			onreact={(kind) => room.react(kind)}
 			reactResting={!canReact}
 		/>

@@ -19,7 +19,7 @@ import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 // Long songs, so nothing ends by itself while a step is watched.
@@ -112,7 +112,7 @@ async function watch(page: Page): Promise<void> {
 	});
 }
 const read = (page: Page) => page.evaluate(() => (window as unknown as { __w: Watch }).__w);
-const skip = (p: Page) => p.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+const skip = (p: Page) => transportTap(p, 'skip');
 const settle = (p: Page) => p.waitForTimeout(1_200);
 
 for (const [width, height] of [

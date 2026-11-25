@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
 import { SEL } from './selectors';
 import { startFakeWorker } from './workers';
 import { TEST_HOST_KEY } from './core';
-import { openBrowseFromHome } from './actors';
+import { openBrowseFromHome, transportTap } from './actors';
 import type { World } from './fixtures';
 
 /** Taps each phone fires in a burst, three times the bucket. */
@@ -76,7 +76,7 @@ export async function stage(world: World, fanCount: number) {
 	// One real tap authorises playback, as a room does. docs/E2E.md#gestures
 	await tv.mouse.click(960, 540);
 	await expect(tv.locator(SEL.lyricsRow).first()).toBeAttached({ timeout: 25_000 });
-	await fans[0].getByRole('button', { name: 'Pause' }).click();
+	await transportTap(fans[0], 'playPause');
 
 	const frames = { tv: recordReacted(tv), star: recordReacted(star), fans: fans.map(recordReacted) };
 	for (const p of [star, ...fans]) {

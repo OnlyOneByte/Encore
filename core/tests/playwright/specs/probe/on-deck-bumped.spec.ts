@@ -7,7 +7,7 @@ import { test, expect } from '../../world/fixtures';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openQueue, queueReady, readySong } from '../../world/actors';
+import { openBrowseFromHome, openQueue, queueReady, readySong, transportTap } from '../../world/actors';
 import type { Page } from '@playwright/test';
 
 const SECS = 60;
@@ -112,7 +112,7 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		expect(await theo.evaluate(() => (window as unknown as { __bumps: string[] }).__bumps.length)).toBe(1);
 
 		// Ana's turn, then Theo's card comes back with his -1.
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+		await transportTap(maya, 'skip');
 		await theo.setViewportSize({ width: 390, height: 844 });
 		await openQueue(theo);
 		await expect(theo.locator(ON_DECK)).toBeVisible({ timeout: 20_000 });

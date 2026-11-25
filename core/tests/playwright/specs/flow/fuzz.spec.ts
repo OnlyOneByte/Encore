@@ -71,7 +71,7 @@ import type { Page, TestInfo } from '@playwright/test';
 // legible here rather than an opaque error event.
 import { WebSocket } from 'ws';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import { startFakeWorker, type FakeWorkerFaults } from '../../world/workers';
 import type { World } from '../../world/fixtures';
 import { DEFAULT_LYRICS_LEAD_MS } from '$lib/contract';
@@ -1166,6 +1166,8 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 	 * still recorded as a no-op, because a replay has to reproduce the same nothing.
 	 */
 	async function tapPlayPause(): Promise<Step> {
+		// The transport is on /queue's Now card (redesign step 4).
+		await openQueue(page);
 		const btn = page.locator(SEL.npPlayPause).first();
 		if ((await btn.count()) === 0)
 			return { who, input, detail: 'no-op (no strip rendered — nothing to play or resume)', noop: true };
@@ -1177,6 +1179,7 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 
 	/** BY ROLE AND ACCESSIBLE NAME: skip and restart both carry a literal label, so the label is the contract. */
 	async function tapTransport(control: { role: 'button'; name: string }): Promise<Step> {
+		await openQueue(page);
 		const button = page.getByRole(control.role, { name: control.name }).first();
 		if ((await button.count()) === 0)
 			return { who, input, detail: `no-op (no ${control.name} control rendered)`, noop: true };

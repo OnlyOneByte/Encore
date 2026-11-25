@@ -33,7 +33,7 @@
 	import { resolve } from '$app/paths';
 	import { pickAnotherHref } from '$lib/process-and-queue';
 	import type { QueueStore } from '$lib/stores/queue';
-	import { tick, untrack } from 'svelte';
+	import { getContext, tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		gripVisible,
@@ -67,6 +67,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
+	import type { TransportControls } from '$lib/transport-controls';
 
 	/* Mirrored from the link, and ONLY the fields this page renders — the documented rule, because a component that
 	   mirrors more than it renders re-runs on changes that cannot affect it. The root layout mirrors a strictly
@@ -157,6 +158,8 @@
 	);
 
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
+	// Pause, restart and skip live on the Now card, not the dock (redesign step 4, an owner ruling).
+	const tp = getContext<TransportControls>('transport');
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
 	const nowDisplay = $derived(songDisplay(nowMedia));
 	const nowTitle = $derived(nowDisplay.title || nowMedia?.title || 'Untitled');
@@ -891,6 +894,14 @@
 					</p>
 				{/if}
 
+				<div class="now-tp">
+					<button class="tp-btn" onclick={tp.restart} aria-label="Restart"><Icon name="restart" /></button>
+					<button class="tp-btn primary" onclick={tp.togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+						<Icon name={isPlaying ? 'pause' : 'play'} />
+					</button>
+					<button class="tp-btn" onclick={tp.skip} aria-label="Skip"><Icon name="next" /></button>
+				</div>
+
 				<!-- Only the singer tunes their song, so everyone else reads it as one line (docs/FRONTEND.md § The Now card). -->
 				{#if !nowMine}
 					<!-- Kept while the song can be tuned, so the singer's first tap moves nothing on this phone. -->
@@ -1343,6 +1354,28 @@
 		color: var(--ink-dim);
 	}
 
+	/* THE TRANSPORT: three 44 px keys, and play/pause is the only fill because it is the only one with a state. */
+	.now-tp {
+		display: flex;
+		justify-content: center;
+		gap: var(--step-16);
+	}
+	.tp-btn {
+		width: var(--tap);
+		height: var(--tap);
+		display: grid;
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: var(--round-pill);
+		background: none;
+		color: var(--role-ink);
+	}
+	/* --on-accent: the one ink certified on --accent (5.09:1). */
+	.tp-btn.primary {
+		background: var(--role-accent);
+		color: var(--role-on-accent);
+	}
 	.clock {
 		display: flex;
 		align-items: baseline;

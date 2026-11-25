@@ -11,7 +11,15 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { goOffline, openBrowseFromHome, openQueue, queueReady, readySong, singOnce } from '../../world/actors';
+import {
+	goOffline,
+	openBrowseFromHome,
+	openQueue,
+	queueReady,
+	readySong,
+	singOnce,
+	transportTap
+} from '../../world/actors';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 import { captureMotion, type MotionScenario } from '../../world/motion';
@@ -79,10 +87,6 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-reorder-held-320': HELD_LIBRARY,
 	'phone-queue-your-song-390': HELD_LIBRARY,
 	'phone-queue-your-song-320': HELD_LIBRARY,
-	'phone-restart-rest-390': HELD_LIBRARY,
-	'phone-restart-rest-320': HELD_LIBRARY,
-	'phone-restart-return-390': HELD_LIBRARY,
-	'phone-restart-return-320': HELD_LIBRARY,
 	'phone-now-card-grow-390': HELD_LIBRARY,
 	'phone-now-card-grow-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
@@ -326,6 +330,7 @@ function welcomeBack(width: number): Make {
 /** Skip whatever is on until the room is empty. Each skip waits past the strip's settle window (SETTLE_MS, #974),
  *  so the next skip names the song now on it. */
 async function drain(phone: Page): Promise<void> {
+	await openQueue(phone);
 	const skip = phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
 	for (let i = 0; i < 5 && (await skip.isVisible()); i++) {
 		await skip.click();
@@ -396,7 +401,7 @@ function dockYourSong(width: number): Make {
 				return page;
 			},
 			trigger: async (page) => {
-				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await transportTap(ph!.ana, 'skip');
 				await page.locator(`${SEL.npCheerKey}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.cheer-key',
@@ -562,9 +567,13 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 					theo = await world.openPhone('Theo');
 					await readySong(world, maya, 'caroline');
 				}
+				await openQueue(maya);
 				const playing = await skip().isVisible();
 				if (moment === 'arrive' && playing) await skip().click();
-				if (moment === 'leave' && !playing) await queueReady(maya, 'caroline');
+				if (moment === 'leave' && !playing) {
+					await queueReady(maya, 'caroline');
+					await openQueue(maya);
+				}
 				await expect(maya.locator(SEL.npStripTitle)).toHaveCount(moment === 'arrive' ? 0 : 1, { timeout: 10_000 });
 				const page = await asSinger(browser, world, opts, theo);
 				await page.goto('/queue');
@@ -649,7 +658,7 @@ function queueYourSong(width: number): Make {
 				return page;
 			},
 			trigger: async (page) => {
-				await ph!.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await transportTap(ph!.maya, 'skip');
 				await page.locator(DECK).waitFor({ state: 'detached', timeout: 10_000 });
 			},
 			// `.youre-up` too: the sheet rises over the dock in the same moment, so a capture without it froze it mid-fade.
@@ -860,7 +869,7 @@ function songFailed(toCard: boolean): Make {
 		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
 		let theoMedia = '';
 		const skipToNotice = async (page: Page) => {
-			await ph!.maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+			await transportTap(ph!.maya, 'skip');
 			await expect(page.locator(SEL.stateError)).toBeVisible({ timeout: 5_000 });
 		};
 		return {
@@ -983,7 +992,7 @@ function songDidntPlay(width: number): Make {
 				return page;
 			},
 			trigger: async (page) => {
-				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await transportTap(ph!.ana, 'skip');
 				await page.locator('.didnt-play').waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.didnt-play',
@@ -1080,101 +1089,6 @@ function singSpotlight(width: number): Make {
 	};
 }
 
-/** Restart resting in place (#1050) on Theo's phone at one width, as the strip goes between a song and a waiting line:
- *  `rest`, Ana skips Maya's caroline and Theo's unmakeable song (no worker) leaves "Can't make new karaoke right now";
- *  `return`, from that line Maya's believin starts. The key fades (opacity, --motion-base) and keeps its slot, so the
- *  transport box and the dock hold still (CLS 0, `observe`). Each run takes Theo's turn off with the queue's ✕, drains
- *  the room and queues both again. */
-function restartRest(width: number, back: boolean): Make {
-	return (browser, world, cleanup) => {
-		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
-		const restart = `${SEL.npTransport}.restart`;
-		const toWaiting = async (page: Page) => {
-			await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
-			await page.locator(`${restart}[inert]`).waitFor({ state: 'attached', timeout: 5_000 });
-		};
-		return {
-			name: `phone-restart-${back ? 'return' : 'rest'}-${width}`,
-			what: back
-				? `Phone ${width}x844: from the waiting line a song starts — Restart and the Cheer key fade back in place (opacity, --motion-base); the transport and the dock do not move (CLS 0)`
-				: `Phone ${width}x844: the song ends on a waiting line — Restart and the Cheer key fade out in place (opacity, --motion-base) and the line runs over their slots; the transport and the dock do not move (CLS 0)`,
-			stepMs: 33,
-			scale: 1,
-			columns: 5,
-			open: async (opts) => {
-				if (!ph) {
-					const worker = await startFakeWorker(world, { seconds: HELD_SECS });
-					cleanup(() => worker.stop());
-					ph = {
-						maya: await world.openPhone('Maya'),
-						theo: await world.openPhone('Theo'),
-						ana: await world.openPhone('Ana')
-					};
-					await readySong(world, ph.maya, 'caroline');
-					await readySong(world, ph.maya, 'believin');
-					await world.openTv();
-					// No maker from here on, so Theo's song can never be made and his turn holds the waiting line.
-					await worker.stop();
-				}
-				await openQueue(ph.theo);
-				const held = ph.theo.locator(SEL.queueRemove);
-				while ((await held.count()) > 0) {
-					await held.first().click();
-					await ph.theo.waitForTimeout(300);
-				}
-				await ph.theo.goto('/');
-				await drain(ph.ana);
-				await queueReady(ph.maya, 'caroline');
-				await expect(ph.ana.locator(SEL.npStripTitle)).toContainText(/caroline/i, { timeout: 30_000 });
-				// The seeded file, not a remote hit; with no worker its karaoke is never made.
-				await ph.theo.goto('/?source=local');
-				await openBrowseFromHome(ph.theo);
-				await ph.theo.locator(SEL.search).fill('bohemian');
-				await ph.theo.locator(SEL.songRow, { hasText: 'bohemian' }).locator(SEL.singAction).first().click();
-				// His turn is in, or the skip would empty the room ("Nothing playing") instead of leaving the waiting line.
-				await openQueue(ph.theo);
-				await expect(held).toHaveCount(1, { timeout: 10_000 });
-				await ph.theo.goto('/');
-				await expect(ph.theo.locator(SEL.npStripTitle)).toContainText(/caroline/i);
-				await ph.ana.waitForTimeout(SETTLE_MS + 250);
-				const page = await asSinger(browser, world, opts, ph.theo, width);
-				await page.goto('/');
-				await expect(page.locator(SEL.npStripTitle)).toContainText(/caroline/i);
-				if (back) {
-					await toWaiting(page);
-					await expect(page.locator(SEL.npStripStatus)).toBeVisible();
-					await page.waitForTimeout(1_000);
-				}
-				await page.evaluate(() => document.fonts.ready.then(() => true));
-				return page;
-			},
-			trigger: back
-				? async (page) => {
-						await queueReady(ph!.maya, 'believin');
-						await page.locator(`${restart}:not([inert])`).waitFor({ state: 'attached', timeout: 10_000 });
-					}
-				: toWaiting,
-			// The Cheer key too: Theo is a fan, so it rests in the same moment, and a seek run that froze its fade drew the
-			// line over a still-visible key.
-			only: '.dock .cheer-key, .dock .restart',
-			// The strip, not the key: the key fades to opacity 0 by design, while the strip keeps its place.
-			subject: SEL.npStrip,
-			stripClip: async () => ({ x: 0, y: 664, width, height: 180 }),
-			observe: (page) =>
-				page.evaluate(() => {
-					const tp = document.querySelector('.dock .tp')!.getBoundingClientRect();
-					const dock = document.querySelector('.dock')!.getBoundingClientRect();
-					return {
-						tp: { x: tp.x, w: tp.width },
-						dock: { y: dock.y, h: dock.height },
-						restartInert: document.querySelector('.dock .restart')?.hasAttribute('inert') ?? null,
-						text: document.querySelector('.dock .strip .meta')?.textContent?.trim() ?? null
-					};
-				})
-		};
-	};
-}
-
 /** The one `vite dev` every story row shares; the rows run serially in one worker (see their describe below). */
 let storyGallery: Promise<Gallery> | undefined;
 
@@ -1251,10 +1165,6 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-sing-widen-320': singWiden(320),
 	'phone-sing-spotlight-390': singSpotlight(390),
 	'phone-sing-spotlight-320': singSpotlight(320),
-	'phone-restart-rest-390': restartRest(390, false),
-	'phone-restart-rest-320': restartRest(320, false),
-	'phone-restart-return-390': restartRest(390, true),
-	'phone-restart-return-320': restartRest(320, true),
 	'phone-song-didnt-play-390': songDidntPlay(390),
 	'phone-song-didnt-play-320': songDidntPlay(320),
 	'tv-copy-chip-wake': tvCopyChip('wake'),
@@ -1285,15 +1195,15 @@ const SCENARIOS: Record<string, Make> = {
 			subject: SEL.npCheers
 		}
 	),
-	/** ✕ gives the strip back to the transport: a cut, the same height. */
+	/** ✕ gives the strip back to the now-line: a cut, the same height. */
 	'phone-cheers-return': fanDock(
 		'phone-cheers-return',
-		'Phone 390x844: ✕ on the tray — the title and transport come back, a cut at the same height',
+		'Phone 390x844: ✕ on the tray — the now-line and Cheer key come back, a cut at the same height',
 		{
 			cheering: true,
 			trigger: async (page) => {
 				await page.locator(SEL.npCheersClose).click();
-				await page.locator(SEL.npPlayPause).waitFor({ state: 'attached', timeout: 5_000 });
+				await page.locator(SEL.npStripLink).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: STRIP_CONTENT,
 			subject: SEL.npStrip
@@ -1305,7 +1215,8 @@ const SCENARIOS: Record<string, Make> = {
 		'Phone 390x844: the last song ends — the strip stays at its height and reads “Nothing playing” with no transport, a cut',
 		{
 			trigger: async (page) => {
-				await page.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				// Off the wire: the transport is on /queue, and the row films this page's dock.
+				await sendPlayerCommand(page, { cmd: 'skip' });
 				await page.locator(SEL.npStripIdle).waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: STRIP_CONTENT,
@@ -1362,7 +1273,7 @@ const SCENARIOS: Record<string, Make> = {
 				return page;
 			},
 			trigger: async (page) => {
-				await ph!.ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await transportTap(ph!.ana, 'skip');
 				await page.locator('.youre-up').waitFor({ state: 'attached', timeout: 5_000 });
 			},
 			only: '.youre-up',
@@ -1519,7 +1430,7 @@ const SCENARIOS: Record<string, Make> = {
 					await world.openTv();
 				}
 				// Back before the crossing: from the top, 36 s remain.
-				await theo.getByRole(SEL.restart.role, { name: SEL.restart.name }).first().click();
+				await transportTap(theo, 'restart');
 				const page = await asSinger(browser, world, opts, maya);
 				await page.goto('/');
 				await openQueue(page);
@@ -1904,7 +1815,7 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 					await sendPlayerCommand(ana, { cmd: 'play' });
 					anaEntry = await ana.evaluate(() => (window as unknown as { probeCurrent?: string }).probeCurrent ?? null);
 				}
-				await ana.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+				await transportTap(ana, 'skip');
 				await expect(page.locator(SEL.stateNext)).toContainText('Maya', { timeout: 30_000 });
 				// The exit's `before` frame is the card at full, not one still fading in: the name is in the page from the
 				// card's first frame.
@@ -1913,7 +1824,7 @@ function tvHandoff(phase: 'in' | 'out' | 'arrive' | 'change'): Make {
 			},
 			trigger: async (page) => {
 				if (phase === 'in') {
-					await ana!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first().click();
+					await transportTap(ana!, 'skip');
 					await expect(page.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 30_000 });
 				} else if (phase === 'out') {
 					// The hold's own clock is the trigger, as on a night: its exit lead drops the layer's `shown`.

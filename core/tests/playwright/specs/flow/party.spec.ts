@@ -21,7 +21,7 @@
 import { test, expect } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, openQueue, isJoined } from '../../world/actors';
+import { openBrowseFromHome, openQueue, isJoined, transportTap } from '../../world/actors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
 import { TEST_HOST_KEY } from '../../world/core';
@@ -340,7 +340,7 @@ test('a queued song reaches both phones in one rotation, and skip advances it', 
 		).toHaveCount(1, { timeout: 30_000 });
 		const shownFirst = await text(tv, SEL.nowSong);
 
-		await maya.getByRole(SEL.skip.role, { name: SEL.skip.name }).click();
+		await transportTap(maya, 'skip');
 		// One song queued means a skip empties the rotation, so a different song OR an empty stage is correct; the
 		// SAME song still showing means skip did nothing. BOUNDED TIGHTLY on purpose — see SKIP_REACTION_MS.
 		await expect

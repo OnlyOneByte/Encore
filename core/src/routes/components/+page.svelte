@@ -505,13 +505,8 @@
 	/>
 
 	<h2 class="section">NowPlayingStrip · every state</h2>
-	<!-- Inline here, so the strip's top border reads as a seam rather than a lift — the gallery's cost, not a defect.
-			A long title must ellipsise while `.meta` keeps `min-width: 0`, which the component's own comment calls
-			load-bearing: without it the nowrap title sizes the flex item and the transport is pushed off a 320px screen.
-			Held to 390px, because the transport is pinned right and at gallery width a long title proves nothing.
-			NO `progress` FRAME: the band took `progress` as a prop and `progress={null}` had to draw an EMPTY ring rather
-			than a zeroed one. The strip derives its fraction from `elapsedSec`/`durationSec` through `progressFraction`,
-			so there is no null state to show — a duration of 0 is simply a fraction of 0. -->
+	<!-- Held to 390px, because the Cheer key is pinned right and at gallery width a long title proves nothing. A long
+			title must ellipsise while `.meta` keeps `min-width: 0`. -->
 	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
 		<div>
 			<p class="caption">Playing, mid-song — the canonical state</p>
@@ -519,32 +514,11 @@
 				title="Sweet Caroline"
 				singerName="Maya"
 				singerColor={SINGER_COLORS[0]}
-				isPlaying
 				elapsedSec={95}
 				durationSec={250}
 				hasSong
 				canStart
 				queueCount={2}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
-			/>
-		</div>
-		<div>
-			<p class="caption">Paused — the glyph swaps, the hairline holds its position</p>
-			<NowPlayingStrip
-				title="Mr. Brightside"
-				singerName="Liam"
-				singerColor={SINGER_COLORS[3]}
-				isPlaying={false}
-				elapsedSec={166}
-				durationSec={231}
-				hasSong
-				canStart
-				queueCount={2}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
 			/>
 		</div>
 		<div>
@@ -553,51 +527,38 @@
 				title="Don't Stop Believin' (Live at the Budokan, Remastered)"
 				singerName="Bartholomew"
 				singerColor={SINGER_COLORS[1]}
-				isPlaying
 				elapsedSec={27}
 				durationSec={251}
 				hasSong
 				canStart
 				queueCount={2}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
 			/>
 		</div>
 		<div>
-			<p class="caption">A queue but nothing playing yet — "Ready when you are", restart and skip disabled</p>
+			<p class="caption">A queue but nothing playing yet — "Ready when you are", with its one Play</p>
 			<NowPlayingStrip
 				title={null}
 				singerName={null}
 				singerColor={null}
-				isPlaying={false}
 				elapsedSec={0}
 				durationSec={0}
 				hasSong={false}
 				canStart
 				queueCount={1}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
+				onplay={() => {}}
 			/>
 		</div>
 		<div>
-			<!-- The strip keeps its height in an idle room (proposal 13), but shows NO transport: the band before it put a
-					disabled Play, the brightest thing on the screen, beside this copy. -->
-			<p class="caption">Nothing playing and nothing queued — "Nothing playing", no transport</p>
+			<p class="caption">Nothing playing and nothing queued — "Nothing playing"</p>
 			<NowPlayingStrip
 				title={null}
 				singerName={null}
 				singerColor={null}
-				isPlaying={false}
 				elapsedSec={0}
 				durationSec={0}
 				hasSong={false}
 				canStart={false}
 				queueCount={0}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
 			/>
 		</div>
 		<div>
@@ -606,16 +567,12 @@
 				title="Sweet Caroline"
 				singerName="Maya"
 				singerColor={SINGER_COLORS[0]}
-				isPlaying
 				elapsedSec={48}
 				durationSec={201}
 				hasSong
 				canStart
 				queueCount={1}
 				connected={false}
-				onrestart={() => {}}
-				ontoggleplay={() => {}}
-				onskip={() => {}}
 			/>
 		</div>
 	</div>

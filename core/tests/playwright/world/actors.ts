@@ -77,6 +77,17 @@ export async function openQueue(page: Page, { timeout = DEFAULT_TIMEOUT }: StepO
 	await page.locator(SEL.pageHeading).first().waitFor({ state: 'attached', timeout });
 }
 
+/** Skip, restart or play/pause. The transport is on /queue's Now card (redesign step 4), so this opens /queue
+ *  first: a spec that needs the phone back on another tab after the tap navigates there itself. */
+export async function transportTap(page: Page, key: 'skip' | 'restart' | 'playPause'): Promise<void> {
+	await openQueue(page);
+	const button =
+		key === 'playPause'
+			? page.locator(SEL.npPlayPause)
+			: page.getByRole(SEL[key].role, { name: SEL[key].name, exact: false });
+	await button.first().click();
+}
+
 /**
  * From a search showing RESULTS back to the QUEUE. The rotation is NOT rendered in the results view, and the
  * query is the one switch between them, so the way back is to CLEAR the box rather than to navigate. A spec on
@@ -154,6 +165,11 @@ export async function readySong(world: Pick<World, 'awaitDemoTrack'>, phone: Pag
  * passed the acknowledgement below for a turn nobody asked for.
  */
 export async function queueReady(phone: Page, query: string): Promise<void> {
+	// A phone left on /queue by `transportTap` takes the Sing tab back, as a guest would.
+	if (new URL(phone.url()).pathname !== '/') {
+		await phone.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
+		await phone.waitForURL((url) => url.pathname === '/');
+	}
 	await openBrowseFromHome(phone);
 	await phone.locator(SEL.search).fill(query);
 	const add = phone.locator(SEL.songRow, { hasText: query }).locator(SEL.addAction).first();
