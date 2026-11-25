@@ -311,6 +311,22 @@ async def test_refuses_when_every_slot_is_busy() -> None:
     assert "no free slots" in str(sock.first("job:reject")["reason"])
 
 
+async def test_a_job_sending_its_result_no_longer_holds_its_slot() -> None:
+    """Core frees the slot when the result arrives and can assign the next job before the finished task
+    ends; refusing it then was a retry for nothing on every full box (seen at concurrency 2)."""
+    gate = Gate()
+    sock = FakeSocket([assign("j1")])
+    c = client(sock, run_job=gate)
+    async with Session(c, sock):
+        await asyncio.wait_for(gate.entered.wait(), 5.0)
+        busy = f.Assign(job_id="j2", media_id="m1", action="align")
+        assert c._can_accept(busy) == (False, "no free slots")
+        c._finishing.add("j1")  # the moment `_drive` is sending j1's result
+        assert c._can_accept(busy) == (True, "")
+        c._finishing.discard("j1")
+        gate.release.set()
+
+
 async def test_a_job_failure_is_reported_not_crashed_on() -> None:
     async def boom(a: f.Assign) -> f.Complete:
         raise RuntimeError("demucs blew up")

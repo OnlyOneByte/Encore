@@ -202,15 +202,15 @@ test('a worker too old to say what it set by hand records null, not "all auto"',
 	expect(modelFacts(toAudit(a).models, toAudit(a).handSet)).toContainEqual(['torch threads', '16']);
 });
 
-test('/metrics marks each setting of a worker as set by hand, picked by the box, or a fixed default', () => {
-	const profile = { device: 'cpu', threads: 6, demucsJobs: 4, concurrency: 1, asrCompute: 'float32', warmup: true };
+test('/metrics marks each setting of a worker as set by hand or picked by the box', () => {
+	const profile = { device: 'cpu', threads: 6, demucsJobs: 4, concurrency: 2, asrCompute: 'float32', warmup: true };
 	expect(workerFacts({ ...profile, handSet: ['threads'] }, null)).toEqual([
 		['hardware', 'cpu (auto)'],
 		['torch threads', '6 (set by hand)'],
 		['demucs jobs', '4 (auto)'],
-		['jobs at once', '1 (default)'],
+		['jobs at once', '2 (auto)'],
 		['speech compute', 'float32 (auto)'],
-		['warm-up at boot', 'on (default)']
+		['warm-up at boot', 'on (auto)']
 	]);
 });
 

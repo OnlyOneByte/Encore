@@ -116,7 +116,7 @@ against PATH too. ffmpeg prefers the static build the `ffmpeg` extra bundles. `E
 at the _same_ directory core is using, or core will mark a job complete for a file it cannot serve.
 The worker picks its threads and its other performance settings at boot and prints why; each has an
 override (`worker/README.md`, Configuration). `ENCORE_WORKER_CONCURRENCY` sets how many jobs run at once
-(default 1; 2 overlaps a queue of songs, at a cost to a song picked alone).
+(auto: 2 on a CPU box with 16 cores and 24 GB of RAM, so one song separates while another aligns; else 1).
 
 A native worker also needs a **JavaScript runtime on PATH — install `deno`.** YouTube's player
 challenge (the signature and `n` parameters) cannot be solved without one, and yt-dlp needs its solver
@@ -337,9 +337,9 @@ Everything else is an **override**, with a default that suits one worker beside 
 
 - **Placement** — `ENCORE_WORKER_TOKEN` (must match core's; a worker on another machine copies core's token
   file here), `ENCORE_WORKER_TOKEN_FILE` (read at every dial when the token is unset), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
-  `ENCORE_WORKER_CONCURRENCY` (`1`; 2 overlaps a queue of songs, and the separators' threads are split between the jobs)
+  `ENCORE_WORKER_CONCURRENCY` (auto 1 or 2 from cores and RAM; the separators split the cores between the jobs running)
 - **Speed** — `ENCORE_THREADS`, `ENCORE_ASR_COMPUTE` and `ENCORE_DEMUCS_JOBS` (auto at boot), and
-  `ENCORE_WARMUP=0` (skip loading the models right after boot)
+  `ENCORE_WARMUP` (auto: loads the models right after boot unless RAM or disk is tight; `0` skips it)
 - **Device** — `ENCORE_DEVICE` (unset = CUDA, then Apple MPS, then CPU, as torch finds them; otherwise a
   torch device string such as `cuda:1` or `xpu`), `ENCORE_SEPARATOR_BACKEND` (`torch` or `mlx`; unset picks
   `mlx` on Apple Silicon when `demucs-mlx` is installed)

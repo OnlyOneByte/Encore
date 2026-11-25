@@ -301,10 +301,10 @@ marked "auto" is overridden by setting its variable. On a 32-core aarch64 CPU bo
 prints:
 
 ```
-[worker] concurrency 1 (auto 1 (ENCORE_WORKER_CONCURRENCY=2 overlaps a queue of songs))
-[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); demucs -j 4 (auto 4 (cpu, 32 separator cores: chunks in worker processes, a model each))
+[worker] concurrency 2 (auto 2 (cpu, 32 cores, 124 GB RAM: one song separates while another aligns))
+[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); separators 16 (auto 16 (32 cores / 2 at once; 32 for a song alone)); demucs -j 2 (auto 2 (cpu, 16 separator cores: chunks in worker processes, a model each))
 [worker] asr compute float32 (auto (cpu))
-[worker] warm-up on (ENCORE_WARMUP=0 turns it off)
+[worker] warm-up on (auto on (ENCORE_WARMUP=0 turns it off))
 ```
 
 and in a `docker --cpus 4` container on the same host, `threads 4`.
@@ -312,15 +312,19 @@ and in a `docker --cpus 4` container on the same host, `threads 4`.
 Right after the first dial, off the event loop, the warm-up fetches any missing checkpoint and loads the
 models the first song would otherwise wait for, one line each (`[worker] warm: HUBERT_ASR_LARGE 7.4 s`).
 Jobs are taken during it; one that arrives first loads what it needs itself, as before. demucs runs as a
-new process per job, so only its checkpoint download is moved to boot.
+new process per job, so only its checkpoint download is moved to boot. Auto skips the warm-up when under
+4 GB of RAM or 5 GB of disk where the models are cached is free, since loading early would only crowd the
+first song or fill the disk (`hardware.resolve_warmup`).
 
-Concurrency stays 1 unless set. `ENCORE_WORKER_CONCURRENCY=2` is the opt-in for a night of queued songs:
-one song's separation runs while another song aligns, and 3 songs queued at once were ready 18–70% sooner
-on a 32-core CPU box. It costs a song picked on its own: 10–30% slower, mostly in its align, in every
-measured pair (#1177). The models in this process (whisper, the aligner, pyannote, the zoo) take turns
-behind one process-wide lock (`host/mlrt.py`) and keep every core; only each separator child gets
-`cores ÷ concurrency` (the `separators N` part of the threads line). Two at once peaked at 8.5 GB of RAM.
-On a GPU or MPS device the separators take that lock too, so two jobs never share the card.
+Concurrency is auto 2 on a CPU box with at least 16 cores and 24 GB of RAM (a cgroup's memory limit
+counting), else 1, and always 1 on a GPU or MPS device, where the separators take turns on the card. At 2,
+one song's separation runs while another song aligns. The models in this process (whisper, the aligner,
+pyannote, the zoo) take turns behind one process-wide lock (`host/mlrt.py`) and keep every core. Each
+separator child gets the cores divided by the jobs running when it starts (the `separators N` part of the
+threads line is the share with both running), and demucs `-j` follows those cores, so a song picked alone
+keeps every core and `-j 4`. Measured on a 32-core box ([docs/arch/05-worker.md](../docs/arch/05-worker.md)
+§9.2): 3 songs queued at once were ready 9–19% sooner at 2, a song picked alone took the same time, and the
+worker peaked at 8.7 GB at 2 against 7.5 GB at 1.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -329,16 +333,16 @@ On a GPU or MPS device the separators take that lock too, so two jobs never shar
 | `ENCORE_WORKER_TOKEN_FILE` | unset | the file core writes its token to when it has no `ENCORE_WORKER_TOKEN` (compose and `dev.sh` set it). Read at every dial, so a worker that starts first picks it up once core writes it |
 | `ENCORE_WORKER_ID` | `worker-` plus a stable suffix, e.g. `worker-3fa2c1` | this worker's id. Core treats a repeated id as the same worker reconnecting, so two live workers must never share one |
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
-| `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. 2 overlaps a queue of songs but slows a song picked alone (above). Above 1, the separator children's threads are split between the jobs |
-| `ENCORE_THREADS` | auto: on CPU all cores (each separator child `cores ÷ concurrency`), else torch's own | torch's intra-op threads, and `OMP_NUM_THREADS`/`MKL_NUM_THREADS` for the demucs and roformer children; set, it is used for both |
+| `ENCORE_WORKER_CONCURRENCY` | auto: 2 on a CPU box with 16 cores and 24 GB, else `1` | jobs at once (above). Above 1, each separator child's threads are the cores divided by the jobs running when it starts |
+| `ENCORE_THREADS` | auto: on CPU all cores (each separator child `cores ÷ jobs running`), else torch's own | torch's intra-op threads, and `OMP_NUM_THREADS`/`MKL_NUM_THREADS` for the demucs and roformer children; set, it is used for both |
 | `ENCORE_MEDIA_DIR` | `/media` | the shared media volume (core's `job:assign` names none) |
 | `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box. A relative path is relative to the working directory, and the derived worker id hashes its absolute path, so starting from another directory gives a new state file and a new id |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
 | `ENCORE_DEVICE` | auto | the compute device, overriding the hardware probe |
-| `ENCORE_DEMUCS_JOBS` | auto: on CPU one per 8 separator cores, up to 4; else `1` | torch demucs `-j`, chunks separated at once. Above 1 on CPU they run in worker processes, each with its own copy of the model (`adapters/demucs_pool.py`), because demucs's own `-j` threads share one model and returned NaN chunks, saved as a silent song (#1125). On 32 cores `-j 4` separated 3 songs in 0.31–0.97× their length against 0.46–1.34× at `-j 1`, with stems within one 16-bit step of `-j 1`'s, and the worker peaked at 7.6 GB rather than 4.0 GB ([docs/arch/05-worker.md](../docs/arch/05-worker.md) §2.6). Ignored on a GPU: demucs only pools `-j` on CPU |
+| `ENCORE_DEMUCS_JOBS` | auto: on CPU one per 8 separator cores, up to 4 and about 1 GB of RAM each; else `1` | torch demucs `-j`, chunks separated at once, picked per job from the cores its separator gets. Above 1 on CPU they run in worker processes, each with its own copy of the model (`adapters/demucs_pool.py`), because demucs's own `-j` threads share one model and returned NaN chunks, saved as a silent song (#1125). On 32 cores `-j 4` separated 3 songs in 0.31–0.97× their length against 0.46–1.34× at `-j 1`, with stems within one 16-bit step of `-j 1`'s, and the worker peaked at 7.6 GB rather than 4.0 GB ([docs/arch/05-worker.md](../docs/arch/05-worker.md) §2.6). Ignored on a GPU: demucs only pools `-j` on CPU |
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
 | `ENCORE_ASR_COMPUTE` | auto: `float16` on CUDA, else `float32` | whisper's compute type: one of `ASR_COMPUTE_TYPES`. `int8` is faster on CPU but unmeasured against the alignment corpus, so it is never the auto pick |
-| `ENCORE_WARMUP` | on | `0` skips the boot warm-up: nothing is fetched or loaded until a job needs it |
+| `ENCORE_WARMUP` | auto: on unless under 4 GB of RAM or 5 GB of model-cache disk is free | `0` skips the boot warm-up: nothing is fetched or loaded until a job needs it. `1` runs it whatever is free |
 | `ENCORE_ALIGN_MODEL` | `HUBERT_ASR_LARGE` | the English alignment bundle, a torchaudio pipeline name with a calibration row |
 | `ENCORE_ALIGN_EXPERIMENTS` | none | comma-separated names from `ALIGN_EXPERIMENTS`: most switch on an arm, seven switch off a default-on feature (04-alignment.md §14) |
 | `ENCORE_FFMPEG_BIN` | best available | the ffmpeg to run (`host/ffmpeg.py`, 05-worker.md §5) |
