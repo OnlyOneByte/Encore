@@ -7,6 +7,23 @@ import { buildTonight, tonightPlays } from './tonight';
 import { keptCaller } from '../people/keep';
 import { SESSION_COOKIE, type StoredSinger } from '../singers/repository';
 import { NIGHT_SWEEP_EVERY_MS, type HistoryOwner, type TurnEnd } from './repository';
+import { yearIn, zoneOrServer } from './year';
+
+/** "Your year": this calendar year in zone `tz` (the phone's, else the core's), the owner's own numbers only. One
+ *  answer for GET /api/me/nights and the You tab, so the two never disagree. */
+export function yourYear(app: EncoreApp, owner: HistoryOwner, tz: string | null) {
+	const span = yearIn(app.now(), zoneOrServer(tz));
+	const year = app.nights.yearFor(owner, span.from, span.to);
+	const top = year.mostSung;
+	return {
+		year: span.year,
+		nights: year.nights,
+		songs: year.songs,
+		mostSung: top
+			? { mediaId: top.mediaId, title: app.mediaById.get(top.mediaId)?.title ?? null, times: top.times }
+			: null
+	};
+}
 
 /** The hub's `onTurnEnded`. What the turn ended with is read now; only the write waits for `defer`, so it lands
  *  after the handoff's frames are flushed. Never throws: a lost row is not worth a broken handoff. */

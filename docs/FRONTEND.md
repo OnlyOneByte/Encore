@@ -1867,12 +1867,17 @@ Proposal 29, PR 3. The phone's half of [Your night](SERVER.md#your-night), and o
   (`DELETE /api/me/nights`). Each tap shows its outcome at once and rolls back with one line on a refusal, as Keep
   me does. A night opens `/settings/you/nights/:id`. The switch sends one PATCH at a time; a second tap while one
   is out is sent once it answers, so the last tap wins. After Delete my history, focus moves to the switch.
+- **Your year.** Above the list, once a night is in it: "Your 2026", "12 nights · 30 songs", and "Most sung: Mayday,
+  4 times" from two times up (`year` from [GET /api/me/nights](SERVER.md#your-night)). "This year" is the phone's:
+  the load counts it in the core's zone and the page asks again with `?tz=` only when the phone's zone differs.
+  Delete my history zeroes it with the list. Your own counts only, never beside anyone else's.
 - **The story.** A few slides in your colour, one fact each (`$lib/night-story.ts` decides which are true): the
-  cover ("2 songs", and when), your loudest song when anyone cheered, and the setlist with each song's cheers and
+  cover ("2 songs", when, and "3rd night in a row" from two nights in a row up, from `streak`), your loudest song when anyone cheered, and the setlist with each song's cheers and
   key, plus "You like it 2 keys down" when more than half the songs were shifted. A turn that would not play is not
   a song sung, here or in the list's count. Nothing compares you with another singer.
 - **Moving through it.** The right half of the slide is Next, the left half Back: two real buttons, so a keyboard
-  and a screen reader get them, and the arrow keys do the same while focus is on the story (never from the dock).
+  and a screen reader get them, and the arrow keys do the same while focus is on the story or nowhere, as just
+  after opening it (never from the dock).
   At either end the button is `aria-disabled`, not `disabled`, so focus stays on it. A status line says "Slide 2 of
   3". No timer. Save is sticky above the dock, so a long setlist scrolls under it.
 - **The flood.** A fixed layer in the singer's registry fill, with its `on_fill` ink, faded in by opacity, and
@@ -1880,9 +1885,10 @@ Proposal 29, PR 3. The phone's half of [Your night](SERVER.md#your-night), and o
   reduced motion. The dock stays, so the room's now-line and "You're up" are never under the story.
 - **Save picture.** The slide on screen, drawn to a 1080×1350 canvas (`$lib/night-picture.ts`), shared through
   `navigator.share` in a secure context and downloaded as `my-night.png` otherwise: a LAN `http://` page is never
-  one. Closing the share sheet is not an error. Every line is cut to its width with an ellipsis, a setlist title to
-  the width its detail leaves, and a setlist of more than seven songs shows six and "+N more".
-- **Not yet.** "Your night is ready" in the now-line, the TV's "Tonight" (PR 4) and streaks (PR 5).
+  one. Closing the share sheet is not an error. The loudest song's title wraps to two lines before it is cut; every
+  other line is cut to its width with an ellipsis, a setlist title to the width its detail leaves, and a setlist of
+  more than seven songs shows six and "+N more".
+- **Not yet.** "Your night is ready" in the now-line.
 
 ### The song page
 

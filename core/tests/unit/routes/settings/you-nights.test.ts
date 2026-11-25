@@ -6,7 +6,10 @@ import { SingerRepository, SESSION_COOKIE } from '$lib/server/singers/repository
 import { PeopleRepository } from '$lib/server/people/repository';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { NightLog } from '$lib/server/nights/repository';
-import { performances } from '$lib/server/db/schema';
+import { nights, performances } from '$lib/server/db/schema';
+import { streakLine } from '$lib/night-story';
+import { yearIn, zoneOrServer } from '$lib/server/nights/year';
+import { GET as listNights } from '$routes/api/me/nights/+server';
 import { load as storyLoad } from '$routes/settings/you/nights/[id]/+page.server';
 import { load as youLoad } from '$routes/settings/you/+page.server';
 import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
@@ -178,4 +181,74 @@ test('the You tab lists only your nights, newest first', async () => {
 		['n3', 2],
 		['n1', 1]
 	]);
+});
+
+function night(app: App, id: string, at: number) {
+	app.db.insert(nights).values({ id, roomId: app.activeRoomId, startedAt: at, endedAt: at }).run();
+}
+
+test('the cover says the streak from two nights in a row, and a missed night ends it', async () => {
+	const app = installApp();
+	const theo = guest(app, 'Theo');
+	const maya = guest(app, 'Maya');
+	for (const [id, i] of [
+		['n1', 1],
+		['n2', 2],
+		['n3', 3],
+		['n4', 4]
+	] as const)
+		night(app, id, T0 + i);
+	turn(app, theo.singer.id, 'n1', 'm1', 'finished', 0);
+	turn(app, theo.singer.id, 'n3', 'm1', 'finished', 0);
+	turn(app, theo.singer.id, 'n4', 'm2', 'finished', 0);
+	// Maya sang every night: her streak is not Theo's.
+	for (const id of ['n1', 'n2', 'n3', 'n4']) turn(app, maya.singer.id, id, 'm1', 'finished', 0);
+	const streakOf = async (who: typeof theo, id: string) =>
+		((await storyLoad(event(`/settings/you/nights/${id}`, who.cookies, { id }))) as { streak: string | null }).streak;
+	expect(await streakOf(theo, 'n1')).toBeNull();
+	expect(await streakOf(theo, 'n3')).toBeNull();
+	expect(await streakOf(theo, 'n4')).toBe('2nd night in a row');
+	expect(await streakOf(maya, 'n4')).toBe('4th night in a row');
+});
+
+test('streakLine: ordinals, and nothing for one night alone', () => {
+	expect([0, 1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111].map(streakLine)).toEqual([
+		null,
+		null,
+		'2nd night in a row',
+		'3rd night in a row',
+		'4th night in a row',
+		'11th night in a row',
+		'12th night in a row',
+		'13th night in a row',
+		'21st night in a row',
+		'22nd night in a row',
+		'101st night in a row',
+		'111th night in a row'
+	]);
+});
+
+test("the You tab's year is yours alone, the same as GET /api/me/nights in the core's zone", async () => {
+	const app = installApp();
+	const theo = guest(app, 'Theo');
+	const maya = guest(app, 'Maya');
+	night(app, 'n1', T0);
+	night(app, 'n2', T0 + 1);
+	turn(app, theo.singer.id, 'n1', 'm1', 'finished', 0);
+	turn(app, theo.singer.id, 'n2', 'm1', 'skipped', 0);
+	turn(app, theo.singer.id, 'n2', 'm3', 'failed', 0);
+	// Maya's five of Fly Away touch neither Theo's counts nor his most sung.
+	for (let i = 0; i < 5; i++) turn(app, maya.singer.id, 'n2', 'm2', 'finished', 0);
+	const you = (await youLoad(event('/settings/you', theo.cookies))) as {
+		nights: { year: unknown; zone: string };
+	};
+	expect(you.nights.zone).toBe(zoneOrServer(null));
+	expect(you.nights.year).toEqual({
+		year: yearIn(T0, zoneOrServer(null)).year,
+		nights: 2,
+		songs: 2,
+		mostSung: { mediaId: 'm1', title: 'Mayday', times: 2 }
+	});
+	const api = await (await listNights(event('/api/me/nights', theo.cookies) as never)).json();
+	expect(api.year).toEqual(you.nights.year);
 });

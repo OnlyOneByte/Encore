@@ -6,7 +6,7 @@ import { error } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { settingsSinger } from '$lib/server/settings-gate';
 import { historyOwner } from '$lib/server/nights/service';
-import { nightStory } from '$lib/night-story';
+import { nightStory, streakLine } from '$lib/night-story';
 
 // shortcut: times in the server's zone, which is the party's own box; pass the phone's zone if a room ever spans two.
 const day = new Intl.DateTimeFormat('en-US', { weekday: 'long' });
@@ -38,6 +38,8 @@ export const load: PageServerLoad = (event) => {
 		day: day.format(from),
 		from: clockOf(from),
 		to: clockOf(Math.max(...sung.map((t) => t.endedAt))),
+		// Your own nights in a row in this room, up to this one: the cover says so from two up.
+		streak: streakLine(app.nights.streakAt(caller.owner, found.night.id)),
 		slides
 	};
 };
