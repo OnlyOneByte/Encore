@@ -83,7 +83,7 @@ export function keepSinger(
 
 /** End every other night of this person that is still signed in, so a lost phone stops acting as them. Its name
  *  is freed once it holds no queued or playing turn, so nobody else can take the name a turn is waiting under. */
-function endOtherSessions(app: EncoreApp, personId: string, exceptSingerId: string): void {
+export function endOtherSessions(app: EncoreApp, personId: string, exceptSingerId: string): void {
 	for (const s of app.singers.byPerson(personId)) {
 		if (s.id === exceptSingerId) continue;
 		app.singers.endSession(s.id);

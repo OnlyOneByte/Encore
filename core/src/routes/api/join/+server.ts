@@ -24,11 +24,14 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 				optionalString(body, 'displayName') ?? device?.person.displayName ?? requiredString(body, 'displayName'),
 			color: device ? device.person.color : optionalString(body, 'color'),
 			code: optionalString(body, 'code'),
-			personId: device?.person.id
+			personId: device?.person.id,
+			rotating: device ? !device.viaGrace : false
 		});
 	} catch (e) {
 		// 409, not 400: the request is well-formed, the name is simply spoken for. The phone shows this verbatim, so it has to read as a sentence about the name rather than a validation failure.
 		const status = e instanceof NameTakenError ? 409 : e instanceof RoomNotFoundError ? 404 : 400;
+		// The person's other nights already ended, so rotate here too, or a copied device cookie could still return.
+		if (device && e instanceof NameTakenError) rotateDevice(app, cookies, device, { request, url });
 		return json({ error: (e as Error).message }, { status });
 	}
 	// A fresh device token on every return, so a copied cookie works only until the owner's next join.

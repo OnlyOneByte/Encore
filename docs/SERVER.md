@@ -766,8 +766,17 @@ as the same person. There is no email, no password and no signup screen.
   and the phone does not try again within those 2 minutes, its old token is past its grace and the new one never
   arrived: the phone is no longer kept, and joins as a guest. Nothing else is lost (the person stays, with no
   live phone, until the daily prune or a host Reset phones), and a Keep me after the next song keeps it again.
-- **A returning join replaces its own stalled night**: a night of the same person in the room with no socket and
-  no turn (the join whose response was lost) is ended, so it does not hold the kept name against the retry.
+- **A returning join that rotates the token ends every other night of the person** (#1250), in any room, online
+  or not, through the same `endOtherSessions` Sign out other phones uses: each session ends and its sockets are
+  released. So a thief who copied both cookies loses tonight's singer session too when the owner returns, not
+  only the device cookie. A night still holding a turn keeps its name until the turn is done (below). When that
+  turn makes the return a 409, the token rotates anyway, since the other nights have already ended, so a copied
+  device cookie has no way back either.
+- **A grace use only replaces its own stalled night**: a returning join on the token before a rotation rotates
+  nothing, and ends only a night of the person in the room with no socket and no turn (the join whose response
+  was lost), so it does not hold the kept name against the retry. A grace use does not by itself end the owner's
+  live night. But it is handed the current token, so a copy used inside the grace is the owner's equal from then
+  on: its next return rotates and ends the owner's nights, as in the copied-cookie row below.
 - **The returning phone.** `GET /api/room-preview` adds `returning: { displayName, color }` only when the
   request carries a live device cookie, with `cache-control: private, no-store`. `POST /api/join` with
   `returning: true` reads the person from the device cookie alone (401 when it is not live), and may carry a
@@ -788,7 +797,7 @@ as the same person. There is no email, no password and no signup screen.
   device cookie is welcomed back and the owner joins fresh and can tap Keep me again. The `/host` page lists the
   kept people (name, colour, phone count) to the host alone; an unknown id is 404. Nothing is broadcast: guests
   see only that person's own nights leave, as on any session end.
-- **An ended night's name** (Reset phones, Sign out other phones, Delete me): the night's sockets stop counting
+- **An ended night's name** (a rotating returning join, Reset phones, Sign out other phones, Delete me): the night's sockets stop counting
   (`PresenceTracker.endSession`), and its name stays held while it has a queued or playing turn, so a new guest
   cannot join under the name that turn waits under. Once the turn has played or been removed, the name is free
   at once, with no grace window, since nobody can come back as that night. The owner rejoining meanwhile gets the
@@ -801,6 +810,7 @@ as the same person. There is no email, no password and no signup screen.
 | Typing a kept person's name on another phone | A new guest. "Welcome back" needs the device cookie. |
 | A forged device cookie, or another phone's after Sign out other phones | 401: it resolves to no row. |
 | A copy of this phone's own cookie (sniffed over HTTP) | It shares this phone's row, so it works only until the token rotates (the owner's one-tap join or Sign out other phones) and the owner's phone then presents the new one (its `/ws` upgrade, about a second later), or 2 minutes pass; after that it gets 401. Inside that window the copy is answered with the current token, as the owner's own retry would be. |
+| A copy of both cookies, device and singer, kept in the room with its socket open | The owner's one-tap return ends that night: its session is refused and its socket closed, so the copy can no longer queue or skip as them (#1250). |
 | The thief uses the copy first | The rotation goes the other way. Once the grace ends, the owner's phone is no longer welcomed back, which is how the theft shows, and it can no longer sign out, rename or delete the person. The thief, holding the only live token and a linked night, CAN rename the person and Delete me them, history included. The recovery is the host's Reset phones on `/host`: it signs out every phone kept as that person, the thief's included, and forgets the person, so the owner joins fresh and keeps themselves again. This sits inside the plain-HTTP Wi-Fi sniffing risk below: an HTTPS proxy is what prevents the copy. |
 | A phone lost or sold | Sign out other phones from the phone you have, or Delete me, or ask the host to Reset phones. Or wait: 180 days unused and it is signed out. |
 | A guest resetting someone's phones | 403: Reset phones needs the host session; a guest's or the TV's cookie holds no host capability, and a cross-site request is refused by the Origin check first. |
