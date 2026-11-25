@@ -1,0 +1,172 @@
+{
+  "scenario": "phone-heart-save",
+  "what": "Phone 390x844: Theo taps the heart while Maya sings — the mark fills and the line reads \"<song> is in your songs\" in place, a cut; the dock does not move",
+  "capturedAt": "2026-11-25T06:36:38.974Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "dock": {
+      "y": 752,
+      "h": 92
+    },
+    "keyInert": false,
+    "tray": false,
+    "text": "sweet-caroline is in your songs"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [
+    {
+      "delayMs": 2000,
+      "atMs": 2047
+    }
+  ],
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": false,
+      "tray": false,
+      "text": "Maya · sweet-caroline"
+    },
+    "droppedFrames": {
+      "median": 36,
+      "min": 33,
+      "max": 36
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 1,
+      "max": 6
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 49.9
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 6,
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": false,
+      "tray": false,
+      "text": "sweet-caroline is in your songs"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 8366,
+    "encodeMs": 613,
+    "liveMs": 15825,
+    "reducedMs": 2704,
+    "reducedEncodeMs": 374
+  },
+  "files": {
+    "clip.gif": 20743,
+    "clip-slow4x.gif": 20743,
+    "filmstrip.png": 34883,
+    "filmstrip-reduced.png": 44341
+  }
+}
