@@ -791,7 +791,8 @@ centred and width-capped, so on a tablet a dock inside it would float in the mid
 ui:review dock rows), whether the room is idle, queued, playing, cheering or offline. Every strip state is one
 `var(--tap)` row — the four reactions sit behind a Cheer key and swap in for the now-line, "Reconnecting…" takes the
 title slot, and an idle room reads "Nothing playing". The dock carries no pause, restart or skip in any state
-(redesign step 4), only the idle Play in the Cheer key's slot; `measured-dock` and `dock-cls` assert that too. Before, the dock had three heights (48, 93 and 164 with a reaction row), and each step moved
+(redesign step 4), only the idle Play in the Cheer key's slot; `measured-dock` and `dock-cls` assert that too, and `dock-idle-play`
+reaches the idle room through a reboot and taps that Play. Before, the dock had three heights (48, 93 and 164 with a reaction row), and each step moved
 its top edge on every phone in the room. `measured-dock.spec.ts` asserts the one height across states and surfaces;
 `dock-cls.spec.ts` asserts no layout shift from the dock across seven room transitions at 390x844 and 320x568.
 Readings below that quote a 46px dock or a top edge of 854 (1440x900) / 798 (390x844) predate it.
