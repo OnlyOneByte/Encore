@@ -32,6 +32,9 @@ async function presentWithin(locator: Locator, timeout = ABSENCE_GRACE_MS): Prom
 		.catch(() => false);
 }
 
+// Pages a helper took to /queue, the one place `openBrowseFromHome` may bring a phone back from.
+const leftForQueue = new WeakSet<Page>();
+
 /**
  * From the JOINED home screen, reach the search box. Idempotent: called when the box is already up it returns
  * as soon as the locators resolve.
@@ -43,7 +46,11 @@ export async function openBrowseFromHome(page: Page, { timeout = DEFAULT_TIMEOUT
 	// distinct waits, so a failure says which half is missing.
 	await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout });
 	// A phone left on another tab (`transportTap` leaves it on Queue) takes the Sing tab back, as a guest would.
-	if (new URL(page.url()).pathname !== '/') {
+	const path = new URL(page.url()).pathname;
+	if (path !== '/') {
+		// Only a phone a helper took to /queue: anywhere else, a product step that should land on Sing did not.
+		if (!(leftForQueue.has(page) && path === '/queue')) throw new Error(`openBrowseFromHome: not on Sing but ${path}`);
+		leftForQueue.delete(page);
 		await page.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click({ timeout });
 		await page.waitForURL((url) => url.pathname === '/', { timeout });
 	}
@@ -75,6 +82,7 @@ export async function openQueue(page: Page, { timeout = DEFAULT_TIMEOUT }: StepO
 		}
 		await page.waitForURL((url) => url.pathname === '/queue', { timeout });
 	}
+	leftForQueue.add(page);
 	// THE ROUTE'S OWN HEADING, not `SEL.queueNowCard`. The card is what most callers came for, but its absence
 	// is LEGITIMATE — it renders only with a current entry — so waiting on it would make a drained room burn the
 	// whole timeout before agreeing. The heading is unconditional, which makes it the "this route has painted"
