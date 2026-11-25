@@ -1,0 +1,252 @@
+{
+  "scenario": "phone-youre-up",
+  "what": "Phone 390x844: \"You’re up\" flooding the Library tab in Theo’s colour as his song starts (opacity in, the headline popping from 0.92 scale, --motion-slow)",
+  "capturedAt": "2026-11-25T13:30:15.010Z",
+  "stepMs": 16,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "Animation",
+      "name": "element.animate",
+      "target": "div",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": null,
+        "durationIsToken": false,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "Animation",
+      "name": "element.animate",
+      "target": "p",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": null,
+        "durationIsToken": false,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [
+      "element.animate on div: timed by script; read the diff",
+      "element.animate on p: timed by script; read the diff"
+    ],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 27,
+  "seekObserved": {
+    "sheet": true,
+    "live": "You’re up, dont-stop-believin"
+  },
+  "subject": {
+    "selector": "[data-testid=\"youre-up-flood\"]",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [
+    {
+      "delayMs": 2500,
+      "atMs": 2610
+    }
+  ],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "Animation",
+        "name": "element.animate",
+        "target": "div",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "Animation",
+        "name": "element.animate",
+        "target": "p",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": null,
+          "durationIsToken": false,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 266.57800010107457,
+        "delayMs": 0,
+        "endTimeMs": 266.57800010107457,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "sheet": true,
+      "live": "You’re up, dont-stop-believin"
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 4
+    },
+    "longAnimationFrames": {
+      "median": 2,
+      "min": 0,
+      "max": 4
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 33.4
+    },
+    "frameIntervalP95Ms": {
+      "median": 83.4,
+      "min": 50,
+      "max": 83.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "sheet": true,
+      "live": "You’re up, dont-stop-believin"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 13930,
+    "encodeMs": 1255,
+    "liveMs": 21424,
+    "reducedMs": 8492,
+    "reducedEncodeMs": 428
+  },
+  "files": {
+    "clip.gif": 167714,
+    "clip-slow4x.gif": 167714,
+    "filmstrip.png": 403580,
+    "filmstrip-reduced.png": 50212
+  }
+}
