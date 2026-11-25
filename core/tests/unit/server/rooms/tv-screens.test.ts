@@ -176,3 +176,16 @@ it('/api/screens is host only, and a mid-song "make this the TV" is refused', ()
 		"if (app.screens!.midSong()) return 'mid-song';"
 	);
 });
+
+// #1249: only the host's choice names the room's TV. Pinned at the two claim sites and the one place the cookie is read.
+it('the Screens page claims as the host; a tap on a /tv claims as the host only with a live host session', () => {
+	const server = read('server.ts');
+	expect(server.split('makeTv: (id) => {')[1]!.split("return 'ok';")[0]).toContain(
+		'tvSeats.claim(app.activeRoomId, key, true)'
+	);
+	const tap = server.split("case 'tv:claim':")[1]!.split('break;')[0]!;
+	expect(tap).toContain('const byHost = app.hostKey.isHost(ws.data.hostToken, app.now());');
+	expect(tap).toContain('tvSeats.claim(ws.data.roomId!, ws.data.tvKey, byHost)');
+	expect(server).toContain("const hostToken = role === 'tv' ? readHostToken(req.headers.get('cookie')) : undefined;");
+	expect(server.match(/tvSeats\.claim\(/g)?.length).toBe(2);
+});

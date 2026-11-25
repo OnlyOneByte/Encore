@@ -585,7 +585,8 @@ copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds i
 | The core restarts | `rooms.tv_seat` kept the holder, so it gets the seat back when it reconnects, and a copy that reconnects first is not promoted for 60 s (`TV_SEAT_SLOW_BOOT_MS`): a TV boots slower than a phone tab |
 | The holder is gone for 15 s (`TV_SEAT_GRACE_MS`), e.g. its cookie was cleared | The newest copy with a cookie stands in; with none, the seat goes free and the next screen stands in. Never while the holder's cookie connected within the last 60 s, so a TV that flaps while it boots keeps its seat |
 | The room's TV comes back while a screen stands in for it | Between songs, it takes the seat back at once, and the stand-in becomes a copy (told first, so two screens never play). Mid-song it waits: a screen becomes the TV mid-song only when tapped (owner ruling), so the stand-in keeps the sound and the TV hears `next: true` ("Back as the TV after this song"). It takes the seat at the next song boundary (`boundary`, run on every broadcast that moves the current song), at a tap, or at once if the stand-in closes |
-| A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and becomes the room's TV; the old holder becomes a copy |
+| A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and the old holder becomes a copy. It becomes the room's TV only when the tap is the host's: the socket's `encore_host` cookie names a live host session at that moment. Anyone else's tap makes a stand-in (#1249), which keeps the seat until the host removes it, the room's TV is tapped, or the stand-in closes |
+| The host's **Make this the TV** on the Screens page | The same move, and the screen becomes the room's TV |
 | A socket with no cookie | Never holds the seat and cannot claim it |
 
 Each TV socket hears `tv:seat { mine, tvOnline, next }` on connect and whenever any of them changes. `tvOnline` is
@@ -593,11 +594,21 @@ whether the seat's screen has a live socket, so while the TV is gone a copy says
 instead of "This screen is quiet". It is one boolean and changes nothing about who may hold or claim the
 seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
 
-**The room's TV** is the screen that last took the seat by choice: a free seat, a `tv:claim`, or the host's
-**Make this the TV**. A screen promoted because the holder was gone only stands in for it. So a script whose screen
-stood in while the TV was off cannot keep the seat when the TV is switched back on (#1204's review).
-shortcut: the room's TV is kept in memory; after a core restart it is the saved holder. Persist it if a stand-in across
-a restart ever matters.
+**The room's TV** is the screen the host chose, or, while none is named, the first screen into an empty room: a free
+seat with no other `/tv` open, cookieless ones included (#1249).
+The host chooses with **Make this the TV**, on the Screens page or tapped on a screen carrying the host's cookie. Any
+other screen holding the seat only stands in: one promoted because the holder was gone, or one a guest tapped. So a
+guest's script that claims the seat, or stood in while the TV was off, cannot keep it from the room's TV, and the host
+can remove it (#1204's review, R1).
+shortcut: the room's TV is kept in memory, and after a core restart none is named: the saved holder gets its seat back
+but is a stand-in until the host chooses a screen or one enters an empty room. Removing a stand-in then hands the
+seat to the newest other open screen with a cookie, as a stand-in, and frees it only when none is open, so a removed
+script that redials never finds a free seat to be named in (#1254's review, M1). Persist it next to `rooms.tv_seat`
+if hosts mind.
+
+The host's cookie on a `/tv` socket is read at the upgrade and checked against the live host sessions at each
+`tv:claim`, and nowhere else: it names the room's TV and unlocks nothing on `/ws`. A forged or expired cookie is a
+guest's tap.
 
 **The seat is an identity, not an auth gate.** Only the cookie's shape is checked, so a planted or known
 `encore_tv` value (cookies are not port-scoped) counts as the same screen as its holder. That buys nothing a
@@ -640,7 +651,7 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
 - **Drift.** A copy sends `tv:drift { ms }` (copy minus TV) every 2 s at most, from the error it measures while
   following. Core keeps the latest one per socket, only from a TV socket that does not hold the seat, only when finite,
   and clamped to ±60 s. A report older than 10 s is not shown.
-- **Make this the TV** moves the seat at once, as a `tv:claim` would. A screen becomes the TV mid-song only when it
+- **Make this the TV** moves the seat at once, as a `tv:claim` would, and makes that screen the room's TV. A screen becomes the TV mid-song only when it
   is tapped there (owner ruling, proposal 34), so the action is refused with `409 mid-song` while a song is current.
   A cookieless screen gets `409 no-cookie`.
 - **Remove** closes every socket of a copy with `TV_REMOVED_CLOSE_CODE` (4002) and forgets its name and number. The
@@ -655,8 +666,8 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
     hold back a script, only refuse the room's own TV (#1204's review). Memory stays bounded by `REMEMBER_MAX` and
     `REMEMBER_MS`, and no other socket kind is capped either.
 
-None of this is on `/ws` for the host: a socket never carries the host. A copy can report its drift and nothing else
-here.
+None of this is on `/ws` for the host: a socket never carries a host capability. A copy can report its drift and
+nothing else here; the one host check on `/ws` is whose `tv:claim` names the room's TV ([The TV seat](#the-tv-seat)).
 
 ### The host key
 
@@ -692,7 +703,8 @@ exposure to the internet. What each attack gets:
 | --- | --- |
 | A guest elevates to host | Refused. The host capabilities read only `encore_host`, and a singer cookie presented as one resolves to no session. |
 | A guest retargets the QR (`joinOrigin`) to a phishing page | Refused (403); this was the most direct path to stealing a session. |
-| The TV, or a cookieless socket or request | Holds no capability: no singer, no host. A socket never carries the host, so nothing on `/ws` is host-only. |
+| The TV, or a cookieless socket or request | Holds no capability: no singer, no host. A socket never carries a host capability, so nothing on `/ws` is host-only. A `/tv` socket's host cookie only decides whether its `tv:claim` names the room's TV, checked against the live host sessions at the claim, so a forged, copied-after-sign-out or expired one counts as a guest's tap. |
+| A guest's script claiming the TV seat | It moves the sound (the no-lockout rule), but only stands in: the host removes it from the Screens page and the room's TV plays again. Only the host's choice, or the first screen into an empty room, names the room's TV (#1249). A Remove never leaves a free seat while another screen is open. |
 | Brute-forcing the key | Infeasible, because of key length alone: a minted key is 256 bits, and core refuses to start with an `ENCORE_ADMIN_TOKEN` under 24 characters. Characters are code points, counted after control and invisible format characters (U+200B, a BOM) are dropped and the ends trimmed; `ENCORE_WORKER_TOKEN` is read the same way, by core and the worker alike (#1197). There is no wrong-key lockout (#1173): a per-address one cannot slow guessing while the right key is still accepted, and a lock the right key obeys would let a guest behind the host's NAT, or anyone flooding, lock the host out. At a rate the LAN allows, say 10,000 guesses a second, a 256-bit key outlasts the universe, and so does a 24-character `ENCORE_ADMIN_TOKEN` if it is random; one built from a word or a pattern is the operator's risk, so use a password manager's random string. The comparison hashes both sides to 32 bytes and uses `timingSafeEqual`, so neither length nor content leaks. |
 | A guest behind the host's address (NAT, a proxy, Docker Desktop) locking the host out with wrong keys | Can't. Wrong keys are not counted, so the correct key always unlocks, which is safe because a random key of at least 24 characters cannot be guessed. |
 | A percent-encoded or otherwise re-spelled path (`/%61pi/metrics`, `/api/%6Detrics`, `..`) | Gets nothing. The Origin and JSON checks run on every unsafe method on every path, matched or not. The host gates live in each route and page load, which SvelteKit reaches only after decoding, and the hook's second layer keys on `event.route.id`, never the raw path. p9 sends each spelling raw. |

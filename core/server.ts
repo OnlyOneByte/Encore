@@ -44,7 +44,7 @@ import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
 import { fromOurOrigin } from './src/lib/server/http/same-origin';
 import { refuseForeignHost, requestUrl, unreadableHost } from './src/lib/server/http/allowed-host';
-import { adminTokenProblem } from './src/lib/server/host-key';
+import { adminTokenProblem, readHostToken } from './src/lib/server/host-key';
 
 /** The /harness pages are a manual debugging tool, not a feature. Read once so the routes below cannot
  *  disagree with the banner about whether they are mounted. */
@@ -83,6 +83,8 @@ type SocketData = {
 	roomId?: string;
 	tvId?: string;
 	tvKey?: number;
+	/** A `/tv`'s `encore_host` cookie, checked against the live host sessions at each `tv:claim` and nowhere else. */
+	hostToken?: string;
 	/** A `/tv` turned away at open (the room's screen cap): its close has nothing to undo. */
 	refused?: boolean;
 };
@@ -141,7 +143,8 @@ app.screens = {
 		if (!keys.length) return 'unknown';
 		if (key === undefined) return 'no-cookie';
 		if (app.screens!.midSong()) return 'mid-song';
-		announceSeat(tvSeats.claim(app.activeRoomId, key));
+		// The Screens page is host only, so this is the host's choice: the screen becomes the room's TV.
+		announceSeat(tvSeats.claim(app.activeRoomId, key, true));
 		return 'ok';
 	}
 };
@@ -235,7 +238,9 @@ const server = Bun.serve<SocketData>({
 					? tvRoomId(url.searchParams.get('room'), (code) => app.rooms.byCode(code), app.activeRoomId)
 					: me?.roomId;
 			const tvId = role === 'tv' ? tvIdOf(req.headers.get('cookie')) : undefined;
-			if (server.upgrade(req, { data: { role, singerId: me?.id, sessionToken, roomId, tvId } }))
+			// Kept only so a `tv:claim` can ask, at that moment, whether the host is tapping (#1249). Unlocks nothing else.
+			const hostToken = role === 'tv' ? readHostToken(req.headers.get('cookie')) : undefined;
+			if (server.upgrade(req, { data: { role, singerId: me?.id, sessionToken, roomId, tvId, hostToken } }))
 				return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
@@ -400,7 +405,11 @@ const server = Bun.serve<SocketData>({
 					if (ws.data.tvKey !== undefined && !seated(ws)) tvScreens.drift(ws.data.roomId!, ws.data.tvKey, evt.ms);
 					break;
 				case 'tv:claim':
-					if (ws.data.tvKey !== undefined) announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey));
+					// A tap on a screen carrying a live host session is the host's choice; any other tap makes a stand-in.
+					if (ws.data.tvKey !== undefined) {
+						const byHost = app.hostKey.isHost(ws.data.hostToken, app.now());
+						announceSeat(tvSeats.claim(ws.data.roomId!, ws.data.tvKey, byHost));
+					}
 					// The new seat is the TV now: a hold left waiting for one starts here, as on the seat's hello.
 					if (seated(ws)) onTvHello(deps);
 					break;

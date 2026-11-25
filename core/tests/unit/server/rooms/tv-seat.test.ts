@@ -68,14 +68,14 @@ test('hasLiveHolder: only THE TV counts as connected, never a copy left on its o
 	w.seats.disconnect(ROOM, 1); // the seat's screen goes; only the copy is left, inside the grace
 	expect(w.mine(2)).toBe(false);
 	expect(w.seats.hasLiveHolder(ROOM)).toBe(false);
-	w.seats.claim(ROOM, 2); // the copy is made the TV
+	w.seats.claim(ROOM, 2, false); // the copy is made the TV
 	expect(w.seats.hasLiveHolder(ROOM)).toBe(true);
 });
 
 test('a socket with no cookie never holds the seat, even a free one, and cannot claim it', () => {
 	const w = world();
 	expect(w.seats.connect(ROOM, 1, undefined)).toEqual([{ key: 1, mine: false, tvOnline: false, next: false }]);
-	expect(w.seats.claim(ROOM, 1)).toEqual([]);
+	expect(w.seats.claim(ROOM, 1, true)).toEqual([]);
 	expect(w.mine(1)).toBe(false);
 	// The seat stayed free for the real TV.
 	w.seats.connect(ROOM, 2, 'tvA');
@@ -190,12 +190,12 @@ test('"Make this the TV": the claimer takes the seat and the old holder becomes 
 	const w = world();
 	w.seats.connect(ROOM, 1, 'tvA');
 	w.seats.connect(ROOM, 2, 'tvB');
-	expect(w.seats.claim(ROOM, 2)).toEqual([
+	expect(w.seats.claim(ROOM, 2, true)).toEqual([
 		{ key: 1, mine: false, tvOnline: true, next: false },
 		{ key: 2, mine: true, tvOnline: true, next: false }
 	]);
 	expect(w.saved.get(ROOM)).toBe('tvB');
-	// The old holder reloading does not take it back.
+	// The old holder reloading does not take back a seat the host gave away.
 	w.seats.connect(ROOM, 3, 'tvA');
 	expect(w.mine(3)).toBe(false);
 });
@@ -273,7 +273,7 @@ test('waiting mid-song: a tap takes the seat at once, and so does the stand-in c
 		return w;
 	};
 	const tap = setup();
-	tap.seats.claim(ROOM, 3);
+	tap.seats.claim(ROOM, 3, false);
 	expect(tap.mine(3)).toBe(true);
 	const gone = setup();
 	expect(gone.seats.disconnect(ROOM, 2)).toEqual([{ key: 3, mine: true, tvOnline: true, next: false }]);
@@ -318,11 +318,26 @@ test("the host removing a stand-in: the seat waits the grace for the room's TV, 
 	expect(w.seats.roomTv(ROOM)).toBe('tvA');
 });
 
-test("a claim makes the claimer the room's TV: the old one back is a copy, and cannot be released", () => {
+// #1249: every way a screen can become the room's TV, and every way it cannot.
+test("the first screen into a free seat is the room's TV", () => {
+	const w = world();
+	expect(w.seats.roomTv(ROOM)).toBeNull();
+	w.seats.connect(ROOM, 1, 'tvA');
+	expect(w.seats.roomTv(ROOM)).toBe('tvA');
+	// A later screen into a seat freed past its wait stands in: the room's TV stays named.
+	w.advance(ON_A_WHILE);
+	w.seats.disconnect(ROOM, 1);
+	w.advance(TV_SEAT_GRACE_MS);
+	w.seats.sweep();
+	w.seats.connect(ROOM, 2, 'tvB');
+	expect(w.seats.roomTv(ROOM)).toBe('tvA');
+});
+
+test("a host claim makes the claimer the room's TV: the old one back is a copy, and cannot be released", () => {
 	const w = world();
 	w.seats.connect(ROOM, 1, 'tvA');
 	w.seats.connect(ROOM, 2, 'tvB');
-	w.seats.claim(ROOM, 2);
+	w.seats.claim(ROOM, 2, true);
 	expect(w.seats.roomTv(ROOM)).toBe('tvB');
 	expect(w.seats.release(ROOM, 'tvB')).toEqual([]);
 	w.seats.disconnect(ROOM, 1);
@@ -330,10 +345,103 @@ test("a claim makes the claimer the room's TV: the old one back is a copy, and c
 	expect(w.mine(3)).toBe(false);
 });
 
-test("core restart: the saved holder is the room's TV", () => {
-	const w = world('tvA');
-	w.seats.connect(ROOM, 1, 'tvB');
+test("a host claim on the screen already holding the seat names it the room's TV and moves nothing", () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'guest');
+	w.seats.claim(ROOM, 2, false);
+	const booked = w.timers.length;
+	expect(w.seats.claim(ROOM, 2, true)).toEqual([]);
+	expect(w.seats.roomTv(ROOM)).toBe('guest');
+	expect(w.timers.length, 'a claim that moves nothing books nothing').toBe(booked);
+});
+
+test("a guest's claim takes the seat but makes a stand-in: the host can remove it, and the room's TV plays again", () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'script');
+	expect(w.seats.claim(ROOM, 2, false)).toEqual([
+		{ key: 1, mine: false, tvOnline: true, next: false },
+		{ key: 2, mine: true, tvOnline: true, next: false }
+	]);
 	expect(w.seats.roomTv(ROOM)).toBe('tvA');
+	// The room's TV stayed open, so it is not "coming back": the claim holds across songs until the host acts.
+	w.song.on = false;
+	expect(w.seats.boundary(ROOM)).toEqual([]);
+	expect(w.mine(2)).toBe(true);
+	// The room's TV is open, so removing the stand-in hands the seat straight back.
+	expect(w.seats.release(ROOM, 'script')).toEqual([
+		{ key: 2, mine: false, tvOnline: true, next: false },
+		{ key: 1, mine: true, tvOnline: true, next: false }
+	]);
+	expect(w.saved.get(ROOM)).toBe('tvA');
+});
+
+test("a guest's claim, then the room's TV reloads: it takes the seat back between songs, and waits mid-song", () => {
+	const between = world();
+	between.seats.connect(ROOM, 1, 'tvA');
+	between.seats.connect(ROOM, 2, 'script');
+	between.seats.claim(ROOM, 2, false);
+	between.seats.disconnect(ROOM, 1);
+	between.seats.connect(ROOM, 3, 'tvA');
+	expect(between.mine(3)).toBe(true);
+	const mid = world();
+	mid.seats.connect(ROOM, 1, 'tvA');
+	mid.seats.connect(ROOM, 2, 'script');
+	mid.seats.claim(ROOM, 2, false);
+	mid.song.on = true;
+	mid.seats.disconnect(ROOM, 1);
+	expect(mid.seats.connect(ROOM, 3, 'tvA')).toEqual([{ key: 3, mine: false, tvOnline: true, next: true }]);
+});
+
+test("core restart: no screen is the room's TV, so the saved holder is a stand-in until one is named", () => {
+	const w = world('script');
+	w.seats.connect(ROOM, 1, 'script');
+	w.seats.connect(ROOM, 2, 'tvA');
+	expect(w.mine(1)).toBe(true);
+	expect(w.seats.roomTv(ROOM)).toBeNull();
+	// The host can remove it; with no room's TV to wait for, the newest other open screen stands in at once.
+	expect(w.seats.release(ROOM, 'script')).toEqual([
+		{ key: 1, mine: false, tvOnline: true, next: false },
+		{ key: 2, mine: true, tvOnline: true, next: false }
+	]);
+	expect(w.seats.roomTv(ROOM)).toBeNull();
+	// And the host naming it makes it the room's TV.
+	w.seats.claim(ROOM, 2, true);
+	expect(w.seats.roomTv(ROOM)).toBe('tvA');
+});
+
+// #1254's review, M1: after a restart, removing a guest's stand-in freed the seat, and the script redialling with a
+// fresh cookie was named the room's TV.
+test("after a restart, a removed script that redials with a fresh cookie is never named the room's TV", () => {
+	const w = world('tvA');
+	w.seats.connect(ROOM, 1, 'tvA');
+	w.seats.connect(ROOM, 2, 'tvG');
+	w.seats.claim(ROOM, 2, false);
+	w.seats.release(ROOM, 'tvG');
+	w.seats.disconnect(ROOM, 2);
+	expect(w.mine(1), 'the open real TV holds the seat').toBe(true);
+	w.seats.connect(ROOM, 3, 'tvG2');
+	expect(w.mine(3)).toBe(false);
+	expect(w.seats.roomTv(ROOM)).toBeNull();
+});
+
+test('a seat freed by a Remove with no other screen open: the next screen in is first into an empty room', () => {
+	const w = world('tvG');
+	w.seats.connect(ROOM, 1, 'tvG');
+	expect(w.seats.release(ROOM, 'tvG')).toEqual([{ key: 1, mine: false, tvOnline: false, next: false }]);
+	w.seats.disconnect(ROOM, 1);
+	w.seats.connect(ROOM, 2, 'tvA');
+	expect(w.mine(2)).toBe(true);
+	expect(w.seats.roomTv(ROOM)).toBe('tvA');
+});
+
+test("a free seat names the room's TV only when no screen at all is open, cookieless ones included", () => {
+	const w = world();
+	w.seats.connect(ROOM, 1, undefined);
+	w.seats.connect(ROOM, 2, 'tvG');
+	expect(w.mine(2)).toBe(true);
+	expect(w.seats.roomTv(ROOM)).toBeNull();
 });
 
 test('seats are per room', () => {
@@ -420,10 +528,10 @@ test('a seat move tells the old TV to go silent before it tells the new one to p
 	// The copy is the OLDER socket here, so socket order alone would send its `mine: true` first.
 	const w = world();
 	w.seats.connect(ROOM, 1, 'laptop');
-	w.seats.claim(ROOM, 1);
+	w.seats.claim(ROOM, 1, true);
 	w.seats.connect(ROOM, 2, 'tvA');
-	w.seats.claim(ROOM, 2);
-	expect(w.seats.claim(ROOM, 1)).toEqual([
+	w.seats.claim(ROOM, 2, true);
+	expect(w.seats.claim(ROOM, 1, true)).toEqual([
 		{ key: 2, mine: false, tvOnline: true, next: false },
 		{ key: 1, mine: true, tvOnline: true, next: false }
 	]);
@@ -452,7 +560,7 @@ test('the TV gone, a copy claims: the claimer is the TV, and the other copies he
 	w.seats.connect(ROOM, 2, 'phone');
 	w.seats.connect(ROOM, 3, 'laptop');
 	w.seats.disconnect(ROOM, 1);
-	expect(w.seats.claim(ROOM, 3)).toEqual([
+	expect(w.seats.claim(ROOM, 3, false)).toEqual([
 		{ key: 2, mine: false, tvOnline: true, next: false },
 		{ key: 3, mine: true, tvOnline: true, next: false }
 	]);
@@ -510,7 +618,7 @@ test('a claim by the screen that already holds the seat moves nothing and books 
 	const w = world();
 	w.seats.connect(ROOM, 1, 'tvA');
 	w.timers.splice(0);
-	for (let i = 0; i < 1000; i++) expect(w.seats.claim(ROOM, 1)).toEqual([]);
+	for (let i = 0; i < 1000; i++) expect(w.seats.claim(ROOM, 1, i % 2 === 0)).toEqual([]);
 	expect(w.timers).toEqual([]);
 	expect(w.mine(1)).toBe(true);
 });
@@ -521,7 +629,7 @@ test('an older tab of the screen that holds the seat can still claim it: the gua
 	w.seats.connect(ROOM, 2, 'tvA');
 	expect(w.mine(2)).toBe(true);
 	w.timers.splice(0);
-	expect(w.seats.claim(ROOM, 1)).toEqual([
+	expect(w.seats.claim(ROOM, 1, false)).toEqual([
 		{ key: 2, mine: false, tvOnline: true, next: false },
 		{ key: 1, mine: true, tvOnline: true, next: false }
 	]);
@@ -584,7 +692,7 @@ test('each connect, close and claim books a sweep at 15 s and at 60 s', () => {
 	w.seats.connect(ROOM, 1, 'tvA');
 	expect(booked()).toEqual([15_000, 60_000]);
 	w.seats.connect(ROOM, 2, 'laptop');
-	w.seats.claim(ROOM, 2);
+	w.seats.claim(ROOM, 2, false);
 	expect(booked()).toEqual([15_000, 60_000, 15_000, 60_000]);
 	w.seats.disconnect(ROOM, 2);
 	expect(booked()).toEqual([15_000, 60_000]);
