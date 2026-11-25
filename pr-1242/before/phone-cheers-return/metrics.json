@@ -1,0 +1,167 @@
+{
+  "scenario": "phone-cheers-return",
+  "what": "Phone 390x844: ✕ on the tray — the title and transport come back, a cut at the same height",
+  "capturedAt": "2026-11-25T00:30:14.216Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "dock": {
+      "y": 751,
+      "h": 93
+    },
+    "keyInert": false,
+    "tray": false,
+    "text": "Maya · sweet-caroline"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "dock": {
+        "y": 751,
+        "h": 93
+      },
+      "keyInert": false,
+      "tray": false,
+      "text": "Maya · sweet-caroline"
+    },
+    "droppedFrames": {
+      "median": 42,
+      "min": 41,
+      "max": 45
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 3,
+      "max": 4
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 50,
+      "max": 50
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "dock": {
+        "y": 751,
+        "h": 93
+      },
+      "keyInert": false,
+      "tray": false,
+      "text": "Maya · sweet-caroline"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 9275,
+    "encodeMs": 659,
+    "liveMs": 17664,
+    "reducedMs": 3018,
+    "reducedEncodeMs": 281
+  },
+  "files": {
+    "clip.gif": 21812,
+    "clip-slow4x.gif": 21812,
+    "filmstrip.png": 37704,
+    "filmstrip-reduced.png": 35566
+  }
+}
