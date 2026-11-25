@@ -100,7 +100,7 @@ by the reviewer's A/B run (main and branch, same box).
   canary word placed in the band proves the reader catches one.
 
 **Known breaks.** A claim main fails today, by a named cause, is its own test. It runs its setup normally, then calls
-`knownBreak('<cause>, #<issue>')` (`test.fail`) right before its one assertion, so a broken setup is still red and only
+`test.fail(true, 'KNOWN BREAK: <cause>, #<issue>')` right before its one assertion, so a broken setup is still red and only
 the claim can be the expected failure. Fixing the cause turns it "Expected to fail, but passed"; the fixing PR deletes
 the call. Each cause has its own test, so a fix flips only its own. None is open today: #1089 (QR "Finding the
 room…"), #1090 (`/queue` "Loading the queue…") and #1092 (the Now card's `arrive`) are fixed and gate as plain tests

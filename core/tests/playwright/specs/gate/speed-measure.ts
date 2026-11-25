@@ -1,5 +1,5 @@
 // The in-page measurer behind CLAIM 9-14. How it measures, and why: docs/E2E.md#speed-gate.
-import { test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 /** Times in ms, epoch-anchored high-res, so two pages on one machine share a clock. */
 export interface Interval {
@@ -201,11 +201,6 @@ export const flashes = (ivs: Interval[], graceMs = 300) =>
 	ivs
 		.filter((i) => i.end !== null && i.end - i.start < graceMs)
 		.map((i) => ({ ...i, ms: Math.round(i.end! - i.start) }));
-
-/** Call after the setup, just before the claim's one assertion, so only the claim can be the expected failure. */
-export function knownBreak(why: string): void {
-	test.fail(true, `KNOWN BREAK: ${why}`);
-}
 
 export function report(claim: string, samples: number[], budget: number): string {
 	const s = samples.map(Math.round).join(', ');
