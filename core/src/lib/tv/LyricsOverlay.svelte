@@ -230,7 +230,9 @@
 	// Two frames with no transition after a version swaps in, so the first offset measured for its rows is a cut.
 	let snapReel = $state(false);
 	function measureReel() {
-		const row = reelEl?.querySelector<HTMLElement>('.row.current');
+		// The row `lineIdx` names, not the one marked current: a ResizeObserver frame can land before the class follows a
+		// line change, and parked the reel on the next row through a gap (#1326).
+		const row = reelEl?.children[lineIdx] as HTMLElement | undefined;
 		if (!row || !viewportEl) return;
 		// `band` must be the CLIPPED `clientHeight`, and the fade depths must be the RENDERED ones, or the sung row
 		// parks inside a ramp. The cap below mirrors the stylesheet's `--lyrics-fade-cap` exactly; the two must
