@@ -1136,14 +1136,6 @@
 		font-weight: 600;
 		text-decoration: underline;
 	}
-	.join-lost {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--step-12);
-		padding: var(--step-48) var(--step-16);
-		color: var(--role-ink-dim);
-	}
 	/* NO EYEBROWS on a Spotlight screen: the group headings are dim sentence case, not uppercase letterspaced. */
 	.grouphead {
 		font-size: var(--type-meta);

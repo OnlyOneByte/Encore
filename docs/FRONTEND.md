@@ -1010,9 +1010,11 @@ row**, ink on the ground with no surface of its own, under a quiet sentence-case
 underlined, is the door to `/song/[mediaId]` for everyone who is not singing), the singer, the clock and the transport.
 The row arriving with the room's first song fades in (`.arrive`) once the blocks under it have glided past its box:
 held at 0 for `--motion-base`, then a `--motion-fast` fade, 370 ms in all (#1092). On a cold load the list's skeleton
-holds its place from the first frame but is seen only past 300 ms (`.skels-wait`, a CSS delay), so a quick sync never
-shows it, and the list that replaces it later is never held back for it (#1090, #1171). An unjoined visitor's
-join screen is loaded on demand, as on `/`, so a joined phone never downloads it.
+holds its place from the first frame but is seen only past `PENDING_GRACE_MS` (300 ms), so a quick sync never shows
+it, and the list that replaces it later is never held back for it (#1090, #1171). Past the grace, "Loading the
+queue…" is written into the page's polite `.sr-live` region as text, and cleared when the sync lands, so a screen
+reader hears it (#1328). An unjoined visitor's join screen is loaded on demand, as on `/`, so a joined phone never
+downloads it; if its chunk fails, both tabs show the same `.join-lost` line (app.css) with Try again.
 **It holds the transport** (redesign step 4, an owner ruling, moved off the dock): restart, play/pause and skip,
 three 44 px keys under the clock in one `Playback` group, for every phone, as the strip had them. Play/pause is the
 row's one accent fill. They go through the root layout's `transport()` and tap
@@ -1504,9 +1506,11 @@ no state can show an identity pane for a room that was never confirmed. Step 1 i
 reached only by a guest with no code in the URL or whose scanned code did not resolve. Step 2 is the IDENTITY
 pane — the room confirmed IN WORDS, the name field, the colour, the CTA — and the only pane a guest who
 scanned the television's QR ever sees. The room has no NAME in the schema, so "confirmed in words" is who is
-here, from the room-preview endpoint. While that lookup is out, "Finding the room…" holds the sentence's box from the
-first frame but is seen only past 300 ms (`.finding`, a CSS delay), so a quick room never flickers it and a slow one
-still says so; the sentence that replaces it is never held back for it (#1089, #1171).
+here, from the room-preview endpoint. While that lookup is out, its `role="status"` line is in the accessibility tree
+from the first frame, holding the sentence's box with an unseen spinner, and "Finding the room…" is written into it
+only past `PENDING_GRACE_MS` (300 ms). So a quick room never flickers it, a slow one still says so, and a screen
+reader hears the words as an addition to a region it already knows (#1089, #1328). The sentence that replaces it is
+never held back for it (#1171).
 
 **Both panes are one Spotlight card** (redesign step 7, #1157): the idle look (the raise surface ringed in the
 accent, then in the colour you will sing in), drawn inline rather than with `<Spotlight>` for the CSS reason under
