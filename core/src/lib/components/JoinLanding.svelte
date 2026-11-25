@@ -69,29 +69,12 @@
 		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
 	);
 
-	/* Gated on having SEEN step 1: a guest who scans lands on step 2 without step 1 ever rendering, and "step 2
-	   of 2" then reports a step they never skipped as skipped.
-	   SEEDED FROM THE OPENING PANE rather than from `false`, because `false` was a LAYOUT SHIFT on the first screen
-	   every guest opens. A bare `/` or `/library` resolves `pane === 'code'` in its very first render, so the latch
-	   below was always going to be true — but an `$effect` runs AFTER that render, so `.steps` mounted a frame late
-	   and grew `.join-main` by 30px (the row's own 10px plus this column's 20px `gap`). On the centred layout from
-	   --bp-md up that moved the whole gate 15px: measured at 768x900, `.join-head` painted at y=277.58 and then
-	   jumped to its resting y=262.58, with the CTA's bottom edge going the other way, 622.41 -> 637.41.
-	   WRITTEN AS `!arrivedWithCode` AND NOT AS `pane === 'code'`, which is the same boolean here and the better
-	   spelling: `pane` is a `$derived`, and capturing one in a `$state` initialiser is exactly what
-	   `state_referenced_locally` warns about — the capture is intended, but the warning is indistinguishable from
-	   the bug it exists to catch. At this point `preview` is null and `previewError` is empty, so `pane` can only be
-	   'resolving' or 'code' and the arm that decides between them is `arrivedWithCode` alone, which is a plain const
-	   read once off the landing URL.
-	   The `$effect` STAYS, and is not redundant: it carries the case this seed cannot see, a guest who arrives with
-	   a scanned code on `pane === 'resolving'` and drops back to step 1 when the preview fails. Such a guest must
-	   still START with `sawCodeStep` false, which is what seeding from the opening pane gives.
-	   The shift was caught by tests/playwright/specs/gate/measured-join-gate.spec.ts, whose two equality arms read
-	   the two hosts at different points in this one-frame window and so disagreed by exactly that 15px. */
-	let sawCodeStep = $state(!arrivedWithCode);
-	$effect(() => {
-		if (pane === 'code') sawCodeStep = true;
-	});
+	/* The colour sits behind "change" (redesign step 7, #1157): the ring opens in a modal dialog over the card, so
+	   picking moves nothing on the page. */
+	const stopName = $derived(nearestPaletteStop(color).name);
+	// The card's ring and the CTA's fill: the colour you will sing in, once the room is known.
+	const cardStop = $derived(pane !== 'identity' ? null : nearestPaletteStop(returning ? returning.color : color));
+	let ringDialog = $state<HTMLDialogElement>();
 
 	const joinCode = $derived(preview ? previewCode : typedCode);
 	const canContinue = $derived(typedCode.length === CODE_LENGTH && !previewLoading);
@@ -219,49 +202,45 @@
 	{#if lostName !== null}
 		<p class="lost" role="status">{settled ? "You're not in the room any more. Join again to sing." : ''}</p>
 	{/if}
-	{#if sawCodeStep}
-		<!-- No transition: the active dot changes WIDTH, a layout property this codebase does not animate. -->
-		<p class="steps">
-			<!-- NOT a live region: the pane change is a navigation the CTA press caused, not an ambient event. -->
-			<span class="step-count">Step {pane === 'identity' ? 2 : 1} of 2</span>
-			<span class={['dot', { on: onCodeStep }]} aria-hidden="true"></span>
-			<span class={['dot', { on: pane === 'identity' }]} aria-hidden="true"></span>
-		</p>
-	{/if}
-
-	{#if pane === 'resolving'}
-		<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
+	<!-- ONE CARD FOR THE CODE AND THE NAME (redesign step 7, #1157): the idle Spotlight's look, inline rather than the
+		component, because this screen also renders on /queue, which does not ship Spotlight's stylesheet (#1198). The
+		code, then the name, fill the same card, and its button sits right under the field it acts on. -->
+	<section
+		class="join-card"
+		aria-label={onCodeStep ? 'Room code' : 'Join'}
+		style:display="flex"
+		style:flex-direction="column"
+		style:gap="var(--step-12)"
+		style:padding="var(--step-16) var(--step-16) var(--step-12)"
+		style:border-radius="var(--round-spot)"
+		style:background="var(--role-raise)"
+		style:box-shadow="inset 0 0 0 2px {cardStop?.fill ?? 'var(--role-accent)'}"
+	>
+		{#if pane === 'resolving'}
+			<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
 				it says nothing, so the region would announce nothing at all. -->
-		<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
-	{:else if pane === 'identity'}
-		<!-- STEP 2 — IDENTITY. No code input here: both paths have already taken the code. -->
-		<p class="confirm" role="status">{confirmSentence}</p>
+			<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
+		{:else if pane === 'identity'}
+			<!-- IDENTITY. No code input here: both paths have already taken the code. -->
+			<p class="confirm" role="status">{confirmSentence}</p>
 
-		{#snippet nameField()}
-			<label class="name-field">
-				<span class="control-label">Your name</span>
-				<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
-				<Input
-					variant="join"
-					bind:value={name}
-					placeholder="e.g. Maya"
-					maxlength={32}
-					autocomplete="nickname"
-					enterkeyhint="go"
-					onkeydown={(e) => e.key === 'Enter' && join()}
-				/>
-			</label>
-		{/snippet}
+			{#snippet nameField()}
+				<label class="name-field">
+					<span class="control-label">Your name</span>
+					<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
+					<Input
+						variant="join"
+						bind:value={name}
+						placeholder="e.g. Maya"
+						maxlength={32}
+						autocomplete="nickname"
+						enterkeyhint="go"
+						onkeydown={(e) => e.key === 'Enter' && join()}
+					/>
+				</label>
+			{/snippet}
 
-		{#if returning}
-			<!-- The idle Spotlight's look, inline rather than the component: this screen also renders on /queue, which
-					does not ship Spotlight's stylesheet, and CLAIM 13 has no room for it there (#1198). -->
-			<section
-				style:padding="var(--step-4)"
-				style:border-radius="var(--round-spot)"
-				style:background="var(--role-raise)"
-				style:box-shadow="inset 0 0 0 2px {nearestPaletteStop(returning.color).fill}"
-			>
+			{#if returning}
 				<h2
 					style:margin="0"
 					style:font-size="var(--type-lead)"
@@ -270,23 +249,83 @@
 				>
 					Welcome back, {returning.displayName}
 				</h2>
-			</section>
-			{#if renaming}{@render nameField()}{/if}
-			<Button
-				variant="ghost"
-				size="tap"
-				onclick={() => {
-					someoneElse = true;
-					renaming = false;
-					error = '';
-					name = '';
-				}}>I'm someone else</Button
-			>
-		{:else}
-			{@render nameField()}
+				{#if renaming}{@render nameField()}{/if}
+				<Button
+					variant="ghost"
+					size="tap"
+					onclick={() => {
+						someoneElse = true;
+						renaming = false;
+						error = '';
+						name = '';
+					}}>I'm someone else</Button
+				>
+			{:else}
+				{@render nameField()}
 
-			<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence above is built from. An empty
-					room is an empty list, which needs no special case. -->
+				<!-- The colour is a suggestion until touched, so it waits behind "change". -->
+				<button type="button" class="colour" aria-haspopup="dialog" onclick={() => ringDialog?.showModal()}>
+					<span
+						style:flex="none"
+						style:width="28px"
+						style:height="28px"
+						style:border-radius="50%"
+						style:background={color}
+						aria-hidden="true"
+					></span>
+					<span>Your color <b>{stopName}</b> · change</span>
+				</button>
+			{/if}
+
+			{#if error}
+				<div class="err" role="alert">{error}</div>
+			{/if}
+		{:else}
+			<!-- CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that ruling is
+				recorded at docs/FRONTEND.md#the-join-screen. -->
+			{#if previewError}
+				<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
+				<div class="err" role="alert">{previewError}</div>
+			{/if}
+			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
+		{/if}
+
+		<!-- ONE CTA for both panes, in the card under the field it acts on; sticky, so with the keyboard up it rides just
+			above it (see `.submit-slot`). None while the room resolves: the card grows when it does, and a button already
+			there would be pushed down. -->
+		{#if pane !== 'resolving'}
+			<div class="submit-slot">
+				<!-- Start singing is filled in the colour you will sing in, inked in that stop's certified on_fill. -->
+				<Button
+					size="blockLg"
+					disabled={!ctaEnabled}
+					style={ctaEnabled && cardStop ? `background:${cardStop.fill};color:${cardStop.on_fill}` : undefined}
+					onclick={onCodeStep ? () => continueToIdentity() : join}
+				>
+					{#if onCodeStep}
+						{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
+					{:else if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
+				</Button>
+			</div>
+		{/if}
+	</section>
+	<!-- The disabled reason is ANNOUNCED for assistive tech (SC 3.3.2), never painted; filled only once `settled`. -->
+	<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
+
+	{#if pane === 'identity' && !returning}
+		<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence is built from. -->
+		<!-- Its own surface: one step above the card (--card2), over a strong scrim. -->
+		<dialog
+			class="ring-dialog"
+			bind:this={ringDialog}
+			aria-label="Your color"
+			style:max-width="min(360px, calc(100vw - 2 * var(--space-4xl)))"
+			style:padding="var(--step-16)"
+			style:border="0"
+			style:border-radius="var(--round-spot)"
+			style:background="var(--card2)"
+			style:color="var(--role-ink)"
+		>
 			<ColourRing
 				label="Your color"
 				hint="How you'll spot yourself in the queue and on the TV."
@@ -299,39 +338,9 @@
 					}
 				}
 			/>
-		{/if}
-
-		{#if error}
-			<div class="err" role="alert">{error}</div>
-		{/if}
-	{:else}
-		<!-- STEP 1 — CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that
-				ruling is recorded at docs/FRONTEND.md#the-join-screen. -->
-		<div class="code-pane">
-			{#if previewError}
-				<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
-				<div class="err" role="alert">{previewError}</div>
-			{/if}
-			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
-		</div>
+			<Button size="blockLg" onclick={() => ringDialog?.close()}>Done</Button>
+		</dialog>
 	{/if}
-
-	<!-- ONE CTA slot for both panes, docked to the bottom by an auto margin AND by `position: sticky` — see the rule.
-		The auto margin alone is inert in exactly the case it used to be credited with: measured at 320 wide this column
-		is 573px against a 308px viewport (568 less a 260px keyboard), so there is no free space left for a margin to
-		consume and the button's static position lands at y=598, 290px below the fold. `app.html`'s interactive-widget
-		mode shrinks the layout viewport, which is what the sticky offset then measures against. -->
-	<div class="submit-slot">
-		<!-- The disabled reason exists in text for assistive tech (SC 3.3.2) but is ANNOUNCED, not printed. The element
-			and its live region stay; only the painting stops. -->
-		<!-- Always mounted (it is never painted), and filled only once `settled`: see that flag. -->
-		<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
-		<Button size="blockLg" disabled={!ctaEnabled} onclick={onCodeStep ? () => continueToIdentity() : join}>
-			{#if onCodeStep}
-				{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
-			{:else if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
-		</Button>
-	</div>
 </div>
 
 <style>
@@ -408,60 +417,43 @@
 		color: var(--danger-ink);
 		font-size: var(--ph-text-md);
 	}
-	/* The active dot is a WIDER pill, not just a brighter one: at 10px a colour-only difference sits close to the
-	   3:1 non-text floor, and length reads at a glance where a shade does not. */
-	.steps {
+	/* The card, its heading, the swatch and the ring's dialog are styled inline: CLAIM 13 has little CSS room on /queue. */
+	/* STICKY: with the keyboard up, `interactive-widget=resizes-content` shrinks the layout viewport and the CTA rides
+	   just above the keyboard (at 320x568 it sat 60-118 px under it). The card's fill, and a band of it above, keep the
+	   rows it passes over from showing through. Inert at rest, where the CTA is already on screen. */
+	.submit-slot {
+		position: sticky;
+		bottom: 0;
+		background: var(--role-raise);
+		box-shadow: 0 calc(-1 * var(--step-12)) 0 var(--role-raise);
+	}
+	.ring-dialog::backdrop {
+		background: var(--scrim-strong);
+	}
+	.colour {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-		margin: 0;
-	}
-	.dot {
-		flex: 0 0 auto;
-		width: var(--space-md);
-		height: var(--space-md);
-		border-radius: var(--radius-pill);
-		background: var(--line-strong);
-	}
-	.dot.on {
-		width: var(--space-4xl);
-		background: var(--accent);
-	}
-	/* Visually hidden but announced: the clip idiom, never `display: none`, which most screen readers skip. */
-	.step-count {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		margin: -1px;
+		gap: var(--step-12);
+		min-height: var(--tap);
 		padding: 0;
 		border: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
+		background: none;
+		color: var(--ink-dim);
+		font: inherit;
+		font-size: var(--type-meta);
+		text-align: start;
+		cursor: pointer;
+	}
+	.colour b {
+		color: var(--ink);
 	}
 	.name-field {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	/* THE COLUMN THE CTA DOCKS AGAINST, AND THE HOST THE GATE NEUTRALISES. `.submit-slot`'s auto margin can only
-	   push the CTA to the bottom if this element HAS a bottom to reach: the host `main` is `flex: 1` without
-	   `display: flex`, so `.join-main` otherwise shrinks to its content. `:has()`, because the joined queue view is
-	   the other thing inside it.
-	   ANCHORED ON `.app-shell >` FOR THE SPECIFICITY, NOT FOR THE REACH. The gate has TWO hosts — `/` renders it
-	   inside the home route's `main`, `/library` renders it as a direct child of `.app-shell` — and the route's own
-	   `main { flex: 1; padding: … }` is scoped, so it TIES a bare `main:has(.join-main)` at 0,1,1 and its chunk
-	   loads after this component's (`2.*.css` after `library-browse.*.css` in node 2's css list), which wins the
-	   tie. At 0,2,1 this rule wins on specificity instead of on bundle order.
-	   `padding: 0` IS PART OF THE SAME DECISION: the host's route padding is a placement the gate did not choose
-	   and the other route does not get — 6px at the top, 28px at the bottom, and 16px of a SECOND inline gutter
-	   that `.app-shell` already owns as the app's one gutter.
-	   THE RESOLVED END OF THIS RULE IS READ BACK, which is the only way a specificity argument can be checked rather
-	   than asserted: CLAIM 7's mechanism arm reads the host's computed `display`, `padding` and `flex-grow` off the
-	   live page, so a route chunk winning the cascade back reports itself by name — measured with this rule deleted,
-	   the host resolves `display: block` below --bp-md, `grid` above it, and `padding: 6px 16px 28px` at every width
-	   — instead of only moving the gate by a few pixels. */
+	/* THE HOST THE GATE NEUTRALISES, so `/` and `/library` place it the same (CLAIM 7 reads this back). `.app-shell >`
+	   is for specificity: at 0,2,1 it beats the route's own scoped `main` rule, which otherwise wins on bundle order. */
 	:global(.app-shell > main:has(.join-main)) {
 		display: flex;
 		flex-direction: column;
@@ -469,22 +461,6 @@
 	}
 	.join-main {
 		flex: 1;
-		/* TWO RUNGS, and the vertical one is the app's gutter rung rather than a rung of its own: this was `3xl 4xl`
-		   (18/20), a 2px asymmetry nobody chose, and 3xl is retired. 16 top and bottom also pays for the join field
-		   growing 14 -> 16 inline and block inside it (ui/input's `join` variant), so this screen's total height at
-		   the keyboard-up case is unchanged. The inline 20 stays the widest inset in the app — this is the one screen
-		   that is nothing but one hero column.
-		   WHAT THAT DID TO THE READINGS FURTHER DOWN THIS FILE, now RE-READ rather than derived — a note here used to
-		   predict `.join-head`'s y=263 / y=353 were 2px high, and they are not. Measured by the gate below on the CODE
-		   pane, which is what a bare `/` or `/library` opens: the brand band's top is y=262.58 at 768 and at 1024 wide
-		   and y=352.58 at 1920x1080, so both written figures are those values rounded. The CTA's docked bottom edge on
-		   the phone arm DID move with this rung, 826 -> 828 at 390x844 (844 less this column's bottom inset, which the
-		   arm below zeroes from 768 up), and the `@media` comment there is corrected to the re-read value.
-		   WHAT THE GATE DOES AND DOES NOT HOLD, so nobody trusts these digits further than they go:
-		   tests/playwright/specs/gate/measured-join-gate.spec.ts asserts the RELATIONS these four numbers came out of
-		   — centred on both hosts from --bp-md up, filled and docked by this column's own bottom inset below it — and
-		   not the digits themselves. Change a rung here and y=262.58 moves again with nothing red; what cannot happen
-		   any more is the two hosts drifting apart. */
 		padding: var(--space-2xl) var(--space-4xl);
 		display: flex;
 		flex-direction: column;
@@ -498,59 +474,12 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
-		margin: 0 0 var(--space-sm);
-		color: var(--ink-dim);
-		font-size: var(--ph-text-md);
-		text-align: center;
-	}
-	/* AT CONTENT HEIGHT, not `flex: 1`: centring splits the free space into two gaps, above and below the boxes,
-	   which reads as a layout that failed. The `gap` keeps the group's spacing known when an error pushes down. */
-	.code-pane {
-		flex: 0 0 auto;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2xl);
-	}
-	/* STICKY AS WELL AS AUTO-MARGINED, because the auto margin is inert in exactly the case that needs it: with the
-	   keyboard up this column is TALLER than the viewport, so there is no free space left for an auto margin to
-	   consume and the CTA docks to the bottom of the DOCUMENT instead. Measured on the identity pane at 320 wide:
-	   the column is 573px against a 308px viewport (568 less a 260px keyboard, which is what
-	   `interactive-widget=resizes-content` shrinks it to), and the button's static position lands at y=598 — 290px
-	   below the fold, so the app's one button is off screen while the guest types into the field that opened the
-	   keyboard. Sticky pins it just above the keyboard instead.
-	   It costs NOTHING where the column fits: a bottom inset only ever pulls a sticky box back toward the
-	   scrollport, never past its static position, and the button measured to the same pixel at 390x844, 360x740,
-	   430x932 and 1024x768 with this rule on and off.
-	   No `env(safe-area-inset-bottom)` term. `.app-shell` already carries that as padding for the resting case,
-	   which is the case where this rule does nothing, and iOS reports the bottom inset as 0 while the keyboard —
-	   the thing being cleared here — is up, so a second term would only double the gap.
-	   THE FILL IS REQUIRED, not decoration: with nothing behind it the colour ring scrolls straight through a
-	   sticky surface, the defect `PageHeader` records at the other edge. The band above it is a box-shadow rather
-	   than padding because padding is LAYOUT — 8px of it moved the button 8px down on the >=768 column, whose
-	   `margin-top` is a fixed length with no auto margin to absorb it. */
-	.submit-slot {
-		margin-top: auto;
-		display: flex;
-		flex-direction: column;
-		position: sticky;
-		bottom: 0;
-		background: var(--bg);
-		box-shadow: 0 calc(-1 * var(--space-sm)) 0 var(--bg);
 	}
 	@media (min-width: 768px) {
 		:global(.app-shell:has(.join-main)) {
 			justify-content: center;
 		}
-		/* AND THE HOST MUST STOP ABSORBING THE FREE SPACE the rule above distributes. `main { flex: 1 }` grows to the
-		   full shell height, so on `/` there was nothing left to centre and the gate sat at the top while `/library`,
-		   where the gate is the shell's own child, centred — the same component in two places, decided by the landing
-		   route. Measured at 1024x900: `.join-head` at y=6 on `/` against y=263 on `/library`, a 257px divergence for
-		   identical markup; with this rule both read y=263 (and y=353 at 1920x1080).
-		   IT CANNOT BE UNCONDITIONAL — the host MUST keep `flex: 1` below 768, or it shrinks to its content and
-		   `.join-main`'s own `flex: 1` has no free space to grow into, so the CTA undocks: re-measured at 390x844 by
-		   making this declaration unconditional and rebuilding, the button's bottom edge lands at y=353.05 instead of
-		   y=828 (it read 826 while this column's bottom inset was 18px). Both halves are gate arms now — see
-		   tests/playwright/specs/gate/measured-join-gate.spec.ts, whose phone arms red on exactly that revert. */
+		/* The host stops absorbing the free space, or on `/` the gate sat at the top while `/library` centred it. */
 		:global(.app-shell > main:has(.join-main)) {
 			flex: 0 0 auto;
 		}
@@ -559,9 +488,6 @@
 			margin: 0 auto;
 			flex: 0 0 auto;
 			padding-bottom: 0;
-		}
-		.submit-slot {
-			margin-top: var(--space-sm);
 		}
 	}
 </style>

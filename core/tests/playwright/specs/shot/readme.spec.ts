@@ -8,7 +8,7 @@
 // EVERY VALUE ON SCREEN IS A FIXTURE: the room code is minted per run, the join address is the same LAN-shaped
 // one `frames.spec.ts` uses, the singers are the names the other shot specs use, and the songs are TheFatRat's
 // (see CREDITS.md). The tracks are 8-second tones with a fake worker behind them, so no real stems are needed.
-import { test, expect } from '../../world/fixtures';
+import { test, expect, pickColour } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import { openQueue, queueReady, readySong, transportTap } from '../../world/actors';
@@ -61,7 +61,7 @@ test('readme: phone and TV frames', async ({ browser, world }, testInfo) => {
 		await joinPage.goto(`/?room=${encodeURIComponent(world.code)}`);
 		await expect(joinPage.getByText('Theo and Ana are here.')).toBeVisible();
 		await joinPage.locator(SEL.nameInput).fill('Maya');
-		await joinPage.locator(SEL.colourRing).press('End');
+		await pickColour(joinPage, 'End');
 		await expect(joinPage.getByRole('button', { name: SEL.submit })).toBeEnabled();
 		await shootPhone(joinPage, 'phone-join', SEL.nameInput);
 		await anon.close();

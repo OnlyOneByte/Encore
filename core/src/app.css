@@ -192,8 +192,7 @@
 	--space-4xl: 20px;
 	/* THE SECTION RUNG, and the ladder's only one. Everything above is an INTRA-surface register, and as a GAP the top
 	   of the ladder is barely spent even now: `--space-5xl` once (/settings' `.panel` row gap), `--space-4xl` once
-	   (JoinLanding's .join-main), `--space-2xl` six times (TvLobby's `.strip`, JoinBadge's `.corner`, JoinLanding's
-	   `.code-pane`, the song-column gaps on / and /library, and ui/alert-dialog/alert-dialog-content.svelte's
+	   (JoinLanding's .join-main), `--space-2xl` five times (TvLobby's `.strip`, JoinBadge's `.corner`, the song-column gaps on / and /library, and ui/alert-dialog/alert-dialog-content.svelte's
 	   `gap-[var(--space-2xl)]` — that one is a Tailwind arbitrary value, but it lives under src/lib/components/ui/
 	   which IS scanned, so it compiles to a real `gap`). So a boundary between two SIBLING SECTIONS had nothing to
 	   spend and took 2xl: 16px collapsing against .list-row's 8px margin-bottom, a 2.0 ratio against the row-to-row
