@@ -1,7 +1,7 @@
 <!-- The UNJOINED state of `/` — two panes, and both the typed and the scanned path must stay offered.
 	See docs/FRONTEND.md#the-join-screen. -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { flushSync, onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { SINGER_COLORS, freeSingerColor, nearestPaletteStop } from '$lib/contract';
 	import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
@@ -75,6 +75,8 @@
 	// The card's ring and the CTA's fill: the colour you will sing in, once the room is known.
 	const cardStop = $derived(pane !== 'identity' ? null : nearestPaletteStop(returning ? returning.color : color));
 	let ringDialog = $state<HTMLDialogElement>();
+	// The ring mounts on the first "change", not with the card, so the QR's first render does not pay for it (#1320).
+	let ringMounted = $state(false);
 
 	const joinCode = $derived(preview ? previewCode : typedCode);
 	const canContinue = $derived(typedCode.length === CODE_LENGTH && !previewLoading);
@@ -265,7 +267,16 @@
 				{@render nameField()}
 
 				<!-- The colour is a suggestion until touched, so it waits behind "change". -->
-				<button type="button" class="colour" aria-haspopup="dialog" onclick={() => ringDialog?.showModal()}>
+				<button
+					type="button"
+					class="colour"
+					aria-haspopup="dialog"
+					onclick={() => {
+						ringMounted = true;
+						flushSync();
+						ringDialog?.showModal();
+					}}
+				>
 					<span
 						style:flex="none"
 						style:width="28px"
@@ -313,7 +324,7 @@
 	<!-- The disabled reason is ANNOUNCED for assistive tech (SC 3.3.2), never painted; filled only once `settled`. -->
 	<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
 
-	{#if pane === 'identity' && !returning}
+	{#if ringMounted && pane === 'identity' && !returning}
 		<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence is built from. -->
 		<!-- Its own surface: one step above the card (--card2), over a strong scrim. -->
 		<dialog
