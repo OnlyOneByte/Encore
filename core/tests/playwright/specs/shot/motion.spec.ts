@@ -58,7 +58,9 @@ const CUTS = new Set([
 	'phone-keep-me-390',
 	'phone-keep-me-320',
 	'phone-welcome-back-390',
-	'phone-welcome-back-320'
+	'phone-welcome-back-320',
+	// Redesign step 5: the card is in the singer's colour from On deck on, so the heads-up changes words, not colour.
+	'phone-on-deck-heads-up'
 ]);
 /** What a dock CUT row is about: the strip's title and transport. Not the progress hairline, which glides once a
  *  second whenever a song plays (--motion-tick) and is not the change these rows record. */
@@ -87,8 +89,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-reorder-held-320': HELD_LIBRARY,
 	'phone-queue-your-song-390': HELD_LIBRARY,
 	'phone-queue-your-song-320': HELD_LIBRARY,
-	'phone-now-card-grow-390': HELD_LIBRARY,
-	'phone-now-card-grow-320': HELD_LIBRARY,
+	'phone-queue-on-deck-to-up-390': HELD_LIBRARY,
+	'phone-queue-on-deck-to-up-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-chip-wake': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-chip-sleep': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
@@ -238,6 +240,53 @@ function keepMe(width: number): Make {
 		subject: '#kept',
 		observe: (page) => page.evaluate(() => ({ kept: !!document.querySelector('#kept') }))
 	});
+}
+
+/** Redesign step 5: Maya's On deck card turning "You're up" as Theo's song ends, the same card at the same height (one
+ *  box, #1154), with the list under it still. Each run drains the room and queues Theo's song, then Maya's. */
+function deckToUp(width: number): Make {
+	return (browser, world, cleanup) => {
+		let ph: { theo: Page; maya: Page } | undefined;
+		return {
+			name: `phone-queue-on-deck-to-up-${width}`,
+			what: `Phone ${width}x${width === 320 ? 568 : 844}: Theo's song ends and Maya's On deck card turns "You're up" in place, one box at one height (CLS 0)`,
+			stepMs: 33,
+			scale: 1,
+			columns: 5,
+			open: async (opts) => {
+				if (!ph) {
+					const worker = await startFakeWorker(world, { seconds: HELD_SECS });
+					cleanup(() => worker.stop());
+					ph = { theo: await world.openPhone('Theo'), maya: await world.openPhone('Maya') };
+					await readySong(world, ph.theo, 'caroline');
+					await readySong(world, ph.theo, 'believin');
+					await world.openTv();
+				}
+				await drain(ph.theo);
+				await queueReady(ph.theo, 'caroline');
+				await queueReady(ph.maya, 'believin');
+				const page = await asSinger(browser, world, opts, ph.maya, width);
+				await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+				await page.goto('/queue');
+				await expect(page.locator(SEL.queueMyCard)).toHaveAttribute('aria-label', 'On deck', { timeout: 15_000 });
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				// Past the settle window, so the skip lands on Theo's song.
+				await page.waitForTimeout(SETTLE_MS + 200);
+				return page;
+			},
+			trigger: async (page) => {
+				await sendPlayerCommand(ph!.theo, { cmd: 'skip' });
+				await expect(page.locator(SEL.queueMyCard)).toHaveAttribute('aria-label', 'Your song', { timeout: 10_000 });
+			},
+			subject: SEL.queueMyCard,
+			observe: (page) =>
+				page.evaluate(() => {
+					const card = document.querySelector('section.deck');
+					const r = card?.getBoundingClientRect();
+					return { label: card?.getAttribute('aria-label') ?? null, top: r?.top ?? null, height: r?.height ?? null };
+				})
+		};
+	};
 }
 
 /** The host's Reset phones confirm opening on /host, over a kept person (the reset itself never runs). */
@@ -603,30 +652,17 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 	};
 }
 
-/** The same moment, about the CARD: as Theo's own song starts, his one-line card grows into his controls while the
- *  list under it glides (docs/FRONTEND.md § The Now card). A cut under reduced motion. */
-function nowCardGrow(width: number): Make {
-	return (browser, world, cleanup) => ({
-		...queueYourSong(width)(browser, world, cleanup),
-		name: `phone-now-card-grow-${width}`,
-		what: `Phone ${width}x844: /queue as Theo’s own song starts — his Now card grows from the one-line view into his key and guide controls: its surface scales down from the old height (transform) and the controls fade in (opacity), on --motion-base, while the list under it glides into place; a cut under reduced motion`,
-		subject: SEL.queueNowCard,
-		// The card's children and `.below` too: the surface, the fades and the settle are all part of this one move.
-		only: '.now, .now > *, .now-surface > *, main > .below, main .grouphead, main .qrow, .youre-up'
-	});
-}
-
-/** Theo's /queue at one phone width as his own song starts (proposal 18): his On deck card goes (a cut) and the
- *  "Queued" heading and the rows under it ease up from where they were drawn (`data-hold`, transform, --motion-base),
- *  once, though the list changes in two patches 12 ms apart. Under reduced motion it is a cut. Each run first drains
- *  the room and queues Maya, Theo, Ana, Maya again. */
+/** Theo's /queue at one phone width as his own song starts (proposal 18, redesign step 5): his On deck card turns
+ *  "Your song" in place at the same height, and his row leaves the list, so the rows under it ease up from where they
+ *  were drawn (`data-hold`, transform, --motion-base). Under reduced motion it is a cut. Each run first drains the
+ *  room and queues Maya, Theo, Ana, Maya again. */
 function queueYourSong(width: number): Make {
 	return (browser, world, cleanup) => {
 		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
 		const DECK = 'section[aria-label="On deck"]';
 		return {
 			name: `phone-queue-your-song-${width}`,
-			what: `Phone ${width}x844: /queue as Theo’s own song starts — the On deck card goes (a cut) and the heading and rows ease up into its place (transform, --motion-base), one glide and no jump; a cut under reduced motion`,
+			what: `Phone ${width}x844: /queue as Theo’s own song starts — his card turns "Your song" in place at one height, and the rows under it ease up into his row's place (transform, --motion-base), one glide and no jump; a cut under reduced motion`,
 			// Not the heading: at 390 it is held at its old top, under the fold, on the first frame.
 			subject: 'main > .below',
 			stepMs: 33,
@@ -1176,8 +1212,6 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-queue-card-leave': queueCard('leave'),
 	'phone-queue-your-song-390': queueYourSong(390),
 	'phone-queue-your-song-320': queueYourSong(320),
-	'phone-now-card-grow-390': nowCardGrow(390),
-	'phone-now-card-grow-320': nowCardGrow(320),
 	'phone-dock-your-song-390': dockYourSong(390),
 	'phone-dock-your-song-320': dockYourSong(320),
 	'phone-reorder-held-390': reorderHeld(390),
@@ -1413,7 +1447,7 @@ const SCENARIOS: Record<string, Make> = {
 		let maya: Page | undefined;
 		return {
 			name: 'phone-on-deck-heads-up',
-			what: 'Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — "On deck" + time-left → "You’re next", fading to the singer colour (--motion-slow)',
+			what: 'Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — "On deck" + time-left → "You’re next", the card already in the singer colour, a cut in place',
 			stepMs: 33,
 			scale: 1,
 			columns: 5,
@@ -1434,7 +1468,7 @@ const SCENARIOS: Record<string, Make> = {
 				const page = await asSinger(browser, world, opts, maya);
 				await page.goto('/');
 				await openQueue(page);
-				await page.locator('section.deck:not(.heads-up) .left').waitFor();
+				await expect(page.locator('section.deck:not(.heads-up) .left')).not.toBeEmpty();
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
 			},
@@ -1453,10 +1487,13 @@ const SCENARIOS: Record<string, Make> = {
 				page.evaluate(() => ({
 					headsUp: !!document.querySelector('section.deck.heads-up'),
 					eyebrow: document.querySelector('section.deck .eyebrow')?.textContent?.trim() ?? null,
-					timeLeftShown: !!document.querySelector('section.deck .left')
+					timeLeftShown: !!document.querySelector('section.deck .left')?.textContent?.trim()
 				}))
 		};
 	},
+
+	'phone-queue-on-deck-to-up-390': deckToUp(390),
+	'phone-queue-on-deck-to-up-320': deckToUp(320),
 
 	/** The processing bar taking one real worker step, with a timer keepalive's `pct: 0` arriving between the real
 	 *  figures (proposal 05): the fill only ever grows. One song is made first so the card has a time to show; each

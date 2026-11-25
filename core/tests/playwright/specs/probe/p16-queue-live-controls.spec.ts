@@ -170,7 +170,7 @@ async function readCard(page: Page, expectedRange: string | null): Promise<CardR
 		{
 			// Every selector handed to the page ONCE — docs/E2E.md#why-selectors-are-centralised.
 			S: {
-				card: SEL.queueNowCard,
+				card: SEL.queueMyCard,
 				gt: SEL.guidingTrackRoot,
 				readout: SEL.guideReadout,
 				slider: SEL.slider,
@@ -268,7 +268,7 @@ async function setupArm(world: World, kind: ArmKind): Promise<Arm> {
  */
 async function openControls(phone: Page, expectedRange: string): Promise<CardReading> {
 	await openQueue(phone);
-	await phone.locator(SEL.queueNowCard).first().waitFor({ state: 'attached', timeout: 15_000 });
+	await phone.locator(SEL.queueMyCard).first().waitFor({ state: 'attached', timeout: 15_000 });
 	await phone.locator(SEL.slider).first().waitFor({ state: 'attached', timeout: 15_000 });
 	return readCard(phone, expectedRange);
 }

@@ -122,8 +122,9 @@ test('the guide draft is cleared by the ROOM agreeing, and by a song change', ()
 	// a dropped command clear it. guide-send.test.ts drives the verdict itself.
 	// ...and only for the song its gesture began on: the rest of a drag that outlived the song earns no draft.
 	expect(queuePage).toContain('if (pct === null || guideGestureFor === nowEntry?.id) guideDraft = pct;');
-	expect(queuePage).toContain('oninput={guideInput}');
-	expect(queuePage).toContain('oncommit={guideCommit}');
+	// Your card drives the live song only once playback names it yours (redesign step 5), through the same two.
+	expect(queuePage).toContain('if (spotLive) guideInput(pct);');
+	expect(queuePage).toContain('if (spotLive) guideCommit(pct);');
 	// Every send of a gesture names the entry it BEGAN on, not the one on the card when the send fires.
 	expect(queuePage).toContain("room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor })");
 });

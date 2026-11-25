@@ -1,5 +1,5 @@
-// While Maya sings, only her phone tunes her song: Theo's card reads it as one line, and the server refuses his, the
-// TV's and a cookieless socket's key and guide. See docs/FRONTEND.md § The Now card.
+// While Maya sings, only her phone tunes her song, on her own card (redesign step 5): Theo's Now row reads it as one
+// line, and the server refuses his, the TV's and a cookieless socket's key and guide. See docs/FRONTEND.md § The Now card.
 import { mkdirSync } from 'node:fs';
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
@@ -59,15 +59,15 @@ test('only the singer changes the playing song key and guide', async ({ world })
 		fromTheo({ cmd: 'pause' });
 		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.isPlaying).toBe(false);
 
-		// Theo's card: no keycaps, no slider, no range bar. Maya's keeps all three.
-		await expect(theo.locator(`${SEL.queueNowCard} ${RAISE}`)).toHaveCount(0);
-		await expect(theo.locator(`${SEL.queueNowCard} ${SEL.slider}`)).toHaveCount(0);
-		await expect(maya.locator(`${SEL.queueNowCard} ${RAISE}`)).toBeVisible();
-		await expect(maya.locator(`${SEL.queueNowCard} ${SEL.slider}`)).toBeVisible();
-		await expect(maya.locator(`${SEL.queueNowCard} ${SEL.guidingTrackRoot}.disabled`)).toHaveCount(0);
+		// Theo's phone: no keycaps and no slider anywhere. Maya's card keeps them.
+		await expect(theo.locator(RAISE)).toHaveCount(0);
+		await expect(theo.locator(SEL.slider)).toHaveCount(0);
+		await expect(maya.locator(`${SEL.queueMyCard} ${RAISE}`)).toBeVisible();
+		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.slider}`)).toBeVisible();
+		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.guidingTrackRoot}.disabled`)).toHaveCount(0);
 
 		// Maya raises twice from her own phone: it lands, and Theo reads it as one line.
-		const raise = maya.locator(`${SEL.queueNowCard} ${RAISE}`);
+		const raise = maya.locator(`${SEL.queueMyCard} ${RAISE}`);
 		await raise.click();
 		await raise.click();
 		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.keyShift).toBe(2);
@@ -122,10 +122,10 @@ const cardAnims = (p: import('@playwright/test').Page) =>
 		)
 	);
 
-// `quick`: the room empties INSIDE the grow (two skips back to back), so only the clear on a fresh arrival saves the
-// next card; the slow case lets the grow end first.
+// `quick`: the room empties right after your song starts (two skips back to back), so only the clear on a fresh
+// arrival saves the next Now row; the slow case lets your song settle first.
 for (const quick of [false, true])
-	test(`after your card grew, the next song in an emptied room fades in${quick ? ' (emptied mid-grow)' : ''}`, async ({
+	test(`after your song, the next song in an emptied room fades in${quick ? ' (emptied at once)' : ''}`, async ({
 		world
 	}) => {
 		test.setTimeout(240_000);
@@ -139,11 +139,11 @@ for (const quick of [false, true])
 			await queueReady(theo, 'believin');
 			await theo.goto('/queue');
 			await expect(theo.locator(SEL.queueNowCard)).toContainText(/caroline/i, { timeout: 30_000 });
-			// Theo's own song starts: his card grows into his controls.
+			// Theo's own song starts: his card turns You're up.
 			await sendPlayerCommand(maya, { cmd: 'skip' });
-			if (quick) await expect(theo.locator(`${SEL.queueNowCard}[data-grow]`)).toHaveCount(1, { timeout: 15_000 });
-			else {
-				await expect(theo.locator(`${SEL.queueNowCard} ${RAISE}`)).toBeVisible({ timeout: 15_000 });
+			await expect(theo.locator(SEL.queueNowCard)).toContainText(/believin/i, { timeout: 15_000 });
+			if (!quick) {
+				await expect(theo.locator(`${SEL.queueMyCard} ${RAISE}`)).toBeEnabled({ timeout: 15_000 });
 				await theo.waitForTimeout(1_000);
 			}
 			// The room empties, so the card goes.
@@ -215,7 +215,7 @@ test('your song starts while the card is still arriving: the fade is not replaye
 		await expect(theo.locator(SEL.queueNowCard)).toBeVisible();
 		await theo.waitForTimeout(120);
 		await sendPlayerCommand(maya, { cmd: 'skip' });
-		await expect(theo.locator(`${SEL.queueNowCard} ${RAISE}`)).toBeVisible({ timeout: 15_000 });
+		await expect(theo.locator(`${SEL.queueMyCard} ${RAISE}`)).toBeEnabled({ timeout: 15_000 });
 		// Once the card is drawn, it stays drawn: sample its opacity for 1.5 s.
 		const dips = await theo.evaluate(
 			() =>
@@ -266,7 +266,7 @@ test('the singer’s first key tap moves nothing on a fan’s phone', async ({ w
 					if (!e.hadRecentInput) w.__cls += e.value;
 			}).observe({ type: 'layout-shift', buffered: false });
 		});
-		await maya.locator(`${SEL.queueNowCard} ${RAISE}`).click();
+		await maya.locator(`${SEL.queueMyCard} ${RAISE}`).click();
 		await expect(theo.locator(SEL.queueNowTune)).toHaveText('Key +1');
 		await theo.waitForTimeout(800);
 		expect(await theo.evaluate(() => (window as unknown as { __cls: number }).__cls), 'CLS on the fan’s phone').toBe(0);
