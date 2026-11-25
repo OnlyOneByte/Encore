@@ -1,0 +1,312 @@
+{
+  "scenario": "phone-queue-on-deck-to-up-390",
+  "what": "Phone 390x844: Theo's song ends and Maya's On deck card turns \"You're up\" in place, one box at one height (CLS 0)",
+  "capturedAt": "2026-11-25T09:17:30.653Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "transform",
+      "target": "div.fill",
+      "durationMs": 1000,
+      "delayMs": 0,
+      "endTimeMs": 1000,
+      "easing": "linear",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "transform var(--motion-tick) linear",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.youre-up.your-turn.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) var(--ease-pop)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "hold-a",
+      "target": "div.empty-slot",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "forwards",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "hold-a var(--motion-base) ease-out forwards",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 1000,
+  "seekFrames": 33,
+  "seekObserved": {
+    "up": true,
+    "top": 76,
+    "height": 288.328125
+  },
+  "subject": {
+    "selector": ".deck",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.youre-up.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) var(--ease-pop)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "hold-a",
+        "target": "div.empty-slot",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "forwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "hold-a var(--motion-base) ease-out forwards",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "up": true,
+      "top": 76,
+      "height": 288.328125
+    },
+    "droppedFrames": {
+      "median": 13,
+      "min": 8,
+      "max": 14
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 50
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 15,
+    "observed": {
+      "up": true,
+      "top": 76,
+      "height": 288.328125
+    }
+  },
+  "timingsMs": {
+    "seekMs": 14286,
+    "encodeMs": 3435,
+    "liveMs": 15943,
+    "reducedMs": 5711,
+    "reducedEncodeMs": 576
+  },
+  "files": {
+    "clip.gif": 630779,
+    "clip-slow4x.gif": 630779,
+    "filmstrip.png": 615677,
+    "filmstrip-reduced.png": 173483
+  }
+}

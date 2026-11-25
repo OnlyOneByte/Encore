@@ -1,0 +1,287 @@
+{
+  "scenario": "phone-on-deck-heads-up",
+  "what": "Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — \"After Theo\" + time-left → \"Grab the mic\", the card already filled in the singer colour, a cut in place",
+  "capturedAt": "2026-11-25T09:17:42.463Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "headsUp": true,
+    "meta": "Grab the mic",
+    "timeLeftShown": false
+  },
+  "subject": {
+    "selector": ".deck.heads-up",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "headsUp": true,
+      "meta": "Grab the mic",
+      "timeLeftShown": false
+    },
+    "droppedFrames": {
+      "median": 18,
+      "min": 18,
+      "max": 40
+    },
+    "longAnimationFrames": {
+      "median": 19,
+      "min": 12,
+      "max": 27
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 33.3,
+      "min": 33.3,
+      "max": 33.3
+    },
+    "frameIntervalP95Ms": {
+      "median": 50,
+      "min": 50,
+      "max": 66.7
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 3,
+    "observed": {
+      "headsUp": true,
+      "meta": "Grab the mic",
+      "timeLeftShown": false
+    }
+  },
+  "timingsMs": {
+    "seekMs": 17695,
+    "encodeMs": 573,
+    "liveMs": 31759,
+    "reducedMs": 7446,
+    "reducedEncodeMs": 434
+  },
+  "files": {
+    "clip.gif": 35554,
+    "clip-slow4x.gif": 35554,
+    "filmstrip.png": 51235,
+    "filmstrip-reduced.png": 43546
+  }
+}
