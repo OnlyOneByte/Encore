@@ -401,6 +401,11 @@ test('on a phone the chip stays inside the screen, clear of the reactions lane, 
 		for (const s of phones) await tap(s);
 		await check('mid-song', ['.reaction-lane', '.lower-third']);
 		await check('mid-song', ['.corner'], 1920);
+		// On a phone the lyrics start below the chip, so it covers no line (#1205).
+		for (const s of phones.slice(0, 2))
+			await expect(s.page.locator('.lyrics .row').first()).toBeVisible({ timeout: 30_000 });
+		for (const s of phones) await tap(s);
+		for (const w of [390, 320]) await check('mid-song', ['.lyrics'], w);
 	} finally {
 		await worker.stop();
 	}
