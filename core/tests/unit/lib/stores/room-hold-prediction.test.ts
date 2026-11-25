@@ -70,13 +70,16 @@ afterEach(() => {
 	globalThis.fetch = real.fetch;
 	globalThis.WebSocket = real.WebSocket;
 	delete g.window;
+	delete g.document;
 	delete g.location;
 });
 
 /** Zoe's phone, connected, synced to `entries` under longest-ago order. */
 async function zoesPhone(entries: QueueEntry[]) {
 	const sockets: { onmessage: ((ev: { data: string }) => void) | null; sent: string[] }[] = [];
-	g.window = {};
+	// Both, never one: the socket client listens on `window` and `document` once both exist (#1321).
+	g.window = new EventTarget();
+	g.document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
 	g.location = { protocol: 'http:', host: 'box' };
 	globalThis.WebSocket = class {
 		onopen = null;

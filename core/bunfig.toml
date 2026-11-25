@@ -1,6 +1,6 @@
-# There is no `[test] preload` any more: the component-mount harness (happy-dom + a Svelte compile hook +
-# SvelteKit `$app/*` stubs) was deleted along with the 13 tests that used it. Component behaviour is the
-# Chromium rung's job now — see docs/E2E.md.
+# The component-mount harness (happy-dom + a Svelte compile hook + SvelteKit `$app/*` stubs) was deleted along
+# with the 13 tests that used it. Component behaviour is the Chromium rung's job now — see docs/E2E.md. The one
+# preload left installs nothing: it fails the run if a test file leaves a browser global changed (#1321).
 
 # TWO RUNNERS, TWO CONVENTIONS. bun owns `tests/unit/**/*.test.ts`; Playwright owns
 # `tests/playwright/**/*.spec.ts`. bun's default matcher globs `*.spec.ts` TOO, so without this root it walks
@@ -8,3 +8,4 @@
 # a failure that reads as a broken spec rather than as the wrong runner having opened the file.
 [test]
 root = "tests/unit"
+preload = ["./tests/unit/globals-guard.ts"]

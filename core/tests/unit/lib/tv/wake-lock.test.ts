@@ -8,7 +8,7 @@
 // post-teardown release are PROVEN here rather than spelled. The source-scanning arms this file used to carry
 // (asserting `navigator.wakeLock` and `addEventListener('visibilitychange')` appear in the module text) were
 // dropped with the guard suite — they restated what the behavioural tests below already demonstrate.
-import { test, expect, afterEach } from 'bun:test';
+import { test, expect, afterAll, afterEach } from 'bun:test';
 import { Window } from 'happy-dom';
 import { keepScreenAwake } from '$lib/tv/wake-lock';
 
@@ -18,9 +18,17 @@ import { keepScreenAwake } from '$lib/tv/wake-lock';
 // the handful that actually touch a DOM.
 const win = new Window({ url: 'http://localhost/' });
 const g = globalThis as unknown as Record<string, unknown>;
+const before = { window: g.window, document: g.document, navigator: g.navigator };
 g.window = win;
 g.document = win.document;
 g.navigator = win.navigator;
+// Every unit file shares this process: a DOM left behind breaks whichever file bun runs next (#1321).
+afterAll(() => {
+	for (const [k, v] of Object.entries(before)) {
+		if (v === undefined) delete g[k];
+		else g[k] = v;
+	}
+});
 
 /** happy-dom's own `Event`, off its window: bun defines a global `Event`, and happy-dom's `dispatchEvent` rejects any instance that is not ITS class. */
 const visibilityChange = (): void => void win.document.dispatchEvent(new win.Event('visibilitychange'));
