@@ -14,7 +14,7 @@
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
-	import { StallWatchdog, STALL_TICK_MS, unansweredPlayIsAutoplay } from './stall-watchdog';
+	import { MixPendingWatch, StallWatchdog, STALL_TICK_MS, unansweredPlayIsAutoplay } from './stall-watchdog';
 	import {
 		clientNow,
 		followPlan,
@@ -309,6 +309,7 @@
 	// ONE watchdog per slot, reset per ENTRY: a song queued twice is two turns, each with its own retry. Load-bearing:
 	// the slot outlives its songs, so without the reset a slot that failed once stays failed for every later song on it.
 	const watchdog = new StallWatchdog();
+	const mixWatch = new MixPendingWatch();
 	let lastBuffered = 0;
 	// Keyed on the id VALUE in a plain variable: the effect re-runs whenever a room update re-reads the prop, and a reset
 	// on each of those restarted the count and granted a second retry, stretching the 8 s cap to ~15 s (UI review r2).
@@ -317,6 +318,7 @@
 		if (entryId === watchedEntryId) return;
 		watchedEntryId = entryId;
 		watchdog.reset();
+		mixWatch.reset();
 		lastBuffered = 0;
 		readySince = null;
 	});
@@ -349,6 +351,14 @@
 		}
 		if (el && el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) readySince ??= now;
 		else readySince = null;
+		// The watchdog below watches only a song that has its src, so a guide-mix song whose src still waits on its mix
+		// is watched here: past both of the graph's own bounds, it fails rather than sit silent (#1293).
+		const mixWaiting = active && visible && playing && !!media && isPlayable(media) && fileSrc(media) === '';
+		if (mixWatch.tick(mixWaiting, now)) {
+			console.warn('[tv] the guide mix never settled - moving the room on');
+			onfailed?.();
+			return;
+		}
 		const unanswered =
 			!!el &&
 			unansweredPlayIsAutoplay({

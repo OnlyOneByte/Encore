@@ -5,7 +5,8 @@ import {
 	grainLookahead,
 	needsShift,
 	readLag,
-	semitonesToRatio
+	semitonesToRatio,
+	WORKLET_LOAD_MS
 } from '$lib/tv/pitch-shift';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 
@@ -635,4 +636,57 @@ test('histSample refuses an out-of-range index instead of wrapping onto unrelate
 	// An index INSIDE the window still reads its sample — the guards refuse, they do not mute.
 	const inside = p.writePos - 1;
 	expect(p.histSample(s, inside)).toBe(s.hist[inside % HIST]);
+});
+
+/** A context that can split a 4-channel mix, with a worklet load that takes `loadMs` (Infinity: never settles). */
+function mixContext(loadMs: number) {
+	return class extends StubAudioContext {
+		override audioWorklet = {
+			addModule: (_url: string) =>
+				loadMs === Infinity ? new Promise<void>(() => {}) : new Promise<void>((r) => setTimeout(r, loadMs))
+		};
+		createChannelSplitter() {
+			return new StubNode() as unknown as ChannelSplitterNode;
+		}
+		createChannelMerger() {
+			return new StubNode() as unknown as ChannelMergerNode;
+		}
+	};
+}
+const settlesWithin = <T>(p: Promise<T>, ms: number) =>
+	Promise.race([p.then(() => true), new Promise<false>((r) => setTimeout(() => r(false), ms))]);
+
+test('#1293 a worklet load that never settles: the guide-mix build still settles, split and routed, without ±key', async () => {
+	canResume = true;
+	g.window = { AudioContext: mixContext(Infinity) };
+	const graph = new PitchShiftGraph(fakeEl(), { split: true, workletLoadMs: 50 });
+	expect(await settlesWithin(graph.ensureRouted(), 2_000), 'ensureRouted never settled').toBe(true);
+	expect(graph.isRouted).toBe(true);
+	expect(graph.isSplit).toBe(true);
+	expect(graph.isShiftable).toBe(false);
+});
+
+test('#1293 a slow worklet load that does arrive inside the bound still gets its shifter', async () => {
+	canResume = true;
+	g.window = { AudioContext: mixContext(30) };
+	const graph = new PitchShiftGraph(fakeEl(), { split: true, workletLoadMs: 500 });
+	await graph.ensureRouted();
+	expect(graph.isRouted).toBe(true);
+	expect(graph.isShiftable).toBe(true);
+});
+
+test('#1293 a load that lands just past the bound changes nothing: routed and split, no ±key, no worklet node', async () => {
+	canResume = true;
+	g.window = { AudioContext: mixContext(80) };
+	const graph = new PitchShiftGraph(fakeEl(), { split: true, workletLoadMs: 50 });
+	await graph.ensureRouted();
+	await new Promise((r) => setTimeout(r, 60)); // the late load resolves after the build has moved on
+	expect(graph.isRouted).toBe(true);
+	expect(graph.isSplit).toBe(true);
+	expect(graph.isShiftable).toBe(false);
+	expect((graph as unknown as { node: unknown }).node).toBeNull();
+});
+
+test('#1293 the production bound is generous: a slow box keeps its worklet', () => {
+	expect(WORKLET_LOAD_MS).toBeGreaterThanOrEqual(10_000);
 });

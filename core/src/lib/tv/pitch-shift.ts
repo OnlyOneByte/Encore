@@ -268,6 +268,10 @@ registerProcessor('encore-pitch-shift', PitchShiftProcessor);
 // MODULE SCOPE, below the worklet source: everything above this line is inside the PITCH_WORKLET_SOURCE template
 // literal, so a const declared up there becomes worklet TEXT, and a backtick in its comment ends the string.
 const RESUME_SETTLE_MS = 10_000;
+// The worklet load is bounded the same way and as generously (#1293): its Blob URL is local, so only a stuck browser
+// takes this long, and a load that never settles otherwise holds a guide-mix song silent forever. Past it, the graph
+// builds without shifting, as when `addModule` rejects.
+export const WORKLET_LOAD_MS = 10_000;
 
 // `webkitAudioContext` is not in the DOM lib at all, and the window is read through ONE narrowed view rather than cast
 // per name: the stubs the tests install carry `AudioContext` alone, so both names must stay optional.
@@ -346,9 +350,13 @@ export class PitchShiftGraph {
 		}
 	}
 
-	constructor(el: HTMLMediaElement, opts: { split?: boolean } = {}) {
+	#workletLoadMs: number;
+
+	/** `workletLoadMs` is for tests: production always uses WORKLET_LOAD_MS. */
+	constructor(el: HTMLMediaElement, opts: { split?: boolean; workletLoadMs?: number } = {}) {
 		this.el = el;
 		this.split = opts.split === true;
+		this.#workletLoadMs = opts.workletLoadMs ?? WORKLET_LOAD_MS;
 	}
 
 	// Build NOW — split mode only, because a mix's guiding track does not exist until the splitter runs. Everything
@@ -430,11 +438,19 @@ export class PitchShiftGraph {
 			if (this.ctx.audioWorklet) {
 				const blob = new Blob([PITCH_WORKLET_SOURCE], { type: 'application/javascript' });
 				this.moduleUrl = URL.createObjectURL(blob);
+				let timer: ReturnType<typeof setTimeout> | undefined;
 				try {
-					await this.ctx.audioWorklet.addModule(this.moduleUrl);
+					const loaded = await Promise.race([
+						this.ctx.audioWorklet.addModule(this.moduleUrl).then(() => true),
+						new Promise<false>((resolve) => (timer = setTimeout(() => resolve(false), this.#workletLoadMs)))
+					]);
+					// A load that never settled: the same outcome as a rejection.
+					if (!loaded) this.canShift = false;
 				} catch {
 					// Same outcome as an absent worklet: no shifting, everything downstream still buildable.
 					this.canShift = false;
+				} finally {
+					clearTimeout(timer);
 				}
 			} else {
 				this.canShift = false;
