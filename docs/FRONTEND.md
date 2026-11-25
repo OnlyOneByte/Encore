@@ -2247,16 +2247,18 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
 - **On a phone the lyrics start below the chip** (`--tv-top-reserve`, the chip slot's measured height plus a gap),
   so it never covers a line (#1205). The reserve holds all song, asleep or awake, so the reel never jumps when a
   tap wakes the chip. Mid-song on a phone the chip's line is as tall as the longest line it can show ("The TV is
-  reconnecting...", "Back as the TV after this song", laid under it unseen), so the reel stays put when the line
-  changes too. `p34-room-screen.spec.ts` reads the lyric box asleep, awake and after the line changes. A
-  TV-shaped copy keeps the reel at full height, with the chip where "Up next" stands on the TV.
+  reconnecting...", "TV again after this song", laid under it unseen, the shown one right-aligned against the
+  button), so the reel stays put when the line changes too. Every line fits one row at 390, so the line is one row
+  tall there; only at 320 does it take two. `p34-room-screen.spec.ts` reads the lyric box asleep, awake and after the
+  line changes, and `p34-screens.spec.ts` does the same in the "TV again" state. A TV-shaped copy keeps the reel at
+  full height, with the chip where "Up next" stands on the TV.
 - **Asleep** it is `visibility: hidden` and takes no pointer. Hiding alone does not make the waking press harmless:
   a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
   lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
   wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
 - **It stays up** in the lobby (where it stands in the QR's place), in attract, while the TV is gone ("The TV
-  is reconnecting..."), and on the room's TV back mid-song while another screen stands in ("Back as the TV after
-  this song", `tv:seat`'s `next`). A tap there still makes it the TV at once.
+  is reconnecting..."), and on the room's TV back mid-song while another screen stands in ("TV again after this
+  song", `tv:seat`'s `next`). A tap there still makes it the TV at once.
 
 `p34-room-screen.spec.ts` holds each of these.
 

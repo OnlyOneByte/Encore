@@ -2,7 +2,8 @@
 	/** A copy's line: quiet while the seat's screen is live, and honest while it is gone (`tv:seat`'s `tvOnline`).
 	 *  `next`: the room's TV back mid-song, which takes the seat when this song ends. */
 	export function copyLine(tvOnline: boolean, next = false): string {
-		if (next) return 'Back as the TV after this song';
+		// Short enough for one row at 390, as the other two are; only 320 wraps.
+		if (next) return 'TV again after this song';
 		return tvOnline ? 'This screen is quiet' : 'The TV is reconnecting...';
 	}
 </script>
@@ -61,6 +62,7 @@
 		   changes. Lobby and attract lay the chip in their own flow, so there it keeps its own height. */
 		:global(.tv.copy-stage) .copy-line {
 			display: inline-grid;
+			justify-items: end;
 		}
 		:global(.tv.copy-stage) .copy-line > span,
 		:global(.tv.copy-stage) .copy-line::before,

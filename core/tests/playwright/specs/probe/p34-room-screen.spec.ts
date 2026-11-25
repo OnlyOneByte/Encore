@@ -125,6 +125,13 @@ test('a copy mid-song is a room screen: its QR in the corner, and the chip only 
 		}
 		const reelAwake = await Promise.all(phones.map(reelBox));
 		expect(reelAwake, 'the lyrics moved when the chip woke (390, 320)').toEqual(reelAsleep);
+		// The shown line sits right-aligned against the button, as it did before the sizers, at both widths.
+		for (const p of phones) {
+			const [line, shown] = await p.evaluate(() =>
+				['.copy-line', '.copy-line > span'].map((s) => document.querySelector(s)!.getBoundingClientRect().right)
+			);
+			expect(Math.abs(line! - shown!), `copy line right-aligned at ${p.viewportSize()!.width}`).toBeLessThan(1);
+		}
 
 		// Ten seconds after the tap it sleeps again, and "Up next" is back.
 		const left = tappedAt + 8_000 - Date.now();
