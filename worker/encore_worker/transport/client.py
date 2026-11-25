@@ -302,6 +302,8 @@ class Client:
             return False, f"unknown action: {assign.action}"
         if not serves(self.capabilities, action):
             return False, f"this worker does not serve {action.value}"
+        if assign.job_id in self._running:
+            return False, "still finishing this job"
         if len(self._running.keys() - self._finishing) >= self.config.concurrency:
             return False, "no free slots"
         return True, ""

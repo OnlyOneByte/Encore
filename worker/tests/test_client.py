@@ -327,6 +327,39 @@ async def test_a_job_sending_its_result_no_longer_holds_its_slot() -> None:
         gate.release.set()
 
 
+class SlowFailedSocket(FakeSocket):
+    """Holds the `job:failed` send open, as a socket under backpressure would."""
+
+    def __init__(self, inbound: list[dict[str, object]]) -> None:
+        super().__init__(inbound)
+        self.in_failed = asyncio.Event()
+        self.let_failed = asyncio.Event()
+
+    async def send(self, message: str) -> None:
+        await super().send(message)
+        if '"job:failed"' in message:
+            self.in_failed.set()
+            await self.let_failed.wait()
+
+
+async def test_the_same_job_reassigned_while_its_failure_is_sending_is_refused() -> None:
+    """Core requeues a retryable failure under the same id and can dispatch it back before the send ends.
+    Taking it then let the first attempt's cleanup drop the retry's task and ownership, losing its result."""
+
+    async def boom(a: f.Assign) -> f.Complete:
+        raise RuntimeError("transient")
+
+    sock = SlowFailedSocket([assign("j1")])
+    c = client(sock, run_job=boom)
+    async with Session(c, sock):
+        await asyncio.wait_for(sock.in_failed.wait(), 5.0)
+        await c._on_assign(f.Assign(job_id="j1", media_id="m1", action="align"))
+        assert sock.first("job:reject")["reason"] == "still finishing this job"
+        sock.let_failed.set()
+        await asyncio.sleep(0.05)
+        assert "j1" not in c.running_jobs()
+
+
 async def test_a_job_failure_is_reported_not_crashed_on() -> None:
     async def boom(a: f.Assign) -> f.Complete:
         raise RuntimeError("demucs blew up")

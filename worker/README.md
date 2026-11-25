@@ -302,7 +302,7 @@ prints:
 
 ```
 [worker] concurrency 2 (auto 2 (cpu, 32 cores, 124 GB RAM: one song separates while another aligns))
-[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); separators 16 (auto 16 (32 cores / 2 at once; 32 for a song alone)); demucs -j 2 (auto 2 (cpu, 16 separator cores: chunks in worker processes, a model each))
+[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); separators 16 (auto 16 (32 cores / 2 at once; 32 for a song alone)); demucs -j 2 (auto 2 (cpu, 16 separator cores: chunks in worker processes, a model each); 4 for a song alone)
 [worker] asr compute float32 (auto (cpu))
 [worker] warm-up on (auto on (ENCORE_WARMUP=0 turns it off))
 ```
