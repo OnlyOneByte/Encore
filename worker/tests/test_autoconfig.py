@@ -96,9 +96,14 @@ class _Client:
 
     def __init__(self, **wired: Any) -> None:
         self.wired = wired
+        #: The jobs running when a separator is built; the job building it is one of them.
+        self.running: frozenset[str] = frozenset({"j"})
 
     async def serve_forever(self) -> None:
         return None
+
+    def running_jobs(self) -> frozenset[str]:
+        return self.running
 
 
 def boot(monkeypatch: pytest.MonkeyPatch, config: Config) -> dict[str, Any]:
@@ -112,6 +117,9 @@ def boot(monkeypatch: pytest.MonkeyPatch, config: Config) -> dict[str, Any]:
     monkeypatch.setattr(Config, "from_env", staticmethod(lambda: config))
     monkeypatch.setattr(hardware, "probe", lambda: hardware.Report(machine="m", python="3", platform="p"))
     monkeypatch.setattr(hardware, "module_available", lambda name: name == "demucs")
+    # A roomy box, so the auto picks do not follow the RAM and disk of whatever machine runs the suite.
+    monkeypatch.setattr(hardware, "memory_gb", lambda **_: (64.0, 32.0))
+    monkeypatch.setattr(hardware, "free_disk_gb", lambda path: 100.0)
     monkeypatch.setattr(entry, "_launch_dbos", lambda cfg: None)
     monkeypatch.setattr(
         entry,
@@ -154,11 +162,79 @@ def test_main_gates_mlx_stems_on_the_bin_it_will_run(tmp_path: Path, monkeypatch
 # ── proposal 26: the boot profile ────────────────────────────────────────────────────────────────
 
 
-def test_auto_concurrency_is_one_and_an_explicit_one_wins() -> None:
-    """2 slowed a song picked alone (#1177), so it is the queue opt-in, not the pick."""
-    assert hardware.resolve_concurrency(None).count == 1
-    told = hardware.resolve_concurrency(3)
+@pytest.mark.parametrize(
+    ("device", "cores", "ram", "jobs"),
+    [
+        ("cpu", 32, 64.0, 2),
+        ("cpu", 16, 24.0, 2),
+        ("cpu", 8, 64.0, 1),  # too few cores to split
+        ("cpu", 32, 16.0, 1),  # two at once peaked at 8.5 GB, before the models
+        ("cpu", 32, None, 1),  # RAM unknown: not a pick to make blind
+        ("cuda", 32, 64.0, 1),  # the separators take turns on the card
+    ],
+)
+def test_auto_concurrency_is_two_only_with_the_cores_and_ram_for_it(
+    device: str, cores: int, ram: float | None, jobs: int
+) -> None:
+    """2 made 3 queued songs 18-70% sooner (#1177); a smaller box keeps 1."""
+    picked = hardware.resolve_concurrency(None, device=device, cores=cores, ram_gb=ram)
+    assert picked.count == jobs
+    assert picked.why.startswith(f"auto {jobs}")
+
+
+def test_an_explicit_concurrency_wins_on_any_box() -> None:
+    told = hardware.resolve_concurrency(3, device="cpu", cores=4, ram_gb=2.0)
     assert (told.count, "ENCORE_WORKER_CONCURRENCY" in told.why) == (3, True)
+    assert hardware.resolve_concurrency(1, device="cpu", cores=64, ram_gb=256.0).count == 1
+
+
+def test_a_song_alone_keeps_every_core_on_a_two_job_box() -> None:
+    """A lone pick at 2 was slower when each separator was held to half the cores (#1177)."""
+    two = hardware.resolve_profile(
+        concurrency=None,
+        threads=None,
+        demucs_jobs=None,
+        asr_compute=None,
+        warmup=None,
+        device="cpu",
+        cores=32,
+        ram_gb=64.0,
+    )
+    assert two.concurrency.count == 2
+    assert (two.separator_share(1), two.separator_share(2)) == (32, 16)
+    pinned = hardware.resolve_profile(
+        concurrency=2, threads=6, demucs_jobs=None, asr_compute=None, warmup=None, device="cpu", cores=32
+    )
+    assert (pinned.separator_share(1), pinned.separator_share(2)) == (6, 6), "ENCORE_THREADS is never split"
+
+
+@pytest.mark.parametrize(
+    ("configured", "ram", "disk", "on"),
+    [
+        (None, 32.0, 100.0, True),
+        (None, 3.0, 100.0, False),
+        (None, 32.0, 2.0, False),
+        (None, None, None, True),  # the OS would not say: as before, on
+        (True, 1.0, 1.0, True),  # set by hand wins
+        (False, 64.0, 500.0, False),
+    ],
+)
+def test_the_warmup_is_auto_off_when_ram_or_disk_is_tight(
+    configured: bool | None, ram: float | None, disk: float | None, on: bool
+) -> None:
+    picked = hardware.resolve_warmup(configured, free_ram_gb=ram, disk_gb=disk)
+    assert bool(picked.count) == on
+    assert ("ENCORE_WARMUP" in picked.why) is True
+
+
+def test_memory_reads_a_cgroup_limit(tmp_path: Path) -> None:
+    (tmp_path / "memory.max").write_text(str(8 * 1024**3))
+    (tmp_path / "memory.current").write_text(str(6 * 1024**3))
+    total, available = hardware.memory_gb(root=str(tmp_path))
+    assert total is not None and total <= 8.0
+    assert available is not None and available <= 2.0
+    (tmp_path / "memory.max").write_text("max")
+    assert hardware.memory_gb(root=str(tmp_path))[0] != 8.0, "no limit means the machine's RAM"
 
 
 def test_the_models_keep_every_core_and_two_jobs_split_only_the_separators() -> None:
@@ -229,14 +305,15 @@ def test_every_override_wins_and_unset_is_auto() -> None:
         cores=32,
     )
     assert (picked.concurrency.count, picked.threads.count, picked.demucs_jobs.count) == (3, 6, 5)
-    assert (picked.asr_compute, picked.warmup) == ("int8", False)
+    assert (picked.asr_compute, picked.warmup.count) == ("int8", 0)
     assert "ENCORE_THREADS" in picked.threads.why and "ENCORE_ASR_COMPUTE" in picked.asr_compute_why
     assert len(picked.lines()) == 4, "four startup lines say what it picked and why"
 
     unset = Config.from_env({})
     assert (unset.auto_concurrency, unset.concurrency, unset.threads) == (True, 1, None)
     assert unset.asr_compute is None
-    assert unset.warmup, "warm-up is on unless switched off"
+    assert unset.warmup is None, "unset, the box decides (`hardware.resolve_warmup`)"
+    assert Config.from_env({"ENCORE_WARMUP": "1"}).warmup is True
 
 
 @pytest.mark.parametrize(("key", "value"), [("ENCORE_ASR_COMPUTE", "int4"), ("ENCORE_THREADS", "0")])
@@ -269,7 +346,44 @@ def test_main_hands_the_client_and_the_config_the_resolved_profile(
     cfg = wired["config"]
     assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 32, 2, "float32")
     got["stems_steps_for"](JobRef(job_id="j", media_id="m", media_dir=str(tmp_path)))
-    assert [k.get("threads") for k in got["separators"]] == [16, 16], "both separator builds get the share"
+    # The startup fallback is built for two at once; the job's own sees it is running alone.
+    assert [k.get("threads") for k in got["separators"]] == [16, 32], "a lone job's separator gets every core"
+    assert [k.get("demucs_jobs") for k in got["separators"]] == [2, 4], "and the demucs workers they hold"
+    got["client"].running = frozenset({"j", "k"})
+    got["stems_steps_for"](JobRef(job_id="k", media_id="m", media_dir=str(tmp_path)))
+    assert (got["separators"][-1]["threads"], got["separators"][-1]["demucs_jobs"]) == (16, 2)
+
+
+@pytest.mark.parametrize(
+    ("ram", "at_once", "jobs"),
+    [(None, 1, 4), (64.0, 1, 4), (8.0, 1, 4), (6.0, 1, 2), (4.5, 1, 1), (8.0, 2, 2)],
+)
+def test_auto_demucs_jobs_is_capped_by_ram(ram: float | None, at_once: int, jobs: int) -> None:
+    """About 1 GB per pool worker on top of about 4 GB for the worker (#1284 review)."""
+    picked = hardware.resolve_demucs_jobs(None, device="cpu", cores=32, ram_gb=ram, jobs_at_once=at_once)
+    assert picked.count == jobs
+    assert ("GB RAM" in picked.why) == (ram is not None and jobs < 4)
+    told = hardware.resolve_demucs_jobs(6, device="cpu", cores=32, ram_gb=2.0)
+    assert told.count == 6, "ENCORE_DEMUCS_JOBS wins over the RAM cap"
+
+
+def test_a_song_alone_gets_the_demucs_workers_its_cores_hold_within_the_ram_cap() -> None:
+    def profile(ram: float | None, demucs_jobs: int | None = None) -> hardware.Profile:
+        return hardware.resolve_profile(
+            concurrency=2,
+            threads=None,
+            demucs_jobs=demucs_jobs,
+            asr_compute=None,
+            warmup=None,
+            device="cpu",
+            cores=32,
+            ram_gb=ram,
+        )
+
+    assert (profile(64.0).demucs_share(1), profile(64.0).demucs_share(2)) == (4, 2)
+    assert profile(7.0).demucs_share(1) == 1, "7 GB at two jobs holds one worker each"
+    assert profile(64.0, demucs_jobs=3).demucs_share(1) == 3, "ENCORE_DEMUCS_JOBS is never re-picked"
+    assert "4 for a song alone" in profile(64.0).lines()[1]
 
 
 def test_warmup_off_loads_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

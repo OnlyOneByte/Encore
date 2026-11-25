@@ -138,8 +138,9 @@ class Config:
     asr_model: str = "base"
     #: whisper's CTranslate2 compute type (`ENCORE_ASR_COMPUTE`); unset means float16 on CUDA, else float32.
     asr_compute: str | None = None
-    #: Load the models and fetch missing checkpoints right after the dial (`ENCORE_WARMUP=0` turns it off).
-    warmup: bool = True
+    #: Load the models and fetch missing checkpoints right after the dial (`ENCORE_WARMUP`); None means
+    #: `hardware.resolve_warmup` decides from the free RAM and disk.
+    warmup: bool | None = None
     #: A bare name as the dataclass default, but `from_env` resolves a real path through `host.ffmpeg`. Left
     #: bare so a `Config()` built in a test does not need the `ffmpeg` extra installed.
     ffmpeg_bin: str = "ffmpeg"
@@ -190,8 +191,7 @@ class Config:
             "demucsJobs": self.demucs_jobs is not None,
             "concurrency": not self.auto_concurrency,
             "asrCompute": self.asr_compute is not None,
-            # On is the default, so only switching it off is a choice.
-            "warmup": not self.warmup,
+            "warmup": self.warmup is not None,
         }
         return tuple(name for name, by_hand in chosen.items() if by_hand)
 
@@ -248,8 +248,8 @@ class Config:
             auto_concurrency=not concurrency,
             threads=_positive_int(src, "ENCORE_THREADS", 0) or None,
             asr_compute=compute,
-            # On unless switched off: `_flag` reads unset as False, which is the wrong default here.
-            warmup=src.get("ENCORE_WARMUP", "").strip().lower() not in ("0", "false", "no", "off"),
+            # Unset is None (auto), not `_flag`'s False: the box decides from its free RAM and disk.
+            warmup=_warmup(src.get("ENCORE_WARMUP", "")),
             media_dir=text("ENCORE_MEDIA_DIR", "/media"),
             dbos_db=dbos_db,
             backend=backend,
@@ -299,6 +299,12 @@ def _beside_python(name: str) -> str:
     """
     beside = os.path.join(os.path.dirname(sys.executable), name)
     return beside if os.access(beside, os.X_OK) else name
+
+
+def _warmup(raw: str) -> bool | None:
+    """`ENCORE_WARMUP`: unset is auto (None); `0`/`false`/`no`/`off` is off; anything else is on."""
+    value = raw.strip().lower()
+    return None if not value else value not in ("0", "false", "no", "off")
 
 
 def _default_zoo_dir(src: Mapping[str, str]) -> str:

@@ -146,9 +146,20 @@ class Jobs:
 DEMUCS_POOL = "chunks in worker processes, a model each"
 
 #: Separator cores per `-j` worker: 16-31 cores get 2-3, under 16 stay at 1. shortcut: measured on 32 cores
-#: only, and RAM is not checked (about 1 GB per worker); re-measure on a 16-core box before trusting 2-3.
+#: only; re-measure on a 16-core box before trusting 2-3.
 _CORES_PER_DEMUCS_JOB = 8
 _MAX_DEMUCS_JOBS = 4
+#: Each pool worker adds about 1 GB while a song separates, on top of about 4 GB for the worker and its
+#: models (#1284: 7.6 GB at `-j 4` against 4.0 GB at `-j 1`), so RAM caps the auto pick too.
+_DEMUCS_WORKER_GB = 1.0
+_WORKER_BASE_GB = 4.0
+
+
+def _demucs_ram_cap(ram_gb: float | None, jobs_at_once: int) -> int | None:
+    """The most pool workers each job's separator may start in RAM, or None when the OS would not say."""
+    if ram_gb is None:
+        return None
+    return max(1, int((ram_gb - _WORKER_BASE_GB) / (_DEMUCS_WORKER_GB * max(1, jobs_at_once))))
 
 
 CGROUP_ROOT = "/sys/fs/cgroup"
@@ -189,31 +200,126 @@ def cpu_count(*, root: str | None = None) -> int:
     return min(n, quota) if quota else n
 
 
-def resolve_demucs_jobs(configured: int | None, *, device: str, cores: int = 1) -> Jobs:
+def resolve_demucs_jobs(
+    configured: int | None,
+    *,
+    device: str,
+    cores: int = 1,
+    ram_gb: float | None = None,
+    jobs_at_once: int = 1,
+) -> Jobs:
     """How many chunks torch demucs separates at once. `cores` is the separator's share of the box.
 
-    demucs pools `-j` on CPU alone, so auto is 1 elsewhere; on CPU it is one worker per 8 cores, up to 4.
+    demucs pools `-j` on CPU alone, so auto is 1 elsewhere; on CPU it is one worker per 8 cores, up to 4, and
+    no more than the RAM holds at about 1 GB a worker (`_demucs_ram_cap`).
     """
     if configured:
         how = f": {DEMUCS_POOL}" if configured > 1 and device == "cpu" else ""
         return Jobs(configured, f"explicitly configured {configured} (ENCORE_DEMUCS_JOBS){how}")
     if device != "cpu":
         return Jobs(1, f"auto 1 ({device}: demucs runs -j on CPU only)")
-    picked = max(1, min(_MAX_DEMUCS_JOBS, cores // _CORES_PER_DEMUCS_JOB))
-    if picked == 1:
+    by_cores = max(1, min(_MAX_DEMUCS_JOBS, cores // _CORES_PER_DEMUCS_JOB))
+    cap = _demucs_ram_cap(ram_gb, jobs_at_once)
+    if cap is not None and cap < by_cores:
+        held = f"{cores} separator cores but {ram_gb:.0f} GB RAM"
+        return Jobs(cap, f"auto {cap} (cpu, {held}; about 1 GB a worker)")
+    if by_cores == 1:
         return Jobs(1, f"auto 1 (cpu, {cores} separator cores; one worker per {_CORES_PER_DEMUCS_JOB})")
-    return Jobs(picked, f"auto {picked} (cpu, {cores} separator cores: {DEMUCS_POOL})")
+    return Jobs(by_cores, f"auto {by_cores} (cpu, {cores} separator cores: {DEMUCS_POOL})")
 
 
-def resolve_concurrency(configured: int | None) -> Jobs:
-    """How many jobs this box runs at once: 1 unless `ENCORE_WORKER_CONCURRENCY` says otherwise.
+def _meminfo_gb(key: str) -> float | None:
+    """One `/proc/meminfo` line in GB, or None off Linux."""
+    for line in (_read("/proc/meminfo") or "").splitlines():
+        name, _, rest = line.partition(":")
+        if name == key and rest.split():
+            return int(rest.split()[0]) / 1024**2
+    return None
 
-    2 made 3 queued songs 18-70% sooner but a song picked alone 10-30% slower, its align at least (#1177).
-    shortcut: auto 1 until a lone pick at 2 measures flat; 2 is the opt-in for queue-heavy nights.
-    """
+
+def _cgroup_memory(root: str) -> tuple[float | None, float | None]:
+    """The cgroup's memory limit and use in GB (v2, then v1), each None where there is none."""
+    limit = _read(f"{root}/memory.max") or _read(f"{root}/memory/memory.limit_in_bytes")
+    used = _read(f"{root}/memory.current") or _read(f"{root}/memory/memory.usage_in_bytes")
+
+    def gb(raw: str | None) -> float | None:
+        # v1 reports "no limit" as a huge number, so anything past 1 PB is no limit either.
+        return int(raw) / 1024**3 if raw and raw.isdigit() and int(raw) < 2**50 else None
+
+    return gb(limit), gb(used)
+
+
+def memory_gb(*, root: str | None = None) -> tuple[float | None, float | None]:
+    """(total, available) RAM this process may use in GB, a cgroup limit (`docker --memory`) counting; either
+    is None where the OS will not say, which every caller reads as "do not pick on it"."""
+    try:
+        total: float | None = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+    except (AttributeError, ValueError, OSError):  # Windows has no sysconf
+        total = None
+    available = _meminfo_gb("MemAvailable")
+    limit, used = _cgroup_memory(root or CGROUP_ROOT)
+    if limit is not None:
+        total = min(total, limit) if total is not None else limit
+        if used is not None:
+            headroom = max(0.0, limit - used)
+            available = min(available, headroom) if available is not None else headroom
+    return total, available
+
+
+def free_disk_gb(path: str) -> float | None:
+    """Free space where `path` (or its nearest existing parent) lives, or None when it cannot be read."""
+    while path and not os.path.exists(path):
+        path = os.path.dirname(path)
+    try:
+        return shutil.disk_usage(path or ".").free / 1024**3
+    except OSError:
+        return None
+
+
+#: Two jobs at once on CPU: one separates while another aligns, 3 queued songs ready 18-70% sooner (#1177).
+#: Two peaked at 8.5 GB, and each separator takes `cores ÷ jobs running`, so a lone pick keeps every core.
+#: shortcut: thresholds from one 32-core aarch64 box; tune them when a smaller box is measured.
+TWO_JOBS_MIN_CORES = 16
+TWO_JOBS_MIN_RAM_GB = 24.0
+
+
+def resolve_concurrency(
+    configured: int | None, *, device: str = "cpu", cores: int = 1, ram_gb: float | None = None
+) -> Jobs:
+    """How many jobs this box runs at once. `ENCORE_WORKER_CONCURRENCY` wins; auto is 2 on a CPU box with the
+    cores and RAM for two (`TWO_JOBS_MIN_*`), else 1."""
     if configured:
         return Jobs(configured, f"explicitly configured {configured} (ENCORE_WORKER_CONCURRENCY)")
-    return Jobs(1, "auto 1 (ENCORE_WORKER_CONCURRENCY=2 overlaps a queue of songs)")
+    if device != "cpu":
+        return Jobs(1, f"auto 1 ({device}: the separators take turns on the card)")
+    ram = "unknown RAM" if ram_gb is None else f"{ram_gb:.0f} GB RAM"
+    if cores >= TWO_JOBS_MIN_CORES and ram_gb is not None and ram_gb >= TWO_JOBS_MIN_RAM_GB:
+        return Jobs(2, f"auto 2 (cpu, {cores} cores, {ram}: one song separates while another aligns)")
+    need = f"2 needs {TWO_JOBS_MIN_CORES} cores and {TWO_JOBS_MIN_RAM_GB:.0f} GB"
+    return Jobs(1, f"auto 1 (cpu, {cores} cores, {ram}; {need})")
+
+
+#: Below either, the boot warm-up would crowd the first song or fill the disk with checkpoints, so auto skips
+#: it and each job loads what it needs, as before the warm-up existed. About 1.5 GB of checkpoints, and the
+#: loaded models take about 3 GB.
+WARMUP_MIN_FREE_RAM_GB = 4.0
+WARMUP_MIN_FREE_DISK_GB = 5.0
+
+
+def resolve_warmup(configured: bool | None, *, free_ram_gb: float | None, disk_gb: float | None) -> Jobs:
+    """Whether the boot warm-up runs (`count` 1 or 0). `ENCORE_WARMUP` wins; auto is on unless RAM or the
+    model cache's disk is tight. A figure the OS would not give counts as not tight, as the warm-up was on."""
+    if configured is not None:
+        state = "on" if configured else "off"
+        return Jobs(int(configured), f"explicitly {state} (ENCORE_WARMUP)")
+    force = "ENCORE_WARMUP=1 runs it anyway"
+    if free_ram_gb is not None and free_ram_gb < WARMUP_MIN_FREE_RAM_GB:
+        tight = f"{free_ram_gb:.1f} GB RAM free, under {WARMUP_MIN_FREE_RAM_GB:.0f}"
+        return Jobs(0, f"auto off ({tight}; {force})")
+    if disk_gb is not None and disk_gb < WARMUP_MIN_FREE_DISK_GB:
+        tight = f"{disk_gb:.1f} GB free for models, under {WARMUP_MIN_FREE_DISK_GB:.0f}"
+        return Jobs(0, f"auto off ({tight}; {force})")
+    return Jobs(1, "auto on (ENCORE_WARMUP=0 turns it off)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,9 +332,29 @@ class Profile:
     demucs_jobs: Jobs
     asr_compute: str
     asr_compute_why: str
-    warmup: bool
+    #: `count` 1 when the boot warm-up runs.
+    warmup: Jobs
     #: OMP/MKL threads each separator child gets; 0 means it inherits this process's.
     separator_threads: Jobs = Jobs(0, "inherited")
+    #: Cores the separators split between the jobs running when each starts (`separator_share`); 0 keeps
+    #: `separator_threads` fixed, as an explicit ENCORE_THREADS or an accelerator does.
+    split_cores: int = 0
+    #: The most demucs pool workers RAM allows each job (`_demucs_ram_cap`), when `-j` is picked per job from
+    #: its core share; 0 keeps `demucs_jobs` fixed, as ENCORE_DEMUCS_JOBS or an accelerator does.
+    demucs_cap: int = 0
+
+    def separator_share(self, running: int) -> int:
+        """A separator's OMP threads, given how many jobs are running as it starts (itself included). A song
+        alone keeps every core; two at once take half each."""
+        if not self.split_cores:
+            return self.separator_threads.count
+        return max(1, self.split_cores // max(1, running))
+
+    def demucs_share(self, running: int) -> int:
+        """demucs `-j` for a separator starting with `running` jobs: one worker per 8 of its cores, capped."""
+        if not self.demucs_cap:
+            return self.demucs_jobs.count
+        return max(1, min(self.demucs_cap, self.separator_share(running) // _CORES_PER_DEMUCS_JOB))
 
     def lines(self) -> tuple[str, ...]:
         """One line per setting, for the startup log."""
@@ -237,11 +363,15 @@ class Profile:
         shared = child.count and child.count != self.threads.count
         children = f"; separators {child.count} ({child.why})" if shared else ""
         demucs = self.demucs_jobs
+        alone = self.demucs_share(1)
+        solo = f"; {alone} for a song alone" if alone != demucs.count else ""
+        warm = self.warmup
+        jobs = f"demucs -j {demucs.count} ({demucs.why}{solo})"
         return (
             f"concurrency {self.concurrency.count} ({self.concurrency.why})",
-            f"threads {threads} ({self.threads.why}){children}; demucs -j {demucs.count} ({demucs.why})",
+            f"threads {threads} ({self.threads.why}){children}; {jobs}",
             f"asr compute {self.asr_compute} ({self.asr_compute_why})",
-            "warm-up on (ENCORE_WARMUP=0 turns it off)" if self.warmup else "warm-up off (ENCORE_WARMUP=0)",
+            f"warm-up {'on' if warm.count else 'off'} ({warm.why})",
         )
 
 
@@ -251,13 +381,18 @@ def resolve_profile(
     threads: int | None,
     demucs_jobs: int | None,
     asr_compute: str | None,
-    warmup: bool,
+    warmup: bool | None,
     device: str,
     cores: int | None = None,
+    ram_gb: float | None = None,
+    free_ram_gb: float | None = None,
+    disk_gb: float | None = None,
 ) -> Profile:
-    """The boot profile: each setting's explicit value when one was set, else the auto pick for this box."""
+    """The boot profile: each setting's explicit value when one was set, else the auto pick for this box. The
+    RAM and disk figures come from `memory_gb` and `free_disk_gb`; None means the OS would not say."""
     n = cores if cores is not None else cpu_count()
-    jobs = resolve_concurrency(concurrency)
+    jobs = resolve_concurrency(concurrency, device=device, cores=n, ram_gb=ram_gb)
+    split = 0
     if threads:
         picked_threads = Jobs(threads, f"explicitly configured {threads} (ENCORE_THREADS)")
         child = picked_threads
@@ -265,10 +400,12 @@ def resolve_profile(
         picked_threads = Jobs(0, f"auto ({device}: the work is on the accelerator)")
         child = picked_threads
     else:
-        # The in-process models take turns behind ML_LOCK, so only the separator children share the cores.
+        # The in-process models take turns behind ML_LOCK, so only the separator children share the cores, and
+        # only with the jobs running when each starts: a lone pick on a 2-job box keeps every core (#1177).
         picked_threads = Jobs(n, f"auto {n} (cpu, {n} cores; the models take turns)")
         each = max(1, n // jobs.count)
-        child = Jobs(each, f"auto {each} ({n} cores / {jobs.count} at once)")
+        child = Jobs(each, f"auto {each} ({n} cores / {jobs.count} at once; {n} for a song alone)")
+        split = n
     if asr_compute:
         compute, compute_why = asr_compute, "explicitly configured (ENCORE_ASR_COMPUTE)"
     else:
@@ -276,14 +413,20 @@ def resolve_profile(
         # error. int8 is never picked: it is unmeasured against the alignment corpus.
         compute = "float16" if device == "cuda" else "float32"
         compute_why = f"auto ({device})"
+    auto_demucs = not demucs_jobs and device == "cpu" and bool(split)
+    ram_cap = _demucs_ram_cap(ram_gb, jobs.count)
     return Profile(
         concurrency=jobs,
         threads=picked_threads,
-        demucs_jobs=resolve_demucs_jobs(demucs_jobs, device=device, cores=child.count or n),
+        demucs_jobs=resolve_demucs_jobs(
+            demucs_jobs, device=device, cores=child.count or n, ram_gb=ram_gb, jobs_at_once=jobs.count
+        ),
         asr_compute=compute,
         asr_compute_why=compute_why,
-        warmup=warmup,
+        warmup=resolve_warmup(warmup, free_ram_gb=free_ram_gb, disk_gb=disk_gb),
         separator_threads=child,
+        split_cores=split,
+        demucs_cap=min(_MAX_DEMUCS_JOBS, ram_cap or _MAX_DEMUCS_JOBS) if auto_demucs else 0,
     )
 
 

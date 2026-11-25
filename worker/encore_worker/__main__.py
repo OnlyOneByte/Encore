@@ -175,6 +175,7 @@ async def main() -> None:
     report = hardware.probe()
     backend = hardware.resolve_backend(config.backend, report=report, mlx_bin=config.mlx_bin)
     device = device_for(config, report)
+    ram_gb, free_ram_gb = hardware.memory_gb()
     profile = hardware.resolve_profile(
         concurrency=None if config.auto_concurrency else config.concurrency,
         threads=config.threads,
@@ -182,6 +183,10 @@ async def main() -> None:
         asr_compute=config.asr_compute,
         warmup=config.warmup,
         device=device,
+        ram_gb=ram_gb,
+        free_ram_gb=free_ram_gb,
+        # The checkpoints share the zoo's cache volume (XDG_CACHE_HOME in the image).
+        disk_gb=hardware.free_disk_gb(config.zoo_model_dir) if config.zoo_model_dir else None,
     )
     # BEFORE any model loads, so torch and every demucs child run the picked thread count.
     # The probe's count stands where nothing was pinned and torch could not be asked again.
@@ -195,6 +200,7 @@ async def main() -> None:
         threads=threads,
         demucs_jobs=profile.demucs_jobs.count,
         asr_compute=profile.asr_compute,
+        warmup=bool(profile.warmup.count),
     )
     caps = hardware.capabilities(
         backend=backend.name,
@@ -308,8 +314,9 @@ async def main() -> None:
                 engine=job.param_str("engine"),
                 model=job.param_str("model"),
                 zoo_model_dir=config.zoo_model_dir,
-                demucs_jobs=profile.demucs_jobs.count,
-                threads=profile.separator_threads.count,
+                # This job is already counted, so a song alone gets every core and the `-j` they hold.
+                demucs_jobs=profile.demucs_share(len(client.running_jobs())),
+                threads=profile.separator_share(len(client.running_jobs())),
             )
             or separator
         )
@@ -338,7 +345,7 @@ async def main() -> None:
     # Off the loop and after the dial too, and NOT a gate: a job that arrives first loads what it needs
     # itself, as every job did before, the loads all taking `ML_LOCK`.
     background = [sweeper, routes]
-    if config.warmup:
+    if profile.warmup.count:
         steps = warm_steps(config, adapters, separator, device=device)
         background.append(asyncio.create_task(asyncio.to_thread(_warm_up, steps)))
     try:

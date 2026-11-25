@@ -95,6 +95,9 @@ class Client:
     stop_job: Callable[[str], Awaitable[None]] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
+    #: Jobs whose terminal frame is being sent. Core frees their slot on receipt and may assign the next job
+    #: before the task ends, so they no longer count against `concurrency`.
+    _finishing: set[str] = field(default_factory=set, init=False)
     #: The last `(stage, pct)` sent per job, so a keepalive repeats the real figure rather than a 0.
     _last_pct: dict[str, tuple[Stage, int]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait rather than guess. Replaced on
@@ -299,7 +302,9 @@ class Client:
             return False, f"unknown action: {assign.action}"
         if not serves(self.capabilities, action):
             return False, f"this worker does not serve {action.value}"
-        if len(self._running) >= self.config.concurrency:
+        if assign.job_id in self._running:
+            return False, "still finishing this job"
+        if len(self._running.keys() - self._finishing) >= self.config.concurrency:
             return False, "no free slots"
         return True, ""
 
@@ -310,6 +315,7 @@ class Client:
         resumable = True
         try:
             terminal = await self.run_job(assign)
+            self._finishing.add(assign.job_id)
             await self._send(terminal)
             # A terminal frame either way. `Failed` with retryable=True is the one outcome whose scratch must
             # survive: the core requeues the same job id, and DBOS resumes from a checkpoint holding paths
@@ -326,10 +332,12 @@ class Client:
         except Exception as exc:  # noqa: BLE001 - a job fault is reported, not crashed on
             retryable = bool(getattr(exc, "retryable", True))
             resumable = retryable
+            self._finishing.add(assign.job_id)
             await self._send(f.Failed(self.config.worker_id, assign.job_id, str(exc), retryable))
         finally:
             self.ownership.finished(assign.job_id)
             self._running.pop(assign.job_id, None)
+            self._finishing.discard(assign.job_id)
             self._last_pct.pop(assign.job_id, None)
             if self.on_settled is not None:
                 # Diagnostics must never turn a finished job into a failed one.
@@ -402,7 +410,7 @@ class Client:
         await self._send(
             f.Heartbeat(
                 worker_id=self.config.worker_id,
-                slots_free=max(0, self.config.concurrency - len(self._running)),
+                slots_free=max(0, self.config.concurrency - len(self._running.keys() - self._finishing)),
                 running_job_ids=tuple(sorted(self.ownership.running())),
             )
         )

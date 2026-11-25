@@ -974,15 +974,41 @@ every guarded call runs inside `asyncio.to_thread`, so the contention is between
 lock inside the models, so without this two jobs on one card could put two separations, or a separation
 and HuBERT, on it at once. With it, a second job on a card overlaps only CPU-side work: a download, the
 decode, the probe, the profile, the encodes and publish. **On CPU the separators take no lock**: each
-separator child gets `cores ÷ concurrency` threads instead (`separator_threads`, `resolve_profile`), and a
+separator child gets the cores divided by the jobs running as it starts (`Profile.separator_share`), and a
 separation running beside another song's alignment is the overlap concurrency 2 exists for. The in-process
 models keep the lock on every device, so they take turns and keep every core.
 
-**Concurrency 2 is an opt-in, not the auto pick.** On a loaded 32-core CPU box, 3 songs queued at once were
-ready 18–70% sooner at 2. But a song picked on its own was 10–30% slower in every measured pair, its align
-step (whisper's VAD and HuBERT) taking up to 2–3× as long. That held even after the models were given every
-core again, and the cause is not pinned down (#1177). A lone pick is what most nights look like, so the
-worker boots at 1, and `ENCORE_WORKER_CONCURRENCY=2` is for queue-heavy ones.
+### 9.2 Concurrency and the warm-up pick themselves
+
+**Concurrency is auto 2 on a CPU box with 16 cores and 24 GB of RAM, else 1** (`hardware.resolve_concurrency`),
+and 1 on a GPU or MPS device. The RAM is the smaller of the machine's and a cgroup's limit, so
+`docker --memory` counts. #1177 kept 2 as an opt-in because a song picked alone was slower at 2. Part of that
+was each separator held to `cores ÷ 2` with nothing else running, so a separator now takes the cores divided
+by the jobs running as it starts (`Profile.separator_share`), and its demucs `-j` follows those cores
+(`Profile.demucs_share`): a song alone gets all 32 and `-j 4`, as at 1 job; two at once get 16 and `-j 2`
+each. Measured on a 32-core aarch64 box, runs alternating main (`2d264257`, 1 job) and auto (2 jobs):
+
+| 3 songs picked at once, all 3 ready | main | auto | load, main / auto |
+| --- | --- | --- | --- |
+| pair 1 | 449.4 s | 406.8 s | 30.9 / 34.4 |
+| pair 2 | 383.7 s | 312.3 s | 35.0 / 27.4 |
+
+| one song picked alone (Chosen, 230 s) | main | auto | load, main / auto |
+| --- | --- | --- | --- |
+| pair 1 | 181.1 s | 183.7 s | 30.4 / 35.5 |
+| pair 2 | 193.5 s | 183.7 s | 34.4 / 30.3 |
+
+Queued songs were ready 9–19% sooner at 2, and a song picked alone took the same time. The worker peaked at
+8.7 GB at 2 jobs against 7.5 GB at 1. A finished job also stops holding its slot while its result is on the
+wire, which had made core retry the next job at 2 (`Client._finishing`).
+
+**Auto demucs `-j` is capped by RAM**: about 1 GB per pool worker on top of about 4 GB for the worker
+(`_demucs_ram_cap`, #1284's 7.6 GB at `-j 4` against 4.0 GB at `-j 1`), split between the jobs at once.
+
+**The warm-up is auto-off when under 4 GB of RAM or 5 GB of model-cache disk is free**
+(`hardware.resolve_warmup`): loading about 3 GB of models early would only crowd the first song, and
+fetching about 1.5 GB of checkpoints could fill the disk. A figure the OS will not give counts as roomy, so
+nothing changes where it cannot be measured, and `ENCORE_WARMUP=1` runs it regardless.
 
 ## 10. Invariants
 
