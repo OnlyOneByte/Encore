@@ -1457,9 +1457,13 @@ here, from the room-preview endpoint.
 **Both panes are one Spotlight card** (redesign step 7, #1157): the idle look (the raise surface ringed in the
 accent, then in the colour you will sing in), drawn inline rather than with `<Spotlight>` for the CSS reason under
 "A kept phone" below. The code, then the name, fill the same card, and the CTA is the card's last row, right under
-the field it acts on, so it stays in reach with the keyboard up. Start singing is filled in your colour, inked in
+the field it acts on. It is `position: sticky; bottom: 0` on the card's own fill, so with the keyboard up (which
+`app.html`'s `interactive-widget=resizes-content` turns into a shorter layout viewport) it rides just above the
+keyboard: at 320x568 the keyboard leaves 308 px, and without the rule the button sat 60-118 px below it.
+`join-keyboard-reach` holds it fully on screen at 320x308. Start singing is filled in your colour, inked in
 that stop's certified `on_fill`. **The colour waits behind "change"**: a row reads "Your color Aqua · change" and
-opens the ring in a modal `<dialog>` with a Done button, so picking moves nothing on the page and the ring no longer
+opens the ring in a modal `<dialog>` with a Done button, on its own surface (`--card2`, one step above the card) over
+a `--scrim-strong` backdrop, so picking moves nothing on the page and the ring no longer
 outsizes the name field. The colour is a suggestion until the ring is touched, and an untouched one is never sent.
 
 **Both paths must stay offered, never one instead of the other.** A typed code alone is a cognitive-function test

@@ -29,17 +29,6 @@
  * ONE TEST, because two of its arms are CROSS-VIEWPORT: the gate must be centred at --bp-md and NOT centred one
  * pixel below it, and no single-width reading can see that. Every arm is SOFT, so one run reports every broken
  * arm.
- *
- * VERIFIED BY REVERTING THE FIX — four reverts, each rebuilt and re-run, because a gate that passes on a broken
- * tree is worse than no gate:
- *   drop `flex: 0 0 auto` from the >=768 arm      15 arms red; head top 0 on `/` against 262.58 on `/library`,
- *                                                  read at 1024x900
- *   drop `justify-content: center`                12 arms red, and ONLY the absolute ones — every delta stayed 0
- *                                                  while at 1024x900 BOTH hosts read 0px above the brand band and
- *                                                  525.17px below the column, which is the hole this file closes
- *   drop the whole neutralising rule              29 arms red; the mechanism arm names it — the host resolves
- *                                                  `display: block`/`grid` with `padding: 6px 16px 28px` back
- * (those counts predate the CTA moving into the card).
  */
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';

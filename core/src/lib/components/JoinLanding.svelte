@@ -290,8 +290,9 @@
 			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
 		{/if}
 
-		<!-- ONE CTA for both panes, in the card under the field it acts on, so it stays in reach with the keyboard up.
-			None while the room resolves: the card grows when it does, and a button already there would be pushed down. -->
+		<!-- ONE CTA for both panes, in the card under the field it acts on; sticky, so with the keyboard up it rides just
+			above it (see `.submit-slot`). None while the room resolves: the card grows when it does, and a button already
+			there would be pushed down. -->
 		{#if pane !== 'resolving'}
 			<div class="submit-slot">
 				<!-- Start singing is filled in the colour you will sing in, inked in that stop's certified on_fill. -->
@@ -313,14 +314,16 @@
 
 	{#if pane === 'identity' && !returning}
 		<!-- `taken` is REAL OCCUPANCY, from the same room-preview response the sentence is built from. -->
+		<!-- Its own surface: one step above the card (--card2), over a strong scrim. -->
 		<dialog
+			class="ring-dialog"
 			bind:this={ringDialog}
 			aria-label="Your color"
 			style:max-width="min(360px, calc(100vw - 2 * var(--space-4xl)))"
 			style:padding="var(--step-16)"
 			style:border="0"
 			style:border-radius="var(--round-spot)"
-			style:background="var(--role-raise)"
+			style:background="var(--card2)"
 			style:color="var(--role-ink)"
 		>
 			<ColourRing
@@ -414,7 +417,19 @@
 		color: var(--danger-ink);
 		font-size: var(--ph-text-md);
 	}
-	/* The card, its heading, the swatch and the ring's dialog are styled inline: CLAIM 13 has no CSS room on /queue. */
+	/* The card, its heading, the swatch and the ring's dialog are styled inline: CLAIM 13 has little CSS room on /queue. */
+	/* STICKY: with the keyboard up, `interactive-widget=resizes-content` shrinks the layout viewport and the CTA rides
+	   just above the keyboard (at 320x568 it sat 60-118 px under it). The card's fill, and a band of it above, keep the
+	   rows it passes over from showing through. Inert at rest, where the CTA is already on screen. */
+	.submit-slot {
+		position: sticky;
+		bottom: 0;
+		background: var(--role-raise);
+		box-shadow: 0 calc(-1 * var(--step-12)) 0 var(--role-raise);
+	}
+	.ring-dialog::backdrop {
+		background: var(--scrim-strong);
+	}
 	.colour {
 		display: flex;
 		align-items: center;
