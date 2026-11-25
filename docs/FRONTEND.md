@@ -2233,7 +2233,9 @@ the title, Try again and Pick another, "You keep your spot.") in the "You're up"
 "You're up" when both would show. `didntPlayTurn` (`$lib/song-didnt-play`) picks MY earliest held turn whose failure
 this page has not closed; it is not edge-triggered, so a phone that slept through the failure, or reloads, still
 hears about a turn that is waiting on it. A second failure of the same song is a new key and brings the sheet back,
-with Pick another alone (`canRetryPlay`). It has no timer: it stays until the singer acts or closes it, and toasts
+with Pick another alone (`canRetryPlay`). One button is filled, the next step to take: Try again while it is
+offered, and Pick another (quiet beside it) once it is the only one (redesign step 6, #1156; `wont-play.spec.ts`
+checks the painted fills). It has no timer: it stays until the singer acts or closes it, and toasts
 stack above it for as long as it is up. The held /queue row carries the same two buttons on the owner's phone; other
 phones see "Didn't play" with no buttons, and nothing else.
 
