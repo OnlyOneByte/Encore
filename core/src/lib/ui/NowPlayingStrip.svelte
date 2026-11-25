@@ -72,7 +72,6 @@
 	/* Anything in the rotation gives the line something to say; "Ready when you are" and its Play only when a song can
 	   really start (`canStart` is the server's own `nextPlayable`), or they would promise a song that is still cooking. */
 	const live = $derived(hasSong || queueCount > 0);
-	const canPlay = $derived(hasSong || canStart);
 	/* `connected` too: offline the link is what the strip must say, so the key rests and an open tray closes rather
 	   than covering "Reconnecting…" with four buttons whose taps would be dropped. */
 	const canCheer = $derived(hasSong && !!onreact && !reactResting && connected);
@@ -88,11 +87,12 @@
 	/* EVERY CLOSE HANDS FOCUS BACK, not only ✕: the tray's buttons leave the page, so focus held inside them would
 	   fall to <body> on the timeout, a song change or the link dropping. Back to the key when it is live, else to the
 	   /queue link that takes the tray's place. */
+	const refocus = () => (cheerKey && !cheerKey.inert ? cheerKey : metaLink)?.focus();
 	function closeCheers() {
 		clearTimeout(cheerTimer);
-		const refocus = cheering && !!strip?.contains(document.activeElement);
+		const had = cheering && !!strip?.contains(document.activeElement);
 		cheering = false;
-		if (refocus) void tick().then(() => (cheerKey && !cheerKey.inert ? cheerKey : metaLink)?.focus());
+		if (had) void tick().then(refocus);
 	}
 	function holdCheers() {
 		clearTimeout(cheerTimer);
@@ -106,6 +106,14 @@
 		void entryId;
 		if (!canCheer) return;
 		return closeCheers;
+	});
+	/* Play gives its slot to the Cheer key once the song starts: focus follows it there (or to the link when the key
+	   rests, on your own song), never to <body>. */
+	let playTapped = false;
+	$effect(() => {
+		if (!hasSong || !playTapped) return;
+		playTapped = false;
+		if (document.activeElement === document.body) refocus();
 	});
 </script>
 
@@ -153,7 +161,7 @@
 				<!-- `.status`, which WRAPS to two lines inside its box, never `.who`, which does not shrink: the waiting line
 					can be a whole sentence, and at 320px it ran under the restart button. Not `.song` either, which means
 					"a song is playing" to every spec reading the strip. -->
-				<span class="status">{canPlay ? 'Ready when you are' : waitingLine}</span>
+				<span class="status">{canStart ? 'Ready when you are' : waitingLine}</span>
 			{:else}
 				<span class="idle">Nothing playing</span>
 			{/if}
@@ -178,7 +186,9 @@
 			<!-- "Ready when you are" keeps its Play here, in the Cheer key's slot: a room idle with a ready queue (after a
 				server restart) waits for a tap, and /queue's Now card only exists once a song plays. -->
 			<div class="tp">
-				<button class="btn primary play" onclick={onplay} aria-label="Play"><Icon name="play" /></button>
+				<button class="btn primary play" onclick={() => ((playTapped = true), onplay())} aria-label="Play"
+					><Icon name="play" /></button
+				>
 			</div>
 		{/if}
 	{/if}

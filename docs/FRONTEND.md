@@ -511,10 +511,11 @@ drag, no geometry read. **Since redesign step 4 it is a now-line, not a remote**
 singing what, or what the queue waits on, and keeps the Cheer key, while pause, restart and skip are on the Queue
 tab's Now card. Its one transport key is Play, in the Cheer key's slot, only with nothing playing and a song that
 can start: the server starts the next song itself on any queue change or finished karaoke, but a room left idle
-with a ready queue (a restart) waits for that tap. It is Spotlight chrome: ink on `--role-ground` under one `--role-rule`, with the tab bar on the
-same ground and no fill of its own. Everything the old sheet's expanded body held (the guiding track, the vocal
-range, key shift, the clock) is the now-playing card at the top of `/queue`, because that is the screen you are
-already on to see whose turn is next.
+with a ready queue (a restart) waits for that tap. When the song starts, focus on Play moves to the Cheer key (or to
+the link, on your own song) rather than falling to `<body>`. It is Spotlight chrome: ink on `--role-ground` under
+one `--role-rule`, with the tab bar on the same ground and no fill of its own. Everything the old sheet's expanded
+body held (the guiding track, the vocal range, key shift, the clock) is the now-playing card at the top of `/queue`,
+because that is the screen you are already on to see whose turn is next.
 
 **What was deleted, and why the account is kept.** `NowPlayingDrawer.svelte` (618 lines), `NowPlayingBand.svelte`
 (398) and `sheet-snap.ts` (57) are gone, with `src/lib/components/ui/drawer/` (263 lines across 13 files) and the
@@ -787,14 +788,15 @@ home-indicator inset and the strip composes none — two fixed siblings would ea
 and would disagree the moment one of them changed height. The dock is NOT inside `.app-shell`: the shell is
 centred and width-capped, so on a tablet a dock inside it would float in the middle of the screen.
 
-**THE DOCK HAS ONE HEIGHT (proposal 13).** It is always the strip on the tab bar, **93px** at 390x844 and 320 (the
+**THE DOCK HAS ONE HEIGHT (proposal 13).** It is always the strip on the tab bar, **92px** at 390x844 and 320 (the
 ui:review dock rows), whether the room is idle, queued, playing, cheering or offline. Every strip state is one
 `var(--tap)` row — the four reactions sit behind a Cheer key and swap in for the now-line, "Reconnecting…" takes the
 title slot, and an idle room reads "Nothing playing". The dock carries no pause, restart or skip in any state
-(redesign step 4), only the idle Play in the Cheer key's slot; `measured-dock` and `dock-cls` assert that too, and `dock-idle-play`
-reaches the idle room through a reboot and taps that Play. Before, the dock had three heights (48, 93 and 164 with a reaction row), and each step moved
-its top edge on every phone in the room. `measured-dock.spec.ts` asserts the one height across states and surfaces;
-`dock-cls.spec.ts` asserts no layout shift from the dock across seven room transitions at 390x844 and 320x568.
+(redesign step 4), only the idle Play in the Cheer key's slot; `measured-dock` and `dock-cls` assert that too, and
+`dock-idle-play` reaches the idle room through a reboot and taps that Play. Before, the dock had three heights (48,
+93 and 164 with a reaction row), and each step moved its top edge on every phone in the room.
+`measured-dock.spec.ts` asserts the one height across states and surfaces; `dock-cls.spec.ts` asserts no layout
+shift from the dock across seven room transitions at 390x844 and 320x568.
 Readings below that quote a 46px dock or a top edge of 854 (1440x900) / 798 (390x844) predate it.
 
 `src/routes/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
@@ -864,8 +866,9 @@ A call site can owe one of two things, and which one depends on whether it holds
   `{#key}` on a refusal: re-creating the control drops focus, so a keyboard guest would be thrown out of it on
   every dropped keypress.
 - **A say is owed where failure is indistinguishable from success.** Restart, play/pause and skip (on /queue's Now
-  card, sent through the layout's `'transport'` context, typed in `src/lib/transport-controls.ts`) hold no optimistic value, so there is nothing to roll back — but on SUCCESS they change nothing locally
-  either, since the next broadcast is what redraws them. Silence therefore cannot be read at all, and the
+  card, sent through the layout's `'transport'` context, typed in `src/lib/transport-controls.ts`) hold no optimistic
+  value, so there is nothing to roll back — but on SUCCESS they change nothing locally either, since the next
+  broadcast is what redraws them. Silence therefore cannot be read at all, and the
   guest's only remaining move is to tap again. `transport()` in `src/routes/+layout.svelte` answers with one
   `toast.error` carrying `id: 'transport-dropped'`: sonner keys toasts by id, so a mash updates the single
   notice and resets its timer instead of stacking a tower of them over the dock.
@@ -899,8 +902,8 @@ Three tabs because the home column already WAS three pages. It rendered six sect
 **The thesis the split rests on: Encore's now-playing surface is the TELEVISION.** The phone is a remote and a queue,
 so it never needed a multi-snap now-playing sheet. `src/lib/ui/NowPlayingStrip.svelte` is a fixed-height strip with no
 snap array, no drag and no geometry read, and since redesign step 4 it is a now-line with no transport but the idle
-Play. Everything the sheet's body held, and now pause, restart and skip, — ± key, the guiding track, the range bar, a clock
-readout — is on the Queue tab, above the list it acts on, because those controls act on what is PLAYING and the
+Play. Everything the sheet's body held, and now pause, restart and skip, — ± key, the guiding track, the range bar,
+a clock readout — is on the Queue tab, above the list it acts on, because those controls act on what is PLAYING and the
 playing song is not in the queued list. `vaul-svelte` is GONE: the `/components` gallery was its last importer, and
 once that section was replaced by the strip and the tab bar the dependency and the 13-file `components/ui/drawer/`
 wrapper were deleted with it. Measured on the build afterwards — `vaul` appears in no client artifact at all, and
@@ -987,11 +990,13 @@ Beating that wants a settled-state read on the link, applied to all three at onc
 ### The Now card
 
 The top of `/queue` while a song plays. **It holds the transport** (redesign step 4, an owner ruling, moved off the
-dock): restart, play/pause and skip, three 44 px keys under the clock, for every phone, as the strip had them. Play/pause
-is the card's one accent fill. They go through the root layout's `transport()` and tap target (the context in
-`src/lib/transport-controls.ts`), so the dropped-command notice and the settle window are unchanged. With nothing
-playing but a song ready, the only Play is the strip's, beside `Ready when you are`: a row here instead flashed for
-the frames between the queue patch and `playback:state` as every first song started, and shifted the list under it.
+dock): restart, play/pause and skip, three 44 px keys under the clock in one `Playback` group, for every phone, as
+the strip had them. Play/pause is the card's one accent fill. They go through the root layout's `transport()` and tap
+target (the context in `src/lib/transport-controls.ts`), so the dropped-command notice and the settle window are
+unchanged. When the last Skip takes the card away, focus that fell to `<body>` goes to the dock's now-line link.
+With nothing playing but a song ready, the only Play is the strip's, beside `Ready when you are`: a row here instead
+flashed for the frames between the queue patch and `playback:state` as every first song started, and shifted the
+list under it.
 
 The playing song's key and guide belong to its singer (ARCHITECTURE.md §10),
 so only the singer's phone shows the keycaps, the Guide slider and the range bar. Every other phone reads the same facts

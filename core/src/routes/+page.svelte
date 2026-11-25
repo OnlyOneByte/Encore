@@ -209,6 +209,8 @@
 		readyResults = [];
 		rawResults = [];
 		processingResults = [];
+		// The rows that answered are gone, so nothing is answered: the same text typed again waits for its own answer.
+		answeredFor = null;
 		/* THE WINDOWS RESET WITH THE ROWS, and only here — the rule /library's own `applyQuery` states. This is the
 		   one seam where all three groups are already dropped, so a guest who revealed 180 rows never watches them
 		   collapse on a keystroke that has not resolved into an answer yet; they collapse with the rows they belong

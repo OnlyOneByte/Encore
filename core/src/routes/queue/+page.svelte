@@ -667,6 +667,8 @@
 			return;
 		}
 		if (id === settleFor) return;
+		// The last Skip takes the card and its keys away, and focus with them: it goes to the dock's now-line, not <body>.
+		if (!id && document.activeElement === document.body) document.querySelector<HTMLElement>('.dock .meta')?.focus();
 		const hadCard = settleFor !== null;
 		// A card that ARRIVES fades in, with no grow left over from an earlier song.
 		if (!hadCard) {
@@ -894,7 +896,7 @@
 					</p>
 				{/if}
 
-				<div class="now-tp">
+				<div class="now-tp" role="group" aria-label="Playback">
 					<button class="tp-btn" onclick={tp.restart} aria-label="Restart"><Icon name="restart" /></button>
 					<button class="tp-btn primary" onclick={tp.togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
 						<Icon name={isPlaying ? 'pause' : 'play'} />
