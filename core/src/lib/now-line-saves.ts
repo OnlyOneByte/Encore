@@ -9,6 +9,8 @@ export class NowLineSaves {
 	#singer: string | null = null;
 	// Per song, the request still in the air: a tap during it waits its turn.
 	#saving = new Map<string, Promise<void>>();
+	// Per song, what the server last confirmed (the load, then each accepted request): where a refusal rolls back to.
+	#confirmed = new Map<string, boolean>();
 	#deps: Deps;
 
 	constructor(deps: Deps) {
@@ -21,6 +23,7 @@ export class NowLineSaves {
 		if (singer === this.#singer) return Promise.resolve();
 		this.#singer = singer;
 		this.ids.clear();
+		this.#confirmed.clear();
 		return singer ? this.#load(singer) : Promise.resolve();
 	}
 
@@ -31,11 +34,17 @@ export class NowLineSaves {
 		// Someone else is this phone by now: their answer, not this one, fills the set.
 		if (this.#singer !== singer) return;
 		this.ids.clear();
-		for (const s of songs) if (s.saved && s.mediaId) this.ids.add(s.mediaId);
+		this.#confirmed.clear();
+		for (const s of songs)
+			if (s.saved && s.mediaId) {
+				this.ids.add(s.mediaId);
+				this.#confirmed.set(s.mediaId, true);
+			}
 	}
 
 	/** Flips the mark at once, then sends the request behind any still in the air for this song, so a double tap
-	 *  reaches the server in the order it was made. Only the last tap rolls back and speaks if refused. */
+	 *  reaches the server in the order it was made. Only the last tap rolls back and speaks if refused, and it rolls
+	 *  back to what the server last confirmed, so two refused taps end where the server is. */
 	toggle(id: string): Promise<void> {
 		const singer = this.#singer;
 		const want = !this.ids.has(id);
@@ -48,8 +57,10 @@ export class NowLineSaves {
 				.catch(() => null);
 			// 404 on an unsave is "already out", from another phone of yours.
 			const ok = res?.ok || (!want && res?.status === 404);
-			if (!ok && this.#singer === singer && this.#saving.get(id) === run) {
-				flip(!want);
+			if (this.#singer !== singer) return;
+			if (ok) this.#confirmed.set(id, want);
+			else if (this.#saving.get(id) === run) {
+				flip(this.#confirmed.get(id) ?? false);
 				this.#deps.refused(want ? "Couldn't save it to your songs." : "Couldn't take it out of your songs.");
 			}
 		});

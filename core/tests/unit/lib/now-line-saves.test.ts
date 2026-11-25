@@ -95,3 +95,35 @@ test('a refused save rolls the mark back and says so; a refused tap that a later
 	expect(saves.ids.has('m1')).toBe(false);
 	expect(refused).toHaveLength(1);
 });
+
+// From the #1273 round-2 review: the last tap rolls back to what the server last confirmed, not to its own opposite.
+test('a double tap whose two requests both fail ends where the server is', async () => {
+	const { saves, calls, refused } = harness();
+	const load = saves.setSinger('theo');
+	calls[0]!.answer(200, songs('m2'));
+	await load;
+
+	// Never saved: save refused, then the queued unsave refused too, so it ends unsaved.
+	const save = saves.toggle('m1');
+	const unsave = saves.toggle('m1');
+	await tick();
+	calls[1]!.answer(500);
+	await save;
+	await tick();
+	calls[2]!.answer(500);
+	await unsave;
+	expect(saves.ids.has('m1'), 'the server never saved it').toBe(false);
+	expect(refused).toEqual(["Couldn't take it out of your songs."]);
+
+	// Saved when loaded: unsave refused, then the queued save refused too, so it ends saved.
+	const out = saves.toggle('m2');
+	const back = saves.toggle('m2');
+	await tick();
+	calls[3]!.answer(500);
+	await out;
+	await tick();
+	calls[4]!.answer(500);
+	await back;
+	expect(saves.ids.has('m2'), 'the server still has it').toBe(true);
+	expect(refused).toHaveLength(2);
+});
