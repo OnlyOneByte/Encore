@@ -789,7 +789,7 @@ as the same person. There is no email, no password and no signup screen.
   released. So a thief who copied both cookies loses tonight's singer session too when the owner returns, not
   only the device cookie. A night still holding a turn keeps its name until the turn is done (below). When that
   turn makes the return a 409, the token rotates anyway, since the other nights have already ended, so a copied
-  device cookie has no way back either.
+  device cookie has no way back either, once the grace ends or the owner uses the new token.
 - **A grace use only replaces its own stalled night**: a returning join on the token before a rotation rotates
   nothing, and ends only a night of the person in the room with no socket and no turn (the join whose response
   was lost), so it does not hold the kept name against the retry. A grace use does not by itself end the owner's
