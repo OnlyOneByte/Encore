@@ -11,6 +11,7 @@
 		wordGap,
 		betweenLines,
 		changedRows,
+		fixStepsBack,
 		rowsOf,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
@@ -203,7 +204,11 @@
 		heldAtLine = lineIdx;
 		const oldGap = betweenLines(doc, cuePos);
 		const atGap = !playing || !doc || (oldGap ? overdue || betweenLines(heldDoc, cuePos) : overdue && lineStarted);
-		if (!atGap || (heldRows?.[activeLineIndex(heldDoc.lines, cuePos)] ?? lineIdx) < lineIdx) return;
+		if (!atGap || fixStepsBack(heldDoc, heldRows, cuePos, lineIdx)) return;
+		// The new rows sit at other heights, and words that have ended land on their last row, often far up the reel:
+		// cut to the current slot, never slide (#1299).
+		snapReel = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => (snapReel = false)));
 		freshRows = changedRows(fetched, heldDoc);
 		fetched = heldDoc;
 		settledRef = loadedRef;
@@ -222,6 +227,8 @@
 	let viewportEl = $state<HTMLElement | null>(null);
 	let reelEl = $state<HTMLElement | null>(null);
 	let reelOffset = $state(0);
+	// Two frames with no transition after a version swaps in, so the first offset measured for its rows is a cut.
+	let snapReel = $state(false);
 	function measureReel() {
 		const row = reelEl?.querySelector<HTMLElement>('.row.current');
 		if (!row || !viewportEl) return;
@@ -242,6 +249,7 @@
 	}
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
+		void doc; // and in the flush that swaps a version in, before the ResizeObserver's frame
 		// The row counts move the bias AND the viewport height, and a settings write can land mid-song.
 		void linesBefore;
 		void linesAfter;
@@ -295,7 +303,11 @@
 			column transform changes, so the singer keeps the line they just sang in view.
 		-->
 		<div class="viewport" bind:this={viewportEl}>
-			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
+			<div
+				class="reel"
+				bind:this={reelEl}
+				style="transform: translateY({reelOffset}px){snapReel ? '; transition: none' : ''}"
+			>
 				<!-- A row a lyrics fix rewrote is a new node, not a centred line sliding sideways; the rest keep index keys,
 				     so a new song reuses the rows as before. -->
 				{#each doc.lines as l, i (freshRows.has(i) ? `${i}:${l.text}` : i)}

@@ -297,6 +297,20 @@ export function betweenLines(doc: Pick<LyricsDoc, 'lines'> | null, pos: number):
 	});
 }
 
+/** Would landing `held` at `pos` move the current row back past `current` (an index into the reading on screen)?
+ *  Never for a reading that has already ended at `pos`: its last line is past, not a row sung again, so an Undo to
+ *  words that stop early lands at the next gap instead of waiting for the next song (#1299). */
+export function fixStepsBack(
+	held: Pick<LyricsDoc, 'lines'>,
+	rows: number[] | null,
+	pos: number,
+	current: number
+): boolean {
+	const bounds = held.lines.map(lineBounds).filter((b): b is [number, number] => b !== null);
+	if (bounds.length > 0 && bounds.every(([, end]) => pos >= end)) return false;
+	return (rows?.[activeLineIndex(held.lines, pos)] ?? current) < current;
+}
+
 /** The rows of `after` whose text differs from the same row of `before`, including rows `before` lacks. */
 export function changedRows(before: Pick<LyricsDoc, 'lines'> | null, after: Pick<LyricsDoc, 'lines'>): Set<number> {
 	const out = new Set<number>();

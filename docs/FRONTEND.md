@@ -2084,6 +2084,11 @@ the turn already on stage (`songKey`), a new ref is fetched behind the words on 
   document's current line stands for the old current line or a later one. `rowsOf` maps each new row to the
   old row it stands for (equal texts in order, a rewritten run by position, an added row just after the row
   before it), so a fix that drops or adds a row above the one being sung is not a step back and can land.
+  A held version that has already ended at the playhead is never a step back either (`fixStepsBack`, #1299): its
+  last line is past, not a row sung again. So an Undo to automatic words that stop early lands at the next gap,
+  with that last line held as the current row, instead of waiting for the next song.
+  Every swap cuts the reel to the current slot, with its transition off for two frames. The new rows sit at other
+  heights, and an ended version's last row can sit far up the reel, so a slide would carry the words backwards.
 - **The swap waits for a gap.** The held words go in at the first frame where neither the old reading nor the new
   one is inside a line (`betweenLines`), so no word is cut off. Paused, or with nothing on screen, only the rule
   above applies, so a fix lands at once. If that rule holds it (the fix put an earlier row under the paused
