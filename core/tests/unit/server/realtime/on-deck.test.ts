@@ -98,6 +98,17 @@ test('an add may carry a remembered key, but only a valid one', () => {
 	expect(add(99)).toBe('invalid keyShift: 99');
 });
 
+test('an add may carry a guide (Your songs), but only a valid one', () => {
+	const { deps } = harness([]);
+	const add = (guideLevel: unknown) =>
+		validateCommand(cmd({ op: 'add', entry: entry('n', 'maya', { guideLevel } as Partial<QueueEntry>) }), deps);
+	expect(add(0.3)).toBeNull();
+	expect(add(null)).toBeNull();
+	expect(add(2)).toBe('invalid guideLevel: 2');
+	expect(add(-0.1)).toBe('invalid guideLevel: -0.1');
+	expect(add('0.3')).toBe('invalid guideLevel: 0.3');
+});
+
 // ---- Not yet --------------------------------------------------------------------------------------------------
 
 test('Not yet moves the entry one place back, and works only ONCE per entry', () => {

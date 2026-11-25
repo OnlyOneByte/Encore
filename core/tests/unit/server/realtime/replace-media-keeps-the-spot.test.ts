@@ -99,6 +99,23 @@ test('an unknown song, a bad key or a turn that is not waiting is refused, so th
 	expect(validateCommand(replace(), deps)).toBe('only a waiting turn can change song');
 });
 
+test("the new song's guide rides on the swap (Your songs); a bad one, or one on someone else's turn, is refused", () => {
+	const { state, deps } = harness();
+	const withGuide = (guideLevel: unknown) =>
+		cmd({ op: 'replace-media', id: 'maya1', mediaId: 'fresh', keyShift: -1, guideLevel } as ClientCommand['op']);
+	expect(validateCommand(withGuide(2), deps)).toBe('invalid guideLevel: 2');
+	expect(validateCommand(withGuide('0.3'), deps)).toBe('invalid guideLevel: 0.3');
+	expect(validateCommand(withGuide(0.3), { ...deps, actorSingerId: 'theo' })).toBe(
+		'only the singer can change this entry'
+	);
+	handleQueueCommand(withGuide(0.3), deps);
+	expect(state.entries.find((e) => e.id === 'maya1')).toMatchObject({
+		mediaId: 'fresh',
+		keyShift: -1,
+		guideLevel: 0.3
+	});
+});
+
 test("swapping someone else's song asks for what removing it asks for", () => {
 	// A source pin: `can` grants every joined singer everything today and a caller with no session is refused
 	// earlier, so no command can tell the capabilities apart yet. The day `can` narrows, this is the line that matters.

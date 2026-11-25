@@ -1077,7 +1077,8 @@ text still waiting on the 150 ms debounce never reads "Nothing matches" (#1192).
 finished turn of it, ahead of this phone's remembered key; a song not made yet carries the usual ✦. A guest Keep me is
 offered to gets one dim line under the list: `On this phone only. Keep <name> to have them on any phone.` Someone with
 nothing yet sees the box exactly as before, with no heading and no explainer. The list is fetched once you have joined
-and cached for the tab, so a return paints it at once; it is the last thing on the idle screen, so arriving after first
+and cached for the tab under that singer's id (like the kept search), so a return paints it at once and a Leave
+followed by someone else's join never shows them the last singer's list; it is the last thing on the idle screen, so arriving after first
 paint moves nothing (`your-songs` probe, CLS 0 at 390 and 320). A search kept across a trip to Queue (#1259) comes back
 with its results, so Your songs waits until the box is cleared. Rows are drawn from the room's catalog only, so a song
 the room refuses as deleted (`#songGone`) leaves the list with its one notice. A save whose song left the library is not

@@ -1,6 +1,51 @@
-// The Your songs row's sub-line: only what is not zero, in guest words.
-import { test, expect } from 'bun:test';
-import { yourSongLine } from '$lib/your-songs';
+// The Your songs row's sub-line, only what is not zero, in guest words; and the tab's cache, one singer's alone.
+import { test, expect, afterEach } from 'bun:test';
+import { cachedYourSongs, forgetYourSongs, loadYourSongs, yourSongLine, type YourSongs } from '$lib/your-songs';
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+	globalThis.fetch = realFetch;
+	forgetYourSongs();
+});
+const answer = (songs: YourSongs) => {
+	globalThis.fetch = (async () => new Response(JSON.stringify(songs))) as unknown as typeof fetch;
+};
+const alices: YourSongs = {
+	songs: [
+		{
+			mediaId: 'm1',
+			title: "Alice's song",
+			artist: null,
+			sung: 3,
+			lastSungAt: 1,
+			keyShift: -2,
+			guideLevel: null,
+			saved: null,
+			media: null
+		}
+	],
+	canKeep: false
+};
+
+test("Alice, then Leave, then Bob on the same phone: Bob's cache holds nothing of Alice's", async () => {
+	answer(alices);
+	expect(await loadYourSongs('alice')).toEqual(alices);
+	expect(cachedYourSongs('alice')).toEqual(alices);
+	// Another singer never reads it, left or not.
+	expect(cachedYourSongs('bob')).toBeNull();
+	// Leave: no one joined, so the page forgets it.
+	forgetYourSongs();
+	expect(cachedYourSongs('alice')).toBeNull();
+	expect(cachedYourSongs('bob')).toBeNull();
+	expect(cachedYourSongs(undefined)).toBeNull();
+});
+
+test('no singer, no request', async () => {
+	let asked = 0;
+	globalThis.fetch = (async () => (asked++, new Response('{}'))) as unknown as typeof fetch;
+	expect(await loadYourSongs(undefined)).toBeNull();
+	expect(asked).toBe(0);
+});
 
 const row = (o: Partial<Parameters<typeof yourSongLine>[0]> = {}) =>
 	yourSongLine({ keyShift: null, guideLevel: null, sung: 0, saved: null, ...o });

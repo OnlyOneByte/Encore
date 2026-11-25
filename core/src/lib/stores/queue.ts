@@ -136,8 +136,8 @@ export class QueueStore {
 		this.#optimistic({ op: 'move-to-index', id, toIdx });
 	}
 	/** "Pick another, keep your spot": the same turn, another song, in `keyShift` — the NEW song's remembered key. */
-	replaceMedia(id: string, mediaId: string, keyShift: number): void {
-		this.#optimistic({ op: 'replace-media', id, mediaId, keyShift });
+	replaceMedia(id: string, mediaId: string, keyShift: number, guideLevel?: number | null): void {
+		this.#optimistic({ op: 'replace-media', id, mediaId, keyShift, ...(guideLevel != null ? { guideLevel } : {}) });
 	}
 	/** "Try again": lift MY held turn, so the song the TV could not play is next again, in the same spot. */
 	retryPlay(id: string): void {

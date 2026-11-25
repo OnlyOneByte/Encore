@@ -182,7 +182,8 @@ Rotation lives in `src/lib/contract/queue/rotation.ts`, the policies in
   counts `playFailures`; at `MAX_PLAY_FAILURES` (2) the hub refuses `retry-play` and the phone offers only Pick
   another. Its `replace-media` lifts the hold and starts the count again for a DIFFERENT song; the same song keeps
   its count and is refused past the limit, like a Try again. On a HELD turn `replace-media` is owner-only too: its
-  `remove-any` gate applies only to a turn that is not held. Those two ops are the only client ops that clear
+  `remove-any` gate applies only to a turn that is not held. Its optional `guideLevel` (the new song's, from Your
+  songs; absent is the room default) is a preset, so it is checked like one and only the singer may send it. Those two ops are the only client ops that clear
   `playFailed`. Both fields are server-owned: a re-sent `add` keeps the server's values.
 - **`DEFAULT_QUEUE_ORDER` is what an unconfigured room does**, so changing it re-orders every existing room
   that never chose. An unknown or de-whitelisted id degrades to it rather than throwing.

@@ -131,8 +131,10 @@ function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: Hub
 		if (target.status !== 'queued') return 'only a waiting turn can change song';
 		// REQUIRED and range-checked like a preset: absent would read as "keep the dead song's key" on apply.
 		if (op.keyShift === undefined) return 'missing keyShift';
-		const prefs = entryPrefsRefusal({ keyShift: op.keyShift });
+		const prefs = entryPrefsRefusal({ keyShift: op.keyShift, guideLevel: op.guideLevel });
 		if (prefs) return prefs;
+		// A guide preset is the singer's own voice (on-deck-ops.ts), so `remove-any` does not reach it.
+		if (op.guideLevel != null && target.singerId !== deps.actorSingerId) return 'only the singer can change this entry';
 		// The SAME song again is a Try again, not a new chance: it keeps its failure count, so it is held to the same limit.
 		if (op.mediaId === target.mediaId && target.playFailed && !canRetryPlay(target))
 			return 'this song failed twice; pick another';

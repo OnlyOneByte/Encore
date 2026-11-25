@@ -37,6 +37,7 @@
 	import { keepSearch, keptSearch } from '$lib/sing-search-keep';
 	import {
 		cachedYourSongs,
+		forgetYourSongs,
 		loadYourSongs,
 		yourSongLine,
 		YOUR_SONGS_SHOWN,
@@ -120,12 +121,18 @@
 		};
 	});
 
-	let yours = $state<YourSongs | null>(cachedYourSongs());
+	let yours = $state<YourSongs | null>(cachedYourSongs(room.me?.id));
 	// Once joined, not before (the route answers 401 to a visitor). Below everything on the idle screen, so
 	// arriving after first paint moves nothing; a return paints the cache.
 	const meId = $derived(me?.id);
+	// A new singer on this phone (a Leave, then a join) starts from their own cache or nothing, never the last one's.
 	$effect(() => {
-		if (meId) untrack(refreshYours);
+		const id = meId;
+		untrack(() => {
+			yours = cachedYourSongs(id);
+			if (id) refreshYours();
+			else forgetYourSongs();
+		});
 	});
 	// One of my turns just left the queue (sung, skipped or failed), so the list a reload would show has changed.
 	let mineBefore = new Set<string>();
@@ -136,8 +143,10 @@
 		if (gone) refreshYours();
 	});
 	function refreshYours() {
-		void loadYourSongs().then((r) => {
-			if (!r) return;
+		const id = meId;
+		void loadYourSongs(id).then((r) => {
+			// Dropped if the singer changed while it was in the air.
+			if (!r || meId !== id) return;
 			room.mergeMedia(r.songs.flatMap((s) => (s.media ? [s.media] : [])));
 			yours = r;
 		});
@@ -490,7 +499,7 @@
 		if (replacing) {
 			// Read BEFORE the swap: the optimistic op rewrites the entry `replacing` derives from.
 			const deadMediaId = replacing.mediaId;
-			store?.replaceMedia(replacing.id, mediaId, key ?? 0);
+			store?.replaceMedia(replacing.id, mediaId, key ?? 0, last?.guideLevel);
 			toast.dismiss(failureNoticeId(deadMediaId));
 			liveMsg = `${room.titleOf(mediaId)} takes your spot`;
 			if (navigator.vibrate) navigator.vibrate(8);

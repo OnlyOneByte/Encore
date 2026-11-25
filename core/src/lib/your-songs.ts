@@ -40,18 +40,27 @@ export function yourSongLine(s: Pick<YourSong, 'keyShift' | 'guideLevel' | 'sung
 	return [key, guide, sung].filter(Boolean).join(' · ');
 }
 
-let cached: YourSongs | null = null;
+// Keyed by singer, like sing-search-keep: a shared phone never shows one guest's songs to the next.
+let cached: { singer: string; songs: YourSongs } | null = null;
 
-/** The last answer this tab saw, for an instant repaint; `load` refreshes it. */
-export const cachedYourSongs = (): YourSongs | null => cached;
+/** The last answer this tab saw for this singer, for an instant repaint; `load` refreshes it. */
+export const cachedYourSongs = (singer: string | undefined): YourSongs | null =>
+	singer && cached?.singer === singer ? cached.songs : null;
 
-/** Null when the phone has not joined or the request failed: the box then stays as it is with no list. */
-export async function loadYourSongs(): Promise<YourSongs | null> {
+/** No one is joined: keep nothing. */
+export function forgetYourSongs(): void {
+	cached = null;
+}
+
+/** Null with no singer, or when the request failed: the box then stays as it is with no list. */
+export async function loadYourSongs(singer: string | undefined): Promise<YourSongs | null> {
+	if (!singer) return null;
 	try {
 		const res = await fetch('/api/me/songs');
 		if (!res.ok) return null;
-		cached = (await res.json()) as YourSongs;
-		return cached;
+		const songs = (await res.json()) as YourSongs;
+		cached = { singer, songs };
+		return songs;
 	} catch {
 		return null;
 	}
