@@ -104,6 +104,8 @@ COPY worker/README.md ./README.md
 
 ENV PYTHONUNBUFFERED=1 \
 	PYTHONDONTWRITEBYTECODE=1 \
+	# onnxruntime's telemetry off for every process in the image, not only the worker's (#1307).
+	ORT_DISABLE_TELEMETRY=1 \
 	MEDIA_DIR=/app/media \
 	ENCORE_MEDIA_DIR=/app/media \
 	# Durable state is PER BOX: it holds in-flight checkpoints, so it must not be shared between workers
