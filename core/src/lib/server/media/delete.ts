@@ -24,7 +24,8 @@ import {
 	KNOWN_CAPTION_EXTS,
 	CAPTION_KINDS,
 	resolveBase,
-	isTaggedStemOf
+	isTaggedStemOf,
+	lyricsTagOf
 } from './paths';
 import { readdirSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -75,12 +76,26 @@ function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 	refs.add(lyricsKey(mediaId));
 	// Every fix document by id: one Undo or Back to automatic replaced, or one an eviction kept, is named nowhere.
 	for (const ref of editRefsOnDisk(mediaId)) refs.add(ref);
+	for (const ref of remadeLyricsOnDisk(mediaId)) refs.add(ref);
 	for (const ref of taggedStemsOnDisk(mediaId)) refs.add(ref);
 	for (const kind of CAPTION_KINDS) for (const ext of KNOWN_CAPTION_EXTS) refs.add(rawCaptionKey(mediaId, kind, ext));
 	if (m?.instrumentalRef) {
 		for (const r of legacyVocalsRefs(m.instrumentalRef)) refs.add(r);
 	}
 	return [...refs];
+}
+
+/** A lyrics remake's `<id>-<tag>-….json` documents, if it crashed before its swap: named nowhere. None when the
+ *  folder can't be read. */
+function remadeLyricsOnDisk(mediaId: string): string[] {
+	const { base, rest } = resolveBase('derived/lyrics');
+	try {
+		return readdirSync(resolve(join(base, rest)))
+			.filter((name) => lyricsTagOf(mediaId, name) !== null)
+			.map((name) => `derived/lyrics/${name}`);
+	} catch {
+		return [];
+	}
 }
 
 /** A re-separation's stems on disk (`<id>-<tag>-instrumental.flac`, ...): one that crashed before its swap, or

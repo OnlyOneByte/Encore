@@ -433,8 +433,10 @@ Four shapes in that module are decisions rather than templates:
 * **A re-separation's stems carry a tag segment** (`<id>-<tag>-instrumental.<ext>`). Core sends it as the
   `outputTag` param on `stems-upgrade` and `stems-remake` jobs, and `keys.output_tag` accepts only a short
   `[0-9a-z]` token. The playing stems are cached a day by name, so new stems need a new name; core swaps the
-  refs and deletes the old files (docs/SERVER.md#managing-the-library). A first `stems` job is untagged, and a
-  malformed tag fails the job (not retryable) rather than falling back to the untagged names, which are live.
+  refs and deletes the old files (docs/SERVER.md#managing-the-library). A first `stems` job is untagged. An
+  `align-remake` gets the same tag in its lyrics documents (`<id>-<tag>-<label>-<timing>.json`, `store_ref`),
+  except a pinned re-time, which keeps its pinned ref. A malformed tag fails either job (`keys.BadOutputTag`,
+  not retryable) rather than falling back to the untagged names, which are live.
 * **The caption kind is a directory segment because yt-dlp names both tracks identically**, so only the
   segment distinguishes an uploader's track from a machine baseline. Neither is stored on the media row —
   they are evidence for diagnosing the parser, not candidates — so retention enumerates the matrix.

@@ -780,6 +780,7 @@ _STAGE_FOR = {
     "stems-upgrade": Stage.SEPARATING,
     "stems-remake": Stage.SEPARATING,
     "align": Stage.ALIGNING,
+    "align-remake": Stage.ALIGNING,
 }
 
 
@@ -797,7 +798,7 @@ async def _dispatch(
     An unknown action fails NON-retryably: the core should not have routed it, and three attempts cannot
     teach this worker a new verb.
     """
-    if assign.action == "align":
+    if assign.action in ("align", "align-remake"):
         aligned = await durable.align(job)
         if aligned.abandoned:
             # As for stems: a refusal is not a completion. Sent as one, core settled the lyrics gate as

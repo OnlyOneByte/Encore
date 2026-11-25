@@ -214,15 +214,7 @@ class _Permanent(RuntimeError):
 
 
 def _output_tag(job: JobRef) -> str | None:
-    """The job's `outputTag`, or None when it sends none. A malformed one fails the job: the untagged names it
-    would fall back to are the live stems, which screens cache a day (docs/arch/05-worker.md §4)."""
-    raw = job.params.get("outputTag")
-    if raw is None:
-        return None
-    tag = keys.output_tag(raw) if isinstance(raw, str) else None
-    if tag is None:
-        raise _Permanent(f"refusing outputTag {raw!r}: not a [0-9a-z] name segment")
-    return tag
+    return keys.checked_output_tag(job.params.get("outputTag"))
 
 
 class FetchStepsImpl:

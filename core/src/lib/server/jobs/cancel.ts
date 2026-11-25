@@ -23,7 +23,8 @@ const CANCELLABLE_JOB_TYPES: Record<JobType, true> = {
 	stems: true,
 	align: true,
 	'stems-upgrade': true,
-	'stems-remake': true
+	'stems-remake': true,
+	'align-remake': true
 };
 const PIPELINE_JOB_TYPES = Object.keys(CANCELLABLE_JOB_TYPES) as readonly JobType[];
 

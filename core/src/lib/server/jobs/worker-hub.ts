@@ -15,7 +15,7 @@ import type {
 	EffectiveSettings,
 	WorkerProfile
 } from '../../contract';
-import { publishStemFormat, toRelativeKey, stemOutputTag, stemTagOf } from '../media/paths';
+import { publishStemFormat, toRelativeKey, stemOutputTag, stemTagOf, lyricsTagOf } from '../media/paths';
 import { queueSidecarTask } from '../media/sidecar';
 import {
 	ASR_COMPUTE_TYPES,
@@ -46,6 +46,7 @@ import {
 import {
 	markMediaReady,
 	setMediaLyrics,
+	remakeMediaLyrics,
 	setMediaOriginal,
 	setMediaVocals,
 	setMediaGuideMix,
@@ -73,17 +74,31 @@ function reportedStemRefs(msg: Extract<WorkerMessage, { type: 'job:complete' }>)
 }
 
 const STEMS_DIR = 'derived/stems/';
+const LYRICS_DIR = 'derived/lyrics/';
 
 /** The reported refs that are job `jobId`'s own output: in `derived/stems/`, named `<mediaId>-<its tag>-…`. The only
  *  worker-named files core deletes, so a worker cannot point it at another song's files. */
-function ownStemOutput(refs: string[], jobId: string, mediaId?: string): { mediaId: string; ref: string }[] {
+function ownStemOutput(
+	refs: string[],
+	jobId: string,
+	mediaId?: string,
+	[dir, tagOf] = [STEMS_DIR, stemTagOf]
+): { mediaId: string; ref: string }[] {
 	const tag = stemOutputTag(jobId);
 	return refs.flatMap((ref) => {
-		const name = ref.startsWith(STEMS_DIR) ? ref.slice(STEMS_DIR.length) : '';
+		const name = ref.startsWith(dir) ? ref.slice(dir.length) : '';
 		const owner = name.slice(0, Math.max(0, name.indexOf(`-${tag}-`)));
-		if (!owner || (mediaId && owner !== mediaId) || stemTagOf(owner, name) !== tag) return [];
+		if (!owner || (mediaId && owner !== mediaId) || tagOf(owner, name) !== tag) return [];
 		return [{ mediaId: owner, ref }];
 	});
+}
+
+/** A completion's lyrics documents, as store refs. */
+function reportedLyricsRefs(msg: Extract<WorkerMessage, { type: 'job:complete' }>): string[] {
+	const l = msg.artifacts?.lyrics;
+	return [l?.uri, ...(l?.candidates ?? []).map((c) => c.ref)]
+		.map((u) => toRelativeKey(u))
+		.filter((r): r is string => !!r);
 }
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
@@ -849,8 +864,14 @@ export class WorkerHub {
 	 *  deletes its row) is ignored, but the files it wrote are named nowhere: they go. */
 	#dropCancelled(msg: Extract<WorkerMessage, { type: 'job:complete' }>, job: Job | null): void {
 		// A job that is still live, or finished, may be another worker's under the same names.
-		if (job && (job.status === 'ready' || !isTerminalJob(job.status) || !reSeparates(job.jobType))) return;
+		const remakes = job && (reSeparates(job.jobType) || job.jobType === 'align-remake');
+		if (job && (job.status === 'ready' || !isTerminalJob(job.status) || !remakes)) return;
 		this.#retireOwnOutput(msg, job?.mediaId);
+		for (const own of ownStemOutput(reportedLyricsRefs(msg), msg.jobId, job?.mediaId, [LYRICS_DIR, lyricsTagOf])) {
+			const m = this.#d.mediaById.get(own.mediaId);
+			const named = [m?.lyricsRef, m?.lyricsOverrideRef, ...(m?.lyricsCandidates ?? []).map((c) => c.ref)];
+			if (!named.includes(own.ref)) this.#retire(own.mediaId, [own.ref]);
+		}
 	}
 
 	/** A completion's own files that its song does not name, retired (`#retire`). */
@@ -993,7 +1014,21 @@ export class WorkerHub {
 			setMediaOriginal(job.mediaId, msg.mediaUri, msg.artifacts?.original?.bytes, this.#d.mediaById);
 		}
 		applyAnnotation(job.mediaId, this.#d.mediaById, msg.artifacts?.annotation);
-		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
+		// A lyrics remake swaps its whole set in (`remakeMediaLyrics`); everything else merges.
+		let staleLyrics: string[] = [];
+		if (job.jobType === 'align-remake') {
+			const m = this.#d.mediaById.get(job.mediaId);
+			const had = new Set([m?.lyricsRef, ...(m?.lyricsCandidates ?? []).map((c) => c.ref)]);
+			const tag = stemOutputTag(job.id);
+			const own = (ref: string) =>
+				ref.startsWith(LYRICS_DIR) && lyricsTagOf(job.mediaId, ref.slice(LYRICS_DIR.length)) === tag;
+			// What the song named before, or this job's own documents: never another file a worker names.
+			staleLyrics = remakeMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.candidates, this.#d.mediaById).filter(
+				(ref) => had.has(ref) || own(ref)
+			);
+		} else {
+			setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
+		}
 		// The gate is satisfied by align having RUN, not by it having found words. After setMediaLyrics,
 		// so the artifact is already attached when there is one.
 		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
@@ -1001,6 +1036,9 @@ export class WorkerHub {
 		// After the persist, so each delete queues behind the sidecar write it makes.
 		this.#retire(job.mediaId, replaced);
 		if (lost) this.#retireOwnOutput(msg, job.mediaId);
+		// Not held for the turn: the TV reads a lyrics document whole, once, and swaps a changed one in at a gap.
+		const doomed = staleLyrics;
+		if (doomed.length > 0) void queueSidecarTask(job.mediaId, async () => this.#d.deleteRefs?.(doomed));
 	}
 
 	/** running → requeue (retryable, attempts left) or failed (terminal). Frees the slot either way. */

@@ -21,11 +21,17 @@ class Action(StrEnum):
     STEMS_UPGRADE = "stems-upgrade"
     STEMS_REMAKE = "stems-remake"
     ALIGN = "align"
+    ALIGN_REMAKE = "align-remake"
 
     @property
     def is_separation(self) -> bool:
         """Separation actions run a separator engine and publish stems."""
         return self in (Action.STEMS, Action.STEMS_UPGRADE, Action.STEMS_REMAKE)
+
+    @property
+    def is_alignment(self) -> bool:
+        """Alignment actions time lyrics: a first `align`, or the host's remake of them."""
+        return self in (Action.ALIGN, Action.ALIGN_REMAKE)
 
 
 class Stage(StrEnum):
@@ -80,5 +86,11 @@ def serves(capabilities: frozenset[str], action: Action) -> bool:
     A worker advertising `stems:roformer` serves a `stems` job; one advertising `stems` serves it too.
     Both separation actions map onto the `stems` family, so a new separation action needs no new table.
     """
-    family = Action.STEMS.value if action.is_separation else action.value
+    family = (
+        Action.STEMS.value
+        if action.is_separation
+        else Action.ALIGN.value
+        if action.is_alignment
+        else action.value
+    )
     return any(c == family or c.startswith(f"{family}:") for c in capabilities)

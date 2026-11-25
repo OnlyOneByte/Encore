@@ -5,6 +5,7 @@ import {
 	mergeLyricsCandidate,
 	parseLyricsCandidates,
 	resolveLyricsRef,
+	pickBestLyrics,
 	isTerminalJob,
 	isQualityUpgrade,
 	isPlayable,
@@ -102,7 +103,8 @@ export function forgetProcess(media: Media, jobs: Pick<JobRepository, 'supersede
 	media.lyricsCandidates = [];
 	media.lyricsStatus = undefined;
 	media.stemStatus = 'none';
-	for (const t of ['stems', 'stems-upgrade', 'stems-remake', 'align'] as const) jobs.supersedeForRerun(media.id, t);
+	for (const t of ['stems', 'stems-upgrade', 'stems-remake', 'align', 'align-remake'] as const)
+		jobs.supersedeForRerun(media.id, t);
 }
 
 /** Lets the route answer honestly: an already-processed song is a SUCCESS, not an error. */
@@ -170,15 +172,19 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 	return job;
 }
 
-/** The host's Make it again for the sound (proposal 33 PR 3). The song stays ready: the remake has no gate, writes
- *  under new names and is swapped in by its completion. Behind every guest's pick, and held while the song is
- *  queued or playing (`waitsForTurn`). A remake already waiting or running is returned, not doubled. */
-export function requestRemake(media: Media, deps: Pick<ProcessDeps, 'jobs' | 'now'>): Job {
-	const live = deps.jobs.findLive(media.id, 'stems-remake');
+/** The host's Make it again (proposal 33 PR 3), for the sound or the lyrics. The song stays ready: a remake has no
+ *  gate, writes under new names and is swapped in by its completion. Behind every guest's pick; a sound remake is
+ *  also held while the song is queued or playing (`waitsForTurn`). One already waiting or running is returned. */
+export function requestRemake(
+	media: Media,
+	deps: Pick<ProcessDeps, 'jobs' | 'now'>,
+	jobType: 'stems-remake' | 'align-remake' = 'stems-remake'
+): Job {
+	const live = deps.jobs.findLive(media.id, jobType);
 	if (live && !isTerminalJob(live.status)) return live;
 	// A finished remake still holds the dedup slot, so it is freed first, as `retimeLyrics` does for align.
-	deps.jobs.supersedeForRerun(media.id, 'stems-remake');
-	return deps.jobs.enqueue(media.id, 'stems-remake', NO_QUEUE_PRIORITY, deps.now());
+	deps.jobs.supersedeForRerun(media.id, jobType);
+	return deps.jobs.enqueue(media.id, jobType, NO_QUEUE_PRIORITY, deps.now());
 }
 
 /** Why a lyrics re-select could not start — the honest refusal the endpoint maps to a status code. */
@@ -472,6 +478,33 @@ export function setMediaLyrics(
 	if (!ref) return false;
 	media.lyricsRef = ref;
 	return true;
+}
+
+/**
+ * An `align-remake` completion. Its candidates are new files, so a merge by ref would keep every old one ranking
+ * beside them: they REPLACE the automatic set instead, keeping the host's fix and pasted words. A remake with
+ * nothing showable leaves the old set. Returns the lyrics files the caller deletes once the swap is persisted.
+ */
+export function remakeMediaLyrics(mediaId: string, candidates: unknown, mediaById: Map<string, Media>): string[] {
+	const media = mediaById.get(mediaId);
+	if (!media) return [];
+	const reported = parseLyricsCandidates(candidates).flatMap((c) => {
+		const ref = toRelativeKey(c.ref);
+		return ref ? [{ ...c, ref }] : [];
+	});
+	const old = media.lyricsCandidates ?? [];
+	const named = new Set([...old.map((c) => c.ref), media.lyricsRef].filter((r): r is string => !!r));
+	if (!pickBestLyrics(reported.filter((c) => c.textSource !== 'manual'))) {
+		return reported.map((c) => c.ref).filter((ref) => !named.has(ref) && ref !== media.lyricsOverrideRef);
+	}
+	const kept = old.filter(
+		(c) => (c.ref === media.lyricsOverrideRef || c.textSource === 'manual') && !reported.some((r) => r.ref === c.ref)
+	);
+	const next = [...kept, ...reported];
+	media.lyricsCandidates = next;
+	media.lyricsRef = resolveLyricsRef(next, media.lyricsOverrideRef) ?? media.lyricsRef;
+	const live = new Set([...next.map((c) => c.ref), media.lyricsRef, media.lyricsOverrideRef]);
+	return [...named].filter((ref) => !live.has(ref));
 }
 
 /** Additive: a song is playable with only the instrumental. An ABSENT ref is a real answer, not a missing

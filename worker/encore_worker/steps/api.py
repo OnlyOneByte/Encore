@@ -205,13 +205,14 @@ def attempt_ref(job: JobRef, name: str) -> str:
 def store_ref(job: JobRef, ref: str) -> str:
     """The store ref an attempt written at `ref` (`attempt_ref`) is published under — what core is told.
 
-    A pin's accepted attempt goes to the pinned ref; any other keeps its name under `derived/lyrics/`. A ref
-    already in the store is its own store ref.
+    A pin's accepted attempt goes to the pinned ref; any other keeps its name under `derived/lyrics/`, a
+    remake's with its tag (`keys.lyrics_store_ref`). A ref already in the store is its own store ref.
     """
     pin = pin_of(job)
     if pin is not None and pin.refused is None:
         return pin.ref
-    return f"{_LYRICS_DIR}{ref.rsplit('/', 1)[-1]}"
+    tag = None if ref.startswith(_LYRICS_DIR) else keys.checked_output_tag(job.params.get("outputTag"))
+    return keys.lyrics_store_ref(job.media_id, ref.rsplit("/", 1)[-1], tag)
 
 
 def sync_mode_of(job: JobRef) -> SyncMode:

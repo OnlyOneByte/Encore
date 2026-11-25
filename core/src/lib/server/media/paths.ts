@@ -149,6 +149,13 @@ export function stemTagOf(mediaId: string, fileName: string): string | null {
 	return isTaggedStemOf(mediaId, fileName) ? (fileName.slice(mediaId.length + 1).split('-')[0] ?? null) : null;
 }
 
+/** The tag of one of this song's remade lyrics documents (`<id>-<tag>-<label>-<timing>.json`), else null. A tag
+ *  is a job id (26 characters), so no label is ever read as one. */
+export function lyricsTagOf(mediaId: string, fileName: string): string | null {
+	if (!fileName.startsWith(`${mediaId}-`)) return null;
+	return /^([0-9a-z]{20,40})-[0-9a-z-]+\.json$/.exec(fileName.slice(mediaId.length + 1))?.[1] ?? null;
+}
+
 /** Newest first: a row's on-disk extension depends on VOCALS_EXT at the time it was processed. */
 export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
 

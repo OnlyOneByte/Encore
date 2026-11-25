@@ -22,7 +22,8 @@ const JOB_STAGE_FLOOR: Record<JobType, MediaStage> = {
 	// broadcasts are suppressed entirely.
 	'stems-upgrade': 'separating',
 	'stems-remake': 'separating',
-	align: 'aligning'
+	align: 'aligning',
+	'align-remake': 'aligning'
 };
 
 /** The media-level stage a running job of this type is at, at the earliest. */
@@ -63,9 +64,9 @@ export function completedStatusFor(job: Job, media: Media | undefined): MediaSta
 	return stagePosition(nextStatus) > stagePosition(floor) ? nextStatus : floor;
 }
 
-/** A `stems-upgrade` or `stems-remake` runs on an ALREADY singable song, so without this its accept flips every
- *  phone's ready row back to "Making karaoke" for the length of a background re-separation. */
+/** An upgrade or a remake runs on an ALREADY singable song, so without this its accept flips every phone's ready
+ *  row back to "Making karaoke" for the length of the background work. */
 export function shouldBroadcastProcess(job: Job, media: Media | undefined): boolean {
-	if (job.jobType !== 'stems-upgrade' && job.jobType !== 'stems-remake') return true;
+	if (job.jobType !== 'stems-upgrade' && job.jobType !== 'stems-remake' && job.jobType !== 'align-remake') return true;
 	return !media || !readyToSing(media);
 }

@@ -66,12 +66,17 @@ export function assignParams(
 	const separator = separatorFor(jobType, settings);
 	const outputTag = reSeparates(jobType) && jobId ? { outputTag: stemOutputTag(jobId) } : {};
 	if (separator) return { ...acquire, ...separator, ...outputTag };
-	if (jobType !== 'align') return acquire;
-	return {
+	if (jobType !== 'align' && jobType !== 'align-remake') return acquire;
+	const aligning = {
 		...acquire,
 		asrModel: settings?.asrModel ?? DEFAULT_ASR_MODEL,
 		syncMode: settings?.syncMode ?? DEFAULT_SYNC_MODE,
-		...lookupKeys(media),
+		...lookupKeys(media)
+	};
+	// A remake searches again from scratch, under new names; a host's fix still outranks what it finds.
+	if (jobType === 'align-remake') return { ...aligning, ...(jobId ? { outputTag: stemOutputTag(jobId) } : {}) };
+	return {
+		...aligning,
 		// With an override the align must RE-TIME that exact candidate, never re-select, or it can discard
 		// the candidate the human chose. `pinnedText` rides ONLY inside this block: it is meaningless
 		// without a `pinnedRef` to name.
@@ -213,7 +218,8 @@ export function requiredCapability(jobType: JobType, settings?: GlobalSettings):
 		const engineCapability = getEngine(engineId)?.capability ?? 'stems';
 		return model && isWorkerModel(model) ? modelCapability(model) : engineCapability;
 	}
-	return jobType;
+	// Any aligner can remake lyrics; a worker older than the remake refuses it at accept (`#onReject`).
+	return jobType === 'align-remake' ? 'align' : jobType;
 }
 
 /** Mirrored in the worker's `adapters/zoo.MODEL_CAPABILITY_PREFIX`. */
