@@ -100,16 +100,13 @@ export class StallWatchdog {
 	}
 }
 
-/** `HTMLMediaElement.HAVE_FUTURE_DATA`, spelled here so this file stays free of the DOM and testable under bun. */
-const HAVE_FUTURE_DATA = 3;
-
 export interface UnansweredPlay {
 	/** How long the slot's play() has gone unanswered, or null when none is pending. */
 	pendingForMs: number | null;
 	/** Has anyone touched this TV? A TV that had a tap is not being held by its autoplay policy. */
 	gestured: boolean;
-	/** The element's `readyState`. */
-	readyState: number;
+	/** How long the media has been ready to play (`readyState` at least HAVE_FUTURE_DATA), or null while it isn't. */
+	readyForMs: number | null;
 	/** The element holds a media error. */
 	errored: boolean;
 }
@@ -119,11 +116,11 @@ export interface UnansweredPlay {
  * Some TV browsers are said to leave a refused play() pending instead of rejecting it with NotAllowedError, and read as
  * "the song isn't moving" that would fail every song in the queue. But a play() also stays pending while the bytes
  * simply do not come, with nothing loaded and no error, and calling THAT the tap screen's case hid a real stall
- * forever (code review r2 of #994). So only media that is READY to play, on an untouched TV, after the retry's 4 s:
- * then nothing but the policy can be holding it back. A media error is the song's, whatever its play() is doing.
+ * forever (code review r2 of #994). So only a play() unanswered for the retry's 4 s WHILE the media was ready, on an
+ * untouched TV: then nothing but the policy can be holding it back. Counted from the play() alone, a 6 s cold start
+ * read as refused on the tick its file landed, before play() could answer (#1267). A media error is the song's.
  */
-export function unansweredPlayIsAutoplay({ pendingForMs, gestured, readyState, errored }: UnansweredPlay): boolean {
-	return (
-		pendingForMs !== null && pendingForMs >= STALL_RETRY_MS && !gestured && !errored && readyState >= HAVE_FUTURE_DATA
-	);
+export function unansweredPlayIsAutoplay({ pendingForMs, gestured, readyForMs, errored }: UnansweredPlay): boolean {
+	if (pendingForMs === null || readyForMs === null || gestured || errored) return false;
+	return Math.min(pendingForMs, readyForMs) >= STALL_RETRY_MS;
 }

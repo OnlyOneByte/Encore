@@ -651,6 +651,18 @@ test('R2-H2 a slow cold start (6 s) on a TV nobody touched: no false "Tap anywhe
 			})
 		);
 		await sampleFrames(r.tv, { hint: [SEL.autoplayHint, ''] });
+		// play() answers 300 ms late, as on a starved host, so a watchdog tick always lands between the file arriving and
+		// play() settling: counting from the play() alone flashed "Tap anywhere" there (#1267).
+		await r.tv.evaluate(() => {
+			const orig = HTMLMediaElement.prototype.play;
+			HTMLMediaElement.prototype.play = function () {
+				const p = orig.call(this);
+				return p.then(
+					(v) => new Promise<void>((res) => setTimeout(() => res(v), 300)),
+					(e) => new Promise<void>((_, rej) => setTimeout(() => rej(e), 300))
+				);
+			};
+		});
 		open();
 		const { theoId } = await skipMaya(world, r);
 		await expect

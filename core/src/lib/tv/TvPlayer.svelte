@@ -318,6 +318,7 @@
 		watchedEntryId = entryId;
 		watchdog.reset();
 		lastBuffered = 0;
+		readySince = null;
 	});
 
 	// A play() still unanswered, and whether anyone has touched this TV: see `unansweredPlayIsAutoplay`.
@@ -325,6 +326,8 @@
 	let playPendingSince: number | null = null;
 	let playPendingFor: string | null | undefined;
 	let gestured = false;
+	// When this slot's media last became ready to play, for the same rule; null while it isn't.
+	let readySince: number | null = null;
 	// The latch above was raised by an unanswered play(), which may never settle to clear it: the tap itself must.
 	let blockedUnanswered = false;
 
@@ -344,12 +347,14 @@
 			prewarmFailedFired = true;
 			onprewarmfailed?.();
 		}
+		if (el && el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) readySince ??= now;
+		else readySince = null;
 		const unanswered =
 			!!el &&
 			unansweredPlayIsAutoplay({
 				pendingForMs: playPendingSince === null ? null : now - playPendingSince,
 				gestured,
-				readyState: el.readyState,
+				readyForMs: readySince === null ? null : now - readySince,
 				errored: !!el.error
 			});
 		if (unanswered && !autoplayBlocked) {

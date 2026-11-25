@@ -12,15 +12,27 @@ import {
 } from '$lib/tv/stall-watchdog';
 
 describe('unansweredPlayIsAutoplay: when a pending play() is the tap screen’s case', () => {
-	// Ready media (HAVE_FUTURE_DATA), pending 4 s, on an untouched TV, no error: only the policy can be holding it.
-	const policy: UnansweredPlay = { pendingForMs: STALL_RETRY_MS, gestured: false, readyState: 3, errored: false };
+	// Media ready to play for 4 s, its play() pending as long, on an untouched TV, no error: only the policy holds it.
+	const policy: UnansweredPlay = {
+		pendingForMs: STALL_RETRY_MS,
+		gestured: false,
+		readyForMs: STALL_RETRY_MS,
+		errored: false
+	};
 	test('ready media whose play() has gone unanswered for 4 s on an untouched TV is the autoplay policy', () => {
 		expect(unansweredPlayIsAutoplay(policy)).toBe(true);
-		expect(unansweredPlayIsAutoplay({ ...policy, readyState: 4 })).toBe(true);
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 60_000, readyForMs: 60_000 })).toBe(true);
 	});
 	test('a file that never loads (nothing arrived, no error) is the song’s stall, not the tap screen', () => {
 		// Code review r2 of #994, R2-H1: readyState 0 with a fetch open held "Tap anywhere" up for good.
-		for (const readyState of [0, 1, 2]) expect(unansweredPlayIsAutoplay({ ...policy, readyState })).toBe(false);
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 60_000, readyForMs: null })).toBe(false);
+	});
+	test('a slow cold start: the file just landed, so its play() has not had 4 s while ready to answer (#1267)', () => {
+		// The play() was asked for 6 s ago, but the media only became ready this tick, or 3.9 s ago.
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: 0 })).toBe(false);
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: STALL_RETRY_MS - 1 })).toBe(false);
+		// A play() still unanswered 4 s after the file landed is the policy after all.
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 10_000, readyForMs: STALL_RETRY_MS })).toBe(true);
 	});
 	test('a media error is the song’s, whatever its play() is doing', () => {
 		expect(unansweredPlayIsAutoplay({ ...policy, errored: true })).toBe(false);
@@ -246,7 +258,9 @@ describe('TvPlayer wiring', () => {
 	test('an unanswered play() is judged by unansweredPlayIsAutoplay, and the latch it raises precedes the tick', () => {
 		const tick = src.split('function checkStall(): void {')[1]?.split('\n\t}\n')[0] ?? '';
 		expect(tick).toContain('unansweredPlayIsAutoplay({');
-		expect(tick).toContain('readyState: el.readyState');
+		// Ready time is stamped on the tick that first sees HAVE_FUTURE_DATA and cleared when it drops (#1267).
+		expect(tick).toContain('el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) readySince ??= now;');
+		expect(tick).toContain('readyForMs: readySince === null ? null : now - readySince');
 		expect(tick).toContain('errored: !!el.error');
 		// The latch is raised BEFORE the tick, so the watchdog sees the tap wait at the same 4 s it would retry at.
 		expect(tick.indexOf('autoplayBlocked = true;')).toBeLessThan(tick.indexOf('watchdog.tick('));
