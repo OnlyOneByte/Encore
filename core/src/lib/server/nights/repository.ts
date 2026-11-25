@@ -1,6 +1,6 @@
 // Your night: each singer's own turns, grouped into nights, for their recap. See docs/SERVER.md#your-night.
 
-import { and, desc, eq, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { nightOptOuts, nights, performances } from '../db/schema';
 import { ulid } from '../../contract';
@@ -128,7 +128,8 @@ export class NightLog {
 			: eq(performances.singerId, owner.singerId);
 	}
 
-	/** The owner's nights, newest first. Times span the owner's own turns, so no one else's reach them. */
+	/** The owner's nights, newest first. Times span the owner's own turns, so no one else's reach them. A turn that
+	 *  would not play is not a song sung: it counts in neither the songs nor the times, as in the phone's story. */
 	nightsFor(owner: HistoryOwner): NightSummary[] {
 		return this.#db
 			.select({
@@ -138,7 +139,7 @@ export class NightLog {
 				songs: sql<number>`count(*)`
 			})
 			.from(performances)
-			.where(this.#owns(owner))
+			.where(and(this.#owns(owner), ne(performances.end, 'failed')))
 			.groupBy(performances.nightId)
 			.orderBy(desc(sql`2`))
 			.all()

@@ -1766,6 +1766,32 @@ for the last), You 3 of 4 unchanged. Taps from the Sing tab are unchanged for al
 the machine scope 2. The scope line in the sticky header costs ZERO height, measured: the header's box is 64px with
 and without it, because the 44px back button already sets that row's height.
 
+### Your night
+
+Proposal 29, PR 3. The phone's half of [Your night](SERVER.md#your-night), and only ever the caller's own.
+
+- **Where.** The You scope has a "Your nights" card: each night, newest first, as "Wednesday, Nov 25 · 2 songs",
+  the **Keep my nights** switch (`PATCH /api/me/nights`), and **Delete my history** behind one confirm
+  (`DELETE /api/me/nights`). Each tap shows its outcome at once and rolls back with one line on a refusal, as Keep
+  me does. A night opens `/settings/you/nights/:id`. The switch sends one PATCH at a time; a second tap while one
+  is out is sent once it answers, so the last tap wins. After Delete my history, focus moves to the switch.
+- **The story.** A few slides in your colour, one fact each (`$lib/night-story.ts` decides which are true): the
+  cover ("2 songs", and when), your loudest song when anyone cheered, and the setlist with each song's cheers and
+  key, plus "You like it 2 keys down" when more than half the songs were shifted. A turn that would not play is not
+  a song sung, here or in the list's count. Nothing compares you with another singer.
+- **Moving through it.** The right half of the slide is Next, the left half Back: two real buttons, so a keyboard
+  and a screen reader get them, and the arrow keys do the same while focus is on the story (never from the dock).
+  At either end the button is `aria-disabled`, not `disabled`, so focus stays on it. A status line says "Slide 2 of
+  3". No timer. Save is sticky above the dock, so a long setlist scrolls under it.
+- **The flood.** A fixed layer in the singer's registry fill, with its `on_fill` ink, faded in by opacity, and
+  each slide's big number pops by transform: the Spotlight rule, transform and opacity only, and both cut under
+  reduced motion. The dock stays, so the room's now-line and "You're up" are never under the story.
+- **Save picture.** The slide on screen, drawn to a 1080×1350 canvas (`$lib/night-picture.ts`), shared through
+  `navigator.share` in a secure context and downloaded as `my-night.png` otherwise: a LAN `http://` page is never
+  one. Closing the share sheet is not an error. Every line is cut to its width with an ellipsis, a setlist title to
+  the width its detail leaves, and a setlist of more than seven songs shows six and "+N more".
+- **Not yet.** "Your night is ready" in the now-line, the TV's "Tonight" (PR 4) and streaks (PR 5).
+
 ### The song page
 
 `/song/[mediaId]` answers "can I sing this, and are the words right" for ANY song id, including one no

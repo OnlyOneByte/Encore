@@ -829,8 +829,8 @@ as the same person. There is no email, no password and no signup screen.
 
 ### Your night
 
-Proposal 29, PR 2 (#1108). Each singer's turns are kept for their own recap ("Your night"); the phone and TV
-screens come in later PRs. `src/lib/server/nights/` owns it.
+Proposal 29, PR 2 (#1108). Each singer's turns are kept for their own recap ("Your night"). The phone's screens
+are PR 3 ([FRONTEND.md](FRONTEND.md#your-night)); the TV's come later. `src/lib/server/nights/` owns it.
 
 - **Tables.** `performances`: one row per turn that finished, was skipped or failed, with the song, start and
   end, the key and guide it ended on, how many times its singer changed the key, and how many cheers it got.
@@ -851,12 +851,17 @@ screens come in later PRs. `src/lib/server/nights/` owns it.
   kept person when the device cookie proves it, to `night_opt_outs`; a turn of anyone listed writes nothing.
   Opting out stops new rows only: the nights already kept stay until Delete my history.
   The opt-out is its own table so no roster projection can carry it, and Keep me copies it to the person.
-- **Reading.** `GET /api/me/nights` lists your nights, newest first, with `recording`. `GET /api/me/nights/:id`
+- **Reading.** `GET /api/me/nights` lists your nights, newest first, with `recording`. Its song count and times
+  are the songs sung: a failed turn counts in neither, and a night of only failed turns is not listed, as on the
+  phone. `GET /api/me/nights/:id`
   returns your own turns in one night, with titles from the catalog. Both answer only about the caller: the
   singer from `encore_singer`, and the kept person only when the device cookie names them too, as for Delete
   me (`historyOwner`). A copied singer cookie is not the person: once the owner's device token rotates, the
   copy reads and deletes only its own night. A night you sang nothing in is 404, even if others did, and its
   times are your own turns', never the room's. No cookie, a forged one, or one ended by Leave is 401.
+  The phone's two pages load the same way, on the server: `/settings/you` lists your nights, and
+  `/settings/you/nights/:id` is one night's story, a 404 for a night that is not yours; without a join, both
+  send you to join first.
 - **Changing it.** `PATCH /api/me/nights { recording }` and `DELETE /api/me/nights` (Delete my history, every
   row you can read) are the caller's own, behind the same Origin and JSON checks as every write. Keep me
   stamps tonight's rows with the person (`performances.person_id`), and Delete me deletes them all.
