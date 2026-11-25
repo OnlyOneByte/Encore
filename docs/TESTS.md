@@ -21,7 +21,11 @@ opens the Playwright `*.spec.ts` files.
 
 There is no DOM installed globally. A test that needs one builds its own — see
 `tests/unit/lib/tv/wake-lock.test.ts`, which installs a happy-dom `Window` for the two globals the
-module under test actually touches. Component behaviour (keyboard, paste, disabled states) is tested on the
+module under test actually touches, and puts them back in `afterAll`. Every unit file shares one process, and
+bun's file order differs by checkout, so a global left behind breaks whichever file runs next.
+`tests/unit/globals-guard.ts`, preloaded from `bunfig.toml`, fails the run if any file leaves `window`,
+`document` or `navigator` changed (#1321). Stub `window` and `document` together: the socket client listens on
+both once both exist. Component behaviour (keyboard, paste, disabled states) is tested on the
 Chromium rung, where it can be observed with a real layout engine.
 
 ## The one rule worth keeping
