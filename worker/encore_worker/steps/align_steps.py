@@ -18,7 +18,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from statistics import median
 from typing import TYPE_CHECKING, Any, Protocol
@@ -2536,20 +2536,20 @@ class AlignStepsImpl:
             turns = await asyncio.to_thread(self._a.diarizer.diarize, target)
         except Exception:  # noqa: BLE001 - a diarizer that cannot answer must not fail a job
             return doc
+        heard = replace(doc, voices=attribute.speaker_count(turns), parts=0)
         if not turns:
-            return doc
-
+            return heard
         absolute = os.path.join(job.media_dir, doc.ref)
         try:
             with open(absolute, encoding="utf-8") as handle:
                 loaded = json.load(handle)
             annotated = attribute.attribute(loaded, list(turns))
             if annotated is loaded:
-                return doc  # nothing trustworthy to add: one voice, or not a confident duet (`attribute`)
+                return heard  # nothing trustworthy to add: one voice, or not a confident duet (`attribute`)
             write_json_atomically(absolute, annotated)
         except (OSError, ValueError):
-            return doc  # the document on disk is already correct without parts
-        return doc
+            return heard  # the document on disk is already correct without parts
+        return replace(heard, parts=attribute.part_count(annotated))
 
     # ── publication ──────────────────────────────────────────────────────────────────────────────
 

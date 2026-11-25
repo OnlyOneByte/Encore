@@ -1300,6 +1300,16 @@ the whole song. Those checks are what stands between a solo and a rainbow: the w
 that pyannote on sung vocals routinely over-segments into 3–5 phantom speakers. **Not re-measured here** —
 the gated pyannote weights are not on this box, so no song in the bench corpus was diarized.
 
+**The ungated alternative was measured, and fails** (`LOG.md`, "Voices: who sings which line"). That is
+`line-voices`: one `pyannote/wespeaker-voxceleb-resnet34-LM` embedding per aligned line (CC-BY-4.0,
+`ml.LineVoiceEmbedder`), clustered in `domain/lyrics/voices.py`. On a labelled set spliced from three
+singers, a solo turned multi-voice before any duet was coloured: the embedding tracks the line more than the
+singer. It is not wired into a job. `ml.VOICE_MODELS` lists each voice model with its licence and whether it
+is gated, for the host to choose from later.
+
+**An align completion records what a diarizer heard** where one ran: `voices` (`speaker_count`) and
+`voiceParts` (the parts written, 0 for one colour) on the facts.
+
 The module is pure, so deciding a line's singer from overlapping speaker turns is testable with no pyannote,
 no model and no audio; the step's only job is to run the diarizer and hand the turns in.
 

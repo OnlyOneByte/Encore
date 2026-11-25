@@ -460,5 +460,5 @@ Encore is **source-available, not open source**: it is licensed under the
 [PolyForm Noncommercial License 1.0.0](LICENSE), which allows any non-commercial use, including changing
 and sharing it, and does not allow commercial use. Third-party material (code and media) keeps its own
 licence: the vendored shadcn-svelte components, the Lucide icon geometry, the benchmark songs and the
-reaction artwork are all credited in [`CREDITS.md`](CREDITS.md), along with the MMS_FA model weights the
-worker downloads.
+reaction artwork are all credited in [`CREDITS.md`](CREDITS.md), along with the model weights the
+worker and the benchmarks download.

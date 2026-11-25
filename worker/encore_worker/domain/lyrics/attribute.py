@@ -150,5 +150,13 @@ def _num(value: object) -> float | None:
 
 
 def speaker_count(turns: Sequence[Segment]) -> int:
-    """How many distinct voices the diarizer found. Not recorded on the job yet; nothing calls it."""
+    """How many distinct voices the diarizer found, recorded as `voices` on the align completion facts."""
     return len({str(t.get("speaker")) for t in turns if t.get("speaker") is not None})
+
+
+def part_count(doc: Doc) -> int:
+    """How many parts `attribute` wrote into `doc`, recorded as `voiceParts`: 0 is one colour."""
+    lines = doc.get("lines")
+    if not isinstance(lines, list):
+        return 0
+    return len({line.get("part") for line in lines if isinstance(line, Mapping)} - {None})
