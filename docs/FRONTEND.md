@@ -519,7 +519,8 @@ because that is the screen you are already on to see whose turn is next.
 
 **The heart (proposal 36)** sits at the end of the line, before the Cheer key, while someone else sings: one tap
 saves the song to Your songs (`PUT /api/me/songs/:mediaId`), a second takes it out (`DELETE`). The layout reads the
-saved set once per singer from `GET /api/me/songs` and flips it on the tap, so the mark fills in the same frame and
+saved set once per singer from `GET /api/me/songs`, emptied first on any change of singer so a Leave never hands one
+guest's saves to the next, and flips it on the tap, so the mark fills in the same frame and
 goes back only if the server refuses (with a toast). A save swaps the line's words for `<song> is in your songs` for
 2 s, in place, keyed on the entry like the title; an unsave says nothing, and `aria-pressed` carries the state for a
 screen reader. On your own song, or offline, the heart rests hidden and inert in its slot, as the Cheer key does, so
