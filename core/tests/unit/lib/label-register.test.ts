@@ -187,9 +187,8 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 	   What still holds is the clause below it: not one of these three sits on a field label. */
 	// -3 with redesign step 5b: /queue's three eyebrows (your card's, the Now row's, the list's) went sentence case.
 	expect(onPhLadder.sort()).toEqual(['routes/song/[mediaId]/+page.svelte .lab']);
-	// The television's rows are unchanged by the phone rebuild, and this is their only guard. `.phrase-kick` moved
-	// with attract into TvAttract (proposal 09, the split).
-	expect(onTvLadder.sort()).toEqual(['lib/tv/TvAttract.svelte .phrase-kick', 'lib/tv/TvProgress.svelte .pill .lab']);
+	// The television has none since redesign step 8 retired its eyebrows (`.phrase-kick`, the corner pill's `.lab`).
+	expect(onTvLadder.sort()).toEqual([]);
 
 	// The song page renders no field label at all, so its row cannot be one wearing the section register.
 	expect(strip(read('src/routes/song/[mediaId]/+page.svelte'))).not.toMatch(/<Field\.Label|class="control-label"/);

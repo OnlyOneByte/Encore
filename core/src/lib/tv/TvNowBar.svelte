@@ -18,9 +18,9 @@
 </script>
 
 <script lang="ts">
-	import { songDisplay, type Media, type TvProgressStyle } from '$lib/contract';
+	import { SINGER_COLORS, nearestPaletteStop, songDisplay, type Media, type TvProgressStyle } from '$lib/contract';
 	import { keyShiftLabel } from '$lib/song-facts';
-	import { UP_NEXT } from '$lib/phrasing/turn-phrasing';
+	import { IS_NEXT } from '$lib/phrasing/turn-phrasing';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
 
 	/** The stage's text chrome: who is singing (bottom-left), the progress, and who is up next (top-right). */
@@ -68,6 +68,10 @@
 	const display = $derived(songDisplay(media));
 	/** `Key -2` while shifted, nothing at 0. Never the key's NAME: see `keyShiftLabel`. */
 	const keyLine = $derived(keyShiftLabel(keyShift));
+	// The pill's fill and its certified ink, from the singer's palette stop.
+	const stop = $derived(nearestPaletteStop(color ?? SINGER_COLORS[0]));
+	// The progress is the pill's underline (redesign step 8): the default `edge` line, drawn inside the safe area.
+	const underline = $derived(progressStyle === 'edge' || progressStyle === 'card');
 
 	// MEASURED, not predicted: this card grows with its content, so a static sum UNDER-counts and covers the sung line.
 	// The phone's dock is the same finding on the other surface — see the `--dock-h` note in src/routes/+layout.svelte,
@@ -82,13 +86,17 @@
 </script>
 
 <!--
-	WHO IS SINGING — bottom-left, plain TEXT rather than a card: a filled panel over the room's chosen
-	background amputates the feature they picked. `--tv-chrome-h` is MEASURED from this element, so the class
-	name and the ResizeObserver binding stay.
+	WHO IS SINGING — bottom-left, a PILL in the singer's colour whose underline is the progress (redesign step 8): the
+	singer named once, in their own colour. `--tv-chrome-h` is MEASURED from this element, so the class name and the
+	ResizeObserver binding stay.
 -->
 <!-- Hidden, not unmounted, while a card is painted: its name is never repeated here, and `--tv-chrome-h` stays. -->
-<div class={['lower-third', { 'under-card': cardPainted }]} bind:this={lowerThirdEl}>
-	<span class="ls-name"><span class="ls-dot" style="--singer: {color ?? 'var(--accent2)'}"></span>{name}</span>
+<div
+	class={['lower-third', { 'under-card': cardPainted }]}
+	style="--singer:{stop.fill};--on-singer:{stop.on_fill}"
+	bind:this={lowerThirdEl}
+>
+	<span class="ls-name">{name}</span>
 	<!-- The separator carries its own NBSP: Svelte collapses the leading space next to a tag boundary. -->
 	<span class="ls-song"
 		>{display.title}{#if display.artist}<span class="ls-artist">{'\u00a0- '}{display.artist}</span>{/if}</span
@@ -98,20 +106,24 @@
 	{#if keyLine}
 		<span class="ls-key">{keyLine}</span>
 	{/if}
-	{#if progressStyle === 'card'}
-		<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
+	{#if underline}
+		{@render progress()}
 	{/if}
 </div>
-{#if progressStyle !== 'card'}
-	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
+{#if !underline}
+	{@render progress()}
 {/if}
-<!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. -->
+{#snippet progress()}
+	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
+{/snippet}
+<!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. Words, not an
+	"UP NEXT" eyebrow. -->
 {#if next}
 	<div class={['upnext', { yielded: yieldUpnext }]} bind:this={upnextEl}>
-		<span class="un-label">{UP_NEXT}</span>
-		<span class="un-name"
-			><span class="un-dot" style="--singer: {next.color ?? 'var(--ink-dim)'}"></span>{next.name}</span
-		>
+		<span class="un-name">
+			<span class="un-dot" style="--singer: {next.color ?? 'var(--ink-dim)'}"></span>{next.name}
+			<span class="un-is">{IS_NEXT}</span>
+		</span>
 		<span class="un-song">{songDisplay(next.media).title}</span>
 	</div>
 {/if}
@@ -125,34 +137,25 @@
 	.lower-third.under-card {
 		visibility: hidden;
 	}
+	/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. An opaque fill, so the ink
+	   reads on any backdrop with no text stroke or shadow. `overflow` clips the underline to the pill's radius. */
 	.lower-third {
-		/* CAPPED at 46vw, or a long title grows rightward into the join QR at bottom-right. */
 		position: absolute;
 		left: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
 		z-index: var(--z-tv-card);
 		display: flex;
-		flex-direction: column;
+		align-items: baseline;
+		flex-wrap: wrap;
+		/* In `em` of the song line, so the pill scales with the vh-rooted type at 720p and 4K alike. */
+		font-size: var(--tv-body);
+		column-gap: 0.6em;
 		max-width: 46vw;
-		gap: var(--tv-space-3xs);
-		/* The STROKE is load-bearing, not decoration: a shadow tuned against black disappears against a bright field
-		   of similar luminance (the singer name measured 1.10:1 on white). `paint-order: stroke fill` draws the
-		   outline BEHIND the glyph; the default eats the thin parts. Width in `em`, so 720p and 4K read the same. */
-		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
-		-webkit-text-stroke: 0.04em var(--scrim-strong);
-		paint-order: stroke fill;
-	}
-	/* A DOT rather than a fill: the singer's identity at a size that cannot compete with the words. */
-	.ls-dot {
-		display: inline-block;
-		width: 0.52em;
-		height: 0.52em;
-		border-radius: 50%;
-		margin-right: 0.42em;
-		vertical-align: baseline;
-		/* --singer as a custom property, never interpolated into `background`: color-mix needs the property to derive the
-		   halo, and concatenating alpha onto the value only works for 6-digit hex. */
+		padding: 0.3em 1em 0.45em;
+		border-radius: var(--radius-pill);
 		background: var(--singer);
+		color: var(--on-singer);
+		overflow: hidden;
 	}
 	.ls-name {
 		font-size: var(--tv-name);
@@ -177,17 +180,11 @@
 	   inert on an inline element, while `nowrap` DOES apply and hard-clips a long credit mid-word. */
 	.ls-artist {
 		font-size: var(--tv-body);
-		color: var(--ink-dim);
 		font-weight: 500;
 	}
 	.ls-key {
 		font-size: var(--tv-label);
-		/* One ink, not --ink-dim plus an 0.82 subtree alpha: the pair composited to a value no contrast check on
-		   either half could see. Folded into the colour, where it is readable as the value it actually is. */
-		color: color-mix(in srgb, var(--ink-dim) 82%, transparent);
 		font-weight: 600;
-		letter-spacing: 0.04em;
-		margin-top: var(--tv-space-3xs);
 	}
 
 	/* Offset below the connection dot with a vh term, so the clearance scales instead of being right only at 1080p. */
@@ -206,12 +203,8 @@
 		text-align: right;
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
 	}
-	.un-label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
+	.un-is {
 		color: var(--ink-dim);
-		font-weight: 700;
 	}
 	.un-name {
 		font-size: var(--tv-body);

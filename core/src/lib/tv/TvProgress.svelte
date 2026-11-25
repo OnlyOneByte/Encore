@@ -1,8 +1,7 @@
 <script lang="ts">
-	// Song progress in the three placements a room can choose between, as ONE component so the fill geometry and the
-	// reduced-motion rule are stated once. Every style is matched EXPLICITLY and there is no trailing else, so `off`
-	// renders nothing and a style added later cannot silently inherit a bar. `card` renders inline, placed INSIDE the
-	// now-singing card by the caller; the other two self-position.
+	// Song progress in the three styles a room can pick, in one component so the fill and the reduced-motion rule are
+	// stated once. `card` and `edge` render inside the singer's pill (TvNowBar); `corner` places itself at the top-left.
+	// No trailing else, so `off` renders nothing.
 	import { formatClock, formatRemainingAscii, progressFraction } from '$lib/clock';
 	import type { TvProgressStyle } from '$lib/contract';
 
@@ -10,7 +9,7 @@
 		style: TvProgressStyle;
 		elapsedSec: number;
 		durationSec: number;
-		/** A takeover card is up: the self-positioned styles hide with the lower third (`card` inherits it). */
+		/** A takeover card is up: `corner` hides with the lower third (the pill's styles inherit it). */
 		underCard?: boolean;
 	}
 	let { style, elapsedSec, durationSec, underCard = false }: Props = $props();
@@ -34,7 +33,7 @@
 			{formatRemainingAscii(elapsedSec, durationSec).slice(1)}
 		</div>
 	{:else if style === 'edge'}
-		<div class={['edgebar', { 'under-card': underCard }]}><i style="transform:scaleX({progress})"></i></div>
+		<div class="edgebar"><i style="transform:scaleX({progress})"></i></div>
 	{/if}
 {/if}
 
@@ -59,8 +58,7 @@
 			transition: transform var(--motion-tick) linear;
 		}
 		.topbar,
-		.pill,
-		.edgebar {
+		.pill {
 			transition: opacity var(--motion-base) ease;
 		}
 	}
@@ -71,11 +69,11 @@
 		opacity: 0;
 	}
 
+	/* `card` and `edge` sit in the singer's pill (TvNowBar), inked in its certified on_fill: currentColor. */
 	.card-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm);
-		margin-top: var(--space-xs);
 	}
 	.t {
 		font-size: var(--tv-label);
@@ -84,14 +82,13 @@
 	.track.card {
 		width: 210px;
 		height: 5px;
-		background: var(--track-bg);
+		background: color-mix(in srgb, currentColor 25%, transparent);
 		border-radius: var(--radius-xs);
 		overflow: hidden;
 	}
-	/* Solid white, not --grad: on the card's own gradient the accent gradient reads as noise, not a level. */
-	.track.card > i {
-		background: #fff;
-		border-radius: var(--radius-xs);
+	.track.card > i,
+	.edgebar > i {
+		background: currentColor;
 	}
 
 	.topbar {
@@ -122,21 +119,15 @@
 	.pill .lab {
 		color: var(--ink-dim);
 		font-size: var(--tv-label);
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
 	}
 
+	/* The pill's underline: its bottom edge, inside the safe area, never the screen's (redesign step 8). */
 	.edgebar {
 		position: absolute;
 		left: 0;
 		right: 0;
 		bottom: 0;
-		height: 8px;
-		background: color-mix(in srgb, var(--ink) 12%, transparent);
-		z-index: var(--z-tv-card);
-		overflow: hidden;
-	}
-	.edgebar > i {
-		background: var(--grad);
+		height: 0.2em;
+		background: color-mix(in srgb, currentColor 25%, transparent);
 	}
 </style>

@@ -102,7 +102,7 @@
 			<p class="url">{joinShort}</p>
 			<!-- Same ladder as attract, but the VALUE one tier down: this screen also carries a headline and a roster. -->
 			{#if roomCode}
-				<p class="code"><span class="code-l">or enter room code</span><b class="code-v">{roomCode}</b></p>
+				<p class="code"><span class="code-l">Or enter room code</span><b class="code-v">{roomCode}</b></p>
 			{/if}
 		</div>
 	</div>
@@ -194,16 +194,13 @@
 		margin: 1.2vh 0 0;
 		text-align: center;
 	}
-	/* EACH `padding-left` MUST MATCH ITS OWN `letter-spacing`: tracking adds its space after the last glyph as well as
-	   between, and a centred line box includes it, so the glyphs sit left of true centre by half the tracking. */
 	.code-l {
 		display: block;
 		font-size: var(--tv-label);
-		letter-spacing: 0.16em;
-		padding-left: 0.16em;
-		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
+	/* The code's `padding-left` matches its `letter-spacing`: tracking adds space after the last glyph too, and a
+	   centred line box includes it. */
 	.code-v {
 		display: block;
 		margin-top: 0.4vh;
@@ -248,9 +245,7 @@
 		height: 0.5em;
 	}
 	.label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
+		font-size: var(--tv-body);
 		color: var(--ink-dim);
 		font-weight: 700;
 	}
@@ -284,11 +279,7 @@
 		opacity: 0.55;
 	}
 	.tag {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		/* Folded: --ink-dim AND an 0.8 alpha double-dimmed this label, and neither half read as the result. */
-		color: color-mix(in srgb, var(--ink-dim) 80%, transparent);
+		font-size: var(--tv-label);
 	}
 	.swatch {
 		width: 0.62em;

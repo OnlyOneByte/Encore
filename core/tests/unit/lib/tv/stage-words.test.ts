@@ -121,19 +121,6 @@ test('no TV style block spells a non-ASCII glyph as a CSS escape', () => {
 	expect(tv.find((t) => t.f === 'src/lib/tv/TvProgress.svelte')!.text).toContain('<style>');
 });
 
-// The badge's live mark is a CSS dot (no `●` in its text): an empty `::before`, square, round and filled.
-test('the join badge draws its live dot, not a glyph', () => {
-	const badge = tv.find((t) => t.f === 'src/lib/tv/JoinBadge.svelte')!.text;
-	expect(badge).toContain('<div class="n">{onlineCount} ');
-	const dot = badge.match(/\.n::before\s*\{([^}]*)\}/)?.[1] ?? '';
-	const prop = (p: string) => dot.match(new RegExp(`(?:^|[;\\s])${p}:\\s*([^;]+);`))?.[1]!.trim();
-	expect(prop('content')).toBe("''");
-	expect(prop('width')).toBeDefined();
-	expect(prop('width')).toBe(prop('height'));
-	expect(prop('border-radius')).toBe('50%');
-	expect(prop('background')).toBe('currentColor');
-});
-
 const STATUSES = Object.keys({
 	queued: 1,
 	downloading: 1,

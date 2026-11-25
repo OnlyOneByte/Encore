@@ -845,7 +845,7 @@
 			style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);"
 			>music video</span
 		>
-		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
+		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" />
 	</div>
 
 	<!-- Every room-selectable placement, 'off' included, so the option is not a blank the gallery omits. -->

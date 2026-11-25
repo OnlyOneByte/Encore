@@ -156,9 +156,9 @@ export function normalizeGlobalSettings(
 
 /** How the TV shows song progress. */
 export const TV_PROGRESS_STYLES = [
-	{ id: 'card', label: 'In now singing card', note: 'Bar and countdown inside the now-singing card.' },
+	{ id: 'card', label: "With the singer's name", note: "Bar and countdown in the singer's pill." },
 	{ id: 'corner', label: 'Minimal corner', note: 'Thin bar along the top with a time remaining pill.' },
-	{ id: 'edge', label: 'Along bottom edge', note: 'Full-width bar on the bottom edge. No numbers.' },
+	{ id: 'edge', label: "Under the singer's name", note: "A line under the singer's pill. No numbers." },
 	{ id: 'off', label: 'Off', note: 'No progress on the TV. The phone still shows it.' }
 ] as const;
 
