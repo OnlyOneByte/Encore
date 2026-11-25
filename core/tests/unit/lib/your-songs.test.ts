@@ -47,6 +47,26 @@ test('no singer, no request', async () => {
 	expect(asked).toBe(0);
 });
 
+test('an answer that lands after a Leave, or after a later load for someone else, is not kept', async () => {
+	let land = (_: Response) => {};
+	globalThis.fetch = (() => new Promise<Response>((r) => (land = r))) as unknown as typeof fetch;
+	const late = loadYourSongs('alice');
+	forgetYourSongs();
+	land(new Response(JSON.stringify(alices)));
+	await late;
+	expect(cachedYourSongs('alice')).toBeNull();
+
+	const alicesLoad = loadYourSongs('alice');
+	const aliceLands = land;
+	const bobsLoad = loadYourSongs('bob');
+	aliceLands(new Response(JSON.stringify(alices)));
+	await alicesLoad;
+	expect(cachedYourSongs('alice')).toBeNull();
+	land(new Response(JSON.stringify({ songs: [], canKeep: true })));
+	await bobsLoad;
+	expect(cachedYourSongs('bob')).toEqual({ songs: [], canKeep: true });
+});
+
 const row = (o: Partial<Parameters<typeof yourSongLine>[0]> = {}) =>
 	yourSongLine({ keyShift: null, guideLevel: null, sung: 0, saved: null, ...o });
 
