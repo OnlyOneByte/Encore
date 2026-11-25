@@ -4,7 +4,7 @@
   docs/FRONTEND.md#up-next.
 -->
 <script lang="ts">
-	type Turn = { id: string; name: string; color?: string; title: string };
+	type Turn = { id: string; name: string; color?: string; title: string; making?: boolean };
 
 	let {
 		now,
@@ -26,10 +26,12 @@
 					<li>
 						<span class="dot" style:background={t.color} aria-hidden="true"></span>
 						<b>{t.name}</b>
-						<span class="title">{t.title}</span>
+						<span class="title">{t.title}{t.making ? ' - making the karaoke' : ''}</span>
 					</li>
 				{/each}
 			</ol>
+		{:else}
+			<ol aria-label="Up next"><li><span class="title">Nobody's next yet</span></li></ol>
 		{/if}
 	</div>
 	<div class="join">

@@ -40,9 +40,19 @@ test('Up next: the host sets it, and the copy shows who sings, the next turns an
 		await readySong(world, theo, 'bohemian');
 		await readySong(world, bo, 'believin');
 		await queueReady(ana, 'caroline');
+		await expect(copy.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		// With nobody after Ana, the board says so in one line.
+		const early = (await rows(host)).find((r) => !r.isTv && r.name === 'Screen 3')!;
+		await host.request.post('/api/screens', { data: { action: 'show', id: early.id, show: 'board' } });
+		await expect(phoneCopy.locator('.board li')).toHaveText(["Nobody's next yet"], { timeout: 5_000 });
+		if (process.env.SHOT_DIR) {
+			// The song-change card from the copy's opening fades out first.
+			await phoneCopy.waitForTimeout(3_000);
+			await shot(phoneCopy, 'board-390-nobody-next');
+		}
 		await queueReady(theo, 'bohemian');
 		await queueReady(bo, 'believin');
-		await expect(copy.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		await expect(phoneCopy.locator('.board li b')).toHaveText(['Theo', 'Bo'], { timeout: 10_000 });
 
 		// The host's control has three choices on each copy.
 		await host.goto('/settings/screens');

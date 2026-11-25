@@ -2427,6 +2427,9 @@ a big QR with "Scan to sing" and the room code. It never shows the words, so its
 
 - **Everything else is as Words only:** only a copy mid-song, the lobby and attract unchanged, the seat always
   everything, no lower-third, join corner, reactions or background, and no second QR on the song-change card.
+- **A turn whose song is still being made** reads "- making the karaoke" after its song, exactly when the singer's
+  phone shows its making card (`queueCardKind`), in the lobby's own words.
+- **Nobody next:** one line, "Nobody's next yet", over the QR's "Scan to sing".
 - **On a phone-shaped screen** the QR goes under the turns.
 - **Loaded on demand:** `TvBoard` is a dynamic import, so a screen never set to Up next does not ship its CSS
   (CLAIM 13's `/tv` budget). Until it has loaded, and if it cannot load, the screen shows the whole stage.

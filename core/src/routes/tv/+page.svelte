@@ -51,7 +51,7 @@
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
 	import { stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
-	import { waitingTurns } from '$lib/readiness';
+	import { queueCardKind, waitingTurns } from '$lib/readiness';
 	import {
 		mergeCatalog,
 		syncLoudnessLevels,
@@ -743,7 +743,9 @@
 		id: e.id,
 		name: singerName(e.singerId),
 		color: singers.get(e.singerId)?.color,
-		title: songDisplay(mediaOf(e)).title
+		title: songDisplay(mediaOf(e)).title,
+		// The phone's own card kind, so the board says "making" exactly when the singer's phone does.
+		making: queueCardKind(mediaOf(e) ?? undefined, liveStatus.get(e.mediaId), canMake) === 'processing'
 	});
 	// The stored order is the rotation; a turn whose song would not play holds its slot but is skipped, so it is too.
 	const boardNext = $derived(
