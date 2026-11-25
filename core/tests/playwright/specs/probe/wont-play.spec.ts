@@ -78,6 +78,13 @@ async function sampleFrames(page: Page, watch: Record<string, [selector: string,
 }
 const seen = (page: Page) =>
 	page.evaluate(() => (window as unknown as { seen: Record<string, { at: number; frames: number }> }).seen);
+/** The test ids of the "didn't play" sheet's next-step buttons that paint a fill: there must be exactly one (#1156). */
+const filledNextSteps = (page: Page) =>
+	page.evaluate(() =>
+		[...document.querySelectorAll<HTMLElement>('[data-testid="song-didnt-play"] .next > *')]
+			.filter((b) => !/rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(b).backgroundColor))
+			.map((b) => b.dataset.testid)
+	);
 
 /** Every media element that starts, with when and what: `playing` doesn't bubble, so it is caught on the way down. */
 async function recordStarts(page: Page): Promise<void> {
@@ -191,6 +198,10 @@ async function expectMovedOn(
 		await r.theo.getByTestId('song-didnt-play').waitFor();
 		await r.tv.waitForTimeout(800); // past the takeover's fade-in (--motion-slow), well inside the 4 s notice
 		await shoot('failed', { tv: r.tv, theo: r.theo, ana: r.ana });
+		const size = r.theo.viewportSize()!;
+		await r.theo.setViewportSize({ width: 320, height: 568 });
+		await shoot('failed-320', { theo: r.theo });
+		await r.theo.setViewportSize(size);
 	}
 	await expect
 		.poll(async () => (await seen(r.tv)).notice?.at, { message: 'no frame painted the notice' })
@@ -246,6 +257,7 @@ async function expectMovedOn(
 	await expect(sheet).toContainText('You keep your spot.');
 	await expect(sheet.getByTestId('didnt-play-retry')).toBeVisible();
 	await expect(sheet.getByTestId('didnt-play-pick')).toBeVisible();
+	expect(await filledNextSteps(r.theo), 'one filled next step, and it is Try again').toEqual(['didnt-play-retry']);
 	await expect(r.theo.locator('.youre-up')).toHaveCount(0);
 	// Other phones get nothing new: the TV tells the room.
 	for (const p of [r.maya, r.ana]) {
@@ -313,6 +325,9 @@ test('a dead file: the TV says whose song it was at once, and Theo keeps his spo
 		await expect(sheet).toBeVisible();
 		await expect(sheet.getByTestId('didnt-play-retry')).toHaveCount(0);
 		await expect(sheet.getByTestId('didnt-play-pick')).toBeVisible();
+		expect(await filledNextSteps(r.theo), 'with no retry left, Pick another is the filled one').toEqual([
+			'didnt-play-pick'
+		]);
 		const row = r.theo.locator(SEL.queueRow, { hasText: /believin/i });
 		await expect(row.getByTestId('row-retry')).toHaveCount(0);
 		await expect(row.getByTestId('row-pick-another')).toBeVisible();

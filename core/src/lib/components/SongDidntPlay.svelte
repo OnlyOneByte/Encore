@@ -36,12 +36,17 @@
 		<Button variant="ghost" size="icon" aria-label="Close" onclick={ondismiss}><Icon name="close" /></Button>
 	</div>
 	<p class="song">{title}</p>
+	<!-- One filled button: Try again while it is offered, else Pick another (redesign step 6, #1156). -->
 	<div class="next">
 		{#if onretry}
-			<Button size="tap" variant="secondary" data-testid="didnt-play-retry" onclick={onretry}>Try again</Button>
+			<Button size="tap" data-testid="didnt-play-retry" onclick={onretry}>Try again</Button>
 		{/if}
-		<Button size="tap" variant="secondary" data-testid="didnt-play-pick" href={pickAnotherHref} onclick={onpick}
-			>Pick another</Button
+		<Button
+			size="tap"
+			variant={onretry ? 'ghost' : 'default'}
+			data-testid="didnt-play-pick"
+			href={pickAnotherHref}
+			onclick={onpick}>Pick another</Button
 		>
 	</div>
 	<p class="keep">{KEEP_YOUR_SPOT}</p>
