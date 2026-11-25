@@ -6,17 +6,18 @@ import {
 	StallWatchdog,
 	STALL_FAIL_MS,
 	STALL_RETRY_MS,
+	READY_SETTLE_MS,
 	unansweredPlayIsAutoplay,
 	type StallReading,
 	type UnansweredPlay
 } from '$lib/tv/stall-watchdog';
 
 describe('unansweredPlayIsAutoplay: when a pending play() is the tap screen’s case', () => {
-	// Media ready to play for 4 s, its play() pending as long, on an untouched TV, no error: only the policy holds it.
+	// A play() pending 4 s, its media ready long enough to have answered, on an untouched TV, no error: only the policy.
 	const policy: UnansweredPlay = {
 		pendingForMs: STALL_RETRY_MS,
 		gestured: false,
-		readyForMs: STALL_RETRY_MS,
+		readyForMs: READY_SETTLE_MS,
 		errored: false
 	};
 	test('ready media whose play() has gone unanswered for 4 s on an untouched TV is the autoplay policy', () => {
@@ -27,12 +28,18 @@ describe('unansweredPlayIsAutoplay: when a pending play() is the tap screen’s 
 		// Code review r2 of #994, R2-H1: readyState 0 with a fetch open held "Tap anywhere" up for good.
 		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 60_000, readyForMs: null })).toBe(false);
 	});
-	test('a slow cold start: the file just landed, so its play() has not had 4 s while ready to answer (#1267)', () => {
-		// The play() was asked for 6 s ago, but the media only became ready this tick, or 3.9 s ago.
+	test('a slow cold start: the file just landed, so its play() has not had time to answer (#1267)', () => {
+		// The play() was asked for 6 s ago, but the media only became ready this tick, or just under 1 s ago.
 		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: 0 })).toBe(false);
-		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: STALL_RETRY_MS - 1 })).toBe(false);
-		// A play() still unanswered 4 s after the file landed is the policy after all.
-		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 10_000, readyForMs: STALL_RETRY_MS })).toBe(true);
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: READY_SETTLE_MS - 1 })).toBe(false);
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: 6_000, readyForMs: READY_SETTLE_MS })).toBe(true);
+	});
+	test('a refused autoplay on a 6 s cold file reaches the tap screen before the 8 s failure (review of #1280)', () => {
+		// The file lands at 6 s; one second later the still-pending play() is the policy, a full second before 8 s.
+		const landsAt = 6_000;
+		const hintAt = landsAt + READY_SETTLE_MS;
+		expect(unansweredPlayIsAutoplay({ ...policy, pendingForMs: hintAt, readyForMs: hintAt - landsAt })).toBe(true);
+		expect(hintAt).toBeLessThan(STALL_FAIL_MS);
 	});
 	test('a media error is the song’s, whatever its play() is doing', () => {
 		expect(unansweredPlayIsAutoplay({ ...policy, errored: true })).toBe(false);

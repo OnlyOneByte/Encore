@@ -2233,9 +2233,10 @@ tab, a TV out of standby) is forgiven, less one normal tick, so a single sleep d
 throttled 1 Hz ticks still add up to a failure. A first load still downloading, or with its fetch open and nothing
 arrived yet, is not reloaded until it has been still for 4 s after that too, because the reload restarts it from zero:
 a file that lands after 4 s gets until the 8 s failure to start, rather than being thrown away the moment it lands. And a
-`play()` still unanswered on a TV nobody has touched, after 4 s during which the media was READY to play, is treated as
-an autoplay refusal (counted from the `play()` alone, a slow cold start flashed the tap screen the moment its file
-landed) (some TV browsers leave a refused play() pending rather than rejecting it): the tap screen shows and
+`play()` still unanswered after 4 s on a TV nobody has touched, for media that has been READY to play for 1 s, is treated
+as an autoplay refusal (some TV browsers leave a refused play() pending rather than rejecting it). The 1 s lets a
+`play()` that answers just after a slow file lands do so without a flash of the tap screen, and is short enough that a
+refused one on a file landing before about 7 s still reaches the tap screen before the 8 s failure: the tap screen shows and
 nothing is skipped. Media that never loaded is the song's stall, not the tap screen's, and a media error is the song's
 whatever its play() is doing (`unansweredPlayIsAutoplay`). The slot's watchdog resets when its ENTRY changes, and only
 then: the slot outlives its songs, and a room update for the same entry must not restart the count.

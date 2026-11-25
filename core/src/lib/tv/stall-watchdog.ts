@@ -9,6 +9,10 @@ export const STALL_RETRY_MS = 4000;
 export const STALL_FAIL_MS = 8000;
 /** How often the player reads the playhead. Fine enough that "8 s" means 8 s, cheap enough to run all night. */
 export const STALL_TICK_MS = 250;
+/** How long ready media gets for its play() to answer before an unanswered one is the autoplay policy. Covers a play()
+ *  settling a few hundred ms after its file lands (#1267), and short enough that the tap screen still beats the 8 s
+ *  failure for a file that lands before about 7 s (review of #1280). */
+export const READY_SETTLE_MS = 1000;
 /** A seek lands NEAR its target, not on it, so the retry's resume can land a few ms past the stuck spot. A playing
  *  song clears this in a couple of ticks; a stuck one never does. */
 const RESUME_SLACK_SEC = 0.5;
@@ -116,11 +120,12 @@ export interface UnansweredPlay {
  * Some TV browsers are said to leave a refused play() pending instead of rejecting it with NotAllowedError, and read as
  * "the song isn't moving" that would fail every song in the queue. But a play() also stays pending while the bytes
  * simply do not come, with nothing loaded and no error, and calling THAT the tap screen's case hid a real stall
- * forever (code review r2 of #994). So only a play() unanswered for the retry's 4 s WHILE the media was ready, on an
- * untouched TV: then nothing but the policy can be holding it back. Counted from the play() alone, a 6 s cold start
- * read as refused on the tick its file landed, before play() could answer (#1267). A media error is the song's.
+ * forever (code review r2 of #994). So only a play() unanswered for the retry's 4 s, on media that has been ready for
+ * READY_SETTLE_MS, on an untouched TV: then nothing but the policy can be holding it back. Without the ready wait a 6 s
+ * cold start read as refused on the tick its file landed, before play() could answer (#1267). A media error is the
+ * song's.
  */
 export function unansweredPlayIsAutoplay({ pendingForMs, gestured, readyForMs, errored }: UnansweredPlay): boolean {
 	if (pendingForMs === null || readyForMs === null || gestured || errored) return false;
-	return Math.min(pendingForMs, readyForMs) >= STALL_RETRY_MS;
+	return pendingForMs >= STALL_RETRY_MS && readyForMs >= READY_SETTLE_MS;
 }
