@@ -210,6 +210,13 @@
 			sendTelemetry(ctl.endedStatus, cur.id);
 			return;
 		}
+		// The same for a song the TV already failed as dead (#1277): no slot will load it again, so if its `failed` was
+		// lost (the socket was down) only this re-send moves the room on. Once per song per connection, so a stream of
+		// frames naming it cannot loop; the server drops it as stale once it has moved past.
+		if (cur && ctl.isSpent(cur.id) && spentResent !== cur.id) {
+			spentResent = cur.id;
+			sendTelemetry('failed', cur.id);
+		}
 		// Compared BEFORE `current` is overwritten, and on the ENTRY id: a song queued twice is two entries over one media.
 		const entryChanged = cur?.id !== current?.id;
 		current = cur;
@@ -244,7 +251,8 @@
 		// once the hold is over on a missed preload, as the loading card. A slow round trip lands the confirm in the
 		// second, and re-entering there showed a second card with a second hold after a gap of lyrics.
 		const alreadyIntroduced = (tvState === 'interstitial' || tvState === 'loading') && introEntry?.id === cur?.id;
-		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced) {
+		// Never for a song the TV has already failed as dead: the server's frame naming it is only catching up (#1277).
+		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced && !ctl.isSpent(cur.id)) {
 			introEntry = cur;
 			ctl.enterInterstitial();
 			holdSongIntro();
@@ -291,6 +299,8 @@
 		}, SKIP_NOTICE_MS);
 	}
 	let resumeAfterNotice = false;
+	/** The spent entry whose `failed` this connection has already re-sent (see applyNowPlaying). Plain bookkeeping. */
+	let spentResent: string | null = null;
 
 	/** The song won't play (TvPlayer's one `onfailed`). The room moves on like an end, and the room is told WHOSE song
 	 *  it was — never the browser's reason, and never anyone's fault. `failedId` is the entry the failing SLOT holds:
@@ -321,6 +331,12 @@
 		const next = ctl.onEnded(upNext, status);
 		tvState = next;
 		sendTelemetry(status, endedId);
+		// The song coming up is one the hidden slot already found dead: fail it now, with no card and no refetch, as a
+		// skip onto it does (#1277). Not over a notice already up, which it would cut short.
+		if (next === 'loading' && upNext && ctl.currentIsDead && !skipNotice) {
+			onVisibleFailed(upNext.id);
+			return;
+		}
 		if (next === 'interstitial') {
 			introEntry = upNext;
 			holdSongIntro();
@@ -566,6 +582,8 @@
 					// eslint-disable-next-line svelte/prefer-svelte-reactivity -- plain bookkeeping, never rendered
 					heardSinceReconnect = new Set();
 					void seedFromLibrary(true);
+					// A new connection may re-send a spent song's `failed` once more: the last one may have died with the old.
+					spentResent = null;
 				}
 				if (c) wasConnected = true;
 				connected = c;

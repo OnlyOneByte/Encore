@@ -22,6 +22,8 @@ export class GaplessController {
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
 	#deadId: string | null = null; // entryId the hidden slot already got a media error for
+	// A dead entry the TV has just failed, until a server frame moves past it: no slot is handed its file again (#1277).
+	#spentId: string | null = null;
 	// The entry `onEnded` moved past, until a server frame does too. Until then a frame naming it predates the TV's own
 	// `ended`: a phone command made the server re-send its old pair (#1001).
 	#endedFrom: string | null = null;
@@ -77,6 +79,7 @@ export class GaplessController {
 	onNowPlaying(current: QueueEntry | null, upNext: QueueEntry | null): void {
 		if (this.isBehind(current?.id)) return;
 		this.#endedFrom = null;
+		if (current?.id !== this.#spentId) this.#spentId = null;
 		if (!current) {
 			this.#current = null;
 			this.#state = 'attract';
@@ -116,8 +119,18 @@ export class GaplessController {
 	 * `upNext` right away and the partly warmed hidden slot is dropped, rather than replaying the ended song until then.
 	 */
 	slotEntries<T extends { id: string }>(current: T | null, upNext: T | null): { visible: T | null; hidden: T | null } {
-		if (upNext && upNext.id === this.#current && current?.id !== upNext.id) return { visible: upNext, hidden: null };
-		return { visible: current, hidden: upNext };
+		const pair =
+			upNext && upNext.id === this.#current && current?.id !== upNext.id
+				? { visible: upNext, hidden: null }
+				: { visible: current, hidden: upNext };
+		// A dead file already failed is never loaded again while the server catches up: it would only 404 a second time.
+		const live = (e: T | null) => (e && e.id === this.#spentId ? null : e);
+		return { visible: live(pair.visible), hidden: live(pair.hidden) };
+	}
+
+	/** This entry's file was found dead and its failure already reported: no card, no slot, until the room moves on. */
+	isSpent(entryId: string | null | undefined): boolean {
+		return !!entryId && entryId === this.#spentId;
 	}
 
 	/** Visible slot reports it can play through. */
@@ -162,7 +175,11 @@ export class GaplessController {
 			this.#endedFrom = this.#current;
 			this.#endedStatus = status;
 		}
-		if (this.#current === this.#deadId) this.#deadId = null; // its failure is reported: the mark is spent
+		// Its failure is reported: the dead mark is spent, and the entry stays out of the slots until a frame moves on.
+		if (this.#current && this.#current === this.#deadId) {
+			this.#spentId = this.#deadId;
+			this.#deadId = null;
+		}
 		if (!upNext) {
 			this.#current = null;
 			this.#state = 'attract';

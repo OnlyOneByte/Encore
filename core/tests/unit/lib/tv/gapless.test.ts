@@ -330,3 +330,36 @@ test('a reorder after the warm is ready re-targets the hidden slot, so the stale
 	expect(c.visible).toBe('A');
 	expect(c.state).toBe('loading');
 });
+
+test('NATURAL END onto a dead warmed song (#1277): it is current and dead, and once failed no slot loads it', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
+	c.onHiddenFailed('q2');
+	expect(c.onEnded(e('q2'))).toBe('loading');
+	expect(c.currentIsDead).toBe(true); // the page fails it here rather than loading it
+	// The page reports the failure; the server's frames still name q1, then q2, until they catch up.
+	c.onEnded(e('q2'), 'failed');
+	expect(c.currentIsDead).toBe(false);
+	expect(c.isSpent('q2')).toBe(true);
+	expect(c.slotEntries(e('q1'), e('q2'))).toEqual({ visible: null, hidden: null });
+	expect(c.isBehind('q1')).toBe(true);
+	expect(c.endedStatus).toBe('ended'); // q1 was sung
+	c.onNowPlaying(e('q2'), e('q3')); // the server's advance onto q2, before it has read the failure
+	expect(c.isSpent('q2')).toBe(true);
+	expect(c.slotEntries(e('q2'), e('q3'))).toEqual({ visible: null, hidden: e('q3') });
+	c.onNowPlaying(e('q3'), e('q4')); // the server has moved past q2
+	expect(c.isSpent('q2')).toBe(false);
+	expect(c.slotEntries(e('q3'), e('q4'))).toEqual({ visible: e('q3'), hidden: e('q4') });
+});
+
+test('a skip onto a dead song marks it spent too, so only the song after it is loaded', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), e('q2'));
+	c.onHiddenFailed('q2');
+	c.onNowPlaying(e('q2'), e('q3'));
+	expect(c.currentIsDead).toBe(true);
+	c.onEnded(e('q3'), 'failed');
+	expect(c.isSpent('q2')).toBe(true);
+	expect(c.slotEntries(e('q2'), e('q3'))).toEqual({ visible: e('q3'), hidden: null });
+});

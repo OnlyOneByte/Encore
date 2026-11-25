@@ -172,3 +172,90 @@ test('a skip onto a warmed file that is already dead fails it at once: the notic
 		await worker.stop();
 	}
 });
+
+test('#1277 a natural end onto a warmed file that is already dead fails it at once: the notice, no card, no refetch', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		await readyId(world, maya, 'caroline');
+		const theoMedia = await readyId(world, maya, 'believin');
+		await readyId(world, maya, 'prayer');
+		const tv = await world.openTv();
+		await tv.route(`**/*${theoMedia}*`, (route) => route.fulfill({ status: 404, body: '' }));
+		// Armed before anyone queues: Maya's 8 s song plays out on its own, and every frame of it is watched.
+		await sampleFrames(tv);
+		await tv.evaluate((id) => {
+			const w = window as unknown as { mayaEndedAt?: number };
+			document.addEventListener(
+				'ended',
+				(e) => {
+					const src = (e.target as HTMLMediaElement).getAttribute('src') ?? '';
+					if (!src.includes(id)) w.mayaEndedAt ??= Date.now();
+				},
+				true
+			);
+		}, theoMedia);
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+		await queueReady(ana, 'prayer');
+		// Theo's pre-warm finds his file dead while Maya sings; count his audio requests from then on.
+		const fetches = await armWarmSlot(tv, theoMedia, 'errored');
+		const notice = tv.locator(SEL.stateError);
+		await expect(notice).toContainText("Theo's song wouldn't play", { timeout: 20_000 });
+		const noticeAt = Date.now();
+		const mayaEndedAt = await tv.evaluate(() => (window as unknown as { mayaEndedAt?: number }).mayaEndedAt);
+		expect(mayaEndedAt, 'Maya’s song never ended on its own').toBeDefined();
+		expect(noticeAt - mayaEndedAt!, 'the notice waited on a reload').toBeLessThan(2_000);
+		// No "Up next" line here, unlike a skip: at a natural end the TV has not heard who follows Theo yet, the same as
+		// any missed-preload failure today.
+		expect((await seen(tv)).cardTheo ?? 0, 'frames of "Now singing · Theo" for a file already known dead').toBe(0);
+		expect(fetches, 'the TV fetched Theo’s dead file again').toEqual([]);
+		// The room moves on to Ana with her card, and Theo's never shows.
+		await expect(tv.locator(SEL.stateNext)).toContainText('Ana', { timeout: 10_000 });
+		expect((await seen(tv)).cardTheo ?? 0).toBe(0);
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('#1298 review: the TV’s `failed` for that dead song is lost, and the room still moves on to Ana', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		await readyId(world, maya, 'caroline');
+		const theoMedia = await readyId(world, maya, 'believin');
+		await readyId(world, maya, 'prayer');
+		const tv = await world.openTv();
+		await tv.route(`**/*${theoMedia}*`, (route) => route.fulfill({ status: 404, body: '' }));
+		// The first `failed` the TV sends never leaves it: the same net state as a socket down at the end.
+		await tv.evaluate(() => {
+			const w = window as unknown as { failedSends: number };
+			w.failedSends = 0;
+			const send = WebSocket.prototype.send;
+			WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+				if (typeof data === 'string' && data.includes('"status":"failed"') && w.failedSends++ === 0) return;
+				send.call(this, data);
+			};
+		});
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+		await queueReady(ana, 'prayer');
+		await armWarmSlot(tv, theoMedia, 'errored');
+		await expect(tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 20_000 });
+		// Without the re-send the server sat on Theo, playing, at 0:00, with no slot to fail him again.
+		await expect(tv.locator(SEL.stateNext)).toContainText('Ana', { timeout: 15_000 });
+		const sends = await tv.evaluate(() => (window as unknown as { failedSends: number }).failedSends);
+		expect(sends, 'the lost `failed` was never sent again').toBeGreaterThanOrEqual(2);
+		expect(sends, 'the re-send looped').toBeLessThanOrEqual(3);
+	} finally {
+		await worker.stop();
+	}
+});
