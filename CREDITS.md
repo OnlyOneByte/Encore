@@ -22,14 +22,15 @@ Installed dependencies (npm and PyPI packages) are not copied into this repo and
 Project, Project Gutenberg ebook 3204), compressed. The repo records it as public domain
 ([`docs/arch/04-alignment.md`](docs/arch/04-alignment.md) §8).
 
-## Model weights: MMS_FA
+## Model weights
 
-These weights are not in this repo; the worker downloads them at runtime. Their licence asks for
-attribution, so they are credited here.
+These weights are not in this repo; the worker or a benchmark script downloads them at runtime. Their
+licences ask for attribution, so they are credited here.
 
 | Model | Source | Licence | Used for |
 | --- | --- | --- | --- |
 | **MMS_FA**, from _MMS: Scaling Speech Technology to 1,000+ Languages_, Pratap et al., Meta AI (2023), [arXiv:2305.13516](https://arxiv.org/abs/2305.13516) | [`torchaudio.pipelines.MMS_FA`](https://docs.pytorch.org/audio/stable/generated/torchaudio.pipelines.MMS_FA.html), fetched by torchaudio into the local torch hub cache | [CC-BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) | forced alignment of romanised Chinese and Korean lyrics (the `mms-roman` route, [`docs/arch/04-alignment.md`](docs/arch/04-alignment.md) §14.2), used unmodified |
+| **WeSpeaker ResNet34-LM** speaker embedding, from the [WeSpeaker](https://github.com/wenet-e2e/wespeaker) toolkit, trained on VoxCeleb | [`pyannote/wespeaker-voxceleb-resnet34-LM`](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM) on Hugging Face, fetched by pyannote.audio into the local Hugging Face cache | [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) | the voices bench, `docs/benchmarks/forced-alignment/scripts/voices.py` (who sings which line, #1166); not wired into any job; used unmodified |
 
 ## Music: TheFatRat
 

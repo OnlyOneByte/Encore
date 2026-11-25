@@ -4,7 +4,7 @@
    "checkpoint": "pyannote/wespeaker-voxceleb-resnet34-LM",
    "licence": "CC-BY-4.0",
    "device": "cpu",
-   "seconds_per_audio_second": null,
+   "seconds_per_audio_second": 0.5374,
    "sweep": [
     {
      "distance": 0.3,
