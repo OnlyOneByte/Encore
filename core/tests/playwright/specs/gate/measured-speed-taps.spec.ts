@@ -6,17 +6,7 @@ import { SEL } from '../../world/selectors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
 import { openQueue, queueReady, readySong } from '../../world/actors';
-import {
-	best,
-	flashes,
-	instrument,
-	knownBreak,
-	readState,
-	report,
-	tapToChange,
-	throttle,
-	type Anim
-} from './speed-measure';
+import { best, flashes, instrument, readState, report, tapToChange, throttle, type Anim } from './speed-measure';
 
 const BUDGET_MS = 100;
 const REPS = 5;
@@ -255,7 +245,7 @@ test('CLAIM 12 a Sing search flashes no other indicator', async ({ world }) => {
 	expect(other, 'CLAIM 12 an unexpected indicator flashed for under 300 ms while searching').toEqual([]);
 });
 
-test('CLAIM 14 KNOWN BREAK the /queue Now card arrives within 400 ms', async ({ world }) => {
+test('CLAIM 14 the /queue Now card arrives within 400 ms (#1092)', async ({ world }) => {
 	const worker = await startFakeWorker(world);
 	try {
 		const maya = await world.openPhone('Maya');
@@ -268,7 +258,6 @@ test('CLAIM 14 KNOWN BREAK the /queue Now card arrives within 400 ms', async ({ 
 		await theo.waitForTimeout(800);
 		const arrive = (await readState(theo)).anims.filter((a) => /arrive/.test(a.name));
 		expect(arrive.length, 'the Now card ran no `arrive` animation to measure').toBeGreaterThan(0);
-		knownBreak('the /queue Now card `arrive` runs 500 ms, #1092');
 		expect(tooLong(arrive), `CLAIM 14 the Now card's arrival past ${MOTION_MAX_MS} ms`).toEqual([]);
 	} finally {
 		await worker.stop();

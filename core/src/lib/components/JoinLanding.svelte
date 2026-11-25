@@ -219,7 +219,8 @@
 		{#if pane === 'resolving'}
 			<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
 				it says nothing, so the region would announce nothing at all. -->
-			<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
+			<!-- Its box from the first frame, so the sentence that replaces it moves nothing; seen only past the grace. -->
+			<p class="confirm finding" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
 		{:else if pane === 'identity'}
 			<!-- IDENTITY. No code input here: both paths have already taken the code. -->
 			<p class="confirm" role="status">{confirmSentence}</p>
@@ -405,6 +406,16 @@
 		font-size: var(--ph-text-lg);
 		color: var(--ink);
 		font-weight: 600;
+	}
+	/* Tenet 2 (#1089): hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, so a quick room never shows it;
+	   the sentence replacing it later is content, never held (#1171). No motion, so not behind reduced motion. */
+	.finding {
+		animation: finding 0s 0.3s backwards;
+	}
+	@keyframes finding {
+		from {
+			visibility: hidden;
+		}
 	}
 	/* --warn, not --danger-ink: nothing failed, the room simply does not know this phone any more. */
 	.lost {

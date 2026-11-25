@@ -48,7 +48,6 @@
 	import { tuneLine } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
-	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import RoomPending from '$lib/components/RoomPending.svelte';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -941,8 +940,9 @@
 				{/each}
 			{:else if !queueSynced}
 				<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
-			said "Nothing queued yet" over a full queue for that whole window on every cold load. -->
-				<SkeletonRows count={4} label="Loading the queue…" />
+			said "Nothing queued yet" over a full queue for that whole window on every cold load. Its box is there from
+			the first frame, so nothing shifts; it is only seen past the grace. -->
+				<div class="skels-wait"><SkeletonRows count={4} label="Loading the queue…" /></div>
 			{:else}
 				<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
@@ -988,7 +988,16 @@
 	the gate with the list it describes: an unjoined visitor has no queue to announce. -->
 	<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 {:else if status === 'not-joined'}
-	<JoinLanding />
+	<!-- Loaded on demand, as `/` does: a joined phone never needs the join screen's ~4.6 KB gz of JS. -->
+	{#await import('$lib/components/JoinLanding.svelte') then { default: JoinLanding }}
+		<JoinLanding />
+	{:catch}
+		<!-- The chunk can fail on bad wifi or after an update renamed it: never a blank screen. -->
+		<main>
+			<p>Couldn't load the join screen.</p>
+			<Button variant="secondary" size="tap" onclick={() => location.reload()}>Try again</Button>
+		</main>
+	{/await}
 {:else}
 	<PageHeader title="Queue" icon="clock" />
 	<main><RoomPending unreachable={status === 'unreachable'} /></main>
@@ -1020,17 +1029,30 @@
 		gap: var(--space-sm);
 	}
 
-	/* Two --motion-base long, held at 0 for the first (the holds'), so the row is invisible while the rows under it
-	   pass through its box. */
+	/* Held at 0 for one --motion-base (the holds'), so the row is invisible while the rows under it pass through its
+	   box, then a --motion-fast fade: 370 ms in all, inside CLAIM 14's 400 (#1092). One animation, not a delay: a
+	   delayed one fires `animationstart` late, after the holds, so ui:review never sees it. 67.6% = 250 / 370. */
 	@media (prefers-reduced-motion: no-preference) {
 		.now.arrive {
-			animation: arrive calc(var(--motion-base) * 2) ease-out;
+			animation: arrive calc(var(--motion-base) + var(--motion-fast)) linear;
 		}
 	}
 	@keyframes arrive {
 		from,
-		50% {
+		67.6% {
 			opacity: 0;
+			animation-timing-function: ease-out;
+		}
+	}
+
+	/* Tenet 2 (#1090): hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, so a quick sync never shows it;
+	   the list replacing it later is content, never held (#1171). No motion, so not behind reduced motion. */
+	.skels-wait {
+		animation: skels-wait 0s 0.3s backwards;
+	}
+	@keyframes skels-wait {
+		from {
+			visibility: hidden;
 		}
 	}
 
