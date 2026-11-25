@@ -84,8 +84,6 @@
 	.phrase-kick {
 		font-size: var(--tv-name);
 		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
 		color: var(--accent-ink);
 	}
 	/* FIXED height, so a one- and a two-line phrase never move the label above it. The 1.03 here is the same

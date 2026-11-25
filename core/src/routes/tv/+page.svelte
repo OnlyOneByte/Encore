@@ -1103,6 +1103,7 @@
 		liveStatus={liveStatus}
 		mediaOf={mediaOf}
 		singerName={singerName}
+		singerColor={(id) => (id ? singers.get(id)?.color : undefined)}
 		bind:layer={takeoverLayer}
 		ontransitionend={(e) => {
 			// Not on `transitioncancel`: Chromium fires it on every mid-flight reversal of the fade-in, while the reversed

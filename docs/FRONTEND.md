@@ -2466,9 +2466,12 @@ address from the sofa. `/settings/server`'s Joining card says the same first lin
 
 ### The full-screen takeovers
 
-Each takeover carries its own colour family AND its own eyebrow AND (for error/processing) its own mark, so
-colour is never the only carrier. `--accent` appears only as a non-text border or fill, which is what it is
-certified for; takeover text is `--ink` or `--accent2`. The backdrop is a radial SCRIM, not an opaque wash:
+Each takeover carries its own colour family AND its own words AND (for error/processing) its own mark, so
+colour is never the only carrier; the words are sentence case, never an uppercase eyebrow (redesign step 8). **The
+Now singing card is one BAND in the singer's colour** across the middle of the stage (30vh down, 40vh tall), from the
+singer's palette stop with its certified `on_fill` as the ink, so the card is in the singer's colour on every one of
+the 48 stops. The error and processing takeovers keep `--danger` / `--warn` as a non-text border and wash. Behind them
+the backdrop is a radial SCRIM, not an opaque wash:
 a wash blanks the room's chosen backdrop for every song change, which is the exact black flash the
 background layer's visibility band exists to avoid, undone one layer up — and it would hide the join block
 that must stay visible through it. "Next up" is untrue for the first song of the evening, so the label reads
@@ -2493,11 +2496,10 @@ chrome in the corners shows through it: the lower third and the progress line ar
 `layerShown`), or "Now singing Maya" is on screen twice, and the stage's own corner QR is hidden while `transient`
 holds the dimmed `.takeover-join` copy, or the two stack at full brightness in one box. Both hide by `visibility`,
 so `--tv-chrome-h` and the reaction lane's measured corner do not move. "Up next" stays: it is a different fact. Both
-cut out as the card comes up. The progress line fades back in on `--motion-base` from the layer's exit START (a cut
-under reduce); it names nothing. The lower third CUTS back in only once the card's exit fade has ENDED
-(`cardPainted`), or for the fade's first frames it repeats the name the card is still showing. It is a cut, not a
-fade, because fading re-rasterises its blurred shadow and stroke every frame: on the `tv-song-outro` live run a fade
-(with `will-change: opacity`) took the p95 frame interval from main's 66.6 ms to 83.3 ms.
+cut out as the card comes up. The `corner` progress style fades back in on `--motion-base` from the layer's exit START
+(a cut under reduce); the default `edge` line and `card` row are the singer pill's own and come back with it. The lower
+third CUTS back in only once the card's exit fade has ENDED (`cardPainted`), or for the fade's first frames it repeats
+the name the card is still showing.
 
 The QR's 1.0 to 0.72 step is a CUT, at both ends of the card, on purpose. A fade needs both copies painted at once
 (the stage's under the takeover, the dimmed one above it), and that is two QRs in one box for the fade's length, the
@@ -2505,10 +2507,12 @@ bug this rule removes. Dimming the stage's own copy in place does not work eithe
 and the scrim is still about half up at that corner. The step is the same white tile at 72%, in a slot that does not
 move.
 
-The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
-the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
-`paint-order: stroke fill`. A shadow tuned against
-black disappears against a bright field of similar luminance — the singer name measured 1.10:1 on white.
+**The lower-third is the singer's PILL** (redesign step 8): name, song and key on one opaque fill in the singer's
+palette stop, inked in its certified `on_fill`, so it reads on any backdrop with no shadow or stroke, and the singer is
+named once, in their own colour. Its underline is the progress: the default `edge` style draws a line along the
+pill's bottom edge, inside the safe area, where it used to run along the screen's bottom edge in overscan; `card`
+puts the bar and countdown in the pill; `corner` and `off` are unchanged. "Up next" reads "Theo is next" (`IS_NEXT`)
+with the song under it, and the join corner drops its "Scan to join" eyebrow: the QR, the address and the code say it.
 `.ls-song` clamps to two lines with `-webkit-line-clamp`, which needs the `-webkit` box display and hidden
 overflow beside it to take effect at all, and `.ls-artist` must NOT carry `white-space`/`overflow` of its
 own: the overflow pair is inert on an inline element while `nowrap` DOES apply and hard-clips a long credit

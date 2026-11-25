@@ -88,11 +88,9 @@ async function readOverlaps(page: Page): Promise<OverlapResult | null> {
 				{
 					cls: 'upnext',
 					html:
-						'<span class="un-label ' +
+						'<span class="un-name ' +
 						uh +
-						'">Up next</span><span class="un-name ' +
-						uh +
-						'">A Fairly Long Singer Name Here</span><span class="un-song ' +
+						'">A Fairly Long Singer Name Here is next</span><span class="un-song ' +
 						uh +
 						'">An Even Longer Wrapping Song Title That Grows The Block Past One Line On A Wall</span>'
 				},
@@ -103,9 +101,7 @@ async function readOverlaps(page: Page): Promise<OverlapResult | null> {
 						ch +
 						'"><img width="88" height="88"></div><div class="meta ' +
 						ch +
-						'"><div class="t ' +
-						ch +
-						'">Scan to join</div><div class="u ' +
+						'"><div class="u ' +
 						ch +
 						'">192.168.1.20:5173/join</div></div>'
 				},

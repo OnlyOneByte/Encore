@@ -11,6 +11,8 @@ export function onDeckHeldNote(onDeck: string, after: string | null): string {
 }
 /** The singer after that. */
 export const UP_NEXT = 'Up next';
+/** The TV's mid-song line after the next singer's name ("Theo is next"), where an "UP NEXT" eyebrow was. */
+export const IS_NEXT = 'is next';
 /** My On deck went to someone else and I did not cause it (proposal 14). Names who goes first, never who moved it. */
 export function deckBumpNotice(onDeck: string, youreNext: boolean): string {
 	return `${onDeck}’s going first. ${youreNext ? 'You’re next.' : 'Your key is saved.'}`;

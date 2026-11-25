@@ -57,7 +57,6 @@
 			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
 		</div>
 		<div class="meta">
-			<div class="t">Scan to join</div>
 			<div class="u">{shortUrl}</div>
 			<!-- The typed path, mid-song: a camera that will not scan leaves the code as the only way in. -->
 			{#if roomCode}
@@ -144,16 +143,9 @@
 		border-radius: 10px;
 		box-shadow: none;
 	}
-	.t {
-		font-size: var(--tv-label);
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-	}
 	.u {
 		font-size: var(--tv-body);
 		font-weight: 700;
-		margin-top: 3px;
 	}
 	/* `--tv-body`, not attract's `--tv-code`: this card sits in the safe area beside an 88px QR, and the display tier
 	   that is right when the code OWNS the screen would push the card across the stage. */

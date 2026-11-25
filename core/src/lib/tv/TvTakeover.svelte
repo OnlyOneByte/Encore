@@ -5,7 +5,14 @@
 
 <script lang="ts">
 	import type { TransitionEventHandler } from 'svelte/elements';
-	import { songDisplay, type Media, type QueueEntry, type ServerEvent } from '$lib/contract';
+	import {
+		SINGER_COLORS,
+		nearestPaletteStop,
+		songDisplay,
+		type Media,
+		type QueueEntry,
+		type ServerEvent
+	} from '$lib/contract';
 	import { processStageLabelAscii } from '$lib/phrasing/process-phrasing';
 	import { UP_NEXT } from '$lib/phrasing/turn-phrasing';
 	import { waitingProgress, PROCESS_STEPS } from '$lib/tv/screen';
@@ -26,6 +33,8 @@
 		liveStatus: Map<string, Extract<ServerEvent, { type: 'media:status' }>>;
 		mediaOf: (entry: QueueEntry | null) => Media | null;
 		singerName: (id: string | undefined) => string;
+		/** The singer's chosen colour, for the card's band. */
+		singerColor: (id: string | undefined) => string | undefined;
 		layer?: HTMLDivElement;
 		ontransitionend: TransitionEventHandler<HTMLDivElement>;
 	}
@@ -41,6 +50,7 @@
 		liveStatus,
 		mediaOf,
 		singerName,
+		singerColor,
 		layer = $bindable(),
 		ontransitionend
 	}: Props = $props();
@@ -52,7 +62,9 @@
 	{#key cardWords}
 		{#if handoff}
 			{@const d = songDisplay(mediaOf(handoff.entry))}
-			<div class="interstitial takeover state-next">
+			{@const stop = nearestPaletteStop(singerColor(handoff.entry.singerId) ?? SINGER_COLORS[0])}
+			<!-- ONE BAND in the singer's colour across the stage (redesign step 8), inked in the stop's certified on_fill. -->
+			<div class="interstitial takeover state-next" style="--band:{stop.fill};--on-band:{stop.on_fill}">
 				<div class="up-label">{handoff.label}</div>
 				<div class="up-name hero-name">{singerName(handoff.entry.singerId)}</div>
 				<div class="up-song">
@@ -149,10 +161,10 @@
 		padding: var(--tv-safe-y) var(--tv-safe-x);
 		text-align: center;
 	}
+	/* Words, not an eyebrow: sentence case, no tracking (redesign step 8). */
 	.up-label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
+		font-size: var(--tv-body);
+		font-weight: 700;
 		color: var(--ink-dim);
 	}
 	.up-name {
@@ -181,10 +193,18 @@
 		padding-left: var(--tv-safe-x);
 		border-left: var(--tv-takeover-border) solid transparent;
 	}
-	/* --accent as a NON-TEXT border/fill, which is what it is certified for; the text is --ink / --accent2. */
+	/* A band across the middle of the stage, its colour and ink set inline from the singer's palette stop. */
 	.state-next.takeover {
-		border-left-color: var(--accent);
-		background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%);
+		inset: 30vh 0 auto;
+		min-height: 40vh;
+		padding-block: var(--tv-space-4xl);
+		border-left: 0;
+		background: var(--band);
+		color: var(--on-band);
+	}
+	.state-next .up-label,
+	.state-next .up-artist-inline {
+		color: inherit;
 	}
 	.hero-name {
 		font-size: var(--tv-takeover-name);
@@ -192,7 +212,6 @@
 		line-height: 1.02;
 	}
 	.state-next .up-song {
-		color: var(--accent2);
 		margin-top: 1.4vh;
 	}
 

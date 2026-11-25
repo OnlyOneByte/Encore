@@ -172,9 +172,9 @@ for (const motion of ['no-preference', 'reduce'] as const) {
 					[back?.layerOpacity, back?.ltOpacity, back?.ltTransition],
 					`${at}: the lower third cuts back in after the card's fade`
 				).toEqual([0, 1, '0s']);
-				// The edge line on the exit's own frame (its fade starts there; later frames may land past it under load).
-				if (motion === 'reduce') expect(f!.edgeOpacity, `${at}: the edge line cuts back under reduce`).toBe(1);
-				else expect(f!.edgeOpacity, `${at}: the edge line fades in`).toBeLessThan(1);
+				// The default `edge` line is the singer pill's underline (redesign step 8): it cuts back with the pill, never
+				// fading on its own.
+				expect(f!.edgeOpacity, `${at}: the underline cuts back with the pill`).toBe(1);
 				// Within two seconds (a loaded host paints far apart) the stage names the singer the card named.
 				const settled = all.filter((g) => g.at >= f!.at && g.at <= f!.at + 2_000 && g.ltName).at(-1);
 				expect(settled?.ltName ?? '', `${at}: the lower third names the new singer`).toContain(prev!.cardName);

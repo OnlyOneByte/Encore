@@ -59,8 +59,7 @@
 			transition: transform var(--motion-tick) linear;
 		}
 		.topbar,
-		.pill,
-		.edgebar {
+		.pill {
 			transition: opacity var(--motion-base) ease;
 		}
 	}
@@ -71,11 +70,11 @@
 		opacity: 0;
 	}
 
+	/* `card` and `edge` sit in the singer's pill (TvNowBar), inked in its certified on_fill: currentColor. */
 	.card-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm);
-		margin-top: var(--space-xs);
 	}
 	.t {
 		font-size: var(--tv-label);
@@ -84,14 +83,13 @@
 	.track.card {
 		width: 210px;
 		height: 5px;
-		background: var(--track-bg);
+		background: color-mix(in srgb, currentColor 25%, transparent);
 		border-radius: var(--radius-xs);
 		overflow: hidden;
 	}
-	/* Solid white, not --grad: on the card's own gradient the accent gradient reads as noise, not a level. */
-	.track.card > i {
-		background: #fff;
-		border-radius: var(--radius-xs);
+	.track.card > i,
+	.edgebar > i {
+		background: currentColor;
 	}
 
 	.topbar {
@@ -122,21 +120,15 @@
 	.pill .lab {
 		color: var(--ink-dim);
 		font-size: var(--tv-label);
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
 	}
 
+	/* The pill's underline: its bottom edge, inside the safe area, never the screen's (redesign step 8). */
 	.edgebar {
 		position: absolute;
 		left: 0;
 		right: 0;
 		bottom: 0;
-		height: 8px;
-		background: color-mix(in srgb, var(--ink) 12%, transparent);
-		z-index: var(--z-tv-card);
-		overflow: hidden;
-	}
-	.edgebar > i {
-		background: var(--grad);
+		height: 0.2em;
+		background: color-mix(in srgb, currentColor 25%, transparent);
 	}
 </style>
