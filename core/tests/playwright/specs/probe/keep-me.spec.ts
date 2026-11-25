@@ -16,6 +16,14 @@ async function keepMe(phone: Page): Promise<void> {
 	await expect(phone.getByRole('heading', { name: /is kept on this phone/ })).toBeVisible();
 }
 
+/** Open the host's Reset confirm for `name`: a click on the server-rendered button before hydration opens nothing. */
+async function openReset(host: Page, name: string): Promise<void> {
+	await expect(async () => {
+		await host.getByRole('button', { name: `Reset ${name}'s phones` }).click();
+		await expect(host.locator('[role="alertdialog"]')).toBeVisible({ timeout: 1_000 });
+	}).toPass({ timeout: 15_000 });
+}
+
 /** Leave as the real You tab does, then land on the scanned identity pane. */
 async function leaveAndRescan(phone: Page, code: string): Promise<void> {
 	await phone.goto('/settings/you');
@@ -164,7 +172,7 @@ test('after a reset, a turn still queued under the name keeps the name until it 
 		const host = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
 		await world.becomeHost(host);
 		await host.goto('/host');
-		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await openReset(host, 'Theo');
 		await host.getByRole('button', { name: 'Yes, reset' }).click();
 		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
 
@@ -213,7 +221,7 @@ test("the host's Reset phones signs out every phone of a kept person, and they c
 		await world.becomeHost(host);
 		await host.goto('/host');
 		await expect(host.getByRole('heading', { name: 'Kept phones' })).toBeVisible();
-		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await openReset(host, 'Theo');
 		await expect(host.locator('[role="alertdialog"]')).toContainText('Every phone kept as Theo is signed out');
 		await host.getByRole('button', { name: 'Yes, reset' }).click();
 		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
