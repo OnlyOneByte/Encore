@@ -1,0 +1,85 @@
+{
+  "scenario": "phone-tab-left-390",
+  "what": "Phone 390: another tab of this phone left the room, so this one shows the join screen with \"You're not in the room any more\"",
+  "capturedAt": "2026-11-25T00:27:16.557Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "lost": true,
+    "me": null
+  },
+  "subject": {
+    "selector": ".join-main",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "lost": true,
+      "me": null
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.8
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 23,
+    "observed": {
+      "lost": true,
+      "me": null
+    }
+  },
+  "timingsMs": {
+    "seekMs": 4062,
+    "encodeMs": 456,
+    "liveMs": 11413,
+    "reducedMs": 2338,
+    "reducedEncodeMs": 710
+  },
+  "files": {
+    "clip.gif": 20525,
+    "clip-slow4x.gif": 20525,
+    "filmstrip.png": 125809,
+    "filmstrip-reduced.png": 299508
+  }
+}

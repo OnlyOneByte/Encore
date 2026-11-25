@@ -1,0 +1,100 @@
+{
+  "scenario": "phone-dock-idle",
+  "what": "Phone 390x844: the last song ends — the strip stays at its height and reads “Nothing playing” with no transport, a cut",
+  "capturedAt": "2026-11-25T00:26:59.530Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: nothing caught to check"
+  },
+  "motionEndMs": 0,
+  "seekFrames": 2,
+  "seekObserved": {
+    "dock": {
+      "y": 752,
+      "h": 92
+    },
+    "keyInert": null,
+    "tray": false,
+    "text": "Nothing playing"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [],
+    "others": [],
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": null,
+      "tray": false,
+      "text": "Nothing playing"
+    },
+    "droppedFrames": {
+      "median": 7,
+      "min": 7,
+      "max": 9
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.8,
+      "max": 33.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 4,
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": null,
+      "tray": false,
+      "text": "Nothing playing"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 9556,
+    "encodeMs": 399,
+    "liveMs": 12150,
+    "reducedMs": 1216,
+    "reducedEncodeMs": 265
+  },
+  "files": {
+    "clip.gif": 19174,
+    "clip-slow4x.gif": 19174,
+    "filmstrip.png": 32588,
+    "filmstrip-reduced.png": 26761
+  }
+}

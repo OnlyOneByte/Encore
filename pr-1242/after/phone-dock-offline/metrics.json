@@ -1,0 +1,195 @@
+{
+  "scenario": "phone-dock-offline",
+  "what": "Phone 390x844: the link drops — “Reconnecting…” takes the title slot in --warn (a cut) and the Cheer key fades out in place (--motion-base); the dock does not grow",
+  "capturedAt": "2026-11-25T00:26:56.520Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "dock": {
+      "y": 752,
+      "h": 92
+    },
+    "keyInert": true,
+    "tray": false,
+    "text": "Reconnecting…"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [
+    {
+      "delayMs": 250,
+      "atMs": 273
+    }
+  ],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": true,
+      "tray": false,
+      "text": "Reconnecting…"
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 3
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.8,
+      "max": 33.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 7,
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": true,
+      "tray": false,
+      "text": "Reconnecting…"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 7625,
+    "encodeMs": 993,
+    "liveMs": 8253,
+    "reducedMs": 3060,
+    "reducedEncodeMs": 366
+  },
+  "files": {
+    "clip.gif": 96800,
+    "clip-slow4x.gif": 96800,
+    "filmstrip.png": 61218,
+    "filmstrip-reduced.png": 39667
+  }
+}

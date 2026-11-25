@@ -1,0 +1,148 @@
+{
+  "scenario": "phone-cheers-open",
+  "what": "Phone 390x844: tapping the Cheer key — the four reactions and ✕ rise into the strip in place (rise-in, --motion-base); the dock does not move",
+  "capturedAt": "2026-11-25T00:26:54.581Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.cheers.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) var(--ease-pop)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "dock": {
+      "y": 752,
+      "h": 92
+    },
+    "keyInert": null,
+    "tray": true,
+    "text": null
+  },
+  "subject": {
+    "selector": ".dock .cheers",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.cheers.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) var(--ease-pop)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": null,
+      "tray": true,
+      "text": null
+    },
+    "droppedFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 6,
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": null,
+      "tray": true,
+      "text": null
+    }
+  },
+  "timingsMs": {
+    "seekMs": 7153,
+    "encodeMs": 1175,
+    "liveMs": 8183,
+    "reducedMs": 2910,
+    "reducedEncodeMs": 399
+  },
+  "files": {
+    "clip.gif": 106372,
+    "clip-slow4x.gif": 106372,
+    "filmstrip.png": 108100,
+    "filmstrip-reduced.png": 48906
+  }
+}

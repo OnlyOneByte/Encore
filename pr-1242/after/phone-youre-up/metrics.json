@@ -1,0 +1,200 @@
+{
+  "scenario": "phone-youre-up",
+  "what": "Phone 390x844: \"You’re up\" rising over the dock on the Library tab as Theo’s song starts (rise-in, --motion-base)",
+  "capturedAt": "2026-11-25T00:27:38.307Z",
+  "stepMs": 16,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "rise",
+      "target": "div.youre-up.your-turn.rise-in",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "rise var(--motion-base) var(--ease-pop)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 18,
+  "seekObserved": {
+    "sheet": true,
+    "live": "You’re up, dont-stop-believin"
+  },
+  "subject": {
+    "selector": ".youre-up",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.youre-up.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) var(--ease-pop)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 283.2820000665263,
+        "delayMs": 0,
+        "endTimeMs": 283.2820000665263,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "sheet": true,
+      "live": "You’re up, dont-stop-believin"
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 2,
+      "min": 2,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 33.3,
+      "min": 33.3,
+      "max": 33.4
+    },
+    "frameIntervalP95Ms": {
+      "median": 66.6,
+      "min": 50.1,
+      "max": 66.7
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 5,
+    "observed": {
+      "sheet": true,
+      "live": "You’re up, dont-stop-believin"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12152,
+    "encodeMs": 1577,
+    "liveMs": 20460,
+    "reducedMs": 7589,
+    "reducedEncodeMs": 250
+  },
+  "files": {
+    "clip.gif": 376825,
+    "clip-slow4x.gif": 376825,
+    "filmstrip.png": 165715,
+    "filmstrip-reduced.png": 39129
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "scenario": "phone-queue-card-arrive",
+  "what": "Phone 390x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the \"Now singing\" card fades into the opened slot (opacity, --motion-base after --motion-base); no jump, never text over text",
+  "capturedAt": "2026-11-25T00:25:51.366Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-arrive",
+      "target": "div.now.arrive",
+      "durationMs": 500,
+      "delayMs": 0,
+      "endTimeMs": 500,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "svelte-qegr5c-arrive calc(var(--motion-base) * 2) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-qegr5c-settle-b",
+      "target": "div.below",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "none",
+      "properties": [
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-qegr5c-settle-b var(--motion-base) ease-out",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 500,
+  "seekFrames": 18,
+  "seekObserved": {
+    "card": true,
+    "underTop": 346
+  },
+  "subject": {
+    "selector": ".now",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-arrive",
+        "target": "div.now.arrive",
+        "durationMs": 500,
+        "delayMs": 0,
+        "endTimeMs": 500,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-qegr5c-arrive calc(var(--motion-base) * 2) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-qegr5c-settle-b",
+        "target": "div.below",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-qegr5c-settle-b var(--motion-base) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [],
+    "observed": {
+      "card": true,
+      "underTop": 287.9522705078125
+    },
+    "droppedFrames": {
+      "median": 2,
+      "min": 1,
+      "max": 3
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 16.8,
+      "min": 16.8,
+      "max": 33.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 9,
+    "observed": {
+      "card": true,
+      "underTop": 346
+    }
+  },
+  "timingsMs": {
+    "seekMs": 7512,
+    "encodeMs": 2251,
+    "liveMs": 8358,
+    "reducedMs": 3216,
+    "reducedEncodeMs": 721
+  },
+  "files": {
+    "clip.gif": 241324,
+    "clip-slow4x.gif": 241324,
+    "filmstrip.png": 406004,
+    "filmstrip-reduced.png": 132158
+  }
+}

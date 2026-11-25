@@ -1,0 +1,258 @@
+{
+  "scenario": "phone-dock-your-song-390",
+  "what": "Phone 390x844: the dock as Theo’s song starts — the Cheer key fades out in place (opacity, --motion-base), no band and no shift (CLS 0)",
+  "capturedAt": "2026-11-25T00:26:33.427Z",
+  "stepMs": 33,
+  "scale": 1,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSTransition",
+      "name": "visibility",
+      "target": "button.btn.cheer-key.resting",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "visibility"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 10,
+  "seekObserved": {
+    "dock": {
+      "y": 752,
+      "h": 92
+    },
+    "keyInert": true,
+    "tray": false,
+    "text": "Theo · dont-stop-believin"
+  },
+  "subject": {
+    "selector": ".dock .strip",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": null,
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "visibility",
+        "target": "button.btn.cheer-key.resting",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "visibility"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease-out, visibility var(--motion-base)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.fill",
+        "durationMs": 183.32499996926637,
+        "delayMs": 0,
+        "endTimeMs": 183.32499996926637,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "rise",
+        "target": "div.youre-up.your-turn.rise-in",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "cubic-bezier(0.2, 0.9, 0.3, 1.3)",
+        "iterations": 1,
+        "fill": "none",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "rise var(--motion-base) var(--ease-pop)",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": true,
+      "tray": false,
+      "text": "Theo · dont-stop-believin"
+    },
+    "droppedFrames": {
+      "median": 1,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFrames": {
+      "median": 1,
+      "min": 1,
+      "max": 2
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 33.4
+    },
+    "frameIntervalP95Ms": {
+      "median": 83.3,
+      "min": 50,
+      "max": 83.4
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [],
+    "burstFrames": 4,
+    "observed": {
+      "dock": {
+        "y": 752,
+        "h": 92
+      },
+      "keyInert": true,
+      "tray": false,
+      "text": "Theo · dont-stop-believin"
+    }
+  },
+  "timingsMs": {
+    "seekMs": 12077,
+    "encodeMs": 1549,
+    "liveMs": 21299,
+    "reducedMs": 7479,
+    "reducedEncodeMs": 319
+  },
+  "files": {
+    "clip.gif": 125164,
+    "clip-slow4x.gif": 125164,
+    "filmstrip.png": 76995,
+    "filmstrip-reduced.png": 38187
+  }
+}
