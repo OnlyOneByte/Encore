@@ -64,11 +64,6 @@
 	let renaming = $state(false);
 	const returning = $derived(someoneElse ? null : (preview?.returning ?? null));
 
-	/* Tenet 2 (#1089): "Finding the room…" is seen only past the 300 ms grace (`.finding`, in CSS), timed from mount,
-	   which is when the scanned lookup starts. An answer that lands once it is seen is applied when it has been seen
-	   for 300 ms (`loadPreview`), so it is never painted for less. */
-	const mountedAt = performance.now();
-
 	/* DERIVED from `preview`, so no state can show an identity pane for a room that was never confirmed. */
 	const pane = $derived<'resolving' | 'code' | 'identity'>(
 		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
@@ -109,8 +104,6 @@
 		try {
 			const res = await fetch(`/api/room-preview?code=${encodeURIComponent(code)}`);
 			const body = await res.json();
-			const hold = mountedAt + 600 - performance.now();
-			if (arrivedWithCode && hold > 0 && hold < 300) await new Promise((r) => setTimeout(r, hold));
 			if (!res.ok) {
 				previewError = body.error ?? 'That room could not be found.';
 			} else {
@@ -414,7 +407,8 @@
 		color: var(--ink);
 		font-weight: 600;
 	}
-	/* Hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, then seen: no motion, so not behind reduced motion. */
+	/* Tenet 2 (#1089): hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, so a quick room never shows it;
+	   the sentence replacing it later is content, never held (#1171). No motion, so not behind reduced motion. */
 	.finding {
 		animation: finding 0s 0.3s backwards;
 	}

@@ -107,10 +107,6 @@
 	   without this the first real sync read as N additions. See `QueueStore.synced`. */
 	let queueSynced = $state(false);
 	let playbackSynced = $state(false);
-	/* Tenet 2 (#1090): the list's skeleton is seen only past the 300 ms grace (`.skels-wait`, in CSS). A first sync that
-	   lands once it is seen is applied when it has been seen for 300 ms, so it is never painted for less. */
-	const pageAt = performance.now();
-	let holding: unknown = 0;
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -137,12 +133,6 @@
 
 	onMount(() => {
 		const sync = () => {
-			if (holding) return;
-			const hold = pageAt + 600 - performance.now();
-			if (room.queue?.synced && !queueSynced && hold > 0 && hold < 300) {
-				holding = setTimeout(() => ((holding = 0), sync()), hold);
-				return;
-			}
 			me = room.me ?? null;
 			status = room.status;
 			entries = room.entries;
@@ -1052,7 +1042,8 @@
 		}
 	}
 
-	/* Hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, then seen: no motion, so not behind reduced motion. */
+	/* Tenet 2 (#1090): hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, so a quick sync never shows it;
+	   the list replacing it later is content, never held (#1171). No motion, so not behind reduced motion. */
 	.skels-wait {
 		animation: skels-wait 0s 0.3s backwards;
 	}

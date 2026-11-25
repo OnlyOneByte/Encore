@@ -1010,8 +1010,8 @@ row**, ink on the ground with no surface of its own, under a quiet sentence-case
 underlined, is the door to `/song/[mediaId]` for everyone who is not singing), the singer, the clock and the transport.
 The row arriving with the room's first song fades in (`.arrive`) once the blocks under it have glided past its box:
 held at 0 for `--motion-base`, then a `--motion-fast` fade, 370 ms in all (#1092). On a cold load the list's skeleton
-holds its place from the first frame but is seen only past 300 ms (`.skels-wait`, a CSS delay), and a first sync that
-lands once it is seen is applied when it has been seen for 300 ms, so it never flashes (#1090). An unjoined visitor's
+holds its place from the first frame but is seen only past 300 ms (`.skels-wait`, a CSS delay), so a quick sync never
+shows it, and the list that replaces it later is never held back for it (#1090, #1171). An unjoined visitor's
 join screen is loaded on demand, as on `/`, so a joined phone never downloads it.
 **It holds the transport** (redesign step 4, an owner ruling, moved off the dock): restart, play/pause and skip,
 three 44 px keys under the clock in one `Playback` group, for every phone, as the strip had them. Play/pause is the
@@ -1505,8 +1505,8 @@ reached only by a guest with no code in the URL or whose scanned code did not re
 pane — the room confirmed IN WORDS, the name field, the colour, the CTA — and the only pane a guest who
 scanned the television's QR ever sees. The room has no NAME in the schema, so "confirmed in words" is who is
 here, from the room-preview endpoint. While that lookup is out, "Finding the room…" holds the sentence's box from the
-first frame but is seen only past 300 ms (`.finding`, a CSS delay), and an answer that lands once it is seen is
-applied when it has been seen for 300 ms, so a quick room never flickers it and a slow one still says so (#1089).
+first frame but is seen only past 300 ms (`.finding`, a CSS delay), so a quick room never flickers it and a slow one
+still says so; the sentence that replaces it is never held back for it (#1089, #1171).
 
 **Both panes are one Spotlight card** (redesign step 7, #1157): the idle look (the raise surface ringed in the
 accent, then in the colour you will sing in), drawn inline rather than with `<Spotlight>` for the CSS reason under
