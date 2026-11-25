@@ -169,6 +169,12 @@ export class NightLog {
 		return this.#db.select().from(performances).where(this.#owns(owner)).orderBy(performances.endedAt).all();
 	}
 
+	/** The recorded turns among these entries, for the room's "Tonight". Read whole, so the caller decides what shows. */
+	turnsForEntries(entryIds: string[]): Performance[] {
+		if (entryIds.length === 0) return [];
+		return this.#db.select().from(performances).where(inArray(performances.entryId, entryIds)).all();
+	}
+
 	/** Delete my history: every row the owner can read. Returns how many went. */
 	deleteFor(owner: HistoryOwner): number {
 		return this.#db.delete(performances).where(this.#owns(owner)).returning({ id: performances.id }).all().length;

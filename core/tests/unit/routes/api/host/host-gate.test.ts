@@ -25,6 +25,7 @@ import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server
 import { POST as undoDelete } from '$routes/api/library/manage/undo/+server';
 import { POST as bulk } from '$routes/api/library/manage/bulk/+server';
 import { GET as getSizes } from '$routes/api/library/sizes/+server';
+import { POST as showNight } from '$routes/api/host/tonight/+server';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { MediaRepository } from '$lib/server/media/repository';
 import { PlayLog } from '$lib/server/media/play-log';
@@ -136,7 +137,8 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 					bulk(event('/api/library/manage/bulk', 'POST', cookies, { action, mediaIds: ['m1'] }))
 				)
 			)),
-			await getSizes(event('/api/library/sizes', 'GET', cookies))
+			await getSizes(event('/api/library/sizes', 'GET', cookies)),
+			await showNight(event('/api/host/tonight', 'POST', cookies))
 		];
 		expect(
 			results.map((r) => r.status),

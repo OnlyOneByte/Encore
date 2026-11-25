@@ -464,7 +464,7 @@ const broadcast = (e: ServerEvent) => {
 	seatEntryId = state.playback.currentEntryId;
 	announceSeat(tvSeats.boundary(app.activeRoomId));
 };
-setPublish(broadcast);
+setPublish(broadcast, (e) => server.publish(roomTvTopic(app.activeRoomId), JSON.stringify(e)));
 
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 

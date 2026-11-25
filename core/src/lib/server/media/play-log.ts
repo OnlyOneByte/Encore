@@ -85,6 +85,16 @@ export class PlayLog {
 			.all();
 	}
 
+	/** Every play at or after `since`, oldest first. */
+	since(since: number): { entryId: string; at: number }[] {
+		return this.#db
+			.select({ entryId: plays.entryId, at: plays.at })
+			.from(plays)
+			.where(gte(plays.at, since))
+			.orderBy(plays.at)
+			.all();
+	}
+
 	/** When this entry first went on stage, or null if it never did. */
 	startedAt(entryId: string): number | null {
 		return this.#db.select({ at: plays.at }).from(plays).where(eq(plays.entryId, entryId)).all()[0]?.at ?? null;

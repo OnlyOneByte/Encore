@@ -2,7 +2,8 @@
 
 import type { Cookies } from '@sveltejs/kit';
 import type { EncoreApp } from '../app';
-import type { QueueEntry } from '../../contract';
+import { songDisplay, type QueueEntry, type Tonight } from '../../contract';
+import { buildTonight, tonightPlays } from './tonight';
 import { keptCaller } from '../people/keep';
 import { SESSION_COOKIE, type StoredSinger } from '../singers/repository';
 import { NIGHT_SWEEP_EVERY_MS, type HistoryOwner, type TurnEnd } from './repository';
@@ -56,6 +57,27 @@ export function historyOwner(
 	if (!me) return null;
 	const personId = me.personId ? (keptCaller(app, cookies, req)?.device.person.id ?? null) : null;
 	return { me, owner: { singerId: me.id, personId } };
+}
+
+/** How far back "Tonight" looks. shortcut: a party longer than this shows only its last two days; widen if one is. */
+const TONIGHT_LOOKBACK_MS = 48 * 3_600_000;
+
+/** The room's night for the TV, or null when there is none to show. */
+export function tonightFor(app: EncoreApp): Tonight | null {
+	const now = app.now();
+	const plays = tonightPlays(app.playLog.since(now - TONIGHT_LOOKBACK_MS), now);
+	const turns = app.nights.turnsForEntries(plays.map((p) => p.entryId)).filter((t) => t.roomId === app.activeRoomId);
+	return buildTonight({
+		plays,
+		turns,
+		keeps: (singerId, personId) => app.nights.isRecording([singerId, personId]),
+		singer: (id) => {
+			const s = app.singers.byId(id);
+			return s ? { name: s.displayName, color: s.color } : null;
+		},
+		title: (mediaId) => songDisplay(app.mediaById.get(mediaId)).title || 'A song',
+		now
+	});
 }
 
 /** For a periodic tick: the guest sweep at most once a day, the first a day after `since` (boot runs its own). */

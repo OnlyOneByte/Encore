@@ -116,6 +116,8 @@ export interface EncoreApp {
 	/** Library deletes waiting out their Undo window. */
 	pendingDeletes: PendingDeletes;
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
+	/** The room's TVs only (`roomTvTopic`); replaced by server.ts at boot. */
+	publishTv: (e: ServerEvent) => void;
 	/** Replaced by server.ts with the real socket map. */
 	toWorker: (workerId: string, cmd: WorkerCommand) => void;
 	/** Re-derives the membership snapshot the per-socket replies server.ts builds are made from — the
@@ -649,6 +651,7 @@ export function getApp(): EncoreApp {
 		),
 		// No-op sinks until server.ts wires Bun.serve; routes and state still work without them.
 		publish: () => {},
+		publishTv: () => {},
 		toWorker: () => {},
 		syncRoom: () => app.publish(roomSync()),
 		now: () => Date.now()
@@ -696,8 +699,9 @@ export function deleteSongNow(app: EncoreApp, mediaId: string, actorSingerId?: s
 }
 
 /** server.ts calls this at boot to route broadcasts through Bun.serve's native pub/sub. */
-export function setPublish(fn: (e: ServerEvent) => void): void {
+export function setPublish(fn: (e: ServerEvent) => void, tv?: (e: ServerEvent) => void): void {
 	getApp().publish = fn;
+	if (tv) getApp().publishTv = tv;
 }
 
 /** The genuinely per-socket inputs to a HubDeps bag. Everything else is read off `app` by {@link buildHubDeps}. */

@@ -131,7 +131,33 @@ export type ServerEvent =
 	// TV-ONLY, ~4 Hz: the seat's playhead as core received it (`serverAt`, core's ms clock), for copies to follow.
 	| { type: 'tv:clock'; entryId: string; positionSec: number; serverAt: number }
 	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.
-	| { type: 'tv:pong'; t0: number; serverAt: number };
+	| { type: 'tv:pong'; t0: number; serverAt: number }
+	// TV-ONLY, on the host's "Show the night": the room's recap, built from what the room saw. See docs/SERVER.md#tonight.
+	| { type: 'tv:tonight'; tonight: Tonight };
+
+/** A singer the TV may name: one who kept their nights. */
+export interface TonightSinger {
+	name: string;
+	color: string;
+}
+
+export interface TonightSong {
+	title: string;
+	singer: TonightSinger;
+}
+
+/** The room's night on the TV. Never a ranking, and never anyone who said "Don't keep my nights": with any such turn in
+ *  the night, `singers` and `cheers` are absent and only `songs` is shown. */
+export interface Tonight {
+	songs: number;
+	singers?: number;
+	cheers?: number;
+	/** The night's first and last song, only when its singer may be named. `last` is absent with one song. */
+	first?: TonightSong;
+	last?: TonightSong;
+	/** Who sang, in the order they first sang. No counts. */
+	everyone: TonightSinger[];
+}
 
 // phone/TV -> core. Every value is an ABSOLUTE target, clamped or allowlisted SERVER-side, and `null`
 // clears the per-song override rather than meaning zero.

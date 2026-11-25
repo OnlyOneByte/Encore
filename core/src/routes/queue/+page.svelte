@@ -62,6 +62,8 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
+	import { toast } from 'svelte-sonner';
+	import { isHostPhone } from '$lib/stores/host';
 	import type { TransportControls } from '$lib/transport-controls';
 
 	/* Mirrored from the link, and ONLY the fields this page renders — the documented rule, because a component that
@@ -108,6 +110,26 @@
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
+
+	/** The host's "Show the night", offered only once nothing is on or queued. The server checks both again. */
+	let host = $state(false);
+	let showingNight = $state(false);
+	onMount(() => void isHostPhone().then((yes) => (host = yes)));
+	async function showNight() {
+		showingNight = true;
+		try {
+			const res = await fetch('/api/host/tonight', { method: 'POST' });
+			if (res.ok) toast.success('The night is on the TV');
+			else
+				toast.error(
+					((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "Couldn't show the night"
+				);
+		} catch {
+			toast.error("Couldn't reach Encore. Try again.");
+		} finally {
+			showingNight = false;
+		}
+	}
 
 	onMount(() => {
 		const sync = () => {
@@ -987,6 +1009,15 @@
 								<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
 							{/if}
 							<Button href="/" size="block">Find a song</Button>
+							{#if host && !nowEntry}
+								<Button
+									variant="secondary"
+									size="block"
+									data-testid="show-night"
+									disabled={showingNight}
+									onclick={showNight}>Show the night</Button
+								>
+							{/if}
 						</Empty.Content>
 					</Empty.Root>
 				</div>

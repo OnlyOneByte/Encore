@@ -2321,6 +2321,25 @@ the `20px` term is the windowed legibility floor. `--ui-scale` is declared with 
 declaration — which would silently remove the floor. The stage-scale rule holds the
 ten-foot floor this roots.
 
+### Tonight on the TV
+
+The host taps **Show the night** on the Queue tab. It is offered only to the host, only when nothing is playing
+or queued, and the server checks both again (docs/SERVER.md#tonight). The TV then plays `TvTonight.svelte` in
+place of the lobby or attract screen: up to four slides, 6 s each, then the lobby again. A song starting ends it.
+
+| Slide | Shows | Only when |
+| --- | --- | --- |
+| Totals | "2 songs · 2 singers · 5 cheers", or songs alone | always; songs alone when anyone in the night opted out |
+| First song | its title and singer, in the singer's Spotlight band | its singer may be named |
+| Who sang tonight | each named singer with their colour dot, in the order they first sang | anyone may be named |
+| Last song | its title and singer, in their band | more than one song, and its singer may be named |
+
+Nothing ranks anyone: there is no "song of the night", no counts per person or per song. The band takes the
+singer's palette stop and its certified `on_fill` ink, as the Spotlight does. Every size is a `--tv-*` tier, so
+the type floor holds (the probe checks every text box is 20 px or more and inside the safe area at 1920 and
+1280). The pager sits beside the title, because the connection dot owns the top-right corner. The slides enter
+with `--motion-slow`, transform and opacity only, and not at all under reduced motion.
+
 ### The attract and lobby idles
 
 Both idles are the same screen at two scales, so a change to one belongs in the other. Attract is TWO

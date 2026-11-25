@@ -738,6 +738,7 @@ const HOST_ONLY_WRITES: [string, string, (mediaId: string) => string][] = [
 	['POST', '/api/library/manage/delete', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/library/manage/undo', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/host/people/reset', () => '{"personId":"anyone"}'],
+	['POST', '/api/host/tonight', () => ''],
 	['POST', '/api/library/manage/bulk', (id) => JSON.stringify({ action: 'delete', mediaIds: [id] })],
 	['POST', '/api/library/manage/bulk', (id) => JSON.stringify({ action: 'keep', mediaIds: [id] })],
 	['DELETE', '/api/host', () => '']
