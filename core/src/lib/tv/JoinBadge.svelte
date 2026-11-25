@@ -7,8 +7,6 @@
 		/** The join URL, shown as text so people can type it if scanning fails. */
 		joinUrl: string;
 		placement?: 'hero' | 'corner';
-		/** How many singers are in the room right now; shown on the corner card. Hidden when 0. */
-		onlineCount?: number;
 		// A NUMBER is pixels, right for the fixed-geometry corner card; a STRING is any CSS length used verbatim, so the
 		// TV hero can pass a `vmin` token and grow with a 4K panel instead of dead-ending at a pixel cap.
 		size?: number | string;
@@ -25,7 +23,6 @@
 		qrDataUrl,
 		joinUrl,
 		placement = 'hero',
-		onlineCount = 0,
 		size = placement === 'corner' ? 88 : 238,
 		unreachable = false,
 		roomCode = null,
@@ -61,9 +58,6 @@
 			<!-- The typed path, mid-song: a camera that will not scan leaves the code as the only way in. -->
 			{#if roomCode}
 				<div class="c">code <b>{roomCode}</b></div>
-			{/if}
-			{#if onlineCount > 0}
-				<div class="n">{onlineCount} {onlineCount === 1 ? 'singer' : 'singers'} in</div>
 			{/if}
 		</div>
 	</div>
@@ -159,24 +153,6 @@
 		color: var(--ink);
 		font-weight: 800;
 		letter-spacing: 0.12em;
-	}
-	.n {
-		font-size: var(--tv-label);
-		color: var(--ok);
-		margin-top: 5px;
-		font-weight: 600;
-	}
-	/* The live dot is DRAWN, not a `●`: the TV draws no sign outside ASCII (stage-words.test.ts). Sized and set where
-	   the glyph's ink sat, with the glyph's trailing space as its margin. */
-	.n::before {
-		content: '';
-		display: inline-block;
-		width: 0.9em;
-		height: 0.9em;
-		border-radius: 50%;
-		background: currentColor;
-		vertical-align: -0.09em;
-		margin-right: 0.36em;
 	}
 
 	/* `text-wrap: balance` rather than a width cap: a cap in `ch` froze the old card two words wide, and one in vmin is

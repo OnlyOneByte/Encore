@@ -1,8 +1,7 @@
 <script lang="ts">
-	// Song progress in the three placements a room can choose between, as ONE component so the fill geometry and the
-	// reduced-motion rule are stated once. Every style is matched EXPLICITLY and there is no trailing else, so `off`
-	// renders nothing and a style added later cannot silently inherit a bar. `card` renders inline, placed INSIDE the
-	// now-singing card by the caller; the other two self-position.
+	// Song progress in the three styles a room can pick, in one component so the fill and the reduced-motion rule are
+	// stated once. `card` and `edge` render inside the singer's pill (TvNowBar); `corner` places itself at the top-left.
+	// No trailing else, so `off` renders nothing.
 	import { formatClock, formatRemainingAscii, progressFraction } from '$lib/clock';
 	import type { TvProgressStyle } from '$lib/contract';
 
@@ -10,7 +9,7 @@
 		style: TvProgressStyle;
 		elapsedSec: number;
 		durationSec: number;
-		/** A takeover card is up: the self-positioned styles hide with the lower third (`card` inherits it). */
+		/** A takeover card is up: `corner` hides with the lower third (the pill's styles inherit it). */
 		underCard?: boolean;
 	}
 	let { style, elapsedSec, durationSec, underCard = false }: Props = $props();
@@ -34,7 +33,7 @@
 			{formatRemainingAscii(elapsedSec, durationSec).slice(1)}
 		</div>
 	{:else if style === 'edge'}
-		<div class={['edgebar', { 'under-card': underCard }]}><i style="transform:scaleX({progress})"></i></div>
+		<div class="edgebar"><i style="transform:scaleX({progress})"></i></div>
 	{/if}
 {/if}
 

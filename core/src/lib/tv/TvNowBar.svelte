@@ -107,12 +107,15 @@
 		<span class="ls-key">{keyLine}</span>
 	{/if}
 	{#if underline}
-		<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} />
+		{@render progress()}
 	{/if}
 </div>
 {#if !underline}
-	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
+	{@render progress()}
 {/if}
+{#snippet progress()}
+	<TvProgress style={progressStyle} elapsedSec={positionSec} durationSec={durationSec} underCard={underCard} />
+{/snippet}
 <!-- PERMANENT, because the song-intro card is gone in seconds and someone waiting their turn needs it. Words, not an
 	"UP NEXT" eyebrow. -->
 {#if next}
