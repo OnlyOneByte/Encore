@@ -288,9 +288,10 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
 
 - **A song that settled with no lyrics** offers the host the paste control too, with a sentence saying why.
   - The reason is the latest align attempt's `lyricsNote`. `/api/audit` returns it to the host only.
-  - Core keeps a worker's note only when it is one of `LYRICS_NOTES` (#1221). Today that is `asr-offline`: an
-    offline worker whose whisper checkpoint isn't cached completes align once with no lyrics instead of failing it
-    three times.
+  - Core keeps a worker's note only when it is one of `LYRICS_NOTES` (#1221). `asr-offline`: an offline worker
+    whose whisper checkpoint isn't cached completes align once with no lyrics instead of failing it three times.
+    `asr-babble`: whisper's transcript was not words, so the worker withheld it (#1288,
+    [`arch/04-alignment.md`](arch/04-alignment.md) §5.6).
   - Without a note, the page says no lyrics were found. Either way a paste aligns as any fix does.
   - `probe/offline-lyrics.spec.ts` covers it.
 

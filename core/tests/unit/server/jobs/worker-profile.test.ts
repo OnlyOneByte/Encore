@@ -108,8 +108,9 @@ test('completion facts keep only bounded strings', () => {
 	expect(resolvedFacts(['engine'])).toEqual({});
 });
 
-test('a lyrics note is kept only when it is a known reason: it reaches the song page (#1221)', () => {
+test('a lyrics note is kept only when it is a known reason: it reaches the song page (#1221, #1288)', () => {
 	expect(resolvedFacts({ lyricsNote: 'asr-offline' })).toEqual({ lyricsNote: 'asr-offline' });
+	expect(resolvedFacts({ lyricsNote: 'asr-babble' })).toEqual({ lyricsNote: 'asr-babble' });
 	for (const lyricsNote of ['<b>hi</b>', 'ASR-OFFLINE', '', 1, null]) expect(resolvedFacts({ lyricsNote })).toEqual({});
 });
 

@@ -545,7 +545,7 @@ def _align_facts(
         # checkpointed before the field existed restores it as None (`restore_appended`): the job's param.
         "syncMode": outcome.sync_mode or sync_mode_of(job).value,
         # WHY there are none, when this box could not listen: core shows it on the song page (#1221).
-        **({"lyricsNote": "asr-offline"} if outcome.no_lyrics and _asr_off_for(job, config) else {}),
+        **({"lyricsNote": note} if (note := _lyrics_note(job, config, outcome)) else {}),
         # Only where a diarizer ran: how many voices it heard, and how many coloured parts were written.
         **(
             {"voices": published.voices, "voiceParts": published.parts}
@@ -553,6 +553,12 @@ def _align_facts(
             else {}
         ),
     }
+
+
+def _lyrics_note(job: JobRef, config: Config, outcome: AlignOutcome) -> str | None:
+    if not outcome.no_lyrics:
+        return None
+    return "asr-offline" if _asr_off_for(job, config) else outcome.lyrics_note
 
 
 def _asr_off_for(job: JobRef, config: Config) -> bool:

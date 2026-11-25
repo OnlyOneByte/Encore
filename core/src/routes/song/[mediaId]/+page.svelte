@@ -150,7 +150,9 @@
 		media?.lyricsStatus === 'ready' && !media.lyricsRef && !candidates.length
 			? lyricsNote === 'asr-offline'
 				? "No lyrics: the karaoke maker is offline and hasn't downloaded its speech model, so it couldn't listen for the words. Paste them and they'll be timed to the song."
-				: "No lyrics were found for this song. Paste them and they'll be timed to the song."
+				: lyricsNote === 'asr-babble'
+					? "No lyrics: the karaoke maker listened but couldn't make out the words, so it showed none rather than wrong ones. Paste them and they'll be timed to the song."
+					: "No lyrics were found for this song. Paste them and they'll be timed to the song."
 			: undefined
 	);
 

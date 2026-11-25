@@ -676,6 +676,38 @@ text acquired ──▶ clean / nonlyric ──▶ language ──▶ emissions
                                               ends post-pass ─▶ measure ─▶ decide
 ```
 
+### 5.6 The babble check — _is this transcript words at all?_
+
+The ASR tier skips the wrong-text gates (§5.1), because its words were heard on this audio. But whisper can
+decode a song into runs of two letters (`yyyzyzzzyy…`, between U+FFFD bytes) and still name a language, and
+until #1288 such a transcript published and the song went ready with it. `domain/lyrics/babble.py` withholds a
+transcript before it is timed, and `workflows/align.py` treats it like one that heard nothing: the mix gets
+its turn after the stem, and if neither yields words the job publishes no lyrics with
+`lyricsNote: "asr-babble"`. The host's song page says so and offers the paste ([`../SERVER.md`](../SERVER.md)
+"Lyrics fixes").
+
+**The rule.** Split each line at spaces and hyphens, and look for runs of 20 or more letters drawn from 4 or
+fewer distinct letters. A transcript is babble when such runs hold half its letters or more. Hyphens split
+because sung chains (`la-la-la`, `wo-oh-oh`) are written with them, and a script written without spaces
+mostly stays clear because its runs use many distinct characters. Unspaced chants do match (`啦啦啦…`,
+`ららら…`, `ลาลาลา…`, `Lalalala…`, `Nooooo…`): real songs pass because of the 0.5 share, since their words
+outweigh such lines. A transcript dominated by chants is withheld on purpose, and the host can still paste
+the lyrics.
+
+**What it was measured on** (#1288), as the share of letters in such runs:
+
+| corpus | documents | highest share | rejected |
+| ------ | --------- | ------------- | -------- |
+| whisper transcripts from local bench runs (#1284 and earlier): 90 of the 3 `tfr-*` songs, 1 other | 91 real, 3 babble | 0.000 real; 0.895–1.000 babble | the 3 babble only |
+| other stored lyrics documents from local runs (providers, captions, fixes) | 553 | 0.000 | 0 |
+| bench sheets: JamendoLyrics | 79 | 0.000 | 0 |
+| bench sheets: AMLL TTML DB, every file (zh / ja / ko / en) | 3,479 | 0.147 (`iiii…o` runs) | 0 |
+| bench sheets: the `tfr-*` truth | 3 | 0.000 | 0 |
+
+**Not used: a language mismatch.** The babble came with `language: id` or `sk` on English songs, but a Slovak
+song is real. Where the job declares a language whisper is told it, so its answer always matches, and with
+none there is nothing to compare against.
+
 ## 6. Grading, and the confidence that means something
 
 Grading runs on the **blind** verdict only. A line re-decoded inside its claim window agrees with the

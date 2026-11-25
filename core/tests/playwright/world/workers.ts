@@ -24,7 +24,15 @@ import { WebSocket } from 'ws';
 import { silence, tone } from './audio';
 import type { Core } from './core';
 import type { World } from './fixtures';
-import type { JobArtifacts, JobParams, JobType, MediaStatus, WorkerCommand, WorkerMessage } from '$lib/contract';
+import type {
+	JobArtifacts,
+	JobParams,
+	JobType,
+	LyricsNote,
+	MediaStatus,
+	WorkerCommand,
+	WorkerMessage
+} from '$lib/contract';
 
 /** Only the parts of the world a worker needs; `core` names core's own output in a failure, and its token. */
 export type WorkerWorld = Pick<World, 'baseURL' | 'mediaDir'> & { core: Pick<Core, 'log' | 'workerToken'> };
@@ -113,9 +121,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	/** Real-length lyric lines: six words, about 35 characters, as wide as a sung line on the TV. The default is one
 	 *  word a line, which no card or chrome can ever overlap, so a spec checking text against text needs this. */
 	longLyricLines?: boolean;
-	/** An offline worker whose whisper checkpoint isn't cached (#1221): an unpinned align completes once with no lyrics
-	 *  and `lyricsNote: 'asr-offline'`, as the real one does; a pasted sheet still aligns. */
-	offlineAsr?: boolean;
+	/** An unpinned align completes once with no lyrics and this `lyricsNote`, as the real worker does when it is offline
+	 *  without its whisper checkpoint (#1221) or whisper's words were babble (#1288); a pasted sheet still aligns. */
+	noLyricsNote?: LyricsNote;
 	/** Overrides `MEDIA_DIR`. Defaults to the world's, which is what core was booted with. */
 	mediaDir?: string;
 	/**
@@ -195,7 +203,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		loudnessLufs = null,
 		seconds = 8,
 		longLyricLines = false,
-		offlineAsr = false
+		noLyricsNote
 	} = options;
 
 	let output = '';
@@ -397,7 +405,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				await progress('aligning', 50);
 				// A host's fix arrives pinned, as the real worker gets it: its own lines, on the same grid, under its ref.
 				const pinned = typeof params.pinnedRef === 'string' && typeof params.pinnedText === 'string';
-				if (offlineAsr && !pinned) {
+				if (noLyricsNote && !pinned) {
 					// The real worker's no-lyrics frame: an empty uri, and the reason in its facts.
 					send({
 						type: 'job:complete',
@@ -405,7 +413,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 						jobId,
 						mediaUri: '',
 						artifacts: { lyrics: { uri: '' } },
-						facts: { asrModel: params.asrModel ?? 'base', lyricsNote: 'asr-offline' },
+						facts: { asrModel: params.asrModel ?? 'base', lyricsNote: noLyricsNote },
 						stages: [{ stage: 'align', ms: slowMs }]
 					});
 					return;
