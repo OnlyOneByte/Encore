@@ -47,11 +47,15 @@ export type SeatNotice = { key: number; mine: boolean; tvOnline: boolean; next: 
 type Seat = {
 	/** The screen that holds the seat, or null when it is free. Persisted, so a core restart hands it back. */
 	holder: string | null;
-	/** The room's TV: the screen that last took the seat by choice (a free seat, a claim), not by standing in for a
-	 *  screen gone past its wait. Coming back, it takes the seat back.
-	 *  shortcut: kept in memory, so after a core restart the saved holder is the room's TV; persist it if a stand-in
-	 *  across a restart ever matters. */
+	/** The room's TV: the screen the host chose (a host claim) or the first into an empty room (#1249). A screen that
+	 *  got the seat any other way (promoted while the TV was gone, or a guest's claim) stands in; coming back, the
+	 *  room's TV takes the seat back, and the host can remove a stand-in. Null until one is named.
+	 *  shortcut: kept in memory, and null after a core restart, so a saved holder is a stand-in until the host names
+	 *  the TV or a screen enters an empty room; persist it next to `rooms.tv_seat` if hosts mind. */
 	roomTv: string | null;
+	/** The room's TV came back mid-song while a screen stood in, and takes the seat at the next song (`boundary`).
+	 *  Only a return sets it: a guest's claim while the room's TV stays open lasts until the host undoes it. */
+	backNext: boolean;
 	/** That screen's live socket: the newest one, so a reload's new socket takes over before the old one closes. */
 	holderSocket: number | null;
 	/** When the holder's last socket closed (or, after a restart, when the room was first seen), else null. */
@@ -91,7 +95,8 @@ export class TvSeats {
 			// After a restart the holder has no socket yet: it gets the slow-boot window, counted from now.
 			s = {
 				holder,
-				roomTv: holder,
+				roomTv: null,
+				backNext: false,
 				holderSocket: null,
 				goneSince: holder ? this.#store.now() : null,
 				graceMs: holder ? TV_SEAT_SLOW_BOOT_MS : TV_SEAT_GRACE_MS,
@@ -114,6 +119,7 @@ export class TvSeats {
 		s.goneSince = null;
 		s.graceMs = TV_SEAT_GRACE_MS;
 		s.holderSeenAt = this.#store.now();
+		if (s.holder === s.roomTv) s.backNext = false;
 	}
 
 	/** Runs `change` and returns a notice for each socket whose answer (`mine` or `tvOnline`) moved. A new socket is not
@@ -121,7 +127,8 @@ export class TvSeats {
 	 *  move the old TV is told to go silent before the new one is told to play, never the other way round (the audio
 	 *  is sacred). */
 	#diff(s: Seat, change: () => void): SeatNotice[] {
-		const waiting = () => (s.holder !== s.roomTv && s.holderSocket !== null ? this.#roomTvSocket(s) : null);
+		const waiting = () =>
+			s.backNext && s.holder !== s.roomTv && s.holderSocket !== null ? this.#roomTvSocket(s) : null;
 		const answer = (key: number, w: number | null): SeatNotice => ({
 			key,
 			mine: key === s.holderSocket,
@@ -204,11 +211,15 @@ export class TvSeats {
 			if (!tvId) return;
 			if (s.holder === null) {
 				this.#setHolder(roomId, s, tvId);
-				s.roomTv ??= tvId;
+				// A free seat names the room's TV only when no other screen is open (#1254's review, M1).
+				if (s.sockets.length === 1) s.roomTv ??= tvId;
 			}
 			// The room's TV back while a screen stands in for it plays again at once, unless the stand-in is playing a
 			// song: then the TV waits for the next song (`boundary`), as a screen becomes the TV mid-song only when tapped.
-			if (tvId === s.roomTv && (s.holderSocket === null || !this.#store.midSong())) this.#setHolder(roomId, s, tvId);
+			if (tvId === s.roomTv && s.holder !== tvId) {
+				if (s.holderSocket === null || !this.#store.midSong()) this.#setHolder(roomId, s, tvId);
+				else s.backNext = true;
+			}
 			if (tvId === s.holder) this.#seated(s, key);
 		});
 	}
@@ -216,18 +227,27 @@ export class TvSeats {
 	/** A song ended or started: the room's TV, back while a screen stood in for it, takes the seat now. */
 	boundary(roomId: string): SeatNotice[] {
 		const s = this.#rooms.get(roomId);
-		if (!s || s.holder === s.roomTv || this.#roomTvSocket(s) === null) return [];
+		if (!s || !s.backNext || s.holder === s.roomTv || this.#roomTvSocket(s) === null) return [];
 		return this.#diff(s, () => this.#reclaim(roomId, s));
 	}
 
 	/** The host removed `tvId`. When it was standing in for the room's TV, that TV takes the seat if it is open, or
-	 *  the seat waits the grace for it (after which the next screen stands in). The room's TV is never removed. */
+	 *  the seat waits the grace for it (after which the next screen stands in). With no room's TV named, the newest
+	 *  other open screen stands in, as `#expire` picks, and the seat goes free only when none is open, so a removed
+	 *  script redialling never finds a free seat to be named in. The room's TV is never removed. */
 	release(roomId: string, tvId: string): SeatNotice[] {
 		const s = this.#rooms.get(roomId);
 		if (!s || s.holder !== tvId || tvId === s.roomTv) return [];
 		this.#book();
 		return this.#diff(s, () => {
 			if (this.#reclaim(roomId, s)) return;
+			if (s.roomTv === null) {
+				const next = s.sockets.findLast((x) => x.tvId && x.tvId !== tvId);
+				this.#setHolder(roomId, s, next?.tvId ?? null);
+				if (next) this.#seated(s, next.key);
+				else s.holderSocket = s.goneSince = null;
+				return;
+			}
 			this.#setHolder(roomId, s, s.roomTv);
 			s.holderSocket = null;
 			s.goneSince = this.#store.now();
@@ -257,18 +277,22 @@ export class TvSeats {
 		});
 	}
 
-	/** "Make this the TV": the claiming screen takes the seat at once and the old holder becomes a copy. */
-	claim(roomId: string, key: number): SeatNotice[] {
+	/** "Make this the TV": the claiming screen takes the seat at once and the old holder becomes a copy. Only the
+	 *  host's claim (`byHost`) makes it the room's TV; anyone else's makes a stand-in the host can remove (#1249). */
+	claim(roomId: string, key: number, byHost: boolean): SeatNotice[] {
 		const s = this.#rooms.get(roomId);
 		const me = s?.sockets.find((x) => x.key === key);
 		if (!s || !me?.tvId) return [];
 		// A claim by the socket that already holds the seat moves nothing, so it books nothing: a client looping on
-		// "Make this the TV" must not pile up timers.
-		if (s.holderSocket === key) return [];
+		// "Make this the TV" must not pile up timers. The host can still name a stand-in the room's TV this way.
+		if (s.holderSocket === key) {
+			if (byHost) s.roomTv = me.tvId;
+			return [];
+		}
 		this.#book();
 		return this.#diff(s, () => {
 			this.#setHolder(roomId, s, me.tvId!);
-			s.roomTv = me.tvId!;
+			if (byHost) s.roomTv = me.tvId!;
 			this.#seated(s, key);
 		});
 	}

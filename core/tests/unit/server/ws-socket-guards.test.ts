@@ -77,8 +77,9 @@ test('tv:telemetry is honoured only from the TV seat: not a phone, not a cookiel
 		{ type: 'tv:seat', mine: true, tvOnline: true, next: false }
 	]);
 
-	// "Make this the TV": the copy takes the seat, the old holder is told, and only the new seat is honoured.
-	const copy = await open('tv', screen('B'));
+	// "Make this the TV": the copy takes the seat, the old holder is told, and only the new seat is honoured. Its
+	// `encore_host` cookie names no live session, so the claim is a guest's: the host's is checked, not detected.
+	const copy = await open('tv', `${screen('B')}; encore_host=${'h'.repeat(43)}`);
 	copy.ws.send(JSON.stringify({ type: 'tv:claim' }));
 	await settle();
 	expect(copy.frames.filter((f) => f.type === 'tv:seat')).toEqual([
@@ -92,9 +93,10 @@ test('tv:telemetry is honoured only from the TV seat: not a phone, not a cookiel
 	copy.ws.send(JSON.stringify({ ...frame, positionSec: 9 }));
 	await settle();
 	expect(await syncedPosition()).toBe(9);
-	// The TV's tab closes: the copy is told no TV is live, on the wire, as exactly these four fields.
+	// B's claim carried no host session, so B only stood in (#1249). Its tab closes: the room's TV, still open, is the
+	// TV again at once, told on the wire as exactly these four fields.
 	copy.ws.close();
 	await settle();
-	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false, tvOnline: false, next: false });
+	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: true, tvOnline: true, next: false });
 	seat.ws.close();
 }, 20_000);

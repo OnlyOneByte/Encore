@@ -288,3 +288,49 @@ test('the Screens page arrives with its list: no layout shift on 8 cold loads', 
 	);
 	for (const r of runs) expect(r.cls, `CLS on a cold load at ${r.cpu}x`).toBe(0);
 });
+
+// #1249: only the host's choice names the room's TV. A guest's script that claims the seat only stands in, so the host
+// can remove it and the room's TV plays again; a tap on a screen carrying the host's cookie is the host's choice.
+test("a guest script's claim is a stand-in the host removes; a tap on the host's own screen names the room's TV", async ({
+	browser,
+	world
+}) => {
+	test.setTimeout(120_000);
+	const tv = await openScreen(browser, world, true);
+	const host = await world.openPhone('Host');
+	await world.becomeHost(host);
+	const roomTv = (await tvRow(host))!.id;
+	// The script: a minted cookie and a raw socket that claims the seat, as any guest's laptop could.
+	const script = rawTv(world, true);
+	expect(await script.outcome).toBe('open');
+	script.ws.send(JSON.stringify({ type: 'tv:claim' }));
+	await expect.poll(async () => (await tvRow(host))?.id).not.toBe(roomTv);
+	const grabbed = (await tvRow(host))!;
+	expect(grabbed.canRemove, 'a guest-claimed TV is a stand-in').toBe(true);
+	await expect(tv.locator('.copy-chip')).toBeAttached();
+	// The host removes it from the Screens page: the script is closed as removed, and the room's TV plays again.
+	await host.goto('/settings/screens');
+	const scriptClosed = new Promise<number>((r) => script.ws.on('close', (code) => r(code)));
+	await host.locator('section', { hasText: grabbed.name }).first().getByRole('button', { name: 'Remove' }).click();
+	expect(await scriptClosed).toBe(4002);
+	await expect.poll(async () => (await tvRow(host))?.id).toBe(roomTv);
+	await expect(tv.locator('.copy-chip')).toHaveCount(0);
+	// A screen opened in the host's own browser carries the host's cookie: its tap is the host's choice.
+	const hostScreen = await host.context().newPage();
+	await hostScreen.setViewportSize({ width: 1920, height: 1080 });
+	await hostScreen.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+	await hostScreen.locator('.status.on').waitFor({ state: 'attached', timeout: 15_000 });
+	await hostScreen.waitForTimeout(1_000);
+	await hostScreen.locator('.copy-claim').click();
+	await expect.poll(async () => (await tvRow(host))?.id).not.toBe(roomTv);
+	const named = (await tvRow(host))!;
+	expect(named.canRemove, "the host's choice is the room's TV").toBe(false);
+	const refused = await host.request.post('/api/screens', { data: { action: 'remove', id: named.id } });
+	expect(refused.status()).toBe(409);
+	// The old TV is a copy now, and reloading does not take back a seat the host gave away.
+	await tv.reload();
+	await tv.locator('.status.on').waitFor({ state: 'attached', timeout: 15_000 });
+	await tv.waitForTimeout(1_500);
+	expect((await tvRow(host))!.id).toBe(named.id);
+	script.ws.close();
+});

@@ -10,6 +10,16 @@ import { cleanToken, codePoints } from './secret-text';
 export const HOST_COOKIE = 'encore_host';
 export const HOST_SESSION_MS = 30 * 86_400_000;
 
+/** The `encore_host` cookie's value out of a Cookie header, or undefined. Only {@link HostKey.isHost} gives it meaning. */
+export function readHostToken(cookieHeader: string | null): string | undefined {
+	if (!cookieHeader) return undefined;
+	for (const part of cookieHeader.split(';')) {
+		const [k, v] = part.trim().split('=');
+		if (k === HOST_COOKIE) return v || undefined;
+	}
+	return undefined;
+}
+
 function digest(value: string): Buffer {
 	return createHash('sha256').update(value).digest();
 }

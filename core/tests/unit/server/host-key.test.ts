@@ -1,11 +1,24 @@
 // The host key: what unlocks it, what it stores, and what ends it. docs/SERVER.md#the-host-key
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { HostKey, HOST_SESSION_MS, adminTokenProblem } from '$lib/server/host-key';
+import { HostKey, HOST_SESSION_MS, adminTokenProblem, readHostToken } from '$lib/server/host-key';
 import { hostSessions } from '$lib/server/db/schema';
 
 const NOW = 1_700_000_000_000;
 const LONG = 'a-fixed-host-key-of-plenty-length';
+
+// #1249: a /tv socket's host cookie, read from the upgrade's header, means something only to a live session.
+test('readHostToken finds encore_host in a Cookie header, and only a live session makes it the host', () => {
+	expect(readHostToken(null)).toBeUndefined();
+	expect(readHostToken('encore_tv=abc; other=1')).toBeUndefined();
+	expect(readHostToken('encore_host=')).toBeUndefined();
+	const key = new HostKey(migratedDb(), LONG);
+	const token = key.open(NOW);
+	expect(readHostToken(`encore_tv=abc; encore_host=${token}`)).toBe(token);
+	expect(key.isHost(readHostToken(`encore_host=${token}`), NOW)).toBe(true);
+	expect(key.isHost(readHostToken(`encore_host=${'x'.repeat(43)}`), NOW)).toBe(false);
+	expect(key.isHost(readHostToken(`encore_host=${token}`), NOW + HOST_SESSION_MS)).toBe(false);
+});
 
 test('a fixed key under 24 characters is refused outright, and unset or long enough is fine', () => {
 	expect(adminTokenProblem('abc')).toContain('at least 24');
