@@ -1,5 +1,5 @@
 // What of the generated palette registry the app ships: the `uniform` stops and only the fields `PaletteStop`
-// names. The rest (`chromatic`, stats, generator inputs) is the generator's record, ~4 KB gz on every route (#1246).
+// names. The rest (`chromatic`, stats, generator inputs) is the generator's record, ~4.9 KB gz on every route (#1246).
 import type { PaletteStop } from './player-palette';
 
 export const PALETTE_STOP_FIELDS = [
