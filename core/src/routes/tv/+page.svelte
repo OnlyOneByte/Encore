@@ -242,7 +242,8 @@
 		// once the hold is over on a missed preload, as the loading card. A slow round trip lands the confirm in the
 		// second, and re-entering there showed a second card with a second hold after a gap of lyrics.
 		const alreadyIntroduced = (tvState === 'interstitial' || tvState === 'loading') && introEntry?.id === cur?.id;
-		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced) {
+		// Never for a song the TV has already failed as dead: the server's frame naming it is only catching up (#1277).
+		if (entryChanged && cur && openedOnce && songIntroMs > 0 && !alreadyIntroduced && !ctl.isSpent(cur.id)) {
 			introEntry = cur;
 			ctl.enterInterstitial();
 			holdSongIntro();
@@ -319,6 +320,12 @@
 		const next = ctl.onEnded(upNext, status);
 		tvState = next;
 		sendTelemetry(status, endedId);
+		// The song coming up is one the hidden slot already found dead: fail it now, with no card and no refetch, as a
+		// skip onto it does (#1277). Not over a notice already up, which it would cut short.
+		if (next === 'loading' && upNext && ctl.currentIsDead && !skipNotice) {
+			onVisibleFailed(upNext.id);
+			return;
+		}
 		if (next === 'interstitial') {
 			introEntry = upNext;
 			holdSongIntro();
