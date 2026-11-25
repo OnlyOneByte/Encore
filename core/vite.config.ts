@@ -2,6 +2,7 @@ import adapter from 'svelte-adapter-bun';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+import { paletteSlice } from './src/lib/contract/presentation/palette-slice';
 
 // Encore core — SvelteKit on Bun. `svelte-adapter-bun` is the one non-first-party seam
 // (docs/ARCHITECTURE.md); if it proves rough, swap to @sveltejs/adapter-node under the Bun runtime.
@@ -22,6 +23,12 @@ export default defineConfig({
 	ssr: { external: ['bun:sqlite'] },
 	build: { rollupOptions: { external: ['bun:sqlite'] } },
 	plugins: [
+		// The bundle gets only the palette fields the app reads; bun test and the generator's guard see the whole file.
+		{
+			name: 'encore-palette-slice',
+			enforce: 'pre',
+			transform: (code, id) => (id.endsWith('/player-palette-48.json') ? paletteSlice(code) : undefined)
+		},
 		// Tailwind v4 through its first-party Vite plugin, not PostCSS. Ordered BEFORE `sveltekit()` as
 		// Tailwind's own SvelteKit guidance specifies. Keep it at a release whose peer range admits this
 		// app's Vite major — `@tailwindcss/vite` only widened to `^8` in 4.2.2.

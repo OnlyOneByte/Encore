@@ -1,5 +1,6 @@
 // The 48-stop player palette. The JSON beside this file is GENERATED and MEASURED, and a guard regenerates
-// it byte-identically; this module is the ONLY place the app reads it.
+// it byte-identically; this module is the ONLY place the app reads it. Vite bundles only `palette-slice.ts`'s
+// cut of it, so read nothing here beyond `variants.uniform.stops` and the `PaletteStop` fields.
 //
 // IT MUST READ THE `uniform` VARIANT: `chromatic` spans a wide lightness range for the TV, where a stop is a
 // whole field, while `uniform` pins every stop in the band `hueToHex` emits at `SINGER_L` — which is what
