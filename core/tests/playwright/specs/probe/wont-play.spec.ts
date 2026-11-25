@@ -59,16 +59,25 @@ function serverSync(baseURL: string): Promise<Sync> {
 		};
 	});
 }
-/** What PAINTS, frame by frame: per label, the wall-clock ms of the first animation frame it was on screen, and how
- *  many frames it was. A MutationObserver would count a node that came and went inside one task and never painted. */
+/** What PAINTS, frame by frame: per label, the wall-clock ms of the first animation frame it was on screen, how many
+ *  frames it was, and its first and last frames on the page's clock (`performance.now()`). A MutationObserver would
+ *  count a node that came and went inside one task and never painted. */
+interface Seen {
+	at: number;
+	frames: number;
+	perfFirst: number;
+	perfLast: number;
+}
 async function sampleFrames(page: Page, watch: Record<string, [selector: string, text: string]>): Promise<void> {
 	await page.evaluate((watch) => {
-		const w = window as unknown as { seen: Record<string, { at: number; frames: number }> };
+		const w = window as unknown as { seen: Record<string, Seen> };
 		w.seen = {};
 		const tick = () => {
 			for (const [label, [sel, text]] of Object.entries(watch)) {
 				if (!document.querySelector(sel)?.textContent?.includes(text)) continue;
-				const hit = (w.seen[label] ??= { at: Date.now(), frames: 0 });
+				const now = performance.now();
+				const hit = (w.seen[label] ??= { at: Date.now(), frames: 0, perfFirst: now, perfLast: now });
+				hit.perfLast = now;
 				hit.frames++;
 			}
 			requestAnimationFrame(tick);
@@ -76,8 +85,7 @@ async function sampleFrames(page: Page, watch: Record<string, [selector: string,
 		requestAnimationFrame(tick);
 	}, watch);
 }
-const seen = (page: Page) =>
-	page.evaluate(() => (window as unknown as { seen: Record<string, { at: number; frames: number }> }).seen);
+const seen = (page: Page) => page.evaluate(() => (window as unknown as { seen: Record<string, Seen> }).seen);
 /** The test ids of every next-step button on the page that paints a fill, the sheet's and the held row's: there must be
  *  exactly one (#1156, and the #1271 review: the row goes quiet while the sheet is up). */
 const filledNextSteps = (page: Page) =>
@@ -358,6 +366,83 @@ test('a dead file: the TV says whose song it was at once, and Theo keeps his spo
 			})
 			.toEqual({ id: theoId, playFailed: false, playFailures: 0, changed: true });
 	} finally {
+		await worker.stop();
+	}
+});
+
+// A DEAD FILE THE WARM NEVER FINISHED: Theo's request is held from his pre-warm until Maya's skip, then answers 404. So
+// "Now singing · Theo" may show for exactly one thing, the 404's round trip, which is the host's (172 ms on a loaded
+// runner, #1257): the page sets the file's `src` no later than the card's first frame, the song fails in the error's own
+// task, and no card frame follows the error. Every stamp is `performance.now()`.
+test('a dead file the warm never finished: the card shows only for its 404 round trip', async ({ world }) => {
+	const worker = await startFakeWorker(world);
+	let open!: () => void;
+	const gate = new Promise<void>((resolve) => (open = resolve));
+	try {
+		const r = await room(world, (tv, id) =>
+			tv.route(`**/*${id}*`, async (route) => {
+				await gate;
+				await route.fulfill({ status: 404, body: '' }).catch(() => {});
+			})
+		);
+		await r.tv.evaluate((id) => {
+			const w = window as unknown as { srcAt: number[]; deadAt: number[]; failedOnError: boolean[] };
+			w.srcAt = [];
+			w.deadAt = [];
+			w.failedOnError = [];
+			let inError = false;
+			// When the page points an element at Theo's file: the page's own act, before any host task runs the load.
+			new MutationObserver((records) => {
+				for (const rec of records)
+					if ((rec.target as Element).getAttribute('src')?.includes(id)) w.srcAt.push(performance.now());
+			}).observe(document, { subtree: true, attributes: true, attributeFilter: ['src'] });
+			document.addEventListener(
+				'error',
+				(e) => {
+					if (!(e.target as Element).getAttribute?.('src')?.includes(id)) return;
+					w.deadAt.push(performance.now());
+					inError = true;
+					const ch = new MessageChannel();
+					ch.port1.onmessage = () => (inError = false);
+					ch.port2.postMessage(0);
+				},
+				true
+			);
+			const warn = console.warn;
+			console.warn = (...a: unknown[]) => {
+				if (String(a[0]).includes('would not play')) w.failedOnError.push(inError);
+				warn(...a);
+			};
+		}, r.theoMedia);
+		await sampleFrames(r.tv, { cardTheo: [SEL.stateNext, 'Theo'] });
+		const theoId = (await theoEntry(world.baseURL))!.id;
+		await transportTap(r.maya, 'skip');
+		// Answered only once his turn has started: before that, a 404 lands on the hidden slot, the warmed case above.
+		await expect.poll(() => current(world), { timeout: 10_000 }).toBe(theoId);
+		open();
+		const stamps = () =>
+			r.tv.evaluate(() => {
+				const w = window as unknown as { srcAt: number[]; deadAt: number[]; failedOnError: boolean[] };
+				return { srcAt: w.srcAt, deadAt: w.deadAt, failedOnError: w.failedOnError };
+			});
+		await expect.poll(async () => (await stamps()).failedOnError.length, { timeout: 12_000 }).toBeGreaterThan(0);
+		const { srcAt, deadAt, failedOnError } = await stamps();
+		expect(failedOnError[0], 'Theo’s song failed at a later tick, not on his file’s error').toBe(true);
+		const card = (await seen(r.tv)).cardTheo;
+		if (card) {
+			const dead = deadAt.find((t) => t >= card.perfFirst);
+			expect(dead, 'Theo’s card painted, and his file never failed after it').toBeDefined();
+			const src = srcAt.filter((t) => t <= dead!).at(-1);
+			expect(src, 'Theo’s file failed with no src set behind it').toBeDefined();
+			expect(
+				src! <= card.perfFirst,
+				`the page pointed Theo’s element at his file ${Math.round(src! - card.perfFirst)} ms after his card painted`
+			).toBe(true);
+			expect(card.perfLast <= dead!, '"Now singing · Theo" painted after his file had failed').toBe(true);
+		}
+		await expect(r.tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });
+	} finally {
+		open();
 		await worker.stop();
 	}
 });
