@@ -1,7 +1,7 @@
 // Pure dispatch policy — no DB, no IO, no sockets. Capability match, least-loaded selection, and
 // need-order (priority = the rotationSeq of the soonest entry needing this media; lower = sooner).
 
-import type { Job, JobParams, JobType, Media, GlobalSettings } from '../../contract';
+import type { Job, JobParams, JobType, Media, GlobalSettings, QueueEntry } from '../../contract';
 import {
 	DEFAULT_ENGINE,
 	DEFAULT_MODEL,
@@ -18,6 +18,7 @@ import {
 } from '../../contract';
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
+import { stemOutputTag } from '../media/paths';
 
 /** PURE. Follow-ups CHAIN and are never enqueued together — see docs/SERVER.md#idempotency-and-the-process-cap. */
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
@@ -41,7 +42,12 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
  * confident: an ABSENT key tells the worker "no authoritative lookup is possible, transcribe instead",
  * where a raw uploader string would look like an answer. `fetch` is the deliberate exception.
  */
-export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
+export function assignParams(
+	jobType: JobType,
+	media: Media | undefined,
+	settings?: GlobalSettings,
+	jobId?: string
+): JobParams {
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
 	if (jobType === 'fetch') return { fetcher, ...annotationKeys(media) };
 	// A kept original is a LOCAL source, with the watch URL along for a worker that cannot see the volume.
@@ -58,7 +64,8 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 	// resolved there by separatorFor — against the pair on the media, so a drifted literal here would rank
 	// a job against a separator it was never dispatched with.
 	const separator = separatorFor(jobType, settings);
-	if (separator) return { ...acquire, ...separator };
+	const outputTag = reSeparates(jobType) && jobId ? { outputTag: stemOutputTag(jobId) } : {};
+	if (separator) return { ...acquire, ...separator, ...outputTag };
 	if (jobType !== 'align') return acquire;
 	return {
 		...acquire,
@@ -128,12 +135,34 @@ function annotationKeys(media: Media | undefined): Partial<JobParams> {
 /** Only separation publishes a playable instrumental: `markMediaReady` on a `fetch` completion would
  *  derive a key for a file that does not exist yet and mark the media ready anyway, 404ing the TV. */
 export function publishesInstrumental(jobType: JobType): boolean {
-	return jobType === 'stems' || jobType === 'stems-upgrade';
+	return jobType === 'stems' || reSeparates(jobType);
+}
+
+/** Separates a song that already has stems: background work under new names, never a readiness gate. */
+export function reSeparates(jobType: JobType): boolean {
+	return jobType === 'stems-upgrade' || jobType === 'stems-remake';
+}
+
+type TurnEntries = readonly { id?: string; mediaId: string; status: QueueEntry['status'] | string }[];
+
+/** The song is queued (on deck included) or playing: a screen may be about to play its files, or playing them. */
+export function inTurn(mediaId: string, entries: TurnEntries, currentEntryId: string | null | undefined): boolean {
+	return entries.some((e) => e.mediaId === mediaId && (e.status === 'queued' || e.id === currentEntryId));
+}
+
+/** The host's remake starts after the song's turn (proposal 33). An upgrade does not wait, so it can land before
+ *  the first turn; the hub holds back whatever a screen still needs (`WorkerHub.settle`). */
+export function waitsForTurn(
+	job: Pick<Job, 'jobType' | 'mediaId'>,
+	entries: TurnEntries,
+	currentEntryId: string | null | undefined
+): boolean {
+	return job.jobType === 'stems-remake' && inTurn(job.mediaId, entries, currentEntryId);
 }
 
 /** Controls the process id AND singer attribution together — see docs/SERVER.md#idempotency-and-the-process-cap. */
 export function inheritsProcess(next: JobType): boolean {
-	return next !== 'stems-upgrade';
+	return !reSeparates(next);
 }
 
 /** For `markMediaReady`'s quality comparison. Non-separation jobs return undefined. */
@@ -141,7 +170,8 @@ export function separatorFor(
 	jobType: JobType,
 	settings?: GlobalSettings
 ): { engine: string; model: string } | undefined {
-	if (jobType === 'stems') {
+	// A remake is "make it again", so it uses tonight's settings, as a first separation would.
+	if (jobType === 'stems' || jobType === 'stems-remake') {
 		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
 	}
 	if (jobType === 'stems-upgrade') {
@@ -174,7 +204,7 @@ export function requiredCapability(jobType: JobType, settings?: GlobalSettings):
 	if (jobType === 'fetch') {
 		return getFetcher(settings?.defaultFetcher ?? DEFAULT_FETCHER)?.capability ?? `fetch:${DEFAULT_FETCHER}`;
 	}
-	if (jobType === 'stems' || jobType === 'stems-upgrade') {
+	if (publishesInstrumental(jobType)) {
 		const upgrade = jobType === 'stems-upgrade';
 		const engineId = upgrade
 			? (settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)
@@ -219,7 +249,9 @@ const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
 export function planAssignments(
 	queued: Job[],
 	workers: WorkerSession[],
-	capabilityFor: CapabilityFor = defaultCapabilityFor
+	capabilityFor: CapabilityFor = defaultCapabilityFor,
+	/** A worker that already refused this job as an action it does not know. */
+	refused: (jobId: string, workerId: string) => boolean = () => false
 ): Assignment[] {
 	// Local slot view, so one planning pass cannot over-assign.
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
@@ -231,7 +263,7 @@ export function planAssignments(
 		const cap = capabilityFor(job);
 		let best: WorkerSession | null = null;
 		for (const w of workers) {
-			if (!w.capabilities.includes(cap)) continue;
+			if (!w.capabilities.includes(cap) || refused(job.id, w.workerId)) continue;
 			if ((slots.get(w.workerId) ?? 0) <= 0) continue;
 			if (!best || slots.get(w.workerId)! > slots.get(best.workerId)!) best = w;
 		}

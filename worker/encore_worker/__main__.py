@@ -766,6 +766,7 @@ _STAGE_FOR = {
     "fetch": Stage.DOWNLOADING,
     "stems": Stage.SEPARATING,
     "stems-upgrade": Stage.SEPARATING,
+    "stems-remake": Stage.SEPARATING,
     "align": Stage.ALIGNING,
 }
 
@@ -792,7 +793,7 @@ async def _dispatch(
             return f.Failed(config.worker_id, job.job_id, aligned.why, retryable=True)
         return _align_completion(job, config, aligned, device=client.device)
 
-    if assign.action in ("stems", "stems-upgrade"):
+    if assign.action in ("stems", "stems-upgrade", "stems-remake"):
         return _stems_completion(job, config, await durable.stems(job), separator)
 
     if assign.action == "fetch":

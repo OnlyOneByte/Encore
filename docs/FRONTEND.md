@@ -1471,7 +1471,9 @@ control beside the count. Manage swaps each `SongRow` for a `ManageRow`
 line becomes the storage line, "214 songs · 12.4 GB of 20 GB" ("…, over the 20 GB cap" past it), with a thin bar
 when a cap is set and "Kept songs use X of Y GB" past 90% of it. Sort gains `Biggest` and `Least sung`, which
 leave with Manage. Tapping a row opens its sheet in place: Name and artist (Change), Lyrics (Fix, the song page),
-Keep on this machine, and Delete. A song in tonight's queue says "In tonight's queue. Delete it after its turn."
+Sound (Make again), Keep on this machine, and Delete. Make again says "Making the sound again" ("… after its turn"
+for a song in tonight's queue), and that the old sound plays until the new one is in. While the song's last
+remake has failed, a warn line under Sound says so, with the reason. A song in tonight's queue says "In tonight's queue. Delete it after its turn."
 instead, and a kept one says to turn Keep off. Delete has no dialog: the row goes, and a 10 s toast offers Undo.
 Deleting the last song shows the empty Library; the toast's Undo still brings it back.
 **Bulk (PR 2):** each row has a checkbox, and `Select all` beside `Done` picks the whole filtered match list, not

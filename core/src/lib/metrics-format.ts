@@ -54,7 +54,8 @@ export const STEP_LABELS: Record<string, string> = {
 	stems: 'remove vocals',
 	align: 'time lyrics',
 	score: 'pitch track',
-	'stems-upgrade': 'redo vocals'
+	'stems-upgrade': 'redo vocals',
+	'stems-remake': 'make sound again'
 };
 export const stepLabel = (jobType: string): string => STEP_LABELS[jobType] ?? jobType;
 

@@ -12,5 +12,11 @@ export const GET: RequestHandler = async ({ cookies }) => {
 		return json({ error: 'only the host can open this' }, { status: 403 });
 	const app = getApp();
 	const ready = app.media.listReady().filter((m) => !app.pendingDeletes.has(m.id));
-	return json(await librarySizes(ready, app.mediaStore, retentionCapBytes()));
+	const sizes = await librarySizes(ready, app.mediaStore, retentionCapBytes());
+	// A remake is silent to the room (the song stays ready), so the song sheet is where the host hears it failed.
+	for (const [mediaId, job] of app.jobs.latestOfType('stems-remake')) {
+		const song = sizes.songs[mediaId];
+		if (song && job.status === 'failed') song.remakeFailed = job.error ?? 'it stopped';
+	}
+	return json(sizes);
 };

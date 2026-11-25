@@ -76,7 +76,7 @@ export interface StepStats {
 }
 
 /** Per-step rollup, ordered by the pipeline's own sequence rather than alphabetically. */
-const STEP_ORDER: JobType[] = ['fetch', 'stems', 'align', 'stems-upgrade'];
+const STEP_ORDER: JobType[] = ['fetch', 'stems', 'align', 'stems-upgrade', 'stems-remake'];
 
 export function perStep(attempts: JobAttempt[]): StepStats[] {
 	const byType = groupBy(attempts, (a) => a.jobType);

@@ -78,6 +78,7 @@ class SeparateStepsImpl:
         """
         if self._sep is None:
             raise _Permanent("this worker has no separator engine, so it cannot serve a stems job")
+        _output_tag(job)  # before the long run, not after it
         # The subprocess engines forward what their own bar prints (WK-07). The in-process zoo gets no sink:
         # its heartbeat is a CLOCK, not a measurement (`audiosep._heartbeat`); the phone shows the ETA alone.
         sink = None
@@ -175,17 +176,19 @@ class SeparateStepsImpl:
                     None,
                 )
 
-        instrumental_ref = keys.instrumental_key(job.media_id, ext)
+        # A re-separation publishes under its own names: the stems it replaces play until core swaps.
+        tag = _output_tag(job)
+        instrumental_ref = keys.instrumental_key(job.media_id, ext, tag)
         await self._store.put(instrumental_ref, staged_instrumental)
 
         vocals_ref: str | None = None
         if staged_vocals is not None:
-            vocals_ref = keys.vocals_key(job.media_id, ext)
+            vocals_ref = keys.vocals_key(job.media_id, ext, tag)
             await self._store.put(vocals_ref, staged_vocals)
 
         guide_ref: str | None = None
         if staged_guide is not None:
-            guide_ref = keys.guide_mix_key(job.media_id, ext)
+            guide_ref = keys.guide_mix_key(job.media_id, ext, tag)
             await self._store.put(guide_ref, staged_guide)
 
         return PublishedStems(
@@ -206,6 +209,18 @@ class _Permanent(RuntimeError):
     """A capability this box does not have. No retry can supply it."""
 
     retryable = False
+
+
+def _output_tag(job: JobRef) -> str | None:
+    """The job's `outputTag`, or None when it sends none. A malformed one fails the job: the untagged names it
+    would fall back to are the live stems, which screens cache a day (docs/arch/05-worker.md §4)."""
+    raw = job.params.get("outputTag")
+    if raw is None:
+        return None
+    tag = keys.output_tag(raw) if isinstance(raw, str) else None
+    if tag is None:
+        raise _Permanent(f"refusing outputTag {raw!r}: not a [0-9a-z] name segment")
+    return tag
 
 
 class FetchStepsImpl:

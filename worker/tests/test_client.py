@@ -1065,7 +1065,7 @@ def test_every_action_has_a_keepalive_stage() -> None:
     to `separating`, which would be wrong — and silently so — for an align or a fetch."""
     from encore_worker.__main__ import _STAGE_FOR
 
-    assert set(_STAGE_FOR) == {"fetch", "stems", "stems-upgrade", "align"}
+    assert set(_STAGE_FOR) == {"fetch", "stems", "stems-upgrade", "stems-remake", "align"}
     assert _STAGE_FOR["align"] is Stage.ALIGNING
     assert _STAGE_FOR["fetch"] is Stage.DOWNLOADING
 

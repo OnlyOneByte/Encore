@@ -102,7 +102,7 @@ export function forgetProcess(media: Media, jobs: Pick<JobRepository, 'supersede
 	media.lyricsCandidates = [];
 	media.lyricsStatus = undefined;
 	media.stemStatus = 'none';
-	for (const t of ['stems', 'stems-upgrade', 'align'] as const) jobs.supersedeForRerun(media.id, t);
+	for (const t of ['stems', 'stems-upgrade', 'stems-remake', 'align'] as const) jobs.supersedeForRerun(media.id, t);
 }
 
 /** Lets the route answer honestly: an already-processed song is a SUCCESS, not an error. */
@@ -168,6 +168,17 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 	// were lost — and leaving that `queued` against a job that will never run again deadlocks rotation.
 	if (job.status === 'ready') markMediaReady(mediaId, deps.mediaById);
 	return job;
+}
+
+/** The host's Make it again for the sound (proposal 33 PR 3). The song stays ready: the remake has no gate, writes
+ *  under new names and is swapped in by its completion. Behind every guest's pick, and held while the song is
+ *  queued or playing (`waitsForTurn`). A remake already waiting or running is returned, not doubled. */
+export function requestRemake(media: Media, deps: Pick<ProcessDeps, 'jobs' | 'now'>): Job {
+	const live = deps.jobs.findLive(media.id, 'stems-remake');
+	if (live && !isTerminalJob(live.status)) return live;
+	// A finished remake still holds the dedup slot, so it is freed first, as `retimeLyrics` does for align.
+	deps.jobs.supersedeForRerun(media.id, 'stems-remake');
+	return deps.jobs.enqueue(media.id, 'stems-remake', NO_QUEUE_PRIORITY, deps.now());
 }
 
 /** Why a lyrics re-select could not start — the honest refusal the endpoint maps to a status code. */
@@ -249,13 +260,15 @@ export function markMediaReady(
 	mediaId: string,
 	mediaById: Map<string, Media>,
 	reportedUri?: string,
-	separator?: { engine: string; model: string }
+	separator?: { engine: string; model: string },
+	/** The host's Make it again: they asked for these stems, so a same-rank separation is still taken. */
+	force = false
 ): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 
 	// An UPGRADE must never publish a worse instrumental than the one already there.
-	if (separator && media.instrumentalRef && !isQualityUpgrade(media.separator, separator)) {
+	if (!force && separator && media.instrumentalRef && !isQualityUpgrade(media.separator, separator)) {
 		return false;
 	}
 

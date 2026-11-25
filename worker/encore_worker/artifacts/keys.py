@@ -7,6 +7,8 @@ rather than constants, and what each key shape here is deciding: docs/arch/05-wo
 
 from __future__ import annotations
 
+import re
+
 #: Newest-served first; mirrors core's `KNOWN_AUDIO_EXTS`. A consumer must ENUMERATE these — the reason, and
 #: why `wav` is in the list, are in docs/arch/05-worker.md §4.
 KNOWN_AUDIO_EXTS: tuple[str, ...] = ("webm", "opus", "m4a", "mp4", "mp3", "wav")
@@ -36,19 +38,32 @@ GUIDE_MIX_EXT = "flac"
 KNOWN_STEM_EXTS: tuple[str, ...] = ("flac", "m4a", "wav")
 
 
-def instrumental_key(media_id: str, ext: str = INSTRUMENTAL_EXT) -> str:
+_TAG = re.compile(r"[0-9a-z]{1,40}")
+
+
+def output_tag(raw: str | None) -> str | None:
+    """A re-separation's name segment (core's `stemOutputTag`), or None for anything that is not one: the
+    stems it replaces are cached a day by name, so its own must differ (docs/arch/05-worker.md §4)."""
+    return raw if raw is not None and _TAG.fullmatch(raw) else None
+
+
+def _stem_base(media_id: str, tag: str | None) -> str:
+    return f"derived/stems/{media_id}-{tag}" if output_tag(tag) else f"derived/stems/{media_id}"
+
+
+def instrumental_key(media_id: str, ext: str = INSTRUMENTAL_EXT, tag: str | None = None) -> str:
     """What actually PLAYS. The one stem whose fidelity is user-facing."""
-    return f"derived/stems/{media_id}-instrumental.{ext.lstrip('.')}"
+    return f"{_stem_base(media_id, tag)}-instrumental.{ext.lstrip('.')}"
 
 
-def vocals_key(media_id: str, ext: str = VOCALS_EXT) -> str:
+def vocals_key(media_id: str, ext: str = VOCALS_EXT, tag: str | None = None) -> str:
     """Reference vocals — used for alignment and for the guide mix, not normally played."""
-    return f"derived/stems/{media_id}-vocals.{ext.lstrip('.')}"
+    return f"{_stem_base(media_id, tag)}-vocals.{ext.lstrip('.')}"
 
 
-def guide_mix_key(media_id: str, ext: str = GUIDE_MIX_EXT) -> str:
+def guide_mix_key(media_id: str, ext: str = GUIDE_MIX_EXT, tag: str | None = None) -> str:
     """Both stems in ONE 4-channel file (0/1 instrumental, 2/3 vocals); docs/arch/05-worker.md §4."""
-    return f"derived/stems/{media_id}-guidemix.{ext.lstrip('.')}"
+    return f"{_stem_base(media_id, tag)}-guidemix.{ext.lstrip('.')}"
 
 
 def sibling_vocals_ref(instrumental_ref: str) -> str:

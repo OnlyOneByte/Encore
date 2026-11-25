@@ -391,6 +391,11 @@ Four shapes in that module are decisions rather than templates:
   the media's override and sends it as the align job's pinned ref; the worker writes the re-timed paste under
   exactly that key, so core's merge **overwrites** the pinned candidate instead of adding a rival. It is the
   (manual, word) candidate key by construction.
+* **A re-separation's stems carry a tag segment** (`<id>-<tag>-instrumental.<ext>`). Core sends it as the
+  `outputTag` param on `stems-upgrade` and `stems-remake` jobs, and `keys.output_tag` accepts only a short
+  `[0-9a-z]` token. The playing stems are cached a day by name, so new stems need a new name; core swaps the
+  refs and deletes the old files (docs/SERVER.md#managing-the-library). A first `stems` job is untagged, and a
+  malformed tag fails the job (not retryable) rather than falling back to the untagged names, which are live.
 * **The caption kind is a directory segment because yt-dlp names both tracks identically**, so only the
   segment distinguishes an uploader's track from a machine baseline. Neither is stored on the media row —
   they are evidence for diagnosing the parser, not candidates — so retention enumerates the matrix.

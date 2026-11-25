@@ -23,9 +23,10 @@ import {
 	KNOWN_STEM_EXTS,
 	KNOWN_CAPTION_EXTS,
 	CAPTION_KINDS,
-	resolveBase
+	resolveBase,
+	isTaggedStemOf
 } from './paths';
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
 /** `cancel` is the cancelJobsForMedia bag MINUS the fields this module supplies itself. `deleteFile` is
@@ -74,11 +75,25 @@ function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 	refs.add(lyricsKey(mediaId));
 	// Every fix document by id: one Undo or Back to automatic replaced, or one an eviction kept, is named nowhere.
 	for (const ref of editRefsOnDisk(mediaId)) refs.add(ref);
+	for (const ref of taggedStemsOnDisk(mediaId)) refs.add(ref);
 	for (const kind of CAPTION_KINDS) for (const ext of KNOWN_CAPTION_EXTS) refs.add(rawCaptionKey(mediaId, kind, ext));
 	if (m?.instrumentalRef) {
 		for (const r of legacyVocalsRefs(m.instrumentalRef)) refs.add(r);
 	}
 	return [...refs];
+}
+
+/** A re-separation's stems on disk (`<id>-<tag>-instrumental.flac`, ...): one that crashed before its swap, or
+ *  before deleting what it replaced, is named nowhere. None when the folder can't be read. */
+function taggedStemsOnDisk(mediaId: string): string[] {
+	const { base, rest } = resolveBase('derived/stems');
+	try {
+		return readdirSync(resolve(join(base, rest)))
+			.filter((name) => isTaggedStemOf(mediaId, name))
+			.map((name) => `derived/stems/${name}`);
+	} catch {
+		return [];
+	}
 }
 
 /** In the load-bearing order documented above. Idempotent for a media absent from the runtime catalog,

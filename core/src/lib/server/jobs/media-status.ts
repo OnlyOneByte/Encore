@@ -21,6 +21,7 @@ const JOB_STAGE_FLOOR: Record<JobType, MediaStage> = {
 	// Matches `stems` for the rare case where it IS what the song waits on; an already-singable song's
 	// broadcasts are suppressed entirely.
 	'stems-upgrade': 'separating',
+	'stems-remake': 'separating',
 	align: 'aligning'
 };
 
@@ -62,9 +63,9 @@ export function completedStatusFor(job: Job, media: Media | undefined): MediaSta
 	return stagePosition(nextStatus) > stagePosition(floor) ? nextStatus : floor;
 }
 
-/** A `stems-upgrade` runs on an ALREADY singable song, so without this its accept flips every phone's
- *  ready row back to "Making karaoke" for the length of a background re-separation. */
+/** A `stems-upgrade` or `stems-remake` runs on an ALREADY singable song, so without this its accept flips every
+ *  phone's ready row back to "Making karaoke" for the length of a background re-separation. */
 export function shouldBroadcastProcess(job: Job, media: Media | undefined): boolean {
-	if (job.jobType !== 'stems-upgrade') return true;
+	if (job.jobType !== 'stems-upgrade' && job.jobType !== 'stems-remake') return true;
 	return !media || !readyToSing(media);
 }

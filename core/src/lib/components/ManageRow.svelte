@@ -94,6 +94,16 @@
 		if (await post('keep', { keep })) onchanged();
 	}
 
+	async function remake() {
+		const out = await post('remake', {});
+		if (!out) return;
+		onchanged(); // a last failure's line goes: this remake is now the latest
+		toast(out.afterTurn ? 'Making the sound again after its turn' : 'Making the sound again', {
+			duration: 4000,
+			description: 'The song stays ready. Its old sound plays until the new one is in.'
+		});
+	}
+
 	async function remove() {
 		const out = await post('delete', {});
 		if (!out) return;
@@ -155,6 +165,15 @@
 			<span>Lyrics</span>
 			<Button variant="ghost" size="tap" href={`/song/${encodeURIComponent(media.id)}`}>Fix</Button>
 		</div>
+		<div class="line">
+			<span>Sound</span>
+			<Button variant="ghost" size="tap" disabled={busy} onclick={remake}>Make again</Button>
+		</div>
+		{#if info?.remakeFailed}
+			<p class="remake-failed" role="status" data-testid="remake-failed">
+				The last Make again didn't work, so the old sound stays. Why: {info.remakeFailed}
+			</p>
+		{/if}
 		<label class="line">
 			<span>Keep on this machine</span>
 			<Switch checked={kept} disabled={busy} onCheckedChange={(v) => void setKeep(v)} />
@@ -212,6 +231,11 @@
 	.sheet-facts,
 	.dim {
 		color: var(--ink-dim);
+		font-size: var(--ph-text-sm);
+	}
+	.remake-failed {
+		margin: 0 0 var(--space-xs);
+		color: var(--warn);
 		font-size: var(--ph-text-sm);
 	}
 	.size {

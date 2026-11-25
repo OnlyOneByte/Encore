@@ -418,6 +418,9 @@ export interface JobParams {
 	remoteUri?: string;
 	/** The kept original's size at fetch; a file of any other size is not trusted, and `remoteUri` is used. */
 	originalBytes?: number;
+	/** A re-separation's own name segment (`derived/stems/<id>-<tag>-instrumental.flac`): the files it replaces
+	 *  are cached a day by name, so new stems need a new name. Absent on a first separation. */
+	outputTag?: string;
 }
 
 // core -> worker
