@@ -793,8 +793,8 @@ known-good artifact.
 
 ### 7.1 What each action actually runs
 
-`stems` / `stems-upgrade` and `align` are DBOS workflows (`worker/encore_worker/workflows/durable.py`); only
-align's steps are checkpoints, so an align retry resumes at its step while a stems retry separates again.
+`stems` / `stems-upgrade` and `align` are DBOS workflows (`worker/encore_worker/workflows/durable.py`) whose
+steps are checkpoints, so a retry resumes at its step: a stems retry after separation goes straight to publish.
 `fetch` runs directly, one download whose
 retry is cheaper than its bookkeeping. The worker's layers, steps and invariants are
 documented in [`arch/05-worker.md`](arch/05-worker.md).

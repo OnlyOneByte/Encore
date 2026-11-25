@@ -14,12 +14,13 @@ from collections.abc import Mapping
 from encore_worker.adapters import cli
 from encore_worker.adapters import separate as sep
 from encore_worker.adapters.encode import EncodeFailed, FfmpegEncoder
-from encore_worker.adapters.ports import AudioProbe, Separator
+from encore_worker.adapters.ports import AudioProbe, SeparationResult, Separator
 from encore_worker.artifacts import keys
 from encore_worker.artifacts.ports import ArtifactStore
 from encore_worker.domain.audio import profile as audio_profile
 from encore_worker.domain.identity import Identified, identify_from_title
 from encore_worker.host.config import Config
+from encore_worker.host.mlrt import accelerator_lock
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import AlignStepsImpl, Reporter, progress_sink
 from encore_worker.steps.api import NotOurJob
@@ -40,8 +41,10 @@ class SeparateStepsImpl:
         probe: AudioProbe | None = None,
         encoder: FfmpegEncoder | None = None,
         publish_stem_format: str | None = None,
+        device: str = "cpu",
     ) -> None:
         self._cfg = config
+        self._device = device
         self._audio = audio
         self._out = reporter
         self._sep = separator
@@ -82,9 +85,14 @@ class SeparateStepsImpl:
             sink = progress_sink(self._out, job.job_id, Stage.SEPARATING)
         # `in_job` counts the call on the job's token IN its thread, so a stop holds the slot until the
         # separation returns even when it is in-process (the zoo) and there is no child to kill (WK-02).
-        stems = await asyncio.to_thread(
-            cli.in_job, self._sep.separate, input_wav, self._work(job), on_progress=sink
-        )
+        separator, work = self._sep, self._work(job)
+
+        def run() -> SeparationResult:
+            # Taken in the worker thread, so the zoo's own `ML_LOCK` re-enters rather than deadlocks.
+            with accelerator_lock(self._device):
+                return separator.separate(input_wav, work, on_progress=sink)
+
+        stems = await asyncio.to_thread(cli.in_job, run)
         return AudioRef(
             path=stems.instrumental_path,
             duration_sec=0.0,  # measured after publication; the separator does not report it

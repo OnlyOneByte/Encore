@@ -10,7 +10,9 @@ See docs/arch/05-worker.md §8.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
+import threading
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -32,19 +34,56 @@ _align_steps_for: AlignStepsFor | None = None
 _stems_steps_for: SeparateStepsFor | None = None
 
 
+#: The DBOS instance the workflows were declared on, and set once `register` has supplied the providers.
+_declared_for: Any = None
+_providers_ready = threading.Event()
+
+
+def declare(dbos: Any) -> None:
+    """Declare both workflows on `dbos`, BEFORE `DBOS.launch()` (docs/arch/05-worker.md §8.1).
+
+    Launch recovers unfinished workflows and hashes the declared ones into the application version, so a
+    workflow declared after it is "not a registered workflow function" to recovery, and its job hangs.
+    """
+    global _align_flow, _stems_flow, _declared_for
+    if dbos is _declared_for:
+        return
+    _providers_ready.clear()
+    # Imported here so this module is importable with no DBOS installed.
+    from dbos import DBOS  # noqa: PLC0415
+
+    @DBOS.workflow(name="encore-align")
+    async def align_flow(job: JobRef) -> AlignOutcome:
+        await asyncio.to_thread(_providers_ready.wait)  # a recovered run can start before `register`
+        assert _align_steps_for is not None
+        bind_cancel_token(job)
+        return await run_align(job, _align_steps_for(job))
+
+    @DBOS.workflow(name="encore-stems")
+    async def stems_flow(job: JobRef) -> StemsOutcome:
+        await asyncio.to_thread(_providers_ready.wait)
+        assert _stems_steps_for is not None
+        bind_cancel_token(job)
+        return await run_stems(job, _stems_steps_for(job))
+
+    _align_flow = align_flow
+    _stems_flow = stems_flow
+    _declared_for = dbos
+
+
 def register(
     dbos: Any,
     *,
     align_steps_for: AlignStepsFor,
     stems_steps_for: SeparateStepsFor,
 ) -> None:
-    """Register both workflows against a launched DBOS, or record the providers and run direct without one.
+    """Supply the steps providers, declaring the workflows if `declare` has not; or run direct without DBOS.
 
     Called ONCE from the composition root, before the first job: `DBOS.workflow` mutates a global registry, so
     registering on first use would put that mutation in a job's critical path and surface a name collision as
     a failed job. `dbos=None` is a supported state; `bind_cancel_token` is docs/arch/05-worker.md §8.1.
     """
-    global _align_flow, _stems_flow, _align_steps_for, _stems_steps_for
+    global _align_flow, _stems_flow, _align_steps_for, _stems_steps_for, _declared_for
     _align_steps_for = align_steps_for
     _stems_steps_for = stems_steps_for
 
@@ -52,25 +91,10 @@ def register(
         # Explicitly CLEARED: a stale workflow would send jobs down a path whose DBOS instance is gone.
         _align_flow = None
         _stems_flow = None
+        _declared_for = None
         return
-
-    # Imported here so this module is importable with no DBOS installed.
-    from dbos import DBOS  # noqa: PLC0415
-
-    @DBOS.workflow(name="encore-align")
-    async def align_flow(job: JobRef) -> AlignOutcome:
-        assert _align_steps_for is not None
-        bind_cancel_token(job)
-        return await run_align(job, _align_steps_for(job))
-
-    @DBOS.workflow(name="encore-stems")
-    async def stems_flow(job: JobRef) -> StemsOutcome:
-        assert _stems_steps_for is not None
-        bind_cancel_token(job)
-        return await run_stems(job, _stems_steps_for(job))
-
-    _align_flow = align_flow
-    _stems_flow = stems_flow
+    declare(dbos)
+    _providers_ready.set()
 
 
 async def align(job: JobRef) -> AlignOutcome:
@@ -88,8 +112,8 @@ async def align(job: JobRef) -> AlignOutcome:
 
 
 async def stems(job: JobRef) -> StemsOutcome:
-    """As `align`, for separation. It records no steps, so a crash or a requeue separates again from the
-    start (docs/arch/05-worker.md §8)."""
+    """As `align`, for separation. A requeue after a finished separation resumes at publish
+    (docs/arch/05-worker.md §8.1)."""
     if _stems_flow is None:
         assert _stems_steps_for is not None, "register() must run before any job"
         return await run_stems(job, _stems_steps_for(job))
@@ -165,13 +189,22 @@ async def _run_id(job_id: str) -> str:
 
 
 def _ended_without_result(status: Any) -> bool:
-    """ERROR, CANCELLED or an ABANDONED publication: docs/arch/05-worker.md §8.1."""
+    """ERROR, CANCELLED, ABANDONED, or another build's PENDING run: docs/arch/05-worker.md §8.1."""
     if status.status in ("ERROR", "CANCELLED"):
+        return True
+    if status.status == "PENDING" and status.app_version != _app_version():
+        # Launch recovers only this build's runs, so an older build's would wait on nobody until the ceiling.
         return True
     output = getattr(status, "output", None)
     if isinstance(output, AlignOutcome):
         return bool(getattr(output, "abandoned", False))
     return isinstance(output, StemsOutcome) and output.published is None and output.why.startswith(ABANDONED)
+
+
+def _app_version() -> str:
+    from dbos import DBOS  # noqa: PLC0415
+
+    return str(DBOS.application_version)
 
 
 async def cancel(job_id: str) -> None:

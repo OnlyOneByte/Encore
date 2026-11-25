@@ -281,8 +281,9 @@ $EC logs -f worker
 ```
 
 **One knob changes meaning on a GPU:** `ENCORE_WORKER_CONCURRENCY` (default 1, read in
-`worker/encore_worker/host/config.py`) contends for **VRAM**, not cores. Raise it only after watching
-`nvidia-smi` through a real process, and expect CUDA OOM rather than graceful slowdown if you overcommit.
+`worker/encore_worker/host/config.py`) contends for **VRAM**, not cores. One lock keeps two jobs' models and
+separations off the card at the same time, so a second job overlaps only CPU-side work, but that is not
+measured on a card yet. Raise it only after watching `nvidia-smi` through a real process.
 
 ---
 

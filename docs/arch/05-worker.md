@@ -214,8 +214,8 @@ not a feature.
 The stems flow is deliberately linear — decode, separate, check, publish. Separation has no fallback
 ladder and no parameter worth retrying: an engine either produces stems or it does not, and a second pass
 with a different setting produces a different-sounding backing track rather than a better-timed one. The
-flow runs as a DBOS workflow but records no steps, so a crash or a requeue separates again from the start,
-even after a 45-minute pass (§8.1).
+flow runs as a DBOS workflow whose acquire, decode, separate and publish are recorded steps, so a requeue
+after a finished separation resumes at publish rather than separating again (§8.1).
 
 The one real decision is the **silence probe**. A separator that emits a digitally silent instrumental has
 "succeeded" by every other measure — the files exist, the exit code was zero — and the room hears nothing.
@@ -842,14 +842,29 @@ in flight at an upgrade failed on the first read of it, fork after fork, until t
 
 ### 8.1 Runs a requeue must not replay, and stopping a run
 
-**A requeue forks, rather than replays, three kinds of run** (`durable._ended_without_result`). An ERROR
+Both workflows are declared before DBOS starts, so the runs a crashed worker left in flight are recovered
+rather than hung (below).
+
+**A requeue forks, rather than replays, four kinds of run (the fourth is below)**
+(`durable._ended_without_result`). An ERROR
 run, as above. A CANCELLED one: the worker cancels the workflow of a job the core took back, and DBOS
 answers a start under a cancelled id with the cancellation. And a stems or align run that **abandoned** its
 publication: it finished SUCCESS, but what it recorded is a lost race for ownership, and on a one-worker
 box the requeue lands on the same box and replayed that refusal until `maxAttempts`, in milliseconds.
-Align's publish is a recorded step that raised `NotOurJob`, so its fork resumes AT PUBLISH. Stems records
-no steps, so its fork separates again from the start; a resume there needs DBOS steps around separate and
-publish. Fetch is not durable and replays nothing.
+Both publishes are recorded steps that raised `NotOurJob`, so either fork resumes AT PUBLISH. For stems
+(`workflows/dbos_stems.py`) that skips the separation, the minute or more a reconnect used to cost: acquire,
+decode and separate replay from their checkpoints into the same scratch WAVs, which `settled` keeps for a
+resumable job and the sweep keeps for an hour (XW-08). The silence probe and the song profile are not steps:
+they only read those WAVs, so they run again. Fetch is not durable and replays nothing.
+
+**The workflows are declared before DBOS launches** (`durable.declare`, called from `_launch_dbos`), with
+their steps providers supplied later by `durable.register`. Launch recovers the runs a crashed or restarted
+worker left in flight, and hashes the declared workflows into the application version. Declared after it,
+recovery failed with "encore-stems is not a registered workflow function", the run stayed PENDING, and the
+core's requeue waited on it, with nothing executing, until the 6 h job ceiling; the version also never
+changed across builds. A recovered run waits in its body until the providers exist. Launch recovers only
+its own build's runs, so a fourth kind of run is forked too: one **another build left PENDING**, which
+nobody would ever finish (`tests/test_overlap.py`, the crash test).
 
 **The cancel token is bound inside each workflow body**, not only where the job starts. DBOS runs a fork
 or a recovered run on its own loop, in a context that never saw the transport set the token, so without
@@ -907,6 +922,21 @@ module and created the only cross-domain import in that codebase. It is an **RLo
 into another guarded helper on the same thread (building an aligner resolves a device, which may itself take
 the lock) and a plain `Lock` self-deadlocks there; and it is a threading lock and not an `asyncio` one, because
 every guarded call runs inside `asyncio.to_thread`, so the contention is between OS threads.
+
+**On a GPU or MPS device the subprocess separators take it too** (`mlrt.accelerator_lock`, held around
+`SeparateStepsImpl.separate`). demucs, roformer and demucs-mlx run in a child process, out of reach of a
+lock inside the models, so without this two jobs on one card could put two separations, or a separation
+and HuBERT, on it at once. With it, a second job on a card overlaps only CPU-side work: a download, the
+decode, the probe, the profile, the encodes and publish. **On CPU the separators take no lock**: each
+separator child gets `cores ÷ concurrency` threads instead (`separator_threads`, `resolve_profile`), and a
+separation running beside another song's alignment is the overlap concurrency 2 exists for. The in-process
+models keep the lock on every device, so they take turns and keep every core.
+
+**Concurrency 2 is an opt-in, not the auto pick.** On a loaded 32-core CPU box, 3 songs queued at once were
+ready 18–70% sooner at 2. But a song picked on its own was 10–30% slower in every measured pair, its align
+step (whisper's VAD and HuBERT) taking up to 2–3× as long. That held even after the models were given every
+core again, and the cause is not pinned down (#1177). A lone pick is what most nights look like, so the
+worker boots at 1, and `ENCORE_WORKER_CONCURRENCY=2` is for queue-heavy ones.
 
 ## 10. Invariants
 

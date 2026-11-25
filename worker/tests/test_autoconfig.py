@@ -137,18 +137,20 @@ def test_main_gates_mlx_stems_on_the_bin_it_will_run(tmp_path: Path, monkeypatch
 
 
 def test_auto_concurrency_is_one_and_an_explicit_one_wins() -> None:
-    """Whisper and the aligner share one lock: a second job would halve every job's threads for little."""
+    """2 slowed a song picked alone (#1177), so it is the queue opt-in, not the pick."""
     assert hardware.resolve_concurrency(None).count == 1
     told = hardware.resolve_concurrency(3)
     assert (told.count, "ENCORE_WORKER_CONCURRENCY" in told.why) == (3, True)
 
 
-def test_one_job_keeps_every_core_and_two_split_them() -> None:
+def test_the_models_keep_every_core_and_two_jobs_split_only_the_separators() -> None:
+    """The in-process models take turns behind ML_LOCK, so halving their threads was pure loss (#1177)."""
     auto = dict(threads=None, demucs_jobs=None, asr_compute=None, warmup=True, device="cpu")
     one = hardware.resolve_profile(concurrency=None, cores=32, **auto)  # type: ignore[arg-type]
-    assert (one.concurrency.count, one.threads.count, one.demucs_jobs.count) == (1, 32, 1)
+    assert (one.concurrency.count, one.threads.count, one.separator_threads.count) == (1, 32, 32)
     two = hardware.resolve_profile(concurrency=2, cores=32, **auto)  # type: ignore[arg-type]
-    assert (two.concurrency.count, two.threads.count, two.demucs_jobs.count) == (2, 16, 1)
+    assert (two.concurrency.count, two.threads.count, two.separator_threads.count) == (2, 32, 16)
+    assert "separators 16" in two.lines()[1]
 
 
 def _cgroup(root: Path, files: dict[str, str]) -> str:
@@ -240,13 +242,16 @@ def test_apply_threads_pins_the_children_too(monkeypatch: pytest.MonkeyPatch) ->
 def test_main_hands_the_client_and_the_config_the_resolved_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The hello's threads are what was PINNED (the probe ran before), and the slots are the picked count."""
+    """The hello's threads are what was PINNED (the probe ran before), and the slots are the picked count.
+    At two jobs the models keep every core and each separator child gets half."""
     monkeypatch.setattr(hardware, "cpu_count", lambda **_: 32)
     got = boot(monkeypatch, Config(media_dir=str(tmp_path), concurrency=2))
     wired = got["client"].wired
-    assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 16, 1, 16)
+    assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 32, 1, 32)
     cfg = wired["config"]
-    assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 16, 1, "float32")
+    assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 32, 1, "float32")
+    got["stems_steps_for"](JobRef(job_id="j", media_id="m", media_dir=str(tmp_path)))
+    assert [k.get("threads") for k in got["separators"]] == [16, 16], "both separator builds get the share"
 
 
 def test_warmup_off_loads_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

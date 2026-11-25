@@ -6,9 +6,9 @@ separated stems, and timed lyrics.
 
 `align` and `stems` run as [DBOS](https://docs.dbos.dev/) workflows; `fetch` does not, because one
 download is cheaper to retry than to checkpoint. DBOS is durable execution as a **library**, backed by a
-local SQLite file, so there is no server to host. Only align's steps are checkpoints: a worker that dies
-mid-alignment resumes at the step it was on and does not redo the ASR pass, while a stems run records no
-steps and separates again. The align job is a state machine, not a linear pipeline, because it has to loop
+local SQLite file, so there is no server to host. Steps are checkpoints: a worker that dies mid-alignment
+resumes at the step it was on and does not redo the ASR pass, and a stems run that already separated
+resumes at publish. The align job is a state machine, not a linear pipeline, because it has to loop
 back. It re-times the same text with a different parameter, moves to the next text, or runs ASR on demand.
 
 > **Where the rest is written down.** This file is the operator's tour: the state machine, the knobs, the
@@ -201,7 +201,8 @@ Steps have serialised inputs and outputs, so the dataflow **is** the function si
 it. The exchange is two constraints. Steps return JSON-serialisable values only: refs and paths into the
 media dir, never bytes or tensors. And workflow bodies must be deterministic, so every side effect,
 `time.time()` included, lives in a step. `stems` has no fallback ladder and reads top to bottom
-(`workflows/stems.py`). Its workflow records no steps, so a crash after separation separates again.
+(`workflows/stems.py`). Its acquire, decode, separate and publish are checkpoints
+(`workflows/dbos_stems.py`), so a requeue after separation goes straight to publish.
 
 ---
 
@@ -299,8 +300,8 @@ marked "auto" is overridden by setting its variable. On a 32-core aarch64 CPU bo
 prints:
 
 ```
-[worker] concurrency 1 (auto 1 (the models share one lock))
-[worker] threads 32 (auto 32 (cpu, 32 cores / 1 at once)); demucs -j 1 (auto 1 (cpu: demucs -j above 1 can return NaN on CPU, saved as a silent song))
+[worker] concurrency 1 (auto 1 (ENCORE_WORKER_CONCURRENCY=2 overlaps a queue of songs))
+[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); demucs -j 1 (auto 1 (cpu: demucs -j above 1 can return NaN on CPU, saved as a silent song))
 [worker] asr compute float32 (auto (cpu))
 [worker] warm-up on (ENCORE_WARMUP=0 turns it off)
 ```
@@ -312,9 +313,13 @@ models the first song would otherwise wait for, one line each (`[worker] warm: H
 Jobs are taken during it; one that arrives first loads what it needs itself, as before. demucs runs as a
 new process per job, so only its checkpoint download is moved to boot.
 
-Concurrency is never auto-picked above 1. Whisper and the aligner run behind one process-wide lock
-(`host/mlrt.py`), so a second job would split the threads while align steps still ran one at a time, and on
-a GPU two jobs would share its memory unguarded.
+Concurrency stays 1 unless set. `ENCORE_WORKER_CONCURRENCY=2` is the opt-in for a night of queued songs:
+one song's separation runs while another song aligns, and 3 songs queued at once were ready 18–70% sooner
+on a 32-core CPU box. It costs a song picked on its own: 10–30% slower, mostly in its align, in every
+measured pair (#1177). The models in this process (whisper, the aligner, pyannote, the zoo) take turns
+behind one process-wide lock (`host/mlrt.py`) and keep every core; only each separator child gets
+`cores ÷ concurrency` (the `separators N` part of the threads line). Two at once peaked at 8.5 GB of RAM.
+On a GPU or MPS device the separators take that lock too, so two jobs never share the card.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -323,8 +328,8 @@ a GPU two jobs would share its memory unguarded.
 | `ENCORE_WORKER_TOKEN_FILE` | unset | the file core writes its token to when it has no `ENCORE_WORKER_TOKEN` (compose and `dev.sh` set it). Read at every dial, so a worker that starts first picks it up once core writes it |
 | `ENCORE_WORKER_ID` | `worker-` plus a stable suffix, e.g. `worker-3fa2c1` | this worker's id. Core treats a repeated id as the same worker reconnecting, so two live workers must never share one |
 | `ENCORE_WORKER_VERSION` | `0.1.0` | the version sent in `hello` |
-| `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. Above 1, the CPU threads are split between the jobs |
-| `ENCORE_THREADS` | auto: on CPU `cores ÷ concurrency`, else torch's own | torch's intra-op threads, and `OMP_NUM_THREADS`/`MKL_NUM_THREADS` for the demucs children, so the two match |
+| `ENCORE_WORKER_CONCURRENCY` | `1` | jobs at once. 2 overlaps a queue of songs but slows a song picked alone (above). Above 1, the separator children's threads are split between the jobs |
+| `ENCORE_THREADS` | auto: on CPU all cores (each separator child `cores ÷ concurrency`), else torch's own | torch's intra-op threads, and `OMP_NUM_THREADS`/`MKL_NUM_THREADS` for the demucs and roformer children; set, it is used for both |
 | `ENCORE_MEDIA_DIR` | `/media` | the shared media volume (core's `job:assign` names none) |
 | `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box. A relative path is relative to the working directory, and the derived worker id hashes its absolute path, so starting from another directory gives a new state file and a new id |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
