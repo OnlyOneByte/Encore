@@ -2403,8 +2403,12 @@ song's lyrics offset (Earlier/Later) exactly as the TV does.
 - **The two lines always fit.** Each gets a two-row budget (`LyricsOverlay`'s `wrapRows`), since bigger type wraps
   a real line. The type is 1.7× the room's lyric size (`WORDS_ONLY_SCALE`), capped (`fit`) at the size where two
   lines of two rows fill the screen, so the room's 300% cannot push either off it (83.6 px at 720p, from 100% up).
+  The cap counts rows, not letters, so a wide font can still take a 42-character line to three: then the overlay
+  steps the type down by 8% at a time until every shown line takes two rows at most (mono at 720p lands at 76.9 px).
+  A single word longer than a row breaks (`overflow-wrap: anywhere`) rather than running off the side.
   Rows past those two are hidden, and neither edge fades, so nothing peeks in or out at an edge. `p34-words` holds
-  it with six-word lines at 1280 and 1920, at 100% and 300%.
+  it with 42-character lines (`LINE_MAX_CHARS`, the longest the TV keeps whole) at 1280 and 1920, at 100% and 300%,
+  in the default font and in mono.
 - **Only a copy mid-song.** The lobby and attract stay as they are, since the room scans the QR there.
 - **The seat always shows everything.** A copy that takes the seat switches to Everything, and core stores that
   (`tv:show`), so it stays that way if it becomes a copy again. The room's stage always shows the whole night.

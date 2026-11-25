@@ -132,7 +132,9 @@ function fitOf(p: Page) {
 			next: next ? inside(box(next)) : null,
 			sliced,
 			slicedAt,
-			px: parseFloat(getComputedStyle(rows[cur]!).fontSize)
+			px: parseFloat(getComputedStyle(rows[cur]!).fontSize),
+			// Where the sung row was against the box, and every row's height, for a failure to say what moved.
+			where: `line ${cur}/${rows.length} at ${Math.round(box(rows[cur]!).top - view.top)}..${Math.round(box(rows[cur]!).bottom - view.top)} in ${Math.round(view.height)}, rows ${rows.map((r) => r.offsetHeight).join(',')}`
 		};
 	});
 }
@@ -143,7 +145,8 @@ test('Words only fits the sung line and the next, real-length, at 1280 and 1920,
 	world
 }) => {
 	test.setTimeout(240_000);
-	const worker = await startFakeWorker(world, { seconds: 60, longLyricLines: true });
+	// Every line is 42 characters, the longest the TV keeps whole.
+	const worker = await startFakeWorker(world, { seconds: 60, longLyricLines: true, lineChars: 42 });
 	try {
 		const tv = await openScreen(browser, world, true);
 		const small = await openScreen(browser, world, false, '&show=words', { width: 1280, height: 720 });
@@ -158,26 +161,33 @@ test('Words only fits the sung line and the next, real-length, at 1280 and 1920,
 		await expect(small.locator('.lower-third')).toHaveCount(0);
 
 		const sample = async (label: string) => {
-			await sendPlayerCommand(ana, { cmd: 'restart' });
-			await small.waitForTimeout(400);
 			const seen: Record<
 				string,
-				{ cur: boolean; next: boolean | null; sliced: boolean; slicedAt: string; px: number }[]
+				{ cur: boolean; next: boolean | null; sliced: boolean; slicedAt: string; px: number; where: string }[]
 			> = {};
-			// Lines change every 0.8 s for 7 s and glide for 0.42 s: sample often, keeping the frames at rest.
-			for (let i = 0; i < 40; i++) {
-				for (const [name, p] of [
-					['1280', small],
-					['1920', large]
-				] as const) {
-					const f = await fitOf(p);
-					if (f) (seen[name] ??= []).push(f);
+			const enough = () => ['1280', '1920'].every((n) => (seen[n] ?? []).filter((f) => f.next).length >= 4);
+			// Lines change every 0.8 s for 7 s and glide for 0.42 s: sample often, keeping the frames at rest. A slow host
+			// catches fewer, so the song starts over (up to three times) until each size has enough.
+			for (let pass = 0; pass < 3 && !enough(); pass++) {
+				await sendPlayerCommand(ana, { cmd: 'restart' });
+				await small.waitForTimeout(400);
+				for (let i = 0; i < 40; i++) {
+					for (const [name, p] of [
+						['1280', small],
+						['1920', large]
+					] as const) {
+						const f = await fitOf(p);
+						if (f) (seen[name] ??= []).push(f);
+					}
+					await small.waitForTimeout(120);
 				}
-				await small.waitForTimeout(120);
 			}
 			for (const [name, fits] of Object.entries(seen)) {
 				expect(fits.length, `${label} ${name}: the reel was sampled at rest`).toBeGreaterThanOrEqual(4);
-				expect(fits.filter((f) => !f.cur).length, `${label} ${name}: the sung line left the view`).toBe(0);
+				expect(
+					fits.filter((f) => !f.cur).map((f) => f.where),
+					`${label} ${name}: the sung line left the view`
+				).toEqual([]);
 				expect(fits.filter((f) => f.next === false).length, `${label} ${name}: the next line left the view`).toBe(0);
 				expect(
 					fits.filter((f) => f.next === true).length,
@@ -205,7 +215,20 @@ test('Words only fits the sung line and the next, real-length, at 1280 and 1920,
 			await shot(small, 'words-long-1280-100');
 			await shot(large, 'words-long-1920-100');
 		}
-		await putRoom(host, { lyricsScalePct: 100 });
+		// The review of #1268 (M3): mono's wide letters took a 42-character line to 3 rows, and the next line lost its last.
+		for (const pct of [100, 300]) {
+			await putRoom(host, { lyricsFont: 'mono', lyricsScalePct: pct });
+			await expect.poll(async () => (await fitOf(small))?.px ?? 0).toBeGreaterThan(0);
+			await small.waitForTimeout(500);
+			await sample(`mono ${pct}%`);
+		}
+		if (process.env.SHOT_DIR) {
+			await sendPlayerCommand(ana, { cmd: 'restart' });
+			await small.waitForTimeout(1_700);
+			await shot(small, 'words-long-1280-300-mono');
+			await shot(large, 'words-long-1920-300-mono');
+		}
+		await putRoom(host, { lyricsFont: 'system', lyricsScalePct: 100 });
 
 		// The song's offset (Earlier, #1286) moves the words on Words only exactly as on the TV: half a second early,
 		// most of a line, so a copy that ignored it would show another line much of the time.

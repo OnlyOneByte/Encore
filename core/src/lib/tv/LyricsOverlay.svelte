@@ -268,14 +268,40 @@
 			fadeTop: linesBefore > 0 && !fit ? fadeCap : 0,
 			fadeBot: linesAfter > 0 && !fit ? fadeCap : 0
 		});
+		if (fit && shrink > FIT_SHRINK_MIN && overBudget(oneRow)) {
+			// The smaller type lands at once, and the reel is measured again on the frame it lands in.
+			shrink = Math.max(FIT_SHRINK_MIN, shrink * 0.92);
+			snapReel = true;
+			requestAnimationFrame(() => {
+				snapReel = false;
+				measureReel();
+			});
+		}
 	}
+	// The fit cap counts rows, not letters: a wide font (mono) still takes a 42-character line past `wrapRows`, so a
+	// shown line taller than its budget steps the type down until none is.
+	const FIT_SHRINK_MIN = 0.5;
+	let shrink = $state(1);
+	function overBudget(oneRow: number) {
+		const rows = reelEl!.children;
+		for (let i = Math.max(0, lineIdx - linesBefore); i <= lineIdx + linesAfter && i < rows.length; i++) {
+			const r = rows[i] as HTMLElement;
+			const second = r.querySelector<HTMLElement>('.romanization')?.offsetHeight ?? 0;
+			if (r.offsetHeight - second > (wrapRows + 0.5) * oneRow) return true;
+		}
+		return false;
+	}
+	$effect(() => {
+		void [doc, font, textCase, scalePct, wrapRows, fit];
+		shrink = 1;
+	});
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
 		void doc; // and in the flush that swaps a version in, before the ResizeObserver's frame
 		// The row counts move the bias AND the viewport height, and a settings write can land mid-song.
 		void linesBefore;
 		void linesAfter;
-		measureReel();
+		untrack(measureReel);
 	});
 	// A change of GEOMETRY (the type size, the row counts or the wrap budget, as when a screen turns Words only) puts
 	// the sung row somewhere new at once, so the reel lands there with no glide: gliding from the old offset left the
@@ -285,7 +311,7 @@
 		const now = `${scalePct}/${linesBefore}/${linesAfter}/${wrapRows}/${fit}`;
 		if (geometry !== undefined && geometry !== now) {
 			snapReel = true;
-			measureReel();
+			untrack(measureReel);
 			const f = requestAnimationFrame(() => (snapReel = false));
 			geometry = now;
 			return () => cancelAnimationFrame(f);
@@ -298,7 +324,13 @@
 		if (!reelEl) return;
 		const ro = new ResizeObserver(() => measureReel());
 		ro.observe(reelEl);
-		return () => ro.disconnect();
+		if (viewportEl) ro.observe(viewportEl);
+		// A lyrics font arriving late rewraps every row.
+		document.fonts?.addEventListener('loadingdone', measureReel);
+		return () => {
+			ro.disconnect();
+			document.fonts?.removeEventListener('loadingdone', measureReel);
+		};
 	});
 	const unverified = $derived(isAutoTranscribed(provenance));
 	// EVERY row of the reel renders its own `romanization`, not just the current one, so a romanised doc makes
@@ -326,14 +358,15 @@
 	// 1.9 is `--lyrics-row-h` below; the two must agree. The sung row draws its words as inline-block spans, a little
 	// taller than its leading, so the box takes FIT_SLACK_EM more and the cap counts it.
 	const FIT_SLACK_EM = 0.5;
+	// A single word longer than a row breaks rather than running off the side.
 	const fitStyle = $derived(
 		fit
-			? `; --lyrics-slack: ${FIT_SLACK_EM}em; --lyrics-fit: calc((100vh - var(--tv-chrome-h) - var(--tv-top-reserve)) / ${rowCount * wrapRows * 1.9 + FIT_SLACK_EM})`
+			? `; --lyrics-slack: ${FIT_SLACK_EM}em; --lyrics-fit: calc((100vh - var(--tv-chrome-h) - var(--tv-top-reserve)) * ${shrink} / ${rowCount * wrapRows * 1.9 + FIT_SLACK_EM}); overflow-wrap: anywhere`
 			: ''
 	);
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
-		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
+		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE * (fit ? shrink : 1)}; --lyrics-rows: ${rowCount}; ` +
 			`--lyrics-wrap: ${wrapRows}${fitStyle}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.

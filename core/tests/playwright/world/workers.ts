@@ -130,6 +130,9 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	/** Real-length lyric lines: six words, about 35 characters, as wide as a sung line on the TV. The default is one
 	 *  word a line, which no card or chrome can ever overlap, so a spec checking text against text needs this. */
 	longLyricLines?: boolean;
+	/** With `longLyricLines`, pad each line's last word so the line is exactly this long: 42 is the longest line the
+	 *  TV keeps whole (`LINE_MAX_CHARS`). */
+	lineChars?: number;
 	/** An unpinned align completes once with no lyrics and this `lyricsNote`, as the real worker does when it is offline
 	 *  without its whisper checkpoint (#1221) or whisper's words were babble (#1288); a pasted sheet still aligns. */
 	noLyricsNote?: LyricsNote;
@@ -219,6 +222,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		loudnessLufs = null,
 		seconds = 8,
 		longLyricLines = false,
+		lineChars,
 		noLyricsNote
 	} = options;
 
@@ -455,6 +459,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 						: longLyricLines
 							? [w, 'tonight', 'forever', 'under', 'bright', 'lights']
 							: [w];
+					if (!pasted && longLyricLines && lineChars)
+						said[said.length - 1] += 's'.repeat(Math.max(0, lineChars - said.join(' ').length));
 					const step = 0.7 / said.length;
 					return {
 						start: i * 0.8,
