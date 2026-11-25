@@ -63,18 +63,14 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(intro).toContainText('Now singing');
 		await expect(intro).toContainText('Theo');
 		const theoId = await theoEntry();
-		const youreUp = theo.locator('.youre-up');
-		await expect(youreUp).toBeVisible({ timeout: 500 });
-		await expect(youreUp).toContainText(/believin/i);
-		// Announced as the words alone ("You're up, <song>"), from the SAME node; the OK button is not in it.
-		await expect(live).toHaveText(/^You’re up, .*believin/i);
+		// On Queue his card says it (redesign step 6, an owner ruling): no flood over it, and the card's own status line
+		// is the one announcement, so the layout's region stays empty here (the flood's is `youre-up-flood.spec.ts`).
+		const card = theo.locator('section[aria-label="Your song"]');
+		await expect(card.getByRole('status')).toHaveText('You’re up', { timeout: 500 });
+		await expect(card).toContainText(/believin/i);
+		await expect(theo.getByTestId('youre-up-flood')).toHaveCount(0);
+		await expect(live).toHaveText('');
 		await expect(live).toHaveAttribute('data-probe-same', 'yes');
-		await expect(live).toHaveAttribute('role', 'status');
-		await expect(live.getByRole('button')).toHaveCount(0);
-		// What assistive tech is given: the words ONCE (the sheet's own copy is hidden from it), and the OK button.
-		// The sheet itself gives assistive tech ONLY its button: its words are the live region's, and read once there.
-		// The button's name carries the context the hidden words would have given it.
-		expect(await youreUp.ariaSnapshot()).toBe('- button "OK, dismiss You’re up": OK');
 		// Nobody else is told it is their turn.
 		await expect(ana.getByText('You’re up')).toHaveCount(0);
 
@@ -87,8 +83,8 @@ test('a double skip shows the handoff card for the next singer, tells their phon
 		await expect(ana.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await expect(intro).toContainText('Theo');
-		// It goes by itself, with the TV's card.
-		await expect(youreUp).toHaveCount(0, { timeout: 5_000 });
+		// Still no flood on Queue once the TV's card has gone.
+		await expect(theo.getByTestId('youre-up-flood')).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}
@@ -285,7 +281,7 @@ test('a natural end hands over with no failure flash over the Now singing card',
 	}
 });
 
-test('a stale restart on your own new turn: its notice stacks above "You’re up" instead of over it', async ({
+test('a stale restart on your own new turn: its notice shows on top of the "You’re up" flood and never moves', async ({
 	world
 }) => {
 	const worker = await startFakeWorker(world);
@@ -319,22 +315,24 @@ test('a stale restart on your own new turn: its notice stacks above "You’re up
 		hold = false;
 		for (const m of held.splice(0)) toTheo!(m);
 
-		const sheet = theo.locator('.youre-up');
+		const sheet = theo.getByTestId('youre-up-flood');
 		const toast = theo
 			.locator('[data-sonner-toast]')
 			.filter({ hasText: 'A new song just started. Tap again to restart it.' });
+		// The tap was on Queue, where the card says it; on Sing the same turn is a flood, and the notice must show on it.
+		await theo.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
 		await expect(sheet).toBeVisible({ timeout: 2_000 });
 		await expect(toast).toBeVisible({ timeout: 2_000 });
 		// Let the toast's own entrance settle before measuring.
 		await theo.waitForTimeout(600);
-		const s = (await sheet.boundingBox())!;
+		// The flood covers the phone, so the notice is drawn ON it: a tap at its centre reaches the toast, not the flood.
 		const t = (await toast.boundingBox())!;
-		expect(t.y + t.height, `toast ${JSON.stringify(t)} vs sheet ${JSON.stringify(s)}`).toBeLessThanOrEqual(s.y);
-		// The two stacked notices share one gutter token, so their edges line up (review r3, 976-3).
-		expect(Math.abs(t.x - s.x), `left edges: toast ${t.x}, sheet ${s.x}`).toBeLessThanOrEqual(1);
-		expect(Math.abs(t.x + t.width - (s.x + s.width)), 'right edges').toBeLessThanOrEqual(1);
-		// ...because both read the SAME token, not because sonner's default happens to equal it today: the toaster's
-		// phone sides are `--sheet-gutter`, as the sheet's are.
+		const onTop = await theo.evaluate(
+			([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-sonner-toast]'),
+			[t.x + t.width / 2, t.y + t.height / 2]
+		);
+		expect(onTop, `toast ${JSON.stringify(t)} under the flood`).toBe(true);
+		// The toaster's phone sides are `--sheet-gutter`, the same token "didn't play" uses.
 		const toasterSides = await theo
 			.locator('[data-sonner-toaster]')
 			.first()
@@ -425,7 +423,11 @@ test('a double skip onto your OWN turn shows only "You’re up", no stale notice
 		hold = false;
 		for (const m of held.splice(0)) toTheo!(m);
 
-		await expect(theo.locator('.youre-up')).toBeVisible({ timeout: 2_000 });
+		// He tapped on Queue, so his card is what says it there (no flood over it).
+		await expect(theo.locator('section[aria-label="Your song"]').getByRole('status')).toHaveText('You’re up', {
+			timeout: 2_000
+		});
+		await expect(theo.getByTestId('youre-up-flood')).toHaveCount(0);
 		await theo.waitForTimeout(1_500);
 		expect(await theo.evaluate(() => (window as unknown as { toasts: string[] }).toasts)).toEqual([]);
 		// One song went: Theo's turn survived his own dropped tap.

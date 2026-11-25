@@ -1032,6 +1032,29 @@ handoff at 390 and 320: the card above the Now row, the key between the header a
 the same height, no layout shift inside `main`, and the same card after a reload. Being first, it needs no
 "your card comes to you" scroll; only a failed queued card does.
 
+### You're up on every other tab: the flood
+
+On any tab but Queue, your turn starting floods the whole phone in your colour (redesign step 6, #1156,
+`YoureUpFlood.svelte`). It says "Theo, grab the mic", **You're up** at `--type-hero` and the song, with Restart below.
+On Queue nothing pops over the card, because the card already says it (an owner ruling).
+- **The colour** is your stop at 85% of its lightness (`floodColors`, `$lib/youre-up`): one step darker than the fill,
+  so a lit phone in a dark room glares less. The ink is whichever of the dark ground and white reads better on it, and
+  it is also the focus ring. `youre-up.test.ts` holds every one of the 48 stops to 4.5:1. Today every stop takes the
+  dark ink, at 4.66:1 to 5.63:1.
+- **It is its own chunk.** Its stylesheet would not fit `/`'s CSS budget, so the layout imports it with `import()`,
+  once this phone has a queued or playing turn. By the time a skip makes it yours it is already parsed. A failed fetch
+  is tried again on the next room update; meanwhile the live region still says it and the TV shows the card.
+  `youre-up-flood.spec.ts` times skip to the first painted frame against the 300 ms handoff budget, on a page that
+  has never shown it and on one that has, and checks the chunk was fetched before the turn.
+- **It goes** on the `youreUpMs` timer, or on a tap anywhere but a control, so the first touch after the moment never
+  lands on the page under it. There is no OK button.
+- **Restart** is the transport's own `restart`, which every guest may send; the flood adds no permission.
+- **It is said once**, from the layout's region that was mounted empty (`data-youre-up-live`). The flood's words are
+  hidden from assistive tech, so only Restart is in its accessibility tree. On Queue that region stays empty: the
+  card's own status line is the announcement.
+- **Motion:** opacity in over `--motion-slow`, the headline popping from `scale(0.92)`; under reduced motion it simply
+  appears.
+
 ### The Queued list holds still
 
 Inside `.below`, the Now row, the "Later" heading (dim sentence case), the reorder note, the empty state and every row

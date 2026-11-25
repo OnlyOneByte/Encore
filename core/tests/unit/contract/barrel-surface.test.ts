@@ -130,6 +130,7 @@ const EXPECTED = [
 	'canRetryPlay',
 	'canonicalHex',
 	'chosenCandidate',
+	'chromaOfColor',
 	'clampDays',
 	'clampGuideLevel',
 	'clampKeyShift',

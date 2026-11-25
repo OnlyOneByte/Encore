@@ -168,7 +168,7 @@ async function skipMaya(
 		cardAna: [SEL.stateNext, 'Ana'],
 		cardTheo: [SEL.stateNext, 'Theo']
 	});
-	await sampleFrames(ana, { youreUp: ['.youre-up', ''] });
+	await sampleFrames(ana, { youreUp: ['[data-testid="youre-up-flood"]', ''] });
 	await sampleFrames(theo, { didntPlay: ['[data-testid="song-didnt-play"]', ''] });
 	await recordStarts(tv);
 	await transportTap(maya, 'skip');
@@ -236,7 +236,7 @@ async function expectMovedOn(
 	}
 	// After the notice, ONE handoff: the TV's "Now singing · Ana" and her phone's "You're up" together, song starting.
 	await r.tv.locator(SEL.stateNext, { hasText: 'Ana' }).waitFor({ timeout: 8_000 });
-	await r.ana.locator('.youre-up').waitFor({ timeout: 8_000 });
+	await r.ana.locator('[data-testid="youre-up-flood"]').waitFor({ timeout: 8_000 });
 	const cardAt = (await seen(r.tv)).cardAna!.at;
 	const sheetAt = (await seen(r.ana)).youreUp!.at;
 	expect(Math.abs(cardAt - sheetAt), 'the TV card and You’re up rise together').toBeLessThan(750);
@@ -260,7 +260,7 @@ async function expectMovedOn(
 	await expect(sheet.getByTestId('didnt-play-retry')).toBeVisible();
 	await expect(sheet.getByTestId('didnt-play-pick')).toBeVisible();
 	expect(await filledNextSteps(r.theo), 'one filled next step, and it is Try again').toEqual(['didnt-play-retry']);
-	await expect(r.theo.locator('.youre-up')).toHaveCount(0);
+	await expect(r.theo.locator('[data-testid="youre-up-flood"]')).toHaveCount(0);
 	// Other phones get nothing new: the TV tells the room.
 	for (const p of [r.maya, r.ana]) {
 		await expect(p.getByTestId('song-didnt-play')).toHaveCount(0);
@@ -588,7 +588,7 @@ test('a TV that drops off during the notice: the room waits, and the TV that com
 		// The SAME screen goes and comes back (#990's seat is its `encore_tv` cookie): a different screen would be a copy
 		// for the seat's grace, and a copy rightly starts nothing.
 		await r.tv.context().close(); // the TV goes, mid-notice
-		await sampleFrames(r.ana, { youreUp: ['.youre-up', ''] });
+		await sampleFrames(r.ana, { youreUp: ['[data-testid="youre-up-flood"]', ''] });
 		await r.ana.waitForTimeout(9_000); // well past the fallback's 6 s
 		expect((await serverPlayback(world.baseURL)).state, 'a song nobody can hear was started').toMatchObject({
 			isPlaying: false,
@@ -598,7 +598,7 @@ test('a TV that drops off during the notice: the room waits, and the TV that com
 		const back = await world.openTv(); // the TV returns: the world's TVs share one screen cookie, so it is the seat
 		await back.locator(SEL.stateNext, { hasText: 'Ana' }).waitFor({ timeout: 15_000 });
 		const cardAt = Date.now();
-		await r.ana.locator('.youre-up').waitFor({ timeout: 5_000 });
+		await r.ana.locator('[data-testid="youre-up-flood"]').waitFor({ timeout: 5_000 });
 		expect(
 			Math.abs((await seen(r.ana)).youreUp!.at - cardAt),
 			'her phone and the returned TV hand over together'

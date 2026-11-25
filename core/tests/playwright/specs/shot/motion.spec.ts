@@ -697,8 +697,8 @@ function queueYourSong(width: number): Make {
 				await transportTap(ph!.maya, 'skip');
 				await page.locator(DECK).waitFor({ state: 'detached', timeout: 10_000 });
 			},
-			// `.youre-up` too: the sheet rises over the dock in the same moment, so a capture without it froze it mid-fade.
-			only: 'main .grouphead, main .qrow, .youre-up',
+			// No You're up flood here: on Queue the card says it (redesign step 6).
+			only: 'main .grouphead, main .qrow',
 			stripClip: async () => ({ x: 0, y: 0, width, height: 844 }),
 			observe: (page) =>
 				page.evaluate(() => ({
@@ -1039,7 +1039,7 @@ function songDidntPlay(width: number): Make {
 				page.evaluate(() => ({
 					sheet: document.querySelector('.didnt-play')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
 					live: document.querySelector('[data-didnt-play-live]')?.textContent?.trim() ?? null,
-					youreUp: !!document.querySelector('.youre-up')
+					youreUp: !!document.querySelector('[data-testid="youre-up-flood"]')
 				}))
 		};
 	};
@@ -1273,15 +1273,15 @@ const SCENARIOS: Record<string, Make> = {
 	),
 	'tv-song-failed': songFailed(false),
 	'tv-song-failed-to-card': songFailed(true),
-	/** "You're up" rising over the dock on Theo's Library tab as a skip makes his song start (`.rise-in`). Each run
+	/** "You're up" flooding Theo's Library tab in his colour as a skip makes his song start (redesign step 6). Each run
 	 *  drains the room and starts again from Maya's song. */
 	'phone-youre-up': (browser, world, cleanup) => {
 		let ph: { maya: Page; theo: Page; ana: Page } | undefined;
 		return {
 			name: 'phone-youre-up',
-			what: 'Phone 390x844: "You’re up" rising over the dock on the Library tab as Theo’s song starts (rise-in, --motion-base)',
+			what: 'Phone 390x844: "You’re up" flooding the Library tab in Theo’s colour as his song starts (opacity in, the headline popping from 0.92 scale, --motion-slow)',
 			stepMs: 16,
-			scale: 1,
+			scale: 0.5,
 			columns: 6,
 			open: async (opts) => {
 				if (!ph) {
@@ -1308,17 +1308,17 @@ const SCENARIOS: Record<string, Make> = {
 			},
 			trigger: async (page) => {
 				await transportTap(ph!.ana, 'skip');
-				await page.locator('.youre-up').waitFor({ state: 'attached', timeout: 5_000 });
+				await page.locator('[data-testid="youre-up-flood"]').waitFor({ state: 'attached', timeout: 5_000 });
 			},
-			only: '.youre-up',
-			subject: '.youre-up',
-			// The sheet's wall-clock dismiss (`youreUpTimer`, +layout.svelte) would otherwise fire between seeked frames.
+			only: '[data-testid="youre-up-flood"], [data-testid="youre-up-flood"] p',
+			subject: '[data-testid="youre-up-flood"]',
+			// The flood's wall-clock dismiss (`youreUpTimer`, +layout.svelte) would otherwise fire between seeked frames.
 			holdTimers: true,
-			// The dock and the sheet over it: the whole page in ~16 frames is past 2000 px tall.
-			stripClip: async () => ({ x: 0, y: 444, width: 390, height: 400 }),
+			// The whole phone: the flood covers it.
+			stripClip: async () => ({ x: 0, y: 0, width: 390, height: 844 }),
 			observe: (page) =>
 				page.evaluate(() => ({
-					sheet: !!document.querySelector('.youre-up'),
+					sheet: !!document.querySelector('[data-testid="youre-up-flood"]'),
 					live: document.querySelector('[data-youre-up-live]')?.textContent ?? null
 				}))
 		};

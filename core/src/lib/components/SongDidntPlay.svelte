@@ -53,7 +53,7 @@
 </div>
 
 <style>
-	/* The "You're up" sheet's box and place (YoureUp.svelte), so one replaces the other without a jump. */
+	/* Above the dock, in the On deck card's colour (app.css `.your-turn`). */
 	.didnt-play {
 		position: fixed;
 		inset-inline: var(--sheet-gutter);

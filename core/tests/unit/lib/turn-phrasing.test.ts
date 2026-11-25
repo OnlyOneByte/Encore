@@ -21,7 +21,7 @@ const SURFACES = [
 	'src/lib/tv/TvNowBar.svelte',
 	'src/lib/tv/TvTakeover.svelte',
 	'src/routes/queue/+page.svelte',
-	'src/lib/components/YoureUp.svelte'
+	'src/lib/components/YoureUpFlood.svelte'
 ];
 
 test('the turn labels are spelled once, in turn-phrasing', () => {

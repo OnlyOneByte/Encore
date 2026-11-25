@@ -44,7 +44,9 @@ const layout = read('src/routes/+layout.svelte');
 const queuePage = read('src/routes/queue/+page.svelte');
 
 test('the sheet takes the "You\'re up" slot and replaces it, and Try again is offered only while the hub allows it', () => {
-	expect(layout).toMatch(/\{#if didntPlay\}\s*<SongDidntPlay[\s\S]*?\{:else if youreUp\}\s*<YoureUp/);
+	expect(layout).toMatch(
+		/\{#if didntPlay\}\s*<SongDidntPlay[\s\S]*?\{:else if floodHere && youreUp && Flood\}\s*<Flood/
+	);
 	expect(layout).toContain('onretry={didntPlay.canRetry ? retryDidntPlay : undefined}');
 	expect(layout).toContain('canRetry: canRetryPlay(failed)');
 	expect(layout).toContain('room.queue?.retryPlay(id)');

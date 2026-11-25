@@ -15,7 +15,6 @@
 	import type { TransportControls } from '$lib/transport-controls';
 	import { buzzOnce, deckStep, NO_DECK, rearmBuzz, type DeckMemo } from '$lib/on-deck';
 	import { youreUpTurn, youreUpMs } from '$lib/youre-up';
-	import YoureUp from '$lib/components/YoureUp.svelte';
 	import { didntPlayKey, didntPlayTurn } from '$lib/song-didnt-play';
 	import SongDidntPlay from '$lib/components/SongDidntPlay.svelte';
 	import { pickAnotherHref } from '$lib/process-and-queue';
@@ -96,6 +95,19 @@
 		clearTimeout(youreUpTimer);
 		youreUp = null;
 	}
+	/* THE FLOOD IS ITS OWN CHUNK (redesign step 6): its CSS would not fit every route's budget. It is fetched once this
+	   phone has a turn, so by the time a skip makes it yours it is already here. A failed fetch is retried on the next
+	   room update; meanwhile the live region still says it, and the TV shows the card. */
+	let Flood = $state<typeof import('$lib/components/YoureUpFlood.svelte').default | null>(null);
+	let floodLoad: Promise<void> | null = null;
+	function loadFlood() {
+		floodLoad ??= import('$lib/components/YoureUpFlood.svelte').then(
+			(m) => void (Flood = m.default),
+			() => void (floodLoad = null)
+		);
+	}
+	// On Queue the card already says it (an owner ruling), so the flood and its announcement are for every other tab.
+	const floodHere = $derived(!!youreUp && page.url.pathname !== '/queue');
 
 	/* "YOUR SONG DIDN'T PLAY" (proposal 11) takes the same slot, on any tab, and only on the failed singer's phone. It
 	   stays until they act or close it; it goes by itself once the turn is no longer held (a Try again or a Pick another
@@ -139,6 +151,8 @@
 				entries: room.entries,
 				meId: me
 			});
+			if (me && room.entries.some((e) => e.singerId === me && (e.status === 'queued' || e.status === 'playing')))
+				loadFlood();
 			// The song moved on (a skip during the sheet): what it said is no longer true.
 			if (youreUp && youreUp.id !== room.playback.currentEntryId) dismissYoureUp();
 			// Not while a new turn waits paused: its first PLAYING frame is the one that announces it.
@@ -534,7 +548,7 @@
 		for a region inserted with its text already in it. It holds the words alone, so the announcement is "You're up,
 		<song>" and not "…, OK": the sheet's button sits outside it, and the sheet's own copy of the words is hidden from
 		assistive tech so they are not read twice. -->
-	<p class="vh" role="status" data-youre-up-live>{youreUp ? `${YOURE_UP}, ${youreUp.title}` : ''}</p>
+	<p class="vh" role="status" data-youre-up-live>{floodHere ? `${YOURE_UP}, ${youreUp?.title}` : ''}</p>
 	<p class="vh" role="status" data-didnt-play-live>
 		{didntPlay ? `${YOUR_SONG_DIDNT_PLAY}, ${didntPlay.title}` : ''}
 	</p>
@@ -549,8 +563,14 @@
 			ondismiss={closeDidntPlay}
 			bind:height={sheetH}
 		/>
-	{:else if youreUp}
-		<YoureUp title={youreUp.title} singerColor={youreUp.color} ondismiss={dismissYoureUp} bind:height={sheetH} />
+	{:else if floodHere && youreUp && Flood}
+		<Flood
+			name={room.me?.displayName ?? ''}
+			title={youreUp.title}
+			singerColor={youreUp.color}
+			ondismiss={dismissYoureUp}
+			onrestart={() => targeted('restart')}
+		/>
 	{/if}
 {/if}
 

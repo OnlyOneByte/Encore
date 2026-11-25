@@ -160,6 +160,14 @@ export function stageHueToHex(hueDeg: number): string {
  *  cannot run an OKLCH conversion. */
 export const DEFAULT_STAGE_COLOR = '#001d31';
 
+/** OKLCH chroma of a hex colour, so a caller can move its lightness and keep its colourfulness. */
+export function chromaOfColor(input: string): number {
+	const rgb = parseHex(input);
+	if (!rgb) return 0;
+	const { a, b } = rgbToOklabAb(rgb);
+	return Math.hypot(a, b);
+}
+
 /** Scale-free, so it reads both tiers on the same terms. `nearestSingerHue` CANNOT serve here. */
 export function hueOfColor(input: string): number {
 	const rgb = parseHex(input);
