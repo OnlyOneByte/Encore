@@ -414,6 +414,7 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 			const lags = [
 				fade.ran!.start - exit!.t,
 				fade.out! - (fade.ran!.start + fade.ran!.endTime),
+				// Trusts the reel's arrival to start on mount: a page that deferred it in JS would be counted as host wait.
 				arrive!.reelArriveStart! - fade.reel!.t
 			].map((l) => Math.max(0, l));
 			const hostMs = lags.reduce((a, b) => a + b, 0);

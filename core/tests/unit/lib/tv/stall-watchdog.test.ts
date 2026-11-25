@@ -215,6 +215,17 @@ describe('StallWatchdog: time nobody watched, slow loads, seeks (code review of 
 			expect(started.tick(at(t, { position: (t - 5_250) / 1000 }))).toBe('none');
 	});
 
+	test('a mid-song stall while bytes still trickle in under 4 s apart: no reload, and it fails at 8 s', () => {
+		// The one case #1244 changed: a reload would throw away a stream that is still arriving (review of #1244).
+		const w = new StallWatchdog();
+		const acts: [number, string][] = [];
+		for (let t = 0; t <= 10_000; t += 250) {
+			const a = w.tick(at(t, { position: 30, downloading: t % 2_000 === 0 }));
+			if (a !== 'none') acts.push([t, a]);
+		}
+		expect(acts).toEqual([[STALL_FAIL_MS, 'fail']]);
+	});
+
 	test('a phone seek after the retry, back to or below the stuck spot, is not a stall', () => {
 		const w = new StallWatchdog();
 		expect(run(w, 0, 4_000, { position: 30 })).toEqual([[STALL_RETRY_MS, 'retry']]);
