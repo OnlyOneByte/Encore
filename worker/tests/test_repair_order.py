@@ -354,3 +354,29 @@ def test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends(
                     f"{where}: an end moved without landing on the following line's start"
                 )
     assert seams, "no seed exercises W6's pull, so this test proves nothing about it"
+
+
+def test_a_line_split_around_a_long_gap_is_closed_up_and_a_held_line_is_left_alone() -> None:
+    """tfr-chosen's "You're the Chosen One": "You're the" at 55.5 s, "Chosen One" at 59.3 s (#1203)."""
+    from encore_worker.domain.lyrics.generate import Generated, Line, Word
+    from encore_worker.steps.align_geometry import _closed_splits
+
+    def line(index: int, *spans: tuple[str, float, float]) -> Line:
+        words = tuple(Word(w, s, e, score=-1.0) for w, s, e in spans)
+        return Line(" ".join(w for w, _s, _e in spans), words[0].start, words[-1].end, words, -1.0, index)
+
+    lead = (("You're", 55.53, 56.01), ("the", 56.01, 56.4))
+    split = line(0, *lead, ("Chosen", 59.29, 59.85), ("One", 59.85, 60.0))
+    held = line(1, ("Ooh", 61.0, 61.1), ("yeah", 66.6, 66.7))  # two words: a held note, whatever the gap
+    slow = line(2, ("so", 70.0, 70.1), ("slow", 72.5, 72.6), ("ly", 75.0, 75.1))  # no one gap dominates
+    doc = Generated(lines=(split, held, slow), language="en")
+    out, why = _closed_splits(doc, claimed={7})  # the re-added line 0 is unclaimed among claimed neighbours
+    closed = out.lines[0]
+    assert [round(w.start, 2) for w in closed.words] == [58.42, 58.9, 59.29, 59.85]
+    assert (round(closed.start, 2), closed.end) == (58.42, 60.0)
+    assert out.lines[1:] == (held, slow)
+    assert why == ["closed a split of over 2 s inside lines [0]"]
+    # A claimed line keeps its decode (closing moved good starts off their claims on the bench), and so does
+    # a blind document, where nothing pins either side of the gap (it moved a good start on tfr-mayday).
+    assert _closed_splits(doc, claimed={0}) == (doc, [])
+    assert _closed_splits(doc, claimed=()) == (doc, [])

@@ -482,6 +482,20 @@ new end — a line that was not sung before it. (`align_geometry._clamped_v2`, `
 `generate.trimmed`; LOG.md, "The clamp's left floor was the bug, not the ladder", prices the clamp, this
 tail and the walk.)
 
+**After the clamp, a split line is closed up.** The decoder can put a line's first words on an echo or a
+held note seconds before the rest: on tfr-chosen, "You're the" at 55.5 s and "Chosen One" at 59.3 s, the
+truth being 58.0 s. In an UNCLAIMED line of a claimed document (a line a fix re-added, between claimed
+neighbours that pin where its audio can be), of 3 or more words, whose widest gap between two word onsets exceeds
+`_SPLIT_GAP_SEC` (2 s) and the rest of the line's onset span together, the words before that gap are moved up
+against the words after it, durations kept: a sung line is one phrase. Onsets, because ends here are still
+CTC's frame-or-so peaks (the end pass of §10 runs later); 3 words, so a held "Ooh ... yeah" is never touched.
+The later cluster is the one kept, because the failure seen is leading words placed early. It moves only words
+inside one line, forward into its own gap, so no neighbour and no order changes. A CLAIMED line keeps its
+decode: on the in-repo bench, closing claimed lines moved good starts off their claims (one more gross line in
+seven of tfr-chosen's claim modes), so the claim stays the evidence there. A fully BLIND decode is left alone
+too: with nothing pinning either side of the gap, closing moved a start that was right (tfr-mayday's "(I'm
+running out of air)", from 0.4 s early to 1.0 s late). (`align_geometry._closed_splits`.)
+
 ## 5. The gates — what each one asks, and what it cannot answer
 
 Four questions, asked by four different mechanisms. They are not interchangeable, and the history of

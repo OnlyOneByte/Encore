@@ -7,7 +7,7 @@ without a decode. Design: docs/arch/04-alignment.md §4.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -32,6 +32,48 @@ def _with_lines(generated: Generated, repaired: Mapping[int, Line]) -> Generated
         lines=tuple(sorted([*lines, *added], key=lambda line: line.index)) if added else tuple(lines),
         language=generated.language,
     )
+
+
+#: Seconds between two word ONSETS in a line of 3+ words, and more than the rest of its onset span, that make
+#: a split: its first words placed on an echo before the rest. docs/arch/04-alignment.md §4 (#1203).
+_SPLIT_GAP_SEC = 2.0
+
+
+def _closed_splits(generated: Generated, claimed: Collection[int]) -> tuple[Generated, list[str]]:
+    """Each UNCLAIMED line of a claimed document split around such a gap, its words before the gap moved up
+    against the words after it, durations kept, since a sung line is one phrase; and the trail line, if any.
+    A claimed line keeps its decode, the claim being the evidence; so does a blind one, nothing pinning it."""
+    from encore_worker.domain.lyrics.generate import Generated, Line, Syllable, Word  # noqa: PLC0415
+
+    if not claimed:
+        return generated, []
+    closed: list[int] = []
+    lines: list[Line] = []
+    for line in generated.lines:
+        words = line.words
+        onsets = [(words[k + 1].start - words[k].start, k) for k in range(len(words) - 1)]
+        widest, at = max(onsets, default=(0.0, -1))
+        span = words[-1].start - words[0].start if words else 0.0
+        if line.index in claimed or len(words) < 3 or widest <= _SPLIT_GAP_SEC or widest * 2 <= span:
+            lines.append(line)
+            continue
+        gap = words[at + 1].start - words[at].end
+        moved = tuple(
+            Word(
+                word=w.word,
+                start=w.start + gap,
+                end=w.end + gap,
+                score=w.score,
+                syllables=tuple(Syllable(s.text, s.start + gap, s.end + gap) for s in w.syllables),
+                provenance=w.provenance,
+            )
+            for w in words[: at + 1]
+        )
+        closed.append(line.index)
+        start = moved[0].start
+        lines.append(Line(line.text, start, line.end, moved + words[at + 1 :], line.score, line.index))
+    why = [f"closed a split of over {_SPLIT_GAP_SEC:g} s inside lines {closed}"] if closed else []
+    return Generated(lines=tuple(lines), language=generated.language), why
 
 
 def _clamped(

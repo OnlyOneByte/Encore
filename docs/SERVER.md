@@ -305,10 +305,10 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   `lyricsRef` still names until the re-time lands). A host changes which words, not when they are sung, so the
   worker (`align_text.seed_times`) pairs the pasted lines with that document's lines in order: equal, an edited
   line that still reads mostly the same, or a line rewritten in place keeps its old slot, and the paste is
-  aligned as a line-timed claim, the way an authored caption track is. An ADDED line has no slot. In a document
-  with no word timings the line spans are the provider's own and swallow nothing, so the added lines share the
-  gap they left as claims. In an aligned one the line before may have swallowed the missed line's audio, so it
-  keeps only its start and the two are decoded in one window, up to the next claimed start. With no such document (none, or evicted), or under
+  aligned as a line-timed claim, the way an authored caption track is. An ADDED line has no slot and stays
+  unclaimed. The line before it may have swallowed the missed line's audio, so it keeps only its start and the
+  two are decoded in one window, up to the next claimed start; a split the decode leaves inside an unclaimed
+  line is closed up (docs/arch/04-alignment.md §4, #1203). With no such document (none, or evicted), or under
   half the lines paired, the paste is decoded blind as before, which on two of the three in-repo songs trailed
   the automatic document's timing; a remake after eviction is that case today (#1199).
 - **Every change keeps the state it replaced** (pin, words, rev) in the sidecar's `lyricsEditHistory`,

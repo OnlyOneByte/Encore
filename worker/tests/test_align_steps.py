@@ -2280,23 +2280,23 @@ async def test_an_added_line_is_found_in_one_window_with_the_line_before_it(tmp_
 def test_a_line_added_into_a_repeated_chorus_pairs_every_other_line_with_its_own_slot() -> None:
     """difflib paired [one, chosen] one line early here, dropping the first `one` and shifting the rest."""
     old = [("cause one", 50.0, 52.0), ("one", 53.0, 56.0), ("one", 60.0, 67.5), ("chosen", 68.0, 70.0)]
-    assert seed_times(["cause one", "one", "chosen", "one", "chosen"], old, line_timed=True) == [
+    assert seed_times(["cause one", "one", "chosen", "one", "chosen"], old) == [
         (50.0, 52.0),
-        (53.0, 56.0),
-        (56.0, 60.0),
+        (53.0, None),
+        None,
         (60.0, 67.5),
         (68.0, 70.0),
     ]
 
 
-async def test_in_a_line_timed_document_added_lines_share_the_gap_the_provider_left(tmp_path: Path) -> None:
-    """A provider's own line spans swallow nothing, so the gap between them is where the missed lines go."""
+async def test_in_a_line_timed_document_too_added_lines_are_left_unclaimed(tmp_path: Path) -> None:
+    """A claim on the gap they left only corroborated a split decode (#1203); unclaimed, a split is closed."""
     paste = "aaa bbb\nccc ddd\none missed\ntwo missed\neee fff\nggg hhh\niii jjj"
     assert await _seeded(tmp_path, paste, worded=False) == [
         ("aaa bbb", 10.0, 12.0),
-        ("ccc ddd", 14.0, 16.0),
-        ("one missed", 16.0, 18.0),
-        ("two missed", 18.0, 20.0),
+        ("ccc ddd", 14.0, None),
+        ("one missed", None, None),
+        ("two missed", None, None),
         ("eee fff", 20.0, 24.0),
         ("ggg hhh", 24.5, 26.0),
         ("iii jjj", 28.0, 30.0),

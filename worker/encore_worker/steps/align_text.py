@@ -176,17 +176,6 @@ def _timed_lines(path: str) -> list[tuple[str, float, float]]:
     return out
 
 
-def _worded(path: str) -> bool:
-    """Whether a stored document carries word timings: an aligned one, not a provider's line-timed one."""
-    try:
-        with open(path, encoding="utf-8") as handle:
-            loaded = json.load(handle)
-    except (OSError, ValueError):
-        return False
-    lines = loaded.get("lines") if isinstance(loaded, dict) else None
-    return any(isinstance(line, dict) and line.get("words") for line in lines or [])
-
-
 def _pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
     """The in-order pairing of `a` with `b` scoring most (equal 1, alike 0.5), not difflib's longest block,
     which on a chorus of repeated lines pairs a run one line early. A tie keeps the LATER pairing."""
@@ -217,12 +206,12 @@ def _pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
 
 
 def seed_times(
-    texts: Sequence[str], old: Sequence[tuple[str, float, float]], *, line_timed: bool = False
+    texts: Sequence[str], old: Sequence[tuple[str, float, float]]
 ) -> list[tuple[float, float | None] | None] | None:
     """Line bounds for a fix's lines, from the document it corrects; None for a line the aligner must find.
     A kept, edited or rewritten line (`_pairs`, or a same-size run between pairs) keeps its slot. An added
-    line shares the gap a `line_timed` document left, or is decoded with the line before it (which keeps only
-    its start) in an aligned one. None when under half the lines pair. See docs/SERVER.md#lyrics-fixes.
+    line is unclaimed and decoded with the line before it, which keeps only its start. None when under half
+    the lines pair. See docs/SERVER.md#lyrics-fixes.
     """
     paired: list[tuple[float, float | None] | None] = [None] * len(texts)
     a, b = [_norm(t) for t, _s, _e in old], [_norm(t) for t in texts]
@@ -237,20 +226,10 @@ def seed_times(
     if sum(p is not None for p in paired) * 2 < len(texts):
         return None
     out = list(paired)
-    j = 0
-    while j < len(paired):
-        if paired[j] is not None:
-            j += 1
-            continue
-        stop = next((k for k in range(j, len(paired)) if paired[k] is not None), len(paired))
-        before, after = paired[j - 1] if j else None, paired[stop] if stop < len(paired) else None
-        gap = (before[1], after[0]) if before and after and before[1] is not None else None
-        if line_timed and gap and gap[1] > gap[0]:
-            step = (gap[1] - gap[0]) / (stop - j)
-            out[j:stop] = [(gap[0] + n * step, gap[0] + (n + 1) * step) for n in range(stop - j)]
-        elif before is not None:
+    for j in range(1, len(paired)):
+        # The line before an added one may have swallowed its audio, so it keeps only its start.
+        if paired[j] is None and (before := paired[j - 1]) is not None:
             out[j - 1] = (before[0], None)
-        j = stop
     return out
 
 
@@ -264,7 +243,7 @@ def seeded(job: JobRef, segments: tuple[Segment, ...]) -> tuple[tuple[Segment, .
     if not ref.startswith("derived/lyrics/") or not ref.endswith(".json"):
         return segments, None
     path = os.path.join(job.media_dir, ref)
-    times = seed_times([str(s["text"]) for s in segments], _timed_lines(path), line_timed=not _worded(path))
+    times = seed_times([str(s["text"]) for s in segments], _timed_lines(path))
     if times is None:
         return segments, None
     pairs = zip(segments, times, strict=True)

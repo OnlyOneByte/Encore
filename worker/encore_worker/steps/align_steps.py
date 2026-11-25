@@ -64,6 +64,7 @@ from encore_worker.steps.align_claims import (
 from encore_worker.steps.align_geometry import (
     _anchored_runs,
     _clamped,
+    _closed_splits,
     _with_lines,
 )
 from encore_worker.steps.align_lines import (
@@ -1965,12 +1966,10 @@ class AlignStepsImpl:
                         "inside their claim windows"
                     )
 
-        # A repair may not introduce what the policy punishes: spans clipped to neighbours. Under the
-        # `m2-order-clamp` arm a repair that cannot be fitted between its trusted neighbours IN ORDER is
-        # refused instead, its run back on the blind decode. Invariant XA-07.
+        # A repair may not add what the policy punishes, spans clipped to neighbours; under `m2-order-clamp`
+        # one that cannot fit IN ORDER between trusted neighbours goes back to the blind decode (XA-07).
         reverted: frozenset[int] = frozenset()
-        #: Which TRUSTED lines' ends the clamp pulled back onto a repair, and by how much: the one published
-        #: timing this worker changes on a line no stage repaired, so it goes on the trail (`_pulls_why`).
+        #: TRUSTED lines' ends the clamp pulled back onto a repair, and how far: for the trail (`_pulls_why`).
         pulled_ends: dict[int, float] = {}
         if repaired_all:
             generated, reverted, pulled_ends = _clamped(
@@ -1982,6 +1981,8 @@ class AlignStepsImpl:
             )
         if pulled_ends:
             repairs.append(_pulls_why(pulled_ends))
+        generated, closed = _closed_splits(generated, claimed)  # after the clamp, which fits whole lines
+        repairs.extend(closed)
         published_now = {line.index for line in generated.lines}
         if reverted:
             for index in reverted:
@@ -2004,9 +2005,8 @@ class AlignStepsImpl:
                 + ", ".join(f"[{i}] {spared[i][0].text[:40]!r}" for i in unplaced)
             )
 
-        #: Of each re-opened line, did the CLAMP leave its published start on the claim's onset? The clamp
-        #: resolves a re-opened start against the previous line's end by rescaling the line, so "re-opened"
-        #: and "published where it was re-opened to" are two different claims (XA-07).
+        #: Of each re-opened line, did the CLAMP (which rescales a line against the previous line's end)
+        #: leave its published start on the claim's onset? "Re-opened" and "published there" differ (XA-07).
         claim_onsets_published = {
             line.index: line.index in claim_windows and abs(line.start - claim_windows[line.index][0]) <= 1e-9
             for line in generated.lines
