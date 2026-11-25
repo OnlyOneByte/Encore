@@ -706,8 +706,21 @@
 		isCopy && !chipAwake && tvOnline && !seatNext && screen !== 'lobby' && screen !== 'attract'
 	);
 	// A singer's monitor: on a copy, mid-song, the words alone, bigger, and who is next. The seat always shows the whole
-	// stage, and so do the lobby and attract, where the room needs the QR.
-	const wordsOnly = $derived(show === 'words' && isCopy && screen !== 'lobby' && screen !== 'attract');
+	// stage, and so do the lobby and attract, where the room needs the QR. Its code is a lazy chunk, loaded only by a
+	// screen set to Words only, so the room's TV ships none of it; until it has loaded, and if it cannot, the screen
+	// shows the whole stage.
+	let wordsChunk = $state<typeof import('$lib/tv/TvWordsOnly.svelte') | null>(null);
+	let wordsLoad: Promise<void> | null = null;
+	$effect(() => {
+		if (show !== 'words' || wordsLoad) return;
+		wordsLoad = import('$lib/tv/TvWordsOnly.svelte').then(
+			(m) => void (wordsChunk = m),
+			() => void (wordsLoad = null)
+		);
+	});
+	const wordsOnly = $derived(
+		show === 'words' && isCopy && screen !== 'lobby' && screen !== 'attract' && wordsChunk !== null
+	);
 	/** How much bigger the words are on Words only than the room's lyric size (proposal 34), at most: the line being
 	 *  sung and the next one, two rows each, must fit the screen, so the overlay's fit cap wins past that. */
 	const WORDS_ONLY_SCALE = 1.7;
@@ -1046,7 +1059,7 @@
 		linesBefore={wordsOnly ? 0 : settings.room.lyricsLinesBefore}
 		linesAfter={wordsOnly ? 1 : settings.room.lyricsLinesAfter}
 		wrapRows={wordsOnly ? 2 : 1}
-		fit={wordsOnly}
+		fit={wordsOnly ? wordsChunk?.wordsFit : null}
 		singerColor={currentSingerColor}
 		chorus={settings.room.tvChorus}
 	/>
@@ -1076,14 +1089,11 @@
 			roomCode={data.roomCode}
 			join={isCopy ? copyChip : undefined}
 		/>
-	{:else if wordsOnly}
+	{:else if wordsOnly && wordsChunk}
 		<!-- WORDS ONLY: no lower-third, reactions or join corner, just who is next, top-right where "Up next" stands.
 		     It steps aside for the copy chip, as "Up next" does, so the two never draw text on text. -->
 		{#if upNext && upNext.id !== current?.id && chipAsleep && chipFadedOut}
-			<p class="words-next">
-				<span class="words-dot" style:background={singers.get(upNext.singerId)?.color} aria-hidden="true"></span>
-				<b>{singerName(upNext.singerId)}</b> is next
-			</p>
+			<wordsChunk.default name={singerName(upNext.singerId)} color={singers.get(upNext.singerId)?.color} />
 		{/if}
 	{:else}
 		<TvNowBar
@@ -1247,32 +1257,6 @@
 	}
 	.stage-bg.shown {
 		opacity: 1;
-	}
-	/* Words only: who is next, in "Up next"'s place and type, on one line. */
-	.words-next {
-		position: absolute;
-		right: var(--tv-safe-x);
-		top: calc(var(--tv-safe-y) + 2.6vh);
-		z-index: var(--z-tv-card);
-		max-width: 40vw;
-		margin: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--tv-body);
-		font-weight: 700;
-		color: var(--ink-dim);
-	}
-	.words-next b {
-		color: var(--ink);
-		font-weight: 800;
-	}
-	.words-dot {
-		display: inline-block;
-		width: 0.5em;
-		height: 0.5em;
-		border-radius: 50%;
-		margin-right: 0.4em;
 	}
 	/* ONE TV PER ROOM: a copy's chip, top-right, in "Up next"'s place (which yields while the chip shows). */
 	.copy-slot {

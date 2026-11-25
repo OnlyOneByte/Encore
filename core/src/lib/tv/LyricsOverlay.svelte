@@ -22,6 +22,7 @@
 	import { untrack } from 'svelte';
 	import { drawPosition } from '$lib/playhead';
 	import { reelOffset as reelOffsetFor } from './reel-offset';
+	import type { WordsFit } from './TvWordsOnly.svelte';
 	import {
 		DEFAULT_LYRICS_BALL,
 		DEFAULT_LYRICS_CASE,
@@ -71,8 +72,9 @@
 		chorus?: boolean;
 		/** Rows each lyric line may wrap to inside the reel's budget (Words only gives two). */
 		wrapRows?: number;
-		/** Cap the type so every line, at `wrapRows` rows, fits the band at any room size (Words only). */
-		fit?: boolean;
+		/** Cap the type so every line, at `wrapRows` rows, fits the band at any room size (Words only, whose lazy chunk
+		 *  carries the helpers, so the stage ships none of them). */
+		fit?: WordsFit | null;
 	}
 	let {
 		lyricsRef,
@@ -93,7 +95,7 @@
 		singerColor = null,
 		chorus = true,
 		wrapRows = 1,
-		fit = false
+		fit = null
 	}: Props = $props();
 
 	const FIX_WAIT_MAX_MS = 10_000;
@@ -268,9 +270,14 @@
 			fadeTop: linesBefore > 0 && !fit ? fadeCap : 0,
 			fadeBot: linesAfter > 0 && !fit ? fadeCap : 0
 		});
-		if (fit && shrink > FIT_SHRINK_MIN && overBudget(oneRow)) {
-			// The smaller type lands at once, and the reel is measured again on the frame it lands in.
-			shrink = Math.max(FIT_SHRINK_MIN, shrink * 0.92);
+		// The fit cap counts rows, not letters: a wide font (mono) still takes a 42-character line past `wrapRows`, so a
+		// shown line taller than its budget steps the type down (to half at most), measured again on the frame it lands.
+		if (
+			fit &&
+			shrink > 0.5 &&
+			fit.over(reelEl!.children, lineIdx - linesBefore, lineIdx + linesAfter, wrapRows, oneRow)
+		) {
+			shrink = Math.max(0.5, shrink * 0.92);
 			snapReel = true;
 			requestAnimationFrame(() => {
 				snapReel = false;
@@ -278,19 +285,7 @@
 			});
 		}
 	}
-	// The fit cap counts rows, not letters: a wide font (mono) still takes a 42-character line past `wrapRows`, so a
-	// shown line taller than its budget steps the type down until none is.
-	const FIT_SHRINK_MIN = 0.5;
 	let shrink = $state(1);
-	function overBudget(oneRow: number) {
-		const rows = reelEl!.children;
-		for (let i = Math.max(0, lineIdx - linesBefore); i <= lineIdx + linesAfter && i < rows.length; i++) {
-			const r = rows[i] as HTMLElement;
-			const second = r.querySelector<HTMLElement>('.romanization')?.offsetHeight ?? 0;
-			if (r.offsetHeight - second > (wrapRows + 0.5) * oneRow) return true;
-		}
-		return false;
-	}
 	$effect(() => {
 		void [doc, font, textCase, scalePct, wrapRows, fit];
 		shrink = 1;
@@ -354,16 +349,7 @@
 	const partColor = $derived(
 		curLine && typeof curLine.part === 'string' ? (partColors.get(curLine.part) ?? null) : null
 	);
-	// The FIT CAP: the largest type at which `rowCount` lines of `wrapRows` rows each fill the band, never more. The
-	// 1.9 is `--lyrics-row-h` below; the two must agree. The sung row draws its words as inline-block spans, a little
-	// taller than its leading, so the box takes FIT_SLACK_EM more and the cap counts it.
-	const FIT_SLACK_EM = 0.5;
-	// A single word longer than a row breaks rather than running off the side.
-	const fitStyle = $derived(
-		fit
-			? `; --lyrics-slack: ${FIT_SLACK_EM}em; --lyrics-fit: calc((100vh - var(--tv-chrome-h) - var(--tv-top-reserve)) * ${shrink} / ${rowCount * wrapRows * 1.9 + FIT_SLACK_EM}); overflow-wrap: anywhere`
-			: ''
-	);
+	const fitStyle = $derived(fit ? fit.style(rowCount, wrapRows, shrink) : '');
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
 		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE * (fit ? shrink : 1)}; --lyrics-rows: ${rowCount}; ` +
@@ -611,10 +597,6 @@
 	}
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
-	}
-	/* `visibility`, not `display`: the row keeps its box, so the reel's offsets and its glide stay as they are. */
-	.row.beyond {
-		visibility: hidden;
 	}
 	/* Inherits the row's colour transition, so it fades in step with its line rather than at one fixed brightness. */
 	.romanization {
