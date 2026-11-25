@@ -25,7 +25,7 @@
 		type PlaybackState,
 		type MediaStatus
 	} from '$lib/contract';
-	import { room } from '$lib/stores/room';
+	import { room, PENDING_GRACE_MS } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns, type MakerVerdicts } from '$lib/readiness';
 	import { resolve } from '$app/paths';
@@ -108,6 +108,18 @@
 	   without this the first real sync read as N additions. See `QueueStore.synced`. */
 	let queueSynced = $state(false);
 	let playbackSynced = $state(false);
+	/* Tenet 2 (#1090): the list's skeleton is seen only past PENDING_GRACE_MS (`.skels-wait`, in CSS), and a sync that
+	   lands after it is seen holds it for that long again, so it is never painted for less. */
+	let waitFrom = 0;
+	let skelsHeld = $state(false);
+	$effect(() => {
+		if (!queueSynced) return void (waitFrom = performance.now());
+		const seen = performance.now() - waitFrom;
+		if (seen < PENDING_GRACE_MS || seen >= 2 * PENDING_GRACE_MS) return;
+		skelsHeld = true;
+		const t = setTimeout(() => (skelsHeld = false), 2 * PENDING_GRACE_MS - seen);
+		return () => clearTimeout(t);
+	});
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -814,7 +826,7 @@
 				</div>
 			{/if}
 
-			{#if queued.length}
+			{#if queued.length && !skelsHeld}
 				<h2
 					class="grouphead"
 					data-hold={holds.grouphead?.turn}
@@ -939,10 +951,11 @@
 						/>
 					{/if}
 				{/each}
-			{:else if !queueSynced}
+			{:else if !queueSynced || skelsHeld}
 				<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
-			said "Nothing queued yet" over a full queue for that whole window on every cold load. -->
-				<SkeletonRows count={4} label="Loading the queue…" />
+			said "Nothing queued yet" over a full queue for that whole window on every cold load. Its box is there from
+			the first frame, so nothing shifts; it is only seen past the grace. -->
+				<div class="skels-wait"><SkeletonRows count={4} label="Loading the queue…" /></div>
 			{:else}
 				<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
@@ -1030,6 +1043,16 @@
 	@keyframes arrive {
 		from {
 			opacity: 0;
+		}
+	}
+
+	/* Hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, then seen: no motion, so not behind reduced motion. */
+	.skels-wait {
+		animation: skels-wait 0s 0.3s backwards;
+	}
+	@keyframes skels-wait {
+		from {
+			visibility: hidden;
 		}
 	}
 

@@ -6,16 +6,7 @@ import { SEL } from '../../world/selectors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
 import { openQueue, queueReady, readySong } from '../../world/actors';
-import {
-	best,
-	flashes,
-	instrument,
-	readState,
-	report,
-	tapToChange,
-	throttle,
-	type Anim
-} from './speed-measure';
+import { best, flashes, instrument, readState, report, tapToChange, throttle, type Anim } from './speed-measure';
 
 const BUDGET_MS = 100;
 const REPS = 5;
