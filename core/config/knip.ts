@@ -31,8 +31,9 @@ const config: KnipConfig = {
 	// rewrites these, so an unused re-export here is the intended state rather than drift.
 	ignore: ['src/lib/components/ui/**'],
 	// Both are real and neither is ever imported: `shadcn-svelte` is the re-vendoring CLI, and
-	// `svelte-check` is invoked through `bun --bun`, which knip cannot see.
-	ignoreDependencies: ['shadcn-svelte', 'svelte-check'],
+	// `svelte-check` is invoked through `bun --bun`, which knip cannot see. `node:sqlite` is a Node built-in, not a
+	// package: dock-idle-play.spec.ts opens the test DB with it, and knip run under Bun reports it as unlisted.
+	ignoreDependencies: ['shadcn-svelte', 'svelte-check', 'node:sqlite'],
 	// The worker is Python and uv-managed; the gates call `uv`, which is not a JS binary.
 	ignoreBinaries: ['uv'],
 	// SvelteKit/Vite virtual modules — synthesised at build time. No test resolves them any more: the
