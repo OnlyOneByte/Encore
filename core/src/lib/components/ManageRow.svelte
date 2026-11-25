@@ -94,6 +94,15 @@
 		if (await post('keep', { keep })) onchanged();
 	}
 
+	async function remake() {
+		const out = await post('remake', {});
+		if (!out) return;
+		toast(out.afterTurn ? 'Making the sound again after its turn' : 'Making the sound again', {
+			duration: 4000,
+			description: 'The song stays ready. Its old sound plays until the new one is in.'
+		});
+	}
+
 	async function remove() {
 		const out = await post('delete', {});
 		if (!out) return;
@@ -154,6 +163,10 @@
 		<div class="line">
 			<span>Lyrics</span>
 			<Button variant="ghost" size="tap" href={`/song/${encodeURIComponent(media.id)}`}>Fix</Button>
+		</div>
+		<div class="line">
+			<span>Sound</span>
+			<Button variant="ghost" size="tap" disabled={busy} onclick={remake}>Make again</Button>
 		</div>
 		<label class="line">
 			<span>Keep on this machine</span>

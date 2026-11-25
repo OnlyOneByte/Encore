@@ -152,6 +152,22 @@ async def test_all_three_stems_land_at_cores_keys(media: Path) -> None:
         assert on_disk.stat().st_size > 0
 
 
+async def test_a_re_separation_publishes_beside_the_stems_it_replaces(media: Path) -> None:
+    """A tagged job (a remake or an upgrade) writes NEW names and leaves the playing files untouched, so a
+    screen that cached them by name keeps them until core swaps the refs."""
+    first = await steps_for(media, Reporter()).publish_stems(job(media), separated(media))
+    before = (media / first.instrumental).read_bytes()
+    remake = JobRef(job_id="j1", media_id=MEDIA_ID, media_dir=str(media), params={"outputTag": "01jremake"})
+    again = await steps_for(media, Reporter()).publish_stems(remake, separated(media))
+
+    assert again.instrumental == keys.instrumental_key(MEDIA_ID, "flac", "01jremake")
+    assert again.vocals == keys.vocals_key(MEDIA_ID, "flac", "01jremake")
+    assert again.guide_mix == keys.guide_mix_key(MEDIA_ID, "flac", "01jremake")
+    for ref in (again.instrumental, again.vocals, again.guide_mix):
+        assert ref is not None and (media / ref).is_file()
+    assert (media / first.instrumental).read_bytes() == before
+
+
 async def test_nothing_is_published_into_job_scratch(media: Path) -> None:
     """The ORIGINAL BUG, asserted directly. `work/` is transient — retention evicts it — so a ref pointing
     there is a row that looks healthy and a song that stops working later."""

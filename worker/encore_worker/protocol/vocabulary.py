@@ -19,12 +19,13 @@ class Action(StrEnum):
     FETCH = "fetch"
     STEMS = "stems"
     STEMS_UPGRADE = "stems-upgrade"
+    STEMS_REMAKE = "stems-remake"
     ALIGN = "align"
 
     @property
     def is_separation(self) -> bool:
         """Separation actions run a separator engine and publish stems."""
-        return self in (Action.STEMS, Action.STEMS_UPGRADE)
+        return self in (Action.STEMS, Action.STEMS_UPGRADE, Action.STEMS_REMAKE)
 
 
 class Stage(StrEnum):

@@ -568,7 +568,10 @@ test('with MEDIA_DIR=X and DATA_DIR=X/data core boots with a warning, and /media
 		// An empty ENCORE_WORKER_TOKEN_FILE is core's default, as on a hand-configured box.
 		const core = await startCore({ mediaDir: root, dataDir, env: { ENCORE_WORKER_TOKEN_FILE: '' } });
 		try {
-			expect(core.log(), 'the one-folder layout is said at boot').toContain('/media never serves it');
+			// Polled: /health can answer before the boot line reaches the captured output.
+			await expect
+				.poll(() => core.log(), { message: 'the one-folder layout is said at boot' })
+				.toContain('/media never serves it');
 			const token = readFileSync(real, 'utf8').trim();
 			expect(token.length).toBeGreaterThanOrEqual(24);
 			for (const ref of ['auth/worker-token', 'auth%2Fworker-token', 'AUTH/worker-token', 'auth/']) {
@@ -688,6 +691,7 @@ test('no spelling of a mutating path lets another site, or a no-cors post, act w
 		['POST', '/api/library/manage/delete', '{"mediaId":"nope"}'],
 		['POST', '/api/library/manage/undo', '{"mediaId":"nope"}'],
 		['POST', '/api/library/manage/bulk', '{"action":"delete","mediaIds":["nope"]}'],
+		['POST', '/api/library/manage/remake', '{"mediaId":"nope"}'],
 		['POST', '/api/join', '{"displayName":"Evil","color":"#ff0000"}'],
 		['PUT', '/api/settings', '{"joinOrigin":"http://evil.example"}'],
 		['PUT', '/api/settings/room', '{"queueOrder":"fcfs"}'],
@@ -737,6 +741,7 @@ const HOST_ONLY_WRITES: [string, string, (mediaId: string) => string][] = [
 	['POST', '/api/library/manage/keep', (id) => JSON.stringify({ mediaId: id, keep: true })],
 	['POST', '/api/library/manage/delete', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/library/manage/undo', (id) => JSON.stringify({ mediaId: id })],
+	['POST', '/api/library/manage/remake', (id) => JSON.stringify({ mediaId: id })],
 	['POST', '/api/host/people/reset', () => '{"personId":"anyone"}'],
 	['POST', '/api/host/tonight', () => ''],
 	['POST', '/api/library/manage/bulk', (id) => JSON.stringify({ action: 'delete', mediaIds: [id] })],

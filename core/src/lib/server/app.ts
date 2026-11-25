@@ -529,6 +529,18 @@ export function getApp(): EncoreApp {
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
 		// Whose "no maker" a worker's arrival makes untrue: the queued turns, read at that moment.
 		queueEntries: () => state.entries,
+		currentEntryId: () => state.playback.currentEntryId ?? null,
+		deleteRefs: (refs) => {
+			for (const ref of refs) {
+				const abs = safeMediaPath(ref);
+				if (!abs) continue;
+				try {
+					rmSync(abs, { force: true });
+				} catch {
+					/* best effort — a file left behind is removed with the song (delete.ts) */
+				}
+			}
+		},
 		// Persist the ready flip, or the next boot re-processes a song already on disk.
 		persistMedia: (mediaId) => {
 			const m = mediaById.get(mediaId);

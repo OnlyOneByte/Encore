@@ -175,17 +175,19 @@ class SeparateStepsImpl:
                     None,
                 )
 
-        instrumental_ref = keys.instrumental_key(job.media_id, ext)
+        # A re-separation publishes under its own names: the stems it replaces play until core swaps.
+        tag = keys.output_tag(job.param_str("outputTag"))
+        instrumental_ref = keys.instrumental_key(job.media_id, ext, tag)
         await self._store.put(instrumental_ref, staged_instrumental)
 
         vocals_ref: str | None = None
         if staged_vocals is not None:
-            vocals_ref = keys.vocals_key(job.media_id, ext)
+            vocals_ref = keys.vocals_key(job.media_id, ext, tag)
             await self._store.put(vocals_ref, staged_vocals)
 
         guide_ref: str | None = None
         if staged_guide is not None:
-            guide_ref = keys.guide_mix_key(job.media_id, ext)
+            guide_ref = keys.guide_mix_key(job.media_id, ext, tag)
             await self._store.put(guide_ref, staged_guide)
 
         return PublishedStems(

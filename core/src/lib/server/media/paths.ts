@@ -115,11 +115,18 @@ export function publishStemFormat(): string {
 /** MUST match the worker's `GUIDE_MIX_EXT`, or a file that exists 404s. */
 export const GUIDE_MIX_EXT = 'flac';
 
-export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT): string {
-	return `derived/stems/${mediaId}-instrumental.${ext}`;
+/** A re-separation's name segment, from its job id: the stems it replaces are cached a day by name, so its own
+ *  must differ. Mirrors the worker's `keys.py`; `tag` is absent on a first separation. */
+export function stemOutputTag(jobId: string): string {
+	return jobId.toLowerCase().replace(/[^0-9a-z]/g, '');
 }
-export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
-	return `derived/stems/${mediaId}-vocals.${ext}`;
+const tagged = (mediaId: string, tag?: string) => (tag ? `${mediaId}-${tag}` : mediaId);
+
+export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT, tag?: string): string {
+	return `derived/stems/${tagged(mediaId, tag)}-instrumental.${ext}`;
+}
+export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT, tag?: string): string {
+	return `derived/stems/${tagged(mediaId, tag)}-vocals.${ext}`;
 }
 
 /**
@@ -127,8 +134,14 @@ export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
  * than merely governed. `-guidemix` not `-mix` — nothing here is summed, and it mirrors the worker's
  * `guide_mix_path` byte-for-byte.
  */
-export function guideMixKey(mediaId: string, ext: string = GUIDE_MIX_EXT): string {
-	return `derived/stems/${mediaId}-guidemix.${ext}`;
+export function guideMixKey(mediaId: string, ext: string = GUIDE_MIX_EXT, tag?: string): string {
+	return `derived/stems/${tagged(mediaId, tag)}-guidemix.${ext}`;
+}
+
+/** Whether a file name in `derived/stems/` is one of this song's tagged stems (a re-separation's output). */
+export function isTaggedStemOf(mediaId: string, fileName: string): boolean {
+	if (!fileName.startsWith(`${mediaId}-`)) return false;
+	return /^[0-9a-z]+-(instrumental|vocals|guidemix)\.[0-9a-z]+$/.test(fileName.slice(mediaId.length + 1));
 }
 
 /** Newest first: a row's on-disk extension depends on VOCALS_EXT at the time it was processed. */

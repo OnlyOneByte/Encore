@@ -70,14 +70,45 @@ def list_of(source: str, name: str) -> tuple[str, ...]:
 
 # ── the key templates ────────────────────────────────────────────────────────────────────────────
 
+#: The hole the stem keys use for their name segment, matched as text like any other binding.
+_TAGGED = "tagged(mediaId, tag)"
+
+
+def test_tagged_name_segment_matches_cores(source: str) -> None:
+    """Core names a re-separation's stems `<id>-<tag>-…` and a first separation's `<id>-…`; so do we."""
+    match = re.search(
+        r"const tagged = \(mediaId: string, tag\?: string\) => \(tag \? `([^`]+)` : mediaId\);", source
+    )
+    assert match, "paths.ts `tagged` not found in its one-line form — the tagged stem keys are unchecked"
+    assert render(match.group(1), {"mediaId": "m1", "tag": "r1x"}) == "m1-r1x"
+    assert keys.instrumental_key("m1", "flac", "r1x") == "derived/stems/m1-r1x-instrumental.flac"
+
+
+def test_a_malformed_tag_is_ignored_not_written() -> None:
+    """The tag rides a job param from core; anything but a short `[0-9a-z]` token names the untagged file."""
+    for bad in ("../x", "R1X", "a-b", "", "x" * 41):
+        assert keys.output_tag(bad) is None
+        assert keys.instrumental_key("m1", "flac", bad) == "derived/stems/m1-instrumental.flac"
+    assert keys.output_tag("01jxyz") == "01jxyz"
+
+
 #: `(paths.ts function, our function, the args to call ours with)`. The TS side is turned into a concrete
 #: string by substituting the same values, so the comparison is of RESULTS rather than of source text —
 #: reformatting either side cannot break this, but changing a segment will.
 MIRRORED = [
     ("audioKey", lambda: keys.audio_key("m1", "webm"), {"mediaId": "m1", "ext": "webm"}),
-    ("instrumentalKey", lambda: keys.instrumental_key("m1", "flac"), {"mediaId": "m1", "ext": "flac"}),
-    ("vocalsKey", lambda: keys.vocals_key("m1", "flac"), {"mediaId": "m1", "ext": "flac"}),
-    ("guideMixKey", lambda: keys.guide_mix_key("m1", "flac"), {"mediaId": "m1", "ext": "flac"}),
+    # The stem keys' name segment is core's `tagged(mediaId, tag)`, pinned on its own below; here it is bound
+    # to what that join yields, untagged (a first separation) and tagged (a re-separation).
+    ("instrumentalKey", lambda: keys.instrumental_key("m1", "flac"), {_TAGGED: "m1", "ext": "flac"}),
+    ("vocalsKey", lambda: keys.vocals_key("m1", "flac"), {_TAGGED: "m1", "ext": "flac"}),
+    ("guideMixKey", lambda: keys.guide_mix_key("m1", "flac"), {_TAGGED: "m1", "ext": "flac"}),
+    (
+        "instrumentalKey",
+        lambda: keys.instrumental_key("m1", "flac", "r1x"),
+        {_TAGGED: "m1-r1x", "ext": "flac"},
+    ),
+    ("vocalsKey", lambda: keys.vocals_key("m1", "flac", "r1x"), {_TAGGED: "m1-r1x", "ext": "flac"}),
+    ("guideMixKey", lambda: keys.guide_mix_key("m1", "flac", "r1x"), {_TAGGED: "m1-r1x", "ext": "flac"}),
     ("lyricsKey", lambda: keys.lyrics_key("m1"), {"mediaId": "m1"}),
     ("metaKey", lambda: keys.meta_key("m1"), {"mediaId": "m1"}),
     (

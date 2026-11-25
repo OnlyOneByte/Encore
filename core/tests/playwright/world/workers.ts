@@ -328,7 +328,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				return;
 			}
 
-			if (jobType === 'stems' || jobType === 'stems-upgrade') {
+			if (jobType === 'stems' || jobType === 'stems-upgrade' || jobType === 'stems-remake') {
 				// One download per song: once a fetch kept this song's audio, a stems job sent the watch URL is
 				// downloading it again, so it fails loudly here rather than passing unseen.
 				const kept = `audio/${mediaId}.wav`;
@@ -342,9 +342,11 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				await progress('separating', 25);
 				// .wav rather than the flac/m4a the real policy names: the key helpers take an explicit ext and
 				// the media route maps wav → audio/wav, so this is a legal ref a browser can play.
-				const insRef = `derived/stems/${mediaId}-instrumental.wav`;
-				const vocRef = `derived/stems/${mediaId}-vocals.wav`;
-				const mixRef = `derived/stems/${mediaId}-guide.wav`;
+				// A re-separation's own names, as the real worker writes them (`outputTag`, keys.py).
+				const base = params.outputTag ? `${mediaId}-${params.outputTag}` : mediaId;
+				const insRef = `derived/stems/${base}-instrumental.wav`;
+				const vocRef = `derived/stems/${base}-vocals.wav`;
+				const mixRef = `derived/stems/${base}-guide.wav`;
 				if (!skipWrite) {
 					writeRef(insRef, silentInstrumental ? silence() : tone({ seconds, hz: [220, 277.18, 329.63] }));
 					// noVocals writes no vocals file, because it reports no vocals ref either.

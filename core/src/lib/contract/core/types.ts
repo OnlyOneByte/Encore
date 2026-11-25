@@ -157,7 +157,9 @@ export function clampKeyShift(semitones: number): number {
 
 // Transposition happens in the browser (`src/lib/tv/pitch-shift.ts`), so there is deliberately no
 // pre-rendered pitch-shifted artifact and no ref helper that would resolve one.
-export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
+/** `stems-remake` is the host's Make it again (proposal 33 PR 3): the default separator, accepted whatever it
+ *  ranks, on a song that stays ready throughout. */
+export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade' | 'stems-remake';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 /** The event, never the destination status, because a status pair is event-lossy. See
