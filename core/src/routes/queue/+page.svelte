@@ -1030,15 +1030,18 @@
 	}
 
 	/* Held at 0 for one --motion-base (the holds'), so the row is invisible while the rows under it pass through its
-	   box, then a --motion-fast fade: 370 ms in all, inside CLAIM 14's 400 (#1092). */
+	   box, then a --motion-fast fade: 370 ms in all, inside CLAIM 14's 400 (#1092). One animation, not a delay: a
+	   delayed one fires `animationstart` late, after the holds, so ui:review never sees it. 67.6% = 250 / 370. */
 	@media (prefers-reduced-motion: no-preference) {
 		.now.arrive {
-			animation: arrive var(--motion-fast) ease-out var(--motion-base) backwards;
+			animation: arrive calc(var(--motion-base) + var(--motion-fast)) linear;
 		}
 	}
 	@keyframes arrive {
-		from {
+		from,
+		67.6% {
 			opacity: 0;
+			animation-timing-function: ease-out;
 		}
 	}
 
