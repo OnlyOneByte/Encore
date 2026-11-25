@@ -354,3 +354,35 @@ def test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends(
                     f"{where}: an end moved without landing on the following line's start"
                 )
     assert seams, "no seed exercises W6's pull, so this test proves nothing about it"
+
+
+def test_a_re_added_line_sung_held_keeps_its_first_words_where_they_are_sung(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tfr-chosen's "You're the One" is sung held: its last word seconds after the rest. Re-added unclaimed
+    between claimed lines, it must keep its decode; an onset-gap close-up moved it 5 s late (#1203)."""
+    from encore_worker.adapters import ml
+
+    monkeypatch.setattr(ml, "forced_align_decoder", ctc_viterbi)
+    # The audio: "stay light" at 7 s, held, then "dance" at 12 s.
+    sung_at = [("love night", 2.0, 3.5), ("fire run home", 4.5, 6.0), ("stay light", 7.0, 8.0)]
+    sung_at += [("dance", 12.0, 12.6), ("rain sky", 14.0, 15.5), ("oh yeah", 16.5, 17.5)]
+    duration = 19.0
+    path = sung(tmp_path / "vocals.wav", sung_at, duration, 7)
+    aligner = HearingAligner({path: sung_matrix(sung_at, DIC, duration)})
+    impl = AlignStepsImpl(config=Config(), adapters=Adapters(aligner=aligner), reporter=Trail())
+    claimed = [("love night", 2.0, 3.5), ("fire run home", 4.5, 6.0), None, ("rain sky", 14.0, 15.5)]
+    claimed += [("oh yeah", 16.5, 17.5)]
+    segments = tuple(
+        {"text": "stay light dance"} if line is None else {"text": line[0], "start": line[1], "end": line[2]}
+        for line in claimed
+    )
+    text = TextRef(tier=Tier.CANDIDATE, label="sheet", segments=segments, timing="line")
+    job = JobRef(job_id="held", media_id="held", media_dir=str(tmp_path), source_uri=None)
+    audio = AudioRef(path=path, vocals_path=path, duration_sec=duration)
+    out = asyncio.run(impl.time_text(TimeRequest(job=job, text=text, audio=audio, language="en")))
+    assert isinstance(out, TimedDoc) and out.timing == "word"
+    doc = json.loads((tmp_path / out.ref).read_text(encoding="utf-8"))
+    held = next(line for line in doc["lines"] if line["text"] == "stay light dance")
+    assert held["words"][0]["start"] == pytest.approx(7.0, abs=0.5)
+    assert held["words"][-1]["start"] == pytest.approx(12.0, abs=0.5)
