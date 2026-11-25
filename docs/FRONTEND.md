@@ -2119,6 +2119,10 @@ path. Everything in `src/lib/tv/pitch-shift.ts` follows from that:
 - `canShift` is separate from `degraded`. `AudioWorklet` is secure-context-only, so on the documented
   plain-HTTP LAN deployment it is absent and a graph still splits the mix and owns both gain stages —
   only ±key is unavailable. Conflating them hides a working guide or advertises an impossible transpose.
+- Both awaits in a build are bounded, 10 s each: `resume()` (`RESUME_SETTLE_MS`) and the worklet's `addModule`
+  (`WORKLET_LOAD_MS`, #1293). A load that never settles is treated as a rejection: the graph builds without
+  shifting, so a guide-mix song still gets its split and its src. As with a rejection, that slot's graph is never
+  rebuilt, so the slot has no ±key for the rest of the night, even if the load lands later.
 - `HTMLMediaElement.volume` is BYPASSED by the capture, so every level must be applied at both the native
   and the graph site, and re-asserted whenever a graph is (re)built — a fresh graph defaults its gain to
   1. The guide gain defaults to 0 on purpose: the worst case of a missed call must be a guide nobody
@@ -2322,6 +2326,11 @@ refused one on a file landing before about 7 s still reaches the tap screen befo
 nothing is skipped. Media that never loaded is the song's stall, not the tap screen's, and a media error is the song's
 whatever its play() is doing (`unansweredPlayIsAutoplay`). The slot's watchdog resets when its ENTRY changes, and only
 then: the slot outlives its songs, and a room update for the same entry must not restart the count.
+
+A guide-mix song has no src until its mix settles, so the watchdog above never sees it. `MixPendingWatch` covers that
+wait instead (#1293): on screen, with the room playing and no src yet, past `MIX_PENDING_FAIL_MS` (25 s, beyond both of
+the graph's own 10 s bounds), the song fails through the same `onfailed`. A slow mix that settles inside that time
+plays as usual.
 
 A `play()` rejection decides nothing by itself. Only `NotAllowedError` arms "Tap anywhere"; any other rejection is
 left to the watchdog, because a set-and-forget TV never gets the tap, and an element that still advances is playing.

@@ -3,6 +3,8 @@
 import { describe, expect, test } from 'bun:test';
 import { read } from '$test';
 import {
+	MIX_PENDING_FAIL_MS,
+	MixPendingWatch,
 	StallWatchdog,
 	STALL_FAIL_MS,
 	STALL_RETRY_MS,
@@ -282,9 +284,46 @@ describe('TvPlayer wiring', () => {
 		expect(tick).toContain("if (!active && transport !== 'idle' && el?.error && !prewarmFailedFired) {");
 	});
 
+	test('a guide-mix song whose src waits on its mix is watched too, and fails once past the bound (#1293)', () => {
+		const tick = src.split('function checkStall(): void {')[1]?.split('\n\t}\n')[0] ?? '';
+		expect(tick).toContain(
+			"const mixWaiting = active && visible && playing && !!media && isPlayable(media) && fileSrc(media) === '';"
+		);
+		expect(tick).toContain('if (mixWatch.tick(mixWaiting, now)) {');
+		expect(src).toMatch(/watchdog\.reset\(\);\s+mixWatch\.reset\(\);/);
+	});
+
 	test('one way out: no per-event error callback beside onfailed', () => {
 		// The element's own error event only asks the watchdog, so there is still ONE decision and one way out.
 		expect(src.match(/\bonerror=\{[^}]*\}/g)).toEqual(['onerror={() => checkStall()}']);
 		expect(src).not.toContain('onplaybackfailed');
+	});
+});
+
+describe('MixPendingWatch: a guide-mix song whose src still waits on its mix (#1293)', () => {
+	test('a pending mix fails once, past both of the graph’s own bounds', () => {
+		expect(MIX_PENDING_FAIL_MS).toBeGreaterThan(10_000 + 10_000);
+		const w = new MixPendingWatch();
+		expect(w.tick(true, 0)).toBe(false);
+		expect(w.tick(true, MIX_PENDING_FAIL_MS - 1)).toBe(false);
+		expect(w.tick(true, MIX_PENDING_FAIL_MS)).toBe(true);
+		expect(w.tick(true, MIX_PENDING_FAIL_MS + 5_000)).toBe(false); // once
+	});
+
+	test('a slow mix that settles inside the bound never fails, and the count starts again if it waits again', () => {
+		const w = new MixPendingWatch();
+		w.tick(true, 0);
+		expect(w.tick(false, 20_000)).toBe(false); // settled at 20 s: a slow box, a working mix
+		expect(w.tick(true, 30_000)).toBe(false);
+		expect(w.tick(true, 30_000 + MIX_PENDING_FAIL_MS - 1)).toBe(false);
+	});
+
+	test('a new song is counted from zero and may fail again', () => {
+		const w = new MixPendingWatch();
+		w.tick(true, 0);
+		expect(w.tick(true, MIX_PENDING_FAIL_MS)).toBe(true);
+		w.reset();
+		expect(w.tick(true, 100_000)).toBe(false);
+		expect(w.tick(true, 100_000 + MIX_PENDING_FAIL_MS)).toBe(true);
 	});
 });

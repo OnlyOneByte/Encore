@@ -20,6 +20,31 @@ const RESUME_SLACK_SEC = 0.5;
  *  four missed ticks. */
 const STALL_GAP_MS = 1000;
 
+/** A guide-mix song whose src still waits on its mix while the room means to play (#1293): the graph bounds both of
+ *  its own waits (the resume and the worklet load, 10 s each), so past them something else hangs and the song fails. */
+export const MIX_PENDING_FAIL_MS = 25_000;
+
+/** Tracks how long the mix has been pending; `true` once, at the tick it has been pending MIX_PENDING_FAIL_MS. */
+export class MixPendingWatch {
+	#since: number | null = null;
+	#fired = false;
+	tick(pending: boolean, now: number): boolean {
+		if (!pending) {
+			this.#since = null;
+			return false;
+		}
+		this.#since ??= now;
+		if (this.#fired || now - this.#since < MIX_PENDING_FAIL_MS) return false;
+		this.#fired = true;
+		return true;
+	}
+	/** A new song: a fresh count, and it may fail once more. */
+	reset(): void {
+		this.#since = null;
+		this.#fired = false;
+	}
+}
+
 export type StallAction = 'none' | 'retry' | 'fail';
 
 export interface StallReading {
