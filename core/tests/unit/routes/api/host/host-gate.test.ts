@@ -245,9 +245,14 @@ test('the nudge is stored on the step grid and in range, in the index, and leave
 		durationSec: 200,
 		stemStatus: 'ready'
 	};
-	app.mediaById.set('m1', { ...song, lyricsEditRev: 2 });
+	app.mediaById.set('m1', { ...song, lyricsEditRev: 2, lyricsRef: 'derived/lyrics/m1-asr-word.json' });
+	// A song with no timed words has nothing for a nudge to move.
+	app.mediaById.set('m2', { ...song, id: 'm2' });
 	const host = await unlock();
 	const nudge = (body: object) => lyricsOffset(event('/api/lyrics-edit/offset', 'POST', host, body));
+	const bare = await nudge({ mediaId: 'm2', offsetMs: 50 });
+	expect([bare.status, (await bare.json()).reason]).toEqual([409, 'no-lyrics']);
+	expect(app.mediaById.get('m2')).not.toHaveProperty('lyricsOffsetMs');
 
 	const res = await nudge({ mediaId: 'm1', offsetMs: -230 });
 	expect(await res.json()).toEqual({ offsetMs: -250 });

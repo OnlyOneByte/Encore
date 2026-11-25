@@ -18,6 +18,7 @@ const STATUS: Record<LyricsEditRefusal, number> = {
 	'unknown-media': 404,
 	stale: 409,
 	'not-processed': 409,
+	'no-lyrics': 409,
 	'nothing-to-undo': 409,
 	'no-text': 400,
 	'bad-lines': 400
@@ -26,6 +27,7 @@ const MESSAGE: Record<LyricsEditRefusal, string> = {
 	'unknown-media': 'unknown media',
 	stale: 'these lyrics changed since you opened them — reload to see the newer version',
 	'not-processed': 'that song is not processed yet — there is nothing to re-time',
+	'no-lyrics': 'that song has no timed lyrics to move yet',
 	'nothing-to-undo': 'there is nothing to undo',
 	'no-text': 'type some lyrics first',
 	'bad-lines': `up to ${LYRICS_EDIT_MAX_LINES} lines, each up to ${LYRICS_EDIT_MAX_LINE_CHARS} characters`

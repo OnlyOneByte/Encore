@@ -336,7 +336,7 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   `POST /api/lyrics-edit/undo {mediaId, rev}` and `POST /api/lyrics-edit/auto {mediaId, rev}`. Each answers
   `{rev, job?}` and sends a room `queue:sync`, so the TV picks up the new ref without waiting for the heartbeat. `GET /api/audit/<id>` tells the host `lyricsUndo`, how many changes Undo can go back through.
   `POST /api/lyrics-edit/offset {mediaId, offsetMs}` sets the nudge, answers `{offsetMs}` as stored, and sends the
-  same sync.
+  same sync. A song with no timed words (`lyricsRef` unset) answers 409 `no-lyrics`, since there is nothing to move.
 
 ### Registries and the quality ladder
 
