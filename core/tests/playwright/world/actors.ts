@@ -42,6 +42,11 @@ export async function openBrowseFromHome(page: Page, { timeout = DEFAULT_TIMEOUT
 	// nothing to CLICK — the field is the first element in the home column, so the rest of this WAITS. Three
 	// distinct waits, so a failure says which half is missing.
 	await page.locator(SEL.dock).first().waitFor({ state: 'attached', timeout });
+	// A phone left on another tab (`transportTap` leaves it on Queue) takes the Sing tab back, as a guest would.
+	if (new URL(page.url()).pathname !== '/') {
+		await page.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click({ timeout });
+		await page.waitForURL((url) => url.pathname === '/', { timeout });
+	}
 	await page.locator(SEL.findBox).first().waitFor({ state: 'attached', timeout });
 	await page.locator(SEL.search).first().waitFor({ state: 'attached', timeout });
 }
@@ -165,11 +170,6 @@ export async function readySong(world: Pick<World, 'awaitDemoTrack'>, phone: Pag
  * passed the acknowledgement below for a turn nobody asked for.
  */
 export async function queueReady(phone: Page, query: string): Promise<void> {
-	// A phone left on /queue by `transportTap` takes the Sing tab back, as a guest would.
-	if (new URL(phone.url()).pathname !== '/') {
-		await phone.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
-		await phone.waitForURL((url) => url.pathname === '/');
-	}
 	await openBrowseFromHome(phone);
 	await phone.locator(SEL.search).fill(query);
 	const add = phone.locator(SEL.songRow, { hasText: query }).locator(SEL.addAction).first();
