@@ -631,17 +631,17 @@ function reorderHeld(width: number): Make {
  *  --motion-base), so nothing jumps. Arriving, the card then fades into the opened slot on the next
  *  --motion-base; leaving, it is a cut. Each run first puts the room in the state before. CLS in metrics.json also
  *  counts the fixed dock, whose top edge moves as the strip comes or goes: the root layout's. */
-function queueCard(moment: 'arrive' | 'leave'): Make {
+function queueCard(moment: 'arrive' | 'leave', width = 390): Make {
 	return (browser, world, cleanup) => {
 		let maya: Page | undefined;
 		let theo: Page | undefined;
 		const skip = () => maya!.getByRole(SEL.skip.role, { name: SEL.skip.name }).first();
 		return {
-			name: `phone-queue-card-${moment}`,
+			name: `phone-queue-card-${moment}${width === 390 ? '' : `-${width}`}`,
 			what:
 				moment === 'arrive'
-					? 'Phone 390x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the "Now singing" card fades into the opened slot (opacity, --motion-base after --motion-base); no jump, never text over text'
-					: 'Phone 390x844: /queue as the last song is skipped — the card goes at once (a cut) and the empty state eases up from where it was (transform, --motion-base), no jump',
+					? `Phone ${width}x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the "Now singing" card fades into the opened slot (opacity, held at 0 for --motion-base, then a --motion-fast fade, 370 ms in all); no jump, never text over text`
+					: `Phone ${width}x844: /queue as the last song is skipped — the card goes at once (a cut) and the empty state eases up from where it was (transform, --motion-base), no jump`,
 			subject: moment === 'arrive' ? SEL.queueNowCard : 'main .empty-slot',
 			stepMs: 33,
 			scale: 1,
@@ -662,7 +662,7 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 					await openQueue(maya);
 				}
 				await expect(maya.locator(SEL.npStripTitle)).toHaveCount(moment === 'arrive' ? 0 : 1, { timeout: 10_000 });
-				const page = await asSinger(browser, world, opts, theo);
+				const page = await asSinger(browser, world, opts, theo, width);
 				await page.goto('/queue');
 				if (moment === 'arrive') await expect(page.getByText('Nothing queued yet')).toBeVisible();
 				else await expect(page.locator(SEL.queueNowCard)).toContainText(/caroline/i);
@@ -680,7 +680,7 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 				}
 			},
 			only: '.now, .empty-slot',
-			stripClip: async () => ({ x: 0, y: 0, width: 390, height: 600 }),
+			stripClip: async () => ({ x: 0, y: 0, width, height: 600 }),
 			observe: (page) =>
 				page.evaluate(() => ({
 					card: !!document.querySelector('main .now'),
@@ -1247,6 +1247,7 @@ const SCENARIOS: Record<string, Make> = {
 	'tv-copy-offline-390': tvCopyOffline(390, 844),
 	'tv-copy-offline-320': tvCopyOffline(320, 568),
 	'phone-queue-card-arrive': queueCard('arrive'),
+	'phone-queue-card-arrive-320': queueCard('arrive', 320),
 	'phone-queue-card-leave': queueCard('leave'),
 	'phone-queue-your-song-390': queueYourSong(390),
 	'phone-queue-your-song-320': queueYourSong(320),
