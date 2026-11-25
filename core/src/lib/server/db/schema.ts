@@ -114,6 +114,8 @@ export const media = sqliteTable('media', {
 	lyricsOverrideText: text('lyrics_override_text'),
 	// An index copy of the sidecar's lyrics-fix rev, so a restart keeps the stale-save check.
 	lyricsEditRev: integer('lyrics_edit_rev'),
+	// An index copy of the sidecar's whole-song lyrics nudge.
+	lyricsOffsetMs: integer('lyrics_offset_ms'),
 	// Grouping by raw `artist` is useless, since that column holds the UPLOADER. NULL on a low-confidence parse: a heading is never a lie.
 	artistCanonical: text('artist_canonical'),
 	// Browse tolerates the raw title but a lyrics lookup cannot: LRCLIB matches on track_name, so the raw title misses even when the artist is right.

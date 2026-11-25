@@ -63,6 +63,18 @@ test('lyrics fix: the host song page and the TV', async ({ world }, testInfo) =>
 			timeout: 30_000
 		});
 		await shoot(tv, 'tv-fixed-1920');
+
+		// The Timing card, nudged 0.2 s early while the song plays.
+		for (const width of [390, 320]) {
+			await ana.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+			await ana.goto(`/song/${id}`);
+			const earlier = ana.getByRole('button', { name: 'Earlier' });
+			if (width === 390) for (let i = 0; i < 4; i++) await earlier.click();
+			await expect(ana.getByRole('status').filter({ hasText: 'Words 0.2 s early' })).toBeVisible();
+			await ana.getByText('Every line moves together').scrollIntoViewIfNeeded();
+			await shoot(ana, `song-timing-${width}`);
+		}
+		await shoot(tv, 'tv-nudged-1920');
 	} finally {
 		await worker.stop();
 	}

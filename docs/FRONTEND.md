@@ -1790,6 +1790,11 @@ than drawing an empty strip. Lyrics here are quick-select among the ranker's can
 offered it ([the host key](SERVER.md#the-host-key), [lyrics fixes](SERVER.md#lyrics-fixes)). Only the fix on screen
 is listed; Undo walks back through the rest.
 
+Under it, for the host and a song with timed words, **Timing** (`LyricsNudge.svelte`) moves every line at once:
+"Words 0.2 s early" with **Earlier** and **Later**, 50 ms a tap, meant to be tapped while the song plays on the TV.
+Each tap shows at once and sends the whole value, one request at a time, so a fast run of taps lands on the last
+one; a refusal puts back the value last stored. There is no save button and no re-time.
+
 ### Stats
 
 `/stats` is the guest-facing party page and the one dashboard safe to reach from any phone's surface. It
@@ -1990,6 +1995,8 @@ the turn already on stage (`songKey`), a new ref is fetched behind the words on 
   key. Those rows (`changedRows`) fade in over 250 ms; the rest stay put and the reel does not scroll. Under
   Reduce Motion they appear at once.
 - **A fix that fails to load changes nothing**: the old words stay, rather than the "No lyrics" notice.
+- **The host's nudge** (`lyricsOffsetMs`) arrives the same way and changes only the lead (`nudgedLeadSec`), so the
+  highlight and the current row move at once, with no fetch and no swap.
 
 ### The pitch-shift graph
 

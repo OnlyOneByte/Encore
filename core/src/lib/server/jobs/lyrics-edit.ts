@@ -1,7 +1,7 @@
 // The host's lyrics fixes as data: corrected words, Undo and Back to automatic. See docs/SERVER.md#lyrics-fixes.
 
 import type { Job, Media } from '../../contract';
-import { resolveLyricsRef } from '../../contract';
+import { clampLyricsOffsetMs, resolveLyricsRef } from '../../contract';
 import { editLyricsRef, retimeLyrics, type ProcessDeps } from './process';
 import { readSidecar, updateSidecar } from '../media/sidecar';
 
@@ -164,4 +164,17 @@ export function requestLyricsAuto(
 	m.lyricsOverrideRef = undefined;
 	m.lyricsOverrideText = undefined;
 	return { rev: rev + 1, replaced, job: settleWords(m, deps, singerId) };
+}
+
+/** Set the host's whole-song nudge. It applies at render, so there is no worker, no rev and no Undo entry:
+ *  the host taps it back. @returns the nudge as stored. */
+export function requestLyricsOffset(
+	mediaId: string,
+	offsetMs: number,
+	deps: Pick<EditDeps, 'mediaById'>
+): number | 'unknown-media' {
+	const m = deps.mediaById.get(mediaId);
+	if (!m) return 'unknown-media';
+	m.lyricsOffsetMs = clampLyricsOffsetMs(offsetMs);
+	return m.lyricsOffsetMs;
 }

@@ -277,6 +277,18 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
 export const DEFAULT_LYRICS_LEAD_MS = 40;
 export const MAX_LYRICS_LEAD_MS = 1500;
 
+/** The host's whole-song nudge (`Media.lyricsOffsetMs`), which composes with the room's lead: 50 ms a tap,
+ *  up to 3 s either way. See docs/SERVER.md#lyrics-fixes. */
+export const LYRICS_OFFSET_STEP_MS = 50;
+export const MAX_LYRICS_OFFSET_MS = 3000;
+
+/** A sent or stored nudge on the step grid and in range; 0 for anything but a finite number. */
+export function clampLyricsOffsetMs(v: unknown): number {
+	if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
+	const stepped = Math.round(v / LYRICS_OFFSET_STEP_MS) * LYRICS_OFFSET_STEP_MS;
+	return Math.max(-MAX_LYRICS_OFFSET_MS, Math.min(MAX_LYRICS_OFFSET_MS, stepped)) || 0;
+}
+
 // The reel's TYPE, as opposed to the marks on it. Everything here is a BOUNDED ADJUSTMENT on the computed
 // scale, never a replacement, which is why every range carries a floor.
 // See docs/SERVER.md#registries-and-the-quality-ladder.

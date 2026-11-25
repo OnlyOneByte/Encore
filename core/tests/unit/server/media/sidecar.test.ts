@@ -142,6 +142,16 @@ describe('mediaFromSidecar (the index projection)', () => {
 		expect(back.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
 	});
 
+	it("keeps the host's lyrics nudge across a rewrite that doesn't name it, and reads a hand edit back in range", () => {
+		const nudged = sidecarFromMedia(media({ lyricsOffsetMs: -250 }), NOW);
+		expect(mediaFromSidecar(nudged).lyricsOffsetMs).toBe(-250);
+		expect(sidecarFromMedia(media(), NOW, nudged).artifacts.lyricsOffsetMs).toBe(-250);
+		expect(sidecarFromMedia(media({ lyricsOffsetMs: 0 }), NOW, nudged).artifacts.lyricsOffsetMs).toBe(0);
+		const edited = { ...nudged, artifacts: { ...nudged.artifacts, lyricsOffsetMs: 12_345 } };
+		expect(mediaFromSidecar(edited).lyricsOffsetMs).toBe(3000);
+		expect(mediaFromSidecar(sidecarFromMedia(media(), NOW)).lyricsOffsetMs).toBeUndefined();
+	});
+
 	it('title stays the RAW title — that is what search matches and singers recognise', () => {
 		const back = mediaFromSidecar(sidecarFromMedia(media(), NOW));
 		expect(back.title).toBe('Britney Spears - Baby One More Time (Lyrics)');

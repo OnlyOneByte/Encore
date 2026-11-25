@@ -18,6 +18,7 @@ import { POST as reselect } from '$routes/api/lyrics-reselect/+server';
 import { POST as lyricsEdit } from '$routes/api/lyrics-edit/+server';
 import { POST as lyricsUndo } from '$routes/api/lyrics-edit/undo/+server';
 import { POST as lyricsAuto } from '$routes/api/lyrics-edit/auto/+server';
+import { POST as lyricsOffset } from '$routes/api/lyrics-edit/offset/+server';
 import { POST as rename } from '$routes/api/library/manage/rename/+server';
 import { POST as keep } from '$routes/api/library/manage/keep/+server';
 import { POST as libraryDelete } from '$routes/api/library/manage/delete/+server';
@@ -124,6 +125,7 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 			await lyricsEdit(event('/api/lyrics-edit', 'POST', cookies, { mediaId: 'm1', rev: 0, lines: [{ text: 'x' }] })),
 			await lyricsUndo(event('/api/lyrics-edit/undo', 'POST', cookies, { mediaId: 'm1', rev: 0 })),
 			await lyricsAuto(event('/api/lyrics-edit/auto', 'POST', cookies, { mediaId: 'm1', rev: 0 })),
+			await lyricsOffset(event('/api/lyrics-edit/offset', 'POST', cookies, { mediaId: 'm1', offsetMs: 50 })),
 			await hostDelete(event('/api/host', 'DELETE', cookies)),
 			await rename(event('/api/library/manage/rename', 'POST', cookies, { mediaId: 'm1', title: 'x', artist: '' })),
 			await keep(event('/api/library/manage/keep', 'POST', cookies, { mediaId: 'm1', keep: true })),
@@ -231,13 +233,40 @@ test('a stale rev is refused on every lyrics write, bad lines are a 400, and unk
 	expect((await lyricsUndo(event('/api/lyrics-edit/undo', 'POST', host, { mediaId: 'm1', rev: 1 }))).status).toBe(409);
 });
 
+test('the nudge is stored on the step grid and in range, in the index, and leaves the words alone', async () => {
+	const app = installApp();
+	const sent: string[] = [];
+	Object.assign(app, { syncRoom: () => sent.push('sync') });
+	const song = {
+		id: 'm1',
+		source: 'youtube',
+		sourceRef: 'vid',
+		title: 'Caroline',
+		durationSec: 200,
+		stemStatus: 'ready'
+	};
+	app.mediaById.set('m1', { ...song, lyricsEditRev: 2 });
+	const host = await unlock();
+	const nudge = (body: object) => lyricsOffset(event('/api/lyrics-edit/offset', 'POST', host, body));
+
+	const res = await nudge({ mediaId: 'm1', offsetMs: -230 });
+	expect(await res.json()).toEqual({ offsetMs: -250 });
+	expect(app.mediaById.get('m1')).toMatchObject({ lyricsOffsetMs: -250, lyricsEditRev: 2 });
+	expect(app.media.byId('m1')?.lyricsOffsetMs).toBe(-250);
+	expect(sent).toEqual(['sync']);
+	expect(await (await nudge({ mediaId: 'm1', offsetMs: 99_999 })).json()).toEqual({ offsetMs: 3000 });
+	expect((await nudge({ mediaId: 'm1', offsetMs: '50' })).status).toBe(400);
+	expect((await nudge({ mediaId: 'nope', offsetMs: 50 })).status).toBe(404);
+});
+
 test('the lyrics-fix routes take JSON only, even without the hook', async () => {
 	installApp();
 	const host = await unlock();
 	for (const [route, path] of [
 		[lyricsEdit, '/api/lyrics-edit'],
 		[lyricsUndo, '/api/lyrics-edit/undo'],
-		[lyricsAuto, '/api/lyrics-edit/auto']
+		[lyricsAuto, '/api/lyrics-edit/auto'],
+		[lyricsOffset, '/api/lyrics-edit/offset']
 	] as const) {
 		const req = event(path, 'POST', host, '{"mediaId":"m1","rev":0}', { 'content-type': 'text/plain' });
 		await expect(route(req)).rejects.toMatchObject({ status: 415 });

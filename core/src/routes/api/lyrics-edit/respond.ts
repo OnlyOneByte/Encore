@@ -1,4 +1,4 @@
-// What the three lyrics-fix routes share: the host check, the refusal statuses, and what a change sets off.
+// What the lyrics-fix routes share: the host check, the refusal statuses, and what a change sets off.
 // A +server.ts may only export handlers, so this lives beside them. See docs/SERVER.md#lyrics-fixes.
 import { json, type Cookies } from '@sveltejs/kit';
 import type { EncoreApp } from '$lib/server/app';

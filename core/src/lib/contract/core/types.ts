@@ -68,6 +68,8 @@ export interface Media {
 	lyricsOverrideText?: string;
 	/** Counts the host's lyrics changes; a save must name the current one. See docs/SERVER.md#lyrics-fixes. */
 	lyricsEditRev?: number;
+	/** The host's whole-song nudge, in ms: negative shows the words earlier. See docs/SERVER.md#lyrics-fixes. */
+	lyricsOffsetMs?: number;
 	/** `ready` means alignment RAN, not that it found words. */
 	lyricsStatus?: StepStatus;
 	/** Key, range, loudness. Third artifact of the `stems` job, so present means analysis RAN. */

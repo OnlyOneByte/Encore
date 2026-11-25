@@ -1,0 +1,1 @@
+ALTER TABLE `media` ADD `lyrics_offset_ms` integer;

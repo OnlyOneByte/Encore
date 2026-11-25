@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import type { Media, LyricsCandidate } from '../../contract';
 import { resolveLyricsRef } from '../../contract';
 import type { SongProfile } from '../../contract';
-import { normalizeSongProfile } from '../../contract';
+import { normalizeSongProfile, clampLyricsOffsetMs } from '../../contract';
 import { metaDir, keptOriginalRef } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 import type { LyricsEditSnapshot } from '../jobs/lyrics-edit';
@@ -68,6 +68,8 @@ export interface MediaSidecar {
 		lyricsEditRev?: number;
 		/** Earlier states, oldest first, for Undo. Kept here only: it never rides the wire or the index. */
 		lyricsEditHistory?: LyricsEditSnapshot[];
+		/** The host's whole-song nudge, in ms (`Media.lyricsOffsetMs`). */
+		lyricsOffsetMs?: number;
 		/** An ALL-NULLS profile is a real, gate-satisfying result and is NOT the same as absent. */
 		songProfile?: SongProfile;
 	};
@@ -165,6 +167,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 						lyricsEditRev: prev?.artifacts.lyricsEditRev
 					}),
 			lyricsEditHistory: prev?.artifacts.lyricsEditHistory,
+			lyricsOffsetMs: m.lyricsOffsetMs ?? prev?.artifacts.lyricsOffsetMs,
 			songProfile: m.songProfile ?? prev?.artifacts.songProfile
 		},
 		library: {
@@ -231,6 +234,10 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
 		lyricsOverrideText: s.artifacts.lyricsOverrideText,
 		lyricsEditRev: s.artifacts.lyricsEditRev,
+		// Read, not trusted: a hand edit could hold anything.
+		...(s.artifacts.lyricsOffsetMs !== undefined
+			? { lyricsOffsetMs: clampLyricsOffsetMs(s.artifacts.lyricsOffsetMs) }
+			: {}),
 		// Re-normalized on the way out even though authoritative: a hand edit may not match today's shape.
 		songProfile: s.artifacts.songProfile ? normalizeSongProfile(s.artifacts.songProfile) : undefined,
 		// Carried so a RESTORED media is complete ahead of the boot sync pass that mirrors these too.

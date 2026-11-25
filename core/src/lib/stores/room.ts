@@ -551,6 +551,27 @@ export class RoomLink {
 		}
 	}
 
+	/** The host's whole-song nudge for a song's words, in ms (negative is earlier). The nudge as stored, or null
+	 *  when it did not land. */
+	async nudgeLyrics(mediaId: string, offsetMs: number): Promise<number | null> {
+		try {
+			const res = await fetch('/api/lyrics-edit/offset', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId, offsetMs })
+			});
+			const reply = await res.json().catch(() => ({}));
+			if (!res.ok || typeof reply.offsetMs !== 'number') {
+				this.#fail(reply.error ?? 'Could not move the words');
+				return null;
+			}
+			return reply.offsetMs;
+		} catch {
+			this.#fail('Could not move the words — check your connection');
+			return null;
+		}
+	}
+
 	/** Send a player command (play/pause/skip/key/guide/seek). No-op before the socket is up. */
 	/** Did the command actually reach the wire? `false` means the socket was absent or not open, so the server
 	 *  never heard it — a PLAYER command is fire-and-forget and is NOT resent on resync the way a queue add is,
