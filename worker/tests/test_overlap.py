@@ -241,7 +241,12 @@ async def test_a_crash_mid_publish_resumes_at_publish_after_a_restart(tmp_path: 
     db = tmp_path / "worker.sqlite"
     script = tmp_path / "crash.py"
     script.write_text(_CRASHING_WORKER)
-    crashed = await asyncio.create_subprocess_exec(sys.executable, str(script), str(db), str(tmp_path))
+    # The child finds `encore_worker` by path: the worker image doesn't install the project (#1303).
+    root = str(Path(durable.__file__).resolve().parents[2])
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [root, os.environ.get("PYTHONPATH")]))}
+    crashed = await asyncio.create_subprocess_exec(
+        sys.executable, str(script), str(db), str(tmp_path), cwd=tmp_path, env=env
+    )
     assert await asyncio.wait_for(crashed.wait(), timeout=120) == 17, "the worker died in publish"
 
     url = f"sqlite:///{db}"

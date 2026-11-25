@@ -733,6 +733,8 @@ class LineVoiceEmbedder:
 
                 _allow_pyannote_checkpoints()
                 model = Model.from_pretrained(self._checkpoint)
+                if model is None:  # pyannote answers None rather than raising for a checkpoint it can't load
+                    raise ModelUnavailable(f"pyannote could not load {self._checkpoint!r}")
                 return Inference(model, window="whole", device=torch.device(self._device))
 
             inference = _cached(self._device, f"voices:{self._checkpoint}", build)
