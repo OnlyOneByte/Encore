@@ -1,0 +1,702 @@
+{
+  "scenario": "tv-song-outro",
+  "what": "TV 1920x1080: the hold ending: Maya’s card fades out (--motion-base, ease, the player slots’ crossfade), starting --motion-base + --motion-fast before the hold ends so it has gone when her song starts; the words do not move. The edge progress line, hidden under the card, fades back in on the same curve (--motion-base, ease); the lower third cuts back in",
+  "capturedAt": "2026-11-25T12:34:48.565Z",
+  "stepMs": 16,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSTransition",
+      "name": "opacity",
+      "target": "div.takeover-layer",
+      "durationMs": 250,
+      "delayMs": 0,
+      "endTimeMs": 250,
+      "easing": "ease",
+      "iterations": 1,
+      "fill": "backwards",
+      "properties": [
+        "opacity"
+      ],
+      "vestibular": false,
+      "source": {
+        "duration": "opacity var(--motion-base) ease",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 250,
+  "seekFrames": 18,
+  "seekObserved": {
+    "cardText": null,
+    "layerShown": false,
+    "layerOpacity": 0,
+    "lyrics": true
+  },
+  "subject": {
+    "selector": ".tv",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.takeover-layer",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.reel",
+        "durationMs": 420,
+        "delayMs": 0,
+        "endTimeMs": 420,
+        "easing": "cubic-bezier(0.22, 0.9, 0.24, 1)",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1) | 0.42s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.42s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-2grudu-lyrics-arrive",
+        "target": "div.lyrics.hl-word.unverified",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "svelte-2grudu-lyrics-arrive var(--motion-fast) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "div.reel",
+        "durationMs": 420,
+        "delayMs": 0,
+        "endTimeMs": 420,
+        "easing": "cubic-bezier(0.22, 0.9, 0.24, 1)",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1) | 0.42s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.42s"
+          ],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "div.row.past",
+        "durationMs": 300,
+        "delayMs": 0,
+        "endTimeMs": 300,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color 0.3s | 0.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.3s"
+          ],
+          "colours": [
+            "rgba(255, 255, 255, 0.62)",
+            "rgba(255, 255, 255, 0.2)"
+          ],
+          "literalColours": [
+            "rgba(255, 255, 255, 0.62)",
+            "rgba(255, 255, 255, 0.2)"
+          ]
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "div.row.current",
+        "durationMs": 300,
+        "delayMs": 0,
+        "endTimeMs": 300,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color 0.3s | 0.3s | 0s",
+          "durationIsToken": false,
+          "literalTimings": [
+            "0.3s"
+          ],
+          "colours": [
+            "rgba(255, 255, 255, 0.62)",
+            "var(--reel-current)"
+          ],
+          "literalColours": [
+            "rgba(255, 255, 255, 0.62)"
+          ]
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "transform",
+        "target": "i",
+        "durationMs": 1000,
+        "delayMs": 0,
+        "endTimeMs": 1000,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "transform var(--motion-tick) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "color",
+        "target": "span.word.done",
+        "durationMs": 120,
+        "delayMs": 0,
+        "endTimeMs": 120,
+        "easing": "linear",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "color"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "color var(--motion-fast) linear",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [
+            "var(--reel-ahead)",
+            "var(--reel-done)"
+          ],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "cardText": null,
+      "layerShown": false,
+      "layerOpacity": 0,
+      "lyrics": true
+    },
+    "droppedFrames": {
+      "median": 16,
+      "min": 15,
+      "max": 19
+    },
+    "longAnimationFrames": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 16.7,
+      "min": 16.7,
+      "max": 16.7
+    },
+    "frameIntervalP95Ms": {
+      "median": 33.4,
+      "min": 33.4,
+      "max": 49.9
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.fs-btn",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-slow) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "burstFrames": 5,
+    "observed": {
+      "cardText": null,
+      "layerShown": false,
+      "layerOpacity": 0,
+      "lyrics": true
+    }
+  },
+  "realtime": {
+    "realtime": {
+      "throttle": 6,
+      "throttleRatio": 3.4,
+      "stall": null,
+      "windowMs": 3000,
+      "sampledFrames": 117,
+      "screencastFrames": 54,
+      "droppedFrames": 48,
+      "rafIntervals": 116,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 1,
+      "minGapPx": 12,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": null,
+        "each": []
+      },
+      "travelPx": {
+        "max": 0,
+        "each": [
+          {
+            "id": "#1",
+            "px": 0
+          },
+          {
+            "id": "#2",
+            "px": 0
+          },
+          {
+            "id": "#3",
+            "px": 0
+          }
+        ]
+      },
+      "line": "realtime 6×        overlap 0 frames · min gap 12 px · blank 0 · dropped 48/116 · first frame —",
+      "gif": {
+        "frames": 52,
+        "merged": 2,
+        "halved": false
+      }
+    },
+    "realtime-late": {
+      "throttle": 1,
+      "throttleRatio": null,
+      "stall": {
+        "ms": 400,
+        "at": "after-trigger",
+        "atMs": 2033
+      },
+      "windowMs": 3000,
+      "sampledFrames": 116,
+      "screencastFrames": 32,
+      "droppedFrames": 24,
+      "rafIntervals": 115,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 12,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": null,
+        "each": []
+      },
+      "travelPx": {
+        "max": 0,
+        "each": [
+          {
+            "id": "#1",
+            "px": 0
+          },
+          {
+            "id": "#2",
+            "px": 0
+          },
+          {
+            "id": "#3",
+            "px": 0
+          }
+        ]
+      },
+      "line": "realtime-late 400  overlap 0 frames · min gap 12 px · blank 0 · dropped 24/115 · first frame —",
+      "gif": {
+        "frames": 30,
+        "merged": 2,
+        "halved": false
+      }
+    }
+  },
+  "timingsMs": {
+    "seekMs": 16717,
+    "encodeMs": 1738,
+    "liveMs": 28177,
+    "reducedMs": 9459,
+    "reducedEncodeMs": 425,
+    "realtimeMs": 10546,
+    "realtimeEncodeMs": 3782,
+    "realtime-lateMs": 10208,
+    "realtime-lateEncodeMs": 3519
+  },
+  "files": {
+    "clip.gif": 156247,
+    "clip-slow4x.gif": 156247,
+    "filmstrip.png": 118362,
+    "filmstrip-reduced.png": 78082,
+    "realtime.gif": 1187281,
+    "filmstrip-realtime.png": 298843,
+    "realtime-late.gif": 617876,
+    "filmstrip-realtime-late.png": 256691
+  }
+}

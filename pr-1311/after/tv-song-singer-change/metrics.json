@@ -1,0 +1,479 @@
+{
+  "scenario": "tv-song-singer-change",
+  "what": "TV 1920x1080: the room moves on to Theo while Maya’s card is coming up: only the new lines rise in (--motion-slow); the layer’s opacity never drops (observed.layerOpacity)",
+  "capturedAt": "2026-11-25T12:35:55.525Z",
+  "stepMs": 33,
+  "scale": 0.5,
+  "declared": [
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-fk5f7f-card-rise",
+      "target": "div.up-label",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-fk5f7f-card-rise",
+      "target": "div.up-name.hero-name",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    },
+    {
+      "kind": "CSSAnimation",
+      "name": "svelte-fk5f7f-card-rise",
+      "target": "div.up-song",
+      "durationMs": 400,
+      "delayMs": 0,
+      "endTimeMs": 400,
+      "easing": "ease-out",
+      "iterations": 1,
+      "fill": "both",
+      "properties": [
+        "opacity",
+        "transform"
+      ],
+      "vestibular": true,
+      "source": {
+        "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+        "durationIsToken": true,
+        "literalTimings": [],
+        "colours": [],
+        "literalColours": []
+      }
+    }
+  ],
+  "tokens": {
+    "problems": [],
+    "waived": [],
+    "waiver": null,
+    "unchecked": [],
+    "summary": "tokens: durations and colours are var() tokens"
+  },
+  "motionEndMs": 400,
+  "seekFrames": 15,
+  "seekObserved": {
+    "cardText": "Now singing Theo sweet-caroline",
+    "layerShown": true,
+    "layerOpacity": 1,
+    "lyrics": false
+  },
+  "subject": {
+    "selector": ".state-next",
+    "missingMs": {
+      "seek": [],
+      "reduced": []
+    }
+  },
+  "heldTimers": [],
+  "live": {
+    "runs": 3,
+    "animations": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.takeover-layer.shown",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease | opacity var(--motion-slow) ease-out",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-fk5f7f-card-rise",
+        "target": "div.up-label",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-fk5f7f-card-rise",
+        "target": "div.up-name.hero-name",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSAnimation",
+        "name": "svelte-fk5f7f-card-rise",
+        "target": "div.up-song",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease-out",
+        "iterations": 1,
+        "fill": "both",
+        "properties": [
+          "opacity",
+          "transform"
+        ],
+        "vestibular": true,
+        "source": {
+          "duration": "svelte-fk5f7f-card-rise var(--motion-slow) ease-out both",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.slot",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      },
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "div.slot.visible",
+        "durationMs": 250,
+        "delayMs": 0,
+        "endTimeMs": 250,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-base) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "observed": {
+      "cardText": "Now singing Theo sweet-caroline",
+      "layerShown": true,
+      "layerOpacity": 1,
+      "lyrics": false
+    },
+    "droppedFrames": {
+      "median": 2,
+      "min": 1,
+      "max": 3
+    },
+    "longAnimationFrames": {
+      "median": 3,
+      "min": 2,
+      "max": 4
+    },
+    "longAnimationFramesSupported": true,
+    "frameIntervalP50Ms": {
+      "median": 33.3,
+      "min": 33.3,
+      "max": 33.3
+    },
+    "frameIntervalP95Ms": {
+      "median": 66.7,
+      "min": 50,
+      "max": 83.3
+    },
+    "clsMax": 0
+  },
+  "reducedMotion": {
+    "animationsStarted": 0,
+    "animations": [],
+    "honoured": true,
+    "noVestibularMotion": true,
+    "others": [
+      {
+        "kind": "CSSTransition",
+        "name": "opacity",
+        "target": "button.fs-btn",
+        "durationMs": 400,
+        "delayMs": 0,
+        "endTimeMs": 400,
+        "easing": "ease",
+        "iterations": 1,
+        "fill": "backwards",
+        "properties": [
+          "opacity"
+        ],
+        "vestibular": false,
+        "source": {
+          "duration": "opacity var(--motion-slow) ease",
+          "durationIsToken": true,
+          "literalTimings": [],
+          "colours": [],
+          "literalColours": []
+        }
+      }
+    ],
+    "burstFrames": 7,
+    "observed": {
+      "cardText": "Now singing Theo sweet-caroline",
+      "layerShown": true,
+      "layerOpacity": 1,
+      "lyrics": false
+    }
+  },
+  "realtime": {
+    "realtime": {
+      "throttle": 6,
+      "throttleRatio": 3.7,
+      "stall": null,
+      "windowMs": 900,
+      "sampledFrames": 47,
+      "screencastFrames": 17,
+      "droppedFrames": 16,
+      "rafIntervals": 46,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 12,
+      "blankFrames": 2,
+      "firstFrameMs": {
+        "worst": 126,
+        "each": [
+          {
+            "id": "#6",
+            "ms": 126
+          },
+          {
+            "id": "#7",
+            "ms": 126
+          },
+          {
+            "id": "#8",
+            "ms": 126
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 20.1,
+        "each": [
+          {
+            "id": "#1",
+            "px": 12.5
+          },
+          {
+            "id": "#2",
+            "px": 12.5
+          },
+          {
+            "id": "#3",
+            "px": 12.5
+          },
+          {
+            "id": "#6",
+            "px": 20.1
+          },
+          {
+            "id": "#7",
+            "px": 20.1
+          },
+          {
+            "id": "#8",
+            "px": 20.1
+          }
+        ]
+      },
+      "line": "realtime 6×        overlap 0 frames · min gap 12 px · blank 2 · dropped 16/46 · first frame +126 ms",
+      "gif": {
+        "frames": 17,
+        "merged": 0,
+        "halved": false
+      }
+    },
+    "realtime-late": {
+      "throttle": 1,
+      "throttleRatio": null,
+      "stall": {
+        "ms": 400,
+        "at": "mount",
+        "atMs": 98
+      },
+      "windowMs": 900,
+      "sampledFrames": 20,
+      "screencastFrames": 22,
+      "droppedFrames": 3,
+      "rafIntervals": 19,
+      "overlap": {
+        "frames": 0,
+        "eachFrames": 0,
+        "avoidFrames": 0,
+        "worstPx": 0,
+        "first": []
+      },
+      "hiddenOverlap": 0,
+      "minGapPx": 12,
+      "blankFrames": 0,
+      "firstFrameMs": {
+        "worst": 459,
+        "each": [
+          {
+            "id": "#6",
+            "ms": 459
+          },
+          {
+            "id": "#7",
+            "ms": 459
+          },
+          {
+            "id": "#8",
+            "ms": 459
+          }
+        ]
+      },
+      "travelPx": {
+        "max": 20.1,
+        "each": [
+          {
+            "id": "#1",
+            "px": 4
+          },
+          {
+            "id": "#2",
+            "px": 4
+          },
+          {
+            "id": "#3",
+            "px": 4
+          },
+          {
+            "id": "#6",
+            "px": 20.1
+          },
+          {
+            "id": "#7",
+            "px": 20.1
+          },
+          {
+            "id": "#8",
+            "px": 20.1
+          }
+        ]
+      },
+      "line": "realtime-late 400  overlap 0 frames · min gap 12 px · blank 0 · dropped 3/19 · first frame +459 ms",
+      "gif": {
+        "frames": 22,
+        "merged": 0,
+        "halved": false
+      }
+    }
+  },
+  "timingsMs": {
+    "seekMs": 13664,
+    "encodeMs": 1864,
+    "liveMs": 22505,
+    "reducedMs": 6798,
+    "reducedEncodeMs": 489,
+    "realtimeMs": 7793,
+    "realtimeEncodeMs": 2105,
+    "realtime-lateMs": 7574,
+    "realtime-lateEncodeMs": 2607
+  },
+  "files": {
+    "clip.gif": 128382,
+    "clip-slow4x.gif": 128382,
+    "filmstrip.png": 83509,
+    "filmstrip-reduced.png": 40340,
+    "realtime.gif": 150016,
+    "filmstrip-realtime.png": 99542,
+    "realtime-late.gif": 201876,
+    "filmstrip-realtime-late.png": 113368
+  }
+}
