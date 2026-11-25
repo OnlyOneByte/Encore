@@ -47,18 +47,24 @@
 	const label = $derived(shown === 0 ? 'Words as timed' : `Words ${seconds(shown)} s ${shown < 0 ? 'early' : 'late'}`);
 </script>
 
-<section class="nudge card" aria-label="Lyrics timing">
+<!-- A div: the page's own "Timing" section names this region. -->
+<div class="nudge card">
 	<p class="value" role="status" aria-live="polite">{label}</p>
 	<p class="hint">Watch the TV and move the words until they land.</p>
+	<!-- aria-disabled, not disabled, at the limit: a disabled button drops the focus it holds (move() no-ops there). -->
 	<div class="steps">
-		<Button variant="keycap" disabled={shown <= -MAX_LYRICS_OFFSET_MS} onclick={() => void move(-LYRICS_OFFSET_STEP_MS)}
-			>Earlier</Button
+		<Button
+			variant="keycap"
+			aria-disabled={shown <= -MAX_LYRICS_OFFSET_MS}
+			onclick={() => void move(-LYRICS_OFFSET_STEP_MS)}>Earlier</Button
 		>
-		<Button variant="keycap" disabled={shown >= MAX_LYRICS_OFFSET_MS} onclick={() => void move(LYRICS_OFFSET_STEP_MS)}
-			>Later</Button
+		<Button
+			variant="keycap"
+			aria-disabled={shown >= MAX_LYRICS_OFFSET_MS}
+			onclick={() => void move(LYRICS_OFFSET_STEP_MS)}>Later</Button
 		>
 	</div>
-</section>
+</div>
 <p class="note">Every line moves together. To fix one line, fix its words above; Encore times them again.</p>
 
 <style>
@@ -88,6 +94,12 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: var(--space-md);
+	}
+	/* The keycap's own inert look (dashed, dim), which it keys on `:enabled` and so would not show here. */
+	.steps :global([aria-disabled='true']) {
+		border-style: dashed;
+		border-color: var(--line-strong);
+		color: var(--ink-dim);
 	}
 	.note {
 		margin: var(--space-sm) var(--space-2xs) 0;

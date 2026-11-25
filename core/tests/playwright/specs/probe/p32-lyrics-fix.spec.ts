@@ -213,6 +213,15 @@ test("P32 · the host's Earlier taps move every line on the TV live, with no re-
 		ref: before.lyricsRef,
 		rev: before.lyricsEditRev
 	});
+
+	// To the limit by keyboard: the button there goes inert but keeps the focus the last press gave it.
+	const later = phone.getByRole('button', { name: 'Later' });
+	await later.focus();
+	for (let i = 0; i < 66; i++) await phone.keyboard.press('Enter');
+	await expect(phone.getByRole('status').filter({ hasText: 'Words 3 s late' })).toBeVisible();
+	await expect(later).toHaveAttribute('aria-disabled', 'true');
+	await expect(later).toBeFocused();
+	await expect.poll(async () => (await audit()).lyricsOffsetMs, { timeout: 10_000 }).toBe(3000);
 });
 
 test('P32 · on a paused song a fix lands at once, without waiting for play', async ({ world }) => {

@@ -1839,7 +1839,8 @@ is listed; Undo walks back through the rest.
 Under it, for the host and a song with timed words, **Timing** (`LyricsNudge.svelte`) moves every line at once:
 "Words 0.2 s early" with **Earlier** and **Later**, 50 ms a tap, meant to be tapped while the song plays on the TV.
 Each tap shows at once and sends the whole value, one request at a time, so a fast run of taps lands on the last
-one; a refusal puts back the value last stored. There is no save button and no re-time.
+one; a refusal puts back the value last stored. There is no save button and no re-time. At ±3 s the button at the
+limit is `aria-disabled` and drawn inert, not `disabled`, so it keeps the keyboard focus a press just gave it.
 
 ### Stats
 

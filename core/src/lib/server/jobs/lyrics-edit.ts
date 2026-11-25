@@ -22,6 +22,7 @@ export type LyricsEditRefusal =
 	| 'unknown-media'
 	| 'stale' // the save named an older rev: another host changed the song first
 	| 'not-processed' // new words need the vocals stem to be timed against
+	| 'no-lyrics' // a nudge moves timed words, and the song has none
 	| 'no-text'
 	| 'bad-lines'
 	| 'nothing-to-undo';
@@ -172,9 +173,10 @@ export function requestLyricsOffset(
 	mediaId: string,
 	offsetMs: number,
 	deps: Pick<EditDeps, 'mediaById'>
-): number | 'unknown-media' {
+): number | 'unknown-media' | 'no-lyrics' {
 	const m = deps.mediaById.get(mediaId);
 	if (!m) return 'unknown-media';
+	if (!m.lyricsRef) return 'no-lyrics';
 	m.lyricsOffsetMs = clampLyricsOffsetMs(offsetMs);
 	return m.lyricsOffsetMs;
 }

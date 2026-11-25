@@ -12,9 +12,11 @@ import {
 	requestLyricsAuto,
 	requestLyricsEdit,
 	requestLyricsUndo,
+	requestLyricsOffset,
 	LYRICS_HISTORY_MAX,
 	type LyricsEditResult
 } from '$lib/server/jobs/lyrics-edit';
+import { forgetEvicted } from '$lib/server/media/retention';
 import type { LyricsCandidate, Media } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
@@ -132,6 +134,18 @@ test('Undo to words whose document was evicted times them again', () => {
 	const undo = ok(requestLyricsUndo('m1', 2, b.replaced, d));
 	expect(undo.job?.jobType).toBe('align');
 	expect(assignParams('align', m)).toMatchObject({ pinnedRef: editLyricsRef('m1', 1), pinnedText: 'kept words' });
+});
+
+test("the host's nudge outlives a fix, an Undo, Back to automatic and an eviction", () => {
+	const m = media();
+	const d = deps(m);
+	expect(requestLyricsOffset('m1', -250, d)).toBe(-250);
+	const a = ok(requestLyricsEdit('m1', { rev: 0, lines: ['new words'] }, d));
+	published(m);
+	ok(requestLyricsUndo('m1', 1, a.replaced, d));
+	ok(requestLyricsAuto('m1', 2, d));
+	forgetEvicted(m, d.jobs);
+	expect(m.lyricsOffsetMs).toBe(-250);
 });
 
 test('Back to automatic drops the words and pick, and never shows an old fix', () => {
