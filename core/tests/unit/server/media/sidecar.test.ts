@@ -21,7 +21,8 @@ import {
 	SIDECAR_SCHEMA,
 	type MediaSidecar
 } from '$lib/server/media/sidecar';
-import { requestDelete, setKeep } from '$lib/server/media/library-manage';
+import { finishDelete, requestDelete, setKeep } from '$lib/server/media/library-manage';
+import { evictUnlessKept } from '$lib/server/media/retention';
 import { metaDir } from '$lib/server/media/paths';
 import { assignParams } from '$lib/server/jobs/dispatch';
 
@@ -523,8 +524,8 @@ describe('concurrent writers of one record (#1188, #1185)', () => {
 	});
 
 	it('a record renamed over between the existence check and the read is still read whole', async () => {
-		// The #1185 sequence, forced: any Bun.file handle on the record sees it replaced by a longer one right
-		// after `exists()`, as a write's rename can land there. Red every run on a Bun.file reader.
+		// Guards against a return to reading the sidecar with `Bun.file` (#1185). The sequence, forced: any Bun.file
+		// handle on the record sees it replaced by a longer one right after `exists()`. Red every run on such a reader.
 		const m = media();
 		await writeSidecar(sidecarFromMedia(m, NOW));
 		const path = join(metaDir(), `${m.id}.json`);
@@ -574,6 +575,46 @@ describe('concurrent writers of one record (#1188, #1185)', () => {
 		release();
 		await keep;
 		expect(await verdict).toEqual({ refused: 'kept' });
+	});
+
+	// #1241: removal decides from a Keep read taken earlier, so each re-reads Keep behind queued writes as it acts.
+	const holdQueue = (mediaId: string) => {
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		void queueSidecarTask(mediaId, () => gate);
+		return release;
+	};
+
+	it('the end of a delete Undo window spares a song kept during the window', async () => {
+		const m = media();
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		const release = holdQueue(m.id); // a slow write still ahead of the Keep
+		const keep = setKeep(m.id, true);
+		const acted: string[] = [];
+		const done = finishDelete(m.id, {
+			remove: (id) => acted.push(`removed ${id}`),
+			restore: (id) => acted.push(`restored ${id}`)
+		});
+		release();
+		await Promise.all([keep, done]);
+		expect(acted).toEqual([`restored ${m.id}`]);
+	});
+
+	it('eviction spares a song kept after the pass planned it', async () => {
+		const m = media();
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		const release = holdQueue(m.id);
+		const keep = setKeep(m.id, true);
+		const upserts: string[] = [];
+		const evicting = evictUnlessKept(m, {
+			jobs: { supersedeForRerun: () => false },
+			upsert: (row) => upserts.push(row.id)
+		});
+		release();
+		await keep;
+		expect(await evicting).toBeNull();
+		expect(upserts).toEqual([]);
+		expect((await readSidecar(m.id))?.library.keep).toBe(true);
 	});
 });
 

@@ -200,8 +200,68 @@ describe('PendingDeletes', () => {
 
 		const late = new PendingDeletes((id) => ran.push(id), 60_000);
 		late.schedule('d');
-		late.flush();
+		const flushed = late.flush();
 		expect(ran).toContain('d');
+		expect(await flushed).toEqual([]);
 		expect(late.has('d')).toBe(false);
+	});
+
+	it('a song stays pending while its fired delete is still finishing, so it never reads as ready again', async () => {
+		let release!: () => void;
+		const runs: string[] = [];
+		const pending = new PendingDeletes(async (id) => {
+			runs.push(id);
+			await new Promise<void>((r) => (release = r));
+		}, 10);
+		pending.schedule('f');
+		await Bun.sleep(30);
+		expect(runs).toEqual(['f']); // the timer fired; the finish is awaiting its read
+		expect(pending.has('f')).toBe(true);
+		pending.schedule('f'); // refused while finishing: no second delete
+		expect(pending.undo('f')).toBe(false); // the window has closed
+		release();
+		await Bun.sleep(0);
+		await Promise.resolve();
+		expect(pending.has('f')).toBe(false);
+		expect(runs).toEqual(['f']);
+	});
+
+	it('flush waits for a delete whose timer already fired, and gives up at its limit', async () => {
+		let release!: () => void;
+		const finished: string[] = [];
+		const pending = new PendingDeletes(async (id) => {
+			await new Promise<void>((r) => (release = r));
+			finished.push(id);
+		}, 10);
+		pending.schedule('g');
+		await Bun.sleep(30);
+		let flushed = false;
+		const flush = pending.flush().then(() => (flushed = true));
+		await Bun.sleep(10);
+		expect(flushed).toBe(false);
+		release();
+		await flush;
+		expect(finished).toEqual(['g']);
+
+		const stalled = new PendingDeletes(() => new Promise(() => {}), 60_000);
+		stalled.schedule('h');
+		expect(await stalled.flush(20)).toEqual(['h']);
+	});
+
+	it('flush resolves only once an async delete has finished, so shutdown can wait for it', async () => {
+		let release!: () => void;
+		const finished: string[] = [];
+		const pending = new PendingDeletes(async (id) => {
+			await new Promise<void>((r) => (release = r));
+			finished.push(id);
+		}, 60_000);
+		pending.schedule('e');
+		let flushed = false;
+		const flush = pending.flush().then(() => (flushed = true));
+		await Promise.resolve();
+		expect(flushed).toBe(false);
+		release();
+		await flush;
+		expect(finished).toEqual(['e']);
 	});
 });

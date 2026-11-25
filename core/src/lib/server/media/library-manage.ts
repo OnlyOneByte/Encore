@@ -112,23 +112,38 @@ export async function librarySizes(
 // A little past the phone's toast, so an Undo tapped as the toast closes still lands.
 const UNDO_GRACE_MS = 2_000;
 
+/** The delete at the end of the Undo window. Keep is read again behind the song's queued writes, because a Keep
+ *  that passed its route check just before the delete started can land inside the window: then the song stays. */
+export async function finishDelete(
+	mediaId: string,
+	deps: { remove: (mediaId: string) => void; restore: (mediaId: string) => void },
+	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecarInOrder(id))?.library.keep === true
+): Promise<void> {
+	// Keep this step synchronous after the await: a queued Keep must not run between the check and the unlink.
+	if (await isKept(mediaId)) deps.restore(mediaId);
+	else deps.remove(mediaId);
+}
+
 /** Deletes wait out the Undo window here; `flush` runs them at shutdown. */
 export class PendingDeletes {
 	#timers = new Map<string, ReturnType<typeof setTimeout>>();
-	#run: (mediaId: string) => void;
+	// Fired but not done: the song still reads as pending until its delete settles.
+	#finishing = new Map<string, Promise<void>>();
+	#run: (mediaId: string) => unknown;
 	#ms: number;
 
-	constructor(run: (mediaId: string) => void, ms = DELETE_UNDO_MS + UNDO_GRACE_MS) {
+	/** `run` may return a promise; `flush` waits for it. */
+	constructor(run: (mediaId: string) => unknown, ms = DELETE_UNDO_MS + UNDO_GRACE_MS) {
 		this.#run = run;
 		this.#ms = ms;
 	}
 
 	has(mediaId: string): boolean {
-		return this.#timers.has(mediaId);
+		return this.#timers.has(mediaId) || this.#finishing.has(mediaId);
 	}
 
 	schedule(mediaId: string): void {
-		if (this.#timers.has(mediaId)) return;
+		if (this.has(mediaId)) return;
 		this.#timers.set(
 			mediaId,
 			setTimeout(() => this.#fire(mediaId), this.#ms)
@@ -144,19 +159,31 @@ export class PendingDeletes {
 		return true;
 	}
 
-	flush(): void {
+	/** Runs every waiting delete and waits for those and any already running, up to `limitMs`.
+	 *  Resolves with the ids still unfinished then, so shutdown can log them. */
+	async flush(limitMs = Infinity): Promise<string[]> {
 		for (const [mediaId, timer] of [...this.#timers]) {
 			clearTimeout(timer);
-			this.#fire(mediaId);
+			void this.#fire(mediaId);
 		}
+		const all = Promise.all(this.#finishing.values());
+		let limit: ReturnType<typeof setTimeout> | undefined;
+		await (Number.isFinite(limitMs) ? Promise.race([all, new Promise((r) => (limit = setTimeout(r, limitMs)))]) : all);
+		clearTimeout(limit);
+		return [...this.#finishing.keys()];
 	}
 
-	#fire(mediaId: string): void {
+	#fire(mediaId: string): Promise<void> {
 		this.#timers.delete(mediaId);
-		try {
-			this.#run(mediaId);
-		} catch (err) {
-			console.warn(`[core] library: delete of ${mediaId} failed:`, err);
-		}
+		const done = (async () => {
+			try {
+				await this.#run(mediaId);
+			} catch (err) {
+				console.warn(`[core] library: delete of ${mediaId} failed:`, err);
+			}
+		})().finally(() => this.#finishing.delete(mediaId));
+		// Set before `finally` can run: it is always a later microtask.
+		this.#finishing.set(mediaId, done);
+		return done;
 	}
 }

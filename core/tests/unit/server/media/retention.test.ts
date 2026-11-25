@@ -359,7 +359,16 @@ describe('forgetEvicted (what the boot eviction pass clears on the row)', () => 
 		// evictSong's own order is covered in evicted-song-ready.test.ts.
 		const app = stripComments(read('src/lib/server/app.ts'));
 		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
-		expect(pass).toMatch(/evictSong\(live, \{ jobs, upsert: \(m\) => mediaRepo\.upsert\(m\) \}\)/);
+		expect(pass).toMatch(/evictUnlessKept\(live, \{ jobs, upsert: \(m\) => mediaRepo\.upsert\(m\) \}\)/);
+		expect(pass).toMatch(/if \(bytes === null\) continue;/);
+	});
+
+	it('plans from Keep read in order behind queued writes, never a bare read', () => {
+		// The pass's planning read; the read at the act itself is behaviour-tested on evictUnlessKept in sidecar.test.ts.
+		const app = stripComments(read('src/lib/server/app.ts'));
+		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
+		expect(pass).toContain('await readSidecarInOrder(c.mediaId)');
+		expect(pass).not.toMatch(/\breadSidecar\(/);
 	});
 });
 

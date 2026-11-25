@@ -406,18 +406,24 @@ setPublish(broadcast);
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 // State write-behinds on a 250ms debounce, so a `docker stop` inside that window drops the pending write
-// unless flushed here. Guarded against re-entry from a second signal.
+// unless flushed here. A second signal exits at once.
+const SHUTDOWN_DELETE_WAIT_MS = 5_000;
 let shuttingDown = false;
-function gracefulShutdown(signal: string): void {
-	if (shuttingDown) return;
+async function gracefulShutdown(signal: string): Promise<void> {
+	if (shuttingDown) {
+		console.warn(`[core] second ${signal}: exiting without waiting.`);
+		process.exit(1);
+	}
 	shuttingDown = true;
 	console.log(`[core] ${signal} received — flushing state and shutting down.`);
 	// Non-zero on a failed flush: exit(0) would tell the supervisor the stop was clean when state was
 	// actually lost, and a log line is not visible to an out-of-band probe.
 	let ok = true;
 	try {
-		// Before the state flush, since a delete also removes its queue entries.
-		app.pendingDeletes.flush();
+		// Before the state flush, since a delete also removes its queue entries. Awaited, but capped: each
+		// re-reads Keep behind the song's writes, and a stalled disk must not hold the state flush.
+		const unfinished = await app.pendingDeletes.flush(SHUTDOWN_DELETE_WAIT_MS);
+		if (unfinished.length) console.warn(`[core] deletes not finished at shutdown: ${unfinished.join(', ')}`);
 		state.flushNow();
 		app.reaper.stop();
 		server.stop();
@@ -428,8 +434,8 @@ function gracefulShutdown(signal: string): void {
 	process.exit(ok ? 0 : 1);
 }
 // Registered before the awaited route read below, so a stop during startup still flushes state.
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 // The address phones should open, from the same pick as the TV's QR. `0.0.0.0` is not one, so it is only the fallback.
 // The route is read first so the line ranks the home network over a VM bridge.

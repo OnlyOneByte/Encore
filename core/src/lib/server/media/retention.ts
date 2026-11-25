@@ -17,7 +17,7 @@ import {
 } from './paths';
 import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
-import { clearArtifacts } from './sidecar';
+import { clearArtifacts, readSidecarInOrder } from './sidecar';
 import { forgetProcess } from '../jobs/process';
 import type { JobRepository } from '../jobs/repository';
 
@@ -235,6 +235,18 @@ export async function evictSong(
 	// upsert's sidecar merge would RESTORE the refs just cleared — see clearArtifacts.
 	await clearArtifacts(m.id);
 	return bytes;
+}
+
+/** `evictSong`, unless the song is kept NOW. The pass plans from Keep reads taken earlier, so a Keep tapped
+ *  since then is read again behind the song's queued writes. @returns the bytes freed, or null when kept. */
+export async function evictUnlessKept(
+	m: Media,
+	deps: Parameters<typeof evictSong>[1],
+	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecarInOrder(id))?.library.keep === true
+): Promise<number | null> {
+	if (await isKept(m.id)) return null;
+	// Keep evictSong synchronous: a queued Keep must not run between the check and the eviction.
+	return evictSong(m, deps);
 }
 
 /** MUST agree with evictDerived. */
