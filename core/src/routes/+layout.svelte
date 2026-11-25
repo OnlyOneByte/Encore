@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount, setContext, untrack } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { NowLineSaves } from '$lib/now-line-saves';
 	import { toast } from 'svelte-sonner';
 	import { SINGER_COLORS, canRetryPlay, songDisplay, type PlayerCommand, type QueueEntry } from '$lib/contract';
 	import { nextPlayableEntryId, waitingTurns } from '$lib/readiness';
@@ -89,31 +89,7 @@
 	   here: the fill flips on the tap and goes back only if the server refuses. */
 	let nowMediaId = $state<string | null>(null);
 	let canSave = $state(false);
-	const savedIds = new SvelteSet<string>();
-	// One singer's saves: dropped if someone else is this phone by the time the answer lands.
-	async function loadSaved(singer: string) {
-		const res = await fetch('/api/me/songs').catch(() => null);
-		if (!res?.ok) return;
-		const { songs } = (await res.json()) as { songs: { mediaId: string | null; saved: unknown }[] };
-		if (me !== singer) return;
-		savedIds.clear();
-		for (const s of songs) if (s.saved && s.mediaId) savedIds.add(s.mediaId);
-	}
-	async function toggleSaved() {
-		const id = nowMediaId;
-		const who = me;
-		if (!id) return;
-		const was = savedIds.has(id);
-		const flip = (on: boolean) => void (on ? savedIds.add(id) : savedIds.delete(id));
-		flip(!was);
-		const res = await fetch(`/api/me/songs/${encodeURIComponent(id)}`, { method: was ? 'DELETE' : 'PUT' }).catch(
-			() => null
-		);
-		if (!res?.ok && me === who) {
-			flip(was);
-			toast.error(was ? "Couldn't take it out of your songs." : "Couldn't save it to your songs.");
-		}
-	}
+	const saves = new NowLineSaves({ fetch: (url, init) => fetch(url, init), refused: (m) => void toast.error(m) });
 
 	/* "YOU'RE UP" LIVES HERE, not on /queue, because it is the one turn signal that must reach the guest on ANY tab:
 	   On deck's heads-up stays on /queue, and a skip can make it your turn before that heads-up ever fired. */
@@ -290,14 +266,10 @@
 	   itself is what triggers it. Still gated, for the original reason: an ungated connect would open a second
 	   `role=phone` socket on /tv. `connect()` is idempotent, so re-running on any navigation within the phone
 	   surfaces is a no-op rather than a second socket. */
-	// Once per singer this phone is, so the heart is right on the first song. Emptied first, so after a Leave the next
-	// singer never sees the last one's saves filled while their own are on the way.
+	// Once per singer this phone is, so the heart is right on the first song (`NowLineSaves` empties it on a change).
 	$effect(() => {
 		const singer = isPhoneSurface ? me : null;
-		untrack(() => {
-			savedIds.clear();
-			if (singer) void loadSaved(singer);
-		});
+		untrack(() => void saves.setSinger(singer));
 	});
 	$effect(() => {
 		if (!isPhoneSurface) return;
@@ -569,9 +541,9 @@
 			onplay={() => transport({ cmd: 'play' })}
 			onreact={(kind) => room.react(kind)}
 			reactResting={!canReact}
-			saved={!!nowMediaId && savedIds.has(nowMediaId)}
+			saved={!!nowMediaId && saves.ids.has(nowMediaId)}
 			saveResting={!canSave || offline}
-			onsave={toggleSaved}
+			onsave={() => nowMediaId && void saves.toggle(nowMediaId)}
 		/>
 		<TabBar pathname={page.url.pathname} />
 	</div>

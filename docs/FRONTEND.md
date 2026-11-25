@@ -518,12 +518,15 @@ body held (the guiding track, the vocal range, key shift, the clock) is the now-
 because that is the screen you are already on to see whose turn is next.
 
 **The heart (proposal 36)** sits at the end of the line, before the Cheer key, while someone else sings: one tap
-saves the song to Your songs (`PUT /api/me/songs/:mediaId`), a second takes it out (`DELETE`). The layout reads the
-saved set once per singer from `GET /api/me/songs`, emptied first on any change of singer so a Leave never hands one
-guest's saves to the next, and flips it on the tap, so the mark fills in the same frame and
-goes back only if the server refuses (with a toast). A save swaps the line's words for `<song> is in your songs` for
-2 s, in place, keyed on the entry like the title; an unsave says nothing, and `aria-pressed` carries the state for a
-screen reader. On your own song, or offline, the heart rests hidden and inert in its slot, as the Cheer key does, so
+saves the song to Your songs (`PUT /api/me/songs/:mediaId`), a second takes it out (`DELETE`). `$lib/now-line-saves.ts`
+holds the saved set: read once per singer from `GET /api/me/songs`, emptied first on any change of singer so a Leave
+never hands one guest's saves to the next, and flipped on the tap, so the mark fills in the same frame. Each song's
+requests go out one at a time in tap order, so a double tap during a slow save ends where the guest left it. Only the
+last tap rolls back and toasts if the server refuses, and a `DELETE` answered 404 counts as already out. A save swaps
+the line's words (and hides the singer's dot) for `<song> is in your songs` for 2 s, in place, keyed on the entry like
+the title; a rollback ends it at once. An unsave says nothing, and `aria-pressed` carries the state for a screen
+reader. The heart's few rules are in the root stylesheet, so `/tv` carries them too: a lazily imported component's CSS
+is still listed on the importing node, and as its own file it cost more than it saved (measured, +239 B gz a route). On your own song, or offline, the heart rests hidden and inert in its slot, as the Cheer key does, so
 nothing moves at the handoff (`now-line-heart` probe; `phone-heart-save` in `ui:review`, a cut, CLS 0).
 
 **What was deleted, and why the account is kept.** `NowPlayingDrawer.svelte` (618 lines), `NowPlayingBand.svelte`

@@ -90,6 +90,13 @@
 		if (savedNote) noteTimer = setTimeout(() => (savedNote = false), SAVED_NOTE_MS);
 		onsave?.();
 	}
+	// A refused save is rolled back by the layout, and the note must not outlive it.
+	$effect(() => {
+		if (!saved) {
+			clearTimeout(noteTimer);
+			savedNote = false;
+		}
+	});
 	$effect(() => {
 		void entryId;
 		return () => {
@@ -179,7 +186,8 @@
 			{:else if hasSong}
 				<!-- The singer dot is the one place the phone repeats the TV's colour coding, so whose turn it is
 					survives a glance at a strip two lines tall. -->
-				<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
+				<!-- Not in front of the note, which is about you, not the singer. -->
+				<span class="dot" hidden={savedNote} style:background={singerColor ?? 'var(--accent)'}></span>
 				<!-- KEYED ON THE ENTRY: a new song is new nodes, not the old title spans sliding sideways because the new
 					singer's name is a different width (a layout shift on every phone at every song change). -->
 				{#key entryId}
@@ -375,14 +383,12 @@
 	}
 
 	/* Saved is the filled mark in the accent, so the state is the shape as well as the colour. */
-	.heart.saved {
+	.saved :global(svg) {
 		color: var(--role-accent);
-	}
-	.heart.saved :global(svg) {
 		fill: currentColor;
 	}
 	.saved-note {
-		color: var(--ink);
+		color: var(--role-ink);
 	}
 
 	/* The cheers' own surface, so the key reads as the way into them. */
