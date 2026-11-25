@@ -28,7 +28,7 @@
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
-	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns } from '$lib/readiness';
+	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns, type MakerVerdicts } from '$lib/readiness';
 	import { createGuideSend } from '$lib/guide-send';
 	import { resolve } from '$app/paths';
 	import { pickAnotherHref } from '$lib/process-and-queue';
@@ -80,6 +80,8 @@
 	let awaySingers = $state<Set<string>>(new Set());
 	/** The entry the On deck hold protects (`room.heldId`), or null. */
 	let heldId = $state<string | null>(null);
+	/** The room's maker verdicts (`queue:sync`): with no maker, no card says "Making karaoke…" (#1255 review). */
+	let verdicts = $state<MakerVerdicts>({ canMake: true, canFetch: true });
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }>>(
 		new Map()
 	);
@@ -122,6 +124,7 @@
 			awaySingers = room.awaySingers;
 			heldId = room.heldId;
 			mediaStatus = room.mediaStatus;
+			verdicts = room.verdicts;
 			playback = room.playback;
 			positionSec = room.playback.positionSec;
 			isPlaying = room.playback.isPlaying;
@@ -142,7 +145,8 @@
 		waitingTurns(
 			queued,
 			(id) => mediaCatalog.get(id),
-			(id) => mediaStatus.get(id)
+			(id) => mediaStatus.get(id),
+			verdicts.canMake
 		).noMaker
 	);
 	/* WHAT WILL ACTUALLY PLAY NEXT, skipping anything still processing, matching the server's own `nextPlayable`.
@@ -529,7 +533,8 @@
 	const myFailedIdx = $derived(
 		queued.findIndex(
 			(e) =>
-				e.singerId === me?.id && queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId)) === 'failed'
+				e.singerId === me?.id &&
+				queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId), verdicts.canMake) === 'failed'
 		)
 	);
 	let lastInputMs: number | null = null;
@@ -702,7 +707,9 @@
 
 	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (docs/FRONTEND.md § The Queued list holds still). `$effect.pre`,
 	   never a ResizeObserver: one fired a frame after the jump had painted. */
-	const rowKinds = $derived(queued.map((e) => queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))));
+	const rowKinds = $derived(
+		queued.map((e) => queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId), verdicts.canMake))
+	);
 	const rowKey = (id: string, kind: string | undefined) => `${id}:${kind === 'plain' ? 'row' : 'card'}`;
 	// Everything that can change a block's height or the list's membership, as one primitive: an equal emit runs nothing.
 	const holdKey = $derived(
@@ -1034,7 +1041,7 @@
 					{@const s = singers.get(e.singerId)}
 					{@const media = mediaCatalog.get(e.mediaId)}
 					{@const live = mediaStatus.get(e.mediaId)}
-					{@const card = queueCardKind(media, live)}
+					{@const card = queueCardKind(media, live, verdicts.canMake)}
 					<!-- THE GATE IS "NOT PLAIN", NEVER AN ENUMERATION OF KINDS. It read `card === 'processing' || card ===
 				'failed'` while those were the only two, and a FIFTH kind added later would fall through this `{:else}` to
 				a plain QueueRow — i.e. the bug would survive its own fix while a Playwright assertion on `.proc` kept
