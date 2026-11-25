@@ -258,10 +258,13 @@ demucs splits a song into overlapping chunks and, with `-j N` on CPU, runs them 
 one model. Some chunks came back NaN, which saves as a silent song (#1125), so `-j` was pinned to 1.
 
 `adapters/demucs_pool.py` runs `demucs.separate` unchanged except for that pool. Each worker process gets
-its own copy of the model once, at start, and each submit carries only the chunk and enough context to pad
-it as demucs would. demucs's chunking, overlap blending, shifts, clipping and file writing stay its own,
-so the stems are `-j 1`'s to within float noise. Chunks and the model travel by value, not through torch's
-shared memory, because docker gives a container 64 MB of `/dev/shm` and the transfer died of SIGBUS.
+its own copy of the model once, at start, and each submit carries the chunk and up to a segment of song on
+either side, which is what demucs pads a short final chunk from (`_context`). demucs's chunking, overlap
+blending, shifts, clipping and file writing stay its own, so for htdemucs the stems are `-j 1`'s to within
+one 16-bit step. A bag of models (htdemucs_ft) restarts the pool per member, which advances Python's random
+state, so its shifts differ from `-j 1`'s, as two unseeded `-j 1` runs do. Chunks and the model travel by
+value, not through torch's shared memory, because docker gives a container 64 MB of `/dev/shm` and the
+transfer died of SIGBUS.
 
 | song (32-core aarch64, CPU) | `-j 1` | pool `-j 4` | pool `-j 8` | largest sample difference from `-j 1` |
 | --- | --- | --- | --- | --- |

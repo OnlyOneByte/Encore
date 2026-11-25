@@ -49,16 +49,25 @@ def _run(audio: Any, offset: int, length: int, kwargs: dict[str, Any]) -> Any:
     return apply_model(_MODEL, chunk, **kwargs).numpy()
 
 
-def _portable(chunk: Any) -> tuple[Any, int, int]:
-    """The chunk over just enough of the song to pad it exactly as demucs would, not the whole song.
+def _context(model: Any, chunk: Any, segment: Any) -> int:
+    """Samples of song either side of a chunk that demucs's padding can read: half of up to one segment.
 
-    `TensorChunk.padded` takes up to one segment of context from either side, so a slice one chunk wider on
-    each side pads identically. As numpy, because torch would pass tensors through /dev/shm, which docker
-    caps at 64 MB by default (SIGBUS).
+    A short final chunk is padded out to a whole segment (HTDemucs `valid_length`), so a chunk-length of
+    context, enough for every other chunk, would leave zeros where `-j 1` reads the song (#1284 review).
     """
+    seconds = segment if segment is not None else getattr(model, "segment", None)
+    rate = getattr(model, "samplerate", None)
+    whole = int(float(seconds) * rate) if seconds is not None and rate else 0
+    return max(int(chunk.length), whole)
+
+
+def _portable(chunk: Any, context: int) -> tuple[Any, int, int]:
+    """The chunk with `context` samples of song either side, enough to pad it exactly as demucs would, rather
+    than the whole song. As numpy, because torch would pass tensors through /dev/shm, which docker caps at
+    64 MB by default (SIGBUS)."""
     total = chunk.tensor.shape[-1]
-    start = max(0, chunk.offset - chunk.length)
-    end = min(total, chunk.offset + 2 * chunk.length)
+    start = max(0, chunk.offset - context)
+    end = min(total, chunk.offset + chunk.length + context)
     return chunk.tensor[..., start:end].numpy().copy(), chunk.offset - start, chunk.length
 
 
@@ -106,7 +115,8 @@ class ModelProcessPool:
             )
         assert self._pool is not None
         kwargs.pop("pool", None)
-        return _Tensor(self._pool.submit(_run, *_portable(chunk), kwargs))
+        context = _context(model, chunk, kwargs.get("segment"))
+        return _Tensor(self._pool.submit(_run, *_portable(chunk, context), kwargs))
 
     def shutdown(self, wait: bool = True) -> None:
         if self._pool is not None:

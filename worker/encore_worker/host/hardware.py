@@ -145,8 +145,8 @@ class Jobs:
 #: demucs's own threads over one model returned NaN chunks, saved as silence (#1125).
 DEMUCS_POOL = "chunks in worker processes, a model each"
 
-#: Separator cores per `-j` worker. shortcut: measured on 32 cores only (worker/README.md,
-#: `ENCORE_DEMUCS_JOBS`); smaller boxes stay at 1 until measured there.
+#: Separator cores per `-j` worker: 16-31 cores get 2-3, under 16 stay at 1. shortcut: measured on 32 cores
+#: only, and RAM is not checked (about 1 GB per worker); re-measure on a 16-core box before trusting 2-3.
 _CORES_PER_DEMUCS_JOB = 8
 _MAX_DEMUCS_JOBS = 4
 
