@@ -1,4 +1,5 @@
-// GET /api/screens -> the room's screens; POST { action: 'rename' | 'remove' | 'tv', id, name? } acts on one.
+// GET /api/screens -> the room's screens; POST { action: 'rename' | 'remove' | 'tv' | 'show', id, name?, show? } acts
+// on one.
 // Host only (docs/SERVER.md#screens). A screen becomes the TV mid-song only when tapped on it, so 'tv' waits for no
 // song to be current (owner ruling, proposal 34).
 import type { RequestHandler } from '@sveltejs/kit';
@@ -7,7 +8,7 @@ import { getApp } from '$lib/server/app';
 import { can } from '$lib/server/capabilities';
 import { isHost } from '$lib/server/host-gate';
 import { readJsonBody, requiredString } from '$lib/server/http/json-body';
-import { cleanScreenName } from '$lib/server/rooms/tv-screens';
+import { cleanScreenName, parseTvShow } from '$lib/server/rooms/tv-screens';
 
 const forbidden = () => json({ error: 'only the host can manage screens' }, { status: 403 });
 
@@ -42,6 +43,14 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			if (r === 'unknown') return json({ error: 'unknown screen' }, { status: 404 });
 			if (r !== 'ok') return json({ error: 'this screen cannot be made the TV now', reason: r }, { status: 409 });
 			return json({ ok: true });
+		}
+		case 'show': {
+			const show = parseTvShow(body.show);
+			if (!show) return json({ error: 'show must be everything or words' }, { status: 400 });
+			const r = screens.setShow(id, show);
+			if (r === 'unknown') return json({ error: 'unknown screen' }, { status: 404 });
+			if (r === 'is-tv') return json({ error: 'the TV shows everything', reason: r }, { status: 409 });
+			return json({ ok: true, show });
 		}
 		default:
 			return json({ error: 'unknown action' }, { status: 400 });

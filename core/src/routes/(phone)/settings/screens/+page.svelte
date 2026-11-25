@@ -8,6 +8,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { screenTag, type ScreenRow } from '$lib/screens';
+	import ScreenShowPicker from '$lib/ui/ScreenShowPicker.svelte';
+	import type { TvShow } from '$lib/contract';
 
 	let { data }: { data: { screens: ScreenRow[]; midSong: boolean; tvAddress: string } } = $props();
 
@@ -36,14 +38,16 @@
 		return () => clearInterval(timer);
 	});
 
-	async function act(action: 'rename' | 'remove' | 'tv', screen: ScreenRow, name?: string) {
+	async function act(action: 'rename' | 'remove' | 'tv' | 'show', screen: ScreenRow, name?: string, show?: TvShow) {
 		if (busy) return;
 		busy = screen.id;
 		note = '';
+		// A layout pick shows at once; the refresh below puts back what the server kept.
+		if (show) screens = screens.map((s) => (s.id === screen.id ? { ...s, show } : s));
 		const r = await fetch('/api/screens', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action, id: screen.id, name })
+			body: JSON.stringify({ action, id: screen.id, name, show })
 		}).catch(() => null);
 		// A remove that finds the screen gone has still done what was asked.
 		const done = r?.ok || (action === 'remove' && r?.status === 404);
@@ -65,6 +69,15 @@
 </script>
 
 {#snippet actions(s: ScreenRow)}
+	<!-- The TV always shows the whole stage, so only a copy offers Words only. -->
+	{#if !s.isTv}
+		<ScreenShowPicker
+			show={s.show}
+			label="What {s.name} shows"
+			disabled={busy === s.id}
+			onpick={(show) => act('show', s, undefined, show)}
+		/>
+	{/if}
 	{#if renaming === s.id}
 		<form
 			class="rename"

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
-	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
+	import type { ServerEvent, QueueEntry, Media, PublicSinger, TvShow } from '$lib/contract';
 	import {
 		chosenCandidate,
 		isPlayable,
@@ -80,6 +80,9 @@
 	let tvOnline = $state(true);
 	// The room's TV, back mid-song: it takes the seat when this song ends (`tv:seat`'s `next`), and its chip says so.
 	let seatNext = $state(false);
+	// What this screen shows (`tv:show`), set by the host or a `?show=words` bookmark: the whole stage, or the words
+	// alone, a singer's monitor. Only a copy mid-song shows words only. docs/FRONTEND.md#words-only.
+	let show = $state<TvShow>('everything');
 	// A copy's view of the TV's clock: its last `tv:clock`, and its offset to core from `tv:ping`. See copy-clock.ts.
 	let tvClock = $state<TvClock | null>(null);
 	const clockOffset = new ClockOffset();
@@ -443,6 +446,7 @@
 			clockOffset.add(e.t0, e.serverAt, clientNow());
 			offsetMs = clockOffset.offsetMs;
 		}
+		if (e.type === 'tv:show') show = e.show;
 		if (e.type === 'tv:seat') {
 			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
 			// the copy's line when this screen becomes a copy (on load too, since the region was mounted empty) or when the
@@ -565,9 +569,11 @@
 	let heardSinceReconnect: Set<string> | null = null;
 
 	onMount(() => {
+		// A bookmarked `/tv?show=words` asks for words only; core keeps it only for a screen with no layout yet.
+		const urlShow = new URLSearchParams(location.search).get('show') === 'words' ? '&show=words' : '';
 		ws = new WsClient({
 			// ONE TV PER ROOM: `role=tv` plus the resolved room code. See docs/FRONTEND.md#the-tv-socket.
-			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
+			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}${urlShow}`,
 			// The TV holds NO queue rev of its own — it never handles queue:patch and adopts each queue:sync wholesale.
 			// -1, not 0, so EVERY patch reads as a gap and fetches a sync: with 0 the room's rev-1 patch was the one it
 			// let through unread, so the first song queued after a boot never reached the TV lobby.
@@ -689,20 +695,6 @@
 			window.removeEventListener('keydown', wake, opts);
 		};
 	});
-	const tvStyle = $derived(
-		[
-			chromeBandStyle,
-			// The full-screen button clears whichever is taller of "Up next" and the copy chip standing in its place.
-			upnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(upnextPx)}px`,
-			measuredCornerPx === null ? undefined : `--tv-corner-h: ${Math.ceil(measuredCornerPx)}px`,
-			isCopy && measuredChipPx !== null ? `--tv-copy-chip-h: ${Math.ceil(measuredChipPx)}px` : undefined,
-			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
-			settings.room.tvReactions ? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))' : undefined
-		]
-			.filter(Boolean)
-			.join('; ') || undefined
-	);
-
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
@@ -712,6 +704,28 @@
 	});
 	const chipAsleep = $derived(
 		isCopy && !chipAwake && tvOnline && !seatNext && screen !== 'lobby' && screen !== 'attract'
+	);
+	// A singer's monitor: on a copy, mid-song, the words alone, bigger, and who is next. The seat always shows the whole
+	// stage, and so do the lobby and attract, where the room needs the QR.
+	const wordsOnly = $derived(show === 'words' && isCopy && screen !== 'lobby' && screen !== 'attract');
+	/** How much bigger the words are on Words only than the room's lyric size (proposal 34). It shows the line being
+	 *  sung and the next one, as the mock does, so the bigger rows still fit. */
+	const WORDS_ONLY_SCALE = 1.7;
+	const tvStyle = $derived(
+		[
+			// Words only has no lower-third or join corner, so the words take the whole height down to the safe area.
+			wordsOnly ? '--tv-chrome-h: var(--tv-safe-y)' : chromeBandStyle,
+			// The full-screen button clears whichever is taller of "Up next" and the copy chip standing in its place.
+			upnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(upnextPx)}px`,
+			measuredCornerPx === null ? undefined : `--tv-corner-h: ${Math.ceil(measuredCornerPx)}px`,
+			isCopy && measuredChipPx !== null ? `--tv-copy-chip-h: ${Math.ceil(measuredChipPx)}px` : undefined,
+			// The lyrics give the reaction lane its width (plus a gap) on each side, only while the lane can show.
+			settings.room.tvReactions && !wordsOnly
+				? '--tv-reaction-reserve: calc(var(--tv-reaction-w) + var(--tv-space-lg))'
+				: undefined
+		]
+			.filter(Boolean)
+			.join('; ') || undefined
 	);
 	// "Up next" comes back once the chip's fade is over, so the two never draw text on text.
 	let chipFadedOut = $state(false);
@@ -960,7 +974,7 @@
 
 <div class={['tv', { 'copy-stage': isCopy && screen !== 'lobby' && screen !== 'attract' }]} style={tvStyle}>
 	<!-- The stage background, beneath both player slots. First child so document order matches paint order. -->
-	<div class={['stage-bg', { shown: !isAttract }]} style="background: {stageBg}">
+	<div class={['stage-bg', { shown: !isAttract && !wordsOnly }]} style="background: {stageBg}">
 		<!--
 			INSIDE the stage layer, not a sibling, so the visualizer inherits the ONE visibility gate and the one
 			crossfade already proven for backgrounds. `stageBg` is its black floor, so an unpainted first frame is
@@ -1026,11 +1040,11 @@
 		ball={lyricsStyle.ball}
 		highlight={lyricsStyle.highlight}
 		leadSec={lyricsLeadSec}
-		scalePct={settings.room.lyricsScalePct}
+		scalePct={settings.room.lyricsScalePct * (wordsOnly ? WORDS_ONLY_SCALE : 1)}
 		font={settings.room.lyricsFont}
 		textCase={settings.room.lyricsCase}
-		linesBefore={settings.room.lyricsLinesBefore}
-		linesAfter={settings.room.lyricsLinesAfter}
+		linesBefore={wordsOnly ? 0 : settings.room.lyricsLinesBefore}
+		linesAfter={wordsOnly ? 1 : settings.room.lyricsLinesAfter}
 		singerColor={currentSingerColor}
 		chorus={settings.room.tvChorus}
 	/>
@@ -1060,6 +1074,15 @@
 			roomCode={data.roomCode}
 			join={isCopy ? copyChip : undefined}
 		/>
+	{:else if wordsOnly}
+		<!-- WORDS ONLY: no lower-third, reactions or join corner, just who is next, top-right where "Up next" stands.
+		     It steps aside for the copy chip, as "Up next" does, so the two never draw text on text. -->
+		{#if upNext && upNext.id !== current?.id && chipAsleep && chipFadedOut}
+			<p class="words-next">
+				<span class="words-dot" style:background={singers.get(upNext.singerId)?.color} aria-hidden="true"></span>
+				<b>{singerName(upNext.singerId)}</b> is next
+			</p>
+		{/if}
 	{:else}
 		<TvNowBar
 			name={singerName(current?.singerId)}
@@ -1121,7 +1144,7 @@
 		THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed, in the same slot as during playback: a song change is
 		exactly when a new guest looks up. The identical corner component, so the slot does not move.
 	-->
-	{#if transient}
+	{#if transient && !wordsOnly}
 		<div class="takeover-join">
 			<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" roomCode={data.roomCode} />
 		</div>
@@ -1222,6 +1245,32 @@
 	}
 	.stage-bg.shown {
 		opacity: 1;
+	}
+	/* Words only: who is next, in "Up next"'s place and type, on one line. */
+	.words-next {
+		position: absolute;
+		right: var(--tv-safe-x);
+		top: calc(var(--tv-safe-y) + 2.6vh);
+		z-index: var(--z-tv-card);
+		max-width: 40vw;
+		margin: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: var(--tv-body);
+		font-weight: 700;
+		color: var(--ink-dim);
+	}
+	.words-next b {
+		color: var(--ink);
+		font-weight: 800;
+	}
+	.words-dot {
+		display: inline-block;
+		width: 0.5em;
+		height: 0.5em;
+		border-radius: 50%;
+		margin-right: 0.4em;
 	}
 	/* ONE TV PER ROOM: a copy's chip, top-right, in "Up next"'s place (which yields while the chip shows). */
 	.copy-slot {

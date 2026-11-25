@@ -1,4 +1,5 @@
 // The Screens page's row shape and its one line of status. See docs/FRONTEND.md#the-screens-page.
+import type { TvShow } from '$lib/contract';
 
 /** One row of GET /api/screens (server/rooms/tv-screens.ts `ScreenView`). */
 export interface ScreenRow {
@@ -14,6 +15,8 @@ export interface ScreenRow {
 	canBeTv: boolean;
 	/** Every screen but the room's TV. One standing in for it while it is off can go (docs/SERVER.md#screens). */
 	canRemove: boolean;
+	/** What it shows. The TV always shows everything, whatever is stored. */
+	show: TvShow;
 }
 
 /** "The TV · sound", or a copy's distance from it: "Quiet · 12 ms behind". */
