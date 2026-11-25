@@ -2080,8 +2080,9 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
   a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
   lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
   wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
-- **It stays up** in the lobby (where it stands in the QR's place), in attract, and while the TV is gone ("The TV
-  is reconnecting...").
+- **It stays up** in the lobby (where it stands in the QR's place), in attract, while the TV is gone ("The TV
+  is reconnecting..."), and on the room's TV back mid-song while another screen stands in ("Back as the TV after
+  this song", `tv:seat`'s `next`). A tap there still makes it the TV at once.
 
 `p34-room-screen.spec.ts` holds each of these.
 

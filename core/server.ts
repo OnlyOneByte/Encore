@@ -108,13 +108,14 @@ const tvSeats = new TvSeats({
 	save: (roomId, holder) => app.rooms.setTvSeat(roomId, holder),
 	now: () => app.now(),
 	schedule: (ms, run) => setTimeout(run, ms).unref?.(),
-	announce: (notices) => announceSeat(notices)
+	announce: (notices) => announceSeat(notices),
+	midSong: () => state.playback.currentEntryId !== null
 });
 const tvSockets = new Map<number, import('bun').ServerWebSocket<SocketData>>();
 let nextTvKey = 0;
 function announceSeat(notices: SeatNotice[]): void {
 	for (const n of notices) {
-		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline } satisfies ServerEvent;
+		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline, next: n.next } satisfies ServerEvent;
 		tvSockets.get(n.key)?.send(JSON.stringify(e));
 	}
 }
@@ -447,7 +448,14 @@ const server = Bun.serve<SocketData>({
 });
 
 // Wired via setPublish so app-driven publishes route through the same instance `deps` uses.
-const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
+// Every song boundary passes through here: a room's TV that came back mid-song takes its seat at the next one.
+let seatEntryId: string | null = null;
+const broadcast = (e: ServerEvent) => {
+	server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
+	if (state.playback.currentEntryId === seatEntryId && seatEntryId !== null) return;
+	seatEntryId = state.playback.currentEntryId;
+	announceSeat(tvSeats.boundary(app.activeRoomId));
+};
 setPublish(broadcast);
 
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();

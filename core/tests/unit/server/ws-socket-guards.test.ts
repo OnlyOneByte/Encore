@@ -22,7 +22,7 @@ afterAll(async () => {
 	rmSync(mediaDir, { recursive: true, force: true });
 });
 
-type Frame = { type: string; state?: { positionSec: number }; mine?: boolean; tvOnline?: boolean };
+type Frame = { type: string; state?: { positionSec: number }; mine?: boolean; tvOnline?: boolean; next?: boolean };
 
 /** A cookie in the shape GET /tv mints; the socket test needs no build, so it does not fetch the page. */
 const screen = (c: string) => `encore_tv=${c.repeat(32)}`;
@@ -73,26 +73,28 @@ test('tv:telemetry is honoured only from the TV seat: not a phone, not a cookiel
 	seat.ws.send(JSON.stringify(frame));
 	await settle();
 	expect(await syncedPosition()).toBe(42);
-	expect(seat.frames.filter((f) => f.type === 'tv:seat')).toEqual([{ type: 'tv:seat', mine: true, tvOnline: true }]);
+	expect(seat.frames.filter((f) => f.type === 'tv:seat')).toEqual([
+		{ type: 'tv:seat', mine: true, tvOnline: true, next: false }
+	]);
 
 	// "Make this the TV": the copy takes the seat, the old holder is told, and only the new seat is honoured.
 	const copy = await open('tv', screen('B'));
 	copy.ws.send(JSON.stringify({ type: 'tv:claim' }));
 	await settle();
 	expect(copy.frames.filter((f) => f.type === 'tv:seat')).toEqual([
-		{ type: 'tv:seat', mine: false, tvOnline: true },
-		{ type: 'tv:seat', mine: true, tvOnline: true }
+		{ type: 'tv:seat', mine: false, tvOnline: true, next: false },
+		{ type: 'tv:seat', mine: true, tvOnline: true, next: false }
 	]);
-	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false, tvOnline: true });
+	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false, tvOnline: true, next: false });
 	seat.ws.send(JSON.stringify({ ...frame, positionSec: 7 }));
 	await settle();
 	expect(await syncedPosition()).toBe(42);
 	copy.ws.send(JSON.stringify({ ...frame, positionSec: 9 }));
 	await settle();
 	expect(await syncedPosition()).toBe(9);
-	// The TV's tab closes: the copy is told no TV is live, on the wire, as exactly these three fields.
+	// The TV's tab closes: the copy is told no TV is live, on the wire, as exactly these four fields.
 	copy.ws.close();
 	await settle();
-	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false, tvOnline: false });
+	expect(seat.frames.at(-1)).toEqual({ type: 'tv:seat', mine: false, tvOnline: false, next: false });
 	seat.ws.close();
 }, 20_000);

@@ -125,8 +125,9 @@ export type ServerEvent =
 	// `singerOnly`: the song IS current, but its key and guide are its singer's and the sender is someone else.
 	| { type: 'player:stale'; cmd: TargetedCommand['cmd']; singerOnly?: true }
 	// To ONE TV socket, on connect and whenever its answer moves: `mine: false` is a copy, whose telemetry the server
-	// ignores; `tvOnline: false` means the seat's screen has no live socket right now. See server/rooms/tv-seat.ts.
-	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean }
+	// ignores; `tvOnline: false` means the seat's screen has no live socket right now; `next`: this copy is the room's
+	// TV, back mid-song, and takes the seat at the next song. See server/rooms/tv-seat.ts.
+	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean; next: boolean }
 	// TV-ONLY, ~4 Hz: the seat's playhead as core received it (`serverAt`, core's ms clock), for copies to follow.
 	| { type: 'tv:clock'; entryId: string; positionSec: number; serverAt: number }
 	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.

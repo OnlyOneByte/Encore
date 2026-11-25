@@ -40,8 +40,9 @@ export function tvIdOf(cookieHeader: string | null): string | undefined {
 }
 
 /** A socket's new answer to "am I the TV?, and is the TV here?", for `tv:seat`. `tvOnline`: the seat's screen has a
- *  live socket, so a copy can say "The TV is reconnecting..." instead of pointing at a screen that is gone. */
-export type SeatNotice = { key: number; mine: boolean; tvOnline: boolean };
+ *  live socket, so a copy can say "The TV is reconnecting..." instead of pointing at a screen that is gone. `next`:
+ *  this is the room's TV, back mid-song, and it takes the seat at the next song. */
+export type SeatNotice = { key: number; mine: boolean; tvOnline: boolean; next: boolean };
 
 type Seat = {
 	/** The screen that holds the seat, or null when it is free. Persisted, so a core restart hands it back. */
@@ -72,6 +73,8 @@ export interface TvSeatStore {
 	schedule(ms: number, run: () => void): void;
 	/** Deliver what a timed sweep decided, the same way the caller delivers a connect's or a close's notices. */
 	announce(notices: SeatNotice[]): void;
+	/** Whether a song is current: the room's TV back mid-song waits for the next song (owner ruling, proposal 34). */
+	midSong(): boolean;
 }
 
 export class TvSeats {
@@ -118,20 +121,38 @@ export class TvSeats {
 	 *  move the old TV is told to go silent before the new one is told to play, never the other way round (the audio
 	 *  is sacred). */
 	#diff(s: Seat, change: () => void): SeatNotice[] {
-		const answer = (key: number): SeatNotice => ({
+		const waiting = () => (s.holder !== s.roomTv && s.holderSocket !== null ? this.#roomTvSocket(s) : null);
+		const answer = (key: number, w: number | null): SeatNotice => ({
 			key,
 			mine: key === s.holderSocket,
-			tvOnline: s.holderSocket !== null
+			tvOnline: s.holderSocket !== null,
+			next: key === w
 		});
-		const before = new Map(s.sockets.map((x) => [x.key, answer(x.key)]));
+		const w0 = waiting();
+		const before = new Map(s.sockets.map((x) => [x.key, answer(x.key, w0)]));
 		change();
+		const w1 = waiting();
 		const moved = s.sockets
-			.map((x) => answer(x.key))
+			.map((x) => answer(x.key, w1))
 			.filter((n) => {
 				const was = before.get(n.key);
-				return was?.mine !== n.mine || was.tvOnline !== n.tvOnline;
+				return was?.mine !== n.mine || was.tvOnline !== n.tvOnline || was.next !== n.next;
 			});
 		return [...moved.filter((n) => !n.mine), ...moved.filter((n) => n.mine)];
+	}
+
+	/** The room's TV's newest live socket, or null when it is not open. */
+	#roomTvSocket(s: Seat): number | null {
+		return s.roomTv === null ? null : (s.sockets.findLast((x) => x.tvId === s.roomTv)?.key ?? null);
+	}
+
+	/** The room's TV, open, takes the seat from a screen standing in for it. False when it is not open. */
+	#reclaim(roomId: string, s: Seat): boolean {
+		const key = this.#roomTvSocket(s);
+		if (key === null) return false;
+		this.#setHolder(roomId, s, s.roomTv);
+		this.#seated(s, key);
+		return true;
 	}
 
 	/** How long until the seat stops waiting for its holder (0 or less: it has stopped), or null when it is not waiting. */
@@ -145,7 +166,7 @@ export class TvSeats {
 	/** The holder has been gone past the grace: the newest screen with a cookie stands in, or the seat goes free. */
 	#expire(roomId: string, s: Seat): void {
 		const left = this.#left(s);
-		if (left === null || left > 0) return;
+		if (left === null || left > 0 || this.#reclaim(roomId, s)) return;
 		const next = s.sockets.findLast((x) => x.tvId);
 		this.#setHolder(roomId, s, next?.tvId ?? null);
 		if (next) this.#seated(s, next.key);
@@ -185,19 +206,28 @@ export class TvSeats {
 				this.#setHolder(roomId, s, tvId);
 				s.roomTv ??= tvId;
 			}
-			// The room's TV back while a screen stands in for it: the stand-in goes quiet and the TV plays again.
-			if (tvId === s.roomTv) this.#setHolder(roomId, s, tvId);
+			// The room's TV back while a screen stands in for it plays again at once, unless the stand-in is playing a
+			// song: then the TV waits for the next song (`boundary`), as a screen becomes the TV mid-song only when tapped.
+			if (tvId === s.roomTv && (s.holderSocket === null || !this.#store.midSong())) this.#setHolder(roomId, s, tvId);
 			if (tvId === s.holder) this.#seated(s, key);
 		});
 	}
 
-	/** The host removed `tvId`. When it was standing in for the room's TV, the seat waits for that TV again, for the
-	 *  grace only (after which the next screen stands in). The room's TV itself is never removed. */
+	/** A song ended or started: the room's TV, back while a screen stood in for it, takes the seat now. */
+	boundary(roomId: string): SeatNotice[] {
+		const s = this.#rooms.get(roomId);
+		if (!s || s.holder === s.roomTv || this.#roomTvSocket(s) === null) return [];
+		return this.#diff(s, () => this.#reclaim(roomId, s));
+	}
+
+	/** The host removed `tvId`. When it was standing in for the room's TV, that TV takes the seat if it is open, or
+	 *  the seat waits the grace for it (after which the next screen stands in). The room's TV is never removed. */
 	release(roomId: string, tvId: string): SeatNotice[] {
 		const s = this.#rooms.get(roomId);
 		if (!s || s.holder !== tvId || tvId === s.roomTv) return [];
 		this.#book();
 		return this.#diff(s, () => {
+			if (this.#reclaim(roomId, s)) return;
 			this.#setHolder(roomId, s, s.roomTv);
 			s.holderSocket = null;
 			s.goneSince = this.#store.now();
@@ -220,7 +250,10 @@ export class TvSeats {
 			if (s.holderSocket !== key) return;
 			// Another tab of the same screen carries on; otherwise the seat waits out the grace for this screen.
 			s.holderSocket = s.sockets.findLast((x) => x.tvId === s.holder)?.key ?? null;
-			if (s.holderSocket === null) s.goneSince = this.#store.now();
+			if (s.holderSocket !== null) return;
+			// A stand-in gone while the room's TV waits for the next song: nothing plays now, so the TV takes it.
+			if (s.holder !== s.roomTv && this.#reclaim(roomId, s)) return;
+			s.goneSince = this.#store.now();
 		});
 	}
 

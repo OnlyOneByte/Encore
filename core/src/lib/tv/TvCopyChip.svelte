@@ -1,6 +1,8 @@
 <script lang="ts" module>
-	/** A copy's line: quiet while the seat's screen is live, and honest while it is gone (`tv:seat`'s `tvOnline`). */
-	export function copyLine(tvOnline: boolean): string {
+	/** A copy's line: quiet while the seat's screen is live, and honest while it is gone (`tv:seat`'s `tvOnline`).
+	 *  `next`: the room's TV back mid-song, which takes the seat when this song ends. */
+	export function copyLine(tvOnline: boolean, next = false): string {
+		if (next) return 'Back as the TV after this song';
 		return tvOnline ? 'This screen is quiet' : 'The TV is reconnecting...';
 	}
 </script>
@@ -8,12 +10,12 @@
 <script lang="ts">
 	/* ONE TV PER ROOM: shown on a `/tv` that is a COPY (another screen holds the room's seat). The copy shows the same
 	   stage, muted and sending no telemetry; one tap here makes this screen the TV. See docs/SERVER.md#the-tv-seat. */
-	let { onclaim, tvOnline }: { onclaim: () => void; tvOnline: boolean } = $props();
+	let { onclaim, tvOnline, next = false }: { onclaim: () => void; tvOnline: boolean; next?: boolean } = $props();
 </script>
 
 <div class="copy-chip">
 	<!-- No live region here: the page's own (mounted empty with the page) announces every seat change. -->
-	<span class="copy-line">{copyLine(tvOnline)}</span>
+	<span class="copy-line">{copyLine(tvOnline, next)}</span>
 	<button type="button" class="copy-claim" onclick={onclaim}>Make this the TV</button>
 </div>
 

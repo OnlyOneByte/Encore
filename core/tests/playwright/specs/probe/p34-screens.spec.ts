@@ -8,6 +8,7 @@ import WebSocket from 'ws';
 import { test, expect } from '../../world/fixtures';
 import { startFakeWorker } from '../../world/workers';
 import { readySong, queueReady } from '../../world/actors';
+import { sendPlayerCommand } from './audio-probe-support';
 import { TV_FULL_CLOSE_CODE } from '../../../../src/lib/contract';
 import { MAX_COOKIELESS_SCREENS } from '../../../../src/lib/server/rooms/tv-screens';
 import type { Browser, Page } from '@playwright/test';
@@ -206,6 +207,39 @@ test("a script minting cookies cannot keep the room's TV out, and the host can r
 	await expect(back.locator('.copy-chip')).toHaveCount(0);
 	expect((await host.request.post('/api/screens', { data: { action: 'remove', id: roomTv } })).status()).toBe(409);
 	for (const s of socks) s.ws.close();
+});
+
+// Owner ruling (#1204): a screen becomes the TV mid-song only when tapped. So the room's TV, back while a stand-in
+// plays a song, waits for that song to end, says so, and then is the TV.
+test("the room's TV back mid-song takes its seat when the song ends, not before", async ({ browser, world }) => {
+	test.setTimeout(240_000);
+	const worker = await startFakeWorker(world, { seconds: 60 });
+	try {
+		const tv = await openScreen(browser, world, true);
+		const standIn = await openScreen(browser, world);
+		const ana = await world.openPhone('Ana');
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		const roomTv = (await tvRow(host))!.id;
+		const standInId = (await rows(host)).find((r) => !r.isTv)!.id;
+		await readySong(world, ana, 'caroline');
+		await tv.context().close();
+		// Past the seat's wait (TV_SEAT_SLOW_BOOT_MS, 60 s): the other screen stands in, and plays Ana's song.
+		await expect.poll(async () => (await tvRow(host))?.id, { timeout: 90_000 }).toBe(standInId);
+		await queueReady(ana, 'caroline');
+		await expect(standIn.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+		const back = await openScreen(browser, world, true);
+		await expect(back.locator('.shut-out')).toHaveCount(0);
+		await expect(back.locator('.copy-line')).toHaveText('Back as the TV after this song');
+		await back.waitForTimeout(5_000);
+		expect((await tvRow(host))?.id, 'no handover mid-song').toBe(standInId);
+		await sendPlayerCommand(ana, { cmd: 'skip' });
+		await expect.poll(async () => (await tvRow(host))?.id).toBe(roomTv);
+		await expect(back.locator('.copy-chip')).toHaveCount(0);
+		await expect(standIn.locator('.copy-line')).toHaveText('This screen is quiet');
+	} finally {
+		await worker.stop();
+	}
 });
 
 /** One cold load of the Screens page, as the host: its layout shift (excluding input-led shifts) and when the

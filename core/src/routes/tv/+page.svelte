@@ -75,6 +75,8 @@
 	const isCopy = $derived(seatMine === false);
 	// Whether the seat's screen is live (`tv:seat`'s `tvOnline`), so a copy never points at a TV that is gone.
 	let tvOnline = $state(true);
+	// The room's TV, back mid-song: it takes the seat when this song ends (`tv:seat`'s `next`), and its chip says so.
+	let seatNext = $state(false);
 	// A copy's view of the TV's clock: its last `tv:clock`, and its offset to core from `tv:ping`. See copy-clock.ts.
 	let tvClock = $state<TvClock | null>(null);
 	const clockOffset = new ClockOffset();
@@ -415,13 +417,14 @@
 			// Every CHANGE of answer is said, in the page's one live region: "now the TV" when the seat moves here, and
 			// the copy's line when this screen becomes a copy (on load too, since the region was mounted empty) or when the
 			// TV drops or comes back. Cleared once read, so the next change is announced again, however soon it comes.
-			if (e.mine ? seatMine === false : seatMine !== false || e.tvOnline !== tvOnline) {
-				seatAnnounce = e.mine ? 'This screen is now the TV' : copyLine(e.tvOnline);
+			if (e.mine ? seatMine === false : seatMine !== false || e.tvOnline !== tvOnline || e.next !== seatNext) {
+				seatAnnounce = e.mine ? 'This screen is now the TV' : copyLine(e.tvOnline, e.next);
 				clearTimeout(seatAnnounceTimer);
 				seatAnnounceTimer = setTimeout(() => (seatAnnounce = ''), SEAT_ANNOUNCE_MS);
 			}
 			seatMine = e.mine;
 			tvOnline = e.tvOnline;
+			seatNext = e.next;
 			// A claim at a song boundary: this screen's song ended while it was a copy (so it sent nothing), and the old TV
 			// heard `mine:false` before its own `ended`. Nobody has told the server, which would sit on the finished song.
 			// Say it now; if the old TV's `ended` got there first, the server drops this one by its entry stamp.
@@ -670,7 +673,9 @@
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
-	const chipAsleep = $derived(isCopy && !chipAwake && tvOnline && screen !== 'lobby' && screen !== 'attract');
+	const chipAsleep = $derived(
+		isCopy && !chipAwake && tvOnline && !seatNext && screen !== 'lobby' && screen !== 'attract'
+	);
 	// "Up next" comes back once the chip's fade is over, so the two never draw text on text.
 	let chipFadedOut = $state(false);
 	$effect(() => {
@@ -1115,7 +1120,7 @@
 	<!-- In the lobby the chip stands in the QR's place, in the lobby's own flow, so it covers none of its lines. Mid-song
 	     it stands where "Up next" does, top-right; in attract (nobody here yet), in attract's free band. -->
 	{#snippet copyChip()}
-		<TvCopyChip tvOnline={tvOnline} onclaim={claimUnlessJustWoken} />
+		<TvCopyChip tvOnline={tvOnline} next={seatNext} onclaim={claimUnlessJustWoken} />
 	{/snippet}
 	{#if isCopy && screen !== 'lobby'}
 		<div class={['copy-slot', { 'on-attract': screen === 'attract', asleep: chipAsleep }]} bind:this={copySlotEl}>

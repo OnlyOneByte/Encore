@@ -584,11 +584,11 @@ copy. `src/lib/server/rooms/tv-seat.ts` owns the rules; `server.ts` only feeds i
 | The holder reloads, or its wifi blips | Same cookie, so it is the holder again; the newest socket of that screen is the live one |
 | The core restarts | `rooms.tv_seat` kept the holder, so it gets the seat back when it reconnects, and a copy that reconnects first is not promoted for 60 s (`TV_SEAT_SLOW_BOOT_MS`): a TV boots slower than a phone tab |
 | The holder is gone for 15 s (`TV_SEAT_GRACE_MS`), e.g. its cookie was cleared | The newest copy with a cookie stands in; with none, the seat goes free and the next screen stands in. Never while the holder's cookie connected within the last 60 s, so a TV that flaps while it boots keeps its seat |
-| The room's TV comes back while a screen stands in for it | It takes the seat back at once, and the stand-in becomes a copy (told first, so two screens never play) |
+| The room's TV comes back while a screen stands in for it | Between songs, it takes the seat back at once, and the stand-in becomes a copy (told first, so two screens never play). Mid-song it waits: a screen becomes the TV mid-song only when tapped (owner ruling), so the stand-in keeps the sound and the TV hears `next: true` ("Back as the TV after this song"). It takes the seat at the next song boundary (`boundary`, run on every broadcast that moves the current song), at a tap, or at once if the stand-in closes |
 | A copy sends `tv:claim` ("Make this the TV") | It takes the seat at once, and becomes the room's TV; the old holder becomes a copy |
 | A socket with no cookie | Never holds the seat and cannot claim it |
 
-Each TV socket hears `tv:seat { mine, tvOnline }` on connect and whenever either changes. `tvOnline` is
+Each TV socket hears `tv:seat { mine, tvOnline, next }` on connect and whenever any of them changes. `tvOnline` is
 whether the seat's screen has a live socket, so while the TV is gone a copy says "The TV is reconnecting..."
 instead of "This screen is quiet". It is one boolean and changes nothing about who may hold or claim the
 seat. `rooms.tv_seat` stores a SHA-256 of the cookie, never the cookie itself.
@@ -646,7 +646,8 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
 - **Remove** closes every socket of a copy with `TV_REMOVED_CLOSE_CODE` (4002) and forgets its name and number. The
   screen stops redialling and says "This screen was removed" with **Open again**; opened again, it is a new screen.
   It is not a ban. The [room's TV](#the-tv-seat) cannot be removed (`409 is-tv`). A screen standing in for it can:
-  the seat waits the 15 s grace for the room's TV again, and then the next screen stands in.
+  the room's TV takes the seat at once if it is open; otherwise the seat waits the 15 s grace for it, and then the
+  next screen stands in.
 - **Only cookieless screens are capped: `MAX_COOKIELESS_SCREENS` (4) per room.** One more is closed at open with
   `TV_FULL_CLOSE_CODE` (4003) before it subscribes to anything, and it says so. A cookieless socket can never hold the
   seat, so it never counts against a screen that can.
@@ -702,7 +703,7 @@ exposure to the internet. What each attack gets:
 | CSRF from another site on the LAN | See [Requests from other sites](#requests-from-other-sites). |
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
-| A `/tv` socket lying in `tv:drift`, or opening screens to fill the room | A drift report sets one number on its own row of the host's Screens page, clamped, and moves nothing. A room takes [at most 4 cookieless screens](#screens), which can never hold the seat. Screens with a cookie are not capped (a cookie is free to mint, so a cap would only refuse the real TV); the room's TV always gets back in and takes its seat back from a stand-in, and the host can remove any screen but the room's TV. Screen memory is bounded (64 closed screens, a day). |
+| A `/tv` socket lying in `tv:drift`, or opening screens to fill the room | A drift report sets one number on its own row of the host's Screens page, clamped, and moves nothing. A room takes [at most 4 cookieless screens](#screens), which can never hold the seat. Screens with a cookie are not capped (a cookie is free to mint, so a cap would only refuse the real TV); the room's TV always gets back in and takes its seat back from a stand-in (at the next song, if one is playing), and the host can remove any screen but the room's TV. Screen memory is bounded (64 closed screens, a day). |
 | A guest renaming, removing or promoting screens | Refused (403): `/api/screens` is host only, and nothing on `/ws` does any of it. |
 | A rogue worker | `role=worker` needs core's token (constant-time compare). See [The worker token](#the-worker-token) (#1196). Like `ENCORE_ADMIN_TOKEN`, a set `ENCORE_WORKER_TOKEN` under 24 characters stops core from starting. The Origin check passes the worker, which sends no Origin. The token rides in the `ws://` query, so it stops "connect to the port", not someone sniffing the Wi-Fi. |
 

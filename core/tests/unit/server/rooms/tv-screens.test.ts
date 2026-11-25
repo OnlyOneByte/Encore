@@ -161,6 +161,10 @@ it('server.ts turns a screen too many away at open and takes drift from copies o
 	const remove = src.split('remove: (id) => {')[1]!.split("return 'ok';")[0]!;
 	expect(remove).toContain("if (id === tvSeats.roomTv(app.activeRoomId)) return 'is-tv';");
 	expect(remove.indexOf('tvSeats.release(')).toBeLessThan(remove.indexOf('.close(TV_REMOVED_CLOSE_CODE'));
+	// The seat knows a song is on, and every broadcast that moves the current song is a boundary for it.
+	expect(src).toContain('midSong: () => state.playback.currentEntryId !== null');
+	const pub = src.split('const broadcast = (e: ServerEvent) => {')[1]!.split('};')[0]!;
+	expect(pub).toContain('announceSeat(tvSeats.boundary(app.activeRoomId));');
 });
 
 it('/api/screens is host only, and a mid-song "make this the TV" is refused', () => {
