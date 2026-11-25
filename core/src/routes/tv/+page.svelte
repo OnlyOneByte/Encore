@@ -708,8 +708,8 @@
 	// A singer's monitor: on a copy, mid-song, the words alone, bigger, and who is next. The seat always shows the whole
 	// stage, and so do the lobby and attract, where the room needs the QR.
 	const wordsOnly = $derived(show === 'words' && isCopy && screen !== 'lobby' && screen !== 'attract');
-	/** How much bigger the words are on Words only than the room's lyric size (proposal 34). It shows the line being
-	 *  sung and the next one, as the mock does, so the bigger rows still fit. */
+	/** How much bigger the words are on Words only than the room's lyric size (proposal 34), at most: the line being
+	 *  sung and the next one, two rows each, must fit the screen, so the overlay's fit cap wins past that. */
 	const WORDS_ONLY_SCALE = 1.7;
 	const tvStyle = $derived(
 		[
@@ -1045,6 +1045,8 @@
 		textCase={settings.room.lyricsCase}
 		linesBefore={wordsOnly ? 0 : settings.room.lyricsLinesBefore}
 		linesAfter={wordsOnly ? 1 : settings.room.lyricsLinesAfter}
+		wrapRows={wordsOnly ? 2 : 1}
+		fit={wordsOnly}
 		singerColor={currentSingerColor}
 		chorus={settings.room.tvChorus}
 	/>

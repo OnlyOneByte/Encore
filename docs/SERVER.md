@@ -704,6 +704,8 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
   shows everything: setting it gets `409 is-tv`, and a screen that takes the seat is switched to everything.
   `/tv?show=words` sends `show=words` on the socket, which core parses and keeps only for a screen with no layout
   yet, so a bookmark opens as Words only and a later choice of the host's survives its reloads.
+  shortcut: layouts live in core's memory, like names, so a core restart puts every screen back on Everything until
+  the host picks again or a `?show=` bookmark reconnects. Persist them per room with the names if hosts mind.
 - **Only cookieless screens are capped: `MAX_COOKIELESS_SCREENS` (4) per room.** One more is closed at open with
   `TV_FULL_CLOSE_CODE` (4003) before it subscribes to anything, and it says so. A cookieless socket can never hold the
   seat, so it never counts against a screen that can.

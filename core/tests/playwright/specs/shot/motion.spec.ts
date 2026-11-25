@@ -1677,19 +1677,20 @@ const SCENARIOS: Record<string, Make> = {
 	},
 	'tv-words-only': (browser, world, cleanup) => {
 		let host: Page | undefined;
+		let phone: Page | undefined;
 		let copyId: string | undefined;
 		return {
 			name: 'tv-words-only',
-			what: 'TV 1920x1080, a copy mid-song: the host picks Words only on the Screens page. The lower-third and the join corner cut away, the background fades out over --motion-base (its own crossfade), and the words grow',
+			what: 'TV 1920x1080, a copy mid-song on real-length lines: the host picks Words only on the Screens page. The lower-third and the join corner cut away, the background fades out over --motion-base (its own crossfade), and the sung line and the next one grow, two rows each, landing at once',
 			stepMs: 33,
 			scale: 0.5,
 			columns: 5,
 			startTimeoutMs: 1_500,
 			open: async (opts) => {
 				if (!host) {
-					const worker = await startFakeWorker(world, { seconds: ROOM_SCREEN_TRACK.seconds });
+					const worker = await startFakeWorker(world, { seconds: ROOM_SCREEN_TRACK.seconds, longLyricLines: true });
 					cleanup(() => worker.stop());
-					const phone = await world.openPhone('Ana');
+					phone = await world.openPhone('Ana');
 					await readySong(world, phone, 'room-screen');
 					await queueReady(phone, 'room-screen');
 					const seat = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
@@ -1718,6 +1719,10 @@ const SCENARIOS: Record<string, Make> = {
 				}[];
 				copyId = rows.findLast((r) => r.isNew)?.id;
 				await page.evaluate(() => document.fonts.ready.then(() => true));
+				// The fixture's lines run 7 s, so start the song over: the switch lands while a line and the next are up.
+				await sendPlayerCommand(phone!, { cmd: 'restart' });
+				await expect(page.locator('.lyrics .row.current')).toContainText(/tonight/, { timeout: 5_000 });
+				await page.waitForTimeout(900);
 				return page;
 			},
 			trigger: async (page) => {

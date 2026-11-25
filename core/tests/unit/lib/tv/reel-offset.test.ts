@@ -325,9 +325,10 @@ it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): 
 it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): measureReel passes fadeTop AND fadeBot to reelOffset (the ramp depths reach the clamp)', () => {
 	expect(/fadeTop\s*:/.test(CODE)).toBe(true);
 	expect(/fadeBot\s*:/.test(CODE)).toBe(true);
-	// keyed on the context-row flags, not a blind 1.9em: a no-context edge stays unfaded (0).
-	expect(/fadeTop\s*:\s*linesBefore\s*>\s*0\s*\?/.test(CODE)).toBe(true);
-	expect(/fadeBot\s*:\s*linesAfter\s*>\s*0\s*\?/.test(CODE)).toBe(true);
+	// keyed on the context-row flags, not a blind 1.9em: a no-context edge stays unfaded (0), and so does every edge in
+	// fit mode (Words only), whose box holds exactly its lines.
+	expect(/fadeTop\s*:\s*linesBefore\s*>\s*0\s*&&\s*!fit\s*\?/.test(CODE)).toBe(true);
+	expect(/fadeBot\s*:\s*linesAfter\s*>\s*0\s*&&\s*!fit\s*\?/.test(CODE)).toBe(true);
 });
 
 // The two ramps must be CAPPED, or they consume the whole band and leave no opaque plateau.
@@ -366,8 +367,13 @@ function romanizedBlock(): string {
 }
 
 it('the viewport height is rows x the ROW BUDGET, not rows x the text leading (a romanised row is taller than its leading)', () => {
-	// The height must multiply the budget. Reverting to `--lyrics-row-h` here is the defect itself.
-	expect(/height:\s*calc\(var\(--lyrics-rows,\s*5\)\s*\*\s*var\(--lyrics-row-budget\)\)/.test(OVERLAY)).toBe(true);
+	// The height must multiply the budget. Reverting to `--lyrics-row-h` here is the defect itself. The wrap factor and
+	// the slack are Words only's (1 and 0 everywhere else).
+	expect(
+		/height:\s*calc\(\s*var\(--lyrics-rows,\s*5\)\s*\*\s*var\(--lyrics-wrap,\s*1\)\s*\*\s*var\(--lyrics-row-budget\)\s*\+\s*var\(--lyrics-slack,\s*0em\)\s*\)/.test(
+			OVERLAY
+		)
+	).toBe(true);
 	expect(/--lyrics-row-budget:\s*calc\(var\(--lyrics-row-h\)\s*\+\s*var\(--lyrics-row-extra\)\)/.test(OVERLAY)).toBe(
 		true
 	);

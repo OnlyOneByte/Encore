@@ -69,6 +69,10 @@
 		singerColor?: string | null;
 		/** The room's "Show the chorus to the room" (proposal 38). */
 		chorus?: boolean;
+		/** Rows each lyric line may wrap to inside the reel's budget (Words only gives two). */
+		wrapRows?: number;
+		/** Cap the type so every line, at `wrapRows` rows, fits the band at any room size (Words only). */
+		fit?: boolean;
 	}
 	let {
 		lyricsRef,
@@ -87,7 +91,9 @@
 		linesBefore = DEFAULT_LYRICS_LINES_BEFORE,
 		linesAfter = DEFAULT_LYRICS_LINES_AFTER,
 		singerColor = null,
-		chorus = true
+		chorus = true,
+		wrapRows = 1,
+		fit = false
 	}: Props = $props();
 
 	const FIX_WAIT_MAX_MS = 10_000;
@@ -259,8 +265,8 @@
 			band: viewportEl.clientHeight,
 			linesBefore,
 			linesAfter,
-			fadeTop: linesBefore > 0 ? fadeCap : 0,
-			fadeBot: linesAfter > 0 ? fadeCap : 0
+			fadeTop: linesBefore > 0 && !fit ? fadeCap : 0,
+			fadeBot: linesAfter > 0 && !fit ? fadeCap : 0
 		});
 	}
 	$effect(() => {
@@ -270,6 +276,21 @@
 		void linesBefore;
 		void linesAfter;
 		measureReel();
+	});
+	// A change of GEOMETRY (the type size, the row counts or the wrap budget, as when a screen turns Words only) puts
+	// the sung row somewhere new at once, so the reel lands there with no glide: gliding from the old offset left the
+	// sung line outside the view for ~100 ms. `snapReel` drops the transition for one frame only.
+	let geometry: string | undefined;
+	$effect(() => {
+		const now = `${scalePct}/${linesBefore}/${linesAfter}/${wrapRows}/${fit}`;
+		if (geometry !== undefined && geometry !== now) {
+			snapReel = true;
+			measureReel();
+			const f = requestAnimationFrame(() => (snapReel = false));
+			geometry = now;
+			return () => cancelAnimationFrame(f);
+		}
+		geometry = now;
 	});
 	// A row's height is NOT constant: the current row renders inline-block word spans while the others render plain
 	// text, so the geometry shifts the moment a line becomes current (~11px, accumulating over a song).
@@ -301,12 +322,23 @@
 	const partColor = $derived(
 		curLine && typeof curLine.part === 'string' ? (partColors.get(curLine.part) ?? null) : null
 	);
+	// The FIT CAP: the largest type at which `rowCount` lines of `wrapRows` rows each fill the band, never more. The
+	// 1.9 is `--lyrics-row-h` below; the two must agree. The sung row draws its words as inline-block spans, a little
+	// taller than its leading, so the box takes FIT_SLACK_EM more and the cap counts it.
+	const FIT_SLACK_EM = 0.5;
+	const fitStyle = $derived(
+		fit
+			? `; --lyrics-slack: ${FIT_SLACK_EM}em; --lyrics-fit: calc((100vh - var(--tv-chrome-h) - var(--tv-top-reserve)) / ${rowCount * wrapRows * 1.9 + FIT_SLACK_EM})`
+			: ''
+	);
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
 		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
+			`--lyrics-wrap: ${wrapRows}${fitStyle}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.
-			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}` +
+			// In fit mode the box holds exactly its lines and nothing trails past them, so neither edge fades.
+			`--lyrics-fade-top-on: ${linesBefore > 0 && !fit ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 && !fit ? 1 : 0}` +
 			(singerHighlight ? `; --reel-singer: ${singerHighlight}` : '') +
 			(partColor ? `; --reel-part: ${partColor}` : '')
 	);
@@ -330,7 +362,14 @@
 					<div
 						class={[
 							'row',
-							{ current: i === lineIdx, past: i < lineIdx, fresh: freshRows.has(i), chorus: chorusRows.has(i) }
+							{
+								current: i === lineIdx,
+								past: i < lineIdx,
+								fresh: freshRows.has(i),
+								chorus: chorusRows.has(i),
+								// Fit mode budgets for these lines alone, so a wrapped one past them never peeks in at an edge.
+								beyond: fit && (i < lineIdx - linesBefore || i > lineIdx + linesAfter)
+							}
 						]}
 					>
 						{#if opensChorus(i)}
@@ -459,8 +498,9 @@
 	}
 
 	.viewport {
-		/* A MULTIPLIER on the token, not a replacement: the token is what makes the reel adapt to the screen. */
-		font-size: calc(var(--tv-lyric) * var(--lyrics-scale, 1));
+		/* A MULTIPLIER on the token, not a replacement: the token is what makes the reel adapt to the screen. Capped by
+		   `--lyrics-fit` only when the caller asks every line to fit (Words only); unset, the cap is never reached. */
+		font-size: min(calc(var(--tv-lyric) * var(--lyrics-scale, 1)), var(--lyrics-fit, 100vh));
 		font-weight: 800;
 		font-family: var(--lyrics-font, inherit);
 		text-transform: var(--lyrics-case, none);
@@ -485,7 +525,8 @@
 		--lyrics-fade-cap: min(var(--lyrics-row-h), calc((100% - var(--lyrics-row-h)) / 2));
 		--lyrics-fade-top: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-top-on, 1));
 		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
-		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-budget));
+		/* Each line's budget is `--lyrics-wrap` rows: one on the stage, two on Words only, where the bigger type wraps. */
+		height: calc(var(--lyrics-rows, 5) * var(--lyrics-wrap, 1) * var(--lyrics-row-budget) + var(--lyrics-slack, 0em));
 		/*
 		 * EXACTLY the parent band, and it must NOT subtract a further `--tv-safe-y`: the box is centred, so charging
 		 * one against its height buys only half of it as top inset while removing a full one of reel — and
@@ -537,6 +578,10 @@
 	}
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
+	}
+	/* `visibility`, not `display`: the row keeps its box, so the reel's offsets and its glide stay as they are. */
+	.row.beyond {
+		visibility: hidden;
 	}
 	/* Inherits the row's colour transition, so it fades in step with its line rather than at one fixed brightness. */
 	.romanization {
