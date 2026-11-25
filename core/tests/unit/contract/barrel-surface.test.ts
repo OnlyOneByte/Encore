@@ -21,6 +21,7 @@ import * as barrel from '$lib/contract/index';
 //   bun -e "import * as b from './src/lib/contract/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
 const EXPECTED = [
 	'ACCENT2',
+	'ASR_COMPUTE_TYPES',
 	'ASR_MODELS',
 	'ATTEMPT_OUTCOMES',
 	'AXIS_HIGH_MIDI',
@@ -91,6 +92,7 @@ const EXPECTED = [
 	'PALETTE_RING_FROM_DEG',
 	'PALETTE_STOPS',
 	'PALETTE_STOP_ARC_DEG',
+	'PROFILE_SETTINGS',
 	'QUEUE_ORDERS',
 	'REACTIONS',
 	'SEPARATOR_ENGINES',
@@ -119,6 +121,7 @@ const EXPECTED = [
 	'applyAndReseq',
 	'applyOp',
 	'assignSeqs',
+	'attemptHandSet',
 	'attemptSelection',
 	'attemptStages',
 	// TWO SYMBOLS JOINED THE LIST, and both joined by a DELETION. `presentation/player-palette.ts` carried a

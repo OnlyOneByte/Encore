@@ -264,6 +264,18 @@ export interface JobAttempt {
 
 	/** Why an align job published no lyrics, when the worker knows (`LYRICS_NOTES`). Null otherwise. */
 	lyricsNote: string | null;
+
+	/** The assigned worker's jobs at once and demucs `-j` (`WorkerProfile`), stamped like `threads`. */
+	concurrency: number | null;
+	demucsJobs: number | null;
+	/** The profile settings set by hand, comma-joined `PROFILE_SETTINGS` names; '' means all were picked and
+	 *  null that the worker did not say. Parse with `attemptHandSet()`. */
+	handSet: string | null;
+}
+
+/** The hand-set profile names of an attempt, or null when its worker did not say. */
+export function attemptHandSet(a: Pick<JobAttempt, 'handSet'>): string[] | null {
+	return a.handSet == null ? null : a.handSet.split(',').filter(Boolean);
 }
 
 /** The reasons a worker may give for publishing no lyrics; anything else it sends is dropped. `asr-offline`: the

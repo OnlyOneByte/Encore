@@ -10,6 +10,7 @@ import asyncio
 import os
 import sys
 import threading
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -297,6 +298,28 @@ def test_the_hello_carries_the_demucs_jobs_core_stamps() -> None:
     )
     wire = client._hello().to_wire()
     assert (wire["device"], wire["threads"], wire["demucsJobs"], wire["concurrency"]) == ("cpu", 16, 4, 2)
+
+
+def test_the_hello_says_which_settings_were_set_by_hand() -> None:
+    """Core shows each profile value as picked or set by hand, so the hello names the hand-set ones."""
+    from encore_worker.transport.client import Client
+
+    told = Config.from_env({"ENCORE_THREADS": "6", "ENCORE_WARMUP": "0", "ENCORE_DEVICE": "cpu"})
+    assert told.hand_set() == ("device", "threads", "warmup")
+    assert Config.from_env({}).hand_set() == (), "nothing set means every setting was picked"
+    client = Client(
+        config=replace(told, asr_compute="float32"),
+        connect=None,  # type: ignore[arg-type]
+        run_job=None,  # type: ignore[arg-type]
+        capabilities=frozenset(),
+        hand_set=told.hand_set(),
+    )
+    wire = client._hello().to_wire()
+    assert (wire["handSet"], wire["asrCompute"], wire["warmup"]) == (
+        ["device", "threads", "warmup"],
+        "float32",
+        False,
+    )
 
 
 def test_the_asr_compute_reaches_whisper(monkeypatch: pytest.MonkeyPatch) -> None:

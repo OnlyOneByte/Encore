@@ -1,5 +1,12 @@
 // The shape of the audit response, extracted from +server.ts so it can be exported and unit-tested — a SvelteKit +server.ts may only export HTTP method handlers.
-import { attemptStages, attemptSelection, realtimeFactor, type JobAttempt, type SelectionRecord } from '$lib/contract';
+import {
+	attemptHandSet,
+	attemptStages,
+	attemptSelection,
+	realtimeFactor,
+	type JobAttempt,
+	type SelectionRecord
+} from '$lib/contract';
 import { processingMs, queueWaitMs } from '$lib/server/jobs/metrics';
 
 export interface AuditAttempt {
@@ -21,9 +28,13 @@ export interface AuditAttempt {
 		backend: string | null;
 		device: string | null;
 		threads: string | null;
+		concurrency: string | null;
+		demucsJobs: string | null;
 		asrModel: string | null;
 		syncMode: string | null;
 	};
+	/** Which of the worker's profile settings were set by hand; null when it did not say. */
+	handSet: string[] | null;
 	stages: { stage: string; ms: number }[];
 	// WHY this lyric won, when the attempt recorded it. Null on every non-align attempt.
 	selection: SelectionRecord | null;
@@ -92,9 +103,12 @@ export function toAudit(a: JobAttempt): AuditAttempt {
 			device: a.device,
 			// A string like its siblings, because the page prints this bag as label/value text.
 			threads: a.threads == null ? null : String(a.threads),
+			concurrency: a.concurrency == null ? null : String(a.concurrency),
+			demucsJobs: a.demucsJobs == null ? null : String(a.demucsJobs),
 			asrModel: a.asrModel,
 			syncMode: a.syncMode
 		},
+		handSet: attemptHandSet(a),
 		stages: attemptStages(a),
 		selection: attemptSelection(a)
 	};

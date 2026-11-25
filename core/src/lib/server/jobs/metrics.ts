@@ -445,6 +445,9 @@ const CSV_COLUMNS = [
 	'backend',
 	'device',
 	'threads',
+	'concurrency',
+	'demucsJobs',
+	'handSet',
 	'asrModel',
 	'syncMode',
 	'audioSec'

@@ -186,6 +186,7 @@ async def main() -> None:
     # BEFORE any model loads, so torch and every demucs child run the picked thread count.
     # The probe's count stands where nothing was pinned and torch could not be asked again.
     threads = hardware.apply_threads(profile.threads.count) or report.threads
+    hand_set = config.hand_set()
     # The RESOLVED values from here on, so the slots, the emission cache and the warm-up use what this box
     # picked rather than an unset env var.
     config = replace(
@@ -268,6 +269,7 @@ async def main() -> None:
         # What `apply_threads` pinned, not the probe's count from before it.
         threads=threads,
         demucs_jobs=profile.demucs_jobs.count,
+        hand_set=hand_set,
         host=report.to_wire(),
         on_settled=settled,
         stop_job=_stop,

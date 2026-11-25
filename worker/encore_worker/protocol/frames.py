@@ -86,6 +86,11 @@ class Hello:
     threads: int | None = None
     #: How many tracks torch demucs separates at once (its `-j`). Core accepts it in `WorkerProfile`.
     demucs_jobs: int | None = None
+    #: whisper's compute type and whether the boot warm-up runs, the rest of the boot profile.
+    asr_compute: str | None = None
+    warmup: bool | None = None
+    #: Which of the profile's settings were set by hand (`Config.hand_set`); the others were picked at boot.
+    hand_set: tuple[str, ...] = ()
     host: dict[str, Any] | None = None
 
     def to_wire(self) -> dict[str, object]:
@@ -99,6 +104,9 @@ class Hello:
             device=self.device,
             threads=self.threads,
             demucsJobs=self.demucs_jobs,
+            asrCompute=self.asr_compute,
+            warmup=self.warmup,
+            handSet=list(self.hand_set),
             host=self.host,
         )
 

@@ -69,6 +69,8 @@ class Client:
     threads: int | None = None
     #: torch demucs `-j` from the boot profile (`hardware.resolve_profile`), stamped beside the threads.
     demucs_jobs: int | None = None
+    #: The settings set by hand (`Config.hand_set`), read before boot filled in the picked ones.
+    hand_set: tuple[str, ...] = ()
     #: `Hello.host`, what `hardware.probe()` measured. Diagnostic only, so None simply omits it.
     host: dict[str, object] | None = None
 
@@ -211,6 +213,9 @@ class Client:
             device=self.device,
             threads=self.threads,
             demucs_jobs=self.demucs_jobs,
+            asr_compute=self.config.asr_compute,
+            warmup=self.config.warmup,
+            hand_set=self.hand_set,
             host=self.host,
         )
 

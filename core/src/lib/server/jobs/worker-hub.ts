@@ -17,7 +17,13 @@ import type {
 } from '../../contract';
 import { publishStemFormat, toRelativeKey, stemOutputTag, stemTagOf } from '../media/paths';
 import { queueSidecarTask } from '../media/sidecar';
-import { LYRICS_NOTES, resolveProcessSeparator, isTerminalJob } from '../../contract';
+import {
+	ASR_COMPUTE_TYPES,
+	LYRICS_NOTES,
+	PROFILE_SETTINGS,
+	resolveProcessSeparator,
+	isTerminalJob
+} from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
 import type { AttemptFacts, AttemptLedger } from './attempts';
@@ -200,13 +206,25 @@ const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isI
 /** The well-shaped part of a hello's profile. A bad field is DROPPED rather than refusing the frame: the
  *  profile is a diagnostic, and a diagnostic must never fail a handshake. */
 export function workerProfile(
-	msg: Partial<Record<'backend' | 'device' | 'threads' | 'demucsJobs', unknown>>
+	msg: Partial<
+		Record<
+			'backend' | 'device' | 'threads' | 'demucsJobs' | 'concurrency' | 'asrCompute' | 'warmup' | 'handSet',
+			unknown
+		>
+	>
 ): WorkerProfile {
 	const out: WorkerProfile = {};
 	if (isProfileName(msg.backend)) out.backend = msg.backend;
 	if (isProfileName(msg.device)) out.device = msg.device;
 	if (isCount(msg.threads)) out.threads = msg.threads;
 	if (isCount(msg.demucsJobs)) out.demucsJobs = msg.demucsJobs;
+	if (isCount(msg.concurrency)) out.concurrency = msg.concurrency;
+	if ((ASR_COMPUTE_TYPES as readonly unknown[]).includes(msg.asrCompute)) out.asrCompute = msg.asrCompute as string;
+	if (typeof msg.warmup === 'boolean') out.warmup = msg.warmup;
+	// Known names only, once each and in one order, so the stored list is short and can be shown as is.
+	const handSet = msg.handSet;
+	if (Array.isArray(handSet) && handSet.length <= 32)
+		out.handSet = PROFILE_SETTINGS.filter((name) => handSet.includes(name));
 	return out;
 }
 
@@ -1073,6 +1091,9 @@ export class WorkerHub {
 				backend: profile.backend ?? null,
 				device: profile.device ?? null,
 				threads: profile.threads ?? null,
+				concurrency: profile.concurrency ?? null,
+				demucsJobs: profile.demucsJobs ?? null,
+				handSet: profile.handSet?.join(',') ?? null,
 				engine: params.engine ?? null,
 				model: params.model ?? null,
 				asrModel: params.asrModel ?? null,

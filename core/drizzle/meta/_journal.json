@@ -120,6 +120,13 @@
       "when": 1795592831863,
       "tag": "0016_lyrics_offset",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795599338097,
+      "tag": "0017_attempt_profile",
+      "breakpoints": true
     }
   ]
 }

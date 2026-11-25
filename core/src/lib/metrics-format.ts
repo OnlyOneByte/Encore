@@ -2,7 +2,7 @@
 // to one page's label map and silently show the raw database name on the other. This vocabulary is deliberately
 // SEPARATE from the guest-facing labels in the contract: different readers, kept apart on purpose.
 
-import { SEPARATOR_ENGINES } from '$lib/contract';
+import { PROFILE_SETTINGS, SEPARATOR_ENGINES } from '$lib/contract';
 
 /** ms to a human duration. Null renders as an em dash, NEVER as 0 — a missing timing is "not recorded", not "took
  * no time". EACH BRANCH ROUNDS TO THE PRECISION IT DISPLAYS BEFORE the branch is chosen: the other order prints
@@ -137,16 +137,28 @@ const FACT_LABELS: Record<string, string> = {
 	backend: 'runtime',
 	device: 'hardware',
 	threads: 'torch threads',
+	concurrency: 'jobs at once',
+	demucsJobs: 'demucs jobs',
 	asrModel: 'speech model',
 	syncMode: 'timing'
 };
 export const factLabel = (k: string): string => FACT_LABELS[k] ?? k;
 
+/** "4 (auto)" or "4 (set by hand)" for one of the worker's `PROFILE_SETTINGS`; anything else, or a worker
+ *  that did not say (`handSet` null), keeps the bare value. */
+export function picked(key: string, value: string, handSet: readonly string[] | null | undefined): string {
+	if (!handSet || !(PROFILE_SETTINGS as readonly string[]).includes(key)) return value;
+	return `${value} (${handSet.includes(key) ? 'set by hand' : 'auto'})`;
+}
+
 /** Label/value pairs for the model block, dropping every absent field rather than printing an empty row. */
-export function modelFacts(models: Record<string, string | null>): [string, string][] {
+export function modelFacts(
+	models: Record<string, string | null>,
+	handSet: readonly string[] | null = null
+): [string, string][] {
 	return Object.entries(models)
 		.filter((entry): entry is [string, string] => Boolean(entry[1]))
-		.map(([key, value]): [string, string] => [factLabel(key), value]);
+		.map(([key, value]): [string, string] => [factLabel(key), picked(key, value, handSet)]);
 }
 
 /** The distinction worth keeping: `agreement` means a baseline voted, so a wrong pick there is a metric problem;
@@ -179,18 +191,28 @@ const PROFILE_LABELS: Record<string, string> = {
 	device: 'hardware',
 	backend: 'runtime',
 	threads: 'torch threads',
-	demucsJobs: 'demucs jobs'
+	demucsJobs: 'demucs jobs',
+	concurrency: 'jobs at once',
+	asrCompute: 'speech compute',
+	warmup: 'warm-up at boot'
 };
 
-/** One worker's fact list: what it RESOLVED first, then what it measured about the box. A resolved device
- *  hides the host's `accelerator`, which would only say the same thing again under another name. */
+/** One worker's fact list: what it RESOLVED first, each marked auto or set by hand, then what it measured
+ *  about the box. A resolved device hides the host's `accelerator`, which would say the same thing again. */
 export function workerFacts(
 	profile: Record<string, unknown> | null,
 	host: Record<string, unknown> | null
 ): [string, string][] {
 	const box = { ...host };
 	if (profile?.device != null) delete box.accelerator;
-	return [...labelled(PROFILE_LABELS, profile ?? {}), ...labelled(HOST_LABELS, box)];
+	const handSet = Array.isArray(profile?.handSet) ? (profile.handSet as string[]) : null;
+	const resolved = Object.fromEntries(
+		Object.entries(profile ?? {}).map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'on' : 'off') : v])
+	);
+	const settings = Object.entries(PROFILE_LABELS)
+		.filter(([key]) => resolved[key] != null && resolved[key] !== '')
+		.map(([key, label]): [string, string] => [label, picked(key, String(resolved[key]), handSet)]);
+	return [...settings, ...labelled(HOST_LABELS, box)];
 }
 
 function labelled(labels: Record<string, string>, bag: Record<string, unknown>): [string, string][] {

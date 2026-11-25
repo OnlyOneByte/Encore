@@ -104,7 +104,15 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	capabilities?: string[];
 	concurrency?: number;
 	/** The resolved profile sent in hello, which core stamps on every attempt it assigns. Default: none. */
-	profile?: { backend?: string; device?: string; threads?: number };
+	profile?: {
+		backend?: string;
+		device?: string;
+		threads?: number;
+		demucsJobs?: number;
+		asrCompute?: string;
+		warmup?: boolean;
+		handSet?: string[];
+	};
 	/** What the worker presents. Default: core's own (`Core.workerToken`), as a real worker reads it; `null`
 	 *  sends none, which core refuses with 401. */
 	token?: string | null;
