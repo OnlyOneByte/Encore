@@ -721,7 +721,9 @@ either a ledger update or a request to start a workflow, and every outbound fram
 dataclass. Three responsibilities:
 
 1. **Reconnect with backoff**, because a LAN core restarts and a worker that exits on a dropped socket
-   needs a supervisor to do what a loop does for free.
+   needs a supervisor to do what a loop does for free. The dials are 0.5, 1 and 2 s apart, then every 3 s, each
+   ±50 % jitter so several workers don't return in lockstep. The count starts again after any session core
+   welcomed, so a worker is back within 4.5 s of a restarted core listening (#1082, `tests/test_redial.py`).
 2. **Emit progress on a timer** while a step runs, so the core's lease does not expire. Under durable
    resumption an expired lease is no longer fatal, but a keepalive that never fires still makes every long
    separation look dead. `job:progress` doubles as the lease refresh (core's `progressLeaseMs` is **30 s**)

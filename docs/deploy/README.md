@@ -8,7 +8,9 @@ to only one of several forked copies.
 
 Use them by stacking `-f` flags — later files win. `./dev.sh compose` supplies the base file, and adds
 the GPU override by itself on Linux x86_64 when Docker lists the `nvidia` runtime and `nvidia-smi -L`
-sees a GPU. `--cuda` adds it unconditionally, and `ENCORE_TORCH_EXTRA=cpu` keeps it off:
+sees a GPU. `--cuda` or `ENCORE_TORCH_EXTRA=cu128` adds it unconditionally, and `ENCORE_TORCH_EXTRA=cpu` keeps
+it off. Every run prints one line saying which worker image it picked and why, such as
+`dev.sh compose: cpu worker image (Docker has no nvidia runtime; …)`:
 
 ```bash
 ./dev.sh compose --profile stems up -d                 # the NVIDIA target, picked by itself

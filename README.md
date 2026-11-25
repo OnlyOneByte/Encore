@@ -30,7 +30,8 @@ cp docker/.env.example docker/.env     # optional: every setting in it has a wor
 ```
 
 On an NVIDIA box the same command adds the GPU override by itself when Docker has the `nvidia` runtime
-and `nvidia-smi -L` sees a GPU (`--cuda` forces it; `ENCORE_TORCH_EXTRA=cpu` opts out).
+and `nvidia-smi -L` sees a GPU (`--cuda` or `ENCORE_TORCH_EXTRA=cu128` forces it; `ENCORE_TORCH_EXTRA=cpu`
+opts out), and says which worker image it picked and why.
 
 `docker/.env` is optional (every value in it has a default), and the worker token belongs there. Both run
 modes read it: a native `bash dev.sh` run loads all of it, and under Docker `docker/compose.yaml` passes

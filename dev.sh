@@ -51,25 +51,35 @@ ROOT="$PWD"
 #
 # `--cuda` is sugar for adding the GPU override, since that is the real deploy target and the two-file
 # invocation is the single most-mistyped command in the runbook. Without it the override is added when a GPU
-# and Docker's nvidia runtime are both there (docs/deploy/README.md); ENCORE_TORCH_EXTRA=cpu opts out.
+# and Docker's nvidia runtime are both there (docs/deploy/README.md). ENCORE_TORCH_EXTRA=cu128 forces it too,
+# and =cpu opts out. One line on every run says which worker image it is and why, so a CPU worker on a GPU box
+# says what it missed.
 if [ "${1:-}" = "compose" ]; then
 	shift
 	compose_files=(-f "$ROOT/docker/compose.yaml")
+	gpu=cpu
 	if [ "${1:-}" = "--cuda" ]; then
 		shift
-		compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+		gpu=cuda why="--cuda"
 	else
 		# Captured, not piped into `grep -q`: under pipefail an early-exiting grep fails the whole check.
 		extra="${ENCORE_TORCH_EXTRA:-$(sed -n 's/^ENCORE_TORCH_EXTRA=\([a-z0-9]*\).*/\1/p' "$ROOT/docker/.env" 2>/dev/null | tail -n 1 || true)}"
-		runtimes=""
-		if [ "$extra" != cpu ] && [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ]; then
-			runtimes="$(timeout 10 docker info --format '{{json .Runtimes}}' 2>/dev/null || true)"
-		fi
-		if [[ "$runtimes" == *'"nvidia"'* ]] && timeout 10 nvidia-smi -L >/dev/null 2>&1; then
-			echo "dev.sh compose: NVIDIA GPU and Docker's nvidia runtime found, adding docker/compose.cuda.yaml (ENCORE_TORCH_EXTRA=cpu opts out)" >&2
-			compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+		platform="$(uname -s)/$(uname -m)"
+		if [ "$extra" = cpu ] || [ "$extra" = cu128 ]; then
+			if [ "$extra" = cu128 ]; then gpu=cuda; fi
+			why="ENCORE_TORCH_EXTRA=$extra"
+		elif [ "$platform" != Linux/x86_64 ]; then
+			why="no CUDA build for $platform"
+		elif [[ "$(timeout 10 docker info --format '{{json .Runtimes}}' 2>/dev/null || true)" != *'"nvidia"'* ]]; then
+			why="Docker has no nvidia runtime"
+		elif ! timeout 10 nvidia-smi -L >/dev/null 2>&1; then
+			why="nvidia-smi sees no GPU"
+		else
+			gpu=cuda why="an NVIDIA GPU and Docker's nvidia runtime"
 		fi
 	fi
+	if [ "$gpu" = cuda ]; then compose_files+=(-f "$ROOT/docker/compose.cuda.yaml"); fi
+	echo "dev.sh compose: $gpu worker image ($why; --cuda or ENCORE_TORCH_EXTRA=cu128 forces CUDA, =cpu opts out)" >&2
 	# `--stems` is sugar for the worker's compose profile. Spelled here rather than left to the caller
 	# because the two worker profiles must never run together: they advertise overlapping capabilities, so
 	# the core would round-robin jobs between them and any comparison would measure whichever was idle.

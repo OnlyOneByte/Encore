@@ -94,42 +94,74 @@ def test_core_only_probes_no_gpu() -> None:
     assert text.count('TORCH_EXTRA="$(torch_extra)"') == 1 and gate > text.index("torch_extra() {")
 
 
-def compose_files(tmp_path: Path, *, runtimes: str, gpu: bool, machine: str = "x86_64", env: str = "") -> str:
-    """The `docker compose` argv `./dev.sh compose --stems up` execs, with faked docker, uname, nvidia-smi."""
+#: What `docker info --format '{{json .Runtimes}}'` prints, with and without the NVIDIA Container Toolkit.
+WITH_NVIDIA = (
+    '{"io.containerd.runc.v2":{"path":"runc"},'
+    '"nvidia":{"path":"nvidia-container-runtime"},"runc":{"path":"runc"}}'
+)
+RUNC_ONLY = '{"io.containerd.runc.v2":{"path":"runc"},"runc":{"path":"runc"}}'
+#: `nvidia-smi -L` on a box with a GPU, and on one whose driver is missing or broken (exit 9).
+GPU_LISTED = "GPU 0: NVIDIA GeForce RTX 4070 (UUID: GPU-2f3c1d9e-5b7a-4e21-9c0d-8a6b4f1e2d3c)"
+NO_DRIVER = "NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver."
+
+
+def compose_run(
+    tmp_path: Path,
+    *,
+    runtimes: str,
+    gpu: bool,
+    machine: str = "x86_64",
+    env: str = "",
+    args: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    """`./dev.sh compose [args] --stems up` with faked docker, uname and nvidia-smi: the argv it execs on
+    stdout, its picked-and-why line on stderr."""
     fake = tmp_path / "bin"
     fake.mkdir(exist_ok=True)
     (fake / "uname").write_text(f'#!/bin/sh\n[ "$1" = -s ] && echo Linux || echo {machine}\n')
-    (fake / "nvidia-smi").write_text(f"#!/bin/sh\nexit {0 if gpu else 9}\n")
+    (fake / "nvidia-smi").write_text(
+        f"#!/bin/sh\necho '{GPU_LISTED}'\n" if gpu else f"#!/bin/sh\necho '{NO_DRIVER}'\nexit 9\n"
+    )
     (fake / "docker").write_text(f'#!/bin/sh\n[ "$1" = info ] && echo \'{runtimes}\' || echo "$@"\n')
     for tool in ("uname", "nvidia-smi", "docker"):
         (fake / tool).chmod(0o755)
-    run = subprocess.run(
-        ["bash", str(REPO / "dev.sh"), "compose", "--stems", "up"],
+    return subprocess.run(
+        ["bash", str(REPO / "dev.sh"), "compose", *args, "--stems", "up"],
         cwd=REPO,  # dev.sh resolves docker/ from its cwd; the faked docker only echoes, so nothing is written
         env={"PATH": f"{fake}:/usr/bin:/bin", **({"ENCORE_TORCH_EXTRA": env} if env else {})},
         capture_output=True,
         text=True,
         check=True,
     )
-    return run.stdout
 
 
 @pytest.mark.parametrize(
-    ("runtimes", "gpu", "machine", "env", "cuda"),
+    ("runtimes", "gpu", "machine", "env", "cuda", "why"),
     [
-        ('{"nvidia":{},"runc":{}}', True, "x86_64", "", True),
-        ('{"runc":{}}', True, "x86_64", "", False),  # no nvidia runtime: the override would fail to start
-        ('{"nvidia":{}}', False, "x86_64", "", False),  # the runtime but no GPU answering
-        ('{"nvidia":{}}', True, "aarch64", "", False),  # no cu128 wheels for linux-aarch64
-        ('{"nvidia":{}}', True, "x86_64", "cpu", False),  # the opt-out
+        (WITH_NVIDIA, True, "x86_64", "", True, "an NVIDIA GPU and Docker's nvidia runtime"),
+        # No nvidia runtime: the override would fail to start.
+        (RUNC_ONLY, True, "x86_64", "", False, "Docker has no nvidia runtime"),
+        (WITH_NVIDIA, False, "x86_64", "", False, "nvidia-smi sees no GPU"),
+        # No cu128 wheels for linux-aarch64.
+        (WITH_NVIDIA, True, "aarch64", "", False, "no CUDA build for Linux/aarch64"),
+        (WITH_NVIDIA, True, "x86_64", "cpu", False, "ENCORE_TORCH_EXTRA=cpu"),
+        # Forced: the operator knows better than the probe, e.g. a runtime registered under another name.
+        (RUNC_ONLY, False, "x86_64", "cu128", True, "ENCORE_TORCH_EXTRA=cu128"),
     ],
 )
-def test_dev_sh_compose_adds_the_gpu_override_by_itself(
-    tmp_path: Path, runtimes: str, gpu: bool, machine: str, env: str, cuda: bool
+def test_dev_sh_compose_picks_the_worker_image_by_itself_and_says_why(
+    tmp_path: Path, runtimes: str, gpu: bool, machine: str, env: str, cuda: bool, why: str
 ) -> None:
-    argv = compose_files(tmp_path, runtimes=runtimes, gpu=gpu, machine=machine, env=env)
-    assert ("docker/compose.cuda.yaml" in argv) == cuda
-    assert "--profile stems up" in argv
+    run = compose_run(tmp_path, runtimes=runtimes, gpu=gpu, machine=machine, env=env)
+    assert ("docker/compose.cuda.yaml" in run.stdout) == cuda
+    assert "--profile stems up" in run.stdout
+    assert f"dev.sh compose: {'cuda' if cuda else 'cpu'} worker image ({why};" in run.stderr
+
+
+def test_dev_sh_compose_cuda_flag_forces_the_override_without_probing(tmp_path: Path) -> None:
+    run = compose_run(tmp_path, runtimes=RUNC_ONLY, gpu=False, args=("--cuda",))
+    assert "docker/compose.cuda.yaml" in run.stdout
+    assert "dev.sh compose: cuda worker image (--cuda;" in run.stderr
 
 
 # ── the diarizer, once at boot ───────────────────────────────────────────────────────────────────
