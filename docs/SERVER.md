@@ -873,8 +873,27 @@ screens come in later PRs. `src/lib/server/nights/` owns it.
 - **Retention.** At boot and once a day on the reaper tick (`dailyNightSweep`), a guest's rows older than 90
   days go (`GUEST_NIGHTS_RETENTION_MS`), and then nights left with no rows. A kept person's rows stay until
   Delete me, or until the person is pruned after 180 days with no phone. Both periods are constants for now.
-- **Nothing reaches another phone or the TV.** No frame carries a performance, and the host has no route to a
-  guest's history: the host cookie is not a singer cookie.
+- **Nothing reaches another phone.** No frame carries a performance, and the host has no route to a guest's
+  history: the host cookie is not a singer cookie. The TV gets only the room's recap below.
+
+### Tonight
+
+Proposal 29, PR 4. The host's "Show the night" plays the room's night on the TV (`src/lib/server/nights/tonight.ts`).
+
+- **The route.** `POST /api/host/tonight` needs the host session (`night:show`) and is refused with 403 before
+  anything is read. It answers 409 `busy` while a song is current or any turn is waiting, so it never plays
+  over a song. It answers 404 `empty` when there is no night to show. Otherwise it publishes one
+  `tv:tonight` frame on `roomTvTopic`, which phones never subscribe to. Nothing plays it on its own.
+- **What the room saw.** Tonight is the latest run of `plays` with no 6-hour gap, ending within 6 hours of now
+  (`tonightPlays`, looking back 48 hours). `plays` is singer-free, so a song the room heard counts whoever sang
+  it. A turn that wouldn't play (`end: failed`) is not counted.
+- **Who may be named.** Only a turn with a `performances` row whose singer still keeps their nights. A play with
+  no row (the singer opted out, or deleted their history) or a row whose singer has since opted out is hidden.
+  With any hidden turn in the night, the recap carries `songs` only: no `singers` and no `cheers`, so nobody
+  hidden is counted. Hidden singers are never named or coloured. The first or last song is named only when it
+  really was the night's first or last.
+- **No rankings.** The recap has room totals, the first and last song, and who sang in the order they first
+  sang. There is no per-singer or per-song count, and no "most" of anything.
 
 ### Your songs
 

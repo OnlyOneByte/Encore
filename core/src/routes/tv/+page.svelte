@@ -33,6 +33,8 @@
 	import { WsClient } from '$lib/ws/client';
 	import { ClockOffset, clientNow, type TvClock } from '$lib/tv/copy-clock';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
+	import TvTonight from '$lib/tv/TvTonight.svelte';
+	import type { Tonight } from '$lib/contract';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import TvCopyChip, { copyLine } from '$lib/tv/TvCopyChip.svelte';
 	import {
@@ -412,9 +414,12 @@
 
 	// Mounted only on the stage branch, so between songs this is undefined and a late reaction is simply dropped.
 	let reactions = $state<Reactions | undefined>();
+	/** The host's "Show the night", while it plays. Only between songs: a song starting ends it. */
+	let tonight = $state<Tonight | null>(null);
 
 	function handleEvent(e: ServerEvent) {
 		if (e.type === 'room:reacted') reactions?.add(e);
+		if (e.type === 'tv:tonight') tonight = e.tonight;
 		if (e.type === 'tv:clock') tvClock = { entryId: e.entryId, positionSec: e.positionSec, serverAt: e.serverAt };
 		if (e.type === 'tv:pong') {
 			clockOffset.add(e.t0, e.serverAt, clientNow());
@@ -681,6 +686,10 @@
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
+	// A song starting ends "Tonight" for good, so it never comes back after that song.
+	$effect(() => {
+		if (screen !== 'attract' && screen !== 'lobby') tonight = null;
+	});
 	const chipAsleep = $derived(
 		isCopy && !chipAwake && tvOnline && !seatNext && screen !== 'lobby' && screen !== 'attract'
 	);
@@ -1005,7 +1014,9 @@
 		singerColor={currentSingerColor}
 	/>
 
-	{#if screen === 'attract'}
+	{#if tonight && (screen === 'attract' || screen === 'lobby')}
+		<TvTonight tonight={tonight} onend={() => (tonight = null)} />
+	{:else if screen === 'attract'}
 		<TvAttract
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}

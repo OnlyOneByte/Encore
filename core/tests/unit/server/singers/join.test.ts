@@ -87,6 +87,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		mediaStoreConfig: { kind: 'local' },
 		pendingDeletes: new PendingDeletes(() => {}),
 		publish: (e) => published.push(e),
+		publishTv: () => {},
 		toWorker: () => {},
 		now: () => 1_700_000_000_000
 	};

@@ -22,9 +22,12 @@ export type Capability =
 	/** Reset a kept person's phones: sign out every one and forget the person (docs/SERVER.md#kept-people). */
 	| 'people:reset'
 	/** See, name and remove the room's screens, and make one the TV, on the Screens page. */
-	| 'screens:manage';
+	| 'screens:manage'
+	/** Play the room's night on the TV ("Show the night"). */
+	| 'night:show';
 
 const HOST_ONLY: ReadonlySet<Capability> = new Set([
+	'night:show',
 	'settings:write-room',
 	'settings:write-global',
 	'operator:read',
