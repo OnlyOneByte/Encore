@@ -221,3 +221,41 @@ test('#1277 a natural end onto a warmed file that is already dead fails it at on
 		await worker.stop();
 	}
 });
+
+test('#1298 review: the TV’s `failed` for that dead song is lost, and the room still moves on to Ana', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const maya = await world.openPhone('Maya');
+		const theo = await world.openPhone('Theo');
+		const ana = await world.openPhone('Ana');
+		await readyId(world, maya, 'caroline');
+		const theoMedia = await readyId(world, maya, 'believin');
+		await readyId(world, maya, 'prayer');
+		const tv = await world.openTv();
+		await tv.route(`**/*${theoMedia}*`, (route) => route.fulfill({ status: 404, body: '' }));
+		// The first `failed` the TV sends never leaves it: the same net state as a socket down at the end.
+		await tv.evaluate(() => {
+			const w = window as unknown as { failedSends: number };
+			w.failedSends = 0;
+			const send = WebSocket.prototype.send;
+			WebSocket.prototype.send = function (this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+				if (typeof data === 'string' && data.includes('"status":"failed"') && w.failedSends++ === 0) return;
+				send.call(this, data);
+			};
+		});
+		await queueReady(maya, 'caroline');
+		await queueReady(theo, 'believin');
+		await queueReady(ana, 'prayer');
+		await armWarmSlot(tv, theoMedia, 'errored');
+		await expect(tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 20_000 });
+		// Without the re-send the server sat on Theo, playing, at 0:00, with no slot to fail him again.
+		await expect(tv.locator(SEL.stateNext)).toContainText('Ana', { timeout: 15_000 });
+		const sends = await tv.evaluate(() => (window as unknown as { failedSends: number }).failedSends);
+		expect(sends, 'the lost `failed` was never sent again').toBeGreaterThanOrEqual(2);
+		expect(sends, 'the re-send looped').toBeLessThanOrEqual(3);
+	} finally {
+		await worker.stop();
+	}
+});

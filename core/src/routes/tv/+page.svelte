@@ -208,6 +208,13 @@
 			sendTelemetry(ctl.endedStatus, cur.id);
 			return;
 		}
+		// The same for a song the TV already failed as dead (#1277): no slot will load it again, so if its `failed` was
+		// lost (the socket was down) only this re-send moves the room on. Once per song per connection, so a stream of
+		// frames naming it cannot loop; the server drops it as stale once it has moved past.
+		if (cur && ctl.isSpent(cur.id) && spentResent !== cur.id) {
+			spentResent = cur.id;
+			sendTelemetry('failed', cur.id);
+		}
 		// Compared BEFORE `current` is overwritten, and on the ENTRY id: a song queued twice is two entries over one media.
 		const entryChanged = cur?.id !== current?.id;
 		current = cur;
@@ -290,6 +297,8 @@
 		}, SKIP_NOTICE_MS);
 	}
 	let resumeAfterNotice = false;
+	/** The spent entry whose `failed` this connection has already re-sent (see applyNowPlaying). Plain bookkeeping. */
+	let spentResent: string | null = null;
 
 	/** The song won't play (TvPlayer's one `onfailed`). The room moves on like an end, and the room is told WHOSE song
 	 *  it was — never the browser's reason, and never anyone's fault. `failedId` is the entry the failing SLOT holds:
@@ -568,6 +577,8 @@
 					// eslint-disable-next-line svelte/prefer-svelte-reactivity -- plain bookkeeping, never rendered
 					heardSinceReconnect = new Set();
 					void seedFromLibrary(true);
+					// A new connection may re-send a spent song's `failed` once more: the last one may have died with the old.
+					spentResent = null;
 				}
 				if (c) wasConnected = true;
 				connected = c;
