@@ -243,7 +243,7 @@ test('the On deck card reflows at 320px with the text doubled', async ({ world }
 
 		await maya.setViewportSize({ width: VIEWPORT_W, height: VIEWPORT_H });
 		await openQueue(maya);
-		const notYet = maya.locator('section[aria-label="On deck"]').getByRole('button', { name: /^Not yet/ });
+		const notYet = maya.locator(SEL.queueMyCard).getByRole('button', { name: /^Not yet/ });
 		assertReflows(
 			'/queue (On deck)',
 			await measure(maya, '/queue (On deck)', '/queue', () => notYet.waitFor({ state: 'visible' }))

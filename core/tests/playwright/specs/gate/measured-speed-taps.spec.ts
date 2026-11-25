@@ -154,7 +154,7 @@ test('CLAIM 10 / 11 / 14 Sing (+), the tabs and On deck answer in the next frame
 	}
 });
 
-test('CLAIM 11 KNOWN BREAK an On deck key step shifts nothing', async ({ world }) => {
+test('CLAIM 11 an On deck key step shifts nothing', async ({ world }) => {
 	const worker = await startFakeWorker(world, { seconds: SECS });
 	try {
 		const maya = await world.openPhone('Maya');
@@ -173,7 +173,6 @@ test('CLAIM 11 KNOWN BREAK an On deck key step shifts nothing', async ({ world }
 		}
 		await ben.waitForTimeout(600);
 		const s = await readState(ben);
-		knownBreak('OnDeckCard.svelte:63 facts line (~0.0067/tap) and RangeBar `left:` (~0.00008) shift, #1127');
 		expect(s.cls, `CLAIM 11 layout shifts stepping the On deck key: ${JSON.stringify(s.shifts)}`).toBe(0);
 	} finally {
 		await worker.stop();

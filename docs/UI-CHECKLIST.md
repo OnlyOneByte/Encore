@@ -134,9 +134,8 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
   card's 500 ms `arrive` is an expected failure a fix flips (#1092). For other motion, read `metrics.json`'s
   `declared[].durationMs`.
 - **M2.** CLS 0 on the cold loads and the phone moments above, counting **every** shift, the ones within 500 ms of
-  the tap that caused them included (a tap does not license a jump). **Automated** (`gate:measured` CLAIM 11).
-  Stepping the On deck key shifts the card today (`OnDeckCard.svelte`'s facts line and RangeBar's `left:`), an
-  expected failure a fix flips (#1127). Other state changes
+  the tap that caused them included (a tap does not license a jump). **Automated** (`gate:measured` CLAIM 11,
+  stepping the On deck key included). Other state changes
   are `dock-cls` and `queue-now-cls` (probes) and the reviewer's.
 
 ### Glance (tenet 4)

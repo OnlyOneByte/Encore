@@ -136,9 +136,11 @@ export const SEL = {
 	queueNowCard: '.now',
 	/** The playing song's key and guide as one line, on every phone. */
 	queueNowTune: '.now [data-now-tune]',
-	/** YOUR card: "On deck" while the song before yours plays, then "Your song" while yours does, one element. The
-	 *  singer's key, guide and range live here, never on the Now row. */
-	queueMyCard: 'section.deck',
+	/** YOUR card: "You're next" while the song before yours plays, then "You're up" (`.deck.up`) while yours does,
+	 *  one element. The singer's key and guide live here, never on the Now row. */
+	queueMyCard: '.deck',
+	/** Guide as Off / Low / Full (GuideSegments). */
+	guideSegments: '[role="radiogroup"]',
 	queueElapsed: '.clock .elapsed',
 	queueRemain: '.clock .remain',
 	/** The remove button on a QueueRow or ProcessingCard, by test id: its accessible name carries the song title

@@ -670,8 +670,9 @@ fine control).
   checked segment, or the first when none is). The arrow keys move and select, wrapping, and Home and End jump to the
   ends. Each segment is a 44 px target.
 - **A pick shows in the same frame.** The room's answer replaces it. If `onpick` returns false (the command never
-  reached the wire), the pick drops at once, the rule `guide-send.ts` states for the slider. If the room keeps its
-  level and so sends no change, the pick drops after `PRESS_HOLD_MS` (3 s).
+  reached the wire), the pick drops at once. If the room keeps its level and so sends no change, the pick drops after
+  `PRESS_HOLD_MS` (3 s). A change of `scope` (the song it belongs to) drops it too, so a pick never carries onto the
+  next song even when that song's level is the same.
 - **Paint.** A checked segment is filled in `currentColor` and its label inked in `--seg-ink`, which the Spotlight
   sets to its own surface. The focus ring keeps the pill's radius and takes `--seg-focus`. A lit card sets that to
   `--on-spot`, which is certified on the fill, so the ring clears 3:1 on all 48 singer colours. Elsewhere it is
@@ -846,13 +847,10 @@ why.)
 A call site can owe one of two things, and which one depends on whether it holds an optimistic value:
 
 - **An optimistic value may not move on a drop.** Two controls hold one, both on /queue: the ± keycaps
-  (`keyDraft`) and the guiding-track slider (`guideDraft`, driven by `$lib/guide-send`). Both are nullable
-  "no local opinion" drafts — cleared when the room AGREES with them and on a song change, set only by a command
-  that reached the wire. The shape that fails is a drag-scoped boolean beside a number: it showed a level the
-  room had never heard for the length of the drag, and then sprang back to a stale echo on release even when the
-  command had landed. `guide-send.ts` owns the throttle, its trailing edge and the drop rule precisely so that
-  arithmetic is reachable from a bun test; the route keeps only the `$state` draft and the clearing effect.
-  **A DRAFT IS ONLY HALF OF IT WHERE THE CONTROL IS A THIRD-PARTY WIDGET**, and the slider shipped on that half
+  (`keyDraft`) and the Guide segments (their own pick, `GuideSegments`). Both are "no local opinion" drafts —
+  cleared when the room answers and on a song change, set only by a command that reached the wire.
+  **A DRAFT IS ONLY HALF OF IT WHERE THE CONTROL IS A THIRD-PARTY WIDGET**, and the slider (`GuidingTrack`, which
+  /queue drove until redesign step 5b) shipped on that half
   alone for a revision. bits-ui keeps its own copy of a slider's `value` and reads the thumb position, the filled
   range and `aria-valuenow` out of it, so holding the draft back left all three advancing on a refused command:
   measured offline against a room at 0%, `aria-valuenow` reached 95 and the thumb 92% of the track while the
@@ -989,8 +987,10 @@ Beating that wants a settled-state read on the link, applied to all three at onc
 
 ### The Now card
 
-The top of `/queue` while a song plays. Since redesign step 5 it is a **compact Now row**, ink on the ground with no
-surface of its own: the song (its title is the door to `/song/[mediaId]`), the singer, the clock and the transport.
+`/queue`'s row for the playing song, under your card when you have one (redesign step 5b). It is a **compact Now
+row**, ink on the ground with no surface of its own, under a quiet sentence-case "Now": the song (its title,
+underlined, is the door to `/song/[mediaId]` for everyone who is not singing), the singer, the clock and the transport.
+The row arriving with the room's first song fades in (`.arrive`) once the blocks under it have glided past its box.
 **It holds the transport** (redesign step 4, an owner ruling, moved off the dock): restart, play/pause and skip,
 three 44 px keys under the clock in one `Playback` group, for every phone, as the strip had them. Play/pause is the
 row's one accent fill. They go through the root layout's `transport()` and tap
@@ -1000,8 +1000,8 @@ With nothing playing but a song ready, the only Play is the strip's, beside `Rea
 flashed for the frames between the queue patch and `playback:state` as every first song started, and shifted the
 list under it.
 
-The playing song's key and guide belong to its singer (ARCHITECTURE.md §10), so the keycaps, the Guide slider and
-the range bar are on the singer's own card, never on the Now row. The row reads the same facts as one line from
+The playing song's key and guide belong to its singer (ARCHITECTURE.md §10), so the keycaps and the Guide segments
+are on the singer's own card, never on the Now row. The row reads the same facts as one line from
 `tuneLine` in `src/lib/song-facts.ts`: `Key +2 · Guide 40%`, the TV's wording in the phone's dress. The key part
 shows only while shifted, and a song with no guiding track names no guide. The line's slot is kept, blank, whenever
 the song can be tuned, so the singer's first tap fills it without moving anything on the other phones.
@@ -1011,26 +1011,33 @@ notice "Only Maya can change their key." The phone knows names, not pronouns, so
 
 ### Your card: On deck, then You're up
 
-`OnDeckCard` is the Spotlight on `/queue` (redesign step 5, #1154): the screen's one lit surface, in your own colour,
-first inside `.below` under the Now row. **On deck** while the song before yours plays, it sets the key and guide
-your song will start in (the entry's preset) and offers "Not yet" once; "You're next — grab the mic" in the last 30 s.
-**You're up** once your song plays, the same rows drive the live song through the page's `stepKey`, `guideInput` and
-`guideCommit`, and the details link takes the slot "Not yet" held.
+`OnDeckCard` is the Spotlight on `/queue` (redesign steps 5 and 5b, #1154): the screen's one lit surface and the
+first thing on it, above the Now row. It is `ui/Spotlight` filled in your colour, its ink the stop's certified
+`on_fill` (the dim lines and the keycaps' boundary are that ink at 80%, which clears 4.5:1 on all 48 stops), so it
+reads on all eight singer colours. **On deck** while the song before yours plays: "After Maya" with the time left at
+the line's trailing edge, the `--type-display` headline "You're next", your song, then the Key row (its words are
+the key and range, always a line, so a key tap changes words and adds no row) and Guide as Off / Low / Full
+(`GuideSegments`). They set the key and guide your song will start in (the entry's preset), and "Not yet" is offered
+once. In the last 30 s the meta line says "Grab the mic", a cut. **You're up** once your song plays: the same rows
+drive the live song (`stepKey`, and a Guide pick is one `guide` command naming the song), and the details link takes
+the slot "Not yet" held. If "Not yet" had focus as it leaves, focus goes to the card's first enabled key.
 
 It is **one box for both moments**. The route renders it in one `{#if}`, so the handoff gives the same instance new
-props rather than a remount. Both moments draw the same rows, and the card keeps the height it had on deck as a
-`min-height` once it is up, so a wrapped "Not yet" or eyebrow at 320 cannot make it shorter. The queue patch that
-starts your song lands a frame before `playback:state` names it, so an entry of yours already `playing` is up too: for
-that frame the card shows its preset rather than leaving. The time left sits in a box as wide as its longest words
-("under a minute"), text from its left edge, so the clock changing its words moves nothing. `queue-spotlight` drives
-the handoff at 390 and 320: the key between the header and the dock (G1), the same element, the same height, no
-layout shift inside `main`, and the same card after a reload.
+props rather than a remount. Both moments draw the same rows at the same headline size, and the card keeps the height
+it had on deck as a `min-height` once it is up, so a wrapped "Not yet" at 320 cannot make it shorter. The queue patch
+that starts your song lands a frame before `playback:state` names it, so an entry of yours already `playing` is up
+too: for that frame the card shows its preset, and its keys stay enabled and set the entry's preset as on deck. A
+Guide pick never carries onto the next turn (`GuideSegments`' `scope` is the entry). `queue-spotlight` drives the
+handoff at 390 and 320: the card above the Now row, the key between the header and the dock (G1), the same element,
+the same height, no layout shift inside `main`, and the same card after a reload. Being first, it needs no
+"your card comes to you" scroll; only a failed queued card does.
 
 ### The Queued list holds still
 
-Inside `.below`, the "Queued" heading, the reorder note and every row hold still when the page moves them in layout.
-That happens when your own song starts (your card stays, and your row leaves the list) and when a cooking card
-changes height. Each block's drawn top and layout top are read before the patch
+Inside `.below`, the Now row, the "Later" heading (dim sentence case), the reorder note, the empty state and every row
+hold still when the page moves them in layout. That happens when a song starts or ends, when your card comes or goes
+above them, when your own song starts (your card stays, and your row leaves the list) and when a cooking card
+changes height. The heading and the empty state share one slot, so one replacing the other holds like a move. Each block's drawn top and layout top are read before the patch
 (`$effect.pre`). After it, every block that survived and moved is held in its OLD layout slot by `position: relative`
 and `top: --hold-top`, so its box never moves and no layout shift is counted. It glides by transform alone, from where
 it was drawn (`--hold-from`) to its new slot, on `--motion-base`, with `forwards` so it stays there. On

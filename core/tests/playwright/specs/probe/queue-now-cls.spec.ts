@@ -43,7 +43,10 @@ async function watchPage(page: Page): Promise<void> {
 	await page.evaluate(() => {
 		const w = window as unknown as { __watch: Watch; __obs?: PerformanceObserver; __mo?: MutationObserver };
 		const main = document.querySelector('main')!;
-		const top = () => [...main.children].find((c) => !c.matches('.now'))!.getBoundingClientRect().top;
+		// The Now row and your card are blocks of `.below`; the block under them is whatever follows.
+		const box = main.querySelector(':scope > .below')!;
+		const firstUnder = () => [...box.children].find((c) => !c.matches('.now, .deck'));
+		const top = () => firstUnder()!.getBoundingClientRect().top;
 		w.__obs?.disconnect();
 		w.__mo?.disconnect();
 		w.__watch = { shifts: [], before: top(), firstFrame: null, cardAnimation: null, covered: 0 };
@@ -62,19 +65,19 @@ async function watchPage(page: Page): Promise<void> {
 			}
 		});
 		w.__obs.observe({ type: 'layout-shift', buffered: false });
-		// The card is a direct child of `main`; a row coming or going is a mutation further down.
+		// The card is a direct child of `.below`; a row coming or going is a mutation further down.
 		w.__mo = new MutationObserver(() => {
-			if (w.__watch.firstFrame !== null || !!document.querySelector('main > .now') === hadCard) return;
+			if (w.__watch.firstFrame !== null || !!document.querySelector('main > .below > .now') === hadCard) return;
 			requestAnimationFrame(() => {
 				w.__watch.firstFrame ??= top();
-				const card = document.querySelector('main > .now');
+				const card = document.querySelector('main > .below > .now');
 				w.__watch.cardAnimation ??= card ? getComputedStyle(card).animationName : null;
 			});
 			if (hadCard) return;
 			const until = performance.now() + 700;
 			const sample = () => {
-				const card = document.querySelector('main > .now');
-				const under = [...main.children].find((c) => !c.matches('.now'));
+				const card = document.querySelector('main > .below > .now');
+				const under = firstUnder();
 				if (card && under) {
 					const a = card.getBoundingClientRect();
 					const b = under.getBoundingClientRect();
@@ -86,8 +89,8 @@ async function watchPage(page: Page): Promise<void> {
 			};
 			requestAnimationFrame(sample);
 		});
-		const hadCard = !!document.querySelector('main > .now');
-		w.__mo.observe(main, { childList: true });
+		const hadCard = !!document.querySelector('main > .below > .now');
+		w.__mo.observe(box, { childList: true });
 	});
 }
 
@@ -180,7 +183,7 @@ test('390px: a reload during a song, and a reconnect after the song changed, are
 		const w = window as unknown as { __moved: { arrive: boolean; settle: boolean } };
 		w.__moved = { arrive: false, settle: false };
 		new MutationObserver(() => {
-			if (document.querySelector('main > .now.arrive')) w.__moved.arrive = true;
+			if (document.querySelector('main > .below > .now.arrive')) w.__moved.arrive = true;
 			if (document.querySelector('main [data-settle]')) w.__moved.settle = true;
 		}).observe(document, {
 			subtree: true,

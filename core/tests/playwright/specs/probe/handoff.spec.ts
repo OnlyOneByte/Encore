@@ -136,85 +136,37 @@ test('a stale skip through the strip changes nothing and tells THAT phone the so
 	}
 });
 
-// The three draft probes below run on one singer's two turns in a row: only that phone tunes both songs. Theo skips,
+// The two draft probes below run on one singer's two turns in a row: only that phone tunes both songs. Theo skips,
 // and his one line for the playing song is the room's level read on another phone.
 
-test('a guide drag begun on the last song does not carry onto the next song', async ({ world }) => {
-	// A skip goes straight from one entry to the next, so `nowEntry` is never null in
-	// between: the rest of the drag was re-sent under the next entry's id (0.6, then 0.9 on release).
-	const worker = await startFakeWorker(world, { guideMix: true });
-	try {
-		const { maya, theo } = await keyGuideRoom(world);
-		const slider = maya.locator('section.deck [role="slider"]').first();
-		await expect(slider).toBeVisible();
-		const box = (await slider.boundingBox())!;
-		const track = (await maya.locator('section.deck [data-slot="slider"]').first().boundingBox()) ?? box;
-		const y = box.y + box.height / 2;
-		await maya.mouse.move(box.x + box.width / 2, y);
-		await maya.mouse.down();
-		await maya.mouse.move(track.x + track.width * 0.6, y, { steps: 4 });
-
-		await transportTap(theo, 'skip');
-		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await maya.waitForTimeout(200);
-		const nextStart = (await serverPlayback(world.baseURL)).state;
-		// Maya's readout is the ROOM's level for her next song, the same as Theo's line shows: neither the draft from
-		// caroline nor the rest of the stale drag may show on the believin card.
-		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		const readouts = async () => [await slider.getAttribute('aria-valuenow'), await roomGuide(theo)];
-		const same = ([m, t]: (string | null)[]) => m !== null && m === t;
-		await expect
-			.poll(async () => same(await readouts()), { message: 'Maya kept the last song’s draft on her next card' })
-			.toBe(true);
-		await maya.mouse.move(track.x + track.width * 0.9, y, { steps: 4 });
-		await maya.waitForTimeout(300);
-		expect(same(await readouts()), `the stale drag moved the next card on Maya’s phone: ${await readouts()}`).toBe(
-			true
-		);
-		await maya.mouse.up();
-		await maya.waitForTimeout(800);
-		const after = (await serverPlayback(world.baseURL)).state;
-		expect(after.currentEntryId).toBe(nextStart.currentEntryId);
-		expect(after.guideLevel, 'a drag begun on caroline changed believin’s guide').toBe(nextStart.guideLevel);
-		// The rest of the drag named caroline, so the server dropped it and said so to Maya.
-		await expect(maya.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
-		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
-	} finally {
-		await worker.stop();
-	}
-});
-
-test('a guide draft the room never agreed with is not shown on the next card', async ({ world }) => {
-	// The song-change reset is the only thing that clears a guide draft the server dropped: Maya drags on the song
-	// her phone still shows after Theo's skip, the server drops it as stale, so no echo ever agrees with her draft.
+test('a guide pick on the last song is not shown, or applied, on the next card', async ({ world }) => {
+	// Maya picks Full on the song her phone still shows after Theo's skip. The pick names caroline, so the server
+	// drops it as stale; believin's level may not move, and her believin card may not keep the pick.
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		const { maya, theo } = await keyGuideRoom(world, true);
-		const slider = maya.locator('section.deck [role="slider"]').first();
-		await expect(slider).toBeVisible();
-		const box = (await slider.boundingBox())!;
-		const track = (await maya.locator('section.deck [data-slot="slider"]').first().boundingBox()) ?? box;
-		const y = box.y + box.height / 2;
+		const full = maya.locator(`${SEL.queueMyCard} ${SEL.guideSegments}`).getByRole('radio', { name: 'Full' });
+		await expect(full).toHaveAttribute('aria-checked', 'false');
 		await hold!(true);
 		await transportTap(theo, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
-		await maya.mouse.move(box.x + box.width / 2, y);
-		await maya.mouse.down();
-		await maya.mouse.move(track.x + track.width * 0.7, y, { steps: 4 });
-		await maya.mouse.up();
+		const nextStart = (await serverPlayback(world.baseURL)).state;
+		await full.click();
 		await maya.waitForTimeout(300);
 		await hold!(false);
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
+		// Maya's checked segment is the ROOM's level for believin, the same as Theo's line shows.
+		const checked = maya.locator(`${SEL.queueMyCard} [role="radio"][aria-checked="true"]`);
 		await expect
-			.poll(
-				async () => {
-					const [m, t] = [await slider.getAttribute('aria-valuenow'), await roomGuide(theo)];
-					return m !== null && m === t;
-				},
-				{ message: 'Maya’s dropped draft from caroline stayed on her believin card' }
-			)
-			.toBe(true);
+			.poll(async () => ((await checked.count()) ? await checked.innerText() : null), {
+				message: 'Maya’s dropped pick from caroline stayed on her believin card'
+			})
+			.toBe(await roomGuide(theo));
+		const after = (await serverPlayback(world.baseURL)).state;
+		expect(after.currentEntryId).toBe(nextStart.currentEntryId);
+		expect(after.guideLevel, 'a pick made on caroline changed believin’s guide').toBe(nextStart.guideLevel);
 		await expect(maya.getByText('That song already ended.')).toBeVisible({ timeout: 2_000 });
+		await expect(theo.getByText('That song already ended.')).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}
@@ -226,7 +178,7 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 	const worker = await startFakeWorker(world);
 	try {
 		const { maya, theo } = await keyGuideRoom(world, true);
-		const keyLabel = (p: Page) => p.locator('section.deck .ctl .control-label').first().innerText();
+		const keyLabel = (p: Page) => p.locator('.deck .ctl .control-label').first().innerText();
 		await hold!(true);
 		await transportTap(theo, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
@@ -239,7 +191,7 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await maya.waitForTimeout(300);
 		const nextStart = (await serverPlayback(world.baseURL)).state;
-		await expect(maya.locator('section.deck .ctl')).toBeVisible();
+		await expect(maya.locator('.deck .ctl')).toBeVisible();
 		expect(shiftOf(await keyLabel(maya))).toBe(nextStart.keyShift);
 		expect(shiftOf(await roomTune(theo))).toBe(nextStart.keyShift);
 		// The next tap steps from the ROOM's key for believin, not from the dead draft.
@@ -259,10 +211,11 @@ let hold: ((on: boolean) => Promise<void>) | null = null;
 /** Theo's one line for the playing song, or '' when it names nothing. */
 const roomTune = async (p: Page) =>
 	(await p.locator(SEL.queueNowTune).count()) ? await p.locator(SEL.queueNowTune).innerText() : '';
-/** The room's guide level as Theo's line names it, in the slider's `aria-valuenow` terms: "Guide off" is "0". */
+/** The room's guide level as Theo's line names it, as the Guide segment that matches it: "Guide off" is "Off". */
 const roomGuide = async (p: Page) => {
 	const m = /Guide (off|(\d+)%)/.exec(await roomTune(p));
-	return m ? (m[2] ?? '0') : null;
+	if (!m) return null;
+	return ({ '0': 'Off', '30': 'Low', '100': 'Full' } as Record<string, string>)[m[2] ?? '0'] ?? null;
 };
 /** The shift a key label or line names, `Key · +1`, `Key +1` or `Key −2`; 0 when it names none. */
 const shiftOf = (s: string) => {
@@ -296,7 +249,7 @@ async function keyGuideRoom(world: World, holdable = false): Promise<{ maya: Pag
 		};
 	}
 	await maya.getByRole('link', { name: 'Queue' }).click();
-	await expect(maya.locator('section.deck .ctl')).toBeVisible();
+	await expect(maya.locator('.deck .ctl')).toBeVisible();
 	await theo.getByRole('link', { name: 'Queue' }).click();
 	await expect(theo.locator(SEL.queueNowCard)).toBeVisible();
 	return { maya, theo };

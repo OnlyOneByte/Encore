@@ -13,6 +13,8 @@
 		moment = 'idle',
 		title,
 		meta,
+		metaEnd,
+		label,
 		colour,
 		busy = false,
 		children
@@ -20,6 +22,10 @@
 		moment?: Moment;
 		title: string;
 		meta?: string;
+		/** At the meta line's trailing edge ("~2 min"). */
+		metaEnd?: string;
+		/** The region's name, when it is not the headline. */
+		label?: string;
 		/** The owner's singer colour. Snapped to its registry stop, whose on_fill is the only ink certified on it. */
 		colour?: string;
 		busy?: boolean;
@@ -40,7 +46,8 @@
 	class="spotlight {moment}"
 	class:lit={lit}
 	data-moment={moment}
-	aria-labelledby="{uid}-title"
+	aria-label={label}
+	aria-labelledby={label ? undefined : `${uid}-title`}
 	aria-busy={showBusy}
 	style:--spot={stop?.fill}
 	style:--on-spot={stop?.on_fill}
@@ -52,6 +59,7 @@
 			<!-- Not ui/spinner: importing it from here split cn() into its own chunk, +6 KB gz JS on every route.
 				Hidden: the region's aria-busy is what a screen reader hears, and it follows the same grace. -->
 			{#if showBusy}<span class="busy" aria-hidden="true" data-slot="spinner"></span>{/if}
+			{#if metaEnd !== undefined}<span class="end">{metaEnd}</span>{/if}
 		</p>
 	{/if}
 	<h2 class="title" id="{uid}-title">{title}</h2>
@@ -112,6 +120,11 @@
 	/* 0.8, not lower: at 0.72 sixteen singer stops fall under 4.5:1 (spotlight-tokens.test.ts). */
 	.meta span {
 		opacity: 0.8;
+	}
+	.end {
+		margin-inline-start: auto;
+		text-align: end;
+		font-variant-numeric: tabular-nums;
 	}
 	.error .meta {
 		color: var(--role-danger);
