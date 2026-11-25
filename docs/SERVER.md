@@ -308,9 +308,16 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   aligned as a line-timed claim, the way an authored caption track is. An ADDED line has no slot. In a document
   with no word timings the line spans are the provider's own and swallow nothing, so the added lines share the
   gap they left as claims. In an aligned one the line before may have swallowed the missed line's audio, so it
-  keeps only its start and the two are decoded in one window, up to the next claimed start. With no such document (none, or evicted), or under
-  half the lines paired, the paste is decoded blind as before, which on two of the three in-repo songs trailed
-  the automatic document's timing; a remake after eviction is that case today (#1199).
+  keeps only its start and the two are decoded in one window, up to the next claimed start. A line the host left
+  exactly as it was (the same text, case and punctuation included, since the TV draws the sung line from its
+  words) is written back with its old words verbatim (`_written`), unless the re-timed lines beside it now
+  overlap its old span. With no such document, or under half the lines paired, the paste is decoded blind as
+  before, which on two of the three in-repo songs trailed the automatic document's timing.
+- **Eviction keeps a host's fix.** `evictDerived` frees every derived file but the fix's own document (pasted
+  words only, small, left out of the cap's count too). The remake's dispatch sends it as `pinnedFrom` when
+  `lyricsRef` is gone, so the fix is re-timed from its own line timings, not blind. Deleting the song removes it
+  and every other `<id>-edit-r*` document by id, so a fix that Undo or Back to automatic replaced, and Undo
+  could still restore, is not left behind once the song is gone.
 - **Every change keeps the state it replaced** (pin, words, rev) in the sidecar's `lyricsEditHistory`,
   the newest 20, never on the wire. Undo puts the newest back. If its document is still stored, it shows at once;
   if eviction took it, the words are timed again. A pick or paste through `/api/lyrics-reselect` is kept the same
@@ -1163,7 +1170,8 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   ref enumeration rather than keep a rival one.
 - **Eviction is derived-only and true-LRU.** `meta/` and an upload's `audio/` are never touched: that audio
   cannot be re-acquired once its source disappears, and meta IS the library. `derived/` and a fetched song's
-  kept original are evictable, because they come back from a re-process.
+  kept original are evictable, because they come back from a re-process. A host's lyrics fix is not: it would
+  come back only re-timed blind (see "Eviction keeps a host's fix" above).
 - **An evicted song is not made any more, on every screen.** `evictSong` resets the media to not-made
   (`stemStatus: 'none'`, lyrics gate cleared) and frees its finished `stems`, `stems-upgrade` and `align` job
   rows (`forgetEvicted`, through `forgetProcess`). Those rows still hold the dedup slot, so without this the next pick got the old

@@ -184,6 +184,8 @@ export function derivedRefsOf(m: Media): string[] {
 		guideMixKey(m.id),
 		// Every candidate's JSON, not just the chosen lyricsRef.
 		...(m.lyricsCandidates ?? []).map((c) => c.ref),
+		// The host's fix, which an eviction keeps (`evictableRefsOf`) after forgetting the candidates.
+		m.lyricsOverrideRef,
 		// Not stored as a ref: the worker writes a deterministic per-(kind,ext) path, so these are named
 		// from the id instead.
 		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext))),
@@ -192,12 +194,20 @@ export function derivedRefsOf(m: Media): string[] {
 	].filter((r): r is string => !!r);
 }
 
+/** What eviction frees: every derived file but a host's fix (small), which the remake re-times from, so a
+ *  fix comes back as good as it went. Deleting the song still removes it (`derivedRefsOf`, `delete.ts`). */
+function evictableRefsOf(m: Media): Set<string> {
+	const refs = new Set(derivedRefsOf(m));
+	if (m.lyricsOverrideText && m.lyricsOverrideRef) refs.delete(m.lyricsOverrideRef);
+	return refs;
+}
+
 /** NEVER touches `meta/`, or `audio/` beyond a fetched song's kept original. `evictSong` resets the media to
  *  un-processed, so rotation stops treating it as playable. */
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
-	for (const ref of new Set(derivedRefsOf(m))) {
+	for (const ref of evictableRefsOf(m)) {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {
@@ -252,7 +262,7 @@ export async function evictUnlessKept(
 /** MUST agree with evictDerived. */
 export function derivedBytesOf(m: Media): number {
 	let n = 0;
-	for (const ref of new Set(derivedRefsOf(m))) {
+	for (const ref of evictableRefsOf(m)) {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {

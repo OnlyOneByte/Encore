@@ -75,12 +75,14 @@ test('a paste carries the words through to the worker params as pinnedText', () 
 	expect(params.pinnedFrom).toBe('derived/lyrics/m1-asr.json');
 });
 
-test('a paste with nothing on screen, and a ref pick, send no pinnedFrom', () => {
+test('with nothing on screen a paste is seeded from its own document (gone until timed); a ref pick from none', () => {
 	const d = deps();
 	const m = media({ lyricsRef: undefined });
 	d.mediaById.set('m1', m);
-	if (typeof requestLyricsReselect('m1', { text: PASTED }, d, 's1') === 'string') throw new Error('refused');
-	expect(assignParams('align', m).pinnedFrom).toBeUndefined();
+	const pasted = requestLyricsReselect('m1', { text: PASTED }, d, 's1');
+	if (typeof pasted === 'string') throw new Error('refused');
+	// An evicted song's fix: eviction keeps that document, so the remake re-times from it (#1199).
+	expect(assignParams('align', m).pinnedFrom).toBe(pasted.ref);
 	if (typeof requestLyricsReselect('m1', { ref: STORED }, d, 's1') === 'string') throw new Error('refused');
 	expect(assignParams('align', m).pinnedFrom).toBeUndefined();
 });

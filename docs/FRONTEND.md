@@ -1949,7 +1949,8 @@ the turn already on stage (`songKey`), a new ref is fetched behind the words on 
   before it), so a fix that drops or adds a row above the one being sung is not a step back and can land.
 - **The swap waits for a gap.** The held words go in at the first frame where neither the old reading nor the new
   one is inside a line (`betweenLines`), so no word is cut off. Paused, or with nothing on screen, only the rule
-  above applies. After 10 s with no shared gap, the old reading being between lines, or a new line starting, is
+  above applies, so a fix lands at once. If that rule holds it (the fix put an earlier row under the paused
+  playhead), it waits for play to resume and lands under the rules here. After 10 s with no shared gap, the old reading being between lines, or a new line starting, is
   enough: a screen painting a few frames a second steps right over a short gap. That fallback can land a fix
   with the first word of the new line already lit.
 - **Only opacity moves.** A row the fix rewrote is keyed by its text too, so it is a new node rather than a

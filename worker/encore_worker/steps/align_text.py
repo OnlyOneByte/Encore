@@ -77,6 +77,34 @@ _MANUAL_LABEL = "manual"
 #: (`_with_source_lines`). Not rendered: the TV's parser (`parseLyricsDoc`) reads `lines` alone.
 _SOURCE_LINES = "sourceLines"
 
+#: A seeded segment's key for the old line it is an untouched copy of (`seeded`), whose words are written back
+#: verbatim (`_written`). Never in a written document.
+_KEPT = "keptLine"
+
+
+def _written(doc: dict[str, object], segments: Sequence[Segment]) -> dict[str, object]:
+    """`doc` as written (`_with_source_lines`), each line the host left as it was keeping its old words
+    verbatim, so a fix moves only what it changed, unless that span would overlap the lines beside it."""
+    lines = doc.get("lines")
+    kept = [(_norm(str(s.get("text") or "")), s.get(_KEPT)) for s in segments]
+    if not isinstance(lines, list) or not any(old for _t, old in kept):
+        return _with_source_lines(doc, segments)
+    out = [line for line in lines]
+    k = 0
+    for n, line in enumerate(out):
+        text = _norm(str(line.get("text") or "")) if isinstance(line, dict) else None
+        m = next((x for x in range(k, len(kept)) if kept[x][0] == text), None)
+        if m is None:
+            continue
+        k, old = m + 1, kept[m][1]
+        if not isinstance(old, dict) or not (bounds := _timed_lines_of([old])):
+            continue
+        before = _timed_lines_of(out[n - 1 : n]) if n else []
+        after = _timed_lines_of(out[n + 1 : n + 2])
+        if (not before or before[0][2] <= bounds[0][1]) and (not after or bounds[0][2] <= after[0][1]):
+            out[n] = {**line, "start": bounds[0][1], "end": bounds[0][2], "words": old["words"]}
+    return _with_source_lines({**doc, "lines": out}, segments)
+
 
 def _with_source_lines(doc: dict[str, object], segments: Sequence[Segment]) -> dict[str, object]:
     """`doc`, plus the text it was timed from (`_SOURCE_LINES`) when its lines lost some of it.
@@ -162,8 +190,13 @@ def _timed_lines(path: str) -> list[tuple[str, float, float]]:
             loaded = json.load(handle)
     except (OSError, ValueError):
         return []
+    lines = loaded.get("lines") if isinstance(loaded, dict) else None
+    return _timed_lines_of(lines if isinstance(lines, list) else [])
+
+
+def _timed_lines_of(lines: Sequence[object]) -> list[tuple[str, float, float]]:
     out: list[tuple[str, float, float]] = []
-    for line in loaded.get("lines", []) if isinstance(loaded, dict) else []:
+    for line in lines:
         if not isinstance(line, dict) or not isinstance(line.get("text"), str):
             continue
         words = [w for w in line.get("words") or [] if isinstance(w, dict)]
@@ -267,8 +300,33 @@ def seeded(job: JobRef, segments: tuple[Segment, ...]) -> tuple[tuple[Segment, .
     times = seed_times([str(s["text"]) for s in segments], _timed_lines(path), line_timed=not _worded(path))
     if times is None:
         return segments, None
-    pairs = zip(segments, times, strict=True)
-    return tuple(s if t is None else {**s, "start": t[0], "end": t[1]} for s, t in pairs), TIMING_LINE
+    kept = _old_words(path)
+    out: list[Segment] = []
+    for s, t in zip(segments, times, strict=True):
+        end = t[1] if t is not None else None
+        old = kept.get((str(s["text"]).strip(), t[0], end)) if t is not None and end is not None else None
+        out.append(s if t is None else {**s, "start": t[0], "end": t[1], **({_KEPT: old} if old else {})})
+    return tuple(out), TIMING_LINE
+
+
+def _old_words(path: str) -> dict[tuple[str, float, float], dict[str, object]]:
+    """A stored document's word-timed lines by (EXACT text, start, end), the key `seed_times` slots them
+    under: a fix that changes only case or punctuation must show the host's words, so it is not untouched."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    lines = loaded.get("lines") if isinstance(loaded, dict) else None
+    out: dict[tuple[str, float, float], dict[str, object]] = {}
+    for line in lines if isinstance(lines, list) else []:
+        words = line.get("words") if isinstance(line, dict) else None
+        if not isinstance(words, list) or not words or not isinstance(line.get("text"), str):
+            continue
+        bounds = _timed_lines_of([line])
+        if bounds:
+            out[(bounds[0][0].strip(), bounds[0][1], bounds[0][2])] = line
+    return out
 
 
 def _stored_lines(path: str) -> tuple[list[str], str | None, str]:

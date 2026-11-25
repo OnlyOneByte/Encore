@@ -13,6 +13,7 @@ import json
 import math
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
@@ -31,7 +32,7 @@ from encore_worker.domain.lyrics.report import Engine
 from encore_worker.host.config import Config
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
-from encore_worker.steps.align_text import seed_times
+from encore_worker.steps.align_text import _written, seed_times
 from encore_worker.steps.api import NotOurJob
 from encore_worker.steps.records import (
     TIMING_LINE,
@@ -2261,6 +2262,43 @@ async def test_a_fix_keeps_the_slots_of_kept_edited_and_rewritten_lines(tmp_path
         ("ggg hhh", 24.5, 26.0),
         ("iii jjj", 28.0, 30.0),
     ]
+
+
+async def test_a_line_the_host_left_alone_is_written_back_with_its_old_words(tmp_path: Path) -> None:
+    """Re-aligning an untouched line can only move it; its old words are written back as they were."""
+    paste, seed = "aaa bbb\nccc ddd\niii jjj", _old_doc(tmp_path)
+    got = await steps(tmp_path).fetch_pinned_text(
+        job(tmp_path, pinnedRef="derived/lyrics/m1-edit-r1.json", pinnedText=paste, pinnedFrom=seed)
+    )
+    assert got is not None
+    old_words = [{"word": "iii", "start": 28.0, "end": 29.0}, {"word": "jjj", "start": 29.0, "end": 30.0}]
+    moved = [{"word": "iii", "start": 27.6, "end": 28.4}, {"word": "jjj", "start": 28.4, "end": 29.6}]
+    first: dict[str, object] = {"text": "aaa bbb", "start": 10.1, "end": 12.0, "words": []}
+    second: dict[str, object] = {"text": "ccc ddd", "start": 14.0, "end": 16.0, "words": []}
+    last: dict[str, object] = {"text": "iii jjj", "start": 27.6, "end": 29.6, "words": moved}
+
+    def written(*lines: dict[str, object]) -> list[dict[str, object]]:
+        return cast(list[dict[str, object]], _written({"lines": list(lines)}, got.segments)["lines"])
+
+    out = written(first, second, last)
+    assert out[2] == {"text": "iii jjj", "start": 28.0, "end": 30.0, "words": old_words}
+    assert out[0]["start"] == 10.1  # an old line with no words to give back keeps the new timing
+    crowding = {"text": "ccc ddd", "start": 27.0, "end": 28.5, "words": []}  # past the old start: new kept
+    assert written(first, second, crowding, last)[3]["words"] == moved
+
+
+async def test_a_fix_to_case_or_punctuation_alone_shows_the_hosts_words(tmp_path: Path) -> None:
+    """The TV draws the sung line from its `words`, so only an EXACT text match counts as untouched."""
+    paste, seed = "aaa bbb\nccc ddd\nIii, jjj", _old_doc(tmp_path)  # the old line reads "iii jjj"
+    got = await steps(tmp_path).fetch_pinned_text(
+        job(tmp_path, pinnedRef="derived/lyrics/m1-edit-r1.json", pinnedText=paste, pinnedFrom=seed)
+    )
+    assert got is not None
+    new_words = [{"word": "Iii,", "start": 28.0, "end": 29.0}, {"word": "jjj", "start": 29.0, "end": 30.0}]
+    fixed_line = {"text": "Iii, jjj", "start": 28.0, "end": 30.0, "words": new_words}
+    aligned: dict[str, object] = {"lines": [fixed_line]}
+    line = cast(list[dict[str, object]], _written(aligned, got.segments)["lines"])[0]
+    assert [w["word"] for w in cast(list[dict[str, object]], line["words"])] == ["Iii,", "jjj"]
 
 
 async def test_an_added_line_is_found_in_one_window_with_the_line_before_it(tmp_path: Path) -> None:
