@@ -127,7 +127,9 @@ async function stallFor(tv: Page, mediaId: string, afterSec: number, sticky: boo
 	);
 }
 
-/** Maya singing, Theo next with `theoMedia`, Ana after; `breakIt` runs on the TV before Maya's skip. */
+/** Maya singing, Theo next with `theoMedia`, Ana after. `breakIt` runs on the TV before Theo is queued, so his
+ *  pre-warm meets the broken file too: a skip plays a warmed song from its buffer (#1258), and a file broken only
+ *  after that buffer filled would never fail. */
 async function room(world: World, breakIt?: (tv: Page, theoMedia: string) => Promise<void>) {
 	const maya = await world.openPhone('Maya');
 	const theo = await world.openPhone('Theo');
@@ -141,11 +143,11 @@ async function room(world: World, breakIt?: (tv: Page, theoMedia: string) => Pro
 	await queueReady(maya, 'caroline');
 	const intro = tv.locator(SEL.stateNext);
 	await expect(intro).toBeVisible({ timeout: 30_000 });
+	await breakIt?.(tv, theoMedia);
 	await queueReady(theo, 'believin');
 	await queueReady(ana, 'prayer');
 	await expect(intro).toBeHidden({ timeout: 10_000 });
 	const mayaId = await current(world);
-	await breakIt?.(tv, theoMedia);
 	return { maya, theo, ana, tv, theoMedia, mayaId, warnings };
 }
 
@@ -299,12 +301,8 @@ test('a dead file: the TV says whose song it was at once, and Theo keeps his spo
 		const { t0, theoId } = await skipMaya(world, r);
 		const ms = await expectMovedOn(world, r, theoId, t0, shoot);
 		expect(ms, 'a file error fails at once, without waiting out the watchdog').toBeLessThan(3_000);
-		// At most ONE frame (≤17 ms): a dead file that missed its pre-warm is cold-loaded, and the loading card can paint
-		// once before the 404 comes back. The review measured ~80 ms (the card plus the watchdog's first tick).
-		expect(
-			(await seen(r.tv)).cardTheo?.frames ?? 0,
-			'frames of "Now singing · Theo" for a dead file'
-		).toBeLessThanOrEqual(1);
+		// His pre-warm already found the file dead, so the skip fails it at once: not one frame of his card (#1258).
+		expect((await seen(r.tv)).cardTheo?.frames ?? 0, 'frames of "Now singing · Theo" for a dead file').toBe(0);
 		// Try again plays it next; the file is still dead, so it fails a second time, and now only Pick another is left.
 		await tryAgain(world, r, theoId);
 		await expect(r.tv.locator(SEL.stateError)).toContainText("Theo's song wouldn't play", { timeout: 12_000 });

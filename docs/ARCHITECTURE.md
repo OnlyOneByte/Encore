@@ -395,7 +395,8 @@ ATTRACT → LOADING → PLAYING ── ended ──► INTERSTITIAL → SWAP →
 
 Every surface is a `<video preload="auto">` loading a separated instrumental. There is no second
 player: nothing plays unprocessed, so there is nothing to embed. If up-next changes, B rewarm starts
-for the new entry. Skip is a synthetic `ended`. Switching the room's **Song intro** off gives a pure hard-cut; default is
+for the new entry. A skip onto the song B has buffered swaps to B as `ended` does; if B's warm already hit a media
+error, the skip fails that song at once, with no intro card and no refetch (#1258). Switching the room's **Song intro** off gives a pure hard-cut; default is
 the short singer-reveal moment.
 
 Implementation: `core/src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.

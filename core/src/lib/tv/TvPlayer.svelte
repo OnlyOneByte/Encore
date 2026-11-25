@@ -55,6 +55,8 @@
 		onready?: () => void;
 		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
 		onprewarmed?: () => void;
+		/** The hidden slot's pre-warm hit a media error: the next song's file is dead before it is up (#1258). */
+		onprewarmfailed?: () => void;
 		onended?: () => void;
 		/** The song won't play: a media error, or no progress while the room means to play (see stall-watchdog.ts).
 		 *  ONCE per entry, active+visible only. The caller moves the room on. */
@@ -89,6 +91,7 @@
 		ondrift,
 		onready,
 		onprewarmed,
+		onprewarmfailed,
 		onended,
 		onfailed,
 		onposition,
@@ -125,6 +128,7 @@
 	// latch would already have spent.
 	let prewarmedFired = $state(false);
 	let visibleReadyFired = $state(false);
+	let prewarmFailedFired = false; // bookkeeping: once per song
 	// The reactive signal the transport gates on; the AUTHORITATIVE copy is the element's own `src` attribute.
 	let currentSrc = $state<string>('');
 	// Written in LOCKSTEP with `currentSrc`, which alone cannot tell turn 2 from turn 1: the transport compares the
@@ -172,6 +176,7 @@
 		redecideResume = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
+		prewarmFailedFired = false;
 		// `currentSrc` is deliberately NOT cleared: the element still holds the old src, and clearing makes the assign
 		// effect rewrite a byte-identical one, which RELOADS and resets currentTime to 0. The stale-across-a-remount case
 		// belongs to the `if (!master)` effect, which fires only when the element is GONE.
@@ -332,6 +337,11 @@
 	function checkStall(): void {
 		const el = master;
 		const now = performance.now();
+		// The hidden slot never plays, so the watchdog below never judges it: a dead pre-warm is reported instead (#1258).
+		if (!active && el?.error && el.getAttribute('src') && !prewarmFailedFired) {
+			prewarmFailedFired = true;
+			onprewarmfailed?.();
+		}
 		const unanswered =
 			!!el &&
 			unansweredPlayIsAutoplay({
@@ -716,9 +726,12 @@
 			}}
 			onerror={() => checkStall()}
 			ontimeupdate={() => {
+				// Only the playing slot owns the clock: the hidden one loading the next song reports 0, and the lyrics followed
+				// it back to the first line once a skip had swapped slots (fuzz seed 3059073472).
+				if (!active) return;
 				// A resume is pending on the playing slot (a reload's first `timeupdate` reads 0 before `canplay` seeks it
 				// back): saying 0 would flip the lyrics and send the room a position it never had.
-				if (active && resumeTarget !== undefined) return;
+				if (resumeTarget !== undefined) return;
 				if (master) onposition?.(master.currentTime, master.duration);
 			}}
 		></audio>
