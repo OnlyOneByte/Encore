@@ -873,12 +873,23 @@ are PR 3 ([FRONTEND.md](FRONTEND.md#your-night)); the TV's come later. `src/lib/
   The phone's two pages load the same way, on the server: `/settings/you` lists your nights, and
   `/settings/you/nights/:id` is one night's story, a 404 for a night that is not yours; without a join, both
   send you to join first.
+- **Streaks and your year** (PR 5). `GET /api/me/nights/:id` carries `streak`: how many of that room's nights in a
+  row, up to this one, you sang in (`streakAt`). `GET /api/me/nights` carries `year`: your nights and songs this
+  calendar year, and the song you sang most when you sang it twice or more (`yearFor`). "This year" is in the
+  phone's time zone, sent as `?tz=<IANA name>`; a missing or invalid one (anything `Intl.DateTimeFormat` refuses)
+  falls back to the core's own zone. A night counts in the year it started, with every song of it, even one sung
+  after midnight on Dec 31.
+  Both read only the caller's own rows, so a kept person's spans their phones. Only a turn that played counts, so a
+  night you opted out of, deleted or only failed in never counts, and it ends the streak. Nothing compares you with
+  anyone: no rank, and no one else's count.
 - **Changing it.** `PATCH /api/me/nights { recording }` and `DELETE /api/me/nights` (Delete my history, every
   row you can read) are the caller's own, behind the same Origin and JSON checks as every write. Keep me
   stamps tonight's rows with the person (`performances.person_id`), and Delete me deletes them all.
 - **Retention.** At boot and once a day on the reaper tick (`dailyNightSweep`), a guest's rows older than 90
-  days go (`GUEST_NIGHTS_RETENTION_MS`), and then nights left with no rows. A kept person's rows stay until
-  Delete me, or until the person is pruned after 180 days with no phone. Both periods are constants for now.
+  days go (`GUEST_NIGHTS_RETENTION_MS`). The `nights` rows stay: each holds only a room id and two times, no one's
+  data, and a streak counts the room's nights, so deleting an emptied one would join the nights on either side. A
+  kept person's rows stay until Delete me, or until the person is pruned after 180 days with no phone. Both periods
+  are constants for now.
 - **Nothing reaches another phone.** No frame carries a performance, and the host has no route to a guest's
   history: the host cookie is not a singer cookie. The TV gets only the room's recap below.
 
