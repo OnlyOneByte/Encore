@@ -13,6 +13,7 @@
 	} from '$lib/contract';
 	import { GaplessController, type EndStatus, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
+	import { nudgedLeadSec } from '$lib/tv/lyrics';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import Reactions from '$lib/tv/Reactions.svelte';
@@ -797,6 +798,7 @@
 	// Declared below `lyricsProvenance` because it DEPENDS on it: `settings` alone answers the granularity of ONE
 	// song from a fleet-wide value, and `?.timing` IS the per-song granularity.
 	const lyricsStyle = $derived(resolveLyricsPresentation(settings, lyricsProvenance?.timing));
+	const lyricsLeadSec = $derived(nudgedLeadSec(lyricsStyle.leadSec, mediaOf(current)?.lyricsOffsetMs));
 	const attractJoinUrl = $derived(joinAddressLabel(data.joinUrl));
 	// `data.joinOrigin` comes from the request host, so opening /tv ON the serving machine puts a loopback
 	// address on the wall and every scan fails silently. Attract and the lobby say so to the host; the stage never does.
@@ -987,7 +989,7 @@
 		visible={lyricsActive}
 		ball={lyricsStyle.ball}
 		highlight={lyricsStyle.highlight}
-		leadSec={lyricsStyle.leadSec}
+		leadSec={lyricsLeadSec}
 		scalePct={settings.room.lyricsScalePct}
 		font={settings.room.lyricsFont}
 		textCase={settings.room.lyricsCase}

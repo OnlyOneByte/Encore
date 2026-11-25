@@ -102,14 +102,25 @@ function expectedRow(cue: number): number | null {
 	return i;
 }
 
-/** How many samples after time `from` disagree with the grid. Past the version's last line, that line stays lit
- *  (`activeLineIndex`): the automatic words end at 7.2 s, and a slow box brings them back after that (#1270). */
-function offGrid(all: Sample[], from: number): number {
+/** How many samples from time `from` (to `to`) disagree with the grid, with the words shown `leadSec` early. Past
+ *  the version's last line, that line stays lit (`activeLineIndex`): the automatic words end at 7.2 s, and a slow
+ *  box brings them back after that (#1270). */
+function offGrid(all: Sample[], from: number, leadSec = 0, to = Infinity): number {
 	return all.filter((s) => {
-		if (s.t < from) return false;
-		const want = expectedRow(s.pos);
+		if (s.t < from || s.t >= to) return false;
+		const want = expectedRow(s.pos + leadSec);
 		return want !== null && s.row !== Math.min(want, s.rows - 1);
 	}).length;
+}
+
+/** The lead that best fits the rows seen in [from, to): the middle of the 50 ms steps over one grid period that fit
+ *  best, since the 60 ms bands `expectedRow` skips make a plateau. The TV's own lag cancels out of a difference of
+ *  two; a lead and one a period away fit alike, so a difference is read mod GRID. */
+function fittedLead(all: Sample[], from: number, to: number): number {
+	const leads = Array.from({ length: GRID / 0.05 }, (_, i) => -GRID / 2 + i * 0.05);
+	const misses = leads.map((l) => offGrid(all, from, l, to));
+	const best = leads.filter((_, i) => misses[i] === Math.min(...misses));
+	return best.reduce((a, b) => a + b, 0) / best.length;
 }
 
 async function stage(world: World) {
@@ -164,6 +175,44 @@ test('P32 · fixes and Undo reach the TV mid-song, between lines, with nothing s
 	const graded = all.filter((s) => s.t >= startedAt && expectedRow(s.pos) !== null).length;
 	expect(offGrid(all, startedAt), 'off the words timing').toBeLessThanOrEqual(Math.max(2, graded / 5));
 	expect(cls, 'layout shift across the swaps').toBe(0);
+});
+
+test("P32 · the host's Earlier taps move every line on the TV live, with no re-time", async ({ world }) => {
+	test.setTimeout(120_000);
+	const { phone, tv, mediaId } = await stage(world);
+	const audit = async () => (await (await phone.request.get(`/api/audit/${mediaId}`)).json()).media;
+	// A fix first: its 45 lines run the whole song, where the automatic words end at 7.2 s and then hold.
+	await change(phone, '/api/lyrics-edit', mediaId, { lines: fixLines((i) => `nudge ${i} words`) });
+	await tvShows(tv, 'nudge 30 words');
+	const before = await audit();
+	await phone.goto(`/song/${mediaId}`);
+	await startSampling(tv);
+	const plain = Date.now();
+	await tv.waitForTimeout(4_000);
+	const earlier = phone.getByRole('button', { name: 'Earlier' });
+	for (let i = 0; i < 4; i++) await earlier.click();
+	await expect(phone.getByRole('status').filter({ hasText: 'Words 0.2 s early' })).toBeVisible();
+	await expect.poll(async () => (await audit()).lyricsOffsetMs, { timeout: 10_000 }).toBe(-200);
+	const nudged = Date.now() + 500;
+	await tv.waitForTimeout(4_500);
+	const all = await samples(tv);
+	// Both windows read the fix's rows while lines still change: a held last line fits every lead alike.
+	const live = (from: number, to: number) =>
+		all.filter((s) => s.t >= from && s.t < to && s.rows === 45 && s.pos < 35).length;
+	expect(live(plain, nudged - 500), 'the sampler saw the reel before the taps').toBeGreaterThan(20);
+	expect(live(nudged, Infinity), 'the sampler saw the reel after the taps').toBeGreaterThan(20);
+
+	// The rows run 0.2 s further ahead of the audio than they did before the taps (a quarter of a line, so a move the
+	// wrong way reads as -0.2).
+	const raw = fittedLead(all, nudged, Infinity) - fittedLead(all, plain, nudged - 500);
+	const shift = raw - GRID * Math.round(raw / GRID);
+	expect(Math.abs(shift - 0.2), `the rows moved ${shift.toFixed(2)} s, not 0.2`).toBeLessThanOrEqual(0.1);
+	// The words and their document are untouched: nothing was re-timed.
+	const after = await audit();
+	expect({ ref: after.lyricsRef, rev: after.lyricsEditRev }).toEqual({
+		ref: before.lyricsRef,
+		rev: before.lyricsEditRev
+	});
 });
 
 test('P32 · on a paused song a fix lands at once, without waiting for play', async ({ world }) => {

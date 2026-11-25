@@ -125,6 +125,11 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
  */
 export const LYRICS_LEAD_SEC = 0;
 
+/** The room's lead with the host's nudge for this song (`Media.lyricsOffsetMs`): words shown earlier are a longer lead. */
+export function nudgedLeadSec(leadSec: number, offsetMs = 0): number {
+	return leadSec - offsetMs / 1000;
+}
+
 /** A gap at least this long between two words reads as a line break. */
 export const LINE_GAP_SEC = 0.45;
 /** Even with no pause, break a run longer than this so a line never wraps to three rows. */

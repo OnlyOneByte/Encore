@@ -295,8 +295,12 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
 
 - **The state** is three fields on the media, indexed in SQLite and kept in `meta/<id>.json`: the pin
   (`lyricsOverrideRef`), the host's words (`lyricsOverrideText`) and `lyricsEditRev`, which counts changes. Once
-  a song has a rev, the sidecar writes these as the runtime holds them, so clearing one really clears it. The
-  whole-song Earlier/Later nudge is proposal 32's PR 3, with its control.
+  a song has a rev, the sidecar writes these as the runtime holds them, so clearing one really clears it.
+- **The whole-song nudge** is a fourth field, `lyricsOffsetMs`: how far the host moved every line, negative for
+  earlier, on a 50 ms grid up to 3 s either way (`clampLyricsOffsetMs`, which also reads a stored value back). The
+  TV subtracts it from the room's lead (`nudgedLeadSec`), so it applies live with no worker and the document stays
+  where the words were timed. It takes no rev and no Undo entry, since the host taps it back, and it outlives a fix,
+  an Undo and an eviction: a re-time that lands wrong by the same amount needs the same nudge.
 - **New words get a new ref**, `derived/lyrics/<id>-edit-r<rev>.json`, pinned with the words. The align re-times
   them from the vocals stem through the ordinary pinned path (`pinnedRef` + `pinnedText`), so the machine does the
   timing. A fixed name per paste was why a second fix never reached a TV that had loaded the first: the overlay
@@ -331,6 +335,8 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   `POST /api/lyrics-edit {mediaId, rev, lines: {text}[]}` (up to 400 lines of 300 characters),
   `POST /api/lyrics-edit/undo {mediaId, rev}` and `POST /api/lyrics-edit/auto {mediaId, rev}`. Each answers
   `{rev, job?}` and sends a room `queue:sync`, so the TV picks up the new ref without waiting for the heartbeat. `GET /api/audit/<id>` tells the host `lyricsUndo`, how many changes Undo can go back through.
+  `POST /api/lyrics-edit/offset {mediaId, offsetMs}` sets the nudge, answers `{offsetMs}` as stored, and sends the
+  same sync.
 
 ### Registries and the quality ladder
 

@@ -11,6 +11,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
+	import LyricsNudge from '$lib/components/LyricsNudge.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Button } from '$lib/components/ui/button';
@@ -280,6 +281,13 @@
 						onauto={() => void change('auto', songId)}
 						emptyNote={noLyricsNote}
 					/>
+				</section>
+			{/if}
+			{#if media.lyricsRef && data.host}
+				{@const songId = media.id}
+				<section aria-label="Timing">
+					<h2 class="grouphead">Timing</h2>
+					<LyricsNudge offsetMs={media.lyricsOffsetMs ?? 0} send={(offsetMs) => room.nudgeLyrics(songId, offsetMs)} />
 				</section>
 			{/if}
 		{/if}

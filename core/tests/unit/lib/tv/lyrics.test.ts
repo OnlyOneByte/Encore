@@ -10,8 +10,21 @@ import {
 	betweenLines,
 	changedRows,
 	rowsOf,
+	nudgedLeadSec,
 	type LyricsDoc
 } from '$lib/tv/lyrics';
+import { clampLyricsOffsetMs } from '$lib/contract';
+
+test("the host's nudge rides on the room's lead: Earlier lights the words sooner, Later after", () => {
+	expect(nudgedLeadSec(0.04)).toBe(0.04);
+	expect(nudgedLeadSec(0.04, -200)).toBeCloseTo(0.24);
+	expect(nudgedLeadSec(0.04, 150)).toBeCloseTo(-0.11);
+});
+
+test('a nudge is read onto the 50 ms grid and into 3 s either way; anything else is no nudge', () => {
+	expect([-230, 74, 76, 99_999, -99_999].map(clampLyricsOffsetMs)).toEqual([-250, 50, 100, 3000, -3000]);
+	expect([NaN, Infinity, '50', null, undefined, -0.1].map(clampLyricsOffsetMs)).toEqual([0, 0, 0, 0, 0, 0]);
+});
 
 test('a lyrics fix swaps in only between lines, and only the rows it rewrote are fresh', () => {
 	const line = (text: string, start: number, end: number) => ({ start, end, text, words: [] });
