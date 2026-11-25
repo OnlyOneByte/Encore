@@ -40,3 +40,53 @@ export function seedDemoLibrary(
 	}
 	return { dir, written, total: tracks.length };
 }
+
+/** Each made song's derived files, 64 bytes each. */
+export const MADE_SONG_FILES = [
+	'instrumental.flac',
+	'vocals.flac',
+	'guidemix.flac',
+	'c0.json',
+	'c1.json',
+	'c2.json',
+	'edit-r1.json'
+];
+
+/** `count` songs that are already made: a sidecar in `mediaDir/meta` each, which the boot restore indexes, and its
+ *  stems and lyrics files. Must run BEFORE core boots, like the library. */
+export function seedMadeLibrary(mediaDir: string, count: number): void {
+	for (const d of ['meta', 'derived/stems', 'derived/lyrics']) mkdirSync(join(mediaDir, d), { recursive: true });
+	for (let i = 0; i < count; i++) {
+		const id = `01MADE${String(i).padStart(8, '0')}`;
+		const ref = (file: string) => `derived/${file.endsWith('.json') ? 'lyrics' : 'stems'}/${id}-${file}`;
+		for (const f of MADE_SONG_FILES) writeFileSync(join(mediaDir, ref(f)), 'x'.repeat(64));
+		const sidecar = {
+			id,
+			schema: 7,
+			origin: { source: 'youtube', sourceRef: `made${i}`, fetchedAt: 1_700_000_000_000 },
+			canonical: {
+				mbid: null,
+				artist: 'Made',
+				artistCredit: null,
+				title: `Song ${i}`,
+				album: null,
+				year: null,
+				genre: [],
+				language: null,
+				durationSec: 180
+			},
+			provenance: {},
+			artifacts: {
+				audio: null,
+				instrumental: ref('instrumental.flac'),
+				vocals: ref('vocals.flac'),
+				guideMix: ref('guidemix.flac'),
+				lyrics: ref('c0.json'),
+				lyricsCandidates: ['c0', 'c1', 'c2'].map((c) => ({ ref: ref(`${c}.json`), textSource: 'lrclib' }))
+			},
+			library: { tags: [], addedAt: 1_700_000_000_000 + i, playCount: 0, lastPlayedAt: null },
+			raw: { uploader: 'Made', rawTitle: `Made - Song ${i}`, thumbnail: null }
+		};
+		writeFileSync(join(mediaDir, 'meta', `${id}.json`), JSON.stringify(sidecar));
+	}
+}

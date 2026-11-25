@@ -530,6 +530,16 @@ anything reads it → reconcile stranded readiness gates SYNCHRONOUSLY, so a str
 as stranded → fire the detached boot-maintenance passes, each isolated so one failure cannot skip the rest →
 recover orphaned `assigned`/`running` jobs. Only then does `server.ts` start the reaper's tick loop.
 
+The passes run while the server is already answering phones and the TV, on the same event loop. A pass that
+walks the whole library with synchronous work per song (the sidecar restore's and the browse index sync's SQLite
+writes, the eviction pass's byte count) gives the loop back every 16 ms (`slice.ts`, `slicer`), so no request
+waits behind the library (#1297). On 3,000 songs the count alone had held the loop for 28 s. A host's rename can
+land while a pass yields, so the browse sync reads each song's record again in its write-queue turn
+(`readSidecarInOrder`) and applies it before its next await: a start-of-pass snapshot put renames back.
+`probe/eviction-pass-responsive.spec.ts` boots on 3,000 made songs, requires every answer within 500 ms, and renames
+songs while the browse sync runs and requires every rename to survive it.
+`docs/benchmarks/boot-passes/loop-delay.ts` (not a gate) measures how long the count holds the loop, sliced and not.
+
 **Graceful shutdown** on `SIGTERM`/`SIGINT` flushes the authoritative state, stops the reaper, then stops
 the server — and exits NON-ZERO on a failed flush, so a supervisor is never told a clean stop happened when
 queue and playback state was actually lost.
