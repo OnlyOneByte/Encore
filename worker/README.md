@@ -355,6 +355,10 @@ On a GPU or MPS device the separators take that lock too, so two jobs never shar
 
 One variable is read outside `Config`: `ENCORE_ANNOTATE=0` switches off the MusicBrainz annotation (`adapters/musicbrainz.py`).
 
+One is set rather than read: importing `encore_worker` sets `ORT_DISABLE_TELEMETRY=1` unless it is already set, and
+the image sets it too. Otherwise onnxruntime's telemetry sends usage events to Microsoft and writes a
+`:memory:.ses` file into the working directory (#1307). `ORT_DISABLE_TELEMETRY=0` turns it back on.
+
 ---
 
 ## Development
