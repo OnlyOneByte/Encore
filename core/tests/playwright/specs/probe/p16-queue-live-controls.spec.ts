@@ -1,9 +1,9 @@
 // P16 — /queue's live controls, and their honest degradation. Two arms: WITH a guide mix, a live control; with NO
-// isolated vocals, the control stays on screen disabled and its readout says 'Off', dimmed on the control leaf
-// rather than by an ancestor's opacity.
+// isolated vocals, the control stays on screen disabled, dimmed on the control leaf rather than by an ancestor's
+// opacity.
 //
-// Plus the gesture, the part no source scan can reach: a real pointer drag on the SLIDER moves the guiding track.
-// That is the only coverage of /queue's throttle-and-trailing-send.
+// Plus the gesture, the part no source scan can reach: a real tap on a Guide segment (Off / Low / Full, redesign
+// step 5b) moves the guiding track.
 //
 // The controls are a card at the top of /queue, so "open" is a ROUTE rather than a height; there is no sheet,
 // no snap array and no drag surface for a slider to fight.
@@ -16,6 +16,7 @@ import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker, type FakeWorker } from '../../world/workers';
 import { openBrowseFromHome, openQueue } from '../../world/actors';
+import { serverPlayback } from './audio-probe-support';
 import type { Page } from '@playwright/test';
 
 /** The exact fragment of the sentence the deleted sheet derived for a song with no isolated vocals. Kept as a
@@ -55,44 +56,33 @@ function expectedRangeLabel(p: Profile | null | undefined): string | null {
 	return `${noteName(p.p05Midi)} - ${noteName(p.p95Midi)}`;
 }
 
-/** 'Off' is zero, not absent: the readout says it at level 0 and for a dead control alike. */
-function pctOf(text: string | null): number | null {
-	if (text === null) return null;
-	if (text === 'Off') return 0;
-	const m = /(\d+)/.exec(text);
-	return m ? parseInt(m[1], 10) : null;
-}
-
 /**
  * The card's live-controls state, in ONE evaluate so every field describes the same paint — per-field round trips
  * can straddle a re-render and report a mix of two states.
  *
  * `rangeEl` is found by TEXT because the range block has no entry in the selector contract and inventing one here
  * would put a selector outside it. The walk is post-order so the DEEPEST match wins, and it matches on CONTAINS
- * rather than equality: /queue prints the range inside the facts line as `· C3 - A4`, where the sheet's own block
- * printed the label alone.
+ * rather than equality: the card prints the range in the key row's words as `· C3 - A4`.
  *
- * `readoutDimmedByAncestor` is MEASURED rather than inferred from containment, which is the FRONTEND.md rule worth
- * measuring: dimming is a surface or ink change, never an opacity on a subtree holding text. GuidingTrack's own
- * comment says the same, and `.gt.disabled .gt-val { color: var(--ink-dim) }` is how it keeps the promise.
+ * `guideDimmedByAncestor` is MEASURED rather than inferred from containment, which is the FRONTEND.md rule worth
+ * measuring: dimming is a surface or ink change, never an opacity on a subtree holding text above the control.
  */
 interface CardReading {
 	cardPresent: boolean;
 	cardOnScreen: boolean;
-	sliderCount: number;
-	sliderPresent: boolean;
-	sliderPainted: boolean;
-	sliderOnScreen: boolean;
-	sliderInCard: boolean;
-	sliderDisabled: boolean;
-	readout: string | null;
-	readoutDimmedByAncestor: string | null;
-	gtDimmed: boolean;
+	guideCount: number;
+	guidePresent: boolean;
+	guidePainted: boolean;
+	guideOnScreen: boolean;
+	guideInCard: boolean;
+	guideDisabled: boolean;
+	guideChecked: string | null;
+	guideDimmedByAncestor: string | null;
 	keyCapCount: number;
 	keyCapsLive: boolean;
 	keyLabelText: string | null;
 	rangeShown: boolean;
-	rangeAboveKeyRow: boolean;
+	rangeInKeyRow: boolean;
 	pageTextHasFragment: boolean;
 }
 
@@ -109,9 +99,8 @@ async function readCard(page: Page, expectedRange: string | null): Promise<CardR
 			};
 
 			const card = q(S.card);
-			const gt = q(S.gt);
-			const slider = q(S.slider);
-			const readoutEl = q(S.readout);
+			const guide = q(S.guide);
+			const segs = guide ? ([...guide.querySelectorAll('[role="radio"]')] as HTMLButtonElement[]) : [];
 			const keyLab = q(S.keyLab);
 			const keyCaps = qq(S.keyCap) as HTMLButtonElement[];
 
@@ -125,8 +114,8 @@ async function readCard(page: Page, expectedRange: string | null): Promise<CardR
 			}
 
 			let dimAncestor: string | null = null;
-			if (readoutEl) {
-				for (let el = readoutEl.parentElement; el && el !== document.body; el = el.parentElement) {
+			if (guide) {
+				for (let el = guide.parentElement; el && el !== document.body; el = el.parentElement) {
 					const op = parseFloat(getComputedStyle(el).opacity || '1');
 					if (op < 1) {
 						dimAncestor = `${el.tagName.toLowerCase()}.${String(el.className || '')} @ opacity ${op}`;
@@ -138,32 +127,21 @@ async function readCard(page: Page, expectedRange: string | null): Promise<CardR
 			return {
 				cardPresent: !!card,
 				cardOnScreen: onScreen(card),
-				sliderCount: qq(S.slider).length,
-				sliderPresent: !!slider,
-				sliderPainted: painted(slider),
-				sliderOnScreen: onScreen(slider),
-				sliderInCard: !!(slider && card && card.contains(slider)),
-				// PRESENCE, not value: Bits UI emits data-disabled="" when disabled and omits it when enabled.
-				sliderDisabled:
-					!!slider && (slider.hasAttribute('data-disabled') || slider.getAttribute('aria-disabled') === 'true'),
-				readout: readoutEl?.textContent?.trim() ?? null,
-				readoutDimmedByAncestor: dimAncestor,
-				gtDimmed: !!gt && gt.classList.contains('disabled'),
+				guideCount: qq(S.guide).length,
+				guidePresent: !!guide,
+				guidePainted: painted(guide),
+				guideOnScreen: onScreen(guide),
+				guideInCard: !!(guide && card && card.contains(guide)),
+				guideDisabled: segs.length > 0 && segs.every((b) => b.disabled),
+				guideChecked: segs.find((b) => b.getAttribute('aria-checked') === 'true')?.textContent?.trim() ?? null,
+				guideDimmedByAncestor: dimAncestor,
 				keyCapCount: keyCaps.length,
 				keyCapsLive:
 					keyCaps.length > 0 && keyCaps.every((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true'),
 				keyLabelText: keyLab?.textContent?.trim() ?? null,
 				rangeShown: painted(rangeEl) && onScreen(rangeEl),
-				// ABOVE, where the sheet put it below: /queue's card reads eyebrow, title, byline, clock, FACTS (key
-				// and range), then the key row, then the guide and the bar. So the range is part of the song's
-				// statement of fact rather than a consequence of the control under it.
-				// `keyLab` is the RECEIVER and PRECEDING is the flag, which reads backwards and is deliberate: narrowing
-				// `rangeEl` (assigned inside a closure) to a non-null receiver is something TypeScript will not do.
-				rangeAboveKeyRow: !!(
-					keyLab &&
-					rangeEl &&
-					(keyLab.compareDocumentPosition(rangeEl) & Node.DOCUMENT_POSITION_PRECEDING) !== 0
-				),
+				// In the key row's words, under its label: the range transposes with the key the row sets.
+				rangeInKeyRow: !!(rangeEl && keyLab?.closest(S.keyRow)?.contains(rangeEl)),
 				pageTextHasFragment: (document.body.textContent ?? '').toLowerCase().includes(FRAGMENT)
 			};
 		},
@@ -171,11 +149,10 @@ async function readCard(page: Page, expectedRange: string | null): Promise<CardR
 			// Every selector handed to the page ONCE — docs/E2E.md#why-selectors-are-centralised.
 			S: {
 				card: SEL.queueMyCard,
-				gt: SEL.guidingTrackRoot,
-				readout: SEL.guideReadout,
-				slider: SEL.slider,
+				guide: `${SEL.queueMyCard} ${SEL.guideSegments}`,
 				keyCap: SEL.keyBtn,
-				keyLab: SEL.keyLabel
+				keyLab: SEL.keyLabel,
+				keyRow: '.ctl'
 			},
 			RANGE_TEXT: expectedRange,
 			FRAGMENT: NOTE_FRAGMENT
@@ -269,28 +246,14 @@ async function setupArm(world: World, kind: ArmKind): Promise<Arm> {
 async function openControls(phone: Page, expectedRange: string): Promise<CardReading> {
 	await openQueue(phone);
 	await phone.locator(SEL.queueMyCard).first().waitFor({ state: 'attached', timeout: 15_000 });
-	await phone.locator(SEL.slider).first().waitFor({ state: 'attached', timeout: 15_000 });
+	await phone.locator(`${SEL.queueMyCard} ${SEL.guideSegments}`).waitFor({ state: 'attached', timeout: 15_000 });
+	// The card is live once playback names the song: until then the guide reads the entry's preset.
+	await expect(phone.locator(`${SEL.queueMyCard}.up`)).toBeAttached({ timeout: 15_000 });
+	// Past the Spotlight's entrance fade, which is the card arriving, not a dimmed control.
+	await phone
+		.locator(SEL.queueMyCard)
+		.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
 	return readCard(phone, expectedRange);
-}
-
-/**
- * A REAL stepped pointer drag: a handler reading pointer deltas needs real events, and a teleporting pointer
- * proves nothing about the slider.
- *
- * THE PER-STEP DWELL SURVIVES THE SHEET, for a different reason. It used to be there because vaul's drag derived a
- * velocity and a whole gesture delivered inside one task has no duration. What it buys now is the subject of the
- * one test that uses it: /queue's guide handler throttles sends to 120ms and schedules a TRAILING one, so a
- * gesture with no duration never exercises either branch.
- */
-const DRAG_STEP_MS = 20;
-async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, steps: number) {
-	await page.mouse.move(from.x, from.y);
-	await page.mouse.down();
-	for (let i = 1; i <= steps; i++) {
-		await page.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
-		await new Promise((r) => setTimeout(r, DRAG_STEP_MS));
-	}
-	await page.mouse.up();
 }
 
 test.describe('a song WITH a guide mix', () => {
@@ -313,10 +276,10 @@ test.describe('a song WITH a guide mix', () => {
 			// IN THE CARD, where the sheet version asserted "in the body and not on the drag handle". The surviving
 			// half of that claim is the one that still binds: a control acting on the playing song must sit with the
 			// playing song, not loose above the queued list.
-			expect(m.sliderPresent && m.sliderInCard, `the control is not inside the now-playing card\n${detail}`).toBe(true);
-			expect(m.sliderCount, `the card stopped mounting its control at all\n${detail}`).toBe(1);
+			expect(m.guidePresent && m.guideInCard, `the control is not inside your card\n${detail}`).toBe(true);
+			expect(m.guideCount, `the card stopped mounting its control at all\n${detail}`).toBe(1);
 			expect(
-				m.sliderPresent && m.sliderPainted && m.sliderOnScreen && !m.sliderDisabled,
+				m.guidePresent && m.guidePainted && m.guideOnScreen && !m.guideDisabled,
 				`a song WITH an isolated stem did not get a live control\n${detail}`
 			).toBe(true);
 			// Still asserted, though the sentence it needles exists on neither arm now: if an explanation were ever
@@ -324,12 +287,11 @@ test.describe('a song WITH a guide mix', () => {
 			expect(!m.pageTextHasFragment, `a working control came with an explanation it does not need\n${detail}`).toBe(
 				true
 			);
-			// Read at keyShift 0, BEFORE the key row is driven: the range label transposes with the key. ABOVE the key
-			// row, which is the direction that changed with the move — see the note on `rangeAboveKeyRow`.
+			// Read at keyShift 0, BEFORE the key row is driven: the range label transposes with the key.
 			expect(
-				m.rangeShown && m.rangeAboveKeyRow,
-				`the vocal range is not in the card's facts line above the key row: expected ${JSON.stringify(arm.expectedRange)} — ` +
-					`shown=${m.rangeShown} aboveKeyRow=${m.rangeAboveKeyRow}`
+				m.rangeShown && m.rangeInKeyRow,
+				`the vocal range is not in the key row's words: expected ${JSON.stringify(arm.expectedRange)} — ` +
+					`shown=${m.rangeShown} inKeyRow=${m.rangeInKeyRow}`
 			).toBe(true);
 			expect(
 				m.keyCapCount === 2 && m.keyCapsLive && m.keyLabelText === 'Key',
@@ -362,46 +324,25 @@ test.describe('a song WITH a guide mix', () => {
 	});
 
 	/**
-	 * THE SLIDER ANSWERS A REAL DRAG. This used to be two claims in one gesture — the slider answers AND the sheet
-	 * survives — and the second half died with the sheet: there is no drag surface under the control any more, so
-	 * `data-vaul-no-drag` has nothing to exclude it from. The first half is worth more than the pair was: it is the
-	 * only coverage of the throttle-and-trailing-send /queue inherited verbatim.
-	 *
-	 * It drags AWAY from the current level so the assertion cannot pass on a level that never moved, and carries a
-	 * downward component because a real thumb drag is never perfectly horizontal.
+	 * A TAP ON A SEGMENT MOVES THE GUIDING TRACK: the room's level becomes the segment's, and the segment the room
+	 * answered with is the checked one. It taps the segment that is NOT checked, so it cannot pass on a level that
+	 * never moved.
 	 */
-	test('a pointer drag on the slider moves the guiding track', async ({ world }) => {
+	test('a tap on a Guide segment moves the guiding track', async ({ world }) => {
 		const arm = await setupArm(world, 'withGuideMix');
 		try {
-			await openControls(arm.phone, arm.expectedRange);
-			const box = await arm.phone.locator(SEL.slider).boundingBox();
-			if (!box || box.width < 40) {
-				throw new Error(`the guiding-track slider measured ${JSON.stringify(box)}; there is no track to drag along`);
-			}
-			const before = pctOf((await arm.phone.locator(SEL.guideReadout).first().textContent())?.trim() ?? null);
-			if (before === null) throw new Error('the guiding-track readout is unreadable, so a level change cannot be seen');
-			const low = before <= 50;
-			const y = box.y + box.height / 2;
-			await drag(
-				arm.phone,
-				{ x: box.x + box.width * (low ? 0.12 : 0.88), y },
-				{ x: box.x + box.width * (low ? 0.85 : 0.15), y: y + 22 },
-				10
-			);
-
+			const before = (await openControls(arm.phone, arm.expectedRange)).guideChecked;
+			const target = before === 'Full' ? { name: 'Off', level: 0 } : { name: 'Full', level: 1 };
+			await arm.phone
+				.locator(`${SEL.queueMyCard} ${SEL.guideSegments}`)
+				.getByRole('radio', { name: target.name })
+				.click();
 			await expect
-				.poll(
-					async () => {
-						const after = pctOf((await arm.phone.locator(SEL.guideReadout).first().textContent())?.trim() ?? null);
-						return after === null ? null : Math.abs(after - before);
-					},
-					{
-						message:
-							`the readout never left ${before}% across ${Math.round(box.width)}px of track — the drag did not ` +
-							`reach the slider`
-					}
-				)
-				.toBeGreaterThanOrEqual(10);
+				.poll(async () => (await serverPlayback(world.baseURL)).state.guideLevel ?? null, {
+					message: `the room's guide never became ${target.name} after the tap (was ${before})`
+				})
+				.toBe(target.level);
+			await expect(arm.phone.getByRole('radio', { name: target.name })).toHaveAttribute('aria-checked', 'true');
 		} finally {
 			await arm.worker.stop();
 		}
@@ -425,19 +366,14 @@ test.describe('a song with NO isolated vocals', () => {
 			const m = await openControls(arm.phone, arm.expectedRange);
 			const detail = JSON.stringify(m);
 			expect(
-				m.sliderPresent && m.sliderPainted && m.sliderOnScreen && m.sliderDisabled,
+				m.guidePresent && m.guidePainted && m.guideOnScreen && m.guideDisabled,
 				`the control did not stay on screen, disabled, for a song with no stem\n${detail}`
 			).toBe(true);
-			expect(m.readout, `the readout shows a live-looking number rather than 'Off'`).toBe('Off');
-			// `class:disabled` on `.gt` is the anchor the contract pins; the measured arm below is what still holds
-			// now that the dimming sits on the control leaf.
-			expect(m.gtDimmed, `the disabled control does not mark itself: gtDimmed=${m.gtDimmed}\n${detail}`).toBe(true);
-			// MEASURED, and read ONCE where the sheet version read twice: the second read existed to let vaul's own
-			// fade finish, and there is no fade — /queue mounts the card with no transition at all.
+			// MEASURED: no ancestor of the control dims it, and the text around it, with opacity.
 			expect(
-				m.readoutDimmedByAncestor === null,
-				`an ancestor dims the readout with opacity (measured): firstDimmedAncestor=${JSON.stringify(
-					m.readoutDimmedByAncestor
+				m.guideDimmedByAncestor === null,
+				`an ancestor dims the control with opacity (measured): firstDimmedAncestor=${JSON.stringify(
+					m.guideDimmedByAncestor
 				)}`
 			).toBe(true);
 		} finally {

@@ -61,7 +61,7 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		await expect(deck).toContainText('−1');
 		await expect(tv.locator('.upnext')).toContainText('Theo');
 		// Maya's song reaches its last 30 s: Theo's heads-up buzzes, once.
-		await expect(theo.locator(`${ON_DECK}.heads-up`)).toBeVisible({ timeout: 60_000 });
+		await expect(theo.locator(`.deck.heads-up ${ON_DECK}`)).toBeVisible({ timeout: 60_000 });
 		await expect.poll(buzzes).toBe(1);
 		// Theo goes to another tab on the smallest phone: the line must reach him there, clear of the dock (IN-04).
 		await theo.setViewportSize({ width: 320, height: 568 });
@@ -120,7 +120,7 @@ test('a song ahead finishing being made takes On deck, and Theo is told once, on
 		await expect(theo.locator(TOAST, { hasText: 'going first' })).toHaveCount(0, { timeout: 10_000 });
 		await shoot('after', { tv, maya, theo, ana });
 		// The heads-up buzz was RE-ARMED when he lost On deck: Ana's last 30 s buzz his phone again.
-		await expect(theo.locator(`${ON_DECK}.heads-up`)).toBeVisible({ timeout: SECS * 1000 });
+		await expect(theo.locator(`.deck.heads-up ${ON_DECK}`)).toBeVisible({ timeout: SECS * 1000 });
 		await expect.poll(buzzes).toBe(2);
 	} finally {
 		await worker.stop().catch(() => {});

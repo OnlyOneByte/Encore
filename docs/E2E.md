@@ -103,8 +103,8 @@ by the reviewer's A/B run (main and branch, same box).
 `knownBreak('<cause>, #<issue>')` (`test.fail`) right before its one assertion, so a broken setup is still red and only
 the claim can be the expected failure. Fixing the cause turns it "Expected to fail, but passed"; the fixing PR deletes
 the call. Each cause has its own test, so a fix flips only its own: today #1089 (QR "Finding the room…"), #1090
-(`/queue` "Loading the queue…"), #1092 (the Now
-card's 500 ms `arrive`) and #1127 (an On deck key step shifts the card). The lost party's 4 s upper bound is not
+(`/queue` "Loading the queue…") and #1092 (the Now
+card's 500 ms `arrive`). The lost party's 4 s upper bound is not
 gated: room.ts's timer races the request timeout (#1093).
 
 ## The `world` fixture

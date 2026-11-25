@@ -28,7 +28,6 @@
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns, type MakerVerdicts } from '$lib/readiness';
-	import { createGuideSend } from '$lib/guide-send';
 	import { resolve } from '$app/paths';
 	import { pickAnotherHref } from '$lib/process-and-queue';
 	import type { QueueStore } from '$lib/stores/queue';
@@ -59,7 +58,7 @@
 	import { cardScrollTarget, firstTimeFor, guestIsDriving } from '$lib/card-to-you';
 	import { rememberKey } from '$lib/stores/remembered-key';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { DIDNT_PLAY, NOW_SINGING, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
+	import { DIDNT_PLAY, onDeckHeldNote } from '$lib/phrasing/turn-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
@@ -243,61 +242,22 @@
 	   is 0, and clamping to 0 would freeze the clock, so the cap only applies when there is a length to cap to. */
 	const drawnPos = $derived(nowDurationSec > 0 ? Math.min(displayPos, nowDurationSec) : displayPos);
 
-	/* THE GUIDE'S LOCAL OPINION, and it is `keyDraft`'s shape rather than the `guideDragging` boolean plus a
-	   number it replaces. While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled
-	   websocket echo — but a drag-scoped flag made the control tell two different lies either side of the release.
-	   DURING the drag it showed a level the room had never heard, because the draft moved whether or not the
-	   command reached the wire. AT the release it sprang back: `guideDragging = false` fell straight through to
-	   the server echo, so even a command that DID land showed the old level for one round trip (docs/UI-REVIEW.md
-	   finding C reports the dropped half of that as "reads as the app being broken").
-	   One nullable draft fixes both. `null` means "no local opinion", so a guide change from another phone or the
-	   TV takes over immediately rather than being pinned behind this phone's last drag, and the draft outlives
-	   the release until the room AGREES with it — which is the only event that proves the command landed.
-	   The throttle, the trailing send and the drop-on-refusal rule are `$lib/guide-send`, where a bun test can
-	   reach them; what stays here is the reactive half. */
-	let guideDraft = $state<number | null>(null);
-	/* THE ENTRY THE GESTURE BEGAN ON, captured at its first input and held until it commits. Every send of the gesture
-	   names it — the throttled ones, the trailing one and the release — so a drag that is still going when the song
-	   changes keeps naming the song it started on, and the server drops it as stale instead of moving the next
-	   singer's guide over their On deck preset. Reading `nowEntry` at SEND time named the new song. */
-	let guideGestureFor = $state<string | null>(null);
-	const guidePct = $derived(guideDraft ?? guideServerPct);
-	// Dropped the moment the room agrees; the song changing is the reset effect below.
-	$effect(() => {
-		if (guideDraft !== null && guideServerPct === guideDraft) guideDraft = null;
-	});
-	const guideSend = createGuideSend({
-		send: (pct) => {
-			if (!guideGestureFor) return false;
-			return room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor });
-		},
-		// The rest of a drag begun on the last song may not move the new song's readout: it is sent, as stale, and
-		// dropped, so it never earns a draft. A drop (`null`) always clears.
-		onDraft: (pct) => {
-			if (pct === null || guideGestureFor === nowEntry?.id) guideDraft = pct;
-		}
-	});
-	function guideInput(pct: number): void {
-		guideGestureFor ??= nowEntry?.id ?? null;
-		guideSend.input(pct);
-	}
-	function guideCommit(pct: number): void {
-		guideGestureFor ??= nowEntry?.id ?? null;
-		guideSend.commit(pct);
-		guideGestureFor = null;
+	/* THE GUIDE is Off / Low / Full (GuideSegments): one pick, one command naming the song, so a tap that lands after
+	   a skip is dropped as stale rather than moving the next singer's guide. The segments hold the pick until the
+	   room answers, and drop it at once when the command never left. */
+	function guidePick(level: number): boolean {
+		if (!nowEntry) return false;
+		return room.command({ cmd: 'guide', level, entryId: nowEntry.id });
 	}
 
-	/* THE SONG CHANGED: both drafts belonged to the last one, and so does a trailing guide send still waiting on the
-	   throttle. Keyed on the entry ID, not on `nowEntry` going null, which a skip never passes through. A gesture
-	   still in progress keeps its `guideGestureFor`, so the rest of it is sent as stale and dropped. */
+	/* THE SONG CHANGED: the key draft belonged to the last one. Keyed on the entry ID, not on `nowEntry` going null,
+	   which a skip never passes through. */
 	let draftsFor: string | undefined;
 	$effect(() => {
 		const id = nowEntry?.id;
 		if (id === draftsFor) return;
 		draftsFor = id;
 		keyDraft = null;
-		guideDraft = null;
-		guideSend.cancel();
 	});
 
 	/* REORDERING, MOVED VERBATIM FROM THE HOME PAGE rather than re-derived. It is a live sort with no mode:
@@ -509,17 +469,15 @@
 	   the ENTRY (`set-entry-prefs`), which the server applies when the song starts — through the queue store, so the
 	   change is optimistic and survives a dropped socket like any other queue op. */
 	const deckEntry = $derived(deckEntryOf(queued, nextPlayableId, nowEntry?.singerId, me?.id));
-	const deckMedia = $derived(deckEntry ? mediaCatalog.get(deckEntry.mediaId) : undefined);
-	const deckKey = $derived(deckEntry?.keyShift ?? 0);
 	const deckRemain = $derived(nowDurationSec > 0 ? Math.max(0, nowDurationSec - drawnPos) : null);
 	const deckHeadsUp = $derived(!!deckEntry && deckRemain !== null && deckRemain <= HEADS_UP_SEC);
 	$effect(() => {
 		if (deckHeadsUp && deckEntry) buzzOnce(deckEntry.id, navigator.vibrate?.bind(navigator));
 	});
 
-	/* YOUR CARD COMES TO YOU (proposal 13). When your On deck card turns heads-up, or your queued song's card turns
-	   failed, and its first control sits under the dock (at 320x568 the heads-up card starts below the dock's top
-	   edge whatever the dock's height), the page scrolls that card up to just below the sticky header. Once per
+	/* YOUR CARD COMES TO YOU (proposal 13). When your queued song's card turns failed and its first control sits under
+	   the dock, the page scrolls that card up to just below the sticky header. (Your On deck card needs none of this
+	   since redesign step 5b: it is the first thing on the page.) Once per
 	   entry, only your own card, smooth or instant under reduced motion, and never within CARD_SCROLL_QUIET_MS of
 	   the guest's own touch, wheel or key: a scroll is not a layout shift, but it must not fight a thumb. The failed
 	   card is found by its index among `.qrow`, which renders `queued` in order (see the list below). */
@@ -553,12 +511,9 @@
 	});
 	$effect(() => {
 		if (!arrived) return;
-		const wants: { id: string; find: () => Element | null | undefined }[] = [];
-		if (deckHeadsUp && deckEntry)
-			wants.push({ id: deckEntry.id, find: () => document.querySelector('.deck.heads-up') });
 		const failed = queued[myFailedIdx];
-		if (failed) wants.push({ id: failed.id, find: () => document.querySelectorAll('.qrow')[myFailedIdx] });
-		for (const w of wants) if (firstTimeFor(w.id)) void tick().then(() => bringUp(w.find()));
+		if (failed && firstTimeFor(failed.id))
+			void tick().then(() => bringUp(document.querySelectorAll('.qrow')[myFailedIdx]));
 	});
 	async function bringUp(card: Element | null | undefined): Promise<void> {
 		const control = card?.querySelector('button');
@@ -593,27 +548,6 @@
 				)
 			: null
 	);
-	/* The slider's drag-time value; nothing is sent until release, because nothing is playing it yet. Dropped once
-	   the entry agrees, or when the card is for a different entry. */
-	let deckGuideDraft = $state<number | null>(null);
-	let deckGuideFor: string | undefined;
-	const deckGuideServerPct = $derived(
-		Math.round(effectiveGuideLevel({ guideLevel: deckEntry?.guideLevel ?? null }, roomGuideDefault) * 100)
-	);
-	$effect(() => {
-		if (deckGuideFor !== deckEntry?.id || deckGuideServerPct === deckGuideDraft) deckGuideDraft = null;
-		deckGuideFor = deckEntry?.id;
-	});
-	function setDeckKey(next: number) {
-		if (!deckEntry) return;
-		store?.setEntryPrefs(deckEntry.id, next, deckEntry.guideLevel ?? null);
-		rememberKey(deckEntry.mediaId, next);
-	}
-	function setDeckGuide(pct: number) {
-		if (!deckEntry) return;
-		deckGuideDraft = pct;
-		store?.setEntryPrefs(deckEntry.id, deckKey, pct / 100);
-	}
 	function notYet() {
 		if (!deckEntry || !deckNotYet) return;
 		store?.notYet(deckEntry.id, deckNotYet.toIdx);
@@ -627,106 +561,52 @@
 	const spotEntry = $derived(upEntry ?? deckEntry);
 	const spotMedia = $derived(spotEntry ? mediaCatalog.get(spotEntry.mediaId) : undefined);
 	const spotDisplay = $derived(songDisplay(spotMedia));
-	// Live only once playback names your song; the bridging frame reads the entry's own preset.
+	/* Live only once playback names your song. Until then (On deck, and the bridging frame) the keys and guide set the
+	   entry's own preset, so they stay enabled through the handoff. */
 	const spotLive = $derived(!!upEntry && nowMine);
-	const spotKey = $derived(spotLive ? keyShift : upEntry ? (upEntry.keyShift ?? 0) : deckKey);
-	const spotGuidePct = $derived(
-		spotLive
-			? guidePct
-			: upEntry
-				? Math.round(effectiveGuideLevel({ guideLevel: upEntry.guideLevel ?? null }, roomGuideDefault) * 100)
-				: (deckGuideDraft ?? deckGuideServerPct)
+	const spotKey = $derived(spotLive ? keyShift : (spotEntry?.keyShift ?? 0));
+	const spotGuideLevel = $derived(
+		effectiveGuideLevel(
+			{ guideLevel: spotLive ? playback.guideLevel : (spotEntry?.guideLevel ?? null) },
+			roomGuideDefault
+		)
 	);
 	function spotKeyTo(next: number) {
-		if (spotLive) stepKey(next - keyShift);
-		else if (!upEntry) setDeckKey(next);
+		if (spotLive) return stepKey(next - keyShift);
+		if (!spotEntry) return;
+		store?.setEntryPrefs(spotEntry.id, next, spotEntry.guideLevel ?? null);
+		rememberKey(spotEntry.mediaId, next);
 	}
-	function spotGuideInput(pct: number) {
-		if (spotLive) guideInput(pct);
-		else if (!upEntry) deckGuideDraft = pct;
-	}
-	function spotGuideCommit(pct: number) {
-		if (spotLive) guideCommit(pct);
-		else if (!upEntry) setDeckGuide(pct);
+	function spotGuide(level: number): boolean {
+		if (spotLive) return guidePick(level);
+		if (!spotEntry || !store) return false;
+		store.setEntryPrefs(spotEntry.id, spotKey, level);
+		return true;
 	}
 
-	/* THE PAGE HOLDS STILL WHEN THE CARD COMES OR GOES. The card is the top of the column, so the room's first song
-	   pushed everything under it down by the card's height in one frame, and the last one leaving pulled it all back
-	   up: CLS about 0.3 each way, with nobody on this phone touching anything. Reserving the slot would leave an empty
-	   card on an idle queue, so `.below` is moved in LAYOUT at once and held where it was by a transform in the same
-	   frame, which a layout shift does not count, then eased home on --motion-base (`data-settle`).
-	   ARRIVING, THE SLOT OPENS FIRST AND THE CARD FADES INTO IT. The content eases down through the card's box, so the
-	   card stays at opacity 0 for that --motion-base and fades in on the next one (`.arrive`): fading both at once drew
-	   two legible layers of text for about 130 ms. LEAVING IS A CUT ON PURPOSE: the card goes with its entry, and an
-	   exit fade would need the card kept in the DOM after its song ended, so the content simply eases up into the gap.
-	   This is the one motion here that has to read geometry: the distance is the card's own height, which no token
-	   names. Keyed on the entry rather than on "is there a card", so a new song's taller or shorter card eases too.
-	   Under reduced motion the CSS does nothing and it is a cut, as every other entrance in the tree is. `nowArrived`
-	   says the card's fade is running: never set under reduced motion, where no `animationend` would clear it, and
-	   cleared by the fade's own end (not a child's, which bubbles), so a later remount starts from false. */
+	/* THE PAGE HOLDS STILL WHEN A SONG STARTS OR ENDS. Your card, the Now row and the list are all blocks of `.below`,
+	   so the holds below keep each where it was drawn and ease it home. The Now row ARRIVING fades in once the rows
+	   under it have passed through its box (`.arrive`): fading while they pass drew two legible layers of text. Never
+	   set under reduced motion, where no `animationend` would clear it. NOT ARMED UNTIL THE PAGE HAS BEEN TOLD: a row
+	   that turns up with the first `playback:state` of a hard load came with the page, not with a song starting. */
 	let below = $state<HTMLElement | undefined>(undefined);
 	// A primitive, so an emit that re-mints the same entry re-runs neither effect (and forces no layout read).
 	const nowId = $derived(nowEntry?.id ?? null);
-	let belowTopWas: number | undefined;
-	$effect.pre(() => {
-		void nowId;
-		belowTopWas = below?.getBoundingClientRect().top;
-	});
-	/* Rendered by Svelte rather than written onto the node: a selector on an attribute the template never sets is
-	   pruned from the stylesheet as unused. The turn alternates so a second ease restarts without replacing the
-	   subtree, which would drop focus and a drag. */
-	let settle = $state<{ dy: number; turn: 'a' | 'b' } | null>(null);
-	let grow = $state<{ scale: number; lift: number; turn: 'a' | 'b' } | null>(null);
-	let nowEl = $state<HTMLElement | undefined>(undefined);
 	let nowArrived = $state(false);
 	const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
-	let settleFor: string | null | undefined;
+	let arriveFor: string | null | undefined;
 	$effect(() => {
 		const id = nowId;
-		/* NOT ARMED UNTIL THE PAGE HAS BEEN TOLD. The card is keyed on `playback`, whose first `playback:state` lands a
-		   beat after the first `queue:sync` on a hard load (a reload, a tab the phone discarded). A card that turns up
-		   then came WITH the page, not with a song starting, and easing it in held the list where "your card comes to
-		   you" read it as already in reach. A reconnect clears `playbackSynced` until its own hello lands, so a song that
-		   changed while the phone was away is a fresh baseline too, not a leave and then a first song. So is a room that
-		   emptied while the phone was away: the card goes in one jump, the same as on main. That is on purpose, not a
-		   missed ease. */
-		if (!queueSynced || !playbackSynced || settleFor === undefined || !below || belowTopWas === undefined) {
-			settleFor = queueSynced && playbackSynced ? id : undefined;
+		if (!queueSynced || !playbackSynced || arriveFor === undefined) {
+			arriveFor = queueSynced && playbackSynced ? id : undefined;
 			return;
 		}
-		if (id === settleFor) return;
-		// The last Skip takes the card and its keys away, and focus with them: it goes to the dock's now-line, not <body>.
+		if (id === arriveFor) return;
+		// The last Skip takes the row and its keys away, and focus with them: it goes to the dock's now-line, not <body>.
 		if (!id && document.activeElement === document.body) document.querySelector<HTMLElement>('.dock .meta')?.focus();
-		const hadCard = settleFor !== null;
-		// A card that ARRIVES fades in, with no grow left over from an earlier song.
-		if (!hadCard) {
-			nowArrived = !untrack(() => reducedMotion.current);
-			grow = null;
-		}
-		settleFor = id;
-		// Both reads are drawn tops under the same running settle, if any, so this is how far the card moved `.below`.
-		const moved = belowTopWas - below.getBoundingClientRect().top;
-		settleFrom(belowTopWas);
-		// No grow while the card is still arriving (its fade already shows the new size) or under reduced motion.
-		const h = nowEl?.getBoundingClientRect().height ?? 0;
-		// The card's height outside the middle piece, which is all that scales.
-		const caps = (nowEl?.querySelector<HTMLElement>('.mid')?.offsetTop ?? 0) * 2;
-		if (hadCard && id !== null && moved < 0 && h + moved > caps && !nowArrived && !untrack(() => reducedMotion.current))
-			grow = {
-				scale: (h + moved - caps) / (h - caps),
-				lift: moved,
-				turn: untrack(() => grow)?.turn === 'a' ? 'b' : 'a'
-			};
+		if (arriveFor === null) nowArrived = !untrack(() => reducedMotion.current);
+		arriveFor = id;
 	});
-	/* `.below` eased from where it is drawn now, so a running settle's remaining offset carries over; also called when
-	   the holds inside restart, because two eases started a patch apart sum to a dip. */
-	function settleFrom(drawnWas: number): void {
-		if (!below) return;
-		for (const a of below.getAnimations())
-			if (a instanceof CSSAnimation && a.animationName.includes('settle-')) a.cancel();
-		const dy = drawnWas - below.getBoundingClientRect().top;
-		if (Math.abs(dy) >= 0.5) settle = { dy, turn: untrack(() => settle)?.turn === 'a' ? 'b' : 'a' };
-	}
 
 	/* AND THE BLOCKS INSIDE `.below` HOLD STILL TOO (docs/FRONTEND.md § The Queued list holds still). `$effect.pre`,
 	   never a ResizeObserver: one fired a frame after the jump had painted. */
@@ -747,16 +627,13 @@
 	// Each block's drawn top `t` and layout top `l` (its slot, held or not) before the patch.
 	let topsWas: Record<string, { t: number; l: number } | undefined> | null = null;
 	let scrollWas = 0;
-	// `.below`'s drawn top before the patch, and the song the last patch saw: a song change settles the box itself.
-	let boxWas: number | undefined;
-	let holdsNowWas: string | null = null;
 	// The keys of the rows in the DOM, in order: `queued` is already the next list when the pre effect reads.
 	let rowKeys: string[] = [];
 	let holdArmed = false;
 	// Plain pairs, read and dropped within one patch: nothing here is reactive.
 	function blocksOf(box: HTMLElement): [string, Element][] {
 		const els: [string, Element][] = [];
-		for (const k of ['grouphead', 'reorder-note']) {
+		for (const k of ['now', 'grouphead', 'reorder-note', 'empty-slot']) {
 			const el = box.querySelector(`:scope > .${k}`);
 			if (el) els.push([k, el]);
 		}
@@ -774,7 +651,6 @@
 		void holdKey;
 		scrollWas = window.scrollY;
 		const box = untrack(() => below);
-		boxWas = box?.getBoundingClientRect().top;
 		topsWas = box
 			? Object.fromEntries(
 					blocksOf(box).map(([k, el]) => {
@@ -785,11 +661,9 @@
 			: null;
 	});
 	$effect(() => {
-		const id = nowId;
+		void nowId;
 		void holdKey;
 		const ready = queueSynced && playbackSynced;
-		const sameSong = id === holdsNowWas;
-		holdsNowWas = id;
 		untrack(() => {
 			const was = topsWas;
 			topsWas = null;
@@ -805,7 +679,8 @@
 			}
 			const next: typeof holds = {};
 			for (const [k, el] of blocksOf(box)) {
-				const old = was[k];
+				// The list's head is the heading or the empty state, one slot: a swap between them holds like a move.
+				const old = was[k] ?? (k === 'empty-slot' ? was.grouphead : k === 'grouphead' ? was['empty-slot'] : undefined);
 				if (old === undefined) continue;
 				for (const a of el.getAnimations())
 					if (a instanceof CSSAnimation && a.animationName.startsWith('hold-')) a.cancel();
@@ -816,13 +691,6 @@
 				else if (holds[k]) next[k] = HOLD_DONE;
 			}
 			holds = next;
-			// A settle still easing from the last song change restarts with the holds; a song change in this patch already did.
-			if (
-				sameSong &&
-				boxWas !== undefined &&
-				box.getAnimations().some((a) => a instanceof CSSAnimation && a.animationName.includes('settle-'))
-			)
-				settleFrom(boxWas);
 		});
 		holdArmed = ready;
 	});
@@ -886,96 +754,85 @@
 	<!-- `--row-h` is the dragged row's measured height, published for the neighbours' transform to read: a
 	shifted row slides by exactly one row rather than by a guess. Measured once at press time and 0 otherwise. -->
 	<main bind:this={page} style:--row-h="{rowH}px">
-		{#if nowEntry}
-			<!-- THE NOW-PLAYING CARD. Not a `<section aria-label>` duplicating the strip's: the strip above is the
-			persistent one, this is the detailed one, and two landmarks with the same name is worse than one. -->
-			<div
-				bind:this={nowEl}
-				class="now"
-				class:arrive={nowArrived}
-				data-grow={grow?.turn}
-				style:--grow-scale={grow?.scale}
-				style:--grow-lift={grow ? `${grow.lift}px` : undefined}
-				onanimationend={(ev) => {
-					// The surface's grow ends the grow; the card's own end is the arrive. A fading child is neither.
-					const t = ev.target as Element;
-					if (t.parentElement?.classList.contains('now-surface') && ev.animationName.includes('grow-')) grow = null;
-					else if (ev.target === ev.currentTarget) nowArrived = false;
-				}}
-			>
-				<span class="now-surface" aria-hidden="true"
-					><span class="cap-top"></span><span class="mid"></span><span class="cap-bot"></span></span
-				>
-				<p class="now-eyebrow">{NOW_SINGING}</p>
-				<!-- THE DOOR TO /song/[mediaId]: the title, so the row stays one row (the singer's own card has it too). -->
-				<h2 class="now-title">
-					{#if nowMedia?.id}<a href={resolve('/song/[mediaId]', { mediaId: nowMedia.id })}>{nowTitle}</a
-						>{:else}{nowTitle}{/if}
-				</h2>
-				<p class="now-by">
-					<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
-					{nowSinger?.displayName ?? 'Someone'}
-					{#if nowDisplay.artist}<span class="artist"> · {nowDisplay.artist}</span>{/if}
-				</p>
-
-				<!-- THE ONE PLACE THE PHONE SPELLS THE CLOCK. The strip above carries only a hairline, because a
-				once-a-second percentage announced over a title is noise; here there is room for the real numbers, and
-				`drawnPos` is the extrapolated position rather than the last broadcast one so it does not sit still
-				between websocket frames, capped at the song's length so it cannot print a time past the end.
-				`formatRemaining` omits the estimate rather than zeroing it when the length is unknown. -->
-				{#if nowDurationSec > 0}
-					<p class="clock">
-						<span class="elapsed">{formatClock(drawnPos)}</span>
-						<span class="remain">{formatRemaining(drawnPos, nowDurationSec)}</span>
-					</p>
-				{/if}
-
-				<div class="now-tp" role="group" aria-label="Playback">
-					<button class="tp-btn" onclick={tp.restart} aria-label="Restart"><Icon name="restart" /></button>
-					<button class="tp-btn primary" onclick={tp.togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
-						<Icon name={isPlaying ? 'pause' : 'play'} />
-					</button>
-					<button class="tp-btn" onclick={tp.skip} aria-label="Skip"><Icon name="next" /></button>
-				</div>
-
-				<!-- The song's key and guide as one line, the same for every phone: the singer tunes it on their own card
-					below (docs/FRONTEND.md § The Now card). Kept while the song can be tuned, so a tap moves nothing. -->
-				{#if keyShiftEnabled || guideEnabled}
-					<p class="facts" data-now-tune>
-						{#if nowTune}{nowTune}{:else}&nbsp;{/if}
-					</p>
-				{/if}
-			</div>
-		{/if}
-
-		<div
-			class="below"
-			bind:this={below}
-			onanimationend={endHold}
-			data-settle={settle?.turn}
-			style:--settle-from={settle ? `${settle.dy}px` : undefined}
-		>
-			<!-- ONE {#if}, so On deck turning into You're up is the same card with new props, never a remount. -->
+		<div class="below" bind:this={below} onanimationend={endHold}>
+			<!-- YOUR CARD FIRST, the screen's one lit surface (#1154). ONE {#if}, so On deck turning into You're up is the
+			same card with new props, never a remount. -->
 			{#if spotEntry}
 				<OnDeckCard
 					moment={upEntry ? 'up' : 'on-deck'}
+					entryId={spotEntry.id}
 					title={spotDisplay.title || spotMedia?.title || 'Untitled'}
 					artist={spotDisplay.artist}
 					profile={spotMedia?.songProfile ?? null}
 					keyShift={spotKey}
-					guidePct={spotGuidePct}
-					guideAvailable={upEntry ? spotLive && guideEnabled : !!deckMedia && hasGuidingTrack(deckMedia)}
-					keyAvailable={!upEntry || (spotLive && keyShiftEnabled)}
+					guideLevel={spotGuideLevel}
+					guideAvailable={spotLive ? guideEnabled : !!spotMedia && hasGuidingTrack(spotMedia)}
+					keyAvailable={!spotLive || keyShiftEnabled}
 					detailsId={spotMedia?.id ?? null}
+					afterName={nowSinger?.displayName}
 					timeLeft={minutesLeft(deckRemain)}
 					headsUp={deckHeadsUp}
 					singerColor={me.color}
 					notYetName={deckNotYet ? (singers.get(deckNotYet.singerId)?.displayName ?? 'the next singer') : null}
 					onkey={spotKeyTo}
-					onguideinput={spotGuideInput}
-					onguidecommit={spotGuideCommit}
+					onguide={spotGuide}
 					onnotyet={notYet}
 				/>
+			{/if}
+
+			{#if nowEntry}
+				<!-- THE NOW ROW. Not a `<section aria-label>` duplicating the strip's: the strip above is the persistent
+				one, this is the detailed one, and two landmarks with the same name is worse than one. -->
+				<div
+					class="now"
+					class:arrive={nowArrived}
+					data-hold={holds.now?.turn}
+					style:--hold-top={holds.now ? `${holds.now.top}px` : undefined}
+					style:--hold-from={holds.now ? `${holds.now.from}px` : undefined}
+					onanimationend={(ev) => {
+						if (ev.target === ev.currentTarget && ev.animationName.includes('arrive')) nowArrived = false;
+					}}
+				>
+					<p class="sect">Now</p>
+					<!-- THE DOOR TO /song/[mediaId]: the title, underlined as a link, so the row stays one row. -->
+					<h2 class="now-title">
+						{#if nowMedia?.id}<a href={resolve('/song/[mediaId]', { mediaId: nowMedia.id })}>{nowTitle}</a
+							>{:else}{nowTitle}{/if}
+					</h2>
+					<p class="now-by">
+						<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
+						{nowSinger?.displayName ?? 'Someone'}
+						{#if nowDisplay.artist}<span class="artist"> · {nowDisplay.artist}</span>{/if}
+					</p>
+
+					<!-- THE ONE PLACE THE PHONE SPELLS THE CLOCK. The strip above carries only a hairline, because a
+				once-a-second percentage announced over a title is noise; here there is room for the real numbers, and
+				`drawnPos` is the extrapolated position rather than the last broadcast one so it does not sit still
+				between websocket frames, capped at the song's length so it cannot print a time past the end.
+				`formatRemaining` omits the estimate rather than zeroing it when the length is unknown. -->
+					{#if nowDurationSec > 0}
+						<p class="clock">
+							<span class="elapsed">{formatClock(drawnPos)}</span>
+							<span class="remain">{formatRemaining(drawnPos, nowDurationSec)}</span>
+						</p>
+					{/if}
+
+					<div class="now-tp" role="group" aria-label="Playback">
+						<button class="tp-btn" onclick={tp.restart} aria-label="Restart"><Icon name="restart" /></button>
+						<button class="tp-btn primary" onclick={tp.togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+							<Icon name={isPlaying ? 'pause' : 'play'} />
+						</button>
+						<button class="tp-btn" onclick={tp.skip} aria-label="Skip"><Icon name="next" /></button>
+					</div>
+
+					<!-- The song's key and guide as one line, the same for every phone: the singer tunes it on their own card
+					above (docs/FRONTEND.md § The Now card). Kept while the song can be tuned, so a tap moves nothing. -->
+					{#if keyShiftEnabled || guideEnabled}
+						<p class="facts" data-now-tune>
+							{#if nowTune}{nowTune}{:else}&nbsp;{/if}
+						</p>
+					{/if}
+				</div>
 			{/if}
 
 			{#if queued.length}
@@ -985,7 +842,7 @@
 					style:--hold-top={holds.grouphead ? `${holds.grouphead.top}px` : undefined}
 					style:--hold-from={holds.grouphead ? `${holds.grouphead.from}px` : undefined}
 				>
-					Queued
+					Later
 				</h2>
 				<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
 				{#if reorderNote}
@@ -1111,21 +968,28 @@
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
 			actually running: a song playing and nobody queued behind it. That is the moment the page most needs to
 			ask for a song. Gated on `queued` alone now, because a cooking song IS a queued entry and renders above. -->
-				<Empty.Root>
-					<Empty.Content>
-						<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
-						{#if nowEntry}
-							<Empty.Title>Nobody's up next</Empty.Title>
-							<Empty.Description>
-								{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
-							</Empty.Description>
-						{:else}
-							<Empty.Title>Nothing queued yet</Empty.Title>
-							<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
-						{/if}
-						<Button href="/" size="block">Find a song</Button>
-					</Empty.Content>
-				</Empty.Root>
+				<div
+					class="empty-slot"
+					data-hold={holds['empty-slot']?.turn}
+					style:--hold-top={holds['empty-slot'] ? `${holds['empty-slot'].top}px` : undefined}
+					style:--hold-from={holds['empty-slot'] ? `${holds['empty-slot'].from}px` : undefined}
+				>
+					<Empty.Root>
+						<Empty.Content>
+							<Empty.Media variant="icon"><Icon name="mic" /></Empty.Media>
+							{#if nowEntry}
+								<Empty.Title>Nobody's up next</Empty.Title>
+								<Empty.Description>
+									{nowSinger?.displayName ?? 'Someone'} is finishing up. Add a song and you are next.
+								</Empty.Description>
+							{:else}
+								<Empty.Title>Nothing queued yet</Empty.Title>
+								<Empty.Description>Find a song on the Sing tab and it lands here.</Empty.Description>
+							{/if}
+							<Button href="/" size="block">Find a song</Button>
+						</Empty.Content>
+					</Empty.Root>
+				</div>
 			{/if}
 		</div>
 	</main>
@@ -1152,129 +1016,26 @@
 		padding-block-end: calc(var(--dock-h, 0px) + var(--space-4xl));
 	}
 
-	/* A COMPACT NOW ROW, ink on the ground (redesign step 5): your card below is the screen's one lit surface. */
+	/* A COMPACT NOW ROW, ink on the ground, under your card: the card is the screen's one lit surface. */
 	.now {
-		position: relative;
-		isolation: isolate;
 		display: flex;
 		flex-direction: column;
 		gap: var(--step-4);
 		padding-block: var(--step-8);
 	}
-	/* The card's surface in three pieces, so a grow scales only the plain middle and the corners stay true. */
-	.now-surface {
-		position: absolute;
-		inset: 0;
-		z-index: -1;
-	}
-	/* No surface of its own any more; the pieces stay so the arrive and grow keep their geometry. */
-	.now-surface > span {
-		position: absolute;
-		left: 0;
-		right: 0;
-	}
-	.now-surface > .cap-top {
-		top: 0;
-		height: var(--radius-sm);
-		border-bottom: 0;
-		border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-	}
-	/* 1px under each cap, so no hairline shows at a fractional seam. */
-	.now-surface > .mid {
-		top: calc(var(--radius-sm) - 1px);
-		bottom: calc(var(--radius-sm) - 1px);
-		border-block: 0;
-		transform-origin: top;
-	}
-	.now-surface > .cap-bot {
-		bottom: 0;
-		height: var(--radius-sm);
-		border-top: 0;
-		border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-	}
 
-	/* Everything under the card, in one box so one transform can hold it still. Same column rhythm as `main`. */
+	/* Your card, the Now row and the list, one box whose blocks the holds keep still. Same column rhythm as `main`. */
 	.below {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
 
-	/* Two identical names, so writing the other one restarts the ease. See `settleFor` in the script. */
+	/* Two --motion-base long, held at 0 for the first (the holds'), so the row is invisible while the rows under it
+	   pass through its box. */
 	@media (prefers-reduced-motion: no-preference) {
-		.below[data-settle='a'] {
-			animation: settle-a var(--motion-base) ease-out;
-		}
-		.below[data-settle='b'] {
-			animation: settle-b var(--motion-base) ease-out;
-		}
-		/* Two --motion-base long, held at 0 for the first (the settle's), so the card is invisible while the content
-		   passes through its box. A hold inside the keyframes rather than an `animation-delay`: one animation that
-		   starts with the settle, rather than one whose start event fires a --motion-base later. */
 		.now.arrive {
 			animation: arrive calc(var(--motion-base) * 2) ease-out;
-		}
-		/* The grow, on the settle's clock so the card's bottom edge moves with the list (docs/FRONTEND.md § The Now card). */
-		.now[data-grow='a'] > .now-surface > .mid {
-			animation: grow-a var(--motion-base) ease-out;
-		}
-		.now[data-grow='b'] > .now-surface > .mid {
-			animation: grow-b var(--motion-base) ease-out;
-		}
-		.now[data-grow='a'] > .now-surface > .cap-bot {
-			animation: grow-cap-a var(--motion-base) ease-out;
-		}
-		.now[data-grow='b'] > .now-surface > .cap-bot {
-			animation: grow-cap-b var(--motion-base) ease-out;
-		}
-		.now[data-grow='a'] > :global(:not(.now-surface, .now-eyebrow, .now-title, .now-by, .clock)) {
-			animation: grow-fade-a var(--motion-base) ease-out;
-		}
-		.now[data-grow='b'] > :global(:not(.now-surface, .now-eyebrow, .now-title, .now-by, .clock)) {
-			animation: grow-fade-b var(--motion-base) ease-out;
-		}
-	}
-	/* Pairs of identical names, as settle-a/b above: writing the other one restarts the grow. */
-	@keyframes grow-a {
-		from {
-			transform: scaleY(var(--grow-scale));
-		}
-	}
-	@keyframes grow-b {
-		from {
-			transform: scaleY(var(--grow-scale));
-		}
-	}
-	@keyframes grow-cap-a {
-		from {
-			transform: translateY(var(--grow-lift));
-		}
-	}
-	@keyframes grow-cap-b {
-		from {
-			transform: translateY(var(--grow-lift));
-		}
-	}
-	@keyframes grow-fade-a {
-		from,
-		60% {
-			opacity: 0;
-		}
-	}
-	@keyframes grow-fade-b {
-		from,
-		60% {
-			opacity: 0;
-		}
-	}
-	@keyframes settle-a {
-		from {
-			transform: translateY(var(--settle-from));
-		}
-	}
-	@keyframes settle-b {
-		from {
-			transform: translateY(var(--settle-from));
 		}
 	}
 	@keyframes arrive {
@@ -1284,14 +1045,19 @@
 		}
 	}
 
-	/* The SECTION register, matching `.grouphead` — this is a label over a block, not a field label. */
-	.now-eyebrow {
+	/* A quiet section label in sentence case (the redesign drops the uppercase eyebrows); `.grouphead` matches it. */
+	.sect,
+	.grouphead {
 		margin: 0;
 		font-size: var(--ph-text-xs);
 		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
 		color: var(--ink-dim);
+	}
+	/* Over app.css's `.grouphead` eyebrow, which the other tabs still wear. */
+	.grouphead {
+		margin-top: var(--space-2xl);
+		letter-spacing: normal;
+		text-transform: none;
 	}
 
 	.now-title {
@@ -1301,9 +1067,12 @@
 		line-height: var(--lh-tight);
 		color: var(--ink);
 	}
+	/* Underlined: for anyone not singing, the only door to the song's page and its lyrics. */
 	.now-title a {
 		color: inherit;
-		text-decoration: none;
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
 	}
 
 	.now-by {
@@ -1401,14 +1170,5 @@
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 		white-space: nowrap;
-	}
-
-	.grouphead {
-		margin: var(--space-2xl) 0 0;
-		font-size: var(--ph-text-xs);
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
 	}
 </style>

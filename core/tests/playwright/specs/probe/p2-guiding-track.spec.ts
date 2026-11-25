@@ -358,16 +358,13 @@ test('[MOVED] a guide at the digital floor still offers the control and still pl
 		await tv.locator(SEL.mediaEl).first().waitFor({ state: 'attached', timeout: 30_000 });
 		await awaitMixSrc(tv, media);
 
-		// The phone still OFFERS the control, on /queue's now-playing card. `.gt.disabled` is the anchor the
-		// component's own source names for this state; the range input's `disabled` property is not usable,
-		// because bits-ui does not expose it as one.
+		// The phone still OFFERS the control, on the singer's own card on /queue: Off / Low / Full, enabled.
 		await openQueue(phone);
-		await expect(phone.locator(SEL.guidingTrackRoot)).toBeAttached();
+		await expect(phone.locator(SEL.guideSegments)).toBeAttached();
 		await expect(
-			phone.locator(`${SEL.guidingTrackRoot}.disabled`),
+			phone.locator(`${SEL.guideSegments} button:disabled`),
 			'the guide control must be OFFERED: hasGuidingTrack tests the presence of a mix, not its content'
 		).toHaveCount(0);
-		await expect(phone.locator(SEL.slider).first()).not.toBeDisabled();
 
 		// …and the room is playing it, at the floor or not.
 		const before = await awaitMaster(tv);

@@ -30,13 +30,13 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 		await queueReady(ana, 'prayer');
 
 		await openQueue(maya);
-		const deck = maya.locator('section[aria-label="On deck"]');
+		const deck = maya.locator('.deck:not(.up)');
 		await expect(deck).toBeVisible();
 		await expect(deck).toContainText('Not yet — let Ana go first');
 		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
 		await deck.getByRole('button', { name: /^Lower .+ by one semitone$/ }).click();
 		await expect(deck).toContainText('Key · −2');
-		await expect(deck).toContainText("You're next");
+		await expect(deck).toContainText('You’re next');
 		// The key is said once on this screen: the card's "A minor → G minor", not again on Maya's queued row.
 		await expect(maya.locator('.qrow', { hasText: 'sweet-caroline' })).not.toContainText('minor');
 		await expect(maya.locator('.qrow', { hasText: 'livin-on-a-prayer' })).toContainText('minor');
@@ -48,10 +48,13 @@ test('on deck: the card, the preset, and the key on the TV', async ({ world }, t
 			await maya.screenshot({ path: join(out, `phone-on-deck-${scheme}.png`) });
 		}
 
-		// Theo's turn ends; Maya's starts in the key she set.
+		// Theo's turn ends; Maya's starts in the key she set. "Not yet" had her focus, and leaves with the handoff: focus
+		// goes to her card's first key, not to <body>.
+		await deck.getByRole('button', { name: /^Not yet/ }).focus();
 		await transportTap(theo, 'skip');
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/caroline/i);
 		await expect(deck).toHaveCount(0);
+		await expect(maya.locator(`${SEL.queueMyCard}.up .keys button`).first()).toBeFocused();
 		await maya.screenshot({ path: join(out, 'phone-singing-after-preset.png') });
 
 		// The TV says the key ONCE: the lower third's "Key -2" (#992's words), never a second chip on the intro card.
@@ -81,7 +84,7 @@ test('on deck: no card, and no "grab the mic", while you are the one singing', a
 		await openQueue(maya);
 		await expect(maya.locator(SEL.queueNowCard).first()).toBeVisible();
 		await expect(maya.locator(SEL.queueTitle)).toHaveText(['livin-on-a-prayer']);
-		await expect(maya.locator('section[aria-label="On deck"]')).toHaveCount(0);
+		await expect(maya.locator('.deck:not(.up)')).toHaveCount(0);
 	} finally {
 		await worker.stop();
 	}
@@ -104,7 +107,7 @@ test('on deck: Not yet lets the next singer go first, once', async ({ world }, t
 		await queueReady(ana, 'prayer');
 
 		await openQueue(maya);
-		const deck = maya.locator('section[aria-label="On deck"]');
+		const deck = maya.locator('.deck:not(.up)');
 		await deck.getByRole('button', { name: 'Not yet — let Ana go first' }).click();
 		await expect(deck).toHaveCount(0);
 		await expect

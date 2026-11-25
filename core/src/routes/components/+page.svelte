@@ -605,33 +605,34 @@
 	<!-- Inert, like the GuidingTrack rows below: the callbacks go nowhere, so each card stays in the state it shows. -->
 	<div style="display:grid;gap:14px;">
 		<OnDeckCard
+			entryId="gallery"
 			title="Sweet Caroline"
 			artist="Neil Diamond"
 			profile={profileFull}
 			keyShift={-2}
-			guidePct={20}
+			guideLevel={0.3}
 			guideAvailable={true}
+			afterName="Maya"
 			timeLeft="~2 min"
 			headsUp={false}
 			singerColor={PINK}
 			notYetName="Theo"
 			onkey={() => {}}
-			onguideinput={() => {}}
-			onguidecommit={() => {}}
+			onguide={() => {}}
 			onnotyet={() => {}}
 		/>
 		<OnDeckCard
+			entryId="gallery"
 			title="Sweet Caroline"
 			artist="Neil Diamond"
 			profile={profileFull}
 			keyShift={-2}
-			guidePct={20}
+			guideLevel={0.3}
 			guideAvailable={true}
 			headsUp={true}
 			singerColor={PINK}
 			onkey={() => {}}
-			onguideinput={() => {}}
-			onguidecommit={() => {}}
+			onguide={() => {}}
 			onnotyet={() => {}}
 		/>
 	</div>

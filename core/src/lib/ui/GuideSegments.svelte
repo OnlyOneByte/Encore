@@ -11,10 +11,13 @@
 		level,
 		onpick,
 		disabled = false,
-		label = 'Guide'
+		label = 'Guide',
+		scope
 	}: {
 		/** The room's effective level, 0..1. */
 		level: number | null;
+		/** What the level belongs to (a song): a pick never outlives it, even when the next one's level is equal. */
+		scope?: string;
 		/** Returns false when the command never reached the wire. */
 		onpick: (level: number) => boolean | void;
 		disabled?: boolean;
@@ -28,9 +31,10 @@
 	let hold: ReturnType<typeof setTimeout> | undefined;
 	const buttons = $state<HTMLButtonElement[]>([]);
 
-	// The room's answer replaces the draft, whichever way it went.
+	// The room's answer replaces the draft, whichever way it went; so does the next song.
 	$effect(() => {
 		void level;
+		void scope;
 		draft = null;
 	});
 	$effect(() => () => clearTimeout(hold));

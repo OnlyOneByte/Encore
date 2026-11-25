@@ -268,7 +268,7 @@ function deckToUp(width: number): Make {
 				const page = await asSinger(browser, world, opts, ph.maya, width);
 				await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
 				await page.goto('/queue');
-				await expect(page.locator(SEL.queueMyCard)).toHaveAttribute('aria-label', 'On deck', { timeout: 15_000 });
+				await expect(page.locator(`${SEL.queueMyCard}:not(.up)`)).toBeVisible({ timeout: 15_000 });
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				// Past the settle window, so the skip lands on Theo's song.
 				await page.waitForTimeout(SETTLE_MS + 200);
@@ -276,14 +276,14 @@ function deckToUp(width: number): Make {
 			},
 			trigger: async (page) => {
 				await sendPlayerCommand(ph!.theo, { cmd: 'skip' });
-				await expect(page.locator(SEL.queueMyCard)).toHaveAttribute('aria-label', 'Your song', { timeout: 10_000 });
+				await expect(page.locator(`${SEL.queueMyCard}.up`)).toBeVisible({ timeout: 10_000 });
 			},
 			subject: SEL.queueMyCard,
 			observe: (page) =>
 				page.evaluate(() => {
-					const card = document.querySelector('section.deck');
+					const card = document.querySelector('.deck');
 					const r = card?.getBoundingClientRect();
-					return { label: card?.getAttribute('aria-label') ?? null, top: r?.top ?? null, height: r?.height ?? null };
+					return { up: !!card?.classList.contains('up'), top: r?.top ?? null, height: r?.height ?? null };
 				})
 		};
 	};
@@ -588,9 +588,9 @@ function reorderHeld(width: number): Make {
 	};
 }
 
-/** Theo's /queue as the "Now singing" card comes (`arrive`: the room's first song) or goes (`leave`: that song
- *  skipped, nothing behind it). What is under the card is held where it was drawn and eases to its new place
- *  (`data-settle`, --motion-base), so nothing jumps. Arriving, the card then fades into the opened slot on the next
+/** Theo's /queue as the Now row comes (`arrive`: the room's first song) or goes (`leave`: that song skipped,
+ *  nothing behind it). What is under the row is held where it was drawn and eases to its new place (`data-hold`,
+ *  --motion-base), so nothing jumps. Arriving, the card then fades into the opened slot on the next
  *  --motion-base; leaving, it is a cut. Each run first puts the room in the state before. CLS in metrics.json also
  *  counts the fixed dock, whose top edge moves as the strip comes or goes: the root layout's. */
 function queueCard(moment: 'arrive' | 'leave'): Make {
@@ -604,7 +604,7 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 				moment === 'arrive'
 					? 'Phone 390x844: /queue as the room’s first song starts — the empty state eases down from where it was (transform, --motion-base), then the "Now singing" card fades into the opened slot (opacity, --motion-base after --motion-base); no jump, never text over text'
 					: 'Phone 390x844: /queue as the last song is skipped — the card goes at once (a cut) and the empty state eases up from where it was (transform, --motion-base), no jump',
-			subject: moment === 'arrive' ? SEL.queueNowCard : 'main > .below',
+			subject: moment === 'arrive' ? SEL.queueNowCard : 'main .empty-slot',
 			stepMs: 33,
 			scale: 1,
 			columns: 5,
@@ -641,12 +641,12 @@ function queueCard(moment: 'arrive' | 'leave'): Make {
 					await page.locator(SEL.queueNowCard).waitFor({ state: 'detached', timeout: 10_000 });
 				}
 			},
-			only: '.now, .below',
+			only: '.now, .empty-slot',
 			stripClip: async () => ({ x: 0, y: 0, width: 390, height: 600 }),
 			observe: (page) =>
 				page.evaluate(() => ({
-					card: !!document.querySelector('main > .now'),
-					underTop: document.querySelector('main > .below')?.getBoundingClientRect().top ?? null
+					card: !!document.querySelector('main .now'),
+					underTop: document.querySelector('main .empty-slot')?.getBoundingClientRect().top ?? null
 				}))
 		};
 	};
@@ -1434,9 +1434,9 @@ const SCENARIOS: Record<string, Make> = {
 	'phone-host-reset-dialog-320': hostResetDialog(320),
 
 	/** On deck crossing into the heads-up, for real: Theo sings a 36 s track on a real TV, so Maya's card starts as
-	 *  "On deck" with its time-left and, 30 s from the end, becomes "You’re next": the class, the eyebrow text and
-	 *  the time-left all change in one update, and the card fades to her colour (--motion-slow). Each run restarts
-	 *  Theo's song so it opens before the crossing. Needs the long track in this file's library (`LIBRARY`). */
+	 *  "After Theo" with its time-left and, 30 s from the end, says "Grab the mic": the class, the meta words and the
+	 *  time-left all change in one update, a cut on a card already filled in her colour. Each run restarts Theo's song
+	 *  so it opens before the crossing. Needs the long track in this file's library (`LIBRARY`). */
 	'phone-tab-left-390': otherTab('left', 390),
 	'phone-tab-left-320': otherTab('left', 320),
 	'phone-tab-adopted-390': otherTab('adopted', 390),
@@ -1447,7 +1447,7 @@ const SCENARIOS: Record<string, Make> = {
 		let maya: Page | undefined;
 		return {
 			name: 'phone-on-deck-heads-up',
-			what: 'Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — "On deck" + time-left → "You’re next", the card already in the singer colour, a cut in place',
+			what: 'Phone 390x844: the on-deck card crossing 30 s left on a real 36 s song — "After Theo" + time-left → "Grab the mic", the card already filled in the singer colour, a cut in place',
 			stepMs: 33,
 			scale: 1,
 			columns: 5,
@@ -1468,26 +1468,25 @@ const SCENARIOS: Record<string, Make> = {
 				const page = await asSinger(browser, world, opts, maya);
 				await page.goto('/');
 				await openQueue(page);
-				await expect(page.locator('section.deck:not(.heads-up) .left')).not.toBeEmpty();
+				await expect(page.locator('.deck:not(.heads-up) .meta .end')).not.toBeEmpty();
 				await page.evaluate(() => document.fonts.ready.then(() => true));
 				return page;
 			},
 			// The song's own clock is the trigger, as on a night.
-			trigger: (page) => page.locator('section.deck.heads-up').waitFor({ timeout: 20_000 }),
-			// The card AND its children: the eyebrow's ink fades on its own transition, which `section.deck` alone files
-			// under `others` and never seeks.
-			only: 'section.deck, section.deck *',
-			subject: 'section.deck.heads-up',
+			trigger: (page) => page.locator('.deck.heads-up').waitFor({ timeout: 20_000 }),
+			// The card AND its children, so a child's own animation is seeked too.
+			only: '.deck, .deck *',
+			subject: '.deck.heads-up',
 			// The card and a little of what is around it: the whole 390x844 page in 15 frames is past 2000 px tall.
 			stripClip: async (page) => {
-				const box = await page.locator('section.deck').boundingBox();
+				const box = await page.locator('.deck').boundingBox();
 				return box ? { x: 0, y: Math.max(0, box.y - 12), width: 390, height: box.height + 24 } : undefined;
 			},
 			observe: (page) =>
 				page.evaluate(() => ({
-					headsUp: !!document.querySelector('section.deck.heads-up'),
-					eyebrow: document.querySelector('section.deck .eyebrow')?.textContent?.trim() ?? null,
-					timeLeftShown: !!document.querySelector('section.deck .left')?.textContent?.trim()
+					headsUp: !!document.querySelector('.deck.heads-up'),
+					meta: document.querySelector('.deck .meta span')?.textContent?.trim() ?? null,
+					timeLeftShown: !!document.querySelector('.deck .meta .end')?.textContent?.trim()
 				}))
 		};
 	},

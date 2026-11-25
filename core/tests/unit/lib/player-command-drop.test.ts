@@ -13,10 +13,9 @@ import { at } from '$test';
  *
  * WHY A SOURCE SCAN. These are five lines of wiring inside `.svelte` files, and the component-mount harness is
  * gone (bunfig.toml records why) — a browser can see the control move but not whether the boolean was consulted,
- * and the window where a send fails while the socket still reads connected is not reachable from a spec. The
- * ARITHMETIC behind the slider is a real behavioural test instead, in guide-send.test.ts; what is here is the
- * wiring between it and the route, plus the three transport buttons, which hold no optimistic state at all and so
- * have nothing testable except who they call.
+ * and the window where a send fails while the socket still reads connected is not reachable from a spec. What is
+ * here is the route's wiring, plus the three transport buttons, which hold no optimistic state at all and so have
+ * nothing testable except who they call.
  *
  * The exhaustiveness test at the bottom is the one that matters most: it is what makes a SIXTH call site, added
  * later and discarding the boolean again, red rather than invisible.
@@ -98,35 +97,14 @@ test('the one toaster clears the dock at BOTH of sonner breakpoints, and only on
 	expect(sheet).not.toMatch(/inset-inline:\s*\d/);
 });
 
-test('the guide slider holds ONE nullable draft, not a drag-scoped flag beside a number', () => {
-	/* `guideDragging ? guideDraft : guideServerPct` is the shape that sprang back on release: the flag cleared
-	   synchronously, so the readout fell through to a server echo that had not arrived yet even when the command
-	   had landed. A nullable draft cannot express that state. */
-	expect(queuePage).toContain('let guideDraft = $state<number | null>(null);');
-	expect(queuePage).toContain('const guidePct = $derived(guideDraft ?? guideServerPct);');
-	/* The two defective SHAPES, not the bare word — the comment above the draft names what it replaced, which is
-	   the account a reader needs and which a file-wide negative would forbid writing down. */
-	expect(queuePage).not.toContain('let guideDragging');
-	expect(queuePage).not.toContain('guideDragging ? guideDraft');
-});
-
-test('the guide draft is cleared by the ROOM agreeing, and by a song change', () => {
-	/* The first arm is the only event that proves the command landed. The second is keyed on the entry ID, because a
-	   skip goes straight from one entry to the next and `nowEntry` is never null in between: the old `!nowEntry` arm
-	   never fired, and both drafts outlived the song (review r2, 974-M1). */
-	expect(queuePage).toContain('if (guideDraft !== null && guideServerPct === guideDraft) guideDraft = null;');
+test("the guide pick hands the command's boolean back, so a dropped pick drops at once", () => {
+	/* Guide is Off / Low / Full on /queue (redesign step 5b). GuideSegments drops its pick when `onpick` returns false,
+	   so the route must return what `room.command` said, and name the song so a pick after a skip is dropped as stale. */
+	expect(queuePage).toContain("return room.command({ cmd: 'guide', level, entryId: nowEntry.id });");
+	expect(queuePage).toContain('if (spotLive) return guidePick(level);');
+	// The key draft still resets on a song change, keyed on the entry ID: a skip never passes through null.
 	expect(queuePage).not.toContain('|| !nowEntry)');
 	expect(queuePage).toContain('if (id === draftsFor) return;');
-	expect(queuePage).toContain('guideSend.cancel();');
-	// The draft is written by the send module's verdict, never by the input handler directly — that is what makes
-	// a dropped command clear it. guide-send.test.ts drives the verdict itself.
-	// ...and only for the song its gesture began on: the rest of a drag that outlived the song earns no draft.
-	expect(queuePage).toContain('if (pct === null || guideGestureFor === nowEntry?.id) guideDraft = pct;');
-	// Your card drives the live song only once playback names it yours (redesign step 5), through the same two.
-	expect(queuePage).toContain('if (spotLive) guideInput(pct);');
-	expect(queuePage).toContain('if (spotLive) guideCommit(pct);');
-	// Every send of a gesture names the entry it BEGAN on, not the one on the card when the send fires.
-	expect(queuePage).toContain("room.command({ cmd: 'guide', level: pct / 100, entryId: guideGestureFor })");
 });
 
 test('the guide slider is CONTROLLED, so a refused command cannot leave the thumb out there', () => {

@@ -59,12 +59,12 @@ test('only the singer changes the playing song key and guide', async ({ world })
 		fromTheo({ cmd: 'pause' });
 		await expect.poll(async () => (await serverPlayback(world.baseURL)).state.isPlaying).toBe(false);
 
-		// Theo's phone: no keycaps and no slider anywhere. Maya's card keeps them.
+		// Theo's phone: no keycaps and no guide control anywhere. Maya's card keeps them.
 		await expect(theo.locator(RAISE)).toHaveCount(0);
-		await expect(theo.locator(SEL.slider)).toHaveCount(0);
+		await expect(theo.locator(SEL.guideSegments)).toHaveCount(0);
 		await expect(maya.locator(`${SEL.queueMyCard} ${RAISE}`)).toBeVisible();
-		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.slider}`)).toBeVisible();
-		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.guidingTrackRoot}.disabled`)).toHaveCount(0);
+		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.guideSegments}`)).toBeVisible();
+		await expect(maya.locator(`${SEL.queueMyCard} ${SEL.guideSegments} button:disabled`)).toHaveCount(0);
 
 		// Maya raises twice from her own phone: it lands, and Theo reads it as one line.
 		const raise = maya.locator(`${SEL.queueMyCard} ${RAISE}`);

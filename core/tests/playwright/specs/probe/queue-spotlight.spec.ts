@@ -1,5 +1,6 @@
-// YOUR CARD ON QUEUE IS ONE BOX (redesign step 5, #1154). Maya sings, Theo is on deck and watches /queue.
-//   1. At the phone's size his On deck card's keys sit between the header and the dock (G1), under a compact Now row.
+// YOUR CARD ON QUEUE IS ONE BOX (redesign steps 5 and 5b, #1154). Maya sings, Theo is on deck and watches /queue.
+//   1. At the phone's size his On deck card is the first thing on the screen, above the compact Now row, and its keys
+//      sit between the header and the dock (G1).
 //   2. Maya's song ends and his starts: the same card element turns "You're up" at the same height, with no layout
 //      shift inside main, so nothing under his thumb moves (tenet 3).
 //   3. A reload draws the same card at the same height (live equals reloaded).
@@ -62,8 +63,10 @@ for (const [width, height] of [
 		await queueReady(theo, 'believin');
 		await openQueue(theo);
 		const card = theo.locator(SEL.queueMyCard);
-		await expect(card).toHaveAttribute('aria-label', 'On deck', { timeout: 20_000 });
+		await expect(card.getByRole('region', { name: 'On deck' })).toContainText('You’re next', { timeout: 20_000 });
 		await theo.evaluate(() => document.fonts.ready.then(() => true));
+		const nowRow = (await theo.locator(SEL.queueNowCard).boundingBox())!;
+		expect((await card.boundingBox())!.y, 'your card sits above the Now row').toBeLessThan(nowRow.y);
 
 		// G1: the card's keys between the header's bottom and the dock's top, with no scroll.
 		const header = (await theo.locator('.page-header').boundingBox())!;
@@ -79,7 +82,7 @@ for (const [width, height] of [
 		await card.evaluate((el) => ((el as HTMLElement).dataset.probe = 'same'));
 		await watchShifts(theo);
 		await transportTap(maya, 'skip');
-		await expect(card).toHaveAttribute('aria-label', 'Your song', { timeout: 10_000 });
+		await expect(card).toHaveClass(/\bup\b/, { timeout: 10_000 });
 		await expect(theo.locator(SEL.queueNowCard)).toContainText(/believin/i);
 		await theo.waitForTimeout(1_000);
 		expect(await card.getAttribute('data-probe'), 'the card was remounted at the handoff').toBe('same');
@@ -92,7 +95,7 @@ for (const [width, height] of [
 
 		// Live equals reloaded.
 		await theo.reload();
-		await expect(card).toHaveAttribute('aria-label', 'Your song', { timeout: 15_000 });
+		await expect(card).toHaveClass(/\bup\b/, { timeout: 15_000 });
 		const reloaded = (await card.boundingBox())!;
 		expect(
 			Math.abs(reloaded.height - after.height),
