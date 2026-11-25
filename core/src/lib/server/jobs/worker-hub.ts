@@ -1093,6 +1093,7 @@ export class WorkerHub {
 				threads: profile.threads ?? null,
 				concurrency: profile.concurrency ?? null,
 				demucsJobs: profile.demucsJobs ?? null,
+				asrCompute: profile.asrCompute ?? null,
 				handSet: profile.handSet?.join(',') ?? null,
 				engine: params.engine ?? null,
 				model: params.model ?? null,

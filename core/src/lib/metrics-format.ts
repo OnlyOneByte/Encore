@@ -2,7 +2,7 @@
 // to one page's label map and silently show the raw database name on the other. This vocabulary is deliberately
 // SEPARATE from the guest-facing labels in the contract: different readers, kept apart on purpose.
 
-import { PROFILE_SETTINGS, SEPARATOR_ENGINES } from '$lib/contract';
+import { PICKED_AT_BOOT, PROFILE_SETTINGS, SEPARATOR_ENGINES } from '$lib/contract';
 
 /** ms to a human duration. Null renders as an em dash, NEVER as 0 — a missing timing is "not recorded", not "took
  * no time". EACH BRANCH ROUNDS TO THE PRECISION IT DISPLAYS BEFORE the branch is chosen: the other order prints
@@ -140,15 +140,18 @@ const FACT_LABELS: Record<string, string> = {
 	concurrency: 'jobs at once',
 	demucsJobs: 'demucs jobs',
 	asrModel: 'speech model',
+	asrCompute: 'speech compute',
 	syncMode: 'timing'
 };
 export const factLabel = (k: string): string => FACT_LABELS[k] ?? k;
 
-/** "4 (auto)" or "4 (set by hand)" for one of the worker's `PROFILE_SETTINGS`; anything else, or a worker
- *  that did not say (`handSet` null), keeps the bare value. */
+/** "4 (set by hand)", "4 (auto)" when the box picked it (`PICKED_AT_BOOT`), or "1 (default)" for a fixed
+ *  default, for one of the worker's `PROFILE_SETTINGS`. Anything else, or a worker that did not say
+ *  (`handSet` null), keeps the bare value. */
 export function picked(key: string, value: string, handSet: readonly string[] | null | undefined): string {
 	if (!handSet || !(PROFILE_SETTINGS as readonly string[]).includes(key)) return value;
-	return `${value} (${handSet.includes(key) ? 'set by hand' : 'auto'})`;
+	if (handSet.includes(key)) return `${value} (set by hand)`;
+	return `${value} (${(PICKED_AT_BOOT as readonly string[]).includes(key) ? 'auto' : 'default'})`;
 }
 
 /** Label/value pairs for the model block, dropping every absent field rather than printing an empty row. */

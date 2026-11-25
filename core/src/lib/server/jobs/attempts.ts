@@ -25,6 +25,7 @@ export interface AttemptFacts {
 	lyricsNote?: string | null; // why align published no lyrics, one of LYRICS_NOTES, from job:complete
 	concurrency?: number | null; // the rest of the worker's profile, from hello, at assignment
 	demucsJobs?: number | null;
+	asrCompute?: string | null;
 	handSet?: string | null;
 }
 
@@ -73,6 +74,7 @@ export class AttemptLedger {
 			lyricsNote: null,
 			concurrency: null,
 			demucsJobs: null,
+			asrCompute: null,
 			handSet: null
 		};
 		this.#db.insert(jobAttempts).values(row).run();
@@ -213,6 +215,7 @@ function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 		'lyricsNote',
 		'concurrency',
 		'demucsJobs',
+		'asrCompute',
 		'handSet'
 	] as const) {
 		if (facts[k] !== undefined) out[k] = facts[k] as never;

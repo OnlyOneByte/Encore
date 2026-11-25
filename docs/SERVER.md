@@ -1343,12 +1343,15 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   `device` with its transcriber's (`cpu` on a Mac, where separation runs on `mps`). A completion fact that
   is not a bounded string is dropped (`resolvedFacts`), and a completion `backend` or `device` must be a
   name hello would accept, so a `null` cannot blank what assign wrote and no path lands in those columns.
-- **`concurrency`, `demucsJobs` and `handSet` finish the profile on every attempt.** `handSet` names which of
-  `PROFILE_SETTINGS` the worker's operator set by hand (comma-joined; `''` means every one was picked at
-  boot, and `NULL` means a worker too old to say). hello's `asrCompute` must be one of `ASR_COMPUTE_TYPES`,
-  `warmup` a boolean, and `handSet` an array of at most 32 entries, of which only known names are kept, so
-  nothing but the allowlist reaches the column. /metrics and the song history mark each value "auto" or
-  "set by hand"; both are [host only](#the-host-key), and a guest's `/api/audit` gets the catalog row alone.
+- **`concurrency`, `demucsJobs`, `asrCompute` and `handSet` finish the profile on every attempt.** `handSet`
+  names which of `PROFILE_SETTINGS` the worker's operator set by hand (comma-joined; `''` means none, and
+  `NULL` means a worker too old to say). hello's `asrCompute` must be one of `ASR_COMPUTE_TYPES`, `warmup` a
+  boolean, and `handSet` an array of at most 32 entries, of which only known names are kept, so nothing but
+  the allowlist reaches the column. The warm-up is a boot step with no effect on one attempt, so it stays on
+  the worker card only. /metrics and the song history mark each value "set by hand", "auto" when the box
+  picks it (`PICKED_AT_BOOT`), or "default" for a fixed default; both are [host only](#the-host-key), and a
+  guest's `/api/audit` gets the catalog row alone. On an align row the mark on `device` is about
+  `ENCORE_DEVICE`, even where the completion replaced the device with the transcriber's (`cpu` on a Mac).
 - **`audioSec` is snapshotted onto the attempt**, not joined from `media`, because a media row's duration
   can be re-annotated later and would silently rewrite historical rates. Every reported cost is a rate.
 - **The named lifecycle helpers are the only supported way to touch a job row.** Writing a status directly

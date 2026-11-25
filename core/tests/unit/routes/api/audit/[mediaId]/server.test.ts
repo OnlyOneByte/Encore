@@ -35,6 +35,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		lyricsNote: null,
 		concurrency: null,
 		demucsJobs: null,
+		asrCompute: null,
 		handSet: null,
 		...over
 	};

@@ -447,6 +447,7 @@ const CSV_COLUMNS = [
 	'threads',
 	'concurrency',
 	'demucsJobs',
+	'asrCompute',
 	'handSet',
 	'asrModel',
 	'syncMode',

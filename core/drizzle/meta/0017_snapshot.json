@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "caaeb6e0-4f1b-4bf7-9560-bffe9af437c9",
+  "id": "507ff6dc-8f79-466a-8e0d-a6e9fb2d8f99",
   "prevId": "8f6d7fbc-2ac1-4abf-9096-223814e39747",
   "tables": {
     "global_settings": {
@@ -322,6 +322,13 @@
         "demucs_jobs": {
           "name": "demucs_jobs",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "asr_compute": {
+          "name": "asr_compute",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

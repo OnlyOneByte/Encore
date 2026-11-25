@@ -177,16 +177,20 @@ test('the rest of the profile, and what was set by hand, is held to known names 
 	expect(workerProfile({ concurrency: 5000 })).toEqual({});
 });
 
-test('every attempt records the jobs at once, the demucs jobs and what was set by hand', () => {
+test('every attempt records the jobs at once, the demucs jobs, the speech compute and what was set by hand', () => {
 	const { hub, jobs, attempts } = harness();
 	jobs.enqueue('m1', 'stems', 0, T0);
-	hub.handle(hello({ ...PROFILE, concurrency: 2, demucsJobs: 4, handSet: ['concurrency'] }));
+	hub.handle(hello({ ...PROFILE, concurrency: 2, demucsJobs: 4, asrCompute: 'float16', handSet: ['concurrency'] }));
 	const [a] = attempts.byMedia('m1');
-	expect([a.concurrency, a.demucsJobs, a.handSet]).toEqual([2, 4, 'concurrency']);
+	expect([a.concurrency, a.demucsJobs, a.asrCompute, a.handSet]).toEqual([2, 4, 'float16', 'concurrency']);
 	const audit = toAudit(a);
 	expect([audit.models.concurrency, audit.models.demucsJobs, audit.handSet]).toEqual(['2', '4', ['concurrency']]);
-	expect(modelFacts(audit.models, audit.handSet)).toContainEqual(['jobs at once', '2 (set by hand)']);
-	expect(modelFacts(audit.models, audit.handSet)).toContainEqual(['demucs jobs', '4 (auto)']);
+	const facts = modelFacts(audit.models, audit.handSet);
+	expect(facts).toContainEqual(['jobs at once', '2 (set by hand)']);
+	// The box picks the compute type and the threads; demucs jobs keeps a fixed default until #1284.
+	expect(facts).toContainEqual(['speech compute', 'float16 (auto)']);
+	expect(facts).toContainEqual(['torch threads', '16 (auto)']);
+	expect(facts).toContainEqual(['demucs jobs', '4 (default)']);
 });
 
 test('a worker too old to say what it set by hand records null, not "all auto"', () => {
@@ -198,15 +202,15 @@ test('a worker too old to say what it set by hand records null, not "all auto"',
 	expect(modelFacts(toAudit(a).models, toAudit(a).handSet)).toContainEqual(['torch threads', '16']);
 });
 
-test('/metrics marks each setting of a worker as auto or set by hand', () => {
+test('/metrics marks each setting of a worker as set by hand, picked by the box, or a fixed default', () => {
 	const profile = { device: 'cpu', threads: 6, demucsJobs: 4, concurrency: 1, asrCompute: 'float32', warmup: true };
 	expect(workerFacts({ ...profile, handSet: ['threads'] }, null)).toEqual([
 		['hardware', 'cpu (auto)'],
 		['torch threads', '6 (set by hand)'],
-		['demucs jobs', '4 (auto)'],
-		['jobs at once', '1 (auto)'],
+		['demucs jobs', '4 (default)'],
+		['jobs at once', '1 (default)'],
 		['speech compute', 'float32 (auto)'],
-		['warm-up at boot', 'on (auto)']
+		['warm-up at boot', 'on (default)']
 	]);
 });
 

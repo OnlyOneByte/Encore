@@ -53,6 +53,8 @@ test('the profile a worker sends in hello is on /api/metrics and the /metrics pa
 		await worker.scrollIntoViewIfNeeded();
 		await expect(worker).toContainText('cuda (auto)');
 		await expect(worker).toContainText('16 (set by hand)');
+		// Neither set nor picked by the box: a fixed default, never "auto" (goal 2 counts the auto ones).
+		await expect(worker).toContainText('1 (default)');
 		await expect(worker).toContainText('demucs jobs');
 		await expect(worker).toContainText('jobs at once');
 		await expect(worker).toContainText('NVIDIA RTX 4070');

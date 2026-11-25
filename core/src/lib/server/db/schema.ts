@@ -338,6 +338,7 @@ export const jobAttempts = sqliteTable(
 		// The rest of the worker's boot profile, and which of it was set by hand (`attemptHandSet`).
 		concurrency: integer('concurrency'),
 		demucsJobs: integer('demucs_jobs'),
+		asrCompute: text('asr_compute'),
 		handSet: text('hand_set')
 	},
 	(t) => ({

@@ -367,7 +367,7 @@ export interface WorkerProfile {
 	handSet?: ProfileSetting[];
 }
 
-/** The worker's boot settings that are picked automatically unless set by hand, by their hello names. */
+/** The worker's boot settings that can be set by hand, by their hello names. */
 export const PROFILE_SETTINGS = [
 	'device',
 	'backend',
@@ -378,6 +378,10 @@ export const PROFILE_SETTINGS = [
 	'warmup'
 ] as const;
 export type ProfileSetting = (typeof PROFILE_SETTINGS)[number];
+
+/** The ones the worker picks from its hardware when not set by hand; the rest keep a fixed default. A
+ *  worker change that makes a setting pick itself adds it here (#1284 for demucsJobs). */
+export const PICKED_AT_BOOT: readonly ProfileSetting[] = ['device', 'backend', 'threads', 'asrCompute'];
 
 /** Mirrors the worker's `config.ASR_COMPUTE_TYPES`; anything else is dropped. */
 export const ASR_COMPUTE_TYPES = ['float32', 'float16', 'bfloat16', 'int8', 'int8_float16', 'int8_float32'] as const;

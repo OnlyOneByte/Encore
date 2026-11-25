@@ -180,8 +180,9 @@ class Config:
     extra: Mapping[str, str] = field(default_factory=dict)
 
     def hand_set(self) -> tuple[str, ...]:
-        """The performance settings set by hand, by their `Hello` wire names; every other one was picked at
-        boot. Read BEFORE `__main__` replaces the unset ones with what the box picked."""
+        """The performance settings set by hand, by their `Hello` wire names; the others were picked at boot
+        or kept their default. Read BEFORE `__main__` replaces the unset ones with what the box picked.
+        Warm-up counts only when switched off: `ENCORE_WARMUP=1` is the default, so it reads as not set."""
         chosen = {
             "device": self.device is not None,
             "backend": self.backend is not None,

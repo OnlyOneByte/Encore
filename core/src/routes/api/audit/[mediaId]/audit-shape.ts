@@ -31,6 +31,7 @@ export interface AuditAttempt {
 		concurrency: string | null;
 		demucsJobs: string | null;
 		asrModel: string | null;
+		asrCompute: string | null;
 		syncMode: string | null;
 	};
 	/** Which of the worker's profile settings were set by hand; null when it did not say. */
@@ -106,6 +107,7 @@ export function toAudit(a: JobAttempt): AuditAttempt {
 			concurrency: a.concurrency == null ? null : String(a.concurrency),
 			demucsJobs: a.demucsJobs == null ? null : String(a.demucsJobs),
 			asrModel: a.asrModel,
+			asrCompute: a.asrCompute,
 			syncMode: a.syncMode
 		},
 		handSet: attemptHandSet(a),

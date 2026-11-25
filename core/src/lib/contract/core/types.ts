@@ -265,9 +265,11 @@ export interface JobAttempt {
 	/** Why an align job published no lyrics, when the worker knows (`LYRICS_NOTES`). Null otherwise. */
 	lyricsNote: string | null;
 
-	/** The assigned worker's jobs at once and demucs `-j` (`WorkerProfile`), stamped like `threads`. */
+	/** The assigned worker's jobs at once, demucs `-j` and whisper compute type (`WorkerProfile`), stamped
+	 *  like `threads`. The warm-up is boot-only, so no attempt records it. */
 	concurrency: number | null;
 	demucsJobs: number | null;
+	asrCompute: string | null;
 	/** The profile settings set by hand, comma-joined `PROFILE_SETTINGS` names; '' means all were picked and
 	 *  null that the worker did not say. Parse with `attemptHandSet()`. */
 	handSet: string | null;
