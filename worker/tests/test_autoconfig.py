@@ -267,7 +267,7 @@ def test_main_hands_the_client_and_the_config_the_resolved_profile(
     wired = got["client"].wired
     assert (wired["device"], wired["threads"], wired["demucs_jobs"], got["applied"]) == ("cpu", 32, 2, 32)
     cfg = wired["config"]
-    assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 32, 1, "float32")
+    assert (cfg.concurrency, cfg.threads, cfg.demucs_jobs, cfg.asr_compute) == (2, 32, 2, "float32")
     got["stems_steps_for"](JobRef(job_id="j", media_id="m", media_dir=str(tmp_path)))
     assert [k.get("threads") for k in got["separators"]] == [16, 16], "both separator builds get the share"
 

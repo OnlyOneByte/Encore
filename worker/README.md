@@ -302,7 +302,7 @@ prints:
 
 ```
 [worker] concurrency 1 (auto 1 (ENCORE_WORKER_CONCURRENCY=2 overlaps a queue of songs))
-[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); demucs -j 1 (auto 1 (cpu: demucs -j above 1 can return NaN on CPU, saved as a silent song))
+[worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); demucs -j 4 (auto 4 (cpu, 32 separator cores: chunks in worker processes, a model each))
 [worker] asr compute float32 (auto (cpu))
 [worker] warm-up on (ENCORE_WARMUP=0 turns it off)
 ```
@@ -335,7 +335,7 @@ On a GPU or MPS device the separators take that lock too, so two jobs never shar
 | `ENCORE_DBOS_DB` | `encore-worker.sqlite` | DBOS's durable state, per box. A relative path is relative to the working directory, and the derived worker id hashes its absolute path, so starting from another directory gives a new state file and a new id |
 | `ENCORE_SEPARATOR_BACKEND` | auto | `torch` or `mlx` |
 | `ENCORE_DEVICE` | auto | the compute device, overriding the hardware probe |
-| `ENCORE_DEMUCS_JOBS` | `1` | torch demucs `-j`, chunks separated at once. Not auto-picked: above 1, demucs on CPU runs the chunks on threads over one model, and on a 32-core aarch64 box with torch 2.8.0 some came back NaN (9 of 248 s of a song at `-j 8`, none at `-j 1`). demucs rescales the file by its max, which is then NaN, so both stems save as all-zero and the silence gate refuses the song at −91 dBFS (`hardware.DEMUCS_JOBS_UNSAFE`). It is a race: one clean run at `-j 2` proves nothing. `-j 8` was about 2× faster when it worked (61.8 s against 126.7 s for 240 s of audio). Ignored on a GPU: demucs only pools `-j` on CPU. The startup line warns when it is set above 1 |
+| `ENCORE_DEMUCS_JOBS` | auto: on CPU one per 8 separator cores, up to 4; else `1` | torch demucs `-j`, chunks separated at once. Above 1 on CPU they run in worker processes, each with its own copy of the model (`adapters/demucs_pool.py`), because demucs's own `-j` threads share one model and returned NaN chunks, saved as a silent song (#1125). On 32 cores `-j 4` separated 3 songs in 0.31–0.97× their length against 0.46–1.34× at `-j 1`, with stems within one 16-bit step of `-j 1`'s, and the worker peaked at 7.6 GB rather than 4.0 GB ([docs/arch/05-worker.md](../docs/arch/05-worker.md) §2.6). Ignored on a GPU: demucs only pools `-j` on CPU |
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
 | `ENCORE_ASR_COMPUTE` | auto: `float16` on CUDA, else `float32` | whisper's compute type: one of `ASR_COMPUTE_TYPES`. `int8` is faster on CPU but unmeasured against the alignment corpus, so it is never the auto pick |
 | `ENCORE_WARMUP` | on | `0` skips the boot warm-up: nothing is fetched or loaded until a job needs it |

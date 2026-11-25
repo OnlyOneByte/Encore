@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing
-import os
 import sys
 from concurrent.futures import Future, ProcessPoolExecutor
 from typing import Any
@@ -85,11 +84,11 @@ class ModelProcessPool:
     """
 
     def __init__(self, workers: int) -> None:
+        import torch  # noqa: PLC0415
+
         self._workers = max(1, workers)
-        self._threads = max(1, (os.cpu_count() or 1) // self._workers)
-        env = os.environ.get("OMP_NUM_THREADS", "")
-        if env.isdigit() and int(env) > 0:
-            self._threads = max(1, int(env) // self._workers)
+        # This process's threads are the separator's share (`thread_env`), split between the workers.
+        self._threads = max(1, torch.get_num_threads() // self._workers)
         self._model: Any = None
         self._pool: ProcessPoolExecutor | None = None
         atexit.register(self.shutdown)

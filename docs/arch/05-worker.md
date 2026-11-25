@@ -252,6 +252,41 @@ The argv builders are **pure** and separately tested — a recipe this load-bear
 without spawning anything, and a flag whose absence only shows up on a real 45-minute separation should be
 assertable in a millisecond.
 
+### 2.6 Parallel chunks on CPU: a model per process
+
+demucs splits a song into overlapping chunks and, with `-j N` on CPU, runs them on `N` threads that share
+one model. Some chunks came back NaN, which saves as a silent song (#1125), so `-j` was pinned to 1.
+
+`adapters/demucs_pool.py` runs `demucs.separate` unchanged except for that pool. Each worker process gets
+its own copy of the model once, at start, and each submit carries only the chunk and enough context to pad
+it as demucs would. demucs's chunking, overlap blending, shifts, clipping and file writing stay its own,
+so the stems are `-j 1`'s to within float noise. Chunks and the model travel by value, not through torch's
+shared memory, because docker gives a container 64 MB of `/dev/shm` and the transfer died of SIGBUS.
+
+| song (32-core aarch64, CPU) | `-j 1` | pool `-j 4` | pool `-j 8` | largest sample difference from `-j 1` |
+| --- | --- | --- | --- | --- |
+| Chosen, 230 s | 106.7 s | 74.9 s | 71.9 s | 1 step of 16-bit |
+| Fly Away, 194 s | 174.6 s | 81.2 s | 83.4 s | 1 step of 16-bit |
+| MAYDAY, 248 s | 332.0 s | 240.6 s | 192.9 s | 1 step of 16-bit |
+
+The host was shared, at a 1-minute load of 28–147, so the times are noisy; every run was seeded the same.
+`-j 8` was no faster than `-j 4` on two songs, and every worker holds a model and its chunk's activations,
+so auto is one worker per 8 separator cores, up to 4 (`hardware.resolve_demucs_jobs`). With
+`ENCORE_WORKER_CONCURRENCY=2` each job's separator has half the cores, so `-j 2`.
+
+End to end, 3 songs picked at once through core on the same box, runs alternating main and the pool:
+
+| run | separate: Chosen / MAYDAY / Fly Away | all 3 ready | load, mean | worker RAM, peak |
+| --- | --- | --- | --- | --- |
+| main, `-j 1` | 535.6 / 487.5 / 300.9 s | 2532.1 s | 90.9 | 4.0 GB |
+| pool, `-j 4` | 77.7 / 83.7 / 80.8 s | 734.3 s | 45.1 | 7.6 GB |
+| main, `-j 1` | 205.1 / 218.9 / 126.7 s | 982.5 s | 45.6 | 4.0 GB |
+| pool, `-j 4` | 136.1 / 142.4 / 108.0 s | 929.6 s | 60.3 | 7.1 GB |
+
+In the second pair the pool ran under more load and still separated each song 15–35% sooner. Every stem
+of all 12 songs was within 0.1 dB of the others' loudness, none silent. The cost is RAM: about 1 GB more
+per worker while a song separates.
+
 ## 3. The audio profile
 
 Three pure-numpy analyses, each on the stem that can actually answer its question:
