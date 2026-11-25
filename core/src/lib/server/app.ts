@@ -45,11 +45,12 @@ import { deadTurns, DeadTurnWatch, type DeadTurn } from './jobs/dead-turns';
 import { cancelJobsForMedia } from './jobs/cancel';
 import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
-	readSidecar,
+	readSidecarInOrder,
 	updateSidecar,
 	sidecarFromMedia,
 	rebuildIndexFromMeta,
 	backfillSidecars,
+	sweepSidecarTemps,
 	canonicalsOf,
 	readAllSidecars
 } from './media/sidecar';
@@ -281,6 +282,8 @@ export function getApp(): EncoreApp {
 				if (restored > 0) console.log(`[core] restored ${restored} media from sidecars in meta/`);
 				const written = await backfillSidecars(mediaRepo.all(), Date.now());
 				if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
+				const swept = await sweepSidecarTemps(Date.now());
+				if (swept > 0) console.log(`[core] removed ${swept} leftover sidecar temp files from meta/`);
 			}
 		},
 		{
@@ -404,7 +407,7 @@ export function getApp(): EncoreApp {
 				const kept = new Set<string>();
 				let keptBytes = 0;
 				for (const c of candidates) {
-					const side = await readSidecar(c.mediaId);
+					const side = await readSidecarInOrder(c.mediaId); // behind a Keep still in the queue
 					c.lastUsedAt = side?.library.lastPlayedAt ?? side?.library.addedAt ?? 0;
 					if (side?.library.keep) {
 						kept.add(c.mediaId);

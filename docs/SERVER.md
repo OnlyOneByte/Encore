@@ -1010,6 +1010,9 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   before either writes lose one change, such as a Keep (#1188). Delete unlinks again behind the queue, so a
   queued write cannot re-create the record. A sidecar is read with one `readFile`, never `Bun.file`: that
   caches the size at `exists()`, so a file renamed over in between is read cut short and fails to parse (#1185).
+  A decision that reads Keep (delete, eviction) uses `readSidecarInOrder`, which waits behind the song's
+  queued writes, so a Keep tapped a moment earlier is seen. Boot removes write temps (`.<id>…tmp`) left in
+  `meta/` by a crash, once they are over a minute old (#1230).
 - **Clearing artifacts must NULL the sidecar fields directly**, never rely on a merge that falls back to the
   previous sidecar — that resurrects just-deleted refs and republishes an evicted song as processed with
   refs to files no longer on disk.

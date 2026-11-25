@@ -1,10 +1,10 @@
 // Sidecar records. `meta/<id>.json` is authoritative; the DB is a rebuildable index.
 // The headline property under test: delete the index and the library comes back from the volume alone.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
 import {
 	backfillSidecars,
 	sidecarFromMedia,
@@ -16,10 +16,13 @@ import {
 	rebuildIndexFromMeta,
 	clearArtifacts,
 	updateSidecar,
+	queueSidecarTask,
+	sweepSidecarTemps,
 	SIDECAR_SCHEMA,
 	type MediaSidecar
 } from '$lib/server/media/sidecar';
-import { setKeep } from '$lib/server/media/library-manage';
+import { requestDelete, setKeep } from '$lib/server/media/library-manage';
+import { metaDir } from '$lib/server/media/paths';
 import { assignParams } from '$lib/server/jobs/dispatch';
 
 const NOW = 1_788_400_000_000;
@@ -517,6 +520,76 @@ describe('concurrent writers of one record (#1188, #1185)', () => {
 		await writer;
 		expect(reads).toBeGreaterThan(0);
 		expect((await readSidecar(m.id))?.library.tags).toHaveLength(150);
+	});
+
+	it('a record renamed over between the existence check and the read is still read whole', async () => {
+		// The #1185 sequence, forced: any Bun.file handle on the record sees it replaced by a longer one right
+		// after `exists()`, as a write's rename can land there. Red every run on a Bun.file reader.
+		const m = media();
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		const path = join(metaDir(), `${m.id}.json`);
+		const staged = join(metaDir(), 'staged.tmp');
+		const base = sidecarFromMedia(m, NOW);
+		const tags = Array.from({ length: 50 }, (_, i) => `tag-${i}`);
+		writeFileSync(staged, JSON.stringify({ ...base, library: { ...base.library, tags } }));
+		const bun = Bun as unknown as { file: typeof Bun.file };
+		const realFile = bun.file;
+		bun.file = ((p: string, opts?: BlobPropertyBag) => {
+			const f = realFile(p, opts);
+			if (p !== path) return f;
+			const exists = f.exists.bind(f);
+			f.exists = async () => {
+				const found = await exists();
+				renameSync(staged, path);
+				return found;
+			};
+			return f;
+		}) as typeof Bun.file;
+		try {
+			expect(await readSidecar(m.id)).not.toBeNull();
+		} finally {
+			bun.file = realFile;
+		}
+	});
+
+	it('delete sees a Keep that is still queued behind another write', async () => {
+		const m = media({
+			stemStatus: 'ready',
+			instrumentalRef: 'derived/stems/m1-instrumental.flac',
+			lyricsStatus: 'ready',
+			songProfile: EMPTY_SONG_PROFILE
+		});
+		await writeSidecar(sidecarFromMedia(m, NOW));
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		// A slow write holds the queue, so the Keep is queued but not yet on disk.
+		void queueSidecarTask(m.id, () => gate);
+		const keep = setKeep(m.id, true);
+		const app = {
+			mediaById: new Map([[m.id, m]]),
+			pendingDeletes: { has: () => false, schedule: () => {} },
+			state: { entries: [] }
+		};
+		const verdict = requestDelete(app as never, m.id);
+		release();
+		await keep;
+		expect(await verdict).toEqual({ refused: 'kept' });
+	});
+});
+
+describe('sweepSidecarTemps', () => {
+	it('removes a crash-left temp over a minute old, and nothing else', async () => {
+		await writeSidecar(sidecarFromMedia(media(), NOW));
+		const old = join(metaDir(), '.m1.1.1.a.tmp');
+		const fresh = join(metaDir(), '.m1.2.2.b.tmp');
+		writeFileSync(old, '{');
+		writeFileSync(fresh, '{');
+		const now = Date.now();
+		utimesSync(old, (now - 120_000) / 1000, (now - 120_000) / 1000);
+		expect(await sweepSidecarTemps(now)).toBe(1);
+		expect(existsSync(old)).toBe(false);
+		expect(existsSync(fresh)).toBe(true);
+		expect(await readSidecar('m1')).not.toBeNull();
 	});
 });
 

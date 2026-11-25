@@ -4,7 +4,14 @@ import { DELETE_UNDO_MS, readinessOf, type LibrarySizes, type Media, type QueueE
 import type { MediaStore } from './store';
 import { candidateAudioRefs } from './paths';
 import { derivedRefsOf } from './retention';
-import { readSidecar, sidecarFromMedia, updateSidecar, type FieldProvenance, type MediaSidecar } from './sidecar';
+import {
+	readSidecar,
+	readSidecarInOrder,
+	sidecarFromMedia,
+	updateSidecar,
+	type FieldProvenance,
+	type MediaSidecar
+} from './sidecar';
 
 export const NAME_MAX = 200;
 
@@ -31,7 +38,8 @@ export async function requestDelete(
 		state: { entries: readonly QueueEntry[] };
 	},
 	mediaId: string,
-	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecar(id))?.library.keep === true
+	// In order behind the song's queued writes, so a Keep tapped a moment ago is seen.
+	isKept: (mediaId: string) => Promise<boolean> = async (id) => (await readSidecarInOrder(id))?.library.keep === true
 ): Promise<{ refused: 'unknown' | 'kept' | 'queued' } | { media: Media }> {
 	if (!librarySong(app, mediaId)) return { refused: 'unknown' };
 	const kept = await isKept(mediaId);
