@@ -23,6 +23,10 @@ export interface AttemptFacts {
 	selection?: string | null; // variant-pick provenance, serialized, from job:complete on align
 	trail?: string | null; // the worker's decision history, serialized, from job:state / job:complete
 	lyricsNote?: string | null; // why align published no lyrics, one of LYRICS_NOTES, from job:complete
+	concurrency?: number | null; // the rest of the worker's profile, from hello, at assignment
+	demucsJobs?: number | null;
+	asrCompute?: string | null;
+	handSet?: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -67,13 +71,17 @@ export class AttemptLedger {
 			stages: null,
 			selection: null,
 			trail: null,
-			lyricsNote: null
+			lyricsNote: null,
+			concurrency: null,
+			demucsJobs: null,
+			asrCompute: null,
+			handSet: null
 		};
 		this.#db.insert(jobAttempts).values(row).run();
 		return row;
 	}
 
-	/** Records what was ASKED for, plus the assigned worker's own profile (backend, device, threads). */
+	/** Records what was ASKED for, plus the assigned worker's own profile (`WorkerProfile`). */
 	assigned(jobId: string, workerId: string, facts: AttemptFacts, now: number): void {
 		this.#patchOpen(jobId, { workerId, assignedAt: now, ...pickFacts(facts) });
 	}
@@ -204,7 +212,11 @@ function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 		'stages',
 		'trail',
 		'selection',
-		'lyricsNote'
+		'lyricsNote',
+		'concurrency',
+		'demucsJobs',
+		'asrCompute',
+		'handSet'
 	] as const) {
 		if (facts[k] !== undefined) out[k] = facts[k] as never;
 	}

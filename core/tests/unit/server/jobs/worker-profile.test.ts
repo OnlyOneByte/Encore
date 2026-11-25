@@ -7,7 +7,7 @@ import { WorkerHub, workerProfile, resolvedFacts } from '$lib/server/jobs/worker
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
-import { workerFacts } from '$lib/metrics-format';
+import { modelFacts, workerFacts } from '$lib/metrics-format';
 import { toAudit } from '../../../../src/routes/api/audit/[mediaId]/audit-shape';
 import type { Media, WorkerMessage } from '$lib/contract';
 
@@ -97,7 +97,7 @@ test('a profile field that is not a short name or a sane count is dropped, and t
 	const { hub, registry } = harness();
 	hub.handle(hello({ device: '../../etc', threads: -1 }));
 	expect(registry.get('w1')).not.toBeNull();
-	expect(registry.get('w1')!.profile).toEqual({});
+	expect(registry.get('w1')!.profile).toEqual({ concurrency: 1 }); // the hello's own slots
 });
 
 test('completion facts keep only bounded strings', () => {
@@ -164,6 +164,53 @@ test('/metrics says the device once: a resolved device hides the host accelerato
 	expect(workerFacts(null, host)).toEqual([
 		['accelerator', 'cuda'],
 		['gpu', 'NVIDIA RTX 4070']
+	]);
+});
+
+test('the rest of the profile, and what was set by hand, is held to known names and sane values', () => {
+	expect(
+		workerProfile({ concurrency: 2, asrCompute: 'int8', warmup: false, handSet: ['warmup', 'threads', 'threads'] })
+	).toEqual({ concurrency: 2, asrCompute: 'int8', warmup: false, handSet: ['threads', 'warmup'] });
+	expect(workerProfile({ asrCompute: 'float64', warmup: 'no', handSet: 'threads' })).toEqual({});
+	expect(workerProfile({ handSet: ['<b>x</b>', 'ENCORE_THREADS', 7] })).toEqual({ handSet: [] });
+	expect(workerProfile({ handSet: Array(33).fill('threads') })).toEqual({}); // an oversized list is dropped
+	expect(workerProfile({ concurrency: 5000 })).toEqual({});
+});
+
+test('every attempt records the jobs at once, the demucs jobs, the speech compute and what was set by hand', () => {
+	const { hub, jobs, attempts } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle(hello({ ...PROFILE, concurrency: 2, demucsJobs: 4, asrCompute: 'float16', handSet: ['concurrency'] }));
+	const [a] = attempts.byMedia('m1');
+	expect([a.concurrency, a.demucsJobs, a.asrCompute, a.handSet]).toEqual([2, 4, 'float16', 'concurrency']);
+	const audit = toAudit(a);
+	expect([audit.models.concurrency, audit.models.demucsJobs, audit.handSet]).toEqual(['2', '4', ['concurrency']]);
+	const facts = modelFacts(audit.models, audit.handSet);
+	expect(facts).toContainEqual(['jobs at once', '2 (set by hand)']);
+	// The box picks the compute type and the threads; demucs jobs keeps a fixed default until #1284.
+	expect(facts).toContainEqual(['speech compute', 'float16 (auto)']);
+	expect(facts).toContainEqual(['torch threads', '16 (auto)']);
+	expect(facts).toContainEqual(['demucs jobs', '4 (default)']);
+});
+
+test('a worker too old to say what it set by hand records null, not "all auto"', () => {
+	const { hub, jobs, attempts } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle(hello(PROFILE));
+	const a = attempts.byMedia('m1')[0];
+	expect(a.handSet).toBeNull();
+	expect(modelFacts(toAudit(a).models, toAudit(a).handSet)).toContainEqual(['torch threads', '16']);
+});
+
+test('/metrics marks each setting of a worker as set by hand, picked by the box, or a fixed default', () => {
+	const profile = { device: 'cpu', threads: 6, demucsJobs: 4, concurrency: 1, asrCompute: 'float32', warmup: true };
+	expect(workerFacts({ ...profile, handSet: ['threads'] }, null)).toEqual([
+		['hardware', 'cpu (auto)'],
+		['torch threads', '6 (set by hand)'],
+		['demucs jobs', '4 (default)'],
+		['jobs at once', '1 (default)'],
+		['speech compute', 'float32 (auto)'],
+		['warm-up at boot', 'on (default)']
 	]);
 });
 

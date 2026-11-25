@@ -38,6 +38,7 @@
 		processingMs: number | null;
 		rtFactor: number | null;
 		models: Record<string, string | null>;
+		handSet: string[] | null;
 		stages: { stage: string; ms: number }[];
 		/** Why the published lyric won. Recorded by align attempts only; null elsewhere. */
 		selection: SelectionRecord | null;
@@ -177,7 +178,7 @@
 															>{/if}
 														{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 													</div>
-													<FactList facts={modelFacts(a.models)} />
+													<FactList facts={modelFacts(a.models, a.handSet)} />
 													{#if a.stages.length}
 														<div class="metrics-row">
 															{#each a.stages as s (s.stage)}<span class="secondary"

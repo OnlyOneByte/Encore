@@ -175,6 +175,10 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		selection: null,
 		trail: null,
 		lyricsNote: null,
+		concurrency: null,
+		demucsJobs: null,
+		asrCompute: null,
+		handSet: null,
 		...over
 	};
 }

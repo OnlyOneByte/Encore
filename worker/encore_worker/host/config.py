@@ -179,6 +179,22 @@ class Config:
     align_model: str | None = None
     extra: Mapping[str, str] = field(default_factory=dict)
 
+    def hand_set(self) -> tuple[str, ...]:
+        """The performance settings set by hand, by their `Hello` wire names; the others were picked at boot
+        or kept their default. Read BEFORE `__main__` replaces the unset ones with what the box picked.
+        Warm-up counts only when switched off: `ENCORE_WARMUP=1` is the default, so it reads as not set."""
+        chosen = {
+            "device": self.device is not None,
+            "backend": self.backend is not None,
+            "threads": self.threads is not None,
+            "demucsJobs": self.demucs_jobs is not None,
+            "concurrency": not self.auto_concurrency,
+            "asrCompute": self.asr_compute is not None,
+            # On is the default, so only switching it off is a choice.
+            "warmup": not self.warmup,
+        }
+        return tuple(name for name, by_hand in chosen.items() if by_hand)
+
     @staticmethod
     def from_env(env: Mapping[str, str] | None = None) -> Config:
         """Parse the environment. The ONLY place `os.environ` is read."""

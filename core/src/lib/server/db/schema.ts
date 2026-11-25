@@ -334,7 +334,12 @@ export const jobAttempts = sqliteTable(
 		// the answer to "why did this job publish THESE lyrics" weeks later, which no counter can give.
 		trail: text('trail'),
 		// Why an align job published no lyrics, when the worker says (`LYRICS_NOTES`), for the song page.
-		lyricsNote: text('lyrics_note')
+		lyricsNote: text('lyrics_note'),
+		// The rest of the worker's boot profile, and which of it was set by hand (`attemptHandSet`).
+		concurrency: integer('concurrency'),
+		demucsJobs: integer('demucs_jobs'),
+		asrCompute: text('asr_compute'),
+		handSet: text('hand_set')
 	},
 	(t) => ({
 		byMedia: index('job_attempts_media_idx').on(t.mediaId, t.enqueuedAt),

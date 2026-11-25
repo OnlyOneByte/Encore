@@ -295,7 +295,8 @@ and the accepted values. A flag reads anything but `1`, `true`, `yes` or `on` as
 
 **The boot profile.** On startup the worker picks its own performance settings from the device and the
 cores it may use (a cgroup's `cpu.max` included, so `docker --cpus` counts), prints one line per pick with
-the reason, and tells core in `hello` (`device`, `threads`, `demucsJobs`, `concurrency`). Every pick below
+the reason, and tells core in `hello` (`device`, `backend`, `threads`, `demucsJobs`, `concurrency`,
+`asrCompute`, `warmup`, and `handSet`: the ones set by hand, so the speed page can mark each). Every pick below
 marked "auto" is overridden by setting its variable. On a 32-core aarch64 CPU box with nothing set it
 prints:
 

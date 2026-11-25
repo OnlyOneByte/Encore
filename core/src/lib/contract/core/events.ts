@@ -255,6 +255,9 @@ export type WorkerMessage =
 			device?: unknown;
 			threads?: unknown;
 			demucsJobs?: unknown;
+			asrCompute?: unknown;
+			warmup?: unknown;
+			handSet?: unknown;
 	  }
 	| {
 			/**
@@ -351,10 +354,37 @@ export interface WorkerProfile {
 	 *  profile, diarization). NOT stems, which torch demucs runs in its own subprocess, nor whisperx, which
 	 *  sets its own. */
 	threads?: number;
-	/** How many tracks torch demucs separates at once (its `-j`), the knob that does move stems speed.
-	 *  Shown on /metrics only; the worker sends none until #1051 lands. */
+	/** How many chunks torch demucs separates at once (its `-j`), the knob that does move stems speed. */
 	demucsJobs?: number;
+	/** Jobs the worker runs at once (hello's `concurrency`). */
+	concurrency?: number;
+	/** whisper's compute type, one of `ASR_COMPUTE_TYPES`. */
+	asrCompute?: string;
+	/** Whether the worker loads its models right after boot. */
+	warmup?: boolean;
+	/** Which `PROFILE_SETTINGS` were set by hand; the rest were picked at boot. Absent from a worker too old
+	 *  to say, which is not the same as "all picked". */
+	handSet?: ProfileSetting[];
 }
+
+/** The worker's boot settings that can be set by hand, by their hello names. */
+export const PROFILE_SETTINGS = [
+	'device',
+	'backend',
+	'threads',
+	'demucsJobs',
+	'concurrency',
+	'asrCompute',
+	'warmup'
+] as const;
+export type ProfileSetting = (typeof PROFILE_SETTINGS)[number];
+
+/** The ones the worker picks from its hardware when not set by hand; the rest keep a fixed default. A
+ *  worker change that makes a setting pick itself adds it here (#1284 for demucsJobs). */
+export const PICKED_AT_BOOT: readonly ProfileSetting[] = ['device', 'backend', 'threads', 'asrCompute'];
+
+/** Mirrors the worker's `config.ASR_COMPUTE_TYPES`; anything else is dropped. */
+export const ASR_COMPUTE_TYPES = ['float32', 'float16', 'bfloat16', 'int8', 'int8_float16', 'int8_float32'] as const;
 
 /** The SPLIT the core cannot see: only the worker observes a stage transition. */
 export interface StageTiming {
