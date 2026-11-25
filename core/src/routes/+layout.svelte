@@ -172,11 +172,13 @@
 			// with nothing to make and nothing to start.
 			const queued = room.entries.filter((e) => e.status === 'queued' && !e.playFailed);
 			queueCount = queued.length;
-			// The TV lobby's fold and words, so the two cannot disagree about a queue that is waiting.
+			// The TV lobby's fold and words, `canMake` included: without it the first paint said "Making karaoke…" until
+			// a later `unservable` status arrived, a wrong line and a layout shift at 320 (#1235).
 			const waiting = waitingTurns(
 				queued,
 				(id) => room.mediaCatalog.get(id),
-				(id) => room.mediaStatus.get(id)
+				(id) => room.mediaStatus.get(id),
+				room.verdicts.canMake
 			);
 			waitingLine =
 				stuckTurnsLines(waiting, (id) => room.singers.get(id)?.displayName ?? 'Someone', me)?.headline ??

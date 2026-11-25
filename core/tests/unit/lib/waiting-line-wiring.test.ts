@@ -63,6 +63,8 @@ test('the lobby prints the stuck line in place of "this takes a minute"', () => 
 
 test('the strip is worded by the same fold, and prints it where it wraps', () => {
 	expect(layout).toContain('stuckTurnsLines(waiting,');
+	// With the room's verdict, as the TV's: without it the first paint said "Making karaoke…" under no maker (#1235).
+	expect(layout).toMatch(/waitingTurns\([^;]*room\.verdicts\.canMake\s*\)/);
 	expect(layout).toContain('waitingLine={waitingLine}');
 	expect(strip).toContain(`<span class="status">{canPlay ? 'Ready when you are' : waitingLine}</span>`);
 	// The hard-coded line that sat under two "Couldn't make karaoke" rows.

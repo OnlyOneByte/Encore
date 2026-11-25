@@ -151,6 +151,17 @@ test('waitingTurns: with nothing able to make karaoke, an empty queue is already
 			false
 		)
 	).toEqual({ making: 0, stuckSingerIds: ['maya'], noMaker: true });
+	// #1235: an in-flight turn under no maker is not being made, so the first paint already says so rather than
+	// "Making karaoke…" until the turn's own `unservable` lands.
+	const inFlight = OUTCOMES.find((o) => o.name === 'in flight')!;
+	const cooking = waitingTurns(
+		[{ singerId: 'maya', mediaId: 'cooking' }],
+		() => inFlight.media,
+		() => inFlight.live,
+		false
+	);
+	expect(cooking).toEqual({ making: 0, stuckSingerIds: ['maya'], noMaker: true });
+	expect(stuckTurnsLines(cooking, () => 'Maya')?.headline).toBe("Can't make new karaoke right now");
 });
 
 test('the room line: no maker needs no stuck turn, but a turn being made still wins', () => {
