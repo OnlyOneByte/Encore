@@ -651,6 +651,18 @@ test('R2-H2 a slow cold start (6 s) on a TV nobody touched: no false "Tap anywhe
 			})
 		);
 		await sampleFrames(r.tv, { hint: [SEL.autoplayHint, ''] });
+		// play() answers 300 ms late, as on a starved host, so a watchdog tick always lands between the file arriving and
+		// play() settling: counting from the play() alone flashed "Tap anywhere" there (#1267).
+		await r.tv.evaluate(() => {
+			const orig = HTMLMediaElement.prototype.play;
+			HTMLMediaElement.prototype.play = function () {
+				const p = orig.call(this);
+				return p.then(
+					(v) => new Promise<void>((res) => setTimeout(() => res(v), 300)),
+					(e) => new Promise<void>((_, rej) => setTimeout(() => rej(e), 300))
+				);
+			};
+		});
 		open();
 		const { theoId } = await skipMaya(world, r);
 		await expect
@@ -658,6 +670,42 @@ test('R2-H2 a slow cold start (6 s) on a TV nobody touched: no false "Tap anywhe
 			.toBeGreaterThan(1);
 		expect(await current(world), 'Theo’s slow song was skipped instead of played').toBe(theoId);
 		expect((await seen(r.tv)).hint, '"Tap anywhere" on a TV whose autoplay works').toBeUndefined();
+		await expect(r.tv.locator(SEL.stateError)).toHaveCount(0);
+	} finally {
+		open();
+		await worker.stop();
+	}
+});
+
+// A slow cold start AND a refused autoplay, as on a first boot of a slow host (review of #1280): the 6 s file lands, the
+// play() the policy holds never answers, and the TV must show the tap screen before the 8 s failure and keep the turn.
+test('a slow cold start (6 s) and a refused autoplay: the tap screen, not a failure', async ({ world }) => {
+	const worker = await startFakeWorker(world);
+	let open!: () => void;
+	const gate = new Promise<void>((resolve) => (open = resolve));
+	try {
+		const r = await room(world, async (tv, id) => {
+			await tv.route(`**/*${id}*`, async (route) => {
+				await gate;
+				await new Promise((resolve) => setTimeout(resolve, 6_000));
+				await route.continue();
+			});
+			await tv.evaluate((id) => {
+				const orig = HTMLMediaElement.prototype.play;
+				HTMLMediaElement.prototype.play = function () {
+					if ((this.getAttribute('src') ?? '').includes(id)) return new Promise<void>(() => {});
+					return orig.call(this);
+				};
+			}, id);
+		});
+		await sampleFrames(r.tv, { hint: [SEL.autoplayHint, ''] });
+		open();
+		const { theoId } = await skipMaya(world, r);
+		await expect(r.tv.locator(SEL.autoplayHint), 'no tap screen before the 8 s failure').toBeVisible({
+			timeout: 12_000
+		});
+		await r.tv.waitForTimeout(6_000); // past the watchdog's 8 s from the skip
+		expect(await current(world), 'Theo’s turn was failed instead of waiting for a tap').toBe(theoId);
 		await expect(r.tv.locator(SEL.stateError)).toHaveCount(0);
 	} finally {
 		open();

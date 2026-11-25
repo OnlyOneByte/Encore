@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 
 const NO_MAKER = "Can't make new karaoke right now";
 const NO_MAKER_NEXT = 'Pick a ready song on your phone';
@@ -122,5 +122,35 @@ test('a worker that drops mid-night: nothing changes inside the grace, then the 
 		await expect(lobby).toContainText(WAITING, { timeout: ONE_BROADCAST_MS });
 	} finally {
 		await worker.stop();
+	}
+});
+
+// A MIXED FLEET (the #1266 review): a worker that can still separate stays, so the turn in flight is never
+// `unservable`, but nothing can align, so the room can't make karaoke. /queue's card must say so, as the dock does,
+// rather than "Making karaoke… %". The stems-only worker joins BEFORE the full one leaves, so no moment has no
+// capable worker for the job.
+test('a turn in flight when the room loses its maker shows the stalled card on /queue, not "Making karaoke"', async ({
+	world
+}) => {
+	test.setTimeout(150_000);
+	const full = await startFakeWorker(world, { claim: 'none' });
+	let stemsOnly: Awaited<ReturnType<typeof startFakeWorker>> | undefined;
+	const maya = await world.openPhone('Maya');
+	try {
+		await openBrowseFromHome(maya);
+		await maya.locator(SEL.search).fill('caroline');
+		await maya.locator(SEL.sing).first().click();
+		await openQueue(maya);
+		await expect(maya.locator(SEL.processing).first(), 'the turn is in flight').toBeAttached({ timeout: 10_000 });
+		await expect(maya.locator(SEL.stalledTurn)).toHaveCount(0);
+
+		stemsOnly = await startFakeWorker(world, { claim: 'none', capabilities: ['fetch:ytdlp', 'stems'] });
+		await full.stop();
+		await expect.poll(async () => (await firstSync(maya)).canMake, { timeout: AFTER_GRACE_MS }).toBe(false);
+		await expect(maya.locator(SEL.stalledTurn), 'the card says nothing can make it').toHaveCount(1);
+		await expect(maya.getByText(NO_MAKER).first(), 'and the dock agrees').toBeVisible();
+	} finally {
+		await stemsOnly?.stop();
+		await full.stop();
 	}
 });
