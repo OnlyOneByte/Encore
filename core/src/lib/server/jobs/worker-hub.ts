@@ -243,6 +243,12 @@ export function resolvedFacts(facts: unknown): AttemptFacts {
 		const v = f[k];
 		if (isProfileName(v)) out[k] = v;
 	}
+	// What this job's separator got once the cores were split between the jobs running, which a lone song
+	// and two at once differ on; it overwrites the boot profile dispatch stamped. Held to hello's bounds.
+	for (const k of ['threads', 'demucsJobs'] as const) {
+		const v = f[k];
+		if (isCount(v)) out[k] = v;
+	}
 	// A known reason only: it reaches the song page, so free text from a worker never does.
 	if ((LYRICS_NOTES as readonly unknown[]).includes(f.lyricsNote)) out.lyricsNote = f.lyricsNote as string;
 	return out;

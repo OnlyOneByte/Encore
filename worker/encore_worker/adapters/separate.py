@@ -134,6 +134,15 @@ class TorchDemucs:
         self._threads = threads
 
     @property
+    def jobs(self) -> int:
+        return self._jobs
+
+    @property
+    def threads(self) -> int:
+        """The OMP threads its child runs with; 0 leaves torch's own default."""
+        return self._threads
+
+    @property
     def model(self) -> str:
         return self._model
 

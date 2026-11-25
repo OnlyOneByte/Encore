@@ -197,6 +197,8 @@ class SeparateStepsImpl:
             guide_mix=guide_ref,
             engine=getattr(self._sep, "name", None),
             model=getattr(self._sep, "model", None),
+            demucs_jobs=getattr(self._sep, "jobs", None),
+            threads=getattr(self._sep, "threads", None) or None,
         )
 
     def _work(self, job: JobRef) -> str:

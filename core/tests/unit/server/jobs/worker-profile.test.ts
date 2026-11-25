@@ -108,6 +108,12 @@ test('completion facts keep only bounded strings', () => {
 	expect(resolvedFacts(['engine'])).toEqual({});
 });
 
+test("a stems job's own -j and threads are kept, within hello's bounds (#1330)", () => {
+	expect(resolvedFacts({ threads: 32, demucsJobs: 4 })).toEqual({ threads: 32, demucsJobs: 4 });
+	expect(resolvedFacts({ threads: 0, demucsJobs: 1.5 })).toEqual({});
+	expect(resolvedFacts({ threads: '32', demucsJobs: 5000 })).toEqual({});
+});
+
 test('a lyrics note is kept only when it is a known reason: it reaches the song page (#1221, #1288)', () => {
 	expect(resolvedFacts({ lyricsNote: 'asr-offline' })).toEqual({ lyricsNote: 'asr-offline' });
 	expect(resolvedFacts({ lyricsNote: 'asr-babble' })).toEqual({ lyricsNote: 'asr-babble' });

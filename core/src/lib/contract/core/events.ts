@@ -338,6 +338,9 @@ export interface ResolvedFacts {
 	device?: string;
 	asrModel?: string;
 	syncMode?: string;
+	/** A stems job's separator threads and demucs `-j`, split by the jobs running as it started. */
+	threads?: number;
+	demucsJobs?: number;
 	/** An align job's reason for publishing no lyrics, one of `LYRICS_NOTES`; core drops anything else. */
 	lyricsNote?: string;
 }

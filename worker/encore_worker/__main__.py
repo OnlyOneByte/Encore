@@ -635,6 +635,9 @@ def _stems_completion(
             # `getattr`: a record checkpointed before these fields existed unpickles without them.
             "engine": getattr(stems, "engine", None) or getattr(separator, "name", None),
             **({"model": model} if (model := getattr(stems, "model", None)) else {}),
+            # The per-job split, overwriting the boot profile core stamped at dispatch.
+            **({"demucsJobs": j} if (j := getattr(stems, "demucs_jobs", None)) else {}),
+            **({"threads": t} if (t := getattr(stems, "threads", None)) else {}),
             "refused": False,
         },
     )

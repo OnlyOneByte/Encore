@@ -83,6 +83,9 @@ class PublishedStems:
     #: job, so the box's startup separator is not the one to report.
     engine: str | None = None
     model: str | None = None
+    #: Its `-j` and threads, this job's share rather than the boot profile; None for an engine without them.
+    demucs_jobs: int | None = None
+    threads: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

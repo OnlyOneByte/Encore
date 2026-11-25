@@ -356,9 +356,14 @@ class Client:
             await asyncio.wait(running, timeout=timeout_sec)
 
     def running_jobs(self) -> frozenset[str]:
-        """Job ids with a live task. Distinct from `ownership.running()`, which is what the CORE thinks:
+        """Job ids with a live task that is not just sending its result, so a job starting then gets the
+        cores the finished one left. Distinct from `ownership.running()`, which is what the CORE thinks:
         a job can be ours and not yet started, or finished and not yet forgotten."""
-        return frozenset(job_id for job_id, task in self._running.items() if not task.done())
+        return frozenset(
+            job_id
+            for job_id, task in self._running.items()
+            if not task.done() and job_id not in self._finishing
+        )
 
     def _cancel_running(self, job_id: str) -> None:
         task = self._running.get(job_id)
