@@ -9,6 +9,7 @@ import {
 	wipesWords,
 	betweenLines,
 	changedRows,
+	fixStepsBack,
 	rowsOf,
 	nudgedLeadSec,
 	type LyricsDoc
@@ -37,6 +38,23 @@ test('a lyrics fix swaps in only between lines, and only the rows it rewrote are
 	expect(betweenLines(null, 3)).toBe(true);
 	const fixed = { lines: [line('one', 1, 2), line('too', 2.5, 4), line('three', 5, 6)] };
 	expect([...changedRows(doc, fixed)]).toEqual([1, 2]);
+});
+
+test('#1299 a fix whose words end before the playhead is not a step back, so an Undo lands mid-song', () => {
+	const line = (text: string, start: number, end: number) => ({ start, end, text, words: [] });
+	// On screen: a fix that runs the whole song. Held: the automatic words, which stop at 7.2 s.
+	const shown = { lines: [line('a', 0, 2), line('b', 3, 5), line('c', 6, 7.2), line('d', 8, 10), line('e', 11, 13)] };
+	const auto = { lines: [line('a', 0, 2), line('b', 3, 5), line('c', 6, 7.2)] };
+	// At 10.5 s the TV shows row 3 ("d"); the automatic words have ended, so their last line is past, not sung again.
+	expect(fixStepsBack(auto, rowsOf(shown, auto), 10.5, 3)).toBe(false);
+	// While the held words still have a line at or after the playhead, an earlier row is still refused.
+	const longer = { lines: [line('a', 0, 2), line('b', 3, 5), line('x', 6, 12)] };
+	expect(fixStepsBack(longer, rowsOf(shown, longer), 10.5, 4)).toBe(true);
+	// A fix that keeps to the row on screen lands as before.
+	expect(fixStepsBack(shown, rowsOf(shown, shown), 3.5, 1)).toBe(false);
+	// Words with no timing have not "ended": the old rule decides.
+	const untimed = { lines: [{ text: 'a', words: [] }] } as unknown as typeof auto;
+	expect(fixStepsBack(untimed, [0], 5, 2)).toBe(true);
 });
 
 test('a fix that drops or adds a row maps each new row to the one it stands for, so neither reads as a step back', () => {

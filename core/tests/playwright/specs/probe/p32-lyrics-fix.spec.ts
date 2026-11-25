@@ -31,6 +31,8 @@ interface Sample {
 	pos: number;
 	/** Rows of the version on screen: the automatic words have 9, a fix 45. */
 	rows: number;
+	/** The current row's top on screen, so a reel that slides back shows even where the row index is exempt. */
+	top: number;
 }
 
 async function rev(page: Page, mediaId: string): Promise<number> {
@@ -73,7 +75,8 @@ async function startSampling(tv: Page): Promise<void> {
 						t: Date.now(),
 						row: rows.indexOf(cur),
 						pos: media.currentTime,
-						rows: rows.length
+						rows: rows.length,
+						top: cur.getBoundingClientRect().top
 					});
 			};
 			const tick = () => {
@@ -85,6 +88,15 @@ async function startSampling(tv: Page): Promise<void> {
 		},
 		{ row: SEL.lyricsRow, rowCurrent: SEL.lyricsRowCurrent, active: SEL.activeWord }
 	);
+}
+
+/** Each pair of samples where the current row sits lower on screen than before, so the reel moved back. A later row
+ *  is exempt: it rises from below into the current slot. */
+function slidBack(all: Sample[]): [Sample, Sample][] {
+	return all.flatMap((s, i) => {
+		const prev = all[i - 1];
+		return prev && s.top > prev.top + 2 && s.row <= prev.row ? [[prev, s] as [Sample, Sample]] : [];
+	});
 }
 
 const samples = (tv: Page) => tv.evaluate(() => (window as unknown as { samples: Sample[] }).samples);
@@ -165,9 +177,14 @@ test('P32 · fixes and Undo reach the TV mid-song, between lines, with nothing s
 	const all = await samples(tv);
 	const cls = await tv.evaluate(() => (window as unknown as { cls: number }).cls);
 	expect(all.length, 'the sampler saw the reel').toBeGreaterThan(40);
-	// Through two fixes and two Undos, with no exemption, the current row never steps back.
-	const backs = all.filter((s, i) => i > 0 && s.row < all[i - 1]!.row);
+	// Through two fixes and two Undos, the current row never steps back. The one index exemption is #1299's: an Undo to
+	// the automatic words after they end (7.2 s) lands on their last row, held, a different version's past line.
+	const backs = all.filter(
+		(s, i) => i > 0 && s.row < all[i - 1]!.row && !(s.rows !== all[i - 1]!.rows && s.row === s.rows - 1)
+	);
 	expect(backs, 'the current row stepped back').toEqual([]);
+	// No exemption for motion: each landing cuts to the current slot, and the reel never slides back.
+	expect(slidBack(all), 'the reel slid back').toEqual([]);
 	// Each version came in between lines: in the flush that added its rows, no word was lit.
 	const swaps = await tv.evaluate(() => (window as unknown as { swaps: Record<string, boolean> }).swaps);
 	expect(swaps, 'a version swapped in mid-word').toMatchObject({ fixed: false, again: false });
@@ -222,6 +239,37 @@ test("P32 · the host's Earlier taps move every line on the TV live, with no re-
 	await expect(later).toHaveAttribute('aria-disabled', 'true');
 	await expect(later).toBeFocused();
 	await expect.poll(async () => (await audit()).lyricsOffsetMs, { timeout: 10_000 }).toBe(3000);
+});
+
+test('#1299 an Undo to words that end before the playhead lands mid-song, at the next gap, with no shift', async ({
+	world
+}) => {
+	test.setTimeout(120_000);
+	const { phone, tv, mediaId } = await stage(world);
+	await change(phone, '/api/lyrics-edit', mediaId, { lines: fixLines((i) => `fixed ${i} words`) });
+	await tvShows(tv, 'fixed');
+	// Past the automatic words' last line (7.2 s), with the fix's rows still running.
+	const position = () =>
+		tv.evaluate(
+			() => [...document.querySelectorAll<HTMLMediaElement>('audio,video')].find((m) => !m.paused)?.currentTime ?? 0
+		);
+	await expect.poll(position, { timeout: 30_000 }).toBeGreaterThan(9);
+	await startSampling(tv);
+	await change(phone, '/api/lyrics-edit/undo', mediaId);
+	const undoneAt = await position();
+	// Main held this Undo until the song ended, 30 s on: here it lands at the fix's next gap, inside a line or two.
+	await expect(tv.locator(SEL.lyricsRow, { hasText: 'fixed' })).toHaveCount(0, { timeout: 5_000 });
+	expect(await position(), 'the Undo waited for the song').toBeLessThan(undoneAt + 5);
+	// The automatic words are back, their last line held as the current row, and the page shifted nothing.
+	await expect(tv.locator(SEL.lyricsRowCurrent)).toBeAttached();
+	await tv.waitForTimeout(1_000);
+	// That row is cut to in the current slot: the reel never slides back to reach it.
+	const all = await samples(tv);
+	expect(all.some((s) => s.rows === 9) && all.some((s) => s.rows === 45), 'the sampler saw the swap').toBe(true);
+	expect(slidBack(all), 'the reel slid back').toEqual([]);
+	expect(await tv.evaluate(() => (window as unknown as { cls: number }).cls), 'layout shift at the swap').toBe(0);
+	const swaps = await tv.evaluate(() => (window as unknown as { swaps: Record<string, boolean> }).swaps);
+	expect(Object.values(swaps), 'the Undo swapped in mid-word').not.toContain(true);
 });
 
 test('P32 · on a paused song a fix lands at once, without waiting for play', async ({ world }) => {
