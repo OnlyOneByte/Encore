@@ -11,6 +11,7 @@ import { normalizeSongProfile, clampLyricsOffsetMs } from '../../contract';
 import { metaDir, keptOriginalRef } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 import type { LyricsEditSnapshot } from '../jobs/lyrics-edit';
+import { slicer } from '../slice';
 
 /** Keep every new field OPTIONAL and additive: there is no migration step, so an older record's absent
  *  field must read as "never ran" rather than an error. */
@@ -475,7 +476,10 @@ export async function rebuildIndexFromMeta(deps: {
 	upsert: (m: Media) => void;
 }): Promise<number> {
 	let restored = 0;
+	// One SQLite write per song, so a large library is restored in slices (#1297).
+	const letIn = slicer();
 	for (const s of await readAllSidecars()) {
+		await letIn();
 		if (deps.hasMedia(s.id)) continue;
 		deps.upsert(mediaFromSidecar(s));
 		restored++;

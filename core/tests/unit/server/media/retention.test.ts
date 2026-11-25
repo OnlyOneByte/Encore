@@ -14,6 +14,7 @@ import {
 	evictDerived,
 	forgetEvicted,
 	derivedBytesOf,
+	derivedBytesOfAll,
 	derivedRefsOf,
 	editRefsByMedia,
 	ffmpegTranscoder,
@@ -461,9 +462,15 @@ describe('forgetEvicted (what the boot eviction pass clears on the row)', () => 
 		const app = stripComments(read('src/lib/server/app.ts'));
 		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
 		expect(pass.match(/editRefsByMedia\(\)/g)).toHaveLength(1);
-		expect(pass.indexOf('editRefsByMedia()')).toBeLessThan(pass.indexOf('ready.map('));
-		expect(pass).toContain('derivedBytesOf(m, edits)');
+		expect(pass.indexOf('editRefsByMedia()')).toBeLessThan(pass.indexOf('derivedBytesOfAll('));
 		expect(pass).not.toMatch(/editRefsOnDisk/);
+	});
+
+	it('counts the library in slices, never in one synchronous map (#1297: 28 s blocked at 3,000 songs)', () => {
+		const app = stripComments(read('src/lib/server/app.ts'));
+		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
+		expect(pass).toContain('await derivedBytesOfAll(ready, edits)');
+		expect(pass).not.toMatch(/derivedBytesOf\(/);
 	});
 
 	it('plans from Keep read in order behind queued writes, never a bare read', () => {
@@ -486,6 +493,38 @@ const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, 
 
 const mediaSrcDir = at('src/lib/server/media');
 const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8');
+
+describe("the library's byte count lets requests in (#1297)", () => {
+	const library = (n: number) =>
+		Array.from({ length: n }, (_, i) => {
+			put(`derived/stems/s${i}-instrumental.m4a`, i % 7);
+			return media(`s${i}`);
+		});
+
+	it('answers an HTTP request while a large library is still being counted, with the same totals', async () => {
+		const songs = library(150);
+		const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') });
+		try {
+			// One song per slice, the worst a slow box can do; the request is sent before the count starts.
+			let counted = false;
+			const asked = fetch(`http://127.0.0.1:${server.port}/`).then((r) => r.text());
+			const count = derivedBytesOfAll(songs, undefined, 0).then((b) => ((counted = true), b));
+			expect(await asked).toBe('ok');
+			expect(counted, 'the request waited for the whole library').toBe(false);
+			expect(await count).toEqual(songs.map((m) => derivedBytesOf(m)));
+
+			// And the test can tell: a count that never yields answers only after the whole library.
+			counted = false;
+			const late = fetch(`http://127.0.0.1:${server.port}/`).then((r) => r.text());
+			const whole = derivedBytesOfAll(songs, undefined, Infinity).then(() => (counted = true));
+			expect(await late).toBe('ok');
+			expect(counted).toBe(true);
+			await whole;
+		} finally {
+			await server.stop(true);
+		}
+	}, 30_000);
+});
 
 describe('§1 — evictDerived reports only bytes it actually freed', () => {
 	it('counts ZERO bytes for a file it could not delete, and leaves it on disk', () => {

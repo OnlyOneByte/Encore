@@ -28,7 +28,7 @@ import {
 	ffmpegTranscoder,
 	planEviction,
 	evictUnlessKept,
-	derivedBytesOf,
+	derivedBytesOfAll,
 	editRefsByMedia,
 	staleStemsOnDisk,
 	transcodeDiagnostics
@@ -76,6 +76,7 @@ import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaSt
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
 import { PendingDeletes, finishDelete } from './media/library-manage';
 import { deleteMediaEntirely, type DeleteMediaResult } from './media/delete';
+import { slicer } from './slice';
 import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '../contract';
 import { isTerminalJob } from '../contract';
 
@@ -303,7 +304,13 @@ export function getApp(): EncoreApp {
 			run: async () => {
 				// Its own pass because backfilling a sidecar does not go through upsert, so without it browse only sees songs touched since the process started.
 				let indexed = 0;
-				for (const sc of await readAllSidecars()) {
+				// One SQLite write per song, so a large library is synced in slices (#1297): 3,000 held the loop 12 s.
+				const letIn = slicer();
+				for (const snapshot of await readAllSidecars()) {
+					await letIn();
+					// Read again in the song's write-queue turn, and apply before any other await: a rename made while
+					// the pass yielded is then either read here or written after this (#1305 review).
+					const sc = (await readSidecarInOrder(snapshot.id)) ?? snapshot;
 					const canonical = canonicalsOf(sc);
 					mediaRepo.setCanonical(sc.id, canonical);
 					// The RUNTIME map too, not just the index: hydrate ran synchronously while this pass is async, so DB-only mirroring leaves in-memory Media without canonicals for the process's life. Patch ONLY these fields — a wholesale replace undoes an entry that flipped to processing since hydrate.
@@ -416,7 +423,9 @@ export function getApp(): EncoreApp {
 				const ready = mediaRepo.listReady();
 				// One listing of the fix documents for the whole pass: one per song was quadratic (#1279 review).
 				const edits = editRefsByMedia();
-				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m, edits), lastUsedAt: 0 }));
+				// Counted in slices, so phones and the TV are answered while a large library is counted (#1297).
+				const sizes = await derivedBytesOfAll(ready, edits);
+				const candidates = ready.map((m, i) => ({ mediaId: m.id, derivedBytes: sizes[i] ?? 0, lastUsedAt: 0 }));
 				// Recency from the sidecar: lastPlayedAt, else addedAt for a never-played song.
 				const kept = new Set<string>();
 				let keptBytes = 0;

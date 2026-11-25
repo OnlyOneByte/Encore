@@ -22,6 +22,7 @@ import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
 import { clearArtifacts, readSidecarInOrder } from './sidecar';
 import { forgetProcess } from '../jobs/process';
+import { slicer, SLICE_MS } from '../slice';
 import type { JobRepository } from '../jobs/repository';
 
 /** The soft cap, in bytes. Unset (the default) means unlimited — a party box must not silently delete. */
@@ -343,6 +344,22 @@ export function derivedBytesOf(m: Media, edits?: EditRefs): number {
 		}
 	}
 	return n;
+}
+
+/** `derivedBytesOf` for every song, in order. A large library's count runs for seconds, so it gives the event loop
+ *  back every `sliceMs` (#1297). */
+export async function derivedBytesOfAll(
+	songs: readonly Media[],
+	edits?: EditRefs,
+	sliceMs = SLICE_MS
+): Promise<number[]> {
+	const bytes: number[] = [];
+	const letIn = slicer(sliceMs);
+	for (const m of songs) {
+		bytes.push(derivedBytesOf(m, edits));
+		await letIn();
+	}
+	return bytes;
 }
 
 // 120s bounds a hung ffmpeg without tripping on a genuinely long track.
