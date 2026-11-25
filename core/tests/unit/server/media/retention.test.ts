@@ -15,6 +15,7 @@ import {
 	forgetEvicted,
 	derivedBytesOf,
 	derivedRefsOf,
+	editRefsByMedia,
 	ffmpegTranscoder,
 	transcodeDiagnostics
 } from '$lib/server/media/retention';
@@ -216,6 +217,60 @@ describe('evictDerived', () => {
 		expect(evictDerived(picked).bytes).toBe(10);
 	});
 
+	it('sweeps every other fix document of the song by id, even one nothing names (#1238 review)', () => {
+		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
+		const fix = 'derived/lyrics/a-edit-r3.json';
+		// r1 was replaced by Undo on an evicted song, so nothing names it; r2 is still a candidate.
+		for (const ref of ['a-edit-r1', 'a-edit-r2', 'a-edit-r3', 'a-edit-rx', 'ab-edit-r1', 'b-edit-r1']) {
+			put(`derived/lyrics/${ref}.json`, 10);
+		}
+		const candidates = [{ ref: 'derived/lyrics/a-edit-r2.json' }, { ref: fix }] as Media['lyricsCandidates'];
+		const m = media('a', {
+			lyricsRef: fix,
+			lyricsOverrideRef: fix,
+			lyricsOverrideText: 'w',
+			lyricsCandidates: candidates
+		});
+		put('derived/stems/a-instrumental.m4a', 500);
+
+		expect(derivedBytesOf(m)).toBe(520);
+		expect(evictDerived(m).removed.sort()).toEqual([
+			'derived/lyrics/a-edit-r1.json',
+			'derived/lyrics/a-edit-r2.json',
+			'derived/stems/a-instrumental.m4a'
+		]);
+		const left = ['a-edit-r3', 'a-edit-rx', 'ab-edit-r1', 'b-edit-r1'];
+		for (const ref of left) expect(existsSync(join(root, `derived/lyrics/${ref}.json`))).toBe(true);
+
+		// A fix pinned by ref with no pasted words (an API pick of an old fix) keeps its document too.
+		put('derived/lyrics/a-edit-r1.json', 10);
+		const pick = media('a', { lyricsOverrideRef: 'derived/lyrics/a-edit-r1.json', lyricsOverrideText: undefined });
+		expect(evictDerived(pick).removed).toEqual(['derived/lyrics/a-edit-r3.json']);
+		// With no fix in force (Back to automatic), none is kept.
+		const auto = media('a', { lyricsOverrideRef: undefined, lyricsOverrideText: undefined });
+		expect(evictDerived(auto).removed).toEqual(['derived/lyrics/a-edit-r1.json']);
+	});
+
+	it("reads a pass's one listing, grouped by song, instead of listing the folder for each song", () => {
+		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
+		for (const ref of ['a-edit-r1', 'a-edit-r2', 'b-edit-r1', 'a-edit-rx', 'a-asr-word']) {
+			put(`derived/lyrics/${ref}.json`, 10);
+		}
+		const edits = editRefsByMedia();
+		expect(Object.fromEntries([...edits].map(([id, refs]) => [id, [...refs].sort()]))).toEqual({
+			a: ['derived/lyrics/a-edit-r1.json', 'derived/lyrics/a-edit-r2.json'],
+			b: ['derived/lyrics/b-edit-r1.json']
+		});
+		// A file written after the listing is not seen, so the count read the listing, not the folder.
+		put('derived/lyrics/a-edit-r3.json', 10);
+		expect(derivedBytesOf(media('a'), edits)).toBe(20);
+		expect(derivedBytesOf(media('a'))).toBe(30);
+		expect(evictDerived(media('a'), edits).removed.sort()).toEqual([
+			'derived/lyrics/a-edit-r1.json',
+			'derived/lyrics/a-edit-r2.json'
+		]);
+	});
+
 	it('an evicted song with a host fix still names it among the refs a delete unlinks (#1238 review)', () => {
 		const fix = 'derived/lyrics/a-edit-r2.json';
 		const candidates = [{ ref: 'derived/lyrics/a-asr-word.json' }, { ref: fix }] as Media['lyricsCandidates'];
@@ -398,8 +453,17 @@ describe('forgetEvicted (what the boot eviction pass clears on the row)', () => 
 		// evictSong's own order is covered in evicted-song-ready.test.ts.
 		const app = stripComments(read('src/lib/server/app.ts'));
 		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
-		expect(pass).toMatch(/evictUnlessKept\(live, \{ jobs, upsert: \(m\) => mediaRepo\.upsert\(m\) \}\)/);
+		expect(pass).toMatch(/evictUnlessKept\(live, \{ jobs, upsert: \(m\) => mediaRepo\.upsert\(m\), edits \}\)/);
 		expect(pass).toMatch(/if \(bytes === null\) continue;/);
+	});
+
+	it('lists the fix documents ONCE per pass, not once per song (#1279 review: quadratic at boot)', () => {
+		const app = stripComments(read('src/lib/server/app.ts'));
+		const pass = app.slice(app.indexOf("name: 'derived eviction'"), app.indexOf("name: 'local library scan'"));
+		expect(pass.match(/editRefsByMedia\(\)/g)).toHaveLength(1);
+		expect(pass.indexOf('editRefsByMedia()')).toBeLessThan(pass.indexOf('ready.map('));
+		expect(pass).toContain('derivedBytesOf(m, edits)');
+		expect(pass).not.toMatch(/editRefsOnDisk/);
 	});
 
 	it('plans from Keep read in order behind queued writes, never a bare read', () => {
