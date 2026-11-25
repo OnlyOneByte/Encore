@@ -4,6 +4,7 @@ import { canonicalHex, freeSingerColor, isLegibleSingerColor, graceMsOf, type Si
 import type { EncoreApp } from '../app';
 import type { Room } from '../rooms/repository';
 import { publicSinger } from './repository';
+import { endOtherSessions } from '../people/keep';
 
 export interface JoinInput {
 	displayName: string;
@@ -13,6 +14,8 @@ export interface JoinInput {
 	code?: string;
 	/** The kept person this phone returns as, read by the route from the device cookie only. */
 	personId?: string;
+	/** The device token rotates with this join, so every other night of the person ends, online ones too (#1250). */
+	rotating?: boolean;
 }
 
 export interface JoinResult {
@@ -123,9 +126,11 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');
-	// A returning phone replaces its own earlier night that never got going (a join whose response was lost): no
-	// socket and no turn, so it would otherwise hold the kept name against its own retry.
-	if (input.personId) {
+	// On the current token every earlier night ends, a copied singer cookie's included. A grace retry only replaces
+	// its own night that never got going (no socket, no turn), so a stale copy cannot sign the owner out.
+	if (input.personId && input.rotating) {
+		endOtherSessions(app, input.personId, '');
+	} else if (input.personId) {
 		const online = new Set(app.presence.online());
 		for (const s of app.singers.byPerson(input.personId)) {
 			if (s.roomId !== room.id || online.has(s.id) || hasPendingSongs(app, s.id)) continue;

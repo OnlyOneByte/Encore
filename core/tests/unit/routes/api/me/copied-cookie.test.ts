@@ -15,6 +15,7 @@ import { POST as joinPost } from '$routes/api/join/+server';
 import { GET as listNights, DELETE as deleteNights } from '$routes/api/me/nights/+server';
 import { GET as listSongs, DELETE as forgetSongs } from '$routes/api/me/songs/+server';
 import { PUT as saveSong } from '$routes/api/me/songs/[mediaId]/+server';
+import { GET as exportMine } from '$routes/api/me/export/+server';
 import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
@@ -85,7 +86,7 @@ test("a copied singer cookie, kept online, reaches none of the person's nights o
 	expect((await joinPost(ev('POST', '/api/join', owner, { returning: true }))).status).toBe(200);
 	const thief = jar(Object.fromEntries(owner.values));
 	const copied = app.singers.bySessionToken(thief.get(SESSION_COOKIE))!;
-	// The thief holds a live socket on the copied night, so it is not ended when the owner joins again.
+	// The thief holds a live socket on the copied night; the owner's rotating return ends it anyway (#1250).
 	app.presence.connect(copied.id);
 	owner.delete(SESSION_COOKIE);
 	const back = await joinPost(ev('POST', '/api/join', owner, { returning: true, displayName: 'Theo 2' }));
@@ -113,10 +114,15 @@ test("a copied singer cookie, kept online, reaches none of the person's nights o
 	expect((await saveSong(ev('PUT', '/api/me/songs/m1', owner, undefined, { mediaId: 'm1' }))).status).toBe(200);
 	const theirs = { singerId: tonight.id, personId: theo.person.id };
 
-	expect((await (await listNights(ev('GET', '/api/me/nights', thief))).json()).nights).toEqual([]);
-	expect((await (await listSongs(ev('GET', '/api/me/songs', thief))).json()).songs).toEqual([]);
-	expect(await (await deleteNights(ev('DELETE', '/api/me/nights', thief))).json()).toEqual({ deleted: 0 });
-	expect(await (await forgetSongs(ev('DELETE', '/api/me/songs', thief))).json()).toEqual({ removed: 0 });
+	// The owner's return ended the thief's night outright (#1250), so every history route refuses it.
+	for (const res of [
+		await listNights(ev('GET', '/api/me/nights', thief)),
+		await listSongs(ev('GET', '/api/me/songs', thief)),
+		await deleteNights(ev('DELETE', '/api/me/nights', thief)),
+		await forgetSongs(ev('DELETE', '/api/me/songs', thief)),
+		await exportMine(ev('GET', '/api/me/export', thief))
+	])
+		expect(res.status).toBe(401);
 	expect(app.nights.nightsFor(theirs)).toHaveLength(1);
 	expect(app.savedSongs.listFor(theirs)).toHaveLength(1);
 });

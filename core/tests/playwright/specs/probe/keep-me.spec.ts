@@ -231,6 +231,57 @@ test("the host's Reset phones signs out every phone of a kept person, and they c
 	}
 });
 
+test("the owner's return ends a thief's copied night, live socket and all (#1250)", async ({ world, browser }) => {
+	test.setTimeout(240_000);
+	const worker = await startFakeWorker(world);
+	try {
+		await world.openTv();
+		const theo = await world.openPhone('Theo');
+		await readySong(world, theo, 'caroline');
+		await theo.goto('/');
+		await singOnce(theo, 'caroline');
+		await theo.goto('/settings/you');
+		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
+		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
+
+		// A thief copies BOTH cookies and stays in the room as Theo, socket open.
+		const jar = await theo.context().cookies();
+		const thief = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
+		await thief.context().addCookies(jar.map((c) => ({ ...c, sameSite: 'Lax' as const })));
+		const thiefSockets: Promise<void>[] = [];
+		thief.on('websocket', (ws) => thiefSockets.push(new Promise((done) => ws.on('close', () => done()))));
+		await thief.goto('/');
+		await thief.locator(SEL.dock).waitFor({ state: 'attached' });
+		expect((await thief.request.get('/api/me')).status()).toBe(200);
+		await expect.poll(() => thiefSockets.length).toBeGreaterThan(0);
+		// The sockets open now; a reconnect after the server closes them is a new one, and has no singer.
+		const live = [...thiefSockets];
+
+		// Theo's phone comes back with only its device cookie and returns in one tap, which rotates the token.
+		await theo.context().clearCookies();
+		await theo.context().addCookies(jar.filter((c) => c.name === 'encore_device'));
+		await theo.goto(`/?room=${encodeURIComponent(world.code)}`);
+		await expect(theo.getByRole('heading', { name: 'Welcome back, Theo' })).toBeVisible();
+		const joined = theo.waitForResponse((r) => r.url().endsWith('/api/join'));
+		await theo.getByRole('button', { name: SEL.submit }).click();
+		// Before #1250 the thief's live night kept the name, so this was "That name is taken".
+		expect((await joined).status(), "the owner's return was refused while the thief held the name").toBe(200);
+		await theo.locator(SEL.search).waitFor();
+		expect((await theo.request.get('/api/me').then((r) => r.json())).singer.displayName).toBe('Theo');
+
+		// The thief's night is over: its socket is closed by the server and its copied singer cookie is refused.
+		await Promise.race([
+			Promise.all(live),
+			new Promise((_, fail) => setTimeout(() => fail(new Error("the thief's socket stayed open")), 10_000))
+		]);
+		await expect.poll(async () => (await thief.request.get('/api/me')).status()).toBe(401);
+		await thief.context().close();
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('"I\'m someone else" on a kept phone joins as a new guest and leaves the phone kept', async ({ world }) => {
 	test.setTimeout(240_000);
 	const worker = await startFakeWorker(world);

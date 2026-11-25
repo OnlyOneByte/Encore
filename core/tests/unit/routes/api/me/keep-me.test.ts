@@ -360,8 +360,8 @@ test('an expired grace is also cleared the moment its old cookie is presented', 
 	expect(deviceRow(app)).toMatchObject({ prevTokenHash: null, prevValidUntil: null, rotationSalt: null });
 });
 
-test("a returning join ends only its own person's idle nights: a turn or a live socket keeps a night", async () => {
-	const { app, room } = installApp();
+test("a returning join that rotates ends every night of its person, online or holding a turn, and nobody else's", async () => {
+	const { app, room, released } = installApp();
 	const owner = await keptPhone(app);
 	app.presence = new PresenceTracker();
 	const personId = deviceRow(app).personId;
@@ -381,9 +381,55 @@ test("a returning join ends only its own person's idle nights: a turn or a live 
 
 	expect((await joinPost(event('/api/join', 'POST', owner, { returning: true, code: room.code }))).status).toBe(200);
 	const alive = (s: { sessionToken: string }) => app.singers.bySessionToken(s.sessionToken) !== null;
-	expect([queued, playing, online].map(alive)).toEqual([true, true, true]);
-	expect(alive(idle)).toBe(false);
+	expect([queued, playing, online, idle].map(alive)).toEqual([false, false, false, false]);
+	// Their sockets are closed, not only their cookies refused.
+	expect(released).toEqual(expect.arrayContaining([queued.id, playing.id, online.id, idle.id]));
 	expect([anaIdle, guestIdle].map(alive)).toEqual([true, true]);
+	// The online night's socket stops counting, and a night whose turn still waits keeps its name until it is done.
+	expect(app.presence.online()).not.toContain(online.id);
+	expect(app.state.entries.map((e) => e.singerId)).toEqual([queued.id, playing.id]);
+});
+
+test("a grace use by itself ends only its own idle night, not the owner's live one (#1250)", async () => {
+	const { app, room } = installApp();
+	const owner = await keptPhone(app);
+	app.presence = new PresenceTracker();
+	const stale = lostResponse(owner);
+	expect((await joinPost(event('/api/join', 'POST', owner, { returning: true, code: room.code }))).status).toBe(200);
+	const tonight = app.singers.bySessionToken(owner.values.get(SESSION_COOKIE))!;
+	app.presence.connect(tonight.id);
+	// A copy of the token from before the rotation, inside its grace, joins under another name.
+	const res = await joinPost(
+		event('/api/join', 'POST', stale, { returning: true, code: room.code, displayName: 'T2' })
+	);
+	expect(res.status).toBe(200);
+	expect(app.singers.bySessionToken(owner.values.get(SESSION_COOKIE))?.id).toBe(tonight.id);
+});
+
+test("an owner's return refused because a turn holds the name still rotates, so a copied device cookie can't come back", async () => {
+	const { app, room } = installApp();
+	const owner = await keptPhone(app);
+	app.presence = new PresenceTracker();
+	const thief = phone({ [DEVICE_COOKIE]: owner.values.get(DEVICE_COOKIE)! });
+	// The thief's night is in the room as Theo, with a queued turn holding the name.
+	const stolen = app.singers.create('Theo', '#a796ff', app.now(), app.activeRoomId, deviceRow(app).personId);
+	app.presence.connect(stolen.id);
+	app.state.hydrate(
+		[{ id: 'e1', mediaId: 'm1', singerId: stolen.id, status: 'queued', rotationSeq: 1, addedAt: 1 } as never],
+		null
+	);
+	const before = owner.values.get(DEVICE_COOKIE)!;
+
+	const refused = await joinPost(event('/api/join', 'POST', owner, { returning: true, code: room.code }));
+	expect(refused.status).toBe(409);
+	expect(owner.values.get(DEVICE_COOKIE)).not.toBe(before);
+	expect(app.singers.bySessionToken(stolen.sessionToken)).toBeNull();
+
+	// Past the grace the copy proves no one, even under another name; the owner still returns under one.
+	app.clock = T0 + ROTATION_GRACE_MS;
+	const back = { returning: true, code: room.code, displayName: 'Theo 2' };
+	expect((await joinPost(event('/api/join', 'POST', thief, back))).status).toBe(401);
+	expect((await joinPost(event('/api/join', 'POST', owner, back))).status).toBe(200);
 });
 
 test("sign out other phones also kills an unused copy of this phone's own cookie", async () => {
