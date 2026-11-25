@@ -67,10 +67,8 @@ export function positiveMs(raw: string | undefined): number | undefined {
 }
 
 /** How long the fleet may lack a maker before the room is told it cannot make karaoke, counted from the loss or from
- *  boot. A worker redials after 1, 2, 5 s ±50 % jitter (`transport/client.py` BACKOFF_SEC; up to 12 s for three), so
- *  this covers the usual blip and core restart, not the tail.
- *  shortcut: a fixed 10 s. A core down longer than about 10 s pushes the worker's next redial past the grace and can
- *  still show "can't make" until it lands; a longer boot grace if that is seen. */
+ *  boot. A worker redials 0.5, 1, 2 s apart, then every 3 s, ±50 % jitter (`transport/client.py` BACKOFF_SEC), so it
+ *  is back within 4.5 s of core listening, inside this grace for a blip and for a core restart. */
 export const MAKER_GRACE_MS = 10_000;
 
 /** The steps EVERY song needs before it can be sung (both gates in `contract/queue/gates.ts`). Not `fetch`: a library

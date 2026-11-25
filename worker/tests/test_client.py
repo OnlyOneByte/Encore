@@ -16,8 +16,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -539,6 +541,46 @@ def test_the_default_backoff_grows_then_plateaus() -> None:
     schedule = [jittered_backoff(n) for n in range(1, 9)]
     assert min(schedule[:2]) < max(schedule[-2:]), "it must back off as attempts accumulate"
     assert max(schedule) < 60.0, "the plateau must stay short enough to recover promptly"
+
+
+def test_after_any_outage_the_next_dial_comes_within_a_few_seconds_of_core_returning() -> None:
+    """A core restart takes 20-30 s (#1082). Simulated on the real schedule: whatever the outage and the
+    jitter, the worker's first dial after core is back is at most the cap with its jitter, 4.5 s, away."""
+    rng = random.Random(1082)
+    worst = 0.0
+    for outage in [1, 5, 20, 30, 60, 300]:
+        for _ in range(200):
+            clock, failures = 0.0, 0
+            with mock.patch.object(random, "random", rng.random):
+                while clock < outage:
+                    failures += 1
+                    clock += jittered_backoff(failures)
+            worst = max(worst, clock - outage)
+    assert worst <= 4.5, worst
+
+
+async def test_a_welcomed_session_resets_the_backoff() -> None:
+    """The count never reset, so a worker that had ridden out one outage redialled the next one 30 s apart."""
+    welcomed: list[dict[str, object]] = [{"type": "worker:welcome"}]
+    script: list[list[dict[str, object]] | None] = [welcomed, None, None, welcomed, None]
+
+    async def connect(_url: str) -> FakeSocket:
+        frames = script.pop(0)
+        if frames is None:
+            raise OSError("connection refused")
+        sock = FakeSocket(frames)
+        sock.release.set()  # core goes away as soon as the frames are read
+        return sock
+
+    asked: list[int] = []
+
+    def backoff(failures: int) -> float:
+        asked.append(failures)
+        return 0.0
+
+    c = Client(config=CFG, connect=connect, run_job=_never, capabilities=CAPS, backoff=backoff)
+    await asyncio.wait_for(c.serve_forever(max_attempts=5), 5.0)
+    assert asked == [1, 2, 3, 1]
 
 
 # ── malformed input ──────────────────────────────────────────────────────────────────────────────

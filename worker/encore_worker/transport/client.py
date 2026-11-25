@@ -36,8 +36,10 @@ Connect = Callable[[str], Awaitable[Socket]]
 #: Runs one assigned job to completion. Injected so the transport never imports a workflow.
 RunJob = Callable[[f.Assign], Awaitable[f.Complete | f.Failed]]
 
-#: Backoff between reconnect attempts, in seconds, then repeating the last. Jittered at use.
-BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0)
+#: Backoff between failed dials, in seconds, then repeating the last, which is the cap. Short because a core
+#: restart takes 20-30 s and every second past its return is a song waiting (#1082). Jittered at use, and
+#: counted from the last session core welcomed, so a long-lived worker starts again at the bottom.
+BACKOFF_SEC = (0.5, 1.0, 2.0, 3.0)
 
 #: (attempt) -> seconds to wait. A field rather than a method so a test supplies a zero-delay schedule
 #: instead of overwriting a private attribute — and so an operator could flatten it without a subclass.
@@ -98,6 +100,8 @@ class Client:
     _confirmed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     #: The periodic heartbeat, started by `worker:welcome` and ended with the session.
     _beat: asyncio.Task[None] | None = field(default=None, init=False)
+    #: Set by this session's `worker:welcome`, so the next drop redials from the bottom of the backoff.
+    _welcomed: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         # Seeded from config so a core that announces nothing — an older one — still publishes at a valid
@@ -110,8 +114,11 @@ class Client:
     async def serve_forever(self, *, max_attempts: int | None = None) -> None:
         """Dial, serve, reconnect. `max_attempts` bounds the loop for tests; None runs until cancelled."""
         attempt = 0
+        #: Dials since the last session core welcomed: what the backoff grows on.
+        failures = 0
         while max_attempts is None or attempt < max_attempts:
             attempt += 1
+            self._welcomed = False
             try:
                 await self._session()
             except asyncio.CancelledError:
@@ -126,9 +133,10 @@ class Client:
                     self._note(f"connection lost ({type(exc).__name__}: {exc})")
             self.ownership.disconnected()
             self._confirmed.clear()
+            failures = 1 if self._welcomed else failures + 1
             if max_attempts is not None and attempt >= max_attempts:
                 return
-            await asyncio.sleep(self._backoff(attempt))
+            await asyncio.sleep(self._backoff(failures))
 
     def _backoff(self, attempt: int) -> float:
         """How long before the next dial. Delegates to the injected schedule when there is one."""
@@ -243,6 +251,7 @@ class Client:
                 for job_id in frame.unknown:
                     self._note(f"DESYNC: the core has no row for job {job_id}, which we are running")
             case f.Welcome() as welcome:
+                self._welcomed = True
                 # The one thing the handshake CARRIES that changes behaviour: core names the published stem
                 # format, because core owns the storage layout. Recorded on the client rather than mutating
                 # the frozen Config, so a reconnect to a differently-configured core takes effect and the
