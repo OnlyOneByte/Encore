@@ -989,36 +989,48 @@ Beating that wants a settled-state read on the link, applied to all three at onc
 
 ### The Now card
 
-The top of `/queue` while a song plays. **It holds the transport** (redesign step 4, an owner ruling, moved off the
-dock): restart, play/pause and skip, three 44 px keys under the clock in one `Playback` group, for every phone, as
-the strip had them. Play/pause is the card's one accent fill. They go through the root layout's `transport()` and tap
+The top of `/queue` while a song plays. Since redesign step 5 it is a **compact Now row**, ink on the ground with no
+surface of its own: the song (its title is the door to `/song/[mediaId]`), the singer, the clock and the transport.
+**It holds the transport** (redesign step 4, an owner ruling, moved off the dock): restart, play/pause and skip,
+three 44 px keys under the clock in one `Playback` group, for every phone, as the strip had them. Play/pause is the
+row's one accent fill. They go through the root layout's `transport()` and tap
 target (the context in `src/lib/transport-controls.ts`), so the dropped-command notice and the settle window are
 unchanged. When the last Skip takes the card away, focus that fell to `<body>` goes to the dock's now-line link.
 With nothing playing but a song ready, the only Play is the strip's, beside `Ready when you are`: a row here instead
 flashed for the frames between the queue patch and `playback:state` as every first song started, and shifted the
 list under it.
 
-The playing song's key and guide belong to its singer (ARCHITECTURE.md §10),
-so only the singer's phone shows the keycaps, the Guide slider and the range bar. Every other phone reads the same facts
-as one line from `tuneLine` in `src/lib/song-facts.ts`: `Key +2 · Guide 40%`, the TV's wording in the phone's dress. The
-key part shows only while shifted, and a song with no guiding track names no guide. The line's slot is kept, blank,
-whenever the song can be tuned, so the singer's first tap fills it without moving anything on the other phones.
+The playing song's key and guide belong to its singer (ARCHITECTURE.md §10), so the keycaps, the Guide slider and
+the range bar are on the singer's own card, never on the Now row. The row reads the same facts as one line from
+`tuneLine` in `src/lib/song-facts.ts`: `Key +2 · Guide 40%`, the TV's wording in the phone's dress. The key part
+shows only while shifted, and a song with no guiding track names no guide. The line's slot is kept, blank, whenever
+the song can be tuned, so the singer's first tap fills it without moving anything on the other phones.
 
 A tap that the server refuses because the song is someone else's (an old tab still showing the keycaps) gets the stale
 notice "Only Maya can change their key." The phone knows names, not pronouns, so it says "their".
 
-When your own song starts, your card grows from the one line into your controls. Only transform and opacity animate,
-so nothing counts as a layout shift. The surface is three pieces: a top cap that stays put, a middle that scales on Y,
-and a bottom cap that translates with it, so the 12 px corners and the 1 px border stay true. The new controls fade in
-once there is room. It all runs on `--motion-base`, on the same clock as the `.below` settle, so the card's bottom edge
-and the list under it move together. There's no grow while the card is still arriving (the arrive's fade already shows
-it at its new size) and none under reduced motion, which is a cut.
+### Your card: On deck, then You're up
+
+`OnDeckCard` is the Spotlight on `/queue` (redesign step 5, #1154): the screen's one lit surface, in your own colour,
+first inside `.below` under the Now row. **On deck** while the song before yours plays, it sets the key and guide
+your song will start in (the entry's preset) and offers "Not yet" once; "You're next — grab the mic" in the last 30 s.
+**You're up** once your song plays, the same rows drive the live song through the page's `stepKey`, `guideInput` and
+`guideCommit`, and the details link takes the slot "Not yet" held.
+
+It is **one box for both moments**. The route renders it in one `{#if}`, so the handoff gives the same instance new
+props rather than a remount. Both moments draw the same rows, and the card keeps the height it had on deck as a
+`min-height` once it is up, so a wrapped "Not yet" or eyebrow at 320 cannot make it shorter. The queue patch that
+starts your song lands a frame before `playback:state` names it, so an entry of yours already `playing` is up too: for
+that frame the card shows its preset rather than leaving. The time left sits in a box as wide as its longest words
+("under a minute"), text from its left edge, so the clock changing its words moves nothing. `queue-spotlight` drives
+the handoff at 390 and 320: the key between the header and the dock (G1), the same element, the same height, no
+layout shift inside `main`, and the same card after a reload.
 
 ### The Queued list holds still
 
 Inside `.below`, the "Queued" heading, the reorder note and every row hold still when the page moves them in layout.
-That happens when your own song starts (your On deck card leaves, then your row leaves the list about 12 ms later)
-and when a cooking card changes height. Each block's drawn top and layout top are read before the patch
+That happens when your own song starts (your card stays, and your row leaves the list) and when a cooking card
+changes height. Each block's drawn top and layout top are read before the patch
 (`$effect.pre`). After it, every block that survived and moved is held in its OLD layout slot by `position: relative`
 and `top: --hold-top`, so its box never moves and no layout shift is counted. It glides by transform alone, from where
 it was drawn (`--hold-from`) to its new slot, on `--motion-base`, with `forwards` so it stays there. On
@@ -1029,7 +1041,7 @@ Chromium counts that as a layout shift. Removing `data-hold` gives the row's `an
 replays its entrance: the row jumps 6 px up and eases back. A block that left is a cut, and one that arrived just
 appears.
 
-A second patch mid-glide, such as your row leaving right after your card, re-reads both tops and restarts the glide
+A second patch mid-glide, such as another row changing right after yours leaves, re-reads both tops and restarts the glide
 from where the block is drawn, still in its old layout slot. The older design held blocks with a transform alone
 over a layout move. Chromium counted that move once a running transform was restarted in the same frame: about 0.0117
 at 390x844 and 390x1200 (#1081).

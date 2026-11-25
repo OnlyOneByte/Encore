@@ -145,10 +145,10 @@ test('a guide drag begun on the last song does not carry onto the next song', as
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		const { maya, theo } = await keyGuideRoom(world);
-		const slider = maya.locator('.now [role="slider"]').first();
+		const slider = maya.locator('section.deck [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
-		const track = (await maya.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const track = (await maya.locator('section.deck [data-slot="slider"]').first().boundingBox()) ?? box;
 		const y = box.y + box.height / 2;
 		await maya.mouse.move(box.x + box.width / 2, y);
 		await maya.mouse.down();
@@ -190,10 +190,10 @@ test('a guide draft the room never agreed with is not shown on the next card', a
 	const worker = await startFakeWorker(world, { guideMix: true });
 	try {
 		const { maya, theo } = await keyGuideRoom(world, true);
-		const slider = maya.locator('.now [role="slider"]').first();
+		const slider = maya.locator('section.deck [role="slider"]').first();
 		await expect(slider).toBeVisible();
 		const box = (await slider.boundingBox())!;
-		const track = (await maya.locator('.now [data-slot="slider"]').first().boundingBox()) ?? box;
+		const track = (await maya.locator('section.deck [data-slot="slider"]').first().boundingBox()) ?? box;
 		const y = box.y + box.height / 2;
 		await hold!(true);
 		await transportTap(theo, 'skip');
@@ -226,7 +226,7 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 	const worker = await startFakeWorker(world);
 	try {
 		const { maya, theo } = await keyGuideRoom(world, true);
-		const keyLabel = (p: Page) => p.locator('.now .ctl .control-label').first().innerText();
+		const keyLabel = (p: Page) => p.locator('section.deck .ctl .control-label').first().innerText();
 		await hold!(true);
 		await transportTap(theo, 'skip');
 		await expect(theo.locator(SEL.npStripTitle)).toContainText(/believin/i);
@@ -239,7 +239,7 @@ test('a key draft from the last song is not shown, or stepped from, on the next 
 		await expect(maya.locator(SEL.npStripTitle)).toContainText(/believin/i);
 		await maya.waitForTimeout(300);
 		const nextStart = (await serverPlayback(world.baseURL)).state;
-		await expect(maya.locator('.now .ctl')).toBeVisible();
+		await expect(maya.locator('section.deck .ctl')).toBeVisible();
 		expect(shiftOf(await keyLabel(maya))).toBe(nextStart.keyShift);
 		expect(shiftOf(await roomTune(theo))).toBe(nextStart.keyShift);
 		// The next tap steps from the ROOM's key for believin, not from the dead draft.
@@ -296,7 +296,7 @@ async function keyGuideRoom(world: World, holdable = false): Promise<{ maya: Pag
 		};
 	}
 	await maya.getByRole('link', { name: 'Queue' }).click();
-	await expect(maya.locator('.now .ctl')).toBeVisible();
+	await expect(maya.locator('section.deck .ctl')).toBeVisible();
 	await theo.getByRole('link', { name: 'Queue' }).click();
 	await expect(theo.locator(SEL.queueNowCard)).toBeVisible();
 	return { maya, theo };

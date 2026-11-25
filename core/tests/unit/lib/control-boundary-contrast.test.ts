@@ -152,8 +152,9 @@ test('--line is unchanged and still fails 3:1, so the fix cannot have been a glo
 	   strip's own row, which already has the hairline (20 - 1). 18 since the unused vendored `ui/tabs` was deleted,
 	   taking `tabs-list.svelte`'s edge with it (19 - 1). 19 since `tokens.css` aliased it as `--role-rule`, the
 	   Spotlight's decorative rule role, still decoration (18 + 1). 17 since the dock became Spotlight chrome: the
-	   strip's top rule moved onto `--role-rule` and the tab bar dropped its own (19 - 2). */
-	expect(filesSpelling('var(--line)').length).toBe(17);
+	   strip's top rule moved onto `--role-rule` and the tab bar dropped its own (19 - 2). 15 since Queue became a
+	   Spotlight screen: the Now row lost its card edge and your card is edged in your colour (17 - 2). */
+	expect(filesSpelling('var(--line)').length).toBe(15);
 
 	/* THE --line FAMILY AS A BORDER UTILITY IS CONFINED TO VENDORED REGISTRY CODE, which is the invariant the count
 	   was standing in for and the one it could not express. A new decorative hairline in this app is authored CSS

@@ -1,10 +1,10 @@
 // THE LIST ON /queue HOLDS STILL WHEN YOUR SONG STARTS, AND WHEN A COOKING CARD CHANGES (proposal 18). Theo watches
 // /queue; every change comes from another phone or the worker, so every layout shift counts.
 //
-// (a) YOUR SONG STARTS. Theo is On deck with two songs queued behind him and Maya taps skip. His On deck card leaves
-// (348 px) and the "Queued" heading and rows under it used to jump up by its height in one frame, then his row left
-// the list 12 ms later and the rows under it jumped again (CLS 0.1379 at 390, 0.0357 at 320, on main). Under reduced
-// motion that is a cut on purpose, as #1002's hold is: the heading lands at its new place on the first frame.
+// (a) YOUR SONG STARTS. Theo is On deck with two songs queued behind him and Maya taps skip. His On deck card used to
+// leave (348 px) and the "Queued" heading and rows under it jumped up by its height in one frame (CLS 0.1379 at 390).
+// Since redesign step 5 the same card turns "Your song" at the same height, so the heading holds still outright; his
+// row leaving the list is the one move, and the rows under it glide (#1002's hold), or cut under reduced motion.
 //
 // (b) A COOKING CARD CHANGES, scrolled to the bottom. Theo's song failed and is the last row; Maya taps Try again.
 // The card goes 137 → 109 px (making) → 69 px (ready), and the browser clamped the scroll to the shorter page, so the
@@ -145,20 +145,18 @@ for (const [width, height] of [
 					await settle(theo);
 					await watch(theo);
 					await skip(maya);
+					// Positive control: the same card now holds Theo's own song.
+					await expect(theo.locator('section[aria-label="Your song"]')).toBeVisible();
 					await expect(theo.locator('section[aria-label="On deck"]')).toHaveCount(0);
-					// Positive control: Theo's card grew from the fan's one line into his own controls in the same moment.
-					await expect(theo.locator('.now .ctl')).toBeVisible();
 					await settle(theo);
 					const w = await read(theo);
 					const after = await theo.locator('main .grouphead').evaluate((h) => h.getBoundingClientRect().top);
-					expect(w.headBefore! - after, 'the heading moved up into the On deck card’s place').toBeGreaterThan(100);
+					expect(Math.abs(w.headBefore! - after), 'px the heading moved: the card changed height').toBeLessThan(2);
 					expect(w.headFirst, 'the heading was never drawn after the change').not.toBeNull();
-					if (reduce) {
-						// A cut: no hold, so the heading is at its new place on the first frame.
-						expect(Math.abs(w.headFirst! - after), 'px the heading was held under reduced motion').toBeLessThan(2);
-					} else {
+					expect(Math.abs(w.headFirst! - w.headBefore!), 'px the heading jumped on the first frame').toBeLessThan(2);
+					if (!reduce) {
 						expect.soft(w.shifts, 'layout shift inside main as your song starts').toEqual([]);
-						expect(Math.abs(w.headFirst! - w.headBefore!), 'px the heading jumped on the first frame').toBeLessThan(2);
+						// His row left the list, and the rows under it glided into its place.
 						expect(w.holdEnds, 'rows whose hold ended').toBeGreaterThan(0);
 						expect(w.afterEnd, 'px a row moved after its hold ended').toBeLessThan(1);
 					}

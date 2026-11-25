@@ -23,8 +23,7 @@
 		type Media,
 		type PublicSinger,
 		type PlaybackState,
-		type MediaStatus,
-		type SongProfile
+		type MediaStatus
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
@@ -47,8 +46,7 @@
 	} from '$lib/reorder-mode';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
-	import { keyStepName } from '$lib/phrasing/row-action-names';
-	import { songFacts, tuneLine } from '$lib/song-facts';
+	import { tuneLine } from '$lib/song-facts';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { formatClock, formatRemaining } from '$lib/clock';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
@@ -56,8 +54,6 @@
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
-	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
-	import RangeBar from '$lib/components/RangeBar.svelte';
 	import OnDeckCard from '$lib/components/OnDeckCard.svelte';
 	import { deckEntryOf, notYetTarget, minutesLeft, buzzOnce, HEADS_UP_SEC } from '$lib/on-deck';
 	import { cardScrollTarget, firstTimeFor, guestIsDriving } from '$lib/card-to-you';
@@ -170,7 +166,6 @@
 	const nowDurationSec = $derived(nowMedia?.durationSec ?? 0);
 	const nowSinger = $derived(nowEntry ? singers.get(nowEntry.singerId) : undefined);
 
-	const profile = $derived<SongProfile | null>(nowMedia?.songProfile ?? null);
 	/* AN OPTIMISTIC KEY, for the same reason the guiding-track slider below holds `guideDraft`: a control that
 	   computes its next value from the last SERVER ECHO loses every tap made before the echo arrives. Both keycaps
 	   sent `keyShift ± 1` read off `playback.keyShift`, so five fast taps all computed from the same stale 0 and
@@ -219,7 +214,6 @@
 		Math.round(effectiveGuideLevel({ guideLevel: playback.guideLevel }, roomGuideDefault) * 100)
 	);
 
-	const facts = $derived(songFacts(profile, keyShift));
 	// Only the singer's phone tunes the playing song; every other phone reads it as one line.
 	const nowMine = $derived(!!nowEntry && nowEntry.singerId === me?.id);
 	const nowTune = $derived(tuneLine(playback.keyShift, guideServerPct, guideEnabled));
@@ -516,7 +510,6 @@
 	   change is optimistic and survives a dropped socket like any other queue op. */
 	const deckEntry = $derived(deckEntryOf(queued, nextPlayableId, nowEntry?.singerId, me?.id));
 	const deckMedia = $derived(deckEntry ? mediaCatalog.get(deckEntry.mediaId) : undefined);
-	const deckDisplay = $derived(songDisplay(deckMedia));
 	const deckKey = $derived(deckEntry?.keyShift ?? 0);
 	const deckRemain = $derived(nowDurationSec > 0 ? Math.max(0, nowDurationSec - drawnPos) : null);
 	const deckHeadsUp = $derived(!!deckEntry && deckRemain !== null && deckRemain <= HEADS_UP_SEC);
@@ -627,6 +620,36 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
+	/* YOUR CARD, ONE BOX (redesign step 5, #1154): On deck becomes You're up in the same card instance. The queue patch
+	   that starts your song lands a frame before playback names it, so an entry of yours already `playing` is up too:
+	   for that frame the card shows its preset rather than leaving and jumping the list under it. */
+	const upEntry = $derived(nowMine ? nowEntry : entries.find((e) => e.status === 'playing' && e.singerId === me?.id));
+	const spotEntry = $derived(upEntry ?? deckEntry);
+	const spotMedia = $derived(spotEntry ? mediaCatalog.get(spotEntry.mediaId) : undefined);
+	const spotDisplay = $derived(songDisplay(spotMedia));
+	// Live only once playback names your song; the bridging frame reads the entry's own preset.
+	const spotLive = $derived(!!upEntry && nowMine);
+	const spotKey = $derived(spotLive ? keyShift : upEntry ? (upEntry.keyShift ?? 0) : deckKey);
+	const spotGuidePct = $derived(
+		spotLive
+			? guidePct
+			: upEntry
+				? Math.round(effectiveGuideLevel({ guideLevel: upEntry.guideLevel ?? null }, roomGuideDefault) * 100)
+				: (deckGuideDraft ?? deckGuideServerPct)
+	);
+	function spotKeyTo(next: number) {
+		if (spotLive) stepKey(next - keyShift);
+		else if (!upEntry) setDeckKey(next);
+	}
+	function spotGuideInput(pct: number) {
+		if (spotLive) guideInput(pct);
+		else if (!upEntry) deckGuideDraft = pct;
+	}
+	function spotGuideCommit(pct: number) {
+		if (spotLive) guideCommit(pct);
+		else if (!upEntry) setDeckGuide(pct);
+	}
+
 	/* THE PAGE HOLDS STILL WHEN THE CARD COMES OR GOES. The card is the top of the column, so the room's first song
 	   pushed everything under it down by the card's height in one frame, and the last one leaving pulled it all back
 	   up: CLS about 0.3 each way, with nobody on this phone touching anything. Reserving the slot would leave an empty
@@ -713,7 +736,7 @@
 	const rowKey = (id: string, kind: string | undefined) => `${id}:${kind === 'plain' ? 'row' : 'card'}`;
 	// Everything that can change a block's height or the list's membership, as one primitive: an equal emit runs nothing.
 	const holdKey = $derived(
-		[deckEntry?.id, deckHeadsUp, noMaker]
+		[deckEntry?.id, upEntry?.id, deckHeadsUp, noMaker]
 			.concat(
 				queued.map((e, i) => `${e.id}:${rowKinds[i]}:${mediaStatus.get(e.mediaId)?.status}:${pendingKind.get(e.id)}`)
 			)
@@ -884,7 +907,11 @@
 					><span class="cap-top"></span><span class="mid"></span><span class="cap-bot"></span></span
 				>
 				<p class="now-eyebrow">{NOW_SINGING}</p>
-				<h2 class="now-title">{nowTitle}</h2>
+				<!-- THE DOOR TO /song/[mediaId]: the title, so the row stays one row (the singer's own card has it too). -->
+				<h2 class="now-title">
+					{#if nowMedia?.id}<a href={resolve('/song/[mediaId]', { mediaId: nowMedia.id })}>{nowTitle}</a
+						>{:else}{nowTitle}{/if}
+				</h2>
 				<p class="now-by">
 					<span class="dot" style:background={nowSinger?.color ?? SINGER_COLORS[0]}></span>
 					{nowSinger?.displayName ?? 'Someone'}
@@ -911,70 +938,12 @@
 					<button class="tp-btn" onclick={tp.skip} aria-label="Skip"><Icon name="next" /></button>
 				</div>
 
-				<!-- Only the singer tunes their song, so everyone else reads it as one line (docs/FRONTEND.md § The Now card). -->
-				{#if !nowMine}
-					<!-- Kept while the song can be tuned, so the singer's first tap moves nothing on this phone. -->
-					{#if keyShiftEnabled || guideEnabled}
-						<p class="facts" data-now-tune>
-							{#if nowTune}{nowTune}{:else}&nbsp;{/if}
-						</p>
-					{/if}
-				{:else}
-					{#if facts.keyOriginal}
-						<p class="facts">
-							<span class="k-orig">{facts.keyOriginal}</span>
-							{#if facts.keyShifted}
-								<span class="k-arrow"><Icon name="arrow-right" /></span>
-								<span class="k-sound">{facts.keySounding}</span>
-							{/if}
-							{#if facts.rangeText}<span class="k-range"> · {facts.rangeText}</span>{/if}
-						</p>
-					{/if}
-
-					<!-- KEY SHIFT. The accessible names carry the DIRECTION: `Icon` is aria-hidden, so both keycaps otherwise
-					compute to the bare word "semitone" and a screen-reader user cannot tell which one lowers the key — on
-					the app's signature control.
-					THE LABEL IS app.css's `.control-label`, NOT a local class, and this card is why that matters: the
-					GuidingTrack row below renders a real `[data-slot='field-label']`, so two field labels sit on one
-					surface here and a drift between them is visible the way settings' You card made one visible. This span
-					used to be `.ctl-lab`, re-declaring three of the shared rule's four properties and dropping the fourth
-					(`line-height`), which is precisely the drift `.control-label` was factored to stop. A plain `<span>`
-					rather than the primitive because the row labels TWO keycaps, and `<label for>` points at one. -->
-					<div class="ctl">
-						<span class="control-label">{facts.keyLabel}</span>
-						<div class="keys">
-							<Button
-								size="tap"
-								variant="keycap"
-								disabled={!keyShiftEnabled || keyShift <= -KEY_LIMIT}
-								aria-label={keyStepName(-1, nowTitle)}
-								onclick={() => stepKey(-1)}><Icon name="minus" /></Button
-							>
-							<Button
-								size="tap"
-								variant="keycap"
-								disabled={!keyShiftEnabled || keyShift >= KEY_LIMIT}
-								aria-label={keyStepName(1, nowTitle)}
-								onclick={() => stepKey(1)}><Icon name="plus" /></Button
-							>
-						</div>
-					</div>
-
-					<GuidingTrack pct={guidePct} available={guideEnabled} oninput={guideInput} oncommit={guideCommit} />
-
-					<RangeBar profile={profile} keyShift={keyShift} />
-				{/if}
-
-				<!-- THE DOOR TO /song/[mediaId], AND CURRENTLY THE ONLY ONE. The deleted drawer held the only `href` to that
-				route in the tree, so removing it orphaned the page: `LyricsReselect` has one importer, `room.reselectLyrics`
-				two call sites, and `/api/lyrics-reselect` had no reachable UI at all. "Are the words right" is one of the
-				live controls the architecture names, so it needs a door, and the playing song is the one it belongs to —
-				which is the same reachability the drawer gave it, not a wider one. -->
-				{#if nowMedia?.id}
-					<a class="more" href={`/song/${nowMedia.id}`}>
-						Song details and lyrics
-						<Icon name="chevron-right" />
-					</a>
+				<!-- The song's key and guide as one line, the same for every phone: the singer tunes it on their own card
+					below (docs/FRONTEND.md § The Now card). Kept while the song can be tuned, so a tap moves nothing. -->
+				{#if keyShiftEnabled || guideEnabled}
+					<p class="facts" data-now-tune>
+						{#if nowTune}{nowTune}{:else}&nbsp;{/if}
+					</p>
 				{/if}
 			</div>
 		{/if}
@@ -986,21 +955,25 @@
 			data-settle={settle?.turn}
 			style:--settle-from={settle ? `${settle.dy}px` : undefined}
 		>
-			{#if deckEntry}
+			<!-- ONE {#if}, so On deck turning into You're up is the same card with new props, never a remount. -->
+			{#if spotEntry}
 				<OnDeckCard
-					title={deckDisplay.title || deckMedia?.title || 'Untitled'}
-					artist={deckDisplay.artist}
-					profile={deckMedia?.songProfile ?? null}
-					keyShift={deckKey}
-					guidePct={deckGuideDraft ?? deckGuideServerPct}
-					guideAvailable={!!deckMedia && hasGuidingTrack(deckMedia)}
+					moment={upEntry ? 'up' : 'on-deck'}
+					title={spotDisplay.title || spotMedia?.title || 'Untitled'}
+					artist={spotDisplay.artist}
+					profile={spotMedia?.songProfile ?? null}
+					keyShift={spotKey}
+					guidePct={spotGuidePct}
+					guideAvailable={upEntry ? spotLive && guideEnabled : !!deckMedia && hasGuidingTrack(deckMedia)}
+					keyAvailable={!upEntry || (spotLive && keyShiftEnabled)}
+					detailsId={spotMedia?.id ?? null}
 					timeLeft={minutesLeft(deckRemain)}
 					headsUp={deckHeadsUp}
 					singerColor={me.color}
 					notYetName={deckNotYet ? (singers.get(deckNotYet.singerId)?.displayName ?? 'the next singer') : null}
-					onkey={setDeckKey}
-					onguideinput={(pct) => (deckGuideDraft = pct)}
-					onguidecommit={setDeckGuide}
+					onkey={spotKeyTo}
+					onguideinput={spotGuideInput}
+					onguidecommit={spotGuideCommit}
 					onnotyet={notYet}
 				/>
 			{/if}
@@ -1179,13 +1152,14 @@
 		padding-block-end: calc(var(--dock-h, 0px) + var(--space-4xl));
 	}
 
+	/* A COMPACT NOW ROW, ink on the ground (redesign step 5): your card below is the screen's one lit surface. */
 	.now {
 		position: relative;
 		isolation: isolate;
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-sm);
-		padding: var(--space-2xl);
+		gap: var(--step-4);
+		padding-block: var(--step-8);
 	}
 	/* The card's surface in three pieces, so a grow scales only the plain middle and the corners stay true. */
 	.now-surface {
@@ -1193,12 +1167,11 @@
 		inset: 0;
 		z-index: -1;
 	}
+	/* No surface of its own any more; the pieces stay so the arrive and grow keep their geometry. */
 	.now-surface > span {
 		position: absolute;
 		left: 0;
 		right: 0;
-		border: 1px solid var(--line);
-		background: var(--card-tint);
 	}
 	.now-surface > .cap-top {
 		top: 0;
@@ -1318,15 +1291,19 @@
 		font-weight: 600;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--accent-ink);
+		color: var(--ink-dim);
 	}
 
 	.now-title {
 		margin: 0;
-		font-size: var(--ph-text-xl);
+		font-size: var(--ph-text-lg);
 		font-weight: 700;
 		line-height: var(--lh-tight);
 		color: var(--ink);
+	}
+	.now-title a {
+		color: inherit;
+		text-decoration: none;
 	}
 
 	.now-by {
@@ -1402,26 +1379,6 @@
 		color: var(--ink);
 	}
 
-	.k-sound {
-		font-weight: 700;
-		color: var(--ink);
-	}
-
-	.ctl {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-md);
-	}
-
-	/* No `.ctl-lab` rule any more: the key row's label wears app.css's `.control-label`, which declares this dress
-	   once for the whole app. See the note in the markup. */
-
-	.keys {
-		display: flex;
-		gap: var(--space-xs);
-	}
-
 	.reorder-note {
 		margin: 0;
 		font-size: var(--ph-text-sm);
@@ -1444,20 +1401,6 @@
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 		white-space: nowrap;
-	}
-
-	/* A quiet trailing link, deliberately not a Button: it leaves the card rather than acting on it, and an
-	   --accent fill here would compete with the transport in the strip a few pixels below. */
-	.more {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-xs);
-		min-height: var(--tap);
-		font-size: var(--ph-text-md);
-		font-weight: 500;
-		color: var(--accent-ink);
-		text-decoration: none;
 	}
 
 	.grouphead {

@@ -87,10 +87,12 @@ test("GuidingTrack's rail label wears the field primitive's own dress, with no e
 	   worth asserting is no longer "there is nothing to compare against" but that the two AGREE — which they do by
 	   both deferring to a shared declaration rather than by two local copies happening to match. `.ctl-lab` was such a
 	   copy, and it had already dropped `line-height`. The gallery's half of the original argument is unchanged. */
-	const queue = strip(read('src/routes/queue/+page.svelte'));
-	expect(queue).toContain('<span class="control-label">{facts.keyLabel}</span>');
+	// Since redesign step 5 the key row and the guide row share YOUR card (OnDeckCard), on deck and while you sing.
+	const card = strip(read('src/lib/components/OnDeckCard.svelte'));
+	expect(card).toContain('<span class="control-label">{facts.keyLabel}</span>');
 	// No local re-declaration of the dress beside it — the defect the swap removed, asserted so it cannot come back.
-	expect(queue).not.toMatch(/ctl-lab/);
+	expect(card).not.toMatch(/ctl-lab/);
+	expect(strip(read('src/routes/queue/+page.svelte'))).not.toMatch(/ctl-lab/);
 	expect(strip(read('src/routes/components/+page.svelte'))).not.toMatch(
 		/<Field\.Label|class="control-label"|<ColourRing|<CodeEntry/
 	);
@@ -196,19 +198,16 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 
 	// The song page renders no field label at all, so its row cannot be one wearing the section register.
 	expect(strip(read('src/routes/song/[mediaId]/+page.svelte'))).not.toMatch(/<Field\.Label|class="control-label"/);
-	/* /queue DOES render one — the key row's `.control-label` — so its two rows are cleared PER ELEMENT instead of by
-	   the file carrying no label at all. The test above holds this for the whole tree off the register's defining
-	   property; this states it for the two rows this list enumerates, which is the claim that would otherwise be
-	   left resting on a file-level absence that is no longer true. */
-	const queueLabels = [
-		...strip(read('src/routes/queue/+page.svelte')).matchAll(
+	/* YOUR card DOES render one — the key row's `.control-label` — so its eyebrow is cleared PER ELEMENT instead of by
+	   the file carrying no label at all. /queue itself renders none since redesign step 5 moved the key row there. */
+	expect(strip(read('src/routes/queue/+page.svelte'))).not.toMatch(/class="[^"]*\bcontrol-label\b/);
+	const cardLabels = [
+		...strip(read('src/lib/components/OnDeckCard.svelte')).matchAll(
 			/<(\w+)[^>]*class="[^"]*\bcontrol-label\b[^"]*"[\s\S]*?<\/\1\s*>/g
 		)
 	].map((m) => m[0]);
-	expect(queueLabels).toHaveLength(1);
-	for (const row of ['grouphead', 'now-eyebrow']) {
-		expect(queueLabels.some((label) => new RegExp(`\\b${row}\\b`).test(label))).toBe(false);
-	}
+	expect(cardLabels).toHaveLength(1);
+	expect(cardLabels.some((label) => /\beyebrow\b/.test(label))).toBe(false);
 });
 
 test("the second person marks the singer's own two values, on both surfaces that edit them", () => {

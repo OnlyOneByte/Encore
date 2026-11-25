@@ -131,11 +131,14 @@ export const SEL = {
 	/** The whole metadata block is the link to /queue, so the target is the width the transport leaves. */
 	npStripLink: '.dock .strip a[href="/queue"]',
 	/* ── /queue ───────────────────────────────────────────────────────────────
-	   The live-controls card above the queue list, which holds what the sheet's expanded body held. */
-	/** The now-playing card. Rendered only with a current entry, like the strip's `hasSong` branch. */
+	   A compact Now row for the room, then YOUR card, then the list (redesign step 5). */
+	/** The now-playing row: song, singer, clock and transport. Rendered only with a current entry. */
 	queueNowCard: '.now',
-	/** Everyone-but-the-singer's one line for the playing song's key and guide, in place of the controls. */
+	/** The playing song's key and guide as one line, on every phone. */
 	queueNowTune: '.now [data-now-tune]',
+	/** YOUR card: "On deck" while the song before yours plays, then "Your song" while yours does, one element. The
+	 *  singer's key, guide and range live here, never on the Now row. */
+	queueMyCard: 'section.deck',
 	queueElapsed: '.clock .elapsed',
 	queueRemain: '.clock .remain',
 	/** The remove button on a QueueRow or ProcessingCard, by test id: its accessible name carries the song title
