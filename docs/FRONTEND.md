@@ -517,6 +517,14 @@ one `--role-rule`, with the tab bar on the same ground and no fill of its own. E
 body held (the guiding track, the vocal range, key shift, the clock) is the now-playing card at the top of `/queue`,
 because that is the screen you are already on to see whose turn is next.
 
+**The heart (proposal 36)** sits at the end of the line, before the Cheer key, while someone else sings: one tap
+saves the song to Your songs (`PUT /api/me/songs/:mediaId`), a second takes it out (`DELETE`). The layout reads the
+saved set once per singer from `GET /api/me/songs` and flips it on the tap, so the mark fills in the same frame and
+goes back only if the server refuses (with a toast). A save swaps the line's words for `<song> is in your songs` for
+2 s, in place, keyed on the entry like the title; an unsave says nothing, and `aria-pressed` carries the state for a
+screen reader. On your own song, or offline, the heart rests hidden and inert in its slot, as the Cheer key does, so
+nothing moves at the handoff (`now-line-heart` probe; `phone-heart-save` in `ui:review`, a cut, CLS 0).
+
 **What was deleted, and why the account is kept.** `NowPlayingDrawer.svelte` (618 lines), `NowPlayingBand.svelte`
 (398) and `sheet-snap.ts` (57) are gone, with `src/lib/components/ui/drawer/` (263 lines across 13 files) and the
 `vaul-svelte` dependency. The thesis is a product fact rather than a simplification: Encore's now-playing surface

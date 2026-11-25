@@ -124,8 +124,8 @@ export const SEL = {
 	npTransport: '.now-tp .tp-btn',
 	/** "Ready when you are" with nothing playing: the strip's one transport key, in the Cheer key's slot. */
 	npStripPlay: '.dock .strip .btn.play',
-	/** What the dock must never carry again: pause, restart or skip in the strip. */
-	dockTransport: '.dock .strip .tp .btn:not(.cheer-key, .play)',
+	/** What the dock must never carry again: pause, restart or skip in the strip. The heart saves a song; it is not one. */
+	dockTransport: '.dock .strip .tp .btn:not(.cheer-key, .play, .heart)',
 	/** The now-line with something in the rotation: who is singing, or what the queue waits on. */
 	npStripLive: '.dock .strip .who, .dock .strip .status',
 	/** The whole metadata block is the link to /queue, so the target is the width the transport leaves. */
