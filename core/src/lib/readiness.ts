@@ -106,7 +106,8 @@ export function waitingTurns(
 	for (const e of queued) {
 		const live = liveOf(e.mediaId);
 		const kind = queueCardKind(mediaOf(e.mediaId), live);
-		if (kind === 'processing') out.making++;
+		// Nothing connected can make it, so an in-flight turn is stuck before its own `unservable` arrives (#1235).
+		if (kind === 'processing' && canMake) out.making++;
 		else if (kind !== 'plain') {
 			if (!out.stuckSingerIds.includes(e.singerId)) out.stuckSingerIds.push(e.singerId);
 			if (live?.unservable) out.noMaker = true;
