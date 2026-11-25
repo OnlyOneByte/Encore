@@ -303,6 +303,24 @@ test('POST /api/host answers a null body with 400, and wrong keys never lock the
 	expect((await hostPost(event('/api/host', 'POST', jar(), { key: KEY }))).status).toBe(200);
 });
 
+test('the host bulk route answers a malformed body with 400, not a 500', async () => {
+	installApp();
+	const host = await unlock();
+	for (const body of [
+		'null',
+		{ action: '__proto__', mediaIds: ['m1'] },
+		{ action: 'keep', mediaIds: [] },
+		{ action: 'keep', mediaIds: 'm1' },
+		{ action: 'keep', mediaIds: [''] },
+		{ action: 'keep', mediaIds: ['x'.repeat(129)] },
+		{ action: 'keep', mediaIds: Array.from({ length: 5001 }, (_, i) => `m${i}`) }
+	])
+		expect(
+			(await bulk(event('/api/library/manage/bulk', 'POST', host, body))).status,
+			JSON.stringify(body).slice(0, 60)
+		).toBe(400);
+});
+
 test('the hook refuses another site and a non-JSON body', async () => {
 	installApp();
 	const resolve = async () => new Response('route ran');

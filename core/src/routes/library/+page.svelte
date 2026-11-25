@@ -14,7 +14,7 @@
 	 * carries no action. Adding a song still does not navigate: you came here to pick, and picking two is normal. The
 	 * toast now says where the song went instead of offering a trip to a tab already on screen.
 	 */
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { Media, PublicSinger, QueueEntry } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
@@ -115,18 +115,20 @@
 		if (managing) void loadSizes();
 		else if (sort === 'biggest' || sort === 'least-sung') sort = 'title';
 	}
-	function onManaged() {
-		void room.refreshLibrary();
-		void loadSizes();
+	/** Resolves once the rows and sizes are re-read, so a caller can act on the redrawn list. */
+	async function onManaged() {
+		await Promise.all([room.refreshLibrary(), loadSizes()]);
 	}
 
 	/** The bulk selection. "Select all" takes the whole filtered match list, not only the rows rendered so far. */
 	const picked = new SvelteSet<string>();
 	let bulkBusy = $state(false);
 	function togglePick(mediaId: string) {
+		announced = '';
 		if (!picked.delete(mediaId)) picked.add(mediaId);
 	}
 	function pickAll() {
+		announced = '';
 		if (allPicked) picked.clear();
 		else for (const m of rows) picked.add(m.id);
 	}
@@ -155,10 +157,28 @@
 		}
 	}
 	const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
+	/** Said through the live region, so a result off screen still reaches a screen reader. */
+	let announced = $state('');
+	/** After Delete or Undo the control that had focus is gone; focus goes to one that stays, once the rows are
+	 *  redrawn. `Select all` is not drawn when no rows are left, so `Done` takes it then; with the whole library
+	 *  gone neither is, so the empty screen's `Find a song` does. */
+	function refocus() {
+		// Separate lookups, not one selector list: a list matches in document order, and `Done` comes first.
+		requestAnimationFrame(() =>
+			(
+				document.querySelector<HTMLElement>('[data-testid="pick-all"]') ??
+				document.querySelector<HTMLElement>('[data-testid="manage-toggle"]') ??
+				document.querySelector<HTMLElement>('[data-testid="library-find"]')
+			)?.focus()
+		);
+	}
 
-	// No toast: it would sit over the bar, and each row's "Kept" and the bar's own label already say it landed.
+	// No toast: it would sit over the bar. Each row's "Kept" and the bar's label say it landed, and so does `announced`.
 	async function bulkKeep() {
-		if (await bulk(allKept ? 'unkeep' : 'keep', [...picked])) onManaged();
+		const out = await bulk(allKept ? 'unkeep' : 'keep', [...picked]);
+		if (!out) return;
+		announced = `${songs(out.done.length)} ${allKept ? 'no longer kept' : 'kept'}`;
+		void onManaged();
 	}
 
 	async function bulkDelete() {
@@ -166,25 +186,36 @@
 		if (!out) return;
 		// The bar steps aside, so the Undo toast in its place is the one thing to tap.
 		picked.clear();
-		onManaged();
-		const held = out.skipped.length ? `${songs(out.skipped.length)} stayed: kept, or in tonight's queue` : undefined;
+		void onManaged().then(refocus);
+		const gone = out.skipped.filter((s) => s.reason === 'unknown').length;
+		const held = out.skipped.length - gone;
+		const notes = [
+			held ? `${songs(held)} stayed: kept, or in tonight's queue` : null,
+			gone ? `${songs(gone)} already gone` : null
+		].filter((n): n is string => n !== null);
 		if (!out.done.length) {
-			toast.error(held ?? 'Nothing was deleted', { duration: 4000 });
+			toast.error(notes.join('. ') || 'Nothing was deleted', { duration: 4000 });
 			return;
 		}
 		toast(`${songs(out.done.length)} deleted`, {
 			duration: DELETE_UNDO_MS,
-			description: [held, out.libraryFile ? 'Library-folder files stay in the folder' : null]
+			description: [...notes, out.libraryFile ? 'Library-folder files stay in the folder' : null]
 				.filter(Boolean)
 				.join('. '),
 			action: {
 				label: 'Undo',
 				onClick: async () => {
-					if (await bulk('undo', out.done)) onManaged();
+					if (await bulk('undo', out.done)) await onManaged();
+					refocus();
 				}
 			}
 		});
 	}
+	// Picks follow the list on screen: a filter change drops them, so Delete never reaches a song out of view.
+	$effect(() => {
+		void [appliedQuery, pickedArtist, pickedTag];
+		untrack(() => picked.clear());
+	});
 
 	let query = $state('');
 	/* WHAT THE ROWS ARE FILTERED BY, 150ms behind the box. The field itself stays live — `query` is what the input
@@ -463,7 +494,7 @@
 								</span>
 							</Empty.Description>
 						</Empty.Header>
-						<Button variant="secondary" size="tap" href="/">
+						<Button variant="secondary" size="tap" href="/" data-testid="library-find">
 							<Icon name="search" /> Find a song
 						</Button>
 					</div>
@@ -502,7 +533,7 @@
 						</p>
 					{/if}
 					{#if host}
-						<Button variant="eyebrow" aria-pressed={managing} onclick={toggleManage}>
+						<Button variant="eyebrow" data-testid="manage-toggle" aria-pressed={managing} onclick={toggleManage}>
 							{managing ? 'Done' : 'Manage'}
 						</Button>
 					{/if}
@@ -652,7 +683,7 @@
 			{/if}
 			<!-- Mounted for all of Manage, so the count it announces arrives after the region exists. -->
 			{#if managing}
-				<p class="vh" role="status">{picked.size ? `${picked.size} picked` : ''}</p>
+				<p class="vh" role="status">{announced || (picked.size ? `${picked.size} picked` : '')}</p>
 			{/if}
 			<!-- The screen's one fill (the Spotlight), above the dock, only while songs are picked. -->
 			{#if managing && picked.size}
@@ -682,8 +713,10 @@
 	.actbar {
 		position: fixed;
 		inset-inline: var(--sheet-gutter);
-		inset-block-end: calc(var(--dock-h, 0px) + var(--space-md));
-		z-index: var(--z-dock);
+		/* The turn cards' own offset, so a card fully covers the shorter bar with no edge showing below it. */
+		inset-block-end: calc(var(--dock-h, 0px) + var(--space-lg));
+		/* One layer under "You're up" and "Your song didn't play", which share this spot: the turn wins. */
+		z-index: calc(var(--z-dock) - 1);
 		max-width: var(--sheet-max);
 		margin-inline: auto;
 		display: flex;
@@ -699,7 +732,7 @@
 		flex: 1;
 	}
 	.bar-room {
-		height: calc(var(--tap) + var(--space-md) + 2 * var(--space-2xs));
+		height: calc(var(--tap) + var(--space-lg) + 2 * var(--space-2xs));
 	}
 	.actbar :global(button) {
 		color: inherit;

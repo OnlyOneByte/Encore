@@ -8,6 +8,8 @@ import { readJsonBody } from '$lib/server/http/json-body';
 import { BULK_MAX, bulkManage, type BulkAction } from '$lib/server/media/library-manage';
 import { DELETE_UNDO_MS } from '$lib/contract';
 
+/** Far past any real id (a ULID is 26); a longer one is a malformed request, not a song. */
+const ID_MAX = 128;
 const NEEDS = { keep: 'media:edit', unkeep: 'media:edit', delete: 'media:delete', undo: 'media:delete' } as const;
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
@@ -25,7 +27,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		!Array.isArray(ids) ||
 		ids.length === 0 ||
 		ids.length > BULK_MAX ||
-		!ids.every((id) => typeof id === 'string' && id)
+		!ids.every((id) => typeof id === 'string' && id.length > 0 && id.length <= ID_MAX)
 	)
 		return json({ error: `mediaIds must be 1 to ${BULK_MAX} song ids` }, { status: 400 });
 

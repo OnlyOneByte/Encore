@@ -644,7 +644,7 @@ export class RoomLink {
 		// A successful re-process clears any failed-process scar, so the row never lingers as failed while it is ready.
 		if (status === 'ready') {
 			clearScar(mediaId);
-			void this.refreshLibrary();
+			this.#rereadLibrary();
 		}
 		// A canceled song may have left Library too (an evicted one has), so the shelf is re-read, once per burst:
 		// eviction cancels every song it resets.
@@ -811,6 +811,22 @@ export class RoomLink {
 	#processInFlight = new Set<string>();
 	#toldWhileProcessing = new Set<string>();
 	#libraryRereadSoon: ReturnType<typeof setTimeout> | null = null;
+	#libraryReread: Promise<void> | null = null;
+	#libraryRereadAgain = false;
+	/** A burst of `ready` (a bulk Undo) costs at most one more read after the one in flight, not one per song,
+	 *  and a lone `ready` still re-reads at once. */
+	#rereadLibrary(): void {
+		if (this.#libraryReread) {
+			this.#libraryRereadAgain = true;
+			return;
+		}
+		this.#libraryReread = this.refreshLibrary().finally(() => {
+			this.#libraryReread = null;
+			if (!this.#libraryRereadAgain) return;
+			this.#libraryRereadAgain = false;
+			this.#rereadLibrary();
+		});
+	}
 	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
 	 * Failure raises NO TOAST — the library is an accelerator, never a blocker, and this runs on connect where a
 	 * guest has not asked for it. It is no longer silent to the SURFACE, though: it leaves `libraryFailed` set, so

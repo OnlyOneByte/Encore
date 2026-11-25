@@ -3,7 +3,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '../../world/fixtures';
-import { queueReady, readySong } from '../../world/actors';
+import { queueReady, readySong, transportTap } from '../../world/actors';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page, TestInfo } from '@playwright/test';
@@ -84,7 +84,8 @@ test('a guest sees no Manage; the host renames, keeps, deletes and undoes', asyn
 		// Delete and let the window close: the song's files go, the library-folder file stays.
 		await host.locator('[data-testid="manage-row"] button.open').click();
 		await host.getByRole('button', { name: 'Delete' }).click();
-		expect(await libraryIds(guest)).not.toContain(id);
+		// Polled: the click returns before the delete request has landed.
+		await expect.poll(() => libraryIds(guest)).not.toContain(id);
 		// During the window the song is offered nowhere: not on a guest's open Library, not in search.
 		await expect(guest.getByText('Renamed By Host')).toHaveCount(0);
 		const search = (await (await guest.request.get('/api/search?q=caroline')).json()) as Record<string, Media[]>;
@@ -108,13 +109,13 @@ test('bulk: pick songs, Keep them, Select all and Delete with one Undo; a kept s
 	const worker = await startFakeWorker(world);
 	try {
 		const guest = await world.openPhone('Cy');
-		for (const track of ['caroline', 'bohemian', 'prayer']) await readySong(world, guest, track);
+		for (const track of ['caroline', 'bohemian', 'prayer', 'believin']) await readySong(world, guest, track);
 		const host = await world.openPhone('Host');
 		await world.becomeHost(host);
 		await host.goto('/library');
 		await host.getByRole('button', { name: 'Manage' }).click();
 		const rows = host.locator('[data-testid="manage-row"]');
-		await expect(rows).toHaveCount(3);
+		await expect(rows).toHaveCount(4);
 		const bar = host.locator('[data-testid="bulk-bar"]');
 		await expect(bar).toHaveCount(0);
 
@@ -137,17 +138,28 @@ test('bulk: pick songs, Keep them, Select all and Delete with one Undo; a kept s
 		await bar.getByRole('button', { name: 'Keep off' }).click();
 		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(0);
 
+		// A filter change drops the picks, so Delete never reaches a song out of view.
+		await expect(bar).toContainText('2 picked');
+		const filter = host.getByLabel('Filter your library');
+		await filter.fill('bohemian');
+		await expect(rows).toHaveCount(1);
+		await expect(bar).toHaveCount(0);
+		await filter.fill('');
+		await expect(rows).toHaveCount(4);
+		await rows.nth(0).getByRole('checkbox').click();
+
 		// Keep just one, then Select all and Delete: the kept one stays and the toast says so.
-		await rows.nth(1).getByRole('checkbox').click(); // un-pick
 		await bar.getByRole('button', { name: 'Keep', exact: true }).click();
 		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(1);
 		await host.getByTestId('pick-all').click();
-		await expect(bar).toContainText('3 picked');
+		await expect(bar).toContainText('4 picked');
 		await bar.getByRole('button', { name: 'Delete' }).click();
-		await expect(host.getByText('2 songs deleted')).toBeVisible();
+		await expect(host.getByText('3 songs deleted')).toBeVisible();
 		await expect(host.getByText('1 song stayed: kept, or in tonight')).toBeVisible();
 		await expect(rows).toHaveCount(1);
 		await expect(bar).toHaveCount(0); // out of the Undo toast's way
+		// The focused button left with the bar; focus lands on a control that stays.
+		await expect(host.getByTestId('pick-all')).toBeFocused();
 		// The frame shows the settled toast, not its slide-in.
 		await host
 			.locator('[data-sonner-toast]')
@@ -155,9 +167,93 @@ test('bulk: pick songs, Keep them, Select all and Delete with one Undo; a kept s
 			.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
 		await frame(host, testInfo, 'bulk-deleted-toast');
 
+		// One bulk Undo of 3 songs: a watching guest re-reads Library at most twice, not once per song.
+		await guest.goto('/library');
+		await expect(guest.locator('main [data-testid="song-add"]')).toHaveCount(1);
+		let guestReads = 0;
+		guest.on('request', (r) => {
+			if (new URL(r.url()).pathname === '/api/library') guestReads++;
+		});
 		await host.getByRole('button', { name: 'Undo' }).click();
-		await expect(rows).toHaveCount(3);
-		expect((await libraryIds(guest)).length).toBe(3);
+		await expect(rows).toHaveCount(4);
+		await expect(guest.locator('main [data-testid="song-add"]')).toHaveCount(4);
+		expect(guestReads).toBeLessThanOrEqual(2);
+		await expect(host.getByTestId('pick-all')).toBeFocused();
+		expect((await libraryIds(guest)).length).toBe(4);
+
+		// Delete every row on screen: Select all is no longer drawn, so focus goes to Done. After Undo it goes back
+		// to Select all, but only once the row has returned.
+		await filter.fill('caroline');
+		await expect(rows).toHaveCount(1);
+		await host.getByTestId('pick-all').click();
+		await bar.getByRole('button', { name: 'Delete' }).click();
+		await expect(rows).toHaveCount(0);
+		await expect(host.getByTestId('pick-all')).toHaveCount(0);
+		await expect(host.getByTestId('manage-toggle')).toBeFocused();
+		await host.getByRole('button', { name: 'Undo' }).click();
+		await expect(rows).toHaveCount(1);
+		await expect(host.getByTestId('pick-all')).toBeFocused();
+
+		// Delete the whole library: neither Select all nor Done is drawn, so focus goes to the empty screen's Find a song.
+		await filter.fill('');
+		await expect(rows).toHaveCount(4);
+		await rows.filter({ hasText: 'Kept' }).getByRole('checkbox').click();
+		await bar.getByRole('button', { name: 'Keep off' }).click();
+		await expect(rows.filter({ hasText: 'Kept' })).toHaveCount(0);
+		await host.getByTestId('pick-all').click();
+		await expect(bar).toContainText('4 picked');
+		await bar.getByRole('button', { name: 'Delete' }).click();
+		await expect(host.getByText('4 songs deleted')).toBeVisible();
+		await expect(rows).toHaveCount(0);
+		await expect(host.getByTestId('manage-toggle')).toHaveCount(0);
+		await expect(host.getByTestId('library-find')).toBeFocused();
+	} finally {
+		await worker.stop();
+	}
+});
+
+test("the host's turn comes while songs are picked: You're up sits over the bar, and its button takes the tap", async ({
+	world
+}, testInfo) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const guest = await world.openPhone('Di');
+		for (const track of ['caroline', 'believin']) await readySong(world, guest, track);
+		const tv = await world.openTv();
+		await queueReady(guest, 'caroline');
+		const intro = tv.locator(SEL.stateNext);
+		await expect(intro).toBeVisible({ timeout: 30_000 });
+		await expect(intro).toBeHidden({ timeout: 10_000 });
+
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await queueReady(host, 'believin');
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		await host.locator('[data-testid="manage-row"]').first().getByRole('checkbox').click();
+		const bar = host.locator('[data-testid="bulk-bar"]');
+		await expect(bar).toContainText('1 picked');
+
+		// The guest's song ends early: the host's turn starts while the bar is up.
+		await transportTap(guest, 'skip');
+		const card = host.locator('.youre-up');
+		await expect(card).toBeVisible({ timeout: 5_000 });
+		// No edge of the bar shows outside the card, measured once the card has finished arriving.
+		await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+		const [barBox, cardBox] = [(await bar.boundingBox())!, (await card.boundingBox())!];
+		expect(barBox.y).toBeGreaterThanOrEqual(cardBox.y);
+		expect(barBox.y + barBox.height).toBeLessThanOrEqual(cardBox.y + cardBox.height + 0.5);
+		expect(barBox.x).toBeGreaterThanOrEqual(cardBox.x - 0.5);
+		expect(barBox.x + barBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+		await frame(host, testInfo, 'bar-under-youre-up');
+		// The card is on top wherever the two share space, so its OK button is what a tap reaches.
+		const ok = card.getByRole('button').first();
+		const box = (await ok.boundingBox())!;
+		const hit = await host.evaluate(
+			([x, y]) => !!document.elementFromPoint(x, y)?.closest('.youre-up'),
+			[box.x + box.width / 2, box.y + box.height / 2]
+		);
+		expect(hit).toBe(true);
 	} finally {
 		await worker.stop();
 	}
