@@ -1490,8 +1490,8 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   check through its missing align row. The same rule decides `complete` in `perProcess`, so "From request
   to ready to sing" and "Slowest songs" count the same songs.
 - **Left out:** a failed song, including a refused silent instrumental. A lyrics-only re-align (a re-pick
-  or the boot backfill), and a pick whose separation was skipped because the stems were cached, since
-  neither has a `stems` job. Also `stems-upgrade` processes, which redo a song that was already ready, and
+  or the boot backfill), since it has no `stems` job; a pick that skipped separation would be left out the
+  same way, though core runs none today. Also `stems-upgrade` processes, which redo a song that was already ready, and
   a process straddling the window's older edge. A retried song does count, with its retry time in its
   total, because the singer waited through it.
 - **The time is `enqueuedAt` of the first step to `finishedAt` of the last**, divided by the snapshotted

@@ -82,8 +82,8 @@ ml = [
     "pyphen==0.17.2",
 ]
 # The Apple-Silicon separation backend. NOT a Python import: `host/hardware.py` gates on
-# `find_spec("demucs_mlx")` and the engine shells out to the `demucs-mlx` CLI by name, so this extra
-# exists to put that binary on PATH rather than to be imported. Pulls NO torch in its default install
+# `find_spec("demucs_mlx")` and the engine runs the `demucs-mlx` CLI this installs beside the interpreter
+# (`host/config.py`; `ENCORE_MLX_BIN` overrides), so it is never imported. Pulls NO torch in its default install
 # (torch appears only in its own `convert` extra), so it cannot move the pin the alignment stack uses.
 # Marker-gated because mlx builds only on Apple Silicon; `--extra mlx` on a Linux box installs nothing
 # rather than failing.

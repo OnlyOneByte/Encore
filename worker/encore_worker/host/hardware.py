@@ -538,9 +538,11 @@ def youtube_gap(config_paths: tuple[str, ...], *, deno: str = "deno") -> str | N
 
 
 def _mentions(path: str, text: str) -> bool:
-    """Does an uncommented line of this config name `text`? A `# --remote-components ...` sets nothing."""
+    """Does this config name `text` outside a comment? A `# --remote-components ...`, whole-line or
+    trailing, sets nothing. shortcut: a `#` inside a quoted value also ends the line here, where yt-dlp's
+    own parser would keep it; parse with `shlex` if a config ever needs that."""
     try:
         with open(path, encoding="utf-8") as fh:
-            return any(text in line for line in fh if not line.lstrip().startswith("#"))
+            return any(text in line.split("#", 1)[0] for line in fh)
     except (OSError, UnicodeDecodeError):
         return False
