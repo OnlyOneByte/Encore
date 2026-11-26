@@ -118,8 +118,7 @@ already checks the line; `gate:measured` CLAIM n is a spec in `core/tests/playwr
 - **S3.** No spinner or skeleton is on screen for less than 300 ms: it is never painted, or it stays at least
   300 ms (`PENDING_GRACE_MS` is the pattern), and a wait past 3 s says so in words. A placeholder that the real
   content replaces is not a flash: content is never held back behind an indicator (an owner ruling, #1171). **Automated** (`gate:measured`
-  CLAIM 12) on cold loads, the Sing search and a slow or lost `/api/me` (words not before 3 s; the 4 s upper bound
-  races, #1093, and is the reviewer's). "Finding the room…" on the QR link (#1089), "Loading the queue…" on
+  CLAIM 12) on cold loads, the Sing search and a lost `/api/me` (words after 3 s of asking and by 4 s, #1093). "Finding the room…" on the QR link (#1089), "Loading the queue…" on
   `/queue` (#1090) and the Sing search's two (the skeleton rows and the field's spinner) are fixed and gate as plain
   tests. The two load lines keep their box from the first frame and are seen only past `PENDING_GRACE_MS`, the one
   place the grace lives; the content that replaces one later is never held back for it (#1171). Their words are
