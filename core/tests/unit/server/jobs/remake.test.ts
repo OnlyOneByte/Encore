@@ -40,8 +40,12 @@ const ready = (over: Partial<Media> = {}): Media => ({
 
 type Entry = { id: string; status: string; mediaId: string };
 
-function harness(queue: Entry[] = [], current: { current: string | null } = { current: null }) {
-	const jobs = new JobRepository(migratedDb());
+function harness(
+	queue: Entry[] = [],
+	current: { current: string | null } = { current: null },
+	db: ReturnType<typeof migratedDb> = migratedDb()
+) {
+	const jobs = new JobRepository(db);
 	const mediaById = new Map<string, Media>([['m1', ready()]]);
 	const sent: WorkerCommand[] = [];
 	const broadcasts: ServerEvent[] = [];
@@ -190,6 +194,63 @@ test('finished while the song plays: the swap waits for the turn to end, since t
 	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(tagged(tag)[0]);
 	await drained();
 	expect(h.deleted).toEqual([OLD_REFS]);
+});
+
+test('held when core restarts mid-song (#1317): the remake survives, its files are spared, and it swaps in after', async () => {
+	const saved = process.env.MEDIA_DIR;
+	const root = mkdtempSync(join(tmpdir(), 'encore-held-'));
+	process.env.MEDIA_DIR = root;
+	try {
+		const queue: Entry[] = [];
+		const now = { current: null as string | null };
+		const db = migratedDb();
+		const h = harness(queue, now, db);
+		const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+		h.hello();
+		const tag = assigns(h.sent)[0]!.params.outputTag!;
+		// Picked mid-remake and playing when the remake finishes: held for the turn.
+		queue.push({ id: 'e1', status: 'queued', mediaId: 'm1' });
+		now.current = 'e1';
+		complete(h, job.id, tagged(tag));
+		expect(h.jobs.byId(job.id)!.status).toBe('ready');
+		expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+
+		// Core restarts during the hold: a new hub on the same database, the song as its sidecar left it.
+		mkdirSync(join(root, 'derived/stems'), { recursive: true });
+		for (const ref of [...OLD_REFS, ...tagged(tag)]) writeFileSync(join(root, ref), 'x');
+		const after = harness(queue, now, db);
+		after.hub.restoreHeld();
+		// The boot sweep spares the held remake's files, which the song does not name yet.
+		expect(staleStemsOnDisk([after.mediaById.get('m1')!], (id) => after.hub.writingTags(id)).get('m1')).toBeUndefined();
+
+		// Still singing: no swap.
+		after.hub.settle();
+		expect(after.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
+		// The turn ends: the new sound goes in, the hold is cleared, and the old files go after the sidecar.
+		queue[0]!.status = 'done';
+		now.current = null;
+		after.hub.settle();
+		expect(after.mediaById.get('m1')!.instrumentalRef).toBe(tagged(tag)[0]);
+		expect(after.mediaById.get('m1')!.vocalsRef).toBe(tagged(tag)[1]);
+		expect(after.jobs.listHeld()).toEqual([]);
+		await queueSidecarTask('m1', async () => {});
+		expect(after.deleted).toEqual([OLD_REFS]);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+		if (saved === undefined) delete process.env.MEDIA_DIR;
+		else process.env.MEDIA_DIR = saved;
+	}
+});
+
+test('a held row whose job is gone is dropped at boot, not swapped', () => {
+	const db = migratedDb();
+	const h = harness([], { current: null }, db);
+	h.jobs.hold('nope', 'm1', JSON.stringify({ type: 'job:complete', jobId: 'nope' }), T0);
+	h.jobs.hold('bad', 'm1', '{not json', T0);
+	h.hub.restoreHeld();
+	expect(h.jobs.listHeld()).toEqual([]);
+	h.hub.settle();
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
 });
 
 test('a refused upgrade keeps the playing stems and deletes only the files it wrote', async () => {

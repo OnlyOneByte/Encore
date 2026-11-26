@@ -4,6 +4,9 @@ import { test, expect } from '../../world/fixtures';
 import { readySong, queueReady } from '../../world/actors';
 import { startFakeWorker } from '../../world/workers';
 import type { Page } from '@playwright/test';
+import { readdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
 import type { Media } from '$lib/contract';
 
 async function libraryRow(page: Page, id: string): Promise<Media | undefined> {
@@ -123,6 +126,64 @@ test('queued and playing mid-remake: the TV plays the old file to the end, then 
 	} finally {
 		await worker.stop();
 	}
+});
+
+test.describe('across a restart', () => {
+	// A file-backed DB, so the restart keeps the library, the jobs and the held completion.
+	test.use({ coreEnv: { ENCORE_EPHEMERAL: '0' } });
+	test('a remake held for the turn survives a core restart, and the new sound goes in after (#1317)', async ({
+		world
+	}) => {
+		test.setTimeout(240_000);
+		const maker = await startFakeWorker(world, { seconds: 20 });
+		const guest = await world.openPhone('Ana');
+		await readySong(world, guest, 'caroline');
+		await maker.stop();
+		const id = (await world.awaitDemoTrack('caroline')).id;
+		const before = (await libraryRow(guest, id))!.instrumentalRef!;
+		const tv = await world.openTv();
+		const worker = await startFakeWorker(world, { slowMs: 6_000, seconds: 20 });
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		const res = await host.request.post('/api/library/manage/remake', { data: { mediaId: id } });
+		expect((await res.json()).afterTurn).toBe(false);
+		await queueReady(guest, 'caroline');
+		await expect.poll(async () => (await tvSources(tv)).some((src) => src.includes(before))).toBe(true);
+
+		// The remake finishes mid-song: its completion is held (a `held_completions` row), the song still naming the old.
+		const heldRows = () => {
+			const db = new DatabaseSync(join(world.core.dataDir, 'encore.sqlite'));
+			try {
+				return (db.prepare('SELECT COUNT(*) AS n FROM held_completions WHERE media_id = ?').get(id) as { n: number }).n;
+			} finally {
+				db.close();
+			}
+		};
+		await expect
+			.poll(heldRows, { timeout: 60_000, message: 'the remake never finished while its song played' })
+			.toBe(1);
+		expect((await libraryRow(guest, id))?.instrumentalRef).toBe(before);
+		const stems = join(world.mediaDir, 'derived/stems');
+		const tagged = () => readdirSync(stems).filter((n) => new RegExp(`^${id}-[0-9a-z]+-instrumental\\.`).test(n));
+		expect(tagged()).toHaveLength(1);
+
+		// No worker is left to make it again, so only the held completion itself can bring the new sound in.
+		await worker.stop();
+		await world.core.restart();
+
+		await expect
+			.poll(async () => (await libraryRow(guest, id))?.instrumentalRef, {
+				timeout: 90_000,
+				message: 'the held remake was lost to the restart'
+			})
+			.toBe(`derived/stems/${tagged()[0]}`);
+		// Its files survived the boot sweep, and the replaced file goes once the turn is over.
+		const after = (await libraryRow(guest, id))!.instrumentalRef!;
+		expect((await guest.request.get(`/media/${after}`)).status()).toBe(200);
+		await expect
+			.poll(async () => (await guest.request.get(`/media/${before}`)).status(), { timeout: 30_000 })
+			.toBe(404);
+	});
 });
 
 test('a remake that fails says so on the song sheet, and the old sound stays', async ({ world }, testInfo) => {

@@ -1323,10 +1323,13 @@ Rename, Keep, delete and remake act only on a ready song outside an Undo window 
     3 s tick after (`WorkerHub.settle`). Each delete is queued behind the song's sidecar write
     (`queueSidecarTask`), so `meta/<id>.json` never names a deleted file. The list is in memory: at boot,
     `staleStemsOnDisk` finds again what a restart kept from deleting (a song's tagged files it does not name
-    and no live job writes, and its untagged ones once it plays tagged stems), and those wait for the turn too.
+    and no live or held job writes, and its untagged ones once it plays tagged stems), and those wait for the turn
+    too.
   - **Never a swap mid-song.** The TV reloads a changed src from 0, so a re-separation that finishes while its
-    song is playing is held and swapped in when the turn ends. One held across a restart is lost, and its files
-    are swept at boot.
+    song is playing is held and swapped in when the turn ends. The held `job:complete` is kept in
+    `held_completions` until the swap, so a restart during the hold holds it again at boot
+    (`WorkerHub.restoreHeld`), the stale sweep spares its files (`writingTags`), and the first tick after the
+    turn swaps it in (#1317). A row whose job is gone, or whose message cannot be read, is dropped.
   - **The host's remake starts after the turn** (`waitsForTurn`): it is not dispatched while its song is
     queued or playing. An auto-upgrade does not wait, so a song picked tonight can get the better stems before
     its first turn.
