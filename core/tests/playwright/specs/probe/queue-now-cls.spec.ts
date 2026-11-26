@@ -6,7 +6,7 @@
 // card) and one where Theo's own song is still cooking (a queue row is).
 //
 // THE PAGE, NOT THE DOCK. The fixed dock also shifts as the first song starts, because the now-playing strip joins
-// it and its top edge rises (about 0.026). That is the root layout's, on every tab, so it is filtered out here by
+// it and its top edge rises (about 0.026). That is the phone layout's, on every tab, so it is filtered out here by
 // source and reported separately; an entry that names anything inside `main` fails.
 //
 // NOR A ROW'S OWN CONTENT. Maya's turn reaches the queue a beat before it starts playing, so for about 100 ms Theo's

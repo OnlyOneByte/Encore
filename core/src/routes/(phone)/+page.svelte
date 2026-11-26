@@ -531,7 +531,7 @@
 	 * THE REQUEST ITSELF MOVED TO `RoomLink.requestProcess`, where /queue's stalled-card retry can reach it: the
 	 * optimistic set, the rollback-the-mark-not-the-turn rule and the refusal notice are the correctness of that
 	 * call, and a second copy of the three is how they drift. What stays here is the haptic, which is a DOM read
-	 * the link may not make, and the refusal lands on the root layout's `room.onError` toast. */
+	 * the link may not make, and the refusal lands on the phone layout's `room.onError` toast. */
 	async function processMedia(mediaId: string): Promise<boolean> {
 		if (navigator.vibrate) navigator.vibrate(12);
 		return room.requestProcess(mediaId);

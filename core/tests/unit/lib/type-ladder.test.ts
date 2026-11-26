@@ -135,8 +135,8 @@ test("the hole above 2xl is the ladder's only wide step, and 3xl still has the O
 	   sitting over that page's own secondary tiles at `2xl`. A SECOND caller makes the 24 -> 41.6px hole a real
 	   reading step, so it must red here and send the reader back to docs/UI-DESIGN.md §3 rather than pass quietly.
 	   Structurally a zero (zero second callers), which is why it is not the kind of count this file retired. */
-	expect(ruleSites('3xl')).toEqual(['routes/stats/+page.svelte']);
-	const stats = readFileSync(at('src/routes/stats/+page.svelte'), 'utf8');
+	expect(ruleSites('3xl')).toEqual(['routes/(phone)/stats/+page.svelte']);
+	const stats = readFileSync(at('src/routes/(phone)/stats/+page.svelte'), 'utf8');
 	expect(stats).toContain('.primary .n {\n\t\tfont-size: var(--ph-text-3xl);');
 	expect(stats).toContain('.n {\n\t\tfont-size: var(--ph-text-2xl);');
 });

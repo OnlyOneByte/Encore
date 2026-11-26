@@ -425,20 +425,20 @@ can check. Two rules follow.
 effect tracking only that scalar does not re-run. `play` and `pause` write `isPlaying` and never touch
 `positionSec`, so a resume re-delivers the same number.
 
-**So capture an anchor in the effect that reads every signal it depends on.** `src/routes/+layout.svelte`
+**So capture an anchor in the effect that reads every signal it depends on.** `src/routes/(phone)/+layout.svelte`
 extrapolates the strip's progress rail between broadcasts from `positionSec` plus a wall clock, once a second
 rather than once a frame. With the anchor in its own effect tracking `positionSec` alone, a resume did not re-run
 the capture while the interval effect did, and the readout extrapolated from the clock recorded at PAUSE time —
 one second after every resume it leapt forward by the whole pause and clamped full on a song still playing. Both
 reads now live in ONE effect, which makes a stale anchor unrepresentable. That shape is load-bearing, and it is
-load-bearing TWICE: `src/routes/queue/+page.svelte` runs a second anchor of the same shape for its elapsed clock,
+load-bearing TWICE: `src/routes/(phone)/queue/+page.svelte` runs a second anchor of the same shape for its elapsed clock,
 and it too keeps both reads inside the effect.
 
 **The site that used to demonstrate the safe two-effect case is gone, so the principle is stated instead of
 pointed at.** Reading `playback.positionSec` off an object `src/lib/stores/room.ts` REPLACES wholesale on every
 broadcast makes the two-effect arrangement safe, because the replacement is a fresh identity and any playback
 change re-runs the dependent effect. The one-effect shape is written anyway, because an arrangement whose safety
-rests on a store's identity discipline breaks silently the day that store mutates in place instead. The root
+rests on a store's identity discipline breaks silently the day that store mutates in place instead. The phone
 layout takes the opposite trade and mirrors NINE scalars, which is what narrows its dependency set: a library
 merge or a queue reorder touches none of them, and a component that mirrors cannot borrow the route's shape.
 
@@ -452,7 +452,7 @@ over an idle phone read 0:00…0:12, then 0:00 again, then climbed once more.
 So the rule has a second half. **Anchor an effect on SCALARS, inside the effect.** `/queue` now mirrors
 `positionSec` and `isPlaying` as scalars beside the object (which it still keeps for the fields no effect
 anchors) and the anchor effect reads those; writing an equal primitive notifies nothing, so an identical
-rebroadcast is silent while a real change still re-arms the ticker. The root layout never had this defect for
+rebroadcast is silent while a real change still re-arms the ticker. The phone layout never had this defect for
 exactly that reason, and the two surfaces no longer disagree by construction.
 
 **An extrapolated position is capped where it is DRAWN, not where it is computed.** `drawPosition` in
@@ -566,7 +566,7 @@ happy-dom has no layout engine, so the mount harness replaces every geometry rea
 letting a fabricated zero pass. A zero is not a measurement, and the
 two natural guard shapes around one are a permanent red nobody trusts or a permanent silent green.
 
-The consequence is a rule about markup, not about tests. `.dock` in `src/routes/+layout.svelte` carries
+The consequence is a rule about markup, not about tests. `.dock` in `src/routes/(phone)/+layout.svelte` carries
 `bind:clientHeight`, so ANY reactive update in that part of the template re-runs its size binding — and on this
 rung that throws. So:
 
@@ -576,7 +576,7 @@ rung that throws. So:
 > sheet state as a callback or a getter to satisfy this; the dock has one, and the rule it has to satisfy is
 > harder rather than easier. **`.dock`'s own CONTENT is conditional** — the strip swaps its title, Cheer key, cheer
 > tray and offline cue as the room changes — so the binding genuinely re-runs, which is exactly the shape this
-> rung objects to. No unit test mounts the root layout today; one that does will need a layout engine, and that is
+> rung objects to. No unit test mounts the phone layout today; one that does will need a layout engine, and that is
 > the constraint to honour rather than to work around. The layout's own comment says so at the binding.
 
 The same rung is why `src/lib/components/GuidingTrack.svelte` does not use the vendored Slider (the primitive
@@ -791,16 +791,20 @@ scrollport rather than from the shell's padding.
 
 ### Phones versus the television
 
-`NOT_PHONE` in `src/routes/+layout.svelte` is the single list of surfaces that are not a phone, matched on
-the route or any descendant of it. It is the same set the phone inventory exempts
-from the phone route walk; do not fork a second opinion about what a phone is. The list gates two things
-that must agree: whether the layout opens a `role=phone` socket, and whether the dock renders. An ungated
-`room.connect()` in the root layout would give `/tv` a second socket and register the television as a
-singer present in the room.
+The phone tabs live in the `src/routes/(phone)/` route group; `/tv`, `/admin`, `/metrics` and `/components` sit
+outside it, the same set the phone inventory exempts from the phone route walk. The group's layout is the only
+place that opens a `role=phone` socket and renders the dock, toaster and turn sheets, so none of that reaches the
+television: a `role=phone` socket on `/tv` would register the television as a singer present in the room.
+
+The root layout holds only the head and imports no stylesheet. The phone layout imports `app.css`, so `app.css`
+and the dock ship as one sheet; every other surface's own `+layout.svelte` imports `screens.css`, which is
+`app.css` alone, as does the root `+error.svelte`, lazily (#1309). A shared `app.css` chunk would split the phone's
+sheet in two and cost about 480 B gzip; `tests/unit/routes/route-styles.test.ts` checks every page has one or the
+other. An error page has no dock, so it links back to the room itself: `/tv` from the TV, `/` from anywhere else.
 
 ### The dock and `--dock-h`
 
-**ONE FIXED CONTAINER HOLDS BOTH ROWS.** `.dock` in `src/routes/+layout.svelte` stacks `NowPlayingStrip` on
+**ONE FIXED CONTAINER HOLDS BOTH ROWS.** `.dock` in `src/routes/(phone)/+layout.svelte` stacks `NowPlayingStrip` on
 `TabBar` in normal flow; they are not two separately-fixed elements, because the tab bar composes the
 home-indicator inset and the strip composes none — two fixed siblings would each need their own inset arithmetic
 and would disagree the moment one of them changed height. The dock is NOT inside `.app-shell`: the shell is
@@ -817,7 +821,7 @@ title slot, and an idle room reads "Nothing playing". The dock carries no pause,
 shift from the dock across seven room transitions at 390x844 and 320x568.
 Readings below that quote a 46px dock or a top edge of 854 (1440x900) / 798 (390x844) predate it.
 
-`src/routes/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
+`src/routes/(phone)/+layout.svelte` is the only writer of `--dock-h`, the dock's measured (never guessed) height,
 published on `documentElement` so every scrolling column can reserve it in normal flow. Rules:
 
 - Exactly one element adds `env(safe-area-inset-bottom)` — the TAB BAR, because it is the app's bottom-most
@@ -856,7 +860,7 @@ shapes rather than banning the bare statement, because `onskip={() => room.comma
 thoroughly while looking like it uses it, and it requires the receiver to be the `room` singleton so an aliased one
 has to be argued rather than smuggled past. **Its scan is the whole of `src/`**, which is what the word exhaustive
 has to mean here and for one revision did not: it read the two files the call sites happened to live in, so a bare
-`room.command(…)` pasted into `src/routes/+page.svelte` — one of five files importing the singleton — left the
+`room.command(…)` pasted into `src/routes/(phone)/+page.svelte` — one of five files importing the singleton — left the
 suite green. The file now derives that importer list and asserts the scan reaches all of it, ahead of the arm that
 relies on it. (The one deliberate silent drop in the tree is the TV's `tv:telemetry`; the TV socket section says
 why.)
@@ -885,7 +889,7 @@ A call site can owe one of two things, and which one depends on whether it holds
   card, sent through the layout's `'transport'` context, typed in `src/lib/transport-controls.ts`) hold no optimistic
   value, so there is nothing to roll back — but on SUCCESS they change nothing locally either, since the next
   broadcast is what redraws them. Silence therefore cannot be read at all, and the
-  guest's only remaining move is to tap again. `transport()` in `src/routes/+layout.svelte` answers with one
+  guest's only remaining move is to tap again. `transport()` in `src/routes/(phone)/+layout.svelte` answers with one
   `toast.error` carrying `id: 'transport-dropped'`: sonner keys toasts by id, so a mash updates the single
   notice and resets its timer instead of stacking a tower of them over the dock.
 
@@ -926,7 +930,7 @@ wrapper were deleted with it. Measured on the build afterwards — `vaul` appear
 deleting the wrapper took 5,152 bytes out of the root stylesheet every surface downloads, /tv included (55,927 →
 50,775), 3,211 of them being 24 rules whose selector spelled `data-[vaul-drawer-direction=…]`.
 
-The strip and the tab bar sit inside ONE fixed `.dock` in `src/routes/+layout.svelte`, which is also the single writer
+The strip and the tab bar sit inside ONE fixed `.dock` in `src/routes/(phone)/+layout.svelte`, which is also the single writer
 of `--dock-h` (the section above holds that contract). The height is MEASURED, by `bind:clientHeight` on `.dock`. A
 token-arithmetic `--dock-h` was tried and failed, and app.css's `NO BOTTOM-DOCK TOKEN HERE` note is the record of why:
 a tab renders 45px against a declared 44, the declared total came to 102px against a rendered 91, and a frozen height
@@ -1017,7 +1021,7 @@ reader hears it (#1328). An unjoined visitor's join screen is loaded on demand, 
 downloads it; if its chunk fails, both tabs show the same `.join-lost` line (app.css) with Try again.
 **It holds the transport** (redesign step 4, an owner ruling, moved off the dock): restart, play/pause and skip,
 three 44 px keys under the clock in one `Playback` group, for every phone, as the strip had them. Play/pause is the
-row's one accent fill. They go through the root layout's `transport()` and tap
+row's one accent fill. They go through the phone layout's `transport()` and tap
 target (the context in `src/lib/transport-controls.ts`), so the dropped-command notice and the settle window are
 unchanged. When the last Skip takes the card away, focus that fell to `<body>` goes to the dock's now-line link.
 With nothing playing but a song ready, the only Play is the strip's, beside `Ready when you are`: a row here instead
@@ -1802,7 +1806,7 @@ button cannot disagree about where "done" is, which is the class of defect the d
 up. `/` is today's only answer (the identity chip is that route's one door), so the `?next=` exists to keep a second
 door from needing a second rule.
 
-THE GAP THIS CREATES, named rather than hidden: the dock is gated on `showChrome` (`isPhoneSurface && me !== null`,
+THE GAP THIS CREATES, named rather than hidden: the dock is gated on `showChrome` (`me !== null`,
 with `me` arriving from the socket), so on a COLD load of a settings route there is a frame with no dock. PageHeader's
 back anchor covers it — a real `<a>`, so it works before any JS state lands, and it is also the keyboard-reachable
 exit — and every back target names a single real door: You → `/` (or its `?next=`), the room scope → `/`, the
@@ -2394,7 +2398,7 @@ fires on the turn's first PLAYING frame, which puts it beside the TV's card. A t
 cannot start the song spends the latch: the song is then the problem, and the watchdog fails it. There is no "won't play"
 overlay: a failure the room can do nothing about is moved past, not displayed.
 
-**The failed singer's phone, and only theirs, says so.** The root layout shows `SongDidntPlay` ("Your song didn't play",
+**The failed singer's phone, and only theirs, says so.** The phone layout shows `SongDidntPlay` ("Your song didn't play",
 the title, Try again and Pick another, "You keep your spot.") in the "You're up" slot, on any tab, and it replaces
 "You're up" when both would show. `didntPlayTurn` (`$lib/song-didnt-play`) picks MY earliest held turn whose failure
 this page has not closed; it is not edge-triggered, so a phone that slept through the failure, or reloads, still

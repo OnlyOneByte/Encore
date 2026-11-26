@@ -2,7 +2,7 @@
 // join UI, carrying `?next=` so `safeNextPath` returns them to the tab they asked for after joining. `/join`
 // is retired, so a redirect there — and the open-redirect guard that used to live on it — must not return.
 import { test, expect, afterEach } from 'bun:test';
-import { load } from '$routes/settings/+page.server';
+import { load } from '$routes/(phone)/settings/+page.server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
@@ -55,7 +55,7 @@ test('leaving the room sends the guest to / (the landing page), not the retired 
 	   is gone, so the two assertions cannot pass over an empty string. The subject is the YOU scope: `leaveRoom` lives
 	   with the identity it forgets, and it is the one `goto` on that page that is NOT resolved through `?next=` —
 	   the cookie is gone, so `/` is the only honest destination. */
-	const page = read('src/routes/settings/you/+page.svelte')
+	const page = read('src/routes/(phone)/settings/you/+page.svelte')
 		.replace(/<!--[\s\S]*?-->/g, ' ')
 		.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	expect(page).toMatch(/await goto\(\s*['"`]\/['"`]\s*\)/);

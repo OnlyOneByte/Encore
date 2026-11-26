@@ -1,0 +1,3 @@
+/* app.css for the surfaces with no dock (/tv, /admin, /metrics, /components). A module of its own, so the phone layout's
+   app.css and dock share ONE stylesheet: a shared app.css chunk would split it in two and cost phones ~480 B gzip. */
+@import './app.css';

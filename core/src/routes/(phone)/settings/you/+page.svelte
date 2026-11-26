@@ -442,7 +442,7 @@
 				<ul class="nights">
 					{#each nights.list as n (n.id)}
 						<li>
-							<a href={resolve('/settings/you/nights/[id]', { id: n.id })}>
+							<a href={resolve('/(phone)/settings/you/nights/[id]', { id: n.id })}>
 								<span>{n.when}</span><span class="n">{songs(n.songs)}<Icon name="chevron-right" /></span>
 							</a>
 						</li>

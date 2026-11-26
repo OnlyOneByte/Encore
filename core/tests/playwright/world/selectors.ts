@@ -71,7 +71,7 @@ export const SEL = {
 	   TV lobby's roster. An unscoped `npStrip: '.strip'` would resolve against the wrong element on /tv.
 	   THE THREE TAB KEYS ARE DELIBERATELY NOT, which is the one asymmetry here and it is load-bearing both ways.
 	   `.tabs` is declared in exactly one file (TabBar.svelte), so it needs no scope to be unambiguous — but the
-	   reason it must not HAVE one is that `/components` renders four `<TabBar>` frames and is in `NOT_PHONE`, so
+	   reason it must not HAVE one is that `/components` renders four `<TabBar>` frames and is outside `(phone)`, so
 	   it has no `.dock` at all: `.dock .tabs` would resolve ZERO on the one surface that shows every tab state.
 	   The cost is that on `/components` these three match four elements, so a driver there must pick a frame
 	   first; on a phone surface each matches exactly one. */

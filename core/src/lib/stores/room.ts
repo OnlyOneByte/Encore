@@ -787,7 +787,7 @@ export class RoomLink {
 	 * is what keeps the card off `queueCardKind`'s stalled arm during the window before the first broadcast.
 	 *
 	 * THE NOTICE GOES THROUGH `#fail`, not a toast — this class holds no opinion about how a failure is shown, and
-	 * the root layout routes `onError` to `toast.error` on every surface.
+	 * the phone layout routes `onError` to `toast.error` on every phone tab.
 	 *
 	 * RESOLVES TRUE ONLY WHEN THE PROCESS STARTED (or the stems were already on disk): Sing adds its turn on true
 	 * alone, so a refused tap books no turn nothing is working on. */

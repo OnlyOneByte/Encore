@@ -21,7 +21,7 @@ import { at } from '$test';
  * prose quotes, so a rule that changes cannot leave the comment behind; the pixels are `gate:measured`'s job.
  */
 
-const route = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
+const route = readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8');
 const appCss = readFileSync(at('src/app.css'), 'utf8');
 const doc = readFileSync(at('../docs/FRONTEND.md'), 'utf8');
 

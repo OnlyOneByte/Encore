@@ -630,7 +630,7 @@ function reorderHeld(width: number): Make {
  *  nothing behind it). What is under the row is held where it was drawn and eases to its new place (`data-hold`,
  *  --motion-base), so nothing jumps. Arriving, the card then fades into the opened slot on the next
  *  --motion-base; leaving, it is a cut. Each run first puts the room in the state before. CLS in metrics.json also
- *  counts the fixed dock, whose top edge moves as the strip comes or goes: the root layout's. */
+ *  counts the fixed dock, whose top edge moves as the strip comes or goes: the phone layout's. */
 function queueCard(moment: 'arrive' | 'leave', width = 390): Make {
 	return (browser, world, cleanup) => {
 		let maya: Page | undefined;

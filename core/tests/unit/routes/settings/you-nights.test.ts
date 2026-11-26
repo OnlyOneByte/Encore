@@ -10,8 +10,8 @@ import { nights, performances } from '$lib/server/db/schema';
 import { streakLine } from '$lib/night-story';
 import { yearIn, zoneOrServer, ZONE_COOKIE } from '$lib/server/nights/year';
 import { GET as listNights } from '$routes/api/me/nights/+server';
-import { load as storyLoad } from '$routes/settings/you/nights/[id]/+page.server';
-import { load as youLoad } from '$routes/settings/you/+page.server';
+import { load as storyLoad } from '$routes/(phone)/settings/you/nights/[id]/+page.server';
+import { load as youLoad } from '$routes/(phone)/settings/you/+page.server';
 import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');

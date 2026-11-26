@@ -27,7 +27,7 @@ import { libraryWindow, LIBRARY_PAGE } from '$lib/library-browse';
  * 200-row answer whose first 60 are ready would print "Nothing matches “…”" under sixty visible rows.
  */
 
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
 
 test('each group renders its WINDOW, never the full list', () => {
 	// The three `{#each}` sources. Written as separate assertions rather than one block match because prettier

@@ -1,6 +1,6 @@
 // Done-when: the key/range readout is derived in ONE place, and the phone's typographic form stays distinct from
 // the TV's ASCII one. These six derivations were character-identical in the now-deleted now-playing sheet and in
-// `routes/song/[mediaId]`, with a third variant on `routes/tv` — so no test could reach any of them. The sheet's
+// `routes/(phone)/song/[mediaId]`, with a third variant on `routes/tv` — so no test could reach any of them. The sheet's
 // live controls are /queue's now-playing card today, and it is the third caller.
 import { test, expect } from 'bun:test';
 import { songFacts, keyShiftLabel, tuneLine } from '$lib/song-facts';

@@ -14,7 +14,7 @@ const code = (dir: string, file: string): string =>
 describe("the phone's time left is wired from media:status to the card", () => {
 	it('keeps etaSec in the room store, hands it to the card, and the card reads it out', () => {
 		expect(code('src/lib/stores', 'room.ts')).toMatch(/next\.set\(mediaId, \{ status, pct, etaSec, unservable \}\)/);
-		const queue = code('src/routes/queue', '+page.svelte');
+		const queue = code('src/routes/(phone)/queue', '+page.svelte');
 		expect(queue).toMatch(/\{@const live = mediaStatus\.get\(e\.mediaId\)\}/);
 		expect(queue).toMatch(/<ProcessingCard[^>]*\betaSec=\{live\?\.etaSec\}/);
 		expect(code('src/lib/components', 'ProcessingCard.svelte')).toMatch(/processReadout\(overall, pct, etaSec\)/);

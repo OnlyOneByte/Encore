@@ -20,7 +20,7 @@ const SURFACES = [
 	'src/routes/tv/+page.svelte',
 	'src/lib/tv/TvNowBar.svelte',
 	'src/lib/tv/TvTakeover.svelte',
-	'src/routes/queue/+page.svelte',
+	'src/routes/(phone)/queue/+page.svelte',
 	'src/lib/components/YoureUpFlood.svelte'
 ];
 
@@ -43,5 +43,5 @@ test('the On deck hold names the turn`s singer, and "You" for my own song', () =
 });
 
 test('the phone tab is titled for what it holds', () => {
-	expect(read('src/routes/queue/+page.svelte')).toContain('<PageHeader title="Queue"');
+	expect(read('src/routes/(phone)/queue/+page.svelte')).toContain('<PageHeader title="Queue"');
 });

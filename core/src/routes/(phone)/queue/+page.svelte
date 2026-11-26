@@ -68,7 +68,7 @@
 	import type { TransportControls } from '$lib/transport-controls';
 
 	/* Mirrored from the link, and ONLY the fields this page renders — the documented rule, because a component that
-	   mirrors more than it renders re-runs on changes that cannot affect it. The root layout mirrors a strictly
+	   mirrors more than it renders re-runs on changes that cannot affect it. The phone layout mirrors a strictly
 	   narrower set (the strip's nine), so neither borrows the other's shape. */
 	let me = $state<PublicSinger | null>(null);
 	let status = $state<RoomStatus>('checking');
@@ -97,7 +97,7 @@
 	   assignment is ALWAYS a change even when every field is identical. The client heartbeat is 15s and the server
 	   answers every `hello` with `playback:state`, so an idle phone re-ran the anchor effect — and re-anchored its own
 	   clock to the same stale position — four times a minute. An equal PRIMITIVE notifies nothing, which is why the
-	   root layout's scalar mirror never had this problem and why these two must not be "simplified" back into the
+	   phone layout's scalar mirror never had this problem and why these two must not be "simplified" back into the
 	   object read. The object mirror stays for `currentEntryId`, `keyShift` and `guideLevel`, which no effect anchors. */
 	let positionSec = $state(0);
 	let isPlaying = $state(false);
@@ -162,7 +162,7 @@
 			skelsGraced = true;
 			if (!queueSynced) liveMsg = LOADING;
 		}, PENDING_GRACE_MS);
-		// A queue op's refusal reaches the guest through the root layout's one `room.onError` sink.
+		// A queue op's refusal reaches the guest through the phone layout's one `room.onError` sink.
 		const stop = room.subscribe(sync);
 		return () => (stop(), clearTimeout(grace));
 	});
@@ -489,7 +489,7 @@
 	/* NOT BEFORE THE ARRIVAL HAS SETTLED: on a client-side navigation to /queue, SvelteKit resets the scroll to the
 	   top after this page mounts, which cancels a smooth scroll started at mount (measured: target computed, page
 	   left at 0). `afterNavigate` runs once that is done.
-	   AND NOT ONLY THEN: since #996 the root layout renders this page only once /api/me answers, so on a hard load
+	   AND NOT ONLY THEN: since #996 the phone layout renders this page only once /api/me answers, so on a hard load
 	   (a reload, or a phone tab the browser discarded while it slept) the page mounts after SvelteKit's first
 	   navigation has finished and its scroll reset has run, and `afterNavigate` never fires for it. A mount with no
 	   navigation in flight has already arrived. */
@@ -785,7 +785,7 @@
 					<p class="sect">Now</p>
 					<!-- THE DOOR TO /song/[mediaId]: the title, underlined as a link, so the row stays one row. -->
 					<h2 class="now-title">
-						{#if nowMedia?.id}<a href={resolve('/song/[mediaId]', { mediaId: nowMedia.id })}>{nowTitle}</a
+						{#if nowMedia?.id}<a href={resolve('/(phone)/song/[mediaId]', { mediaId: nowMedia.id })}>{nowTitle}</a
 							>{:else}{nowTitle}{/if}
 					</h2>
 					<p class="now-by">
@@ -1021,7 +1021,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
-		/* The dock is fixed, so this column reserves it in normal flow. --dock-h is the root layout's MEASURED height
+		/* The dock is fixed, so this column reserves it in normal flow. --dock-h is the phone layout's MEASURED height
 		   of `.dock`, published as ONE inline custom property on :root; a surface with no chrome falls back to 0,
 		   because the layout's teardown removes it. Not token arithmetic — app.css records that attempt failing. */
 		padding-block-end: calc(var(--dock-h, 0px) + var(--space-4xl));

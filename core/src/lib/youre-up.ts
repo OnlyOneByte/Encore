@@ -1,4 +1,4 @@
-// "You're up": the phone's half of the handoff moment. Pure, so a bun test can decide it. See routes/+layout.svelte.
+// "You're up": the phone's half of the handoff moment. Pure, so a bun test can decide it. See routes/(phone)/+layout.svelte.
 
 import { DEFAULT_ROOM_SETTINGS, effectiveSongIntroMs, type QueueEntry, type RoomSettings } from '$lib/contract';
 import { chromaOfColor, contrastRatio, hueToHex } from '$lib/contract/presentation/colors';

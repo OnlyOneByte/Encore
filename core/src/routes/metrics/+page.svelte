@@ -154,8 +154,8 @@
 
 	/* THE WORKER CLAIM IS PRESENT TENSE, so the reading behind it has to be live. A single `onMount` fetch froze
 	   "No worker connected — songs can't be processed right now." at load, in BOTH directions: it stayed up after a
-	   worker connected, and stayed absent after one died. /metrics is in the layout's NOT_PHONE list, which forbids an
-	   ungated `room.connect()` (it would register this page as a singer) — it does not forbid polling. The endpoint
+	   worker connected, and stayed absent after one died. /metrics is outside the `(phone)` group, so it never calls
+	   `room.connect()` (that would register this page as a singer) — nothing forbids polling. The endpoint
 	   measures 0.03s and ~3.3kB, so a 5s poll is negligible. */
 	const POLL_MS = 5_000;
 

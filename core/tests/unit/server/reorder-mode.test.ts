@@ -39,7 +39,7 @@ test('rowNumbers: mid-drag past a held row, the numbers follow the LIVE order', 
 
 import { at } from '$test';
 
-const PAGE = at('src/routes/queue/+page.svelte');
+const PAGE = at('src/routes/(phone)/queue/+page.svelte');
 
 const OK = { queuedCount: 2, reorderMeaningful: true };
 

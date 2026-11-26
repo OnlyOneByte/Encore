@@ -212,7 +212,7 @@ const BOUNDARIES: { file: string; why: string; needle?: string }[] = [
 	// The join screen's room-code boxes, NOT reachable through any form primitive: the boxes are
 	// `class="segment card"` and take app.css's `.card` hairline unless `.segment` overrides it.
 	{ file: 'src/lib/components/CodeEntry.svelte', why: '.segment room-code box, fill --card' },
-	{ file: 'src/routes/settings/+page.svelte', why: "input[type='color'].colour" },
+	{ file: 'src/routes/(phone)/settings/+page.svelte', why: "input[type='color'].colour" },
 	// A SLIDER'S RAIL, and the one boundary whose INNER neighbour is the floor surface below: the ring sits on
 	// --track-bg (3.131) as well as on the --card outside it (3.972). Only the rail's filled half identified
 	// anything before — --accent is 3.376:1 on --card, the unfilled --track-bg remainder 1.269:1.

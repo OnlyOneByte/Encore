@@ -21,7 +21,7 @@ import { at } from '$test';
  * want of a renderer.
  */
 
-const youPage = readFileSync(at('src/routes/settings/you/+page.svelte'), 'utf8');
+const youPage = readFileSync(at('src/routes/(phone)/settings/you/+page.svelte'), 'utf8');
 
 /** The body of a top-level `async function <name>() { … }` in the route's `<script>`, brace-matched. */
 function fn(name: string): string {

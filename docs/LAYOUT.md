@@ -42,7 +42,7 @@ A surface that owns both components and logic gets one folder holding both. `src
 implementation: its components sit beside the modules only they use.
 
 The phone surface does not have one. Its components are split between `src/lib/components/` and `src/lib/ui/`,
-its tabs are routes (`src/routes/+page.svelte`, `src/routes/queue/`, `src/routes/library/`), and its logic sits
+its tabs are routes (`src/routes/(phone)/+page.svelte`, `src/routes/(phone)/queue/`, `src/routes/(phone)/library/`), and its logic sits
 in the `src/lib/` root. That asymmetry is deliberate:
 
 1. `src/lib/components/` is among the most path-pinned trees in `core/`, so mirroring `tv/` would be an

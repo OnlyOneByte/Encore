@@ -21,14 +21,14 @@ import { at } from '$test';
  * later and discarding the boolean again, red rather than invisible.
  */
 
-const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
-const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+const layout = readFileSync(at('src/routes/(phone)/+layout.svelte'), 'utf8');
+const queuePage = readFileSync(at('src/routes/(phone)/queue/+page.svelte'), 'utf8');
 // The live key and guide that /queue and the You're up flood share (redesign step 6).
 const liveTuneSrc = readFileSync(at('src/lib/live-tune.svelte.ts'), 'utf8');
 
 /* THE WHOLE TREE, because the two files above are where the call sites happen to be TODAY and the exhaustiveness
    arm at the bottom claims something about tomorrow. Reading only those two was a hole a verifier walked
-   through: a bare `room.command({ cmd: 'skip' });` pasted into `src/routes/+page.svelte` left this suite green,
+   through: a bare `room.command({ cmd: 'skip' });` pasted into `src/routes/(phone)/+page.svelte` left this suite green,
    and that is one of five files importing the singleton. Directories have no matching extension, so the filter
    is also what keeps `readFileSync` off them. */
 const SRC = readdirSync(at('src'), { recursive: true, encoding: 'utf8' })
@@ -154,11 +154,11 @@ test('the scan this file rests on reaches every file that can host a call site',
 	   one needs no edit here; what is pinned is that the scan sees all of them and that it sees the specific file
 	   the old two-file version was blind to. */
 	const importers = SRC.filter((f) => /import \{ room \} from '\$lib\/stores\/room'/.test(f.body)).map((f) => f.rel);
-	expect(importers).toContain('routes/+page.svelte');
-	expect(importers).toContain('routes/+layout.svelte');
-	expect(importers).toContain('routes/queue/+page.svelte');
-	expect(importers).toContain('routes/library/+page.svelte');
-	expect(importers).toContain('routes/song/[mediaId]/+page.svelte');
+	expect(importers).toContain('routes/(phone)/+page.svelte');
+	expect(importers).toContain('routes/(phone)/+layout.svelte');
+	expect(importers).toContain('routes/(phone)/queue/+page.svelte');
+	expect(importers).toContain('routes/(phone)/library/+page.svelte');
+	expect(importers).toContain('routes/(phone)/song/[mediaId]/+page.svelte');
 	// A floor, not the total: a sixth importer is fine, a scan that found four is a broken scan.
 	expect(importers.length).toBeGreaterThanOrEqual(5);
 });

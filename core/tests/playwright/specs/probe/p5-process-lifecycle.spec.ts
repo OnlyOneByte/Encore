@@ -364,7 +364,7 @@ test('a failed process surfaces on the phone, settles to un-processed, and accep
 				`a failed process must surface visibly, settle the media back to un-processed, and accept a retry. ` +
 					`${evidence}. See src/lib/server/jobs/worker-hub.ts #onFailed (settleStemsGate for fetch|stems), ` +
 					`src/lib/server/jobs/process.ts settleStemsGate (resets stemStatus to "none"), ` +
-					`src/routes/+page.svelte processingRows (INCLUDES failed entries so the row stays visible with a ` +
+					`src/routes/(phone)/+page.svelte processingRows (INCLUDES failed entries so the row stays visible with a ` +
 					`retry), and src/lib/readiness.ts displayReadiness (returns "failed" when live.status=failed and ` +
 					`the song is not readyToSing).`
 			).toBe(true);
@@ -424,7 +424,7 @@ test('removing a song mid-process settles CANCELED, not FAILED', async ({ world 
 					`the process broke, which is a lie. transitions=[${watch.transitions()}]. See ` +
 					`src/lib/server/jobs/cancel.ts cancelJobsForMedia (broadcasts { type:media:status, status:canceled } ` +
 					`after settleStemsGate), src/lib/readiness.ts displayReadiness (treats "canceled" as terminal and ` +
-					`returns to catalog readiness, NOT "failed"), and src/routes/+page.svelte processingRows, which ` +
+					`returns to catalog readiness, NOT "failed"), and src/routes/(phone)/+page.svelte processingRows, which ` +
 					`deliberately EXCLUDES canceled entries so the removed row does not linger.`
 			).toBe('canceled');
 		} finally {

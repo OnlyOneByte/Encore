@@ -19,6 +19,7 @@ const config: KnipConfig = {
 		'src/routes/**/+page.{svelte,ts}',
 		'src/routes/**/+page.server.ts',
 		'src/routes/**/+layout.{svelte,ts}',
+		'src/routes/**/+error.svelte',
 		'src/routes/**/+server.ts',
 		'tests/**/*.test.ts',
 		// Playwright discovers specs by its own `testDir`, so nothing imports them either. `world/**` IS imported
