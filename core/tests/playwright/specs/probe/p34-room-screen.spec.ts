@@ -24,31 +24,72 @@ async function openScreen(
 	const ctx = await browser.newContext({ viewport: { width: w, height: h }, baseURL: world.baseURL, hasTouch: touch });
 	if (real) await ctx.addCookies([world.tvCookie]);
 	const page = await ctx.newPage();
-	// Every `tv:claim` this page sends, counted on its way out (and held back while `__holdClaims`), and when a press
-	// began and last clicked, on the page's own clock.
+	// Every `tv:claim` this page sends, counted on its way out.
 	await page.addInitScript(() => {
 		const w = window as unknown as PressLog;
 		w.__claims = 0;
-		w.__pressAt = w.__clickAt = null;
 		const send = WebSocket.prototype.send;
 		WebSocket.prototype.send = function (d) {
-			if (typeof d === 'string' && d.includes('"tv:claim"')) {
-				w.__claims++;
-				if (w.__holdClaims) return;
-			}
+			if (typeof d === 'string' && d.includes('"tv:claim"')) w.__claims++;
 			return send.call(this, d);
 		};
-		for (const ev of ['pointerdown', 'keydown'])
-			addEventListener(ev, () => (w.__pressAt ??= performance.now()), { capture: true, passive: true });
-		addEventListener('click', () => (w.__clickAt = performance.now()), { capture: true, passive: true });
 	});
 	await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
 	return page;
 }
-type PressLog = { __claims: number; __holdClaims?: boolean; __pressAt: number | null; __clickAt: number | null };
+type PressLog = { __claims: number };
 const claims = (p: Page) => p.evaluate(() => (window as unknown as PressLog).__claims);
-/** The tv page drops a claim this soon after the press that woke the chip (CLAIM_AFTER_WAKE_MS). */
-const CLAIM_AFTER_WAKE_MS = 500;
+
+/** One input, sent `at` ms after the press began. A `late` one also reaches the page 700 ms behind, as on a busy TV. */
+type Input = {
+	method: 'Input.dispatchMouseEvent' | 'Input.dispatchTouchEvent' | 'Input.dispatchKeyEvent';
+	params: Record<string, unknown>;
+	at: number;
+	late?: boolean;
+};
+/** Sends a press stamped with its own input times, however late the host delivers it: the page judges a press by
+ *  those times, so the probe no longer depends on how fast it can pace one (#1225). */
+async function press(p: Page, inputs: Input[]) {
+	const cdp = await p.context().newCDPSession(p);
+	const t0 = Date.now() / 1000;
+	for (const i of inputs) {
+		if (i.late) await p.waitForTimeout(700);
+		// Each method's own parameter type is chosen by `i.method`, which the helpers below always pair correctly.
+		await cdp.send(i.method, { ...i.params, timestamp: t0 + i.at / 1000 } as never);
+	}
+	await cdp.detach();
+	// Every input is handled, and any click it made, by the page's second frame after the last one.
+	await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+const tap = ({ x, y }: { x: number; y: number }, at: number, late = false): Input[] => [
+	{ method: 'Input.dispatchTouchEvent', params: { type: 'touchStart', touchPoints: [{ x, y }] }, at, late },
+	{ method: 'Input.dispatchTouchEvent', params: { type: 'touchEnd', touchPoints: [] }, at: at + 50 }
+];
+const click = ({ x, y }: { x: number; y: number }, at: number, clickCount = 1, late = false): Input[] =>
+	(['mousePressed', 'mouseReleased'] as const).map((type, i) => ({
+		method: 'Input.dispatchMouseEvent',
+		params: { type, x, y, button: 'left', clickCount },
+		at: at + i * 50,
+		late: i === 0 && late
+	}));
+const KEYS = { Enter: [13, '\r'], ' ': [32, ' '], ArrowDown: [40, ''], ArrowRight: [39, ''] } as const;
+const key = (k: keyof typeof KEYS, at: number, late = false): Input[] => {
+	const [vk, text] = KEYS[k];
+	const code = k === ' ' ? 'Space' : k;
+	return [
+		{
+			method: 'Input.dispatchKeyEvent',
+			params: { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) },
+			at,
+			late
+		},
+		{
+			method: 'Input.dispatchKeyEvent',
+			params: { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk },
+			at: at + 50
+		}
+	];
+};
 /** Where the claim button sits while it sleeps: `visibility: hidden` keeps its box. */
 const buttonCentre = (p: Page) =>
 	p.evaluate(() => {
@@ -190,57 +231,28 @@ test('no press that wakes a sleeping chip claims the TV; a press once it is up d
 		await queueReady(ana, 'caroline');
 		for (const p of [mouse, touch]) await expect(p.locator(SEL.lowerThird)).toContainText(/Ana/, { timeout: 30_000 });
 
-		const cases: [string, Page, (p: Page, at: { x: number; y: number }) => Promise<void>][] = [
-			['a mouse click', mouse, (p, at) => p.mouse.click(at.x, at.y)],
-			['a touch tap', touch, (p, at) => p.touchscreen.tap(at.x, at.y)],
-			['a mouse double click', mouse, (p, at) => p.mouse.dblclick(at.x, at.y)],
-			[
-				'a touch double tap',
-				touch,
-				async (p, at) => {
-					await p.touchscreen.tap(at.x, at.y);
-					await p.waitForTimeout(120);
-					await p.touchscreen.tap(at.x, at.y);
-				}
-			],
-			['Enter', mouse, (p) => p.keyboard.press('Enter')],
-			['Space', mouse, (p) => p.keyboard.press(' ')],
+		// Each press is quick (its inputs 50 to 120 ms apart), and its second half reaches a busy TV 700 ms late: the
+		// page must judge it by when it was pressed, not when its handlers got to run (#1225).
+		const cases: [string, Page, (at: { x: number; y: number }) => Input[]][] = [
+			['a mouse click', mouse, (at) => click(at, 0)],
+			['a touch tap', touch, (at) => tap(at, 0)],
+			['a mouse double click', mouse, (at) => [...click(at, 0), ...click(at, 120, 2, true)]],
+			['a touch double tap', touch, (at) => [...tap(at, 0), ...tap(at, 120, true)]],
+			['Enter', mouse, () => key('Enter', 0)],
+			['Space', mouse, () => key(' ', 0)],
 			[
 				'a remote: ArrowDown, ArrowRight, Enter',
 				mouse,
-				async (p) => {
-					for (const k of ['ArrowDown', 'ArrowRight', 'Enter']) await p.keyboard.press(k);
-				}
+				() => [...key('ArrowDown', 0), ...key('ArrowRight', 60, true), ...key('Enter', 120)]
 			]
 		];
-		// A press is paced from here, so on a loaded host its last click can land past the window: that is a deliberate
-		// press, not this case, so it is done again. Its claim is held back, so the seat stays put (#1225).
-		for (const p of [mouse, touch]) await p.evaluate(() => ((window as unknown as PressLog).__holdClaims = true));
-		for (const [name, p, act] of cases) {
-			for (let attempt = 1; ; attempt++) {
-				await asleep(p);
-				const before = await claims(p);
-				await p.evaluate(() => {
-					const w = window as unknown as PressLog;
-					w.__pressAt = w.__clickAt = null;
-				});
-				await act(p, await buttonCentre(p));
-				await p.waitForTimeout(800);
-				const took = await p.evaluate(() => {
-					const { __pressAt: down, __clickAt: click } = window as unknown as PressLog;
-					return down === null || click === null ? 0 : click - down;
-				});
-				if (took >= CLAIM_AFTER_WAKE_MS && attempt < 3) {
-					console.log(`[p34] ${name} took ${Math.round(took)} ms in the page; pressing again`);
-					continue;
-				}
-				expect(took, `${name} took too long in the page to be one press, 3 times`).toBeLessThan(CLAIM_AFTER_WAKE_MS);
-				expect((await claims(p)) - before, `${name} on the sleeping chip's spot sent a claim`).toBe(0);
-				await expect(p.locator(SLOT), `${name} moved the seat`).toBeAttached();
-				break;
-			}
+		for (const [name, p, inputs] of cases) {
+			await asleep(p);
+			const before = await claims(p);
+			await press(p, inputs(await buttonCentre(p)));
+			expect((await claims(p)) - before, `${name} on the sleeping chip's spot sent a claim`).toBe(0);
+			await expect(p.locator(SLOT), `${name} moved the seat`).toBeAttached();
 		}
-		for (const p of [mouse, touch]) await p.evaluate(() => ((window as unknown as PressLog).__holdClaims = false));
 
 		// Up for 600 ms, the chip takes a tap: this screen becomes the TV.
 		await asleep(touch);

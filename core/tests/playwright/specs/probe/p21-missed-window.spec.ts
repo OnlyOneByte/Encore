@@ -255,7 +255,20 @@ for (const window of ['missed', 'warmed'] as const) {
 				);
 				release();
 				await sendPlayerCommand(alice, { cmd: 'background', style: null });
-				await tv.waitForTimeout(holdMs + 2500);
+				// Done once song 2 plays and the server's advance onto it has landed, which closes the window: a stale frame
+				// can only arrive before that. Waiting on the signal, not a time, keeps a slow runner from reading early (#1226).
+				const advanced = (l: Awaited<ReturnType<typeof readMediaLog>>) => {
+					const end = l.find((e) => e.ev === 'ended' && is1(e.src));
+					const s1 = end && l.find((e) => (e.ev as string) === 'ws-ended' && e.t > end.t)?.src;
+					return (
+						!!end &&
+						l.some((e) => e.ev === 'playing' && is2(e.src) && e.t > end.t) &&
+						l.some(
+							(e) => (e.ev as string) === 'ws-playback:state' && e.t > end.t && !!s1 && !e.src.startsWith(`${s1} `)
+						)
+					);
+				};
+				await expect.poll(async () => advanced(await readMediaLog(tv)), { timeout: 20_000 }).toBe(true);
 				const log = await readMediaLog(tv);
 				const endA = log.find((e) => e.ev === 'ended' && is1(e.src))!;
 				const startB = log.find((e) => e.ev === 'playing' && is2(e.src) && e.t > endA.t);
@@ -353,7 +366,25 @@ for (const shape of ['dead', 'remove', 'reconnect'] as const) {
 				await expect(n).toContainText(/song wouldn't play/);
 				expect(await n.innerText()).not.toContain('Up next');
 			}
-			await tv.waitForTimeout(holdMs + (shape === 'reconnect' ? 6000 : 3000));
+			// Done once the server has moved on and the TV's latest frame says so: the window is closed then, so no stale
+			// frame is still to come. Waiting on that, not a time, keeps a slow runner from reading early (#1226).
+			const settled = (id: string | null) =>
+				shape === 'reconnect' ? id === s2Entry : id !== s1Entry && id !== s2Entry;
+			await expect
+				.poll(
+					async () => {
+						const id = (await serverPlayback(world.baseURL)).state.currentEntryId;
+						const last = (await readMediaLog(tv))
+							.filter((e) => ev(e) === 'ws-playback:state' || ev(e) === 'ws-nowplaying:changed')
+							.at(-1);
+						// A frame with no current song logs as `entryId=undefined` (or `null`); the server says null.
+						const names = (want: string) =>
+							!!last && (last.src === `entryId=${want}` || last.src.startsWith(`entryId=${want} `));
+						return settled(id) && (id === null ? names('undefined') || names('null') : names(id));
+					},
+					{ timeout: 20_000 }
+				)
+				.toBe(true);
 			const log = await readMediaLog(tv);
 			const t = (await timeline()).join('\n  ');
 			const after = (e: { t: number }) => e.t > endA.t;

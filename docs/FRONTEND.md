@@ -2324,7 +2324,8 @@ A copy (`docs/SERVER.md#the-tv-seat`) shows the TV's stage, and nothing on it as
   full height, with the chip where "Up next" stands on the TV.
 - **Asleep** it is `visibility: hidden` and takes no pointer. Hiding alone does not make the waking press harmless:
   a touch tap's click is hit-tested after the touch ends, when the chip is back, and a double click's second half
-  lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`). The first tap only
+  lands on it. So a claim within 500 ms of the chip waking is dropped (`CLAIM_AFTER_WAKE_MS`), timed by the events'
+  own input times (`timeStamp`), so a busy TV that runs its handlers late still drops a quick double tap. The first tap only
   wakes it, and a tap once it is up claims. It fades in and out over `--motion-base`, and cuts under reduced motion.
 - **It stays up** in the lobby (where it stands in the QR's place), in attract, while the TV is gone ("The TV
   is reconnecting..."), and on the room's TV back mid-song while another screen stands in ("TV again after this

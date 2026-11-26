@@ -11,7 +11,11 @@
 <script lang="ts">
 	/* ONE TV PER ROOM: shown on a `/tv` that is a COPY (another screen holds the room's seat). The copy shows the same
 	   stage, muted and sending no telemetry; one tap here makes this screen the TV. See docs/SERVER.md#the-tv-seat. */
-	let { onclaim, tvOnline, next = false }: { onclaim: () => void; tvOnline: boolean; next?: boolean } = $props();
+	let {
+		onclaim,
+		tvOnline,
+		next = false
+	}: { onclaim: (e: MouseEvent) => void; tvOnline: boolean; next?: boolean } = $props();
 </script>
 
 <div class="copy-chip">
