@@ -208,21 +208,14 @@ export const SHARED_DIR_MODE = 0o775;
  *  may rename or remove it, so the worker cannot swap out core's `meta/` (or any other core dir). */
 export const PARENT_DIR_MODE = 0o1775;
 
-/** The API first (at least 0775 on any Bun), then chmod(1) for the sticky bit, then a loud warning if it still
- *  isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs out. */
+/** Set 1775, then a loud warning if it isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs
+ *  out. Needs Bun >= 1.4.3: Bun 1.3's fs.chmod dropped the sticky bit (#1222). */
 function chmodParent(dir: string): void {
 	if (leftAlone(dir)) return;
 	try {
 		chmodSync(dir, PARENT_DIR_MODE);
 	} catch {
 		/* not ours to change: reported below */
-	}
-	if (modeOf(dir) === PARENT_DIR_MODE) return;
-	// shortcut: Bun 1.3's fs.chmod drops the sticky bit (kept from Bun 1.4.3); drop chmod(1) once the image moves (#1222).
-	try {
-		Bun.spawnSync(['chmod', PARENT_DIR_MODE.toString(8), '--', dir], { stdout: 'ignore', stderr: 'ignore' });
-	} catch {
-		/* no chmod(1) on PATH: reported below */
 	}
 	const now = modeOf(dir);
 	if (now !== PARENT_DIR_MODE) {

@@ -300,7 +300,7 @@ describe('migration off the legacy layout', () => {
 		});
 	}
 
-	it('with no chmod(1) on PATH, the parents still lose the world bit and the missing sticky bit is said out loud', () => {
+	it('with no chmod(1) on PATH, the parents get 1775 from the API alone, with no warning', () => {
 		for (const d of ['', 'derived']) {
 			mkdirSync(join(root, d), { recursive: true });
 			chmodSync(join(root, d), 0o777);
@@ -312,12 +312,8 @@ describe('migration off the legacy layout', () => {
 			{ cwd: root, env: { MEDIA_DIR: root, PATH: join(root, 'no-chmod-here') }, stderr: 'pipe' }
 		);
 		expect(child.exitCode).toBe(0);
-		const warned = [child.stderr.toString()];
-		for (const d of [root, join(root, 'derived')]) {
-			const mode = statSync(d).mode & 0o7777;
-			expect(mode & 0o002).toBe(0);
-			// Bun 1.3's chmodSync drops the sticky bit, so without chmod(1) this host must say so.
-			if (mode !== 0o1775) expect(warned.some((w) => w.includes(d) && w.includes('chmod 1775'))).toBe(true);
-		}
+		// Bun >= 1.4.3 keeps the sticky bit through chmodSync; Bun 1.3 dropped it (#1222).
+		for (const d of [root, join(root, 'derived')]) expect(statSync(d).mode & 0o7777).toBe(0o1775);
+		expect(child.stderr.toString()).not.toContain('chmod 1775');
 	});
 });

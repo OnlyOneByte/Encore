@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: 1.3.14
+  BUN_VERSION: 1.4.3
 
 jobs:
   # A quiet day costs one runner minute: nothing runs when main is still at the commit the last successful
