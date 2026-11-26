@@ -84,7 +84,9 @@ test('unlinks every fix document of the song by id, named or not, and no other s
 	process.env.MEDIA_DIR = root;
 	try {
 		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
-		for (const name of ['m1-edit-r1.json', 'm1-edit-r3.json', 'm10-edit-r1.json', 'm1-edit-rx.json'])
+		// A lyrics remake that crashed before its swap left a tagged document named nowhere.
+		const remade = 'm1-01m88ts6qe5e7thf4y25vntx2e-lrclib-word.json';
+		for (const name of ['m1-edit-r1.json', 'm1-edit-r3.json', 'm10-edit-r1.json', 'm1-edit-rx.json', remade])
 			writeFileSync(join(root, 'derived', 'lyrics', name), '{}');
 		const { deps, unlinked, hub } = harness(['m1']);
 		// Evicted, then Undo: the row names no candidate, and r1 (replaced by r3, then r3 by Undo) is named nowhere.
@@ -94,6 +96,7 @@ test('unlinks every fix document of the song by id, named or not, and no other s
 		expect(unlinked).toContain('derived/lyrics/m1-edit-r3.json');
 		expect(unlinked).not.toContain('derived/lyrics/m10-edit-r1.json');
 		expect(unlinked).not.toContain('derived/lyrics/m1-edit-rx.json');
+		expect(unlinked).toContain(`derived/lyrics/${remade}`);
 	} finally {
 		if (saved === undefined) delete process.env.MEDIA_DIR;
 		else process.env.MEDIA_DIR = saved;

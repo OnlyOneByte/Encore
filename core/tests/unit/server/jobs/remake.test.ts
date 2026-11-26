@@ -374,3 +374,164 @@ test('a tagged stem file is recognised for delete, and another song’s is not',
 	expect(isTaggedStemOf('M1', 'M1-01jx-instrumental.flac.part')).toBe(false);
 	expect(stemTagOf('M1', 'M1-01jx-vocals.flac')).toBe('01jx');
 });
+
+// ── 3b: Make it again, the lyrics ───────────────────────────────────────────────────────────────
+
+const OLD_LYRICS = {
+	lyricsRef: 'derived/lyrics/m1-lrclib-word.json',
+	lyricsCandidates: [
+		{
+			ref: 'derived/lyrics/m1-lrclib-word.json',
+			textSource: 'lrclib',
+			textConfidence: 'high',
+			timing: 'word',
+			timingConfidence: 'high',
+			language: 'en',
+			createdAt: 1
+		},
+		{
+			ref: 'derived/lyrics/m1-asr-vocals-word.json',
+			textSource: 'asr',
+			textConfidence: 'low',
+			timing: 'word',
+			timingConfidence: 'medium',
+			language: 'en',
+			createdAt: 1
+		}
+	] as Media['lyricsCandidates']
+};
+
+function completeAlign(h: ReturnType<typeof harness>, jobId: string, refs: string[]) {
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+	h.hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '',
+		artifacts: {
+			lyrics: {
+				uri: refs[0] ?? '',
+				candidates: refs.map((ref) => ({
+					ref,
+					textSource: 'lrclib',
+					textConfidence: 'high',
+					timing: 'word',
+					timingConfidence: 'high',
+					language: 'en',
+					createdAt: 2
+				}))
+			}
+		}
+	});
+}
+
+test('a lyrics remake searches again under its own names, with no pin, routed to any aligner', () => {
+	const h = harness();
+	h.mediaById.set(
+		'm1',
+		ready({ ...OLD_LYRICS, lyricsOverrideRef: 'derived/lyrics/m1-edit-r1.json', lyricsOverrideText: 'x' })
+	);
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }, 'align-remake');
+	const params = assignParams('align-remake', h.mediaById.get('m1'), undefined, job.id);
+	expect(params.outputTag).toBe(stemOutputTag(job.id));
+	expect(params.pinnedRef).toBeUndefined();
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	expect(assigns(h.sent).map((a) => a.jobType)).toEqual(['align-remake']);
+});
+
+test('a lyrics remake replaces the automatic set in one write and deletes the old documents after', async () => {
+	const h = harness();
+	h.mediaById.set('m1', ready(OLD_LYRICS));
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }, 'align-remake');
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	const tag = assigns(h.sent)[0]!.params.outputTag!;
+	const fresh = `derived/lyrics/m1-${tag}-lrclib-word.json`;
+	completeAlign(h, job.id, [fresh]);
+
+	const m = h.mediaById.get('m1')!;
+	expect(m.lyricsRef).toBe(fresh);
+	expect(m.lyricsCandidates!.map((c) => c.ref)).toEqual([fresh]);
+	expect(readyToSing(m)).toBe(true);
+	expect(h.persisted.at(-1)!.lyricsRef).toBe(fresh);
+	await drained();
+	expect(h.deleted).toEqual([[OLD_LYRICS.lyricsRef, 'derived/lyrics/m1-asr-vocals-word.json']]);
+	expect(h.order).toEqual(['sidecar', 'delete']);
+	expect(h.broadcasts.some((e) => e.type === 'media:status' && e.status !== 'ready')).toBe(false);
+});
+
+test('a lyrics remake keeps the host’s fix showing, and its document', async () => {
+	const h = harness();
+	const fix = {
+		ref: 'derived/lyrics/m1-edit-r1.json',
+		textSource: 'manual',
+		textConfidence: 'high',
+		timing: 'word',
+		timingConfidence: 'high',
+		language: 'en',
+		createdAt: 1
+	};
+	h.mediaById.set(
+		'm1',
+		ready({
+			lyricsRef: fix.ref,
+			lyricsOverrideRef: fix.ref,
+			lyricsCandidates: [...OLD_LYRICS.lyricsCandidates!, fix] as Media['lyricsCandidates']
+		})
+	);
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }, 'align-remake');
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	const fresh = `derived/lyrics/m1-${assigns(h.sent)[0]!.params.outputTag}-lrclib-word.json`;
+	completeAlign(h, job.id, [fresh]);
+	const m = h.mediaById.get('m1')!;
+	expect(m.lyricsRef).toBe(fix.ref);
+	expect(m.lyricsCandidates!.map((c) => c.ref).sort()).toEqual([fix.ref, fresh].sort());
+	await drained();
+	expect(h.deleted.flat()).toContain(OLD_LYRICS.lyricsRef);
+	expect(h.deleted.flat()).not.toContain(fix.ref);
+});
+
+test('a lyrics remake deletes no document a worker names but its own and the ones it replaced', async () => {
+	const h = harness();
+	h.mediaById.set('m1', ready(OLD_LYRICS));
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }, 'align-remake');
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	// Nothing showable (a manual text alone), so the remake's own reported refs are what would go: these are not its own.
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	h.hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId: job.id,
+		mediaUri: '',
+		artifacts: {
+			lyrics: {
+				uri: '',
+				candidates: ['derived/lyrics/OTHER-asr-vocals-word.json', 'audio/OTHER.webm'].map((ref) => ({
+					ref,
+					textSource: 'manual',
+					textConfidence: 'high',
+					timing: 'word',
+					timingConfidence: 'high',
+					language: 'en',
+					createdAt: 2
+				}))
+			}
+		}
+	});
+	expect(h.mediaById.get('m1')!.lyricsRef).toBe(OLD_LYRICS.lyricsRef);
+	await drained();
+	expect(h.deleted.flat()).not.toContain('derived/lyrics/OTHER-asr-vocals-word.json');
+	expect(h.deleted.flat()).not.toContain('audio/OTHER.webm');
+});
+
+test('a lyrics remake that finds nothing keeps the old lyrics', async () => {
+	const h = harness();
+	h.mediaById.set('m1', ready(OLD_LYRICS));
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }, 'align-remake');
+	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	completeAlign(h, job.id, []);
+	const m = h.mediaById.get('m1')!;
+	expect(m.lyricsRef).toBe(OLD_LYRICS.lyricsRef);
+	expect(m.lyricsCandidates).toEqual(OLD_LYRICS.lyricsCandidates);
+	await drained();
+	expect(h.deleted).toEqual([]);
+});

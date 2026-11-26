@@ -78,8 +78,12 @@ export interface Media {
 
 /** GET /api/library/sizes, host only: what each ready song holds in the media store. See docs/SERVER.md#managing-the-library. */
 export interface LibrarySizes {
-	/** `remakeFailed`: why the song's last Make again didn't work, while that is still the latest. */
-	songs: Record<string, { bytes: number; plays: number; kept: boolean; remakeFailed?: string }>;
+	/** `remakeFailed` / `lyricsRemakeFailed`: why the song's last Make again (sound / lyrics) didn't work, while that
+	 *  is still the latest. */
+	songs: Record<
+		string,
+		{ bytes: number; plays: number; kept: boolean; remakeFailed?: string; lyricsRemakeFailed?: string }
+	>;
 	totalBytes: number;
 	keptBytes: number;
 	/** ENCORE_MEDIA_MAX_GB in bytes, or null when unset. */
@@ -158,9 +162,9 @@ export function clampKeyShift(semitones: number): number {
 
 // Transposition happens in the browser (`src/lib/tv/pitch-shift.ts`), so there is deliberately no
 // pre-rendered pitch-shifted artifact and no ref helper that would resolve one.
-/** `stems-remake` is the host's Make it again (proposal 33 PR 3): the default separator, accepted whatever it
- *  ranks, on a song that stays ready throughout. */
-export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade' | 'stems-remake';
+/** `stems-remake` and `align-remake` are the host's Make it again (proposal 33 PR 3) for the sound and the
+ *  lyrics: on a song that stays ready throughout, under new names, swapped in by their completion. */
+export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade' | 'stems-remake' | 'align-remake';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 /** The event, never the destination status, because a status pair is event-lossy. See

@@ -1271,7 +1271,7 @@ each one, in every spelling, from a guest, a cookieless caller and another site.
 | `POST /api/library/manage/delete` | `{ mediaId }` | 409 `queued` while the song is playing or still to come tonight, 409 `kept` for a kept song. Otherwise the song leaves every screen at once and is deleted when the Undo window closes. |
 | `POST /api/library/manage/undo` | `{ mediaId }` | Cancels a pending delete; 409 once the window has closed. |
 | `POST /api/library/manage/bulk` | `{ action, mediaIds }` | PR 2. `keep`, `unkeep`, `delete` or `undo` over 1 to 5,000 ids of at most 128 characters, song by song through the single-song paths, so a kept or queued song is refused exactly as above. Answers `{ done, skipped: [{ mediaId, reason }], libraryFile }`; a guest gets 403 before the body is read. |
-| `POST /api/library/manage/remake` | `{ mediaId }` | Make it again, the sound (PR 3a): queues a `stems-remake`. `afterTurn` is true while the song is queued or playing. |
+| `POST /api/library/manage/remake` | `{ mediaId, what? }` | Make it again (PR 3): `what: 'sound'` (the default) queues a `stems-remake`, `'lyrics'` an `align-remake`; 409 for lyrics on a song with no vocals stem. `afterTurn` is true while a sound remake waits for the song's turn. |
 
 Rename, Keep, delete and remake act only on a ready song outside an Undo window (`librarySong`); anything else is 404.
 
@@ -1337,7 +1337,23 @@ Rename, Keep, delete and remake act only on a ready song outside an Undo window 
     can serve it, and fails with "update the worker" only when none is left.
   - **Nothing is orphaned.** Eviction and delete read the stored refs, which name the tagged files, and delete
     also removes any tagged stem left on disk by a crash before its swap (`isTaggedStemOf`).
-- Not yet: Make it again for lyrics (PR 3b), bulk remake, same-song pairs (PR 4) and the folder watch (PR 5).
+- **Make it again, the lyrics (PR 3b)**, is an `align-remake` job, the same way round:
+  - **A fresh search**: align's params with no pin. A host's fix still outranks what it finds, so to show the
+    remade words the host goes Back to automatic.
+  - **No gate and no broadcast**, as for the sound. It is routed on the `align` capability and is not held for
+    the song's turn: the TV already fetches a new `lyricsRef` behind the words on screen and swaps it in at a
+    gap between lines (docs/FRONTEND.md#lyrics-fixes), so a mid-song remake shows no gap.
+  - **New names.** The worker's `store_ref` names each attempt `derived/lyrics/<id>-<tag>-<label>-<timing>.json`.
+    A pinned re-time keeps its pinned ref.
+  - **One swap, then the delete.** Its candidates REPLACE the automatic set (`remakeMediaLyrics`) rather than
+    merge, because a merge by ref would keep every old candidate ranking beside the new; the host's fix and
+    pasted words stay. One media write, then the replaced documents are deleted, behind the sidecar write. A
+    remake that finds nothing showable keeps the old set and deletes only its own files: only documents the song
+    named, or `<id>-<its tag>-….json` (`lyricsTagOf`), are ever deleted. Unlike stems they are not held for the
+    turn, since the TV reads a document whole, once. A cancelled remake that still reports deletes its own.
+  - **A failed one says so** on the sheet, under Lyrics (`lyricsRemakeFailed`), as for the sound.
+  - Delete removes any remake document a crash left behind (`<id>-<tag>-….json`).
+- Not yet: bulk remake, same-song pairs (PR 4) and the folder watch (PR 5).
 
 ## Jobs and the worker
 

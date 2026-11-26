@@ -411,7 +411,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 				return;
 			}
 
-			if (jobType === 'align') {
+			if (jobType === 'align' || jobType === 'align-remake') {
 				await progress('aligning', 50);
 				// A host's fix arrives pinned, as the real worker gets it: its own lines, on the same grid, under its ref.
 				const pinned = typeof params.pinnedRef === 'string' && typeof params.pinnedText === 'string';
@@ -429,12 +429,18 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 					return;
 				}
 				const pasted = pinned ? String(params.pinnedText).split('\n') : null;
-				const ref = pinned ? String(params.pinnedRef) : `derived/lyrics/${mediaId}.json`;
+				// A remake's own name, as the real worker's `store_ref` gives it, and words a spec can tell apart.
+				const tag = params.outputTag ? `-${params.outputTag}` : '';
+				const ref = pinned ? String(params.pinnedRef) : `derived/lyrics/${mediaId}${tag}.json`;
 				// Word-level timings inside the fixture's 8 seconds, so the overlay has something to bounce a
 				// ball along. FIELD NAMES ARE LOAD-BEARING: the TV's parser reads `start`, `end` and — inside
 				// `words` — `word`. Anything else parses to an empty reel with no active word, which reads as a
 				// broken overlay when the FIXTURE is what is wrong.
-				const words = pasted ?? ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
+				const words =
+					pasted ??
+					(tag
+						? ['Remade', 'lyrics', 'sing', 'the', 'tone', 'now', 'here', 'we', 'go']
+						: ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go']);
 				const lines = words.map((w, i) => {
 					const said = pasted
 						? w.split(' ')

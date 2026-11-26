@@ -270,7 +270,9 @@ export const jobs = sqliteTable(
 		processingId: text('processing_id').notNull().default(''),
 		// NULLABLE: an internal caller imposes no cap. See docs/SERVER.md#idempotency-and-the-process-cap.
 		singerId: text('singer_id'),
-		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade', 'stems-remake'] }).notNull(),
+		jobType: text('job_type', {
+			enum: ['fetch', 'stems', 'align', 'stems-upgrade', 'stems-remake', 'align-remake']
+		}).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
 		})
@@ -304,7 +306,9 @@ export const jobAttempts = sqliteTable(
 		jobId: text('job_id').notNull(),
 		mediaId: text('media_id').notNull(),
 		processingId: text('processing_id').notNull(),
-		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade', 'stems-remake'] }).notNull(),
+		jobType: text('job_type', {
+			enum: ['fetch', 'stems', 'align', 'stems-upgrade', 'stems-remake', 'align-remake']
+		}).notNull(),
 		attempt: integer('attempt').notNull().default(1),
 		workerId: text('worker_id'),
 		// Nullable past `enqueued_at`, because each records a moment that may never arrive: a job never picked up has no start, and writing 0 would invent work.

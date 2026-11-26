@@ -94,13 +94,16 @@
 		if (await post('keep', { keep })) onchanged();
 	}
 
-	async function remake() {
-		const out = await post('remake', {});
+	async function remake(what: 'sound' | 'lyrics') {
+		const out = await post('remake', { what });
 		if (!out) return;
 		onchanged(); // a last failure's line goes: this remake is now the latest
-		toast(out.afterTurn ? 'Making the sound again after its turn' : 'Making the sound again', {
+		toast(out.afterTurn ? `Making the ${what} again after its turn` : `Making the ${what} again`, {
 			duration: 4000,
-			description: 'The song stays ready. Its old sound plays until the new one is in.'
+			description:
+				what === 'sound'
+					? 'The song stays ready. Its old sound plays until the new one is in.'
+					: 'The song stays ready. Its old lyrics show until the new ones are in.'
 		});
 	}
 
@@ -163,11 +166,27 @@
 		{/if}
 		<div class="line">
 			<span>Lyrics</span>
-			<Button variant="ghost" size="tap" href={`/song/${encodeURIComponent(media.id)}`}>Fix</Button>
+			<span class="acts">
+				<Button
+					variant="ghost"
+					size="tap"
+					disabled={busy || !media.vocalsRef}
+					aria-label="Make again, lyrics"
+					onclick={() => remake('lyrics')}>Make again</Button
+				>
+				<Button variant="ghost" size="tap" href={`/song/${encodeURIComponent(media.id)}`}>Fix</Button>
+			</span>
 		</div>
+		{#if info?.lyricsRemakeFailed}
+			<p class="remake-failed" role="status" data-testid="lyrics-remake-failed">
+				The last Make again didn't work, so the old lyrics stay. Why: {info.lyricsRemakeFailed}
+			</p>
+		{/if}
 		<div class="line">
 			<span>Sound</span>
-			<Button variant="ghost" size="tap" disabled={busy} onclick={remake}>Make again</Button>
+			<Button variant="ghost" size="tap" disabled={busy} aria-label="Make again, sound" onclick={() => remake('sound')}
+				>Make again</Button
+			>
 		</div>
 		{#if info?.remakeFailed}
 			<p class="remake-failed" role="status" data-testid="remake-failed">
@@ -265,6 +284,10 @@
 		gap: var(--space-md);
 		min-height: var(--tap);
 		border-top: 1px solid var(--role-rule);
+	}
+	.acts {
+		display: flex;
+		gap: var(--space-xs);
 	}
 	.line :global(.delete) {
 		color: var(--danger-ink);

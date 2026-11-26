@@ -18,5 +18,9 @@ export const GET: RequestHandler = async ({ cookies }) => {
 		const song = sizes.songs[mediaId];
 		if (song && job.status === 'failed') song.remakeFailed = job.error ?? 'it stopped';
 	}
+	for (const [mediaId, job] of app.jobs.latestOfType('align-remake')) {
+		const song = sizes.songs[mediaId];
+		if (song && job.status === 'failed') song.lyricsRemakeFailed = job.error ?? 'it stopped';
+	}
 	return json(sizes);
 };

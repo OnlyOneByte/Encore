@@ -1533,6 +1533,27 @@ async def test_attempts_are_staged_in_scratch_and_placed_only_once_the_job_is_ou
         assert placed.read_bytes() == (tmp_path / attempt.ref).read_bytes()
 
 
+async def test_a_lyrics_remake_publishes_beside_the_documents_it_replaces(tmp_path: Path) -> None:
+    """A tagged align (the host's remake) names its attempts `<id>-<tag>-...`, so the documents a TV cached by
+    name stay where they are until core swaps the refs; a pinned re-time keeps the pinned ref."""
+    from encore_worker.artifacts import keys
+    from encore_worker.steps.api import store_ref
+
+    tagged = job(tmp_path, outputTag="01jremake")
+    impl = steps(tmp_path, reporter=Reporter(owns=True), aligner=FakeAligner())
+    doc = await impl.time_text(TimeRequest(job=tagged, text=lrc_text(), audio=audio(tmp_path), language="en"))
+    assert isinstance(doc, TimedDoc)
+    uri = await impl.publish(tagged, doc, placing=[doc])
+    assert uri == "derived/lyrics/m1-01jremake-lrclib-word.json"
+    assert (tmp_path / uri).is_file()
+    # A malformed tag fails the job rather than publishing over the live, untagged name.
+    with pytest.raises(keys.BadOutputTag) as raised:
+        store_ref(job(tmp_path, outputTag="../x"), doc.ref)
+    assert raised.value.retryable is False
+    pinned = job(tmp_path, outputTag="01jremake", pinnedRef="derived/lyrics/m1-edit-r2.json")
+    assert store_ref(pinned, doc.ref) == "derived/lyrics/m1-edit-r2.json"
+
+
 async def test_the_windowed_engine_declares_itself(tmp_path: Path) -> None:
     """So the policy may offer it the knobs the global engine does not read."""
     impl = steps(tmp_path, aligner=FakeAligner())

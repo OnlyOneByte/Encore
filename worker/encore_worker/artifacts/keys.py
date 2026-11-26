@@ -47,6 +47,23 @@ def output_tag(raw: str | None) -> str | None:
     return raw if raw is not None and _TAG.fullmatch(raw) else None
 
 
+class BadOutputTag(RuntimeError):
+    """A malformed `outputTag`. Not retryable: core sends the same one again."""
+
+    retryable = False
+
+
+def checked_output_tag(raw: object) -> str | None:
+    """A job's `outputTag` param, or None when it sends none. A malformed one raises rather than falling back
+    to the untagged names, which are the live files that screens cache a day (docs/arch/05-worker.md §4)."""
+    if raw is None:
+        return None
+    tag = output_tag(raw) if isinstance(raw, str) else None
+    if tag is None:
+        raise BadOutputTag(f"refusing outputTag {raw!r}: not a [0-9a-z] name segment")
+    return tag
+
+
 def _stem_base(media_id: str, tag: str | None) -> str:
     return f"derived/stems/{media_id}-{tag}" if output_tag(tag) else f"derived/stems/{media_id}"
 
@@ -91,6 +108,15 @@ def lyrics_key(media_id: str) -> str:
 def lyrics_candidate_key(media_id: str, label: str, timing: str) -> str:
     """One CANDIDATE document, per text source and timing mode; docs/arch/05-worker.md §4."""
     return f"derived/lyrics/{media_id}-{label.replace(':', '-')}-{timing}.json"
+
+
+def lyrics_store_ref(media_id: str, name: str, tag: str | None = None) -> str:
+    """Where a lyrics attempt `name` (`<id>-<label>-<timing>.json`) is published. A remake's carries its tag
+    after the id, as re-separated stems do (docs/arch/05-worker.md §4)."""
+    prefix = f"{media_id}-"
+    if output_tag(tag) and name.startswith(prefix):
+        name = f"{prefix}{tag}-{name[len(prefix) :]}"
+    return f"derived/lyrics/{name}"
 
 
 def manual_lyrics_key(media_id: str) -> str:
