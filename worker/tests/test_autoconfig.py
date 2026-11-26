@@ -307,7 +307,7 @@ def test_every_override_wins_and_unset_is_auto() -> None:
     assert (picked.concurrency.count, picked.threads.count, picked.demucs_jobs.count) == (3, 6, 5)
     assert (picked.asr_compute, picked.warmup.count) == ("int8", 0)
     assert "ENCORE_THREADS" in picked.threads.why and "ENCORE_ASR_COMPUTE" in picked.asr_compute_why
-    assert len(picked.lines()) == 4, "four startup lines say what it picked and why"
+    assert len(picked.lines()) == 5, "five startup lines say what it picked and why"
 
     unset = Config.from_env({})
     assert (unset.auto_concurrency, unset.concurrency, unset.threads) == (True, 1, None)

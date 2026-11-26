@@ -2,7 +2,7 @@
 // to one page's label map and silently show the raw database name on the other. This vocabulary is deliberately
 // SEPARATE from the guest-facing labels in the contract: different readers, kept apart on purpose.
 
-import { PICKED_AT_BOOT, PROFILE_SETTINGS, SEPARATOR_ENGINES } from '$lib/contract';
+import { PICKED_AT_BOOT, PROFILE_SETTINGS, SEPARATOR_ENGINES, type WorkerStage } from '$lib/contract';
 
 /** ms to a human duration. Null renders as an em dash, NEVER as 0 — a missing timing is "not recorded", not "took
  * no time". EACH BRANCH ROUNDS TO THE PRECISION IT DISPLAYS BEFORE the branch is chosen: the other order prints
@@ -62,9 +62,28 @@ export const stepLabel = (jobType: string): string => STEP_LABELS[jobType] ?? jo
 
 /** The worker's own sub-step names, in operator wording; the guest-facing equivalent differs on purpose. */
 export const STAGE_LABELS: Record<string, string> = {
-	downloading: 'downloading',
-	separating: 'removing vocals',
-	aligning: 'timing lyrics'
+	// Every name core stores (`WORKER_STAGES`): the coarse stages, then the steps each attempt times (#1357).
+	...({
+		downloading: 'downloading',
+		separating: 'removing vocals',
+		aligning: 'timing lyrics',
+		fetch: 'downloading',
+		acquire_audio: 'getting the audio',
+		decode_to_wav: 'decoding',
+		separate: 'removing vocals',
+		probe_silence: 'checking for silence',
+		measure_profile: 'measuring the song',
+		publish_stems: 'saving the tracks',
+		fetch_captions: 'reading captions',
+		fetch_provider_lyrics: 'finding lyrics',
+		fetch_pinned_text: 'reading the chosen lyrics',
+		transcribe: 'listening for words',
+		time_text: 'timing the words',
+		diarize: 'telling singers apart',
+		publish: 'saving the lyrics',
+		// Where core sums a stage it has no name for (`attemptStagesJson`).
+		other: 'other steps'
+	} satisfies Record<WorkerStage, string>)
 };
 export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stage;
 

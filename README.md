@@ -339,7 +339,8 @@ Everything else is an **override**, with a default that suits one worker beside 
   file here), `ENCORE_WORKER_TOKEN_FILE` (read at every dial when the token is unset), `ENCORE_WORKER_ID` (`worker-` plus a stable suffix; unique per worker),
   `ENCORE_WORKER_CONCURRENCY` (auto 1 or 2 from cores and RAM; the separators split the cores between the jobs running)
 - **Speed** — `ENCORE_THREADS`, `ENCORE_ASR_COMPUTE` and `ENCORE_DEMUCS_JOBS` (auto at boot), and
-  `ENCORE_WARMUP` (auto: loads the models right after boot unless RAM or disk is tight; `0` skips it)
+  `ENCORE_WARMUP` (auto: loads the models right after boot unless RAM or disk is tight; `0` skips it), and
+  `ENCORE_WARM_SEPARATOR` (auto on CPU when RAM allows: demucs stays loaded between songs; `0` turns it off)
 - **Device** — `ENCORE_DEVICE` (unset = CUDA, then Apple MPS, then CPU, as torch finds them; otherwise a
   torch device string such as `cuda:1` or `xpu`), `ENCORE_SEPARATOR_BACKEND` (`torch` or `mlx`; unset picks
   `mlx` on Apple Silicon when `demucs-mlx` is installed)

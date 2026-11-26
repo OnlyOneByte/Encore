@@ -12,7 +12,7 @@ import importlib.util
 import os
 import platform
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +322,24 @@ def resolve_warmup(configured: bool | None, *, free_ram_gb: float | None, disk_g
     return Jobs(1, "auto on (ENCORE_WARMUP=0 turns it off)")
 
 
+def resolve_warm_separator(
+    configured: bool | None, *, device: str, free_ram_gb: float | None, workers: int
+) -> Jobs:
+    """Whether torch demucs stays loaded between songs (`count` 1 or 0; `adapters/demucs_warm`, #1357).
+    `ENCORE_WARM_SEPARATOR` wins; auto is on for a CPU box with room for the warm-up's floor plus the kept
+    separator's `workers` pool workers, about 1 GB each. Off on an accelerator, where it is unmeasured."""
+    if configured is not None:
+        state = "on" if configured else "off"
+        return Jobs(int(configured), f"explicitly {state} (ENCORE_WARM_SEPARATOR)")
+    if device != "cpu":
+        return Jobs(0, f"auto off ({device}: measured on CPU only)")
+    need = WARMUP_MIN_FREE_RAM_GB + max(1, workers) * _DEMUCS_WORKER_GB
+    if free_ram_gb is not None and free_ram_gb < need:
+        tight = f"{free_ram_gb:.1f} GB RAM free, under {need:.0f}"
+        return Jobs(0, f"auto off ({tight}; ENCORE_WARM_SEPARATOR=1 keeps it anyway)")
+    return Jobs(1, "auto on (ENCORE_WARM_SEPARATOR=0 turns it off)")
+
+
 @dataclass(frozen=True, slots=True)
 class Profile:
     """Every performance setting this box boots with, each with the `why` the startup lines print."""
@@ -342,6 +360,8 @@ class Profile:
     #: The most demucs pool workers RAM allows each job (`_demucs_ram_cap`), when `-j` is picked per job from
     #: its core share; 0 keeps `demucs_jobs` fixed, as ENCORE_DEMUCS_JOBS or an accelerator does.
     demucs_cap: int = 0
+    #: `count` 1 when torch demucs stays loaded between songs (`resolve_warm_separator`).
+    warm_separator: Jobs = Jobs(0, "off")
 
     def separator_share(self, running: int) -> int:
         """A separator's OMP threads, given how many jobs are running as it starts (itself included). A song
@@ -372,6 +392,7 @@ class Profile:
             f"threads {threads} ({self.threads.why}){children}; {jobs}",
             f"asr compute {self.asr_compute} ({self.asr_compute_why})",
             f"warm-up {'on' if warm.count else 'off'} ({warm.why})",
+            f"warm separator {'on' if self.warm_separator.count else 'off'} ({self.warm_separator.why})",
         )
 
 
@@ -387,6 +408,7 @@ def resolve_profile(
     ram_gb: float | None = None,
     free_ram_gb: float | None = None,
     disk_gb: float | None = None,
+    warm_separator: bool | None = None,
 ) -> Profile:
     """The boot profile: each setting's explicit value when one was set, else the auto pick for this box. The
     RAM and disk figures come from `memory_gb` and `free_disk_gb`; None means the OS would not say."""
@@ -415,7 +437,7 @@ def resolve_profile(
         compute_why = f"auto ({device})"
     auto_demucs = not demucs_jobs and device == "cpu" and bool(split)
     ram_cap = _demucs_ram_cap(ram_gb, jobs.count)
-    return Profile(
+    profile = Profile(
         concurrency=jobs,
         threads=picked_threads,
         demucs_jobs=resolve_demucs_jobs(
@@ -428,6 +450,11 @@ def resolve_profile(
         split_cores=split,
         demucs_cap=min(_MAX_DEMUCS_JOBS, ram_cap or _MAX_DEMUCS_JOBS) if auto_demucs else 0,
     )
+    # Sized for the separator it would keep: a song alone's `-j`, the largest one this box runs.
+    kept = resolve_warm_separator(
+        warm_separator, device=device, free_ram_gb=free_ram_gb, workers=profile.demucs_share(1)
+    )
+    return replace(profile, warm_separator=kept)
 
 
 def apply_threads(threads: int) -> int | None:
