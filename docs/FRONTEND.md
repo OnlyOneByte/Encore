@@ -1187,11 +1187,12 @@ rows, because a group heading is a claim about what follows it.
 **What can be made now decides the last two groups (proposal 24).** An unmade or failed row whose song nothing
 connected can make goes to `Can't make…`, with no button: `makeableNow` reads the room's `canMake` and `canFetch`
 (`queue:sync`) and asks `needsFetch` per source, so a library upload needs only a maker and a search result also
-needs a fetcher. A row's group is decided when the results (or the room's first verdict) arrive; a verdict that
-changes mid-search only takes the row's button, and the row keeps its empty box, so no row moves: not when the
-fetcher alone leaves a split fleet, not when the maker leaves, not both (#1138). The `Needs karaoke` heading holds
-the taller can't-make wording's height and shows it once every row under it has lost its button; the next search
-regroups the rows. With no ready
+needs a fetcher. A row's group is decided when the results arrive; a verdict that changes mid-search, the first one
+included, only takes the row's button or gives it back in the box the row keeps, so no row moves: not when a fetcher
+or maker leaves, not when one joins (#1138). Each heading holds the taller can't-make wording's height and reads its
+own rows: the can't-make words once none of them has a button, `Needs karaoke` while one does. When the second would
+repeat the first, the first speaks for all the rows and the second keeps only its height; the next search regroups
+the rows. With no ready
 match, `See all ready songs` (a link to `/library`) comes LAST, after the `Can't make…` rows and the widen: arriving
 mid-search it must push nothing from under a thumb on its way to Sing. The idle line `Find any song and we'll make
 the karaoke track for it.` needs both verdicts, because it promises search results; an uploads-only box reads `Only

@@ -478,16 +478,15 @@
 	const rawRows = $derived(unaccounted(rawResults));
 	// A pick the server would refuse is not offered: those rows get their own group (docs/FRONTEND.md#the-sing-tab).
 	const cantMakeRow = (m: Media, v = verdicts) => canProcess(m, readinessFor(m)) && !makeableNow(m, v, defaultFetcher);
-	// A row's GROUP is the verdict's when the results (or the first verdict) came; a later change only takes its button,
-	// so a fetcher leaving a split fleet moves no row under a new heading (#1138).
-	const groupVerdicts = $derived.by(() => {
-		void [rawResults, verdictKnown];
-		return untrack(() => verdicts);
-	});
+	// A row's GROUP is the verdict's when the results came; a later one, the first included, only takes or gives back its
+	// button in place, so no verdict change moves a row under another heading (#1138).
+	const groupVerdicts = $derived(rawResults && untrack(() => verdicts));
 	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m, groupVerdicts)));
 	const cantRows = $derived(rawRows.filter((m) => cantMakeRow(m, groupVerdicts)));
-	// Every row the group holds has lost its button since: it reads as the can't-make group, in place.
-	const makeNone = $derived(makeRows.length > 0 && makeRows.every((m) => cantMakeRow(m)));
+	// A group whose rows all have no button now reads as can't-make, in place; one with a button again, as Needs karaoke.
+	const allCant = (rows: Media[]) => rows.every((m) => cantMakeRow(m));
+	// With no can't-make rows the two counts are equal, so only an empty Needs karaoke group needs ruling out.
+	const sameHeads = $derived(makeRows.length > 0 && allCant(makeRows) === allCant(cantRows));
 
 	/* WHAT IS RENDERED, against what the reveal control still has behind it. DE-DUPLICATION AND THE ZERO-STATE READ
 	   THE FULL LISTS, not these: `accountedFor`/`unaccounted` decide which group OWNS a song, and `showsNoRows`
@@ -736,32 +735,37 @@
 					{/if}
 				{/if}
 
-				{#if makeRows.length}
-					<!-- Holds the taller can't-make wording's height, so a maker dropping swaps the words without a shift. -->
-					<h2 class="grouphead" tabindex="-1">
+				<!-- Both groups' rows and headings follow the LIVE verdict in place: a button goes or comes back in its kept box,
+					 and a heading holds the taller can't-make wording's height, so no verdict change moves a row (#1138). -->
+				{#snippet head(rows: Media[], hide = false)}
+					<h2 class="grouphead" tabindex="-1" role={hide ? 'presentation' : undefined}>
 						<span class="swap"
-							><span>{makeNone ? cantMakeHeading(makeRows.length) : 'Needs karaoke'}</span><span
+							><span class:ghost={hide}>{allCant(rows) ? cantMakeHeading(rows.length) : 'Needs karaoke'}</span><span
 								class="ghost"
-								aria-hidden="true">{cantMakeHeading(makeRows.length)}</span
+								aria-hidden="true">{cantMakeHeading(rows.length)}</span
 							></span
 						>
 					</h2>
-					{#each rawView.shown as m (m.id)}
-						{@const r = readinessFor(m)}
-						<SongRow
-							{...rowMeta(m)}
-							flat
-							readiness={r}
-							pct={liveOf(m.id)?.pct ?? 0}
-							status={liveOf(m.id)?.status}
-							unservable={liveOf(m.id)?.unservable}
-							inQueue={inMyQueue(m.id)}
-							processable={isProcessableSource(m.source)}
-							cantMake={cantMakeRow(m)}
-							onadd={() => addSong(m.id)}
-							onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
-						/>
-					{/each}
+				{/snippet}
+				{#snippet unmade(m: Media)}
+					{@const r = readinessFor(m)}
+					<SongRow
+						{...rowMeta(m)}
+						flat
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
+						unservable={liveOf(m.id)?.unservable}
+						inQueue={inMyQueue(m.id)}
+						processable={isProcessableSource(m.source)}
+						cantMake={cantMakeRow(m)}
+						onadd={() => addSong(m.id)}
+						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
+					/>
+				{/snippet}
+				{#if makeRows.length}
+					{@render head(sameHeads ? rawRows : makeRows)}
+					{#each rawView.shown as m (m.id)}{@render unmade(m)}{/each}
 					<!-- THE LONGEST TAIL ON THE TAB, and the one the window was really written for: on `q=a` this control
 							reads "Show 60 more" against a four-figure remaining count — ~3,300 on the shared copy when
 							this was last measured, and climbing session to session for the reason the note on the
@@ -777,12 +781,11 @@
 					{/if}
 				{/if}
 
-				<!-- WHAT NOTHING CONNECTED CAN MAKE RIGHT NOW, listed so the guest sees the song exists, with no Sing button. -->
+				<!-- WHAT NOTHING CONNECTED COULD MAKE when the results came, listed so the guest sees the song exists. Its heading
+					 keeps only its height when it would repeat the one above, which then speaks for both. -->
 				{#if cantRows.length}
-					<h2 class="grouphead" tabindex="-1">{cantMakeHeading(cantRows.length)}</h2>
-					{#each cantView.shown as m (m.id)}
-						<SongRow {...rowMeta(m)} flat readiness={readinessFor(m)} inQueue={inMyQueue(m.id)} cantMake />
-					{/each}
+					{@render head(cantRows, sameHeads)}
+					{#each cantView.shown as m (m.id)}{@render unmade(m)}{/each}
 					{#if cantView.hidden > 0}
 						<div class="reveal">
 							<Button variant="secondary" size="tap" onclick={() => (revealedCant += LIBRARY_PAGE)}>
@@ -815,7 +818,7 @@
 					</div>
 				{/if}
 				<!-- Last, below the rows and the widen: arriving mid-search it must push nothing from under a thumb. -->
-				{#if (cantRows.length || makeNone) && !readyResults.length && library.length}
+				{#if rawRows.some((m) => cantMakeRow(m)) && !readyResults.length && library.length}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" href="/library">
 							<Icon name="library" /> See all ready songs
