@@ -477,9 +477,14 @@
 	   by the script. */
 	const rawRows = $derived(unaccounted(rawResults));
 	// A pick the server would refuse is not offered: those rows get their own group (docs/FRONTEND.md#the-sing-tab).
-	const cantMakeRow = (m: Media) => canProcess(m, readinessFor(m)) && !makeableNow(m, verdicts, defaultFetcher);
-	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m)));
-	const cantRows = $derived(rawRows.filter(cantMakeRow));
+	const cantMakeRow = (m: Media, v = verdicts) => canProcess(m, readinessFor(m)) && !makeableNow(m, v, defaultFetcher);
+	// A row's GROUP is the verdict's when the results (or the first verdict) came; a later change only takes its button,
+	// so a fetcher leaving a split fleet moves no row under a new heading (#1138).
+	const groupVerdicts = $derived.by(() => (rawResults, verdictKnown, untrack(() => verdicts)));
+	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m, groupVerdicts)));
+	const cantRows = $derived(rawRows.filter((m) => cantMakeRow(m, groupVerdicts)));
+	// Every row the group holds has lost its button since: it reads as the can't-make group, in place.
+	const makeNone = $derived(makeRows.length > 0 && makeRows.every((m) => cantMakeRow(m)));
 
 	/* WHAT IS RENDERED, against what the reveal control still has behind it. DE-DUPLICATION AND THE ZERO-STATE READ
 	   THE FULL LISTS, not these: `accountedFor`/`unaccounted` decide which group OWNS a song, and `showsNoRows`
@@ -732,7 +737,9 @@
 					<!-- Holds the taller can't-make wording's height, so a maker dropping swaps the words without a shift. -->
 					<h2 class="grouphead" tabindex="-1">
 						<span class="swap"
-							><span>Needs karaoke</span><span class="ghost" aria-hidden="true">{cantMakeHeading(makeRows.length)}</span
+							><span>{makeNone ? cantMakeHeading(makeRows.length) : 'Needs karaoke'}</span><span
+								class="ghost"
+								aria-hidden="true">{cantMakeHeading(makeRows.length)}</span
 							></span
 						>
 					</h2>
@@ -747,6 +754,7 @@
 							unservable={liveOf(m.id)?.unservable}
 							inQueue={inMyQueue(m.id)}
 							processable={isProcessableSource(m.source)}
+							cantMake={cantMakeRow(m)}
 							onadd={() => addSong(m.id)}
 							onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
 						/>
@@ -804,7 +812,7 @@
 					</div>
 				{/if}
 				<!-- Last, below the rows and the widen: arriving mid-search it must push nothing from under a thumb. -->
-				{#if cantRows.length && !readyResults.length && library.length}
+				{#if (cantRows.length || makeNone) && !readyResults.length && library.length}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" href="/library">
 							<Icon name="library" /> See all ready songs

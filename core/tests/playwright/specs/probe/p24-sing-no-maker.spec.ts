@@ -218,13 +218,7 @@ test('a split fleet: the fetcher leaving, then the maker, moves no row under the
 		await search(maya, 'bohemian', '/');
 		const youtubeRow = maya.locator(SEL.songRow, { hasText: YOUTUBE_HIT.title });
 		await expect(sings(maya)).toHaveCount(2);
-		for (const width of [390, 320]) {
-			await maya.setViewportSize({ width, height: width === 390 ? 844 : 568 });
-			await maya.waitForTimeout(300);
-			await shoot(maya, `sing-split-${width}-before`);
-		}
-		await maya.setViewportSize({ width: 390, height: 844 });
-		await maya.waitForTimeout(300);
+		await shoot(maya, 'sing-split-before');
 		const before = await rowTops(maya);
 
 		// Only the fetcher leaves: the YouTube row loses its button where it is, and the upload keeps Sing.
