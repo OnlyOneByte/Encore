@@ -2,6 +2,8 @@
 import { json, type Handle } from '@sveltejs/kit';
 import { fromOurOrigin, isJsonBody } from '$lib/server/http/same-origin';
 import { isHost } from '$lib/server/host-gate';
+// Server-only, so the string never reaches a client bundle.
+import screensCss from './screens.css?inline';
 
 /** Keyed on the MATCHED route, never the raw path, which a client can percent-encode past a prefix test. The route
  *  checks the host too; this is the second layer. */
@@ -19,5 +21,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (event.route.id && HOST_ONLY_ROUTES.has(event.route.id) && !isHost(event.cookies)) {
 		return json({ error: 'only the host can open this' }, { status: 403 });
 	}
-	return resolve(event);
+	return resolve(event, { transformPageChunk: withErrorPageStyles });
 };
+
+/** The error page's styles in its own HTML, so it is styled on first paint and with JavaScript off (#1361): the root
+ *  layout imports none, and a stylesheet the error page imported would load on every route. */
+function withErrorPageStyles({ html }: { html: string }): string {
+	return html.includes('data-error-page') ? html.replace('</head>', `<style>${screensCss}</style></head>`) : html;
+}

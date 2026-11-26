@@ -798,9 +798,14 @@ television: a `role=phone` socket on `/tv` would register the television as a si
 
 The root layout holds only the head and imports no stylesheet. The phone layout imports `app.css`, so `app.css`
 and the dock ship as one sheet; every other surface's own `+layout.svelte` imports `screens.css`, which is
-`app.css` alone, as does the root `+error.svelte`, lazily (#1309). A shared `app.css` chunk would split the phone's
-sheet in two and cost about 480 B gzip; `tests/unit/routes/route-styles.test.ts` checks every page has one or the
-other. An error page has no dock, so it links back to the room itself: `/tv` from the TV, `/` from anywhere else.
+`app.css` alone (#1309). A shared `app.css` chunk would split the phone's sheet in two and cost about 480 B gzip;
+`tests/unit/routes/route-styles.test.ts` checks every page has one or the other.
+
+The root `+error.svelte` can import no stylesheet: the client loads that page on every route, so its CSS would load
+everywhere. Instead `hooks.server.ts` inlines `screens.css` as a `<style>` into any page that carries
+`data-error-page`, so a server-rendered error is styled on first paint and with JavaScript off (#1361); the page's
+own lazy import covers an error rendered on the client. `error-page-first-paint.spec.ts` checks it with JavaScript
+off. An error page has no dock, so it links back to the room itself: `/tv` from the TV, `/` from anywhere else.
 
 ### The dock and `--dock-h`
 
