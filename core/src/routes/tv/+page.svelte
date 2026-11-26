@@ -668,11 +668,12 @@
 	const CHIP_WAKE_MS = 10_000;
 	let chipAwake = $state(true);
 	// The press that wakes a sleeping chip must not also claim: a touch tap's click is hit-tested after the chip is
-	// back, and a double click's second half lands on it. So a claim this soon after waking is dropped.
+	// back, and a double click's second half lands on it. So a claim this soon after waking is dropped. Both ends are the
+	// events' own input times, not when a handler ran: a busy TV runs them late, and a quick double tap then claimed (#1225).
 	const CLAIM_AFTER_WAKE_MS = 500;
 	let chipWokeAt = -Infinity;
-	function claimUnlessJustWoken() {
-		if (performance.now() - chipWokeAt < CLAIM_AFTER_WAKE_MS) return;
+	function claimUnlessJustWoken(e: MouseEvent) {
+		if (e.timeStamp - chipWokeAt < CLAIM_AFTER_WAKE_MS) return;
 		ws?.send({ type: 'tv:claim' });
 	}
 	$effect(() => {
@@ -683,8 +684,8 @@
 			clearTimeout(timer);
 			timer = setTimeout(() => (chipAwake = false), ms);
 		};
-		const wake = () => {
-			if (chipAsleep) chipWokeAt = performance.now();
+		const wake = (e: Event) => {
+			if (chipAsleep) chipWokeAt = e.timeStamp;
 			awake(CHIP_WAKE_MS);
 		};
 		const opts: AddEventListenerOptions = { capture: true, passive: true };
