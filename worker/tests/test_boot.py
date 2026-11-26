@@ -201,7 +201,7 @@ def test_youtube_gap_names_what_is_missing(tmp_path: Path, monkeypatch: pytest.M
     assert "remote-components" in (hardware.youtube_gap((str(commented),)) or ""), "a comment sets nothing"
     trailing = tmp_path / "trailing"
     trailing.write_text("--no-mtime  # --remote-components ejs:github\n")
-    assert "remote-components" in (hardware.youtube_gap((str(trailing),)) or ""), "nor does a trailing one (#1085)"
+    assert "remote-components" in (hardware.youtube_gap((str(trailing),)) or ""), "nor a trailing one (#1085)"
     after = tmp_path / "after"
     after.write_text("--remote-components ejs:github  # the solver\n")
     assert hardware.youtube_gap((str(after),)) is None, "a flag before a comment is still set"
