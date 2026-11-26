@@ -503,28 +503,33 @@ function run4(semitones: number, hzPerChannel: [number, number, number, number],
 	return { out, proc: p };
 }
 
+/** Squared DFT magnitude of a signal at one frequency. */
+function dftMag(sig: Float32Array, hz: number): number {
+	// The phasor is rotated by one complex multiply per sample, not a sin and a cos: per-sample trig made this
+	// helper ~97% of the test, and past the 5 s budget whenever JSC left it unoptimised (#1073).
+	const th = (2 * Math.PI * hz) / RATE;
+	const dc = Math.cos(th);
+	const ds = Math.sin(th);
+	let c = 1;
+	let s = 0;
+	let re = 0;
+	let im = 0;
+	for (let i = 0; i < sig.length; i++) {
+		re += sig[i] * c;
+		im += sig[i] * s;
+		const nc = c * dc - s * ds;
+		s = s * dc + c * ds;
+		c = nc;
+	}
+	return re * re + im * im;
+}
+
 /** Dominant frequency of a signal, by naive DFT peak over a plausible band. */
 function peakHz(sig: Float32Array, from = 100, to = 4000): number {
 	let bestHz = 0;
 	let bestMag = -1;
 	for (let hz = from; hz <= to; hz += 5) {
-		// The phasor is rotated by one complex multiply per sample, not a sin and a cos: per-sample trig made this
-		// helper ~97% of the test, and past the 5 s budget whenever JSC left it unoptimised (#1073).
-		const th = (2 * Math.PI * hz) / RATE;
-		const dc = Math.cos(th);
-		const ds = Math.sin(th);
-		let c = 1;
-		let s = 0;
-		let re = 0;
-		let im = 0;
-		for (let i = 0; i < sig.length; i++) {
-			re += sig[i] * c;
-			im += sig[i] * s;
-			const nc = c * dc - s * ds;
-			s = s * dc + c * ds;
-			c = nc;
-		}
-		const mag = re * re + im * im;
+		const mag = dftMag(sig, hz);
 		if (mag > bestMag) {
 			bestMag = mag;
 			bestHz = hz;
@@ -585,6 +590,19 @@ test('4 channels shifted: each channel keeps its OWN content — no cross-talk b
 	expect(peakHz(tail(out[1]))).toBeCloseTo(200 * ratio, -1.4);
 	expect(peakHz(tail(out[2]))).toBeCloseTo(900 * ratio, -1.4);
 	expect(peakHz(tail(out[3]))).toBeCloseTo(900 * ratio, -1.4);
+	// A summed leak leaves the guide's peak where it was, so the peak alone misses it (#1136): the guide pair must
+	// also carry almost nothing at the instrumental's shifted tone, by magnitude, under 1% of its own peak's.
+	const leak = (guide: Float32Array) => {
+		const g = tail(guide);
+		return Math.sqrt(dftMag(g, 200 * ratio) / dftMag(g, 900 * ratio));
+	};
+	expect(leak(out[2])).toBeLessThan(0.01);
+	expect(leak(out[3])).toBeLessThan(0.01);
+	// And that check does catch a sum, at the gains the #1122 review mixed in.
+	for (const gain of [0.25, 0.5, 1]) {
+		const summed = out[2].map((v, i) => v + gain * out[0][i]);
+		expect(leak(summed), `a leak at gain ${gain}`).toBeGreaterThan(0.01);
+	}
 });
 
 test('4 channels: a missing input channel is silence, not a dropped block', () => {
