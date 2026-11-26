@@ -2348,6 +2348,48 @@ def test_a_line_added_into_a_repeated_chorus_pairs_every_other_line_with_its_own
     ]
 
 
+_REPEATED = [
+    ("we were young", 10.0, 13.0),
+    ("call my name", 13.0, 15.0),
+    ("dance all night", 15.0, 18.0),
+    ("we were young", 20.0, 23.0),
+    ("call my name", 23.0, 25.0),
+    ("dance all night", 25.0, 28.0),
+]
+_SWAPPED = [
+    "we were young",
+    "dance all night",
+    "call my name",
+    "we were young",
+    "call my name",
+    "dance all night",
+]
+
+
+def test_two_lines_swapped_in_a_repeated_section_are_found_between_their_untouched_neighbours() -> None:
+    """#1218: the old slots are where the audio sings the 2nd and 3rd lines, not where those words are, so
+    neither swapped line may claim one; the lines around them keep theirs whole."""
+    assert seed_times(_SWAPPED, _REPEATED) == [
+        (10.0, 13.0),
+        None,
+        None,
+        (20.0, 23.0),
+        (23.0, 25.0),
+        (25.0, 28.0),
+    ]
+
+
+def test_in_a_line_timed_document_swapped_lines_share_the_span_between_their_neighbours() -> None:
+    assert seed_times(_SWAPPED, _REPEATED, line_timed=True) == [
+        (10.0, 13.0),
+        (13.0, 16.5),
+        (16.5, 20.0),
+        (20.0, 23.0),
+        (23.0, 25.0),
+        (25.0, 28.0),
+    ]
+
+
 async def test_in_a_line_timed_document_added_lines_share_the_gap_the_provider_left(tmp_path: Path) -> None:
     """A provider's own line spans swallow nothing, so the gap between them is where the missed lines go."""
     paste = "aaa bbb\nccc ddd\none missed\ntwo missed\neee fff\nggg hhh\niii jjj"

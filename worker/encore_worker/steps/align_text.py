@@ -255,18 +255,23 @@ def seed_times(
     """Line bounds for a fix's lines, from the document it corrects; None for a line the aligner must find.
     A kept, edited or rewritten line (`_pairs`, or a same-size run between pairs) keeps its slot. An added
     line shares the gap a `line_timed` document left, or is decoded with the line before it (which keeps only
-    its start) in an aligned one. None when under half the lines pair. See docs/SERVER.md#lyrics-fixes.
+    its start) in an aligned one. A moved line (`_moved`) has no slot either, but its neighbours keep theirs
+    whole. None when under half the lines pair. See docs/SERVER.md#lyrics-fixes.
     """
     paired: list[tuple[float, float | None] | None] = [None] * len(texts)
     a, b = [_norm(t) for t, _s, _e in old], [_norm(t) for t in texts]
+    pairs = _pairs(a, b)
     i0 = j0 = 0
-    for i, j in [*_pairs(a, b), (len(a), len(b))]:
+    for i, j in [*pairs, (len(a), len(b))]:
         if i - i0 == j - j0:
             for k in range(j - j0):
                 paired[j0 + k] = old[i0 + k][1:]
         if i < len(a):
             paired[j] = old[i][1:]
         i0, j0 = i + 1, j + 1
+    moved = _moved(a, b, pairs)
+    for j in moved:
+        paired[j] = None
     if sum(p is not None for p in paired) * 2 < len(texts):
         return None
     out = list(paired)
@@ -281,9 +286,24 @@ def seed_times(
         if line_timed and gap and gap[1] > gap[0]:
             step = (gap[1] - gap[0]) / (stop - j)
             out[j:stop] = [(gap[0] + n * step, gap[0] + (n + 1) * step) for n in range(stop - j)]
-        elif before is not None:
+        elif before is not None and not moved.issuperset(range(j, stop)):
             out[j - 1] = (before[0], None)
         j = stop
+    return out
+
+
+def _moved(a: Sequence[str], b: Sequence[str], pairs: Sequence[tuple[int, int]]) -> set[int]:
+    """The fix's lines whose ORDER changed: an unpaired line equal to an unpaired old one (the nearest), and
+    every paired line it crossed. Their old slots are where the audio sang the old order, so none fits."""
+    free = [i for i in range(len(a)) if i not in {i for i, _j in pairs}]
+    out: set[int] = set()
+    for j in sorted(set(range(len(b))) - {j for _i, j in pairs}):
+        same = [i for i in free if a[i] == b[j]]
+        if not same:
+            continue
+        i = min(same, key=lambda k: abs(k - j))
+        free.remove(i)
+        out |= {j, *(pj for pi, pj in pairs if (pi < i) != (pj < j))}
     return out
 
 
