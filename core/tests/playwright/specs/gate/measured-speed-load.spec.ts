@@ -206,10 +206,11 @@ for (const row of ROWS.filter((r) => r.flashGate && r.cpu === 1)) {
 // Ceilings on the gzipped bytes, not a margin: headroom differs per route (from about 0.1% to 3%). Only ratchet
 // down; raising one needs the owner's ruling.
 const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
-	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page.
-	'/': { css: 20_000, js: 123_500 },
-	'/queue': { css: 19_800, js: 131_700 },
-	'/tv': { css: 16_700, js: 92_500 }
+	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page. Both lowered
+	// again by what #1143 freed, rounded down to 100: the /components stories left the build.
+	'/': { css: 19_500, js: 122_500 },
+	'/queue': { css: 19_000, js: 129_900 },
+	'/tv': { css: 16_100, js: 91_500 }
 };
 
 test('CLAIM 13 the CSS and JS each route ships stay under budget', async ({ world, browser }) => {
