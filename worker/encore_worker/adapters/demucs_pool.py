@@ -128,7 +128,8 @@ def main(argv: list[str]) -> int:
     import demucs.apply  # noqa: PLC0415
     import demucs.separate  # noqa: PLC0415
 
-    demucs.apply.ThreadPoolExecutor = ModelProcessPool
+    # demucs builds its `-j` pool by this name; ours stands in for it without being one.
+    demucs.apply.ThreadPoolExecutor = ModelProcessPool  # type: ignore[misc,assignment]
     demucs.separate.main(argv)
     return 0
 
