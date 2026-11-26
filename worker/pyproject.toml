@@ -350,6 +350,8 @@ python_version = "3.12"
 # four genuine ones were hiding in them — including a duplicated mid-file import block. Gating a tree is
 # nearly free when it is empty and expensive once it is not.
 files = ["encore_worker", "tests"]
+# Stubs for untyped packages, so the check reads the same with or without them installed (#1354).
+mypy_path = "typings"
 strict = true
 warn_unused_ignores = true
 warn_return_any = true
