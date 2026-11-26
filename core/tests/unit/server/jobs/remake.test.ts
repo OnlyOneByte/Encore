@@ -52,9 +52,10 @@ function harness(
 	const deleted: string[][] = [];
 	const persisted: Media[] = [];
 	const order: string[] = [];
+	const registry = new WorkerRegistry();
 	const hub = new WorkerHub({
 		jobs,
-		registry: new WorkerRegistry(),
+		registry,
 		mediaById,
 		toWorker: (_w, cmd) => sent.push(cmd),
 		broadcast: (e) => broadcasts.push(e),
@@ -84,7 +85,7 @@ function harness(
 			concurrency: 1,
 			version: '1'
 		});
-	return { hub, jobs, mediaById, sent, broadcasts, deleted, persisted, order, hello };
+	return { hub, jobs, registry, mediaById, sent, broadcasts, deleted, persisted, order, hello };
 }
 
 /** Every delete is queued behind the song's sidecar writes. */
@@ -299,6 +300,19 @@ test('finishing a held job and saving its hold land together or not at all (#135
 	expect(h.jobs.listHeld().map((r) => r.jobId)).toEqual([job.id]);
 });
 
+test('a hold that fails to save leaves the worker slot taken, since the job still runs there (#1370)', () => {
+	const h = harness();
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	expect(h.registry.get('w1')!.slotsFree).toBe(0);
+	expect(() => h.jobs.completeHeld(job.id, null as unknown as string, T0)).toThrow();
+	expect(h.jobs.byId(job.id)!.workerId).toBe('w1');
+	expect(h.registry.get('w1')!.slotsFree).toBe(0);
+	h.jobs.completeHeld(job.id, '{}', T0);
+	expect(h.registry.get('w1')!.slotsFree).toBe(1);
+});
+
 test('a refused upgrade keeps the playing stems and deletes only the files it wrote', async () => {
 	const h = harness();
 	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
@@ -391,7 +405,7 @@ test('a remake waits while its song is queued or playing, and runs once the turn
 	expect(waitsForTurn({ jobType: 'stems-upgrade', mediaId: 'm1' }, queued, 'e2')).toBe(false);
 });
 
-test('a second Make again while one is waiting is the same job, and a finished one can be asked again', () => {
+test('a second Sound again while one is waiting is the same job, and a finished one can be asked again', () => {
 	const h = harness();
 	const first = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
 	expect(requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }).id).toBe(first.id);

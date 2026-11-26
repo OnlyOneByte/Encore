@@ -167,30 +167,24 @@
 		<div class="line">
 			<span>Lyrics</span>
 			<span class="acts">
-				<Button
-					variant="ghost"
-					size="tap"
-					disabled={busy || !media.vocalsRef}
-					aria-label="Make again, lyrics"
-					onclick={() => remake('lyrics')}>Make again</Button
+				<Button variant="ghost" size="tap" disabled={busy || !media.vocalsRef} onclick={() => remake('lyrics')}
+					>Lyrics again</Button
 				>
 				<Button variant="ghost" size="tap" href={`/song/${encodeURIComponent(media.id)}`}>Fix</Button>
 			</span>
 		</div>
 		{#if info?.lyricsRemakeFailed}
 			<p class="remake-failed" role="status" data-testid="lyrics-remake-failed">
-				The last Make again didn't work, so the old lyrics stay. Why: {info.lyricsRemakeFailed}
+				Lyrics again didn't work last time, so the old lyrics stay. Why: {info.lyricsRemakeFailed}
 			</p>
 		{/if}
 		<div class="line">
 			<span>Sound</span>
-			<Button variant="ghost" size="tap" disabled={busy} aria-label="Make again, sound" onclick={() => remake('sound')}
-				>Make again</Button
-			>
+			<Button variant="ghost" size="tap" disabled={busy} onclick={() => remake('sound')}>Sound again</Button>
 		</div>
 		{#if info?.remakeFailed}
 			<p class="remake-failed" role="status" data-testid="remake-failed">
-				The last Make again didn't work, so the old sound stays. Why: {info.remakeFailed}
+				Sound again didn't work last time, so the old sound stays. Why: {info.remakeFailed}
 			</p>
 		{/if}
 		<label class="line">

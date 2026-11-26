@@ -1485,19 +1485,20 @@ control beside the count. Manage swaps each `SongRow` for a `ManageRow`
 (`src/lib/components/ManageRow.svelte`): title, artist (and `Kept`) and the song's size, with no `+`. The count
 line becomes the storage line, "214 songs · 12.4 GB of 20 GB" ("…, over the 20 GB cap" past it), with a thin bar
 when a cap is set and "Kept songs use X of Y GB" past 90% of it. Sort gains `Biggest` and `Least sung`, which
-leave with Manage. Tapping a row opens its sheet in place: Name and artist (Change), Lyrics (Make again, and Fix,
-the song page), Sound (Make again), Keep on this machine, and Delete. The two Make again buttons are named "Make
-again, lyrics" and "Make again, sound". Each says "Making the lyrics again" or "Making the sound again" ("… after its
-turn" for a sound remake of a song in tonight's queue), and that the old version shows until the new one is in.
-Lyrics' Make again is off for a song with no vocals stem. While a row's last remake has failed, a warn line under it
+leave with Manage. Tapping a row opens its sheet in place: Name and artist (Change), Lyrics (`Lyrics again`, and
+Fix, the song page), Sound (`Sound again`), Keep on this machine, and Delete. The remake buttons read as the bulk
+bar's do. Each says "Making the lyrics again" or "Making the sound again" ("… after its turn" for a sound remake of
+a song in tonight's queue), and that the old version shows until the new one is in. `Lyrics again` is off for a song
+with no vocals stem. While a row's last remake has failed, a warn line under it
 says so, with the reason. A song in tonight's queue says "In tonight's queue. Delete it after its turn."
 instead, and a kept one says to turn Keep off. Delete has no dialog: the row goes, and a 10 s toast offers Undo.
 Deleting the last song shows the empty Library; the toast's Undo still brings it back.
 **Bulk (PR 2):** each row has a checkbox, and `Select all` beside `Done` picks the whole filtered match list, not
 only the rows rendered so far. While songs are picked, an action bar above the dock is the screen's one fill:
 "N picked", then two pairs: `Sound again` and `Lyrics again`, `Keep` (`Keep off` when every pick is kept) and
-`Delete`. When the count and the actions do not fit one line, the actions move under the count, right-aligned, and
-at 320 px each pair takes its own row, never splitting; the room kept under the list grows with the bar. Either
+`Delete`. A pair moves to the next row, right-aligned and never split, only when it does not fit beside what is
+before it: the count shares its row with the first pair, except "1234 picked" at 320 px, which takes a row of its
+own. The room kept under the list grows with the bar. Either
 remake clears the picks, as Delete does, and toasts "Making the sound again for N songs" (those in tonight's queue
 start after their turn) or "Making the lyrics again for N songs" (those in tonight's queue get the new lyrics
 swapped in between lines, and a song with no vocals keeps its lyrics). The bar sits one layer under "You're up"

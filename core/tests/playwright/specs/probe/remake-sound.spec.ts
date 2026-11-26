@@ -21,7 +21,7 @@ const tvSources = (tv: Page) =>
 		)
 	);
 
-test('Make again keeps the song ready throughout, swaps in new files, and the open TV plays them', async ({
+test('Sound again keeps the song ready throughout, swaps in new files, and the open TV plays them', async ({
 	world
 }, testInfo) => {
 	// Slow enough that the remake spans many 100 ms samples.
@@ -38,7 +38,7 @@ test('Make again keeps the song ready throughout, swaps in new files, and the op
 		await host.goto('/library');
 		await host.getByRole('button', { name: 'Manage' }).click();
 		await host.locator('[data-testid="manage-row"] button.open').first().click();
-		await host.locator('[data-testid="song-sheet"]').getByRole('button', { name: 'Make again, sound' }).click();
+		await host.locator('[data-testid="song-sheet"]').getByRole('button', { name: 'Sound again' }).click();
 		await expect(host.getByText('Making the sound again', { exact: false })).toBeVisible();
 		for (const width of [390, 320]) {
 			await host.setViewportSize({ width, height: 844 });
@@ -200,7 +200,7 @@ test('a remake that fails says so on the song sheet, and the old sound stays', a
 		await host.goto('/library');
 		await host.getByRole('button', { name: 'Manage' }).click();
 		await host.locator('[data-testid="manage-row"] button.open').first().click();
-		await host.getByRole('button', { name: 'Make again, sound' }).click();
+		await host.getByRole('button', { name: 'Sound again' }).click();
 		await expect
 			.poll(
 				async () => {

@@ -130,12 +130,14 @@ export class JobRepository {
 	}
 
 	/** `complete` and `hold` in ONE transaction: a crash between them would leave the job `ready` with nothing held,
-	 *  so the remake is lost and the boot sweep deletes its files. */
+	 *  so the remake is lost and the boot sweep deletes its files. The hold is written first: `complete` frees the
+	 *  worker's slot in memory, which a rollback would not undo. */
 	completeHeld(id: string, message: string, now: number): Job {
 		return this.#db.transaction(() => {
-			const job = this.complete(id, now);
-			this.hold(id, job.mediaId, message, now);
-			return job;
+			const current = this.byId(id);
+			if (!current) throw new Error(`unknown job: ${id}`);
+			this.hold(id, current.mediaId, message, now);
+			return this.complete(id, now);
 		});
 	}
 
