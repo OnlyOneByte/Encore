@@ -26,7 +26,7 @@ async function frame(page: Page, testInfo: TestInfo, name: string, widths = [390
 /** Where each part of the bar sits, for the fit checks below (the #1348 review's measurements). */
 async function barLayout(bar: import('@playwright/test').Locator) {
 	return bar.evaluate((b) => {
-		const box = (el: Element) => {
+		const box = (el: Element | Range) => {
 			const q = el.getBoundingClientRect();
 			return { l: q.left, r: q.right, t: q.top, b: q.bottom, w: q.width, h: q.height };
 		};
@@ -98,7 +98,8 @@ test('the bulk bar fits at 320 and 390 with Keep off and a four-digit count, eve
 					expect(last && last.y + last.height, `the last row is under the bar at ${at}`).toBeLessThanOrEqual(
 						out.bar.t + 0.5
 					);
-					const shot = keepOff && count === '1234' ? 'bulk-bar-widest' : !keepOff && count === '3' ? 'bulk-bar-3' : null;
+					const shot =
+						keepOff && count === '1234' ? 'bulk-bar-widest' : !keepOff && count === '3' ? 'bulk-bar-3' : null;
 					if (shot) {
 						const path = testInfo.outputPath(`${shot}-${width}.png`);
 						await host.mouse.move(0, 0); // no hover fill left from the Keep tap
