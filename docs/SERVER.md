@@ -698,12 +698,12 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
   It is not a ban. The [room's TV](#the-tv-seat) cannot be removed (`409 is-tv`). A screen standing in for it can:
   the room's TV takes the seat at once if it is open; otherwise the seat waits the 15 s grace for it, and then the
   next screen stands in.
-- **What a screen shows** (`TV_SHOWS`: `everything` or `words`, see FRONTEND.md#words-only) is set with
-  `{ action: 'show', show }`, which must be one of the two (`400` otherwise). Core keeps it per screen with its name,
+- **What a screen shows** (`TV_SHOWS`: `everything`, `words` or `board`, see FRONTEND.md#words-only and #up-next) is
+  set with `{ action: 'show', show }`, which must be one of the three (`400` otherwise). Core keeps it per screen with its name,
   and tells every socket of that screen `tv:show { show }` on connect and on each change. The seat's screen always
   shows everything: setting it gets `409 is-tv`, and a screen that takes the seat is switched to everything.
-  `/tv?show=words` sends `show=words` on the socket, which core parses and keeps only for a screen with no layout
-  yet, so a bookmark opens as Words only and a later choice of the host's survives its reloads.
+  `/tv?show=words` (or `board`) sends it on the socket, which core parses and keeps only for a screen with no layout
+  yet, so a bookmark opens as that layout and a later choice of the host's survives its reloads.
   shortcut: layouts live in core's memory, like names, so a core restart puts every screen back on Everything until
   the host picks again or a `?show=` bookmark reconnects. Persist them per room with the names if hosts mind.
 - **Only cookieless screens are capped: `MAX_COOKIELESS_SCREENS` (4) per room.** One more is closed at open with

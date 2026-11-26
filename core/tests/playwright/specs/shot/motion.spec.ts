@@ -94,6 +94,7 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'phone-queue-on-deck-to-up-320': HELD_LIBRARY,
 	'tv-copy-claim': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-words-only': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
+	'tv-up-next': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-chip-wake': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-chip-sleep': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK],
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
@@ -1227,6 +1228,90 @@ function spotlightStory(kind: 'enter' | 'handoff' | 'guide', viewport: { width: 
 	};
 }
 
+/** A copy mid-song set to a layout from the host's Screens page (proposal 34). The chrome cuts away and the background
+ *  fades out on its own crossfade; Words only grows the words, Up next puts the board up. A fresh copy per run, so
+ *  each opens showing everything. */
+function tvLayout(show: 'words' | 'board'): Make {
+	return (browser, world, cleanup) => {
+		let host: Page | undefined;
+		let phone: Page | undefined;
+		let copyId: string | undefined;
+		return {
+			name: show === 'words' ? 'tv-words-only' : 'tv-up-next',
+			what:
+				show === 'words'
+					? 'TV 1920x1080, a copy mid-song on real-length lines: the host picks Words only on the Screens page. The lower-third and the join corner cut away, the background fades out over --motion-base (its own crossfade), and the sung line and the next one grow, two rows each, landing at once'
+					: 'TV 1920x1080, a copy mid-song with three turns queued: the host picks Up next on the Screens page. The stage and the words cut away for the board (who sings, the next turns, the QR), and the background fades out over --motion-base (its own crossfade)',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 1_500,
+			open: async (opts) => {
+				if (!host) {
+					const worker = await startFakeWorker(world, {
+						seconds: ROOM_SCREEN_TRACK.seconds,
+						longLyricLines: show === 'words'
+					});
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await readySong(world, phone, 'room-screen');
+					await queueReady(phone, 'room-screen');
+					// The board's list is the point of its clip: three turns after Ana's, so the next turns show.
+					if (show === 'board') {
+						for (const [name, song] of [
+							['Theo', 'caroline'],
+							['Bo', 'bohemian'],
+							['Mia', 'believin']
+						] as const) {
+							const p = await world.openPhone(name);
+							await readySong(world, p, song);
+							await queueReady(p, song);
+						}
+					}
+					const seat = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+					cleanup(() => seat.close());
+					await seat.addCookies([world.tvCookie]);
+					const real = await seat.newPage();
+					await real.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+					await expect(real.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+					host = await world.openPhone('Host');
+					await world.becomeHost(host);
+				}
+				const ctx = await browser.newContext({
+					...opts,
+					viewport: { width: 1920, height: 1080 },
+					baseURL: world.baseURL
+				});
+				cleanup(() => ctx.close());
+				const page = await ctx.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				await expect(page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
+				await expect(page.locator('.copy-slot.asleep')).toBeAttached({ timeout: 30_000 });
+				const rows = (await (await host.request.get('/api/screens')).json()).screens as {
+					id: string;
+					isNew: boolean;
+				}[];
+				copyId = rows.findLast((r) => r.isNew)?.id;
+				await page.evaluate(() => document.fonts.ready.then(() => true));
+				if (show === 'words') {
+					// The fixture's lines run 7 s, so start the song over: the switch lands while a line and the next are up.
+					await sendPlayerCommand(phone!, { cmd: 'restart' });
+					await expect(page.locator('.lyrics .row.current')).toContainText(/tonight/, { timeout: 5_000 });
+					await page.waitForTimeout(900);
+				}
+				return page;
+			},
+			trigger: async (page) => {
+				await host!.request.post('/api/screens', { data: { action: 'show', id: copyId, show } });
+				await expect(page.locator('.lower-third')).toHaveCount(0);
+			},
+			// What stays on screen through the change: the words, or the board that replaces them.
+			subject: show === 'words' ? '.lyrics' : '.board',
+			only: '.lower-third, .lower-third *, .stage-join, .stage-join *, .stage-bg, .words-next, .board, .board *'
+		};
+	};
+}
+
 const SCENARIOS: Record<string, Make> = {
 	'spotlight-enter-390': spotlightStory('enter', { width: 390, height: 844 }),
 	'spotlight-enter-320': spotlightStory('enter', { width: 320, height: 568 }),
@@ -1675,65 +1760,8 @@ const SCENARIOS: Record<string, Make> = {
 			only: '.copy-chip, .copy-chip *'
 		};
 	},
-	'tv-words-only': (browser, world, cleanup) => {
-		let host: Page | undefined;
-		let phone: Page | undefined;
-		let copyId: string | undefined;
-		return {
-			name: 'tv-words-only',
-			what: 'TV 1920x1080, a copy mid-song on real-length lines: the host picks Words only on the Screens page. The lower-third and the join corner cut away, the background fades out over --motion-base (its own crossfade), and the sung line and the next one grow, two rows each, landing at once',
-			stepMs: 33,
-			scale: 0.5,
-			columns: 5,
-			startTimeoutMs: 1_500,
-			open: async (opts) => {
-				if (!host) {
-					const worker = await startFakeWorker(world, { seconds: ROOM_SCREEN_TRACK.seconds, longLyricLines: true });
-					cleanup(() => worker.stop());
-					phone = await world.openPhone('Ana');
-					await readySong(world, phone, 'room-screen');
-					await queueReady(phone, 'room-screen');
-					const seat = await browser.newContext({ viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
-					cleanup(() => seat.close());
-					await seat.addCookies([world.tvCookie]);
-					const real = await seat.newPage();
-					await real.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-					await expect(real.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
-					host = await world.openPhone('Host');
-					await world.becomeHost(host);
-				}
-				// A fresh copy per run: a new screen, so it opens showing everything.
-				const ctx = await browser.newContext({
-					...opts,
-					viewport: { width: 1920, height: 1080 },
-					baseURL: world.baseURL
-				});
-				cleanup(() => ctx.close());
-				const page = await ctx.newPage();
-				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-				await expect(page.locator('.lower-third')).toContainText(/Ana/, { timeout: 30_000 });
-				await expect(page.locator('.copy-slot.asleep')).toBeAttached({ timeout: 30_000 });
-				const rows = (await (await host.request.get('/api/screens')).json()).screens as {
-					id: string;
-					isNew: boolean;
-				}[];
-				copyId = rows.findLast((r) => r.isNew)?.id;
-				await page.evaluate(() => document.fonts.ready.then(() => true));
-				// The fixture's lines run 7 s, so start the song over: the switch lands while a line and the next are up.
-				await sendPlayerCommand(phone!, { cmd: 'restart' });
-				await expect(page.locator('.lyrics .row.current')).toContainText(/tonight/, { timeout: 5_000 });
-				await page.waitForTimeout(900);
-				return page;
-			},
-			trigger: async (page) => {
-				await host!.request.post('/api/screens', { data: { action: 'show', id: copyId, show: 'words' } });
-				await expect(page.locator('.lower-third')).toHaveCount(0);
-			},
-			// The words stay on screen through the change; the background's fade is what moves.
-			subject: '.lyrics',
-			only: '.lower-third, .lower-third *, .stage-join, .stage-join *, .stage-bg, .words-next'
-		};
-	},
+	'tv-words-only': tvLayout('words'),
+	'tv-up-next': tvLayout('board'),
 	'tv-lyrics-fix': (browser, world, cleanup) => {
 		let phone: Page | undefined;
 		let tv: BrowserContext | undefined;

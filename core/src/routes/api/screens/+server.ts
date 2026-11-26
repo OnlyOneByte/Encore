@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		}
 		case 'show': {
 			const show = parseTvShow(body.show);
-			if (!show) return json({ error: 'show must be everything or words' }, { status: 400 });
+			if (!show) return json({ error: 'show must be everything, words or board' }, { status: 400 });
 			const r = screens.setShow(id, show);
 			if (r === 'unknown') return json({ error: 'unknown screen' }, { status: 404 });
 			if (r === 'is-tv') return json({ error: 'the TV shows everything', reason: r }, { status: 409 });

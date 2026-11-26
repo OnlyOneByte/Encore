@@ -8,6 +8,7 @@
 		isPlayable,
 		effectiveSongIntroMs,
 		SKIP_NOTICE_MS,
+		songDisplay,
 		TV_FULL_CLOSE_CODE,
 		TV_REMOVED_CLOSE_CODE
 	} from '$lib/contract';
@@ -37,6 +38,7 @@
 	import type { Tonight } from '$lib/contract';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import TvCopyChip, { copyLine } from '$lib/tv/TvCopyChip.svelte';
+	import type TvBoardComponent from '$lib/tv/TvBoard.svelte';
 	import {
 		tvScreen,
 		lobbyRoster,
@@ -49,7 +51,7 @@
 	import { keepScreenAwake } from '$lib/tv/wake-lock';
 	import { stuckTurnsLines } from '$lib/phrasing/process-phrasing';
 	import { NOW_SINGING, UP_NEXT } from '$lib/phrasing/turn-phrasing';
-	import { waitingTurns } from '$lib/readiness';
+	import { queueCardKind, waitingTurns } from '$lib/readiness';
 	import {
 		mergeCatalog,
 		syncLoudnessLevels,
@@ -569,8 +571,9 @@
 	let heardSinceReconnect: Set<string> | null = null;
 
 	onMount(() => {
-		// A bookmarked `/tv?show=words` asks for words only; core keeps it only for a screen with no layout yet.
-		const urlShow = new URLSearchParams(location.search).get('show') === 'words' ? '&show=words' : '';
+		// A bookmarked `/tv?show=words` or `?show=board` asks for that layout; core keeps it only for a screen with none yet.
+		const asked = new URLSearchParams(location.search).get('show');
+		const urlShow = asked === 'words' || asked === 'board' ? `&show=${asked}` : '';
 		ws = new WsClient({
 			// ONE TV PER ROOM: `role=tv` plus the resolved room code. See docs/FRONTEND.md#the-tv-socket.
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}${urlShow}`,
@@ -719,6 +722,38 @@
 	});
 	const wordsOnly = $derived(
 		show === 'words' && isCopy && screen !== 'lobby' && screen !== 'attract' && wordsChunk !== null
+	);
+	// The Up next board, the same way: who is singing, the next turns and the QR, never the words. Loaded on demand, so
+	// a screen that never shows it never ships its CSS (CLAIM 13's /tv budget); until it is in, and if it cannot load
+	// (bad wifi, an update renamed the chunk), the screen shows the whole stage rather than a blank one.
+	let TvBoard = $state<typeof TvBoardComponent | null>(null);
+	let boardLoad: Promise<void> | null = null;
+	$effect(() => {
+		if (show !== 'board' || boardLoad) return;
+		boardLoad = import('$lib/tv/TvBoard.svelte').then(
+			(m) => void (TvBoard = m.default),
+			() => void (boardLoad = null)
+		);
+	});
+	const board = $derived(show === 'board' && isCopy && screen !== 'lobby' && screen !== 'attract' && TvBoard !== null);
+	/** How many turns after this one the board lists, as the mock does. */
+	const BOARD_TURNS = 3;
+	const boardTurn = (e: QueueEntry) => ({
+		id: e.id,
+		name: singerName(e.singerId),
+		color: singers.get(e.singerId)?.color,
+		title: songDisplay(mediaOf(e)).title,
+		// The phone's own card kind, so the board says "making" exactly when the singer's phone does.
+		making: queueCardKind(mediaOf(e) ?? undefined, liveStatus.get(e.mediaId), canMake) === 'processing'
+	});
+	// The stored order is the rotation; a turn whose song would not play holds its slot but is skipped, so it is too.
+	const boardNext = $derived(
+		board
+			? entries
+					.filter((e) => e.status === 'queued' && e.id !== current?.id && !e.playFailed)
+					.slice(0, BOARD_TURNS)
+					.map(boardTurn)
+			: []
 	);
 	/** How much bigger the words are on Words only than the room's lyric size (proposal 34), at most: the line being
 	 *  sung and the next one, two rows each, must fit the screen, so the overlay's fit cap wins past that. */
@@ -986,7 +1021,7 @@
 
 <div class={['tv', { 'copy-stage': isCopy && screen !== 'lobby' && screen !== 'attract' }]} style={tvStyle}>
 	<!-- The stage background, beneath both player slots. First child so document order matches paint order. -->
-	<div class={['stage-bg', { shown: !isAttract && !wordsOnly }]} style="background: {stageBg}">
+	<div class={['stage-bg', { shown: !isAttract && !wordsOnly && !board }]} style="background: {stageBg}">
 		<!--
 			INSIDE the stage layer, not a sibling, so the visualizer inherits the ONE visibility gate and the one
 			crossfade already proven for backgrounds. `stageBg` is its black floor, so an unpainted first frame is
@@ -1048,7 +1083,7 @@
 		provenance={lyricsProvenance}
 		positionSec={positionSec}
 		playing={lyricsPlaying}
-		visible={lyricsActive}
+		visible={lyricsActive && !board}
 		ball={lyricsStyle.ball}
 		highlight={lyricsStyle.highlight}
 		leadSec={lyricsLeadSec}
@@ -1087,6 +1122,13 @@
 			unreachable={joinUnreachable}
 			roomCode={data.roomCode}
 			join={isCopy ? copyChip : undefined}
+		/>
+	{:else if board && TvBoard}
+		<TvBoard
+			now={current ? boardTurn(current) : null}
+			next={boardNext}
+			qrDataUrl={data.qrDataUrl}
+			roomCode={data.roomCode}
 		/>
 	{:else if wordsOnly && wordsChunk}
 		<!-- WORDS ONLY: no lower-third, reactions or join corner, just who is next, top-right where "Up next" stands.
@@ -1155,7 +1197,7 @@
 		THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed, in the same slot as during playback: a song change is
 		exactly when a new guest looks up. The identical corner component, so the slot does not move.
 	-->
-	{#if transient && !wordsOnly}
+	{#if transient && !wordsOnly && !board}
 		<div class="takeover-join">
 			<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" roomCode={data.roomCode} />
 		</div>
