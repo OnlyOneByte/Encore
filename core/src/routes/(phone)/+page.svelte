@@ -480,7 +480,10 @@
 	const cantMakeRow = (m: Media, v = verdicts) => canProcess(m, readinessFor(m)) && !makeableNow(m, v, defaultFetcher);
 	// A row's GROUP is the verdict's when the results (or the first verdict) came; a later change only takes its button,
 	// so a fetcher leaving a split fleet moves no row under a new heading (#1138).
-	const groupVerdicts = $derived.by(() => (rawResults, verdictKnown, untrack(() => verdicts)));
+	const groupVerdicts = $derived.by(() => {
+		void [rawResults, verdictKnown];
+		return untrack(() => verdicts);
+	});
 	const makeRows = $derived(rawRows.filter((m) => !cantMakeRow(m, groupVerdicts)));
 	const cantRows = $derived(rawRows.filter((m) => cantMakeRow(m, groupVerdicts)));
 	// Every row the group holds has lost its button since: it reads as the can't-make group, in place.

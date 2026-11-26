@@ -46,8 +46,14 @@ const songRow = readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8');
 const room = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
 
 test('the Sing tab splits unmade rows by makeableNow and gives the unmakeable ones no action', () => {
-	expect(home).toContain('!makeableNow(m, verdicts, defaultFetcher)');
+	expect(home).toContain('const cantMakeRow = (m: Media, v = verdicts) =>');
+	expect(home).toContain('!makeableNow(m, v, defaultFetcher)');
 	expect(home).toContain('{cantMakeHeading(cantRows.length)}');
+	// A row's group is the verdict the results came with, untracked; only its button follows a later one (#1138).
+	expect(home).toContain('return untrack(() => verdicts);');
+	expect(home).toContain('rawRows.filter((m) => !cantMakeRow(m, groupVerdicts))');
+	expect(home).toContain('rawRows.filter((m) => cantMakeRow(m, groupVerdicts))');
+	expect(home).toMatch(/\{#each rawView\.shown[\s\S]*?cantMake=\{cantMakeRow\(m\)\}[\s\S]*?\{\/each\}/);
 	expect(home).toMatch(/<SongRow[^>]*\bcantMake \/>/);
 	expect(songRow).toContain('{#if cantMake}');
 	// The cantMake arm comes before both action buttons, so neither can render on such a row.
@@ -62,7 +68,7 @@ test('the room verdicts reach the tab, and the promise line needs both', () => {
 	expect(home).toContain('const onlyReady = $derived(noMaker || !verdicts.canFetch);');
 	expect(home).toMatch(/\(id\) => mediaStatus\.get\(id\),\s*verdicts\.canMake\s*\)/);
 	// "See all ready songs" only when nothing ready matched, and LAST, after the rows and the widen, so it pushes nothing.
-	expect(home).toContain('{#if cantRows.length && !readyResults.length && library.length}');
+	expect(home).toContain('{#if (cantRows.length || makeNone) && !readyResults.length && library.length}');
 	expect(home.indexOf('{#each cantView.shown')).toBeLessThan(home.indexOf('See all ready songs'));
 	expect(home.indexOf('Not it? Search everything')).toBeLessThan(home.indexOf('See all ready songs'));
 	// A can't-make row keeps the button's box, so the row's height holds when a maker drops.
