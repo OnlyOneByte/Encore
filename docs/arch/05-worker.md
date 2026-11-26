@@ -1025,6 +1025,42 @@ wire, which had made core retry the next job at 2 (`Client._finishing`).
 fetching about 1.5 GB of checkpoints could fill the disk. A figure the OS will not give counts as roomy, so
 nothing changes where it cannot be measured, and `ENCORE_WARMUP=1` runs it regardless.
 
+### 9.3 The warm separator, and where each song's time goes
+
+**On CPU, torch demucs stays loaded between songs** (`adapters/demucs_warm.py`, #1357). demucs reloads its
+model and builds a new `-j` pool on every `main`, so a cold separation starts a process, loads the model and
+spawns its pool workers, each loading it again, before a sample is separated. `demucs_pool --serve` does
+that once and then takes one song per stdin line, the same model object reaching the same pool each time.
+One child is kept, and only while no job is using it: a separation that finds it busy runs today's cold
+child, so the RAM held is one separator's `-j` workers, which `_demucs_ram_cap` already sized. It is let go
+after 20 songs, 10 idle minutes, any failure, a stop or stall, a different model, `-j` or thread count, or
+under 4 GB of free RAM (`WARMUP_MIN_FREE_RAM_GB`). Auto is on for CPU when 4 GB plus about 1 GB per `-j`
+worker is free (`hardware.resolve_warm_separator`); `ENCORE_WARM_SEPARATOR` overrides. An idle child used
+0.00 cores over 90 s, and whisper on the same vocals took 120.5 s and 84.7 s beside one against 126.3 s
+and 195.3 s without, so it costs RAM and nothing else.
+
+Measured on the 32-core aarch64 box: each song separated cold and then warm, back to back, `-j 4` and 32
+threads, so both see the same load:
+
+| song | cold | warm | saved |
+| --- | --- | --- | --- |
+| Chosen (230 s) | 47.9 s | 42.0 s | 5.9 s |
+| MAYDAY (248 s) | 48.8 s | 40.2 s | 8.6 s |
+| Fly Away (194 s) | 45.7 s | 39.1 s | 6.6 s |
+
+About 7 s a song, 0.03× its length: less than proposal 37's ~12 s, which was a 1 s clip's whole cold run.
+End to end (3 songs picked one after another on one worker, main `8cd19bfb` against this, alternating) the
+saving was lost in the noise of a shared host: the branch runs sat at load 42 against 32–34, and the first
+song's lyrics took 222–250 s against 110 s there, all of it in whisper on that run's vocals stem (demucs's
+random shift makes each stem differ), not in the separator.
+
+**Every attempt reports its seconds per stage** (`workflows/stage_clock.py`): the step wrappers time each
+step they actually run (a step a resumed workflow replays reports nothing, and a step run twice is one
+stage, summed), `_run` puts them on `job:complete`'s `stages`, and core shows them on the speed page and
+in each song's history (`metrics-format.STAGE_LABELS`). On the run above, Chosen's lyrics were
+*listening for words 173 s · timing the words 74 s · reading captions 3 s*, which is how the slow song
+above was traced to whisper.
+
 ## 10. Invariants
 
 | # | Invariant | Why | Held by |

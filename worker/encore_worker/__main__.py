@@ -35,7 +35,7 @@ from encore_worker.steps.records import AlignOutcome, JobRef, tier_of_label
 from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
 from encore_worker.transport import client as transport_client
 from encore_worker.transport.client import Client
-from encore_worker.workflows import durable
+from encore_worker.workflows import durable, stage_clock
 from encore_worker.workflows.fetch import FetchOutcome, run_fetch
 from encore_worker.workflows.stems import StemsOutcome
 
@@ -188,7 +188,9 @@ async def main() -> None:
         free_ram_gb=free_ram_gb,
         # The checkpoints share the zoo's cache volume (XDG_CACHE_HOME in the image).
         disk_gb=hardware.free_disk_gb(config.zoo_model_dir) if config.zoo_model_dir else None,
+        warm_separator=config.warm_separator,
     )
+    warm = bool(profile.warm_separator.count)
     # BEFORE any model loads, so torch and every demucs child run the picked thread count.
     # The probe's count stands where nothing was pinned and torch could not be asked again.
     threads = hardware.apply_threads(profile.threads.count) or report.threads
@@ -202,6 +204,7 @@ async def main() -> None:
         demucs_jobs=profile.demucs_jobs.count,
         asr_compute=profile.asr_compute,
         warmup=bool(profile.warmup.count),
+        warm_separator=warm,
     )
     caps = hardware.capabilities(
         backend=backend.name,
@@ -255,6 +258,7 @@ async def main() -> None:
         zoo_model_dir=config.zoo_model_dir,
         demucs_jobs=profile.demucs_jobs.count,
         threads=profile.separator_threads.count,
+        warm=warm,
     )
 
     def settled(job_id: str, resumable: bool) -> None:
@@ -303,7 +307,7 @@ async def main() -> None:
         from encore_worker.workflows.dbos_align import DbosAlignSteps  # noqa: PLC0415
 
         impl = AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client, loop))
-        return DbosAlignSteps(impl, dbos)
+        return DbosAlignSteps(impl, dbos, job_id=job.job_id)
 
     def stems_steps_for(job: JobRef) -> Any:
         from encore_worker.workflows.dbos_stems import DbosStemsSteps  # noqa: PLC0415
@@ -324,6 +328,7 @@ async def main() -> None:
                 # This job is already counted, so a song alone gets every core and the `-j` they hold.
                 demucs_jobs=profile.demucs_share(len(client.running_jobs())),
                 threads=profile.separator_share(len(client.running_jobs())),
+                warm=warm,
             )
             or separator
         )
@@ -339,7 +344,7 @@ async def main() -> None:
             publish_stem_format=client.publish_stem_format,
             device=device,
         )
-        return DbosStemsSteps(impl, dbos)
+        return DbosStemsSteps(impl, dbos, job_id=job.job_id)
 
     durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
 
@@ -737,9 +742,12 @@ async def _run(
             ceiling_sec=config.job_ceiling_sec,
         )
     )
+    started = time.monotonic()
     try:
-        return await _dispatch(assign, job, config, adapters, separator, client, dbos)
+        frame = await _dispatch(assign, job, config, adapters, separator, client, dbos)
     finally:
+        # Taken whatever happened, so a failed job's seconds never wait for an id that will not complete.
+        stages = stage_clock.take(job.job_id)
         cli.current_token.reset(bound)
         keeper.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -748,6 +756,11 @@ async def _run(
         task = asyncio.current_task()
         if task is None or not task.cancelling():
             cli.tokens.pop(job.job_id, None)
+    if not isinstance(frame, f.Complete) or frame.stages is not None:
+        return frame
+    # A fetch runs no durable steps: its one stage is the whole job.
+    spent = stages or ({"stage": assign.action, "ms": round((time.monotonic() - started) * 1000)},)
+    return replace(frame, stages=spent)
 
 
 #: How long a stop waits before it says the job's work is still running. It goes on waiting: a SIGKILLed

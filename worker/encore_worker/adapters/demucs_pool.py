@@ -124,13 +124,60 @@ class ModelProcessPool:
             self._pool = None
 
 
+#: The line a `--serve` child prints when a song is done, then a JSON `{"ok": bool, "why": str}`.
+DONE = "\x1eencore-separated"
+
+
 def main(argv: list[str]) -> int:
     import demucs.apply  # noqa: PLC0415
     import demucs.separate  # noqa: PLC0415
 
+    if argv[:1] == ["--serve"]:
+        return serve()
     # demucs builds its `-j` pool by this name; ours stands in for it without being one.
     demucs.apply.ThreadPoolExecutor = ModelProcessPool  # type: ignore[misc,assignment]
     demucs.separate.main(argv)
+    return 0
+
+
+def serve() -> int:
+    """Separate song after song, one `{"argv": [...]}` line on stdin each, keeping the model and its `-j` pool
+    workers loaded between them (#1357): demucs reloads the model and builds a new pool every `main`, which
+    was ~12 s of each song on the 32-core box. A song ends with a `DONE` line; stdin closing ends the
+    child."""
+    import json  # noqa: PLC0415
+    import traceback  # noqa: PLC0415
+
+    import demucs.apply  # noqa: PLC0415
+    import demucs.separate  # noqa: PLC0415
+
+    pools: dict[int, ModelProcessPool] = {}
+
+    def pool(workers: int) -> ModelProcessPool:
+        # One per `-j`, kept: the same model object reaches it every song, so its workers are not respawned.
+        return pools.setdefault(workers, ModelProcessPool(workers))
+
+    demucs.apply.ThreadPoolExecutor = pool  # type: ignore[misc,assignment]
+    models: dict[tuple[str, str], Any] = {}
+    load = demucs.separate.get_model_from_args
+
+    def cached(args: Any) -> Any:
+        key = (str(args.name), str(getattr(args, "repo", None)))
+        if key not in models:
+            models[key] = load(args)
+        return models[key]
+
+    demucs.separate.get_model_from_args = cached
+    for line in sys.stdin:
+        ok, why = True, ""
+        try:
+            demucs.separate.main(json.loads(line)["argv"])
+        except SystemExit as exited:  # demucs exits on a file it cannot read
+            ok, why = exited.code in (0, None), f"exit {exited.code}"
+        except Exception as failed:  # noqa: BLE001 - reported to the worker, which retires this child
+            traceback.print_exc()
+            ok, why = False, f"{type(failed).__name__}: {failed}"
+        print(f"{DONE} {json.dumps({'ok': ok, 'why': why})}", flush=True)
     return 0
 
 

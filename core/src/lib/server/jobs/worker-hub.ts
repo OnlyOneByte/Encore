@@ -23,7 +23,8 @@ import {
 	LYRICS_NOTES,
 	PROFILE_SETTINGS,
 	resolveProcessSeparator,
-	isTerminalJob
+	isTerminalJob,
+	WORKER_STAGES
 } from '../../contract';
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
@@ -268,6 +269,29 @@ export function resolvedFacts(facts: unknown): AttemptFacts {
 	// A known reason only: it reaches the song page, so free text from a worker never does.
 	if ((LYRICS_NOTES as readonly unknown[]).includes(f.lyricsNote)) out.lyricsNote = f.lyricsNote as string;
 	return out;
+}
+
+/** Stages read from one completion; the worker sends about a dozen. */
+const STAGES_MAX = 32;
+/** A stage's longest believable run: a day, longer than any job's ceiling. */
+const STAGE_MS_MAX = 86_400_000;
+
+/** `job:complete`'s `stages` as the attempt row may store them, or undefined for none. A worker's list is held to
+ *  `STAGES_MAX` entries, each `ms` a finite count from 0 to `STAGE_MS_MAX` (anything else is dropped), and the
+ *  known names only (`WORKER_STAGES`, each with a speed-page label): an unknown name, a newer worker's step, is
+ *  summed into one `other` row, so it neither reaches the page as raw text nor grows the list. An older worker
+ *  sends none. */
+export function attemptStagesJson(stages: unknown): string | undefined {
+	if (!Array.isArray(stages)) return undefined;
+	const spent = new Map<string, number>();
+	for (const s of stages.slice(0, STAGES_MAX)) {
+		if (!s || typeof s !== 'object') continue;
+		const { stage, ms } = s as { stage?: unknown; ms?: unknown };
+		if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0 || ms > STAGE_MS_MAX) continue;
+		const name = (WORKER_STAGES as readonly unknown[]).includes(stage) ? (stage as string) : 'other';
+		spent.set(name, (spent.get(name) ?? 0) + Math.round(ms));
+	}
+	return spent.size ? JSON.stringify([...spent].map(([stage, ms]) => ({ stage, ms }))) : undefined;
 }
 
 export function validateWorkerMessage(msg: unknown): string | null {
@@ -983,7 +1007,7 @@ export class WorkerHub {
 		// MUST precede `complete`, which seals the attempt row; a sealed row is never written again.
 		this.#d.attempts?.reportFacts(msg.jobId, {
 			...resolvedFacts(msg.facts),
-			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined,
+			stages: attemptStagesJson(msg.stages),
 			selection: msg.selection ? JSON.stringify(msg.selection) : undefined,
 			// The worker sends its trail on completion AND streams it as `job:state`; prefer the streamed one,
 			// which survives a worker that died before reporting. Same storage reasoning as `stages`: one JSON

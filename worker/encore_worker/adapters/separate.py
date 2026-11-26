@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+from encore_worker.adapters import demucs_warm
 from encore_worker.adapters.cli import ToolFailed, run
 from encore_worker.adapters.ports import ProgressSink
 
@@ -126,12 +127,20 @@ class TorchDemucs:
     name = "demucs"
 
     def __init__(
-        self, *, model: str | None = "htdemucs", device: str = "cpu", jobs: int = 1, threads: int = 0
+        self,
+        *,
+        model: str | None = "htdemucs",
+        device: str = "cpu",
+        jobs: int = 1,
+        threads: int = 0,
+        warm: bool = False,
     ) -> None:
         self._model = resolve_model(model)
         self._device = device
         self._jobs = jobs
         self._threads = threads
+        #: Separate on the child kept loaded between songs (`demucs_warm`), CPU only.
+        self._warm = warm and device == "cpu"
 
     @property
     def jobs(self) -> int:
@@ -147,12 +156,18 @@ class TorchDemucs:
         return self._model
 
     def separate(self, input_wav: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> Stems:
-        run(
-            demucs_argv(input_wav, out_dir, self._model, device=self._device, jobs=self._jobs),
+        argv = demucs_argv(input_wav, out_dir, self._model, device=self._device, jobs=self._jobs)
+        env = thread_env(self._threads)
+        # `argv[3:]` is demucs.separate's own: the warm child is already `python -m demucs_pool`.
+        warm = self._warm and demucs_warm.separate(
+            argv[3:],
+            key=(self._model, str(self._jobs), str(self._threads)),
+            env=env,
             on_progress=on_progress,
             idle_sec=DEMUCS_IDLE_SEC,
-            env=thread_env(self._threads),
         )
+        if not warm:  # off, or the warm child is out with another job
+            run(argv, on_progress=on_progress, idle_sec=DEMUCS_IDLE_SEC, env=env)
         return demucs_paths(out_dir, input_wav, self._model)
 
     def prefetch(self) -> None:
@@ -462,6 +477,7 @@ def build_separator(
     zoo_model_dir: str = "",
     demucs_jobs: int = 1,
     threads: int = 0,
+    warm: bool = False,
 ) -> TorchDemucs | MlxDemucs | Roformer | Any | None:
     """The separator for the RESOLVED backend, or None when this box cannot build one — a refused job rather
     than a crashed process, `host.capabilities` having already declined to advertise `stems`.
@@ -497,7 +513,7 @@ def build_separator(
         return MlxDemucs(model=model, mlx_bin=mlx_bin, ffmpeg_bin=ffmpeg_bin)
     if not module_available("demucs"):
         return None
-    return TorchDemucs(model=model, device=device, jobs=demucs_jobs, threads=threads)
+    return TorchDemucs(model=model, device=device, jobs=demucs_jobs, threads=threads, warm=warm)
 
 
 __all__ = [

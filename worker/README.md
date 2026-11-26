@@ -307,14 +307,17 @@ prints:
 [worker] threads 32 (auto 32 (cpu, 32 cores; the models take turns)); separators 16 (auto 16 (32 cores / 2 at once; 32 for a song alone)); demucs -j 2 (auto 2 (cpu, 16 separator cores: chunks in worker processes, a model each); 4 for a song alone)
 [worker] asr compute float32 (auto (cpu))
 [worker] warm-up on (auto on (ENCORE_WARMUP=0 turns it off))
+[worker] warm separator on (auto on (ENCORE_WARM_SEPARATOR=0 turns it off))
 ```
 
 and in a `docker --cpus 4` container on the same host, `threads 4`.
 
 Right after the first dial, off the event loop, the warm-up fetches any missing checkpoint and loads the
 models the first song would otherwise wait for, one line each (`[worker] warm: HUBERT_ASR_LARGE 7.4 s`).
-Jobs are taken during it; one that arrives first loads what it needs itself, as before. demucs runs as a
-new process per job, so only its checkpoint download is moved to boot. Auto skips the warm-up when under
+Jobs are taken during it; one that arrives first loads what it needs itself, as before. demucs is not
+loaded at boot, only its checkpoint fetched: on CPU the first song starts the warm separator, which keeps
+the model and its `-j` pool workers loaded for the songs after it (`adapters/demucs_warm.py`;
+[docs/arch/05-worker.md](../docs/arch/05-worker.md) §9.3). Auto skips the warm-up when under
 4 GB of RAM or 5 GB of disk where the models are cached is free, since loading early would only crowd the
 first song or fill the disk (`hardware.resolve_warmup`).
 
@@ -345,6 +348,7 @@ worker peaked at 8.7 GB at 2 against 7.5 GB at 1.
 | `ENCORE_ASR_MODEL` | `base` | the default whisper checkpoint: one of `ASR_MODELS` |
 | `ENCORE_ASR_COMPUTE` | auto: `float16` on CUDA, else `float32` | whisper's compute type: one of `ASR_COMPUTE_TYPES`. `int8` is faster on CPU but unmeasured against the alignment corpus, so it is never the auto pick |
 | `ENCORE_WARMUP` | auto: on unless under 4 GB of RAM or 5 GB of model-cache disk is free | `0` skips the boot warm-up: nothing is fetched or loaded until a job needs it. `1` runs it whatever is free |
+| `ENCORE_WARM_SEPARATOR` | auto: on a CPU box with 4 GB free plus about 1 GB per demucs `-j` worker | `0` starts torch demucs afresh for every song, as before. `1` keeps it loaded whatever is free. One is kept, while nobody uses it; it is let go after 20 songs, 10 idle minutes, a failure, or under 4 GB free |
 | `ENCORE_ALIGN_MODEL` | `HUBERT_ASR_LARGE` | the English alignment bundle, a torchaudio pipeline name with a calibration row |
 | `ENCORE_ALIGN_EXPERIMENTS` | none | comma-separated names from `ALIGN_EXPERIMENTS`: most switch on an arm, seven switch off a default-on feature (04-alignment.md §14) |
 | `ENCORE_FFMPEG_BIN` | best available | the ffmpeg to run (`host/ffmpeg.py`, 05-worker.md §5) |

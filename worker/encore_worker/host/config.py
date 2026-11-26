@@ -141,6 +141,9 @@ class Config:
     #: Load the models and fetch missing checkpoints right after the dial (`ENCORE_WARMUP`); None means
     #: `hardware.resolve_warmup` decides from the free RAM and disk.
     warmup: bool | None = None
+    #: Keep torch demucs loaded between songs (`ENCORE_WARM_SEPARATOR`); None means
+    #: `hardware.resolve_warm_separator` decides from the device and free RAM.
+    warm_separator: bool | None = None
     #: A bare name as the dataclass default, but `from_env` resolves a real path through `host.ffmpeg`. Left
     #: bare so a `Config()` built in a test does not need the `ffmpeg` extra installed.
     ffmpeg_bin: str = "ffmpeg"
@@ -250,6 +253,7 @@ class Config:
             asr_compute=compute,
             # Unset is None (auto), not `_flag`'s False: the box decides from its free RAM and disk.
             warmup=_warmup(src.get("ENCORE_WARMUP", "")),
+            warm_separator=_warmup(src.get("ENCORE_WARM_SEPARATOR", "")),
             media_dir=text("ENCORE_MEDIA_DIR", "/media"),
             dbos_db=dbos_db,
             backend=backend,

@@ -226,3 +226,60 @@ test('the per-song audit shows the threads an attempt ran with', () => {
 	hub.handle(hello(PROFILE));
 	expect(toAudit(attempts.byMedia('m1')[0]).models.threads).toBe('16');
 });
+
+/** A completed stems attempt that carried `stages`, read back from the ledger as stored. */
+function storedStages(stages: unknown): string | null {
+	const { hub, jobs, attempts } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle(hello(PROFILE));
+	const jobId = jobs.listByStatus('assigned')[0].id;
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '/media/x.flac',
+		artifacts: { stems: { instrumental: '/media/x.flac' } },
+		stages: stages as never
+	});
+	return attempts.byMedia('m1')[0].stages;
+}
+
+test('a worker’s stages are stored as the speed page can show them, bounded (#1357)', () => {
+	const sent = [
+		{ stage: 'separate', ms: 48_700 },
+		{ stage: 'publish_stems', ms: 2_900.4 }
+	];
+	expect(JSON.parse(storedStages(sent)!)).toEqual([
+		{ stage: 'separate', ms: 48_700 },
+		{ stage: 'publish_stems', ms: 2_900 }
+	]);
+	// Oversized and malformed: 500 entries, junk shapes, impossible times, and names the page has no label for.
+	const junk = [
+		{ stage: 'separate', ms: -1 },
+		{ stage: 'separate', ms: Number.NaN },
+		{ stage: 'separate', ms: 1e12 },
+		{ stage: 'separate', ms: '5' },
+		null,
+		'separate',
+		{ stage: '<img src=x onerror=alert(1)>', ms: 1_000 },
+		{ stage: 'x'.repeat(10_000), ms: 2_000 },
+		{ ms: 500 },
+		{ stage: 'transcribe', ms: 30_000 },
+		...Array.from({ length: 490 }, (_, i) => ({ stage: `step${i}`, ms: 1 }))
+	];
+	const kept = JSON.parse(storedStages(junk)!) as { stage: string; ms: number }[];
+	// The first 32 entries only: `transcribe` and 22 unnamed `stepN`, after 3 unnamed ones, summed into `other`.
+	expect(kept).toEqual([
+		{ stage: 'other', ms: 1_000 + 2_000 + 500 + 22 },
+		{ stage: 'transcribe', ms: 30_000 }
+	]);
+	expect(JSON.stringify(kept)).not.toContain('<img');
+});
+
+test('a worker that sends no stages, or nothing usable, stores none, as before (#1357)', () => {
+	expect(storedStages(undefined)).toBeNull();
+	expect(storedStages([])).toBeNull();
+	expect(storedStages({ stage: 'separate', ms: 1 })).toBeNull();
+	expect(storedStages([{ stage: 'separate', ms: -5 }])).toBeNull();
+});

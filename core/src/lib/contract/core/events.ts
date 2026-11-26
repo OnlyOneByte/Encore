@@ -412,6 +412,31 @@ export const PICKED_AT_BOOT: readonly ProfileSetting[] = [
 /** Mirrors the worker's `config.ASR_COMPUTE_TYPES`; anything else is dropped. */
 export const ASR_COMPUTE_TYPES = ['float32', 'float16', 'bfloat16', 'int8', 'int8_float16', 'int8_float32'] as const;
 
+/** The stage names core stores from `job:complete`'s `stages`: the coarse progress stages, the worker's timed steps
+ *  (`stage_clock`, #1357), `fetch` for a fetch job, and `other`, where core sums a name it does not know. Each has
+ *  a speed-page label. */
+export const WORKER_STAGES = [
+	'downloading',
+	'separating',
+	'aligning',
+	'fetch',
+	'acquire_audio',
+	'decode_to_wav',
+	'separate',
+	'probe_silence',
+	'measure_profile',
+	'publish_stems',
+	'fetch_captions',
+	'fetch_provider_lyrics',
+	'fetch_pinned_text',
+	'transcribe',
+	'time_text',
+	'diarize',
+	'publish',
+	'other'
+] as const;
+export type WorkerStage = (typeof WORKER_STAGES)[number];
+
 /** The SPLIT the core cannot see: only the worker observes a stage transition. */
 export interface StageTiming {
 	stage: string;

@@ -117,6 +117,7 @@ const EXPECTED = [
 	'TV_REMOVED_CLOSE_CODE',
 	'TV_VISUALIZERS',
 	'VOICE_BANDS',
+	'WORKER_STAGES',
 	'agreement',
 	'agreementScore',
 	'applyAndReseq',

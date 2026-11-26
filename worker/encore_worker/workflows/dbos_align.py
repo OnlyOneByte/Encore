@@ -20,6 +20,7 @@ from encore_worker.steps.records import (
     TimedDoc,
     TimeRequest,
 )
+from encore_worker.workflows import stage_clock
 
 
 class DbosAlignSteps:
@@ -29,19 +30,24 @@ class DbosAlignSteps:
     as class-level decorators because the DBOS instance does not exist at class-definition time.
     """
 
-    def __init__(self, impl: AlignStepsImpl, dbos: Any) -> None:
+    def __init__(self, impl: AlignStepsImpl, dbos: Any, *, job_id: str | None = None) -> None:
+        """`job_id` is whose `stage_clock` the steps' seconds go to; None times nothing."""
         self._impl = impl
+        j = job_id
         # `max_attempts=1` means "do not retry", not "do not checkpoint" — a completed step is still
         # recorded, so a resumed workflow skips it rather than re-running it.
-        self._acquire = _step(dbos, impl.acquire_audio, retries=3, name="acquire_audio")
-        self._captions = _step(dbos, impl.fetch_captions, retries=1, name="fetch_captions")
-        self._provider = _step(dbos, impl.fetch_provider_lyrics, retries=2, name="fetch_provider_lyrics")
+        self._acquire = _step(dbos, impl.acquire_audio, retries=3, name="acquire_audio", job_id=j)
+        self._captions = _step(dbos, impl.fetch_captions, retries=1, name="fetch_captions", job_id=j)
+        self._provider = _step(
+            dbos, impl.fetch_provider_lyrics, retries=2, name="fetch_provider_lyrics", job_id=j
+        )
         # A local read of the stored candidate (or the paste, already in the params): nothing transient.
-        self._pinned = _step(dbos, impl.fetch_pinned_text, retries=1, name="fetch_pinned_text")
-        self._transcribe = _step(dbos, impl.transcribe, retries=1, name="transcribe")
-        self._time = _step(dbos, impl.time_text, retries=1, name="time_text")
-        self._diarize = _step(dbos, impl.diarize, retries=1, name="diarize")
-        self._publish = _step(dbos, impl.publish, retries=1, name="publish")
+        self._pinned = _step(dbos, impl.fetch_pinned_text, retries=1, name="fetch_pinned_text", job_id=j)
+        self._transcribe = _step(dbos, impl.transcribe, retries=1, name="transcribe", job_id=j)
+        self._time = _step(dbos, impl.time_text, retries=1, name="time_text", job_id=j)
+        self._diarize = _step(dbos, impl.diarize, retries=1, name="diarize", job_id=j)
+        self._publish = _step(dbos, impl.publish, retries=1, name="publish", job_id=j)
+        # Bookkeeping, not work: untimed.
         self._note = _step(dbos, impl.note, retries=1, name="note")
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
@@ -91,13 +97,14 @@ class DbosAlignSteps:
         await self._note(job, state, attempt, verdict, why, knob)
 
 
-def _step(dbos: Any, fn: Any, *, retries: int, name: str) -> Any:
+def _step(dbos: Any, fn: Any, *, retries: int, name: str, job_id: str | None = None) -> Any:
     """Wrap one bound method as a DBOS step; `dbos=None` returns it unwrapped and runs without durability.
 
     The closure is REQUIRED, not stylistic: `DBOS.step` attaches `dbos_func_decorator_info` to what it
     decorates and a BOUND METHOD does not accept attribute assignment, so the method is closed over by a
-    plain async function, which does.
+    plain async function, which does. Timed INSIDE the step (`stage_clock`): a replayed one reports nothing.
     """
+    fn = stage_clock.timed(job_id, name, fn)
     if dbos is None:
         return fn
 
