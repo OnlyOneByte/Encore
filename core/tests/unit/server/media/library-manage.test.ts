@@ -235,7 +235,7 @@ describe('bulkManage', () => {
 		expect(pendingDeletes.has('m1')).toBe(false);
 	});
 
-	it('Make again queues one remake per song, behind every pick, a kept or queued one included', async () => {
+	it('Sound again queues one remake per song, behind every pick, a kept or queued one included', async () => {
 		const { app, pendingDeletes } = await harness();
 		pendingDeletes.schedule('m2'); // waiting out a delete: not in Library
 		const jobs = new JobRepository(migratedDb());

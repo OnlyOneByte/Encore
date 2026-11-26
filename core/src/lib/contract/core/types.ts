@@ -78,7 +78,7 @@ export interface Media {
 
 /** GET /api/library/sizes, host only: what each ready song holds in the media store. See docs/SERVER.md#managing-the-library. */
 export interface LibrarySizes {
-	/** `remakeFailed` / `lyricsRemakeFailed`: why the song's last Make again (sound / lyrics) didn't work, while that
+	/** `remakeFailed` / `lyricsRemakeFailed`: why the song's last Sound again / Lyrics again didn't work, while that
 	 *  is still the latest. */
 	songs: Record<
 		string,

@@ -95,7 +95,7 @@ test('the bulk bar fits at 320 and 390 with Keep off and a four-digit count, eve
 	}
 });
 
-test('bulk Make again with a song in tonight’s queue: it waits for its turn, and the toast says so', async ({
+test('bulk Sound again with a song in tonight’s queue: it waits for its turn, and the toast says so', async ({
 	world
 }) => {
 	const worker = await startFakeWorker(world);
@@ -220,7 +220,7 @@ test('bulk Lyrics again: three songs stay ready, one playing on the TV swaps its
 	}
 });
 
-test('bulk Make again: three picked songs stay ready, each gets new files, and the open TV plays one', async ({
+test('bulk Sound again: three picked songs stay ready, each gets new files, and the open TV plays one', async ({
 	world
 }, testInfo) => {
 	// Slow enough that the three remakes span many 100 ms samples.

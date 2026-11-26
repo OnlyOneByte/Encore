@@ -12,7 +12,7 @@ async function libraryRow(page: Page, id: string): Promise<Media | undefined> {
 	return body.library.find((m) => m.id === id);
 }
 
-test('Make again for the lyrics swaps them on a playing TV with no gap, and the old documents go', async ({
+test('Lyrics again swaps them on a playing TV with no gap, and the old documents go', async ({
 	world
 }) => {
 	test.setTimeout(150_000);

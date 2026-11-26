@@ -405,7 +405,7 @@ test('a remake waits while its song is queued or playing, and runs once the turn
 	expect(waitsForTurn({ jobType: 'stems-upgrade', mediaId: 'm1' }, queued, 'e2')).toBe(false);
 });
 
-test('a second Make again while one is waiting is the same job, and a finished one can be asked again', () => {
+test('a second Sound again while one is waiting is the same job, and a finished one can be asked again', () => {
 	const h = harness();
 	const first = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
 	expect(requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 }).id).toBe(first.id);
