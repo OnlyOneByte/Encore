@@ -103,6 +103,13 @@ const turns = (state: AuthoritativeState) => state.entries.map((e) => e.mediaId)
 const stemsJob = (app: EncoreApp, id: string) => app.jobs.findLive(id, 'stems');
 /** Lets the store check and the process it may start settle. */
 const settle = () => new Promise((r) => setTimeout(r, 50));
+/** Polls `cond` on every turn of the event loop, failing by name after 2 s. */
+async function waitFor(cond: () => boolean) {
+	for (const deadline = Date.now() + 2_000; !cond();) {
+		if (Date.now() > deadline) throw new Error('waitFor: condition never held');
+		await new Promise((r) => setImmediate(r));
+	}
+}
 
 test('the repro: an evicted song added from a stale Library is made, not booked dead', async () => {
 	const m = song('caroline');
@@ -214,4 +221,74 @@ test('a resend of an applied add is re-acked, never refused or made twice', () =
 	handleQueueCommand(cmd, deps, () => r.rejects.push('rejected'));
 	expect(asked).toBe(0);
 	expect(r.rejects).toEqual([]);
+});
+
+test('at the cap, a still-ready song whose stems were deleted by hand becomes an honest dead turn (#1341)', async () => {
+	const busy = ['a', 'b'].map((id) => song(id, { stemStatus: 'none', instrumentalRef: undefined }));
+	const m = song('caroline');
+	await writeSidecar(sidecarFromMedia(m, T0));
+	const r = room([...busy, m]);
+	r.app.settings.setGlobal({ maxProcessesPerSinger: 2 });
+	r.add('a');
+	r.add('b');
+	r.add('caroline');
+	await settle();
+	// Booked (it read as ready), and the refused remake leaves no job behind it.
+	expect(turns(r.state)).toEqual(['a', 'b', 'caroline']);
+	expect(stemsJob(r.app, 'caroline')).toBeNull();
+	// The song is not made any more, so its turn is the stalled one with Try again and Pick another.
+	expect(m.stemStatus).toBe('none');
+	expect(m.instrumentalRef).toBeUndefined();
+	expect((await readSidecar('caroline'))!.artifacts.instrumental).toBeNull();
+	expect(r.events).toContainEqual({ type: 'media:status', mediaId: 'caroline', status: 'canceled', pct: 0 });
+});
+
+/** theo at the cap of 1 (a live job on another song), and caroline still marked ready with its stems gone. */
+async function capRace() {
+	const busy = song('busy', { stemStatus: 'queued', instrumentalRef: undefined });
+	const m = song('caroline');
+	await writeSidecar(sidecarFromMedia(m, T0));
+	const r = room([busy, m]);
+	r.app.settings.setGlobal({ maxProcessesPerSinger: 1 });
+	r.app.jobs.enqueue('busy', 'stems', 0, T0, undefined, 'theo');
+	const words = () =>
+		r.events.flatMap((e) => (e.type === 'media:status' && e.mediaId === 'caroline' ? [e.status] : []));
+	return { r, m, words };
+}
+
+test('a second singer under the cap adds the same song at once: their job runs, never reset (#1345)', async () => {
+	const { r, m, words } = await capRace();
+	prepareTurn(r.app, 'caroline', 'theo');
+	prepareTurn(r.app, 'caroline', 'ana');
+	await settle();
+	expect(stemsJob(r.app, 'caroline')?.status).toBe('queued');
+	expect(m.stemStatus).toBe('queued');
+	expect(words().at(-1)).not.toBe('canceled');
+});
+
+test('a job filed while the reset clears the files keeps the last word (#1345)', async () => {
+	const { r, m, words } = await capRace();
+	prepareTurn(r.app, 'caroline', 'theo');
+	// The reset has forgotten the song and is clearing its sidecar: ana's add lands in that window.
+	await waitFor(() => m.stemStatus === 'none');
+	prepareTurn(r.app, 'caroline', 'ana');
+	await settle();
+	expect(stemsJob(r.app, 'caroline')?.status).toBe('queued');
+	expect(m.stemStatus).toBe('queued');
+	expect(words().at(-1)).toBe('separating');
+});
+
+test('the song on stage is never reset, even at the cap with its stems gone', async () => {
+	const { r, m, words } = await capRace();
+	r.state.hydrate(
+		[{ id: 'e1', mediaId: 'caroline', singerId: 'ana', status: 'playing', addedAt: T0, rotationSeq: 0 }],
+		{
+			...r.state.playback,
+			currentEntryId: 'e1'
+		}
+	);
+	prepareTurn(r.app, 'caroline', 'theo');
+	await settle();
+	expect(m.stemStatus).toBe('ready');
+	expect(words()).toEqual([]);
 });

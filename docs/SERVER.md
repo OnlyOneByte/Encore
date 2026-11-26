@@ -1483,6 +1483,8 @@ and its `fetch` job dying 120 s later for want of a connected worker.
   phone's stale Library row can still offer "+" on a song that isn't ready any more:
   - **Ready by the Sing tab's rule (`readyToSing`):** booked. Its stems are then checked in the store, and a song
     whose file is gone (evicted, deleted by hand) is made again, as a pick through `/api/process` would make it.
+    When that remake is refused (the singer is at the cap), the song is reset to not made, as eviction resets one.
+    The turn is then the honest dead turn, with Try again and Pick another (#1341).
   - **Being made (a live fetch or stems job):** booked onto that job. Rotation holds the turn until the song is made.
   - **Otherwise:** the process starts as `/api/process` starts it, through the same `startProcess`. A process that
     can't start refuses the add with the route's own words, such as the cap or a name-match-only song.
