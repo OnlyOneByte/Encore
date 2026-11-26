@@ -448,9 +448,10 @@ tree; any non-zero exit is a real finding.
 above) on the exact commit, with no new failures against `main`. A UI change also carries its phone and TV
 frames, and `bun run ui:review` GIFs for anything that moves.
 
-[`.github/workflows/`](.github/workflows/) holds five workflow definitions: `ci.yml` (core) and
+[`.github/workflows/`](.github/workflows/) holds six workflow definitions: `ci.yml` (core) and
 `ci-worker.yml` (worker) on pull requests, an advisory `probes.yml` (the probe set, sharded) on pull requests
-and `main`, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. The two
+and `main`, `lint-cache.yml` on `main` (it saves the eslint cache a PR's `core-lint` starts from), plus a
+daily `nightly.yml` and a twice-monthly `ml.yml`. The two
 PR workflows run on every PR, a fork's included, with a read-only token and no secrets; each skips its heavy
 jobs when no path they cover changed. Core's checks run as three jobs side by side: `core` (unit tests,
 typecheck, format, build, deadcode, `gate:measured`), `core-lint` and `core-fuzz` (the flow fuzz). The

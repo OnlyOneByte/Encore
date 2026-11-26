@@ -1,0 +1,47 @@
+# Keeps core's eslint cache warm for pull requests (#1375). A PR can restore caches saved on `main` but not
+# another PR's, and ci.yml runs only on PRs, so without this every PR's first `core-lint` was cold (5-9 min).
+# One lint per push to `main` that touches core: warm itself, so it costs about a runner-minute.
+name: lint cache
+
+on:
+  push:
+    branches: [main]
+    paths: ['core/**']
+
+permissions:
+  contents: read
+
+# Only the newest `main` matters.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+
+jobs:
+  core-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The same image, path and key as ci.yml's `core-lint`, so its restore-keys prefix matches this save.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: npm install -g bun@${{ env.BUN_VERSION }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('core/bun.lock') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: core/.eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('core/bun.lock') }}-${{ github.sha }}
+          restore-keys: eslint-${{ runner.os }}-${{ hashFiles('core/bun.lock') }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
