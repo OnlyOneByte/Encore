@@ -1478,6 +1478,16 @@ and its `fetch` job dying 120 s later for want of a connected worker.
 - **The per-singer cap counts live process JOBS, never queue entries.** The entry rides the WebSocket and
   the process rides HTTP, and only the entry is droppable — a phone tapping Sing while its socket
   reconnects files a process with no entry to count, so an entry-derived cap admits every tap.
+- **A queue add never books a turn nothing will make** (#1162). An `add` or a Pick another (`replace-media`) runs
+  the hub's `prepareAdd` (`jobs/start-process.ts` `prepareTurn`) before the op enters the `clientOpId` ledger, since a
+  phone's stale Library row can still offer "+" on a song that isn't ready any more:
+  - **Ready by the Sing tab's rule (`readyToSing`):** booked. Its stems are then checked in the store, and a song
+    whose file is gone (evicted, deleted by hand) is made again, as a pick through `/api/process` would make it.
+  - **Being made (a live fetch or stems job):** booked onto that job. Rotation holds the turn until the song is made.
+  - **Otherwise:** the process starts as `/api/process` starts it, through the same `startProcess`. A process that
+    can't start refuses the add with the route's own words, such as the cap or a name-match-only song.
+
+  A resend of an add already applied is re-acked and never checked again.
 - **`PROCESSES_UNCAPPED` (0) must be tested BEFORE any `count >= cap` comparison.** A comparison reached
   with `0` refuses the first request of every party. See [Settings scopes](#settings-scopes).
 - **`processState` evaluates in a fixed order, and it is not cosmetic.** `not-processable` is a permanent

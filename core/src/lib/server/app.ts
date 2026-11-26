@@ -46,6 +46,7 @@ import { reconcileStrandedGates } from './jobs/gate-reconcile';
 import { deadTurns, DeadTurnWatch, type DeadTurn } from './jobs/dead-turns';
 import { cancelJobsForMedia } from './jobs/cancel';
 import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
+import { prepareTurn } from './jobs/start-process';
 import {
 	readSidecarInOrder,
 	updateSidecar,
@@ -783,6 +784,8 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 				mediaById: app.mediaById,
 				broadcast: perFrame.broadcast
 			}),
+		// A turn is never booked for a song nothing will make (#1162): the add makes it, as Sing does.
+		prepareAdd: (mediaId, singerId) => prepareTurn(app, mediaId, singerId),
 		// The add-side mirror: a process filed at NO_QUEUE_PRIORITY is pulled to the turn's rotation position and dispatch kicked. No-ops with no process in flight.
 		onEntryAdded: (mediaId: string, entries: QueueEntry[]) =>
 			reprioritizeProcessForMedia(mediaId, {

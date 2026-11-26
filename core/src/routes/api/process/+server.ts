@@ -3,34 +3,9 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
-import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
-import {
-	processState,
-	requestProcess,
-	maxProcessesPerSinger,
-	claimsStems,
-	claimedStemsRef,
-	stemsMissing
-} from '$lib/server/jobs/process';
-import { clearArtifacts } from '$lib/server/media/sidecar';
-import type { MediaStore } from '$lib/server/media/store';
+import { processState } from '$lib/server/jobs/process';
+import { processRefusal, startProcess, stemsPresent } from '$lib/server/jobs/start-process';
 import { readJsonBody, requiredString } from '$lib/server/http/json-body';
-import type { MediaStatus } from '$lib/contract';
-
-const STORE_CHECK_MS = 2_000;
-
-/** A store that errors or doesn't answer in time trusts the status, as picks did before the file check. */
-async function storeHas(store: MediaStore, ref: string): Promise<boolean> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(true), STORE_CHECK_MS)));
-	try {
-		return await Promise.race([store.exists(ref), late]);
-	} catch {
-		return true;
-	} finally {
-		clearTimeout(timer);
-	}
-}
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -43,74 +18,22 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	// With a durable catalog, "already processed" is the common happy path (a song separated on a previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast. getSettings is passed to BOTH processState (the over-limit check, against the configured cap) and requestProcess (to choose the fetcher via needsFetch) — one dependency, so neither path can drift from the deployment's actual settings. getGlobal(), not getEffective(): this is typed `() => GlobalSettings`, and effective settings are `{ global, room }`, which type-checks nowhere useful.
 	const getSettings = () => app.settings.getGlobal();
 	// Checked once here because the store is async: a `ready` song whose stems were evicted must be made again.
-	const media = app.mediaById.get(mediaId);
-	const present = media && claimsStems(media, app.jobs) ? await storeHas(app.mediaStore, claimedStemsRef(media)) : true;
-	const stemsOnDisk = () => present;
+	const present = await stemsPresent(app, mediaId);
 	const state = processState(
 		mediaId,
-		{ mediaById: app.mediaById, state: app.state, jobs: app.jobs, getSettings, stemsOnDisk },
+		{ mediaById: app.mediaById, state: app.state, jobs: app.jobs, getSettings, stemsOnDisk: () => present },
 		singer.id
 	);
 	if (state === 'ready') {
 		app.publish({ type: 'media:status', mediaId, status: 'ready', pct: 100 });
 		return json({ alreadyReady: true, job: null });
 	}
-	if (state === 'unknown') return json({ error: 'unknown media' }, { status: 409 });
-	// A metadata-only source (Spotify): no fetcher can pull its bytes, so this is a permanent refusal, never a transient one — named explicitly rather than falling through to the generic message below.
-	if (state === 'not-processable') {
-		return json(
-			{
-				error: 'that’s a name match, not a playable song — search for it to make karaoke',
-				reason: 'not-processable'
-			},
-			{ status: 409 }
-		);
+	const refused = processRefusal(app, state);
+	if (refused) {
+		const { status, ...body } = refused;
+		return json(body, { status });
 	}
-	if (state === 'playing') return json({ error: 'that song is playing right now' }, { status: 409 });
-	// This singer is already at their concurrent-process cap. Answer with a real reason the phone can show, and 429 (Too Many Requests) so the surface can tell a limit apart from a generic refusal.
-	if (state === 'over-limit') {
-		return json(
-			{
-				error: `you already have ${maxProcessesPerSinger({ getSettings })} songs processing — wait for one to finish`,
-				reason: 'over-limit'
-			},
-			{ status: 429 }
-		);
-	}
-
-	const missing = !!media && stemsMissing(media, { jobs: app.jobs, stemsOnDisk });
-	const job = requestProcess(
-		mediaId,
-		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now, getSettings, stemsOnDisk },
-		singer.id
-	);
+	const job = await startProcess(app, mediaId, singer.id, present);
 	if (!job) return json({ error: 'could not start process' }, { status: 409 });
-
-	// The media just flipped to a processing file — persist it so a restart mid-process still knows this song is a file whose stems are pending (the reaper requeues the job; the catalog agrees).
-	const m = app.mediaById.get(mediaId);
-	if (m) app.media.upsert(m);
-	// upsert's sidecar merge keeps the old refs; see clearArtifacts.
-	if (missing) await clearArtifacts(mediaId);
-
-	// Show the live bar now, THEN kick the dispatcher in case a worker is already connected + idle. The order is
-	// load-bearing: dispatch's unservable sweep broadcasts `unservable: true` once, on first sight, and a status
-	// published after it carries no flag — which every phone reads as "the stall cleared", so each drew
-	// "Making karaoke… 0%" for the whole 120s TTL on a job the server already knew nobody could run. A REPEAT
-	// request (Try again, or a second singer) gets the same deduped job the sweep has already seen, and the sweep will
-	// not say it again — so this frame carries the hub's current verdict itself.
-	// Where the SONG is, not a hardcoded 'queued': `enqueue` is idempotent and hands back the EXISTING live job when one is in flight (§6 dedup), so a second tap on an already-separating song must report the real state — otherwise it would broadcast 'queued' to the whole room and snap every phone's progress strip back to the first chip. Reuses the shared mapping so this endpoint cannot drift from the hub.
-	app.publish({
-		type: 'media:status',
-		mediaId,
-		// A `ready` job goes through the same gate check the hub's completion path uses, so this endpoint cannot announce a singable song its own gates disagree with.
-		status:
-			job.status === 'ready'
-				? completedStatusFor(job, m)
-				: mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined),
-		pct: job.progressPct,
-		unservable: app.workerHub.isUnservable(job.id) || undefined
-	});
-	app.workerHub.dispatch();
-
 	return json({ job: { id: job.id, mediaId, status: job.status } });
 };

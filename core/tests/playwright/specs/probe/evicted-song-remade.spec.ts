@@ -73,6 +73,70 @@ test('evict, re-pick: the song is made again and plays', async ({ world }) => {
 	}
 });
 
+// #1162: the "+" on a stale Library row is a plain queue add, which never reaches /api/process. It must still make
+// the evicted song, so the turn plays without anyone tapping Try again.
+test('evict, then a stale "+": the add makes the song and its turn plays', async ({ world }) => {
+	test.setTimeout(180_000);
+	let worker = await startFakeWorker(world);
+	const maya = await world.openPhone('Maya');
+	let made: Awaited<ReturnType<typeof processTrack>>;
+	try {
+		made = await processTrack(maya, world.baseURL, track);
+	} finally {
+		await worker.stop();
+	}
+	await world.core.restart();
+	await expect
+		.poll(() => world.core.log().includes('retention: evicted derived artifacts'), { timeout: 30_000 })
+		.toBe(true);
+
+	worker = await startFakeWorker(world);
+	try {
+		const tv = await world.openTv();
+		await tapStage(tv);
+		await maya.goto('/');
+		const me = (await (await maya.request.get('/api/me')).json()) as { singer: { id: string } };
+		// The tap as the phone sends it: one queue add over its socket, with no /api/process before it.
+		await maya.evaluate(
+			({ mediaId, singerId }) =>
+				new Promise<void>((resolve, reject) => {
+					const ws = new WebSocket(`ws://${location.host}/ws?role=phone`);
+					ws.onopen = () => {
+						const entry = {
+							id: crypto.randomUUID(),
+							mediaId,
+							singerId,
+							status: 'queued',
+							addedAt: Date.now(),
+							rotationSeq: 0
+						};
+						ws.send(
+							JSON.stringify({
+								type: 'queue:command',
+								command: { clientOpId: crypto.randomUUID(), op: { op: 'add', entry } }
+							})
+						);
+						setTimeout(() => (ws.close(), resolve()), 500);
+					};
+					ws.onerror = () => reject(new Error('raw socket failed'));
+				}),
+			{ mediaId: made.id, singerId: me.singer.id }
+		);
+		const audio = () =>
+			tv
+				.locator('.slot.visible audio')
+				.first()
+				.evaluate((el) => ({ t: (el as HTMLAudioElement).currentTime, paused: (el as HTMLAudioElement).paused }))
+				.catch(() => null);
+		await expect
+			.poll(async () => (await audio())?.paused, { timeout: 60_000, message: 'the turn never played: a dead turn' })
+			.toBe(false);
+		await expect.poll(async () => (await audio())?.t ?? 0, { timeout: 10_000 }).toBeGreaterThan(0.5);
+	} finally {
+		await worker.stop();
+	}
+});
+
 // The fake worker writes legacy .wav stems, so the reboot's recompress pass encodes them to FLAC before eviction
 // runs. A slow encoder holds that pass open, so the phone reconnects and re-reads Library while the song is
 // still listed as ready, and only the eviction broadcast can take it off.

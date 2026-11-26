@@ -67,6 +67,9 @@ export interface HubDeps {
 	/** Called AFTER `remove` applies, so it sees the post-remove queue; cancels any in-flight job for
 	 *  that media (jobs/cancel.ts). */
 	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
+	/** A turn for `mediaId` is about to be booked by `singerId` (an add, or Pick another). Starts the song's process
+	 *  when it isn't ready, and returns a refusal when that can't start (jobs/start-process.ts `prepareTurn`). */
+	prepareAdd?: (mediaId: string, singerId: string) => string | null;
 	/** Mirror of onEntryRemoved: re-prioritizes any in-flight process for that media. */
 	onEntryAdded?: (mediaId: string, entries: QueueEntry[]) => void;
 	/** The playing song's singer changed its key, for that turn's row in their night. */
@@ -239,6 +242,18 @@ export function handleQueueCommand(
 		// Nothing to correlate a rejection to — drop silently.
 		if (cmd?.clientOpId) sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: err });
 		return null;
+	}
+
+	// A song in a new turn that isn't ready any more is made now, or the add is refused with why (#1162). Not for a
+	// resend already applied, and before `seenOp`, so a refused add never enters the ledger.
+	const addedMediaId =
+		cmd.op.op === 'add' ? cmd.op.entry.mediaId : cmd.op.op === 'replace-media' ? cmd.op.mediaId : null;
+	if (addedMediaId && deps.prepareAdd && !deps.hasOp?.(cmd.clientOpId)) {
+		const refused = deps.prepareAdd(addedMediaId, deps.actorSingerId!);
+		if (refused) {
+			sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: refused });
+			return null;
+		}
 	}
 
 	// A resend that still validates: re-ack at the current rev so the originator clears its pending op,
