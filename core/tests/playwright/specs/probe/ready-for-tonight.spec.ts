@@ -13,7 +13,11 @@ import { requireActivationForPlayback } from '../../world/autoplay';
 import type { Browser, Page, TestInfo } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
-const GAP = { code: 'youtube-gap', text: 'YouTube downloads will fail without deno on PATH' };
+// What the real worker sends when both are missing (`hardware.youtube_gap`): what is missing, never a path.
+const GAP = {
+	code: 'youtube-gap',
+	text: 'YouTube downloads will fail without deno on PATH and --remote-components ejs:github in a yt-dlp config'
+};
 const LOST = {
 	code: 'lyrics-unreachable',
 	text: "Can't reach the lyrics service, so songs will use heard words, which are less accurate and slower.",
@@ -80,7 +84,9 @@ test('the host checks the room: each red row says what to do, and fixing it turn
 		await expect
 			.poll(() => states(host), { timeout: 10_000 })
 			.toEqual(['tv:green', 'sound:wait', 'maker:green', 'youtube:red', 'lyrics:red', 'room:green']);
-		await expect(row(host, 'youtube')).toContainText('The karaoke maker is missing deno on PATH.');
+		await expect(row(host, 'youtube')).toContainText(
+			'The karaoke maker is missing deno on PATH and --remote-components ejs:github in a yt-dlp config.'
+		);
 		await expect(row(host, 'lyrics')).toContainText('Songs will use heard words');
 		await row(host, 'lyrics').getByText('Details').click();
 		await expect(row(host, 'lyrics')).toContainText('lrcmux: DNS; lrclib: DNS');
@@ -98,6 +104,8 @@ test('the host checks the room: each red row says what to do, and fixing it turn
 		await expect(tv.getByText('Tap anywhere to start the music')).toHaveCount(0);
 		await host.getByRole('button', { name: 'Play a test sound on the TV' }).click();
 		await expect(row(host, 'sound')).toHaveAttribute('data-state', 'green', { timeout: 5_000 });
+		// Only what was checked: the TV's browser can start audio, not that its speakers are on.
+		await expect(row(host, 'sound')).toContainText('The TV can play sound');
 	} finally {
 		await worker.stop();
 	}

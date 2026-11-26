@@ -237,6 +237,9 @@ async def main() -> None:
     for note in notes:
         loud = note.code in ("youtube-gap", "no-capabilities")
         print(f"[worker] {'WARNING: ' if loud else ''}{note.text}", flush=True)
+    if gap and "yt-dlp config" in gap:
+        # The paths stay on this box's console: the note core shows the host names none.
+        print(f"[worker] yt-dlp configs read: {', '.join(config.ytdlp_config_paths)}", flush=True)
 
     dbos = _launch_dbos(config)
     adapters = build_adapters(config, device=device)

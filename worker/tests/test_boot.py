@@ -204,6 +204,14 @@ def test_youtube_gap_names_what_is_missing(tmp_path: Path, monkeypatch: pytest.M
     assert "deno" in (hardware.youtube_gap((str(conf),)) or "")
 
 
+def test_youtube_gap_names_no_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The gap is a Note core shows on the host's Ready page (#1368): it names what is missing, never where.
+    monkeypatch.setattr(hardware, "binary_available", lambda name: False)
+    gap = hardware.youtube_gap((str(tmp_path / "a" / "config"), str(tmp_path / "b.conf")))
+    assert gap == "deno on PATH and --remote-components ejs:github in a yt-dlp config"
+    assert str(tmp_path) not in gap
+
+
 def test_the_config_paths_follow_xdg_and_home() -> None:
     paths = Config.from_env({"XDG_CONFIG_HOME": "/x", "HOME": "/h"}).ytdlp_config_paths
     assert "/x/yt-dlp/config" in paths, "where dev.sh writes its config"

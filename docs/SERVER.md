@@ -955,7 +955,10 @@ storage (`$lib/ready.ts` for the rows, `src/lib/server/ready.ts` for the facts).
   first connect, and on every `worker:recheck`) the worker sends `worker:warnings`, the FULL set, which replaces the
   last: `lyrics-unreachable` when no provider answered. `workerNotes` keeps only well-shaped strings, 300
   characters and 16 notes at most. The check is one lookup of a fixed public song through the providers, opener and
-  proxy every song uses; it carries no guest data and never runs on a timer.
+  proxy every song uses; it carries no guest data and never runs on a timer. `worker:warnings` names its own
+  `workerId`, and the hub files the notes under that id without tying it to the connection. That is the same trust
+  as `worker:catalogue` and `worker:heartbeat`: any socket holding the worker token can speak for any worker id. No
+  note names a path: the YouTube gap says what yt-dlp is missing, and the boot log lists the config files it read.
 - **The chime.** The TV plays a 1 s tone with WebAudio and answers `tv:audio` `ok`, or `locked` when its sound needs a
   tap. Locked, it shows the tap hint at once (on the lobby too) and plays again on the next tap, answering `ok`.
 
