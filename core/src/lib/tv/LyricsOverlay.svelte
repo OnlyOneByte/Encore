@@ -650,7 +650,7 @@
 			transition: color var(--motion-fast) linear;
 		}
 		.everyone {
-			transition: opacity 0.3s ease;
+			transition: opacity var(--motion-base) ease;
 		}
 		/* The line-to-line transform slides the WHOLE full-width column — the most vestibular-triggering motion on
 		   the TV, and the one this gate matters most for. */
