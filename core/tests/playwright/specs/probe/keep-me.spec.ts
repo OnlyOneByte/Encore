@@ -8,6 +8,22 @@ import type { Page } from '@playwright/test';
 
 const KEEP = (name: string) => `Keep ${name} for next time`;
 
+/** Tap Keep me and wait for the server's answer: the heading paints first, before the device cookie is set (#1310). */
+async function keepMe(phone: Page): Promise<void> {
+	const kept = phone.waitForResponse((r) => r.url().endsWith('/api/me/person') && r.request().method() === 'POST');
+	await phone.getByRole('button', { name: 'Keep me', exact: true }).click();
+	expect((await kept).status()).toBe(200);
+	await expect(phone.getByRole('heading', { name: /is kept on this phone/ })).toBeVisible();
+}
+
+/** Open the host's Reset confirm for `name`: a click on the server-rendered button before hydration opens nothing. */
+async function openReset(host: Page, name: string): Promise<void> {
+	await expect(async () => {
+		await host.getByRole('button', { name: `Reset ${name}'s phones` }).click();
+		await expect(host.locator('[role="alertdialog"]')).toBeVisible({ timeout: 1_000 });
+	}).toPass({ timeout: 15_000 });
+}
+
 /** Leave as the real You tab does, then land on the scanned identity pane. */
 async function leaveAndRescan(phone: Page, code: string): Promise<void> {
 	await phone.goto('/settings/you');
@@ -39,7 +55,7 @@ test('Keep me after the first song, back in one tap, and gone after Delete me', 
 		await theo.goto('/settings/you');
 		await expect(theo.getByRole('heading', { name: KEEP('Theo') })).toBeVisible();
 		expect(await theo.locator('[role="dialog"], [role="alertdialog"]').count()).toBe(0);
-		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
+		await keepMe(theo);
 		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
 		const cookies = await theo.context().cookies();
 		const device = cookies.find((c) => c.name === 'encore_device');
@@ -144,8 +160,7 @@ test('after a reset, a turn still queued under the name keeps the name until it 
 		await theo.goto('/');
 		await singOnce(theo, 'caroline');
 		await theo.goto('/settings/you');
-		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
-		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		await keepMe(theo);
 		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
 
 		// Ana has not sung yet, so her song plays first and Theo's waits, queued, behind it.
@@ -157,7 +172,7 @@ test('after a reset, a turn still queued under the name keeps the name until it 
 		const host = await (await browser.newContext({ baseURL: world.baseURL })).newPage();
 		await world.becomeHost(host);
 		await host.goto('/host');
-		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await openReset(host, 'Theo');
 		await host.getByRole('button', { name: 'Yes, reset' }).click();
 		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
 
@@ -187,8 +202,7 @@ test("the host's Reset phones signs out every phone of a kept person, and they c
 		await theo.goto('/');
 		await singOnce(theo, 'caroline');
 		await theo.goto('/settings/you');
-		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
-		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		await keepMe(theo);
 		// His song is over, so nothing holds the name once he is reset (the held case is the test above).
 		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
 		const device = (await theo.context().cookies()).find((c) => c.name === 'encore_device')!;
@@ -207,7 +221,7 @@ test("the host's Reset phones signs out every phone of a kept person, and they c
 		await world.becomeHost(host);
 		await host.goto('/host');
 		await expect(host.getByRole('heading', { name: 'Kept phones' })).toBeVisible();
-		await host.getByRole('button', { name: "Reset Theo's phones" }).click();
+		await openReset(host, 'Theo');
 		await expect(host.locator('[role="alertdialog"]')).toContainText('Every phone kept as Theo is signed out');
 		await host.getByRole('button', { name: 'Yes, reset' }).click();
 		await expect(host.getByRole('button', { name: "Reset Theo's phones" })).toHaveCount(0);
@@ -241,8 +255,7 @@ test("the owner's return ends a thief's copied night, live socket and all (#1250
 		await theo.goto('/');
 		await singOnce(theo, 'caroline');
 		await theo.goto('/settings/you');
-		await theo.getByRole('button', { name: 'Keep me', exact: true }).click();
-		await expect(theo.getByRole('heading', { name: 'Theo is kept on this phone' })).toBeVisible();
+		await keepMe(theo);
 		await expect(theo.locator(SEL.npStripTitle)).toHaveCount(0, { timeout: 30_000 });
 
 		// A thief copies BOTH cookies and stays in the room as Theo, socket open.
@@ -291,8 +304,7 @@ test('"I\'m someone else" on a kept phone joins as a new guest and leaves the ph
 		await ana.goto('/');
 		await singOnce(ana, 'caroline');
 		await ana.goto('/settings/you');
-		await ana.getByRole('button', { name: 'Keep me', exact: true }).click();
-		await expect(ana.getByRole('heading', { name: 'Ana is kept on this phone' })).toBeVisible();
+		await keepMe(ana);
 
 		await leaveAndRescan(ana, world.code);
 		await ana.getByRole('button', { name: "I'm someone else" }).click();

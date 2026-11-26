@@ -419,6 +419,10 @@ test('a dead file the warm never finished: the card shows only for its 404 round
 		await transportTap(r.maya, 'skip');
 		// Answered only once his turn has started: before that, a 404 lands on the hidden slot, the warmed case above.
 		await expect.poll(() => current(world), { timeout: 10_000 }).toBe(theoId);
+		// And only once the visible slot plays his file: the error fails his turn on the spot only while it is playing,
+		// and on the next stall tick before that (#1323).
+		const playing = r.tv.locator(`.slot.visible audio[src*="${r.theoMedia}"]`);
+		await expect.poll(() => playing.evaluate((a: HTMLMediaElement) => !a.paused), { timeout: 10_000 }).toBe(true);
 		open();
 		const stamps = () =>
 			r.tv.evaluate(() => {

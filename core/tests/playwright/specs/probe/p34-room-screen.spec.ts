@@ -24,20 +24,31 @@ async function openScreen(
 	const ctx = await browser.newContext({ viewport: { width: w, height: h }, baseURL: world.baseURL, hasTouch: touch });
 	if (real) await ctx.addCookies([world.tvCookie]);
 	const page = await ctx.newPage();
-	// Every `tv:claim` this page sends, counted on its way out.
+	// Every `tv:claim` this page sends, counted on its way out (and held back while `__holdClaims`), and when a press
+	// began and last clicked, on the page's own clock.
 	await page.addInitScript(() => {
-		const w = window as unknown as { __claims: number };
+		const w = window as unknown as PressLog;
 		w.__claims = 0;
+		w.__pressAt = w.__clickAt = null;
 		const send = WebSocket.prototype.send;
 		WebSocket.prototype.send = function (d) {
-			if (typeof d === 'string' && d.includes('"tv:claim"')) w.__claims++;
+			if (typeof d === 'string' && d.includes('"tv:claim"')) {
+				w.__claims++;
+				if (w.__holdClaims) return;
+			}
 			return send.call(this, d);
 		};
+		for (const ev of ['pointerdown', 'keydown'])
+			addEventListener(ev, () => (w.__pressAt ??= performance.now()), { capture: true, passive: true });
+		addEventListener('click', () => (w.__clickAt = performance.now()), { capture: true, passive: true });
 	});
 	await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
 	return page;
 }
-const claims = (p: Page) => p.evaluate(() => (window as unknown as { __claims: number }).__claims);
+type PressLog = { __claims: number; __holdClaims?: boolean; __pressAt: number | null; __clickAt: number | null };
+const claims = (p: Page) => p.evaluate(() => (window as unknown as PressLog).__claims);
+/** The tv page drops a claim this soon after the press that woke the chip (CLAIM_AFTER_WAKE_MS). */
+const CLAIM_AFTER_WAKE_MS = 500;
 /** Where the claim button sits while it sleeps: `visibility: hidden` keeps its box. */
 const buttonCentre = (p: Page) =>
 	p.evaluate(() => {
@@ -202,24 +213,45 @@ test('no press that wakes a sleeping chip claims the TV; a press once it is up d
 				}
 			]
 		];
+		// A press is paced from here, so on a loaded host its last click can land past the window: that is a deliberate
+		// press, not this case, so it is done again. Its claim is held back, so the seat stays put (#1225).
+		for (const p of [mouse, touch]) await p.evaluate(() => ((window as unknown as PressLog).__holdClaims = true));
 		for (const [name, p, act] of cases) {
-			await asleep(p);
-			const before = await claims(p);
-			await act(p, await buttonCentre(p));
-			await p.waitForTimeout(800);
-			expect((await claims(p)) - before, `${name} on the sleeping chip's spot sent a claim`).toBe(0);
-			await expect(p.locator(SLOT), `${name} moved the seat`).toBeAttached();
+			for (let attempt = 1; ; attempt++) {
+				await asleep(p);
+				const before = await claims(p);
+				await p.evaluate(() => {
+					const w = window as unknown as PressLog;
+					w.__pressAt = w.__clickAt = null;
+				});
+				await act(p, await buttonCentre(p));
+				await p.waitForTimeout(800);
+				const took = await p.evaluate(() => {
+					const { __pressAt: down, __clickAt: click } = window as unknown as PressLog;
+					return down === null || click === null ? 0 : click - down;
+				});
+				if (took >= CLAIM_AFTER_WAKE_MS && attempt < 3) {
+					console.log(`[p34] ${name} took ${Math.round(took)} ms in the page; pressing again`);
+					continue;
+				}
+				expect(took, `${name} took too long in the page to be one press, 3 times`).toBeLessThan(CLAIM_AFTER_WAKE_MS);
+				expect((await claims(p)) - before, `${name} on the sleeping chip's spot sent a claim`).toBe(0);
+				await expect(p.locator(SLOT), `${name} moved the seat`).toBeAttached();
+				break;
+			}
 		}
+		for (const p of [mouse, touch]) await p.evaluate(() => ((window as unknown as PressLog).__holdClaims = false));
 
 		// Up for 600 ms, the chip takes a tap: this screen becomes the TV.
 		await asleep(touch);
 		const at = await buttonCentre(touch);
+		const held = await claims(touch);
 		await touch.touchscreen.tap(5, 540);
 		await awake(touch);
 		await touch.waitForTimeout(600);
 		await touch.touchscreen.tap(at.x, at.y);
 		await expect(touch.locator(SLOT)).toHaveCount(0, { timeout: 5_000 });
-		expect(await claims(touch)).toBe(1);
+		expect((await claims(touch)) - held).toBe(1);
 	} finally {
 		await worker.stop();
 	}
