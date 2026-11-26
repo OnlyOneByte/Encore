@@ -16,10 +16,10 @@ test('CLAIM 12 a lost party is called lost after 3 s of asking, and by 4 s (#109
 	await phone.addInitScript((words) => {
 		const w = window as unknown as { __askAt?: number; __wordsAt?: number };
 		const f = window.fetch;
-		window.fetch = (input, init) => {
+		window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 			if (String(input instanceof Request ? input.url : input).includes('/api/me')) w.__askAt ??= performance.now();
 			return f(input, init);
-		};
+		}) as typeof fetch;
 		new MutationObserver(() => {
 			if (w.__wordsAt === undefined && document.body?.textContent?.includes(words)) w.__wordsAt = performance.now();
 		}).observe(document, { subtree: true, childList: true, characterData: true });
