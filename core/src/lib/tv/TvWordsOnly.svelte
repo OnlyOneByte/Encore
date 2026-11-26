@@ -14,6 +14,7 @@
 	// spans, a little taller than its leading, so the box takes SLACK_EM more and the cap counts it. A single word longer
 	// than a row breaks rather than running off the side.
 	const SLACK_EM = 0.5;
+	/** @public Read through the TV page's lazy `import()`, which knip cannot follow. */
 	export const wordsFit: WordsFit = {
 		style: (rowCount, wrapRows, shrink) =>
 			`; --lyrics-slack: ${SLACK_EM}em; --lyrics-fit: calc((100vh - var(--tv-chrome-h) - var(--tv-top-reserve)) * ${shrink} / ${rowCount * wrapRows * 1.9 + SLACK_EM}); overflow-wrap: anywhere`,
