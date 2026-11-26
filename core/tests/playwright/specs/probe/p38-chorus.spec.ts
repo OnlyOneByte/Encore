@@ -23,6 +23,14 @@ const LINES = Array.from({ length: 45 }, (_, i) =>
 	i % 6 < 3 || i >= 42 ? { text: `Verse ${Math.floor(i / 6) + 1} line ${(i % 6) + 1}` } : { text: CHORUS[(i % 6) - 3]! }
 );
 const GOLD = 'rgb(255, 223, 122)';
+/** A computed colour as `r, g, b, a` in 0-255 and 0-1: `color-mix` serialises as `color(srgb …)`, a literal as `rgb()`. */
+function rgba(css: string | null): string {
+	const srgb = css?.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
+	const n = srgb
+		? [...srgb.slice(1, 4).map((v) => Math.round(Number(v) * 255)), Number(srgb[4] ?? 1)]
+		: (css?.match(/[\d.]+/g)?.map(Number) ?? []);
+	return [...n.slice(0, 3), n[3] ?? 1].join(', ');
+}
 
 async function audit(page: Page, mediaId: string) {
 	return (await (await page.request.get(`/api/audit/${mediaId}`)).json()).media;
@@ -108,14 +116,16 @@ test('P38 · "Everyone" before each chorus, its rows in the room gold, the singe
 			ahead: ahead && getComputedStyle(ahead).color
 		};
 	});
-	expect(colours.ahead, 'unsung chorus words').toBe('rgba(255, 223, 122, 0.66)');
-	if (colours.active) expect(colours.active, 'the active word keeps the singer').not.toBe(GOLD);
+	expect(rgba(colours.ahead), 'unsung chorus words').toBe('255, 223, 122, 0.66');
+	if (colours.active) expect(rgba(colours.active), 'the active word keeps the singer').not.toBe(rgba(GOLD));
 	await frame(tv, testInfo, 'tv-1920-chorus');
 
 	// The verse after: colour eases back, and the chorus behind it is past, in dim gold.
 	await expect(tv.locator(SEL.lyricsRowCurrent)).toContainText(/Verse \d line 1/, { timeout: 15_000 });
 	const past = tv.locator('.lyrics .row.chorus.past').last();
-	await expect.poll(() => past.evaluate((el) => getComputedStyle(el).color)).toBe('rgba(255, 223, 122, 0.2)');
+	await expect
+		.poll(async () => rgba(await past.evaluate((el) => getComputedStyle(el).color)))
+		.toBe('255, 223, 122, 0.2');
 	await expect(tv.locator('.lyrics .row.current')).not.toHaveClass(/chorus/);
 	await frame(tv, testInfo, 'tv-1920-after');
 
