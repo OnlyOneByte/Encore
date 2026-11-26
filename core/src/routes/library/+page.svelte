@@ -134,8 +134,16 @@
 	}
 	const allKept = $derived([...picked].every((id) => sizes?.songs[id]?.kept === true));
 
-	type BulkOut = { done: string[]; skipped: { mediaId: string; reason: string }[]; libraryFile: boolean };
-	async function bulk(action: 'keep' | 'unkeep' | 'delete' | 'undo', mediaIds: string[]): Promise<BulkOut | null> {
+	type BulkOut = {
+		done: string[];
+		skipped: { mediaId: string; reason: string }[];
+		libraryFile: boolean;
+		afterTurn?: number;
+	};
+	async function bulk(
+		action: 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake',
+		mediaIds: string[]
+	): Promise<BulkOut | null> {
 		bulkBusy = true;
 		try {
 			const res = await fetch('/api/library/manage/bulk', {
@@ -179,6 +187,27 @@
 		if (!out) return;
 		announced = `${songs(out.done.length)} ${allKept ? 'no longer kept' : 'kept'}`;
 		void onManaged();
+	}
+
+	// The bar steps aside, as for Delete, so the toast has the spot; nothing else on screen changes.
+	async function bulkRemake() {
+		const out = await bulk('remake', [...picked]);
+		if (!out) return;
+		picked.clear();
+		void onManaged().then(refocus);
+		if (!out.done.length) {
+			toast.error('Those songs are gone', { duration: 4000 });
+			return;
+		}
+		toast(`Making the sound again for ${songs(out.done.length)}`, {
+			duration: 4000,
+			description: [
+				'They stay ready. Each old sound plays until its new one is in, behind everyone’s picks.',
+				out.afterTurn ? `${songs(out.afterTurn)} in tonight's queue start after their turn.` : null
+			]
+				.filter(Boolean)
+				.join(' ')
+		});
 	}
 
 	async function bulkDelete() {
@@ -694,6 +723,7 @@
 					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
 						{allKept ? 'Keep off' : 'Keep'}
 					</Button>
+					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkRemake}>Make again</Button>
 					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
 				</div>
 			{/if}
@@ -730,6 +760,7 @@
 	}
 	.actbar .n {
 		flex: 1;
+		white-space: nowrap;
 	}
 	.bar-room {
 		height: calc(var(--tap) + var(--space-lg) + 2 * var(--space-2xs));
@@ -737,6 +768,8 @@
 	.actbar :global(button) {
 		color: inherit;
 		font-weight: 800;
+		/* Three actions and the count fit one line at 320 px; the tap height is unchanged. */
+		padding-inline: var(--space-xs);
 	}
 	.library-page {
 		/* The grid measure, not the prose one: this is a column of song rows, so it must agree with `/`. */

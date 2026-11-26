@@ -1270,7 +1270,7 @@ each one, in every spelling, from a guest, a cookieless caller and another site.
 | `POST /api/library/manage/keep` | `{ mediaId, keep }` | `library.keep` in `meta/<id>.json`. |
 | `POST /api/library/manage/delete` | `{ mediaId }` | 409 `queued` while the song is playing or still to come tonight, 409 `kept` for a kept song. Otherwise the song leaves every screen at once and is deleted when the Undo window closes. |
 | `POST /api/library/manage/undo` | `{ mediaId }` | Cancels a pending delete; 409 once the window has closed. |
-| `POST /api/library/manage/bulk` | `{ action, mediaIds }` | PR 2. `keep`, `unkeep`, `delete` or `undo` over 1 to 5,000 ids of at most 128 characters, song by song through the single-song paths, so a kept or queued song is refused exactly as above. Answers `{ done, skipped: [{ mediaId, reason }], libraryFile }`; a guest gets 403 before the body is read. |
+| `POST /api/library/manage/bulk` | `{ action, mediaIds }` | PR 2. `keep`, `unkeep`, `delete`, `undo` or `remake` over 1 to 5,000 ids of at most 128 characters, song by song through the single-song paths, so a kept or queued song is refused exactly as above. `remake` is Make it again for the sound, one `stems-remake` per song (`requestRemake`), and answers `afterTurn`, how many wait for tonight's turn. Answers `{ done, skipped: [{ mediaId, reason }], libraryFile }`; a guest gets 403 before the body is read. |
 | `POST /api/library/manage/remake` | `{ mediaId, what? }` | Make it again (PR 3): `what: 'sound'` (the default) queues a `stems-remake`, `'lyrics'` an `align-remake`; 409 for lyrics on a song with no vocals stem. `afterTurn` is true while a sound remake waits for the song's turn. |
 
 Rename, Keep, delete and remake act only on a ready song outside an Undo window (`librarySong`); anything else is 404.
@@ -1353,7 +1353,10 @@ Rename, Keep, delete and remake act only on a ready song outside an Undo window 
     turn, since the TV reads a document whole, once. A cancelled remake that still reports deletes its own.
   - **A failed one says so** on the sheet, under Lyrics (`lyricsRemakeFailed`), as for the sound.
   - Delete removes any remake document a crash left behind (`<id>-<tag>-….json`).
-- Not yet: bulk remake, same-song pairs (PR 4) and the folder watch (PR 5).
+- **Bulk Make it again** is the same remake per picked song: each its own job and tag, each at `NO_QUEUE_PRIORITY`
+  behind every guest's pick, so a whole library can be asked at once and the worker gets to it between turns. A song
+  already being remade keeps its job. The lyrics remake stays one song at a time, from the sheet.
+- Not yet: same-song pairs (PR 4) and the folder watch (PR 5).
 
 ## Jobs and the worker
 

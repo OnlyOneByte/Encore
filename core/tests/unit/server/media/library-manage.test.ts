@@ -15,7 +15,10 @@ import {
 	requestDelete,
 	setKeep
 } from '$lib/server/media/library-manage';
-import { applyAnnotation } from '$lib/server/jobs/process';
+import { applyAnnotation, requestRemake, NO_QUEUE_PRIORITY } from '$lib/server/jobs/process';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { waitsForTurn } from '$lib/server/jobs/dispatch';
+import { migratedDb } from '$lib/server/db/test-db';
 import { planEviction } from '$lib/server/media/retention';
 
 const NOW = 1_788_400_000_000;
@@ -230,6 +233,28 @@ describe('bulkManage', () => {
 		expect(undone.done).toEqual(['m1', 'm2']);
 		expect(undone.skipped).toEqual([{ mediaId: 'm3', reason: 'gone' }]);
 		expect(pendingDeletes.has('m1')).toBe(false);
+	});
+
+	it('Make again queues one remake per song, behind every pick, a kept or queued one included', async () => {
+		const { app, pendingDeletes } = await harness();
+		pendingDeletes.schedule('m2'); // waiting out a delete: not in Library
+		const jobs = new JobRepository(migratedDb());
+		const remake = (m: Media) => void requestRemake(m, { jobs, now: () => NOW });
+		const out = await bulkManage(app, 'remake', ['m1', 'm2', 'm3', 'm4', 'm1', 'nope'], remake);
+		expect(out.done).toEqual(['m1', 'm3', 'm4']);
+		expect(out.skipped).toEqual([
+			{ mediaId: 'm2', reason: 'unknown' },
+			{ mediaId: 'nope', reason: 'unknown' }
+		]);
+		const queued = jobs.listByStatus('queued');
+		expect(queued.map((j) => j.mediaId).sort()).toEqual(['m1', 'm3', 'm4']);
+		expect(queued.every((j) => j.jobType === 'stems-remake' && j.priority === NO_QUEUE_PRIORITY)).toBe(true);
+		// The queued song's remake waits for its turn, as a single one does.
+		const m4 = queued.find((j) => j.mediaId === 'm4')!;
+		expect(waitsForTurn(m4, app.state.entries, null)).toBe(true);
+		// Asked again while they wait: the same jobs, not a second set.
+		await bulkManage(app, 'remake', ['m1', 'm3'], remake);
+		expect(jobs.listByStatus('queued')).toHaveLength(3);
 	});
 });
 
