@@ -812,11 +812,19 @@ async function becomesCurrent(world: World, entryId: string): Promise<number> {
 	await expect.poll(() => current(world), { timeout: 30_000, intervals: [100] }).toBe(entryId);
 	return Date.now();
 }
-/** One singer's only entry, by display name. */
+/** One singer's only entry, by display name, once the room's snapshot has it: on a loaded host the read can come
+ *  before the add is in it (#1342). */
 async function entryOf(world: World, name: string): Promise<string> {
-	const sync = await serverSync(world.baseURL);
-	const id = sync.singers?.find((s) => s.displayName === name)?.id;
-	return sync.entries.find((e) => e.singerId === id)!.id;
+	const find = async () => {
+		const sync = await serverSync(world.baseURL);
+		const id = sync.singers?.find((s) => s.displayName === name)?.id;
+		return sync.entries.find((e) => e.singerId === id)?.id;
+	};
+	let found: string | undefined;
+	await expect
+		.poll(async () => (found = await find()), { message: `${name}'s entry never reached the queue`, timeout: 10_000 })
+		.toBeDefined();
+	return found!;
 }
 
 // UI review r2 of #994: a room update for the SAME entry re-ran the watchdog's reset, restarting the count with a fresh
