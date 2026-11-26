@@ -1497,7 +1497,7 @@ Deleting the last song shows the empty Library; the toast's Undo still brings it
 only the rows rendered so far. While songs are picked, an action bar above the dock is the screen's one fill:
 "N picked", then two pairs: `Sound again` and `Lyrics again`, `Keep` (`Keep off` when every pick is kept) and
 `Delete`. A pair moves to the next row, right-aligned and never split, only when it does not fit beside what is
-before it: at 320 and 390 px "3 picked" shares its row with the first pair, and "1234 picked" takes a row of its
+before it: the count shares its row with the first pair, except "1234 picked" at 320 px, which takes a row of its
 own. The room kept under the list grows with the bar. Either
 remake clears the picks, as Delete does, and toasts "Making the sound again for N songs" (those in tonight's queue
 start after their turn) or "Making the lyrics again for N songs" (those in tonight's queue get the new lyrics
