@@ -18,7 +18,7 @@ import { at } from '$test';
  * want of a renderer.
  */
 
-const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+const queuePage = readFileSync(at('src/routes/(phone)/queue/+page.svelte'), 'utf8');
 
 test('the anchor effect reads the SCALAR mirrors, never the mirrored playback object', () => {
 	/* `playback = room.playback` mints a fresh proxy on every room emit (proxy() has no identity cache), so an
@@ -51,7 +51,7 @@ test('the drawn clock is capped at the song length, and BOTH halves of the reado
 });
 
 test('the route leaves the link error channel to the layout', () => {
-	/* A queue op's refusal (`Couldn't do that: …`) must still reach this tab; the root layout's one sink carries it
+	/* A queue op's refusal (`Couldn't do that: …`) must still reach this tab; the phone layout's one sink carries it
 	   (ui-sweep-wiring.test.ts), and a second registration here would toast it twice. */
 	expect(queuePage).not.toContain('room.onError(');
 });

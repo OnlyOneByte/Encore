@@ -9,8 +9,8 @@ import { at } from '$test';
  * component-mount harness is gone (bunfig.toml records why).
  */
 
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
-const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
+const queuePage = readFileSync(at('src/routes/(phone)/queue/+page.svelte'), 'utf8');
 
 test('in replace mode Sing swaps the turn, carrying the NEW song key, and never adds a second turn', () => {
 	// The NEW song's key: its last finished turn's (Your songs), else this phone's memory of it.
@@ -29,7 +29,7 @@ test('Pick another is offered on my own dead cards only', () => {
 });
 
 const roomStore = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
-const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
+const layout = readFileSync(at('src/routes/(phone)/+layout.svelte'), 'utf8');
 
 test("the swap dismisses the dead song's notice by its id, and no other notice", () => {
 	// The failure notice carries an id the swap can name...
@@ -59,7 +59,7 @@ test('with no maker, the idle Sing tab drops the promise to make karaoke for any
 	expect(home).toContain('verdictKnown = room.libraryLoaded && (room.queue?.synced ?? false);');
 });
 
-const library = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
+const library = readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8');
 const card = readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8');
 
 test('with no maker, the Library tab drops the promise to make karaoke too', () => {

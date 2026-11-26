@@ -26,7 +26,7 @@ import { at } from '$test';
  * template half. Each assertion names the SHAPE that failed, not just the shape that works.
  */
 
-const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+const queuePage = readFileSync(at('src/routes/(phone)/queue/+page.svelte'), 'utf8');
 const card = readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8');
 const roomStore = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
 

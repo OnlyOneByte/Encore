@@ -11,11 +11,11 @@ import { at } from '$test';
 
 const tv = readFileSync(at('src/routes/tv/+page.svelte'), 'utf8');
 const lobby = readFileSync(at('src/lib/tv/TvLobby.svelte'), 'utf8');
-const layout = readFileSync(at('src/routes/+layout.svelte'), 'utf8');
+const layout = readFileSync(at('src/routes/(phone)/+layout.svelte'), 'utf8');
 const strip = readFileSync(at('src/lib/ui/NowPlayingStrip.svelte'), 'utf8');
 const songRow = readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8');
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
-const queuePage = readFileSync(at('src/routes/queue/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
+const queuePage = readFileSync(at('src/routes/(phone)/queue/+page.svelte'), 'utf8');
 
 test('a Sing-tab row nobody can make says so, with no bar and no percentage', () => {
 	expect(songRow).toContain("const stalled = $derived(readiness === 'processing' && unservable);");

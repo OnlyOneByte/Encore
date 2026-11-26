@@ -42,21 +42,21 @@ test('UI-11: a message about a song names it as the TV does, not by its raw uplo
 });
 
 test('UI-11: the Sing tab and Library toast take their titles from the same place', () => {
-	expect(read('src/routes/+page.svelte')).toContain('room.titleOf(mediaId)');
-	expect(read('src/routes/library/+page.svelte')).toContain('songDisplay(m).title');
+	expect(read('src/routes/(phone)/+page.svelte')).toContain('room.titleOf(mediaId)');
+	expect(read('src/routes/(phone)/library/+page.svelte')).toContain('songDisplay(m).title');
 });
 
-test('UI-13: one error sink, in the root layout, and no route registers its own', () => {
-	const layout = read('src/routes/+layout.svelte');
+test('UI-13: one error sink, in the phone layout, and no route registers its own', () => {
+	const layout = read('src/routes/(phone)/+layout.svelte');
 	expect(layout).toContain('room.onError((message, kind, id) => {');
 	expect(layout).toContain("if (kind === 'info') return void toast.info(message, { duration: 4000 });");
 	// `id` rides along so a later action can take back ONE notice (Pick another dismisses the dead song's).
 	expect(layout).toContain('toast.error(message, { duration: 4000, id });');
 	for (const route of [
-		'src/routes/+page.svelte',
-		'src/routes/queue/+page.svelte',
-		'src/routes/library/+page.svelte',
-		'src/routes/song/[mediaId]/+page.svelte'
+		'src/routes/(phone)/+page.svelte',
+		'src/routes/(phone)/queue/+page.svelte',
+		'src/routes/(phone)/library/+page.svelte',
+		'src/routes/(phone)/song/[mediaId]/+page.svelte'
 	]) {
 		expect(read(route)).not.toContain('room.onError(');
 	}

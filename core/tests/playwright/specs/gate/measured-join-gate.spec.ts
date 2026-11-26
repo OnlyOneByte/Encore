@@ -4,8 +4,8 @@
  * width (redesign step 7, #1157; it was docked to the screen's bottom edge, far from the boxes it acts on).
  *
  * IT HAS TWO HOSTS, which is what made them disagree: `/` renders `<JoinLanding />` inside the home route's
- * `main` (src/routes/+page.svelte), `/library` renders it as a direct child of `.app-shell` with no `main` at
- * all (src/routes/library/+page.svelte). The host's own `main { flex: 1 }` absorbed the free space that
+ * `main` (src/routes/(phone)/+page.svelte), `/library` renders it as a direct child of `.app-shell` with no `main` at
+ * all (src/routes/(phone)/library/+page.svelte). The host's own `main { flex: 1 }` absorbed the free space that
  * `.app-shell:has(.join-main) { justify-content: center }` wanted to distribute, so the >=768 centring worked
  * on `/library` and silently did nothing on `/`. The fix is a cascade/`:has()`/specificity stack in
  * JoinLanding's own stylesheet — the route may not state the gate's placement — and that is the most fragile

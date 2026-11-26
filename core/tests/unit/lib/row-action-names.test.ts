@@ -64,7 +64,7 @@ test('every repeated row and card button takes its name from the helpers, with t
 	expect(deck).toContain('aria-label={keyStepName(-1, title)}');
 	expect(deck).toContain('aria-label={keyStepName(1, title)}');
 	// The live song's keycaps are the same card's (redesign step 5): /queue draws none of its own.
-	expect(code('src/routes/queue/+page.svelte')).not.toContain('keyStepName(');
+	expect(code('src/routes/(phone)/queue/+page.svelte')).not.toContain('keyStepName(');
 	expect(code('src/lib/components/SongRow.svelte')).toContain('songRef(title, byline)');
 });
 

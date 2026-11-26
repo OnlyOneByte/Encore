@@ -108,7 +108,7 @@ interface DockReading {
 
 /**
  * ONE PROBE, one `page.evaluate`, every reading this claim takes. Returns null only when `.dock` is missing,
- * which is then a named soft failure rather than a crash: the root layout mounts the dock for any joined
+ * which is then a named soft failure rather than a crash: the phone layout mounts the dock for any joined
  * singer on any phone surface, so its absence is either an unjoined drive or the container itself.
  */
 async function readDock(page: Page, state: string, insetBottom: number): Promise<DockReading | null> {
@@ -270,7 +270,7 @@ test('CLAIM 3 the dock publishes its measured height, spells the safe-area inset
 			.soft(
 				r,
 				`CLAIM 3 the dock is mounted in state "${state}", so its contract is measurable: no ${SEL.dock} found on ` +
-					`${page.url()} — the root layout mounts the dock for any joined singer on any phone surface, so its ` +
+					`${page.url()} — the phone layout mounts the dock for any joined singer on any phone surface, so its ` +
 					'absence is either an unjoined drive or the container itself'
 			)
 			.not.toBeNull();

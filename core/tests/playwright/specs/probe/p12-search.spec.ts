@@ -665,10 +665,10 @@ test('every song row exposes exactly one queueing action, and it matches the row
 });
 
 /* ANNOTATION REMOVED, the defect is gone. It read: "The copy is only correct for a broken install, but it shows
-   for any legitimate zero-match query — src/routes/+page.svelte renders 'No results. YouTube search needs yt-dlp
+   for any legitimate zero-match query — src/routes/(phone)/+page.svelte renders 'No results. YouTube search needs yt-dlp
    on the server.' whenever both result groups are empty, with no test of whether yt-dlp is actually missing."
    The phone rebuild rewrote that zero state when `/` became the Sing tab, and the string is now absent from the
-   route entirely (`grep -c 'needs yt-dlp' src/routes/+page.svelte` → 0). Playwright reported this as "Expected to
+   route entirely (`grep -c 'needs yt-dlp' src/routes/(phone)/+page.svelte` → 0). Playwright reported this as "Expected to
    fail, but passed", which is the only reason a stale `test.fail` ever surfaces — it is otherwise a permanent
    green that asserts nothing. */
 test(
@@ -677,7 +677,7 @@ test(
 		annotation: {
 			type: 'known-defect',
 			description:
-				'src/routes/+page.svelte renders the yt-dlp notice whenever both result groups are empty, without ' +
+				'src/routes/(phone)/+page.svelte renders the yt-dlp notice whenever both result groups are empty, without ' +
 				'asking whether yt-dlp is actually missing. The assertion is correct; the copy is not.'
 		}
 	},
@@ -694,7 +694,7 @@ test(
 		expect(
 			/yt-dlp/i.test(copy),
 			`the "no results" copy tells the singer yt-dlp is missing even when it is not. rendered="${copy}". ` +
-				`See src/routes/+page.svelte's search-empty branch.`
+				`See src/routes/(phone)/+page.svelte's search-empty branch.`
 		).toBe(false);
 	}
 );

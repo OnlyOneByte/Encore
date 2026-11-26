@@ -74,7 +74,7 @@
 	const underline = $derived(progressStyle === 'edge' || progressStyle === 'card');
 
 	// MEASURED, not predicted: this card grows with its content, so a static sum UNDER-counts and covers the sung line.
-	// The phone's dock is the same finding on the other surface — see the `--dock-h` note in src/routes/+layout.svelte,
+	// The phone's dock is the same finding on the other surface — see the `--dock-h` note in src/routes/(phone)/+layout.svelte,
 	// where a token-arithmetic height was tried and came to 102px against a rendered 91.
 	let lowerThirdEl = $state<HTMLElement | undefined>();
 	$effect(() => observeBlockSize(lowerThirdEl, oncardsize));

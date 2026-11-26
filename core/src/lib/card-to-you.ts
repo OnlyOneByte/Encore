@@ -1,6 +1,6 @@
 // "Your card comes to you": when your On deck heads-up or your failed song needs you and its
 // first control sits under the dock, /queue scrolls that card up once. Pure, so a bun test can decide it. See
-// routes/queue/+page.svelte.
+// routes/(phone)/queue/+page.svelte.
 
 /** A guest who touched or scrolled this recently is driving the page, and the page does not fight them. */
 export const CARD_SCROLL_QUIET_MS = 3_000;

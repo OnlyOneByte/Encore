@@ -167,7 +167,7 @@ const holdMaker = (world: World) => startFakeWorker(world, { claim: 'none' });
  * live handler", and a synthetic click on a dead node is silently lost. Playwright's own input waits for the
  * element to be stable and hit-testable before it dispatches, and it is a TRUSTED event, so the retry, the
  * diagnostic dump and the `el.click()` go away together. (2) p8 counted `.qrow` WITH THE SEARCH STILL UP — but
- * `src/routes/+page.svelte` gates the whole Queued block on `{#if !searchActive}` ("One scroll, two views"), so
+ * `src/routes/(phone)/+page.svelte` gates the whole Queued block on `{#if !searchActive}` ("One scroll, two views"), so
  * that count is 0 on any phone showing results, whatever landed. Its helper could therefore only ever report
  * "clicked but no local row", which is why p8's later steps all degrade to ENV findings. The MEASUREMENT is
  * unchanged — the phone's own `.qrow` count, before and after — and the way to the queue is the real one.

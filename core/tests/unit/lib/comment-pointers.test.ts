@@ -45,12 +45,12 @@ test('the four hosts of the landscape claw-back are named by RULE, and all four 
 	// The claim both reworded comments now make, re-derived: every one of these files declares the arm. If a route
 	// drops it, this reds — which is the check the line numbers were never able to perform.
 	const hosts = [
-		'routes/+page.svelte',
-		'routes/library/+page.svelte',
+		'routes/(phone)/+page.svelte',
+		'routes/(phone)/library/+page.svelte',
 		// The settings host is the SHELL, not a route: `/settings` is three scope routes now and the grid the arm acts
 		// on is declared once, in the component all three wear.
 		'lib/ui/SettingsScope.svelte',
-		'routes/song/[mediaId]/+page.svelte'
+		'routes/(phone)/song/[mediaId]/+page.svelte'
 	];
 	for (const h of hosts) {
 		expect(readFileSync(at(`src/${h}`), 'utf8')).toContain('@media (max-height: 480px)');
@@ -64,7 +64,7 @@ test('the four hosts of the landscape claw-back are named by RULE, and all four 
 	for (const h of hosts.filter((f) => f !== SETTINGS_SHELL)) {
 		expect(readFileSync(at(`src/${h}`), 'utf8')).toContain(CLAWBACK);
 	}
-	const library = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
+	const library = readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8');
 	expect(library).toContain('.refine .grouphead');
 	// Settings is the exception the notes call out: it spends the rung as a grid gap, so its arm moves `.panel`'s
 	// row-gap instead of a `.grouphead` margin.
@@ -82,7 +82,7 @@ test('the Sing tab renders no library shelf, so it reads no viewport width in JS
 	 * were two constants and the route picked one off a `matchMedia` read. The shelf is gone from `/` entirely now
 	 * (/library is the library, and the Library tab is on screen at every width), which retires the whole
 	 * question. What is worth pinning is the CONSEQUENCE: this surface no longer reads a width in JS. */
-	const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+	const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
 	expect(home).not.toContain('libraryShelf');
 	expect(home).not.toContain('LIBRARY_SHELF');
 	/* The cap was the only reason `/` ever read a width in JS, and the reason it had to be JS rather than CSS is that
@@ -94,7 +94,7 @@ test('the Sing tab renders no library shelf, so it reads no viewport width in JS
 	// because app.css's own `--bp-*` note names them.
 	expect(readFileSync(at('src/app.css'), 'utf8')).toMatch(/--bp-lg:\s*1200px;/);
 	expect(readFileSync(at('src/app.css'), 'utf8')).toContain('@media (min-width: 1200px)');
-	expect(readFileSync(at('src/routes/library/+page.svelte'), 'utf8')).toContain('@media (min-width: 1200px)');
+	expect(readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8')).toContain('@media (min-width: 1200px)');
 	// And the doc's own section says the same. The negative is kept from the retired test: that exact sentence is the
 	// one that was wrong, and reviving it would be wrong twice over now.
 	const frontend = readFileSync(at('../docs/FRONTEND.md'), 'utf8');

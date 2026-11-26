@@ -59,7 +59,7 @@
 		};
 		sync();
 		const stop = room.subscribe(sync);
-		// `reselectLyrics`' refusals reach the guest through the root layout's one `room.onError` sink.
+		// `reselectLyrics`' refusals reach the guest through the phone layout's one `room.onError` sink.
 		void room.connect();
 		return stop;
 	});

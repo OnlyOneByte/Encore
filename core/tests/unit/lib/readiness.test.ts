@@ -141,7 +141,7 @@ test('the control that PRINTS showAllCount agrees in number too', () => {
 	 * while /library's own count line two taps away said "1 song". It is asserted HERE, beside the function that
 	 * hands the number over, because the agreement is a property of the pair and the label itself lives in markup no
 	 * unit test instantiates. Comments are stripped first: the one above the control quotes the broken string. */
-	const home = read('src/routes/+page.svelte').replace(/<!--[\s\S]*?-->/g, '');
+	const home = read('src/routes/(phone)/+page.svelte').replace(/<!--[\s\S]*?-->/g, '');
 	expect(home).toMatch(/Show my \{empty\.showAllCount\}[\s\S]{0,90}=== 1 \? 'song' : 'songs'/);
 });
 

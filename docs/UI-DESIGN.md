@@ -126,7 +126,7 @@ Held by `core/tests/unit/lib/label-register.test.ts`.
 
 The back arrow is the exit on every settings scope. A commit control renders only when there is a draft to
 commit, and its label says which job it is doing: `Saving…` in flight, `Save and close` while the form is dirty
-(`core/src/routes/settings/you/+page.svelte`). It sits inside the card, because the refusals it produces name that
+(`core/src/routes/(phone)/settings/you/+page.svelte`). It sits inside the card, because the refusals it produces name that
 field.
 
 ## 7. The join gate sits in one place on both hosts

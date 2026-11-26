@@ -262,10 +262,10 @@
 	--motion-tick: 1s;
 
 	/* THE RULE, enforced at ONE MEMBER: every media-condition width in the tree must be a MEMBER of this list — CSS
-	   `@media` literals AND any JS one. There is no JS reader left: `src/routes/+page.svelte` used to spell
+	   `@media` literals AND any JS one. There is no JS reader left: `src/routes/(phone)/+page.svelte` used to spell
 	   `matchMedia('(min-width: 1200px)')` to pick its library shelf's cap, and the Sing tab has no shelf, so --bp-lg's
 	   surviving callers are the `@media (min-width: 1200px)` arm in this file and the one in
-	   `src/routes/library/+page.svelte`. --bp-320 has no branch. The CASCADE reads
+	   `src/routes/(phone)/library/+page.svelte`. --bp-320 has no branch. The CASCADE reads
 	   none of these — a media query is evaluated before the cascade and cannot resolve a custom property, and
 	   `matchMedia` takes a string — but a MEASUREMENT can: the join gate (CLAIM 7) reads --bp-md off `:root` and drives
 	   767 and 768, so JoinLanding's `@media (min-width: 768px)` is now tied to this declaration in both directions.
@@ -746,7 +746,7 @@ body {
 		animation: pop var(--motion-pop) var(--ease-pop);
 	}
 }
-/* THE QUEUE'S HOLD (routes/queue, docs/FRONTEND.md § The Queued list holds still). `top` keeps a moved block in its
+/* THE QUEUE'S HOLD (routes/(phone)/queue, docs/FRONTEND.md § The Queued list holds still). `top` keeps a moved block in its
    old layout slot, as Chromium counts a restarted transform's layout move (#1081). AFTER `.pop-in`, which it outranks. */
 @media (prefers-reduced-motion: no-preference) {
 	[data-hold] {

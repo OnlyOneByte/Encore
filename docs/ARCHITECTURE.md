@@ -139,11 +139,10 @@ Three properties of the owner are deliberate:
   `close()`
   exists for a test; the document closing takes the socket with it. A guest who has not joined settles
   with no socket at all.
-- **The root layout gates connecting on a not-a-phone list.** `core/src/routes/+layout.svelte` is the ROOT
-  layout, so it wraps the television: an ungated `room.connect()` would open a second `role=phone`
-  socket on `/tv` — which already holds its own `role=tv` one — and register the television as a singer
-  present in the room. The list is deliberately the same four exemptions the phone-route walk already
-  enforces, rather than a second opinion about what a phone surface is.
+- **Only the phone layout connects.** `core/src/routes/(phone)/+layout.svelte` wraps the phone tabs and
+  nothing else, so `/tv` — which holds its own `role=tv` socket — never opens a second `role=phone` one and
+  is never registered as a singer. The surfaces outside the `(phone)` group are the same four exemptions the
+  phone-route walk enforces: `/tv`, `/admin`, `/metrics` and `/components`.
 
 Two seams follow from single ownership, and both are the reason for it rather than a side effect. The
 **saved library** is owned here because its one fetch serves two readers: it gives the library section its

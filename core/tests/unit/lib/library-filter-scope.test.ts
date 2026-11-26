@@ -20,8 +20,8 @@ import { at } from '$test';
  *     keeps "No karaoke tracks yet" off that path is the failure arm sitting above it.
  */
 
-const route = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+const route = readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
 const readiness = readFileSync(at('src/lib/readiness.ts'), 'utf8');
 
 /** The body of a top-level `function <name>() { … }` in the route's `<script>`, brace-matched. */

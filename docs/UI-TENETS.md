@@ -170,7 +170,7 @@ route (#1246). Every other row is reported by the PR that touches it, measured o
 | TV `/tv` cold → room code and QR                    | ≤ 1000 ms                                 | 112 (100–160)    | –             | **Gated**. LCP 784 ms is the attract phrase's ruled 600 ms fade            |
 | Join: tap Start singing → Sing box ready            | ≤ 300 ms                                  | 136 (105–149)    | –             | dock at 162 ms                                                             |
 | Kept phone: tap Start singing → Sing box ready      | ≤ 300 ms                                  | 263–297          | –             | `probe/keep-me`, timed from the test process at load ~70; one tap, no name |
-| Search: last keystroke → first library result       | ≤ 300 ms                                  | 205 (175–259)    | 275 (214–279) | 150 ms of that is the debounce in `core/src/routes/+page.svelte`           |
+| Search: last keystroke → first library result       | ≤ 300 ms                                  | 205 (175–259)    | 275 (214–279) | 150 ms of that is the debounce in `core/src/routes/(phone)/+page.svelte`           |
 | Search: default sources (catalog and YouTube)       | ≤ 1000 ms on real Wi-Fi                   | **unmeasured**   | –             | 188 (179–277) with the resolvers stubbed; real network unmeasured          |
 | Tap Sing (+) → button reads "queued"                | ≤ 100 ms                                  | 40 (31–82)       | 33            | optimistic. **Gated** at 1×; 4× reported                                   |
 | Tap Sing → row on your own `/queue`                 | ≤ 300 ms                                  | 114 (109–148)    | 196           |                                                                            |
@@ -199,4 +199,4 @@ here. Paths are under `core/src/`.
 | Try again acknowledgement               | 1.5 s hold               | `RETRY_ACK_MS` in `lib/components/ProcessingCard.svelte` | ruled: Try again answers at once with "Trying again…"    |
 | Link lost → "Can't reach the party"     | 3 s                      | `lib/stores/room.ts`                                     | ruled                                                    |
 | Pending indicator grace                 | 300 ms                   | `PENDING_GRACE_MS` in `lib/stores/room.ts`               | the pattern tenet 2 asks every indicator to follow       |
-| Sing-tab and `/library` search debounce | 150 ms                   | `routes/+page.svelte`, `routes/library/+page.svelte`     | **not yet ruled**: about 75% of keystroke → result today |
+| Sing-tab and `/library` search debounce | 150 ms                   | `routes/(phone)/+page.svelte`, `routes/(phone)/library/+page.svelte`     | **not yet ruled**: about 75% of keystroke → result today |

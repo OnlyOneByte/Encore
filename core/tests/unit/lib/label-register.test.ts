@@ -38,7 +38,7 @@ const guidingTrack = strip(read('src/lib/components/GuidingTrack.svelte'));
    so the surface's labels are read as the three files joined. `read` throws when a subject is gone, so a renamed or
    deleted scope reds here rather than quietly shrinking the census below. */
 const settings = ['+page.svelte', 'you/+page.svelte', 'server/+page.svelte']
-	.map((f) => strip(read(`src/routes/settings/${f}`)))
+	.map((f) => strip(read(`src/routes/(phone)/settings/${f}`)))
 	.join('\n');
 const joinLanding = strip(read('src/lib/components/JoinLanding.svelte'));
 const colourRing = strip(read('src/lib/components/ColourRing.svelte'));
@@ -92,7 +92,7 @@ test("GuidingTrack's rail label wears the field primitive's own dress, with no e
 	expect(card).toContain('<span class="control-label">{facts.keyLabel}</span>');
 	// No local re-declaration of the dress beside it — the defect the swap removed, asserted so it cannot come back.
 	expect(card).not.toMatch(/ctl-lab/);
-	expect(strip(read('src/routes/queue/+page.svelte'))).not.toMatch(/ctl-lab/);
+	expect(strip(read('src/routes/(phone)/queue/+page.svelte'))).not.toMatch(/ctl-lab/);
 	expect(strip(read('src/routes/components/+page.svelte'))).not.toMatch(
 		/<Field\.Label|class="control-label"|<ColourRing|<CodeEntry/
 	);
@@ -186,15 +186,17 @@ test('the 0.1em register is an exact set on each ladder, and no row of it labels
 	   correct and the old "exactly two, a third means the eyebrow came back" reading of this list no longer holds.
 	   What still holds is the clause below it: not one of these three sits on a field label. */
 	// -3 with redesign step 5b: /queue's three eyebrows (your card's, the Now row's, the list's) went sentence case.
-	expect(onPhLadder.sort()).toEqual(['routes/song/[mediaId]/+page.svelte .lab']);
+	expect(onPhLadder.sort()).toEqual(['routes/(phone)/song/[mediaId]/+page.svelte .lab']);
 	// The television has none since redesign step 8 retired its eyebrows (`.phrase-kick`, the corner pill's `.lab`).
 	expect(onTvLadder.sort()).toEqual([]);
 
 	// The song page renders no field label at all, so its row cannot be one wearing the section register.
-	expect(strip(read('src/routes/song/[mediaId]/+page.svelte'))).not.toMatch(/<Field\.Label|class="control-label"/);
+	expect(strip(read('src/routes/(phone)/song/[mediaId]/+page.svelte'))).not.toMatch(
+		/<Field\.Label|class="control-label"/
+	);
 	/* YOUR card DOES render one — the key row's `.control-label` — so its eyebrow is cleared PER ELEMENT instead of by
 	   the file carrying no label at all. /queue itself renders none since redesign step 5 moved the key row there. */
-	expect(strip(read('src/routes/queue/+page.svelte'))).not.toMatch(/class="[^"]*\bcontrol-label\b/);
+	expect(strip(read('src/routes/(phone)/queue/+page.svelte'))).not.toMatch(/class="[^"]*\bcontrol-label\b/);
 	const cardLabels = [
 		...strip(read('src/lib/components/OnDeckCard.svelte')).matchAll(
 			/<(\w+)[^>]*class="[^"]*\bcontrol-label\b[^"]*"[\s\S]*?<\/\1\s*>/g

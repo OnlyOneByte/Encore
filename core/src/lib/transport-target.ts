@@ -1,4 +1,4 @@
-// Which song the strip's skip and restart NAME. Pure, so a bun test can decide it. See routes/+layout.svelte.
+// Which song the strip's skip and restart NAME. Pure, so a bun test can decide it. See routes/(phone)/+layout.svelte.
 //
 // The server drops a transport command naming a song that is no longer current (BE-04). That alone only protects a
 // tap that was in flight when the song changed: on a LAN the second phone redraws to the NEXT song within ~30 ms of

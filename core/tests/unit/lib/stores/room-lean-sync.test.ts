@@ -245,7 +245,7 @@ test('a failed song refused as deleted stays gone after the next sync: no scar p
 
 	expect(notices.at(-1)).toBe("That song isn't in the library any more.");
 	expect(link.mediaCatalog.has('sc')).toBe(false);
-	// The processing group, read the way `routes/+page.svelte` draws it: ids whose catalog row exists.
+	// The processing group, read the way `routes/(phone)/+page.svelte` draws it: ids whose catalog row exists.
 	expect([...processingGroupIds(processingResults)].filter((id) => link.mediaCatalog.get(id))).toEqual([]);
 	// And a reload would not seed it back either.
 	expect(activeScars()).toEqual([]);

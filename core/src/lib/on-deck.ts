@@ -1,4 +1,4 @@
-// The on-deck card's decisions, out of the route so a bun test can reach them. See routes/queue/+page.svelte.
+// The on-deck card's decisions, out of the route so a bun test can reach them. See routes/(phone)/queue/+page.svelte.
 
 import type { QueueEntry } from '$lib/contract';
 

@@ -15,11 +15,11 @@ import { at } from '$test';
  * want of a renderer.
  */
 
-const songPage = readFileSync(at('src/routes/song/[mediaId]/+page.svelte'), 'utf8');
+const songPage = readFileSync(at('src/routes/(phone)/song/[mediaId]/+page.svelte'), 'utf8');
 const reselect = readFileSync(at('src/lib/components/LyricsReselect.svelte'), 'utf8');
 
 test('the page leaves the link error channel to the layout', () => {
-	/* This route is the only caller of `reselectLyrics`, so its 401/409/400 refusals need a listener: the root
+	/* This route is the only caller of `reselectLyrics`, so its 401/409/400 refusals need a listener: the phone
 	   layout's one sink (ui-sweep-wiring.test.ts). A second registration here would toast each refusal twice. */
 	expect(songPage).not.toContain('room.onError(');
 });

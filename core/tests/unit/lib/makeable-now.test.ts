@@ -41,7 +41,7 @@ test('the heading agrees with its count, in the stalled card words', () => {
 });
 
 /* WIRING, by source scan (the component-mount harness is gone; see waiting-line-wiring.test.ts). */
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
 const songRow = readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8');
 const room = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
 

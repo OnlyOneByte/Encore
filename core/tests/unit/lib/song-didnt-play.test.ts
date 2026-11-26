@@ -1,6 +1,6 @@
 // Proposal 11, PR 2: which held turn the singer's "Your song didn't play" sheet is for, and the wiring that puts it in
 // the "You're up" slot on any tab, on that singer's phone alone. Source scans for the wiring: no unit test mounts the
-// root layout (it binds geometry; see its --dock-h note).
+// phone layout (it binds geometry; see its --dock-h note).
 import { expect, test } from 'bun:test';
 import { read } from '$test';
 import { didntPlayKey, didntPlayTurn } from '$lib/song-didnt-play';
@@ -40,8 +40,8 @@ test('with two held turns, the earliest in the rotation', () => {
 	expect(didntPlayTurn(entries, 'theo', [])?.id).toBe('t1');
 });
 
-const layout = read('src/routes/+layout.svelte');
-const queuePage = read('src/routes/queue/+page.svelte');
+const layout = read('src/routes/(phone)/+layout.svelte');
+const queuePage = read('src/routes/(phone)/queue/+page.svelte');
 
 test('the sheet takes the "You\'re up" slot and replaces it, and Try again is offered only while the hub allows it', () => {
 	expect(layout).toMatch(

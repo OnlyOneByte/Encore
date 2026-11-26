@@ -21,8 +21,8 @@ import { processStageLabel } from '$lib/phrasing/process-phrasing';
  */
 
 const songRow = readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8');
-const library = readFileSync(at('src/routes/library/+page.svelte'), 'utf8');
-const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+const library = readFileSync(at('src/routes/(phone)/library/+page.svelte'), 'utf8');
+const home = readFileSync(at('src/routes/(phone)/+page.svelte'), 'utf8');
 const roomStore = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
 
 test('the live region is gated on a CHANGE of stage, not on having one', () => {

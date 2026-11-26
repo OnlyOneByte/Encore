@@ -182,13 +182,13 @@ test('every TV string built outside the TV sources is ASCII for signs too', () =
 });
 
 test('the room and machine settings speak guest words, and state the scope once, in the header', () => {
-	for (const f of ['src/routes/settings/+page.svelte', 'src/routes/settings/server/+page.svelte']) {
+	for (const f of ['src/routes/(phone)/settings/+page.svelte', 'src/routes/(phone)/settings/server/+page.svelte']) {
 		const page = strip(read(f));
 		expect(page, f).not.toContain('<Card.Scope>');
 		for (const old of ['>Rotation<', 'Kick out after', 'Grace period', 'Process quality', 'Quality ceiling', 'No cap'])
 			expect(page, `${f}: ${old}`).not.toContain(old);
 	}
-	const room = strip(read('src/routes/settings/+page.svelte'));
+	const room = strip(read('src/routes/(phone)/settings/+page.svelte'));
 	for (const now of ['>Turns<', 'Skip a quiet phone after', 'Guide ·', '>Quality<', 'Best available'])
 		expect(room, now).toContain(now);
 	// Quality lives IN the Sound card, so the page has exactly one "Sound" heading and no "Sound quality" twice.

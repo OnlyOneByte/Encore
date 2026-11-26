@@ -145,7 +145,7 @@
 		<div class="foot">
 			{#if up}
 				{#if detailsId}
-					<a class="more" href={resolve('/song/[mediaId]', { mediaId: detailsId })}
+					<a class="more" href={resolve('/(phone)/song/[mediaId]', { mediaId: detailsId })}
 						>Song details and lyrics <Icon name="chevron-right" /></a
 					>
 				{/if}

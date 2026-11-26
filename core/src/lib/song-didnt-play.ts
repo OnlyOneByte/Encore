@@ -1,5 +1,5 @@
 // "Your song didn't play": the singer's half of a failed song (proposal 11). Pure, so a bun test can decide it. See
-// routes/+layout.svelte.
+// routes/(phone)/+layout.svelte.
 
 import type { QueueEntry } from '$lib/contract';
 
