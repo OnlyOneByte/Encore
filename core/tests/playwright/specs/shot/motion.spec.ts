@@ -98,7 +98,8 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'tv-copy-offline': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK],
-	'tv-lyrics-fix': [...DEMO_LIBRARY, LONG_TRACK]
+	'tv-lyrics-fix': [...DEMO_LIBRARY, LONG_TRACK],
+	'tv-chorus-cue': [...DEMO_LIBRARY, LONG_TRACK]
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -1738,6 +1739,55 @@ const SCENARIOS: Record<string, Make> = {
 			},
 			subject: '.lyrics .row.fresh',
 			only: '.lyrics .row.fresh'
+		};
+	},
+	'tv-chorus-cue': (browser, world, cleanup) => {
+		let phone: Page | undefined;
+		let tv: BrowserContext | undefined;
+		cleanup(async () => tv?.close());
+		const chorus = ['Sing it out loud', 'Everybody now', 'This one is ours'];
+		return {
+			name: 'tv-chorus-cue',
+			what: 'TV 1920x1080 mid-song (proposal 38): on the line before the chorus, "Everyone" fades in over the row that opens it (opacity, 0.3 s), and the chorus rows are the room gold while the singer leads the wipe',
+			stepMs: 33,
+			scale: 0.5,
+			columns: 5,
+			startTimeoutMs: 12_000,
+			open: async (opts) => {
+				if (!phone) {
+					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					cleanup(() => worker.stop());
+					phone = await world.openPhone('Ana');
+					await world.becomeHost(phone);
+					await readySong(world, phone, 'long');
+					const mediaId = (await world.awaitDemoTrack('long')).id;
+					// Three verse lines then the chorus, six times over, on the fake worker's 0.8 s grid.
+					const lines = Array.from({ length: 40 }, (_, i) => ({
+						text: i % 6 < 3 || i >= 36 ? `Verse ${Math.floor(i / 6) + 1} line ${(i % 6) + 1}` : chorus[(i % 6) - 3]!
+					}));
+					const audit = await (await phone.request.get(`/api/audit/${mediaId}`)).json();
+					const rev = (audit.media?.lyricsEditRev ?? 0) as number;
+					const res = await phone.request.post('/api/lyrics-edit', { data: { mediaId, rev, lines } });
+					expect(res.status(), await res.text()).toBe(200);
+				}
+				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'long');
+				await tv?.close();
+				tv = await browser.newContext({ ...opts, viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
+				const page = await tv.newPage();
+				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
+				const claim = page.getByRole('button', { name: 'Make this the TV' });
+				if (await claim.isVisible().catch(() => false)) await claim.click();
+				await page.mouse.click(960, 540);
+				await expect(page.locator('.lyrics .row.chorus').first()).toBeAttached({ timeout: 30_000 });
+				return page;
+			},
+			trigger: async (page) => {
+				// The cue turns on as the line before a chorus starts; that edge is the trigger.
+				await expect(page.locator('.lyrics .everyone.on')).toHaveCount(0, { timeout: 12_000 });
+				await expect(page.locator('.lyrics .everyone.on')).toBeAttached({ timeout: 12_000 });
+			},
+			subject: '.lyrics .everyone.on',
+			only: '.lyrics .everyone'
 		};
 	},
 	'tv-song-intro': tvHandoff('in'),

@@ -24,7 +24,7 @@ const LINES = Array.from({ length: 45 }, (_, i) =>
 );
 const GOLD = 'rgb(255, 223, 122)';
 /** A computed colour as `r, g, b, a` in 0-255 and 0-1: `color-mix` serialises as `color(srgb …)`, a literal as `rgb()`. */
-function rgba(css: string | null): string {
+function rgba(css: string | null | undefined): string {
 	const srgb = css?.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
 	const n = srgb
 		? [...srgb.slice(1, 4).map((v) => Math.round(Number(v) * 255)), Number(srgb[4] ?? 1)]
@@ -77,6 +77,11 @@ const rowIndex = (tv: Page, selector: string) =>
 	}, selector);
 
 async function frame(tv: Page, testInfo: TestInfo, name: string): Promise<void> {
+	// The frame shows the line at rest, not the reel or a colour mid-transition.
+	await tv
+		.locator('.lyrics .reel')
+		.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)))
+		.catch(() => {});
 	const path = testInfo.outputPath(`${name}.png`);
 	await tv.screenshot({ path });
 	await testInfo.attach(name, { path, contentType: 'image/png' });
