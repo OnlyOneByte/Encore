@@ -182,23 +182,39 @@ test('Theo’s streak on his cover and his year on the You tab, his alone, in hi
 		});
 		try {
 			await refused.addCookies((await theo.context().cookies()).filter((c) => c.name !== 'encore_tz'));
+			// The page's `?tz=` handler runs in a microtask once the body is parsed, so a task queued after the parse
+			// runs after it. That task raises a flag the DELETE waits on: the refusal then always lands AFTER the page
+			// has handled (and, with the delete out, set aside) the phone's answer, the order the fix exists for.
+			// Without it the answer could land after the refusal, find the list back and apply anyway, fix or not.
+			await refused.addInitScript(() => {
+				const fetch0 = window.fetch;
+				window.fetch = (async (...args: Parameters<typeof fetch>) => {
+					const res = await fetch0(...args);
+					if (String(args[0]).includes('/api/me/nights?tz=')) {
+						const json0 = res.json.bind(res);
+						res.json = async () => {
+							const body = await json0();
+							setTimeout(() => ((window as unknown as { tzHandled: boolean }).tzHandled = true));
+							return body;
+						};
+					}
+					return res;
+				}) as typeof fetch;
+			});
 			const page = await refused.newPage();
 			let deleting!: () => void;
 			const deleteSent = new Promise<void>((r) => (deleting = r));
-			let answered!: () => void;
-			const answerIn = new Promise<void>((r) => (answered = r));
 			await page.route(
 				(u) => u.pathname === '/api/me/nights',
 				async (route) => {
 					if (route.request().method() === 'DELETE') {
 						deleting();
-						await answerIn;
+						await page.waitForFunction(() => (window as unknown as { tzHandled?: boolean }).tzHandled === true);
 						return route.fulfill({ status: 500, body: '{}' });
 					}
 					if (!route.request().url().includes('tz=')) return route.continue();
 					await deleteSent;
 					await route.fulfill({ response: await route.fetch() });
-					answered();
 				}
 			);
 			await page.goto('/settings/you');
