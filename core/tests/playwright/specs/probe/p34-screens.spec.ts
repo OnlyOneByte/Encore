@@ -108,14 +108,19 @@ test('the host sees, names, swaps and removes the screens, and a guest cannot', 
 		// The TV cannot be removed; a copy can, says so, and comes back as a new screen when opened again.
 		const tvRemove = await host.request.post('/api/screens', { data: { action: 'remove', id: first!.id } });
 		expect(tvRemove.status()).toBe(409);
+		// Removed while its own seat line is still up: that line's 4 s clear must not blank the removal's (#1378).
+		const status = b.locator('p.vh[role="status"]');
+		await b.reload();
+		await expect(status).toHaveText(/\S/, { timeout: 15_000 });
 		await row(host, 'Kitchen').getByRole('button', { name: 'Remove' }).click();
 		await expect(b.locator('.shut-line')).toHaveText('This screen was removed', { timeout: 5_000 });
-		await expect(b.locator('p.vh[role="status"]')).toHaveText('This screen was removed');
+		await expect(status).toHaveText('This screen was removed');
 		await expect(host.getByText(/Kitchen was removed/)).toBeVisible();
 		await expect.poll(async () => (await rows(host)).map((r) => r.name)).not.toContain('Kitchen');
-		// It stays down: no redial brings it back on its own.
-		await b.waitForTimeout(2_000);
+		// It stays down, and says so: no redial brings it back, and the line outlasts the seat line's clear.
+		await b.waitForTimeout(5_000);
 		expect((await rows(host)).length).toBe(2);
+		expect(await status.textContent()).toBe('This screen was removed');
 		await shot(b, 'removed-1920');
 		await b.getByRole('button', { name: 'Open again' }).click();
 		await expect.poll(async () => (await rows(host)).filter((r) => r.isNew).map((r) => r.name)).toContain('Screen 3');
