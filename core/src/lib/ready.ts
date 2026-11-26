@@ -86,7 +86,8 @@ export function readyRows(f: ReadyFacts): ReadyRow[] {
 	const sound = !f.tvName
 		? row('sound', 'red', 'No TV to play on', { fix: 'Open the TV first.', action: 'tv-link' })
 		: f.audio === 'ok'
-			? row('sound', 'green', 'Sound is on')
+			? // Only what was checked: the TV's browser started audio. A muted TV or a switched-off speaker still passes.
+				row('sound', 'green', 'The TV can play sound')
 			: f.audio === 'locked'
 				? row('sound', 'red', 'The TV needs one tap before it can play sound', {
 						fix: 'Tap the TV screen once.',
@@ -94,7 +95,8 @@ export function readyRows(f: ReadyFacts): ReadyRow[] {
 					})
 				: row('sound', 'wait', 'Not checked yet', { fix: 'Play a test sound on the TV.', action: 'test-sound' });
 
-	const device = f.workers.find((w) => w.device)?.device ?? 'cpu';
+	// A worker that reports no device may well have a GPU, so it is never shown as cpu.
+	const device = f.workers.find((w) => w.device)?.device ?? 'unknown';
 	const pace = f.typicalMinutes === null ? '' : ` · about ${Math.max(1, Math.round(f.typicalMinutes))} min a song`;
 	const empty = note('no-capabilities');
 	const maker = noWorker

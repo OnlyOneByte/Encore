@@ -72,7 +72,7 @@ test('everything working is six green rows, in the proposal’s words', () => {
 	expect(states(facts())).toEqual(ALL_GREEN);
 	expect(readyRows(facts()).map((r) => r.status)).toEqual([
 		'Living room TV is on and holding the room',
-		'Sound is on',
+		'The TV can play sound',
 		'Ready · cpu · about 3 min a song',
 		'Downloads work',
 		'Lyrics lookups work',
@@ -146,6 +146,25 @@ test('a slow karaoke maker is amber: it works, but songs take a while', () => {
 		state: 'amber',
 		status: 'Ready · cpu · about 6 min a song'
 	});
+});
+
+test('a worker that reports no device reads unknown, never cpu (#1368)', () => {
+	const noDevice = facts({ workers: [{ capabilities: ['stems', 'align', 'fetch:ytdlp'], notes: [], lyricsAt: T0 }] });
+	expect(byId(noDevice).get('maker')?.status).toBe('Ready · unknown · about 3 min a song');
+});
+
+test('the YouTube row passes on the worker’s missing setting and names no path (#1368)', () => {
+	const gap = {
+		code: 'youtube-gap',
+		text: 'YouTube downloads will fail without deno on PATH and --remote-components ejs:github in a yt-dlp config'
+	};
+	const rows = byId(facts({ workers: [{ capabilities: ['fetch:ytdlp'], notes: [gap], lyricsAt: T0 }] }));
+	const youtube = rows.get('youtube');
+	expect(youtube?.fix).toBe(
+		'The karaoke maker is missing deno on PATH and --remote-components ejs:github in a yt-dlp config.'
+	);
+	expect(youtube?.detail).toBe(gap.text);
+	expect(`${youtube?.fix} ${youtube?.detail}`).not.toMatch(/\//);
 });
 
 test('the worker’s notes are kept only when well shaped, and a warnings frame is checked', () => {

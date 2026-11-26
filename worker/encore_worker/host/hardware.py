@@ -505,7 +505,8 @@ def youtube_gap(config_paths: tuple[str, ...], *, deno: str = "deno") -> str | N
     if not binary_available(deno):
         missing.append("deno on PATH")
     if not any(_mentions(path, "remote-components") for path in config_paths):
-        missing.append(f"--remote-components ejs:github in a yt-dlp config ({', '.join(config_paths)})")
+        # No path: this text goes to core for the host's Ready page. The boot log lists the files read.
+        missing.append("--remote-components ejs:github in a yt-dlp config")
     return " and ".join(missing) or None
 
 

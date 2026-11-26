@@ -1748,7 +1748,7 @@ const SCENARIOS: Record<string, Make> = {
 		const chorus = ['Sing it out loud', 'Everybody now', 'This one is ours'];
 		return {
 			name: 'tv-chorus-cue',
-			what: 'TV 1920x1080 mid-song (proposal 38): on the line before the chorus, "Everyone" fades in over the row that opens it (opacity, 0.3 s), and the chorus rows are the room gold while the singer leads the wipe',
+			what: 'TV 1920x1080 mid-song (proposal 38): on the line before the chorus, "Everyone" fades in over the row that opens it (opacity, --motion-base: 0.25 s), and the chorus rows are the room gold while the singer leads the wipe',
 			stepMs: 33,
 			scale: 0.5,
 			columns: 5,
