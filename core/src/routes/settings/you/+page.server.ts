@@ -8,7 +8,7 @@ import { settingsSinger } from '$lib/server/settings-gate';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { keepState, readDevice } from '$lib/server/people/keep';
 import { historyOwner, yourYear } from '$lib/server/nights/service';
-import { zoneOrServer } from '$lib/server/nights/year';
+import { knownZone, zoneOrServer, ZONE_COOKIE } from '$lib/server/nights/year';
 
 // shortcut: the server's zone, as on the story page.
 const when = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -22,6 +22,7 @@ export const load: PageServerLoad = (event) => {
 	if (device && stored.personId === device.person.id) app.people.touch(device.deviceId, app.now());
 	// Your nights only: the owner is this phone's cookies, as GET /api/me/nights reads them.
 	const caller = historyOwner(app, event.cookies, event)!;
+	const zoneCookie = knownZone(event.cookies.get(ZONE_COOKIE));
 	return {
 		me,
 		keep: keepState(stored, device, app),
@@ -31,9 +32,10 @@ export const load: PageServerLoad = (event) => {
 			list: app.nights
 				.nightsFor(caller.owner)
 				.map((n) => ({ id: n.id, when: when.format(n.startedAt), songs: n.songs })),
-			// Your year in the core's zone; the page asks again with the phone's (`?tz=`) only when the two differ.
-			year: yourYear(app, caller.owner, null),
-			zone: zoneOrServer(null)
+			// Your year in the phone's zone when it told us before (ZONE_COOKIE), else the core's; the page asks again
+			// with `?tz=` only when `zone` is not the phone's, so a remembered zone renders once with nothing to swap.
+			year: yourYear(app, caller.owner, zoneCookie),
+			zone: zoneOrServer(zoneCookie)
 		}
 	};
 };

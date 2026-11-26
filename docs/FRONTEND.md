@@ -1873,8 +1873,10 @@ Proposal 29, PR 3. The phone's half of [Your night](SERVER.md#your-night), and o
   is out is sent once it answers, so the last tap wins. After Delete my history, focus moves to the switch.
 - **Your year.** Above the list, once a night is in it: "Your 2026", "12 nights · 30 songs", and "Most sung: Mayday,
   4 times" from two times up (`year` from [GET /api/me/nights](SERVER.md#your-night)). "This year" is the phone's:
-  the load counts it in the core's zone and the page asks again with `?tz=` only when the phone's zone differs.
-  Delete my history zeroes it with the list. Your own counts only, never beside anyone else's.
+  the load counts it in the zone this phone last sent (`encore_tz`), else the core's, and the page asks again with
+  `?tz=` only when the phone's zone differs, which after the first visit it no longer does. So around New Year
+  the block does not appear or vanish after the first paint. Delete my history zeroes it with the list, and a
+  refused one puts back the phone's numbers. Your own counts only, never beside anyone else's.
 - **The story.** A few slides in your colour, one fact each (`$lib/night-story.ts` decides which are true): the
   cover ("2 songs", when, and "3rd night in a row" from two nights in a row up, from `streak`), your loudest song when anyone cheered, and the setlist with each song's cheers and
   key, plus "You like it 2 keys down" when more than half the songs were shifted. A turn that would not play is not

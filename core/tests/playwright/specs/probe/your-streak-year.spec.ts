@@ -11,8 +11,9 @@ import { serverPlayback } from './audio-probe-support';
 import type { Page, TestInfo } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
-// A file-backed DB, so the first night can be moved into the past between the two.
-test.use({ coreEnv: { ENCORE_EPHEMERAL: '0' } });
+// A file-backed DB, so the first night can be moved into the past between the two. Core counts in UTC, so a night can
+// be placed where its year differs from a far zone's.
+test.use({ coreEnv: { ENCORE_EPHEMERAL: '0', TZ: 'UTC' } });
 test.setTimeout(240_000);
 
 const current = async (world: World) => (await serverPlayback(world.baseURL)).state.currentEntryId;
@@ -108,7 +109,36 @@ test('Theo’s streak on his cover and his year on the You tab, his alone, in hi
 		await expect(cover).toContainText('1 song');
 		await expect(cover).not.toContainText('in a row');
 
-		// The same phone in another zone asks for its own year, and gets the same two nights.
+		// Night one moves to 31 Dec THIS year, 12:00 UTC: still this year in core's zone, already 1 Jan next year in
+		// Kiritimati (UTC+14). So the two answers differ: only the `?tz=` one says 1 night, with no most-sung line. Ahead
+		// rather than behind, because a guest's turns older than 90 days are swept (GUEST_NIGHTS_RETENTION_MS).
+		// shortcut: from 31 Dec 10:00 UTC Kiritimati is in next year too, so this step cannot pass in those 14 hours.
+		const thisYear = new Date().getUTCFullYear();
+		await world.core.restart(() => {
+			const db = new DatabaseSync(join(world.core.dataDir, 'encore.sqlite'));
+			try {
+				const first = db.prepare('SELECT id, started_at AS at FROM nights ORDER BY started_at LIMIT 1').get() as {
+					id: string;
+					at: number;
+				};
+				const shift = first.at - Date.UTC(thisYear, 11, 31, 12);
+				db.prepare('UPDATE nights SET started_at = started_at - ?, ended_at = ended_at - ? WHERE id = ?').run(
+					shift,
+					shift,
+					first.id
+				);
+				db.prepare(
+					'UPDATE performances SET started_at = started_at - ?, ended_at = ended_at - ? WHERE night_id = ?'
+				).run(shift, shift, first.id);
+			} finally {
+				db.close();
+			}
+		});
+		await theo.goto('/settings/you');
+		await expect(year).toContainText('2 nights · 2 songs');
+
+		// The same phone in Kiritimati asks for its own year and gets one night. Told once, core remembers the zone:
+		// the next load already counts in it, with no second answer to swap in and so no shift.
 		const far = await browser.newContext({
 			baseURL: world.baseURL,
 			viewport: { width: 390, height: 844 },
@@ -120,9 +150,66 @@ test('Theo’s streak on his cover and his year on the You tab, his alone, in hi
 			const asked = page.waitForRequest((r) => r.url().includes('/api/me/nights?tz=Pacific%2FKiritimati'));
 			await page.goto('/settings/you');
 			await asked;
-			await expect(page.locator('#your-year')).toContainText('2 nights · 2 songs');
+			await expect(page.locator('#your-year')).toContainText(`Your ${thisYear}`);
+			await expect(page.locator('#your-year')).toContainText('1 night · 1 song');
+			// The server's own render, before any script: Svelte's `<!---->` markers out, whitespace collapsed.
+			const html = (await (await page.request.get('/settings/you')).text())
+				.replace(/<!--[^]*?-->/g, '')
+				.replace(/\s+/g, ' ');
+			expect(html).toContain('1 night · 1 song');
+			let askedAgain = false;
+			page.on('request', (r) => {
+				if (r.url().includes('/api/me/nights?tz=')) askedAgain = true;
+			});
+			await page.reload();
+			await expect(page.locator('#your-year')).toContainText('1 night · 1 song');
+			await page.locator('#nights').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+			await shot(page, testInfo, 'you-year-far-390');
+			await page.setViewportSize({ width: 320, height: 568 });
+			await page.locator('#nights').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+			await shot(page, testInfo, 'you-year-far-320');
+			expect(askedAgain).toBe(false);
 		} finally {
 			await far.close();
+		}
+
+		// A refused Delete my history rolls back to the PHONE's year, even when its `?tz=` answer came in while the
+		// delete was out. A fresh phone in Kiritimati, so the zone is not remembered yet and the answer is needed.
+		const refused = await browser.newContext({
+			baseURL: world.baseURL,
+			viewport: { width: 390, height: 844 },
+			timezoneId: 'Pacific/Kiritimati'
+		});
+		try {
+			await refused.addCookies((await theo.context().cookies()).filter((c) => c.name !== 'encore_tz'));
+			const page = await refused.newPage();
+			let deleting!: () => void;
+			const deleteSent = new Promise<void>((r) => (deleting = r));
+			let answered!: () => void;
+			const answerIn = new Promise<void>((r) => (answered = r));
+			await page.route(
+				(u) => u.pathname === '/api/me/nights',
+				async (route) => {
+					if (route.request().method() === 'DELETE') {
+						deleting();
+						await answerIn;
+						return route.fulfill({ status: 500, body: '{}' });
+					}
+					if (!route.request().url().includes('tz=')) return route.continue();
+					await deleteSent;
+					await route.fulfill({ response: await route.fetch() });
+					answered();
+				}
+			);
+			await page.goto('/settings/you');
+			const box = page.locator('#nights');
+			await expect(box.locator('#your-year')).toContainText('2 nights · 2 songs');
+			await box.getByRole('button', { name: 'Delete my history' }).click();
+			await page.getByRole('button', { name: 'Yes, delete it' }).click();
+			await expect(box).toContainText('Could not delete your history');
+			await expect(box.locator('#your-year')).toContainText('1 night · 1 song');
+		} finally {
+			await refused.close();
 		}
 
 		// Maya sang nothing: no year, no nights, and Theo's numbers nowhere.
