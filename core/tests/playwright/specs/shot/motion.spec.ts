@@ -99,7 +99,7 @@ const LIBRARY: Record<string, typeof DEMO_LIBRARY> = {
 	'tv-copy-offline-390': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-copy-offline-320': [...DEMO_LIBRARY, LONG_TRACK],
 	'tv-lyrics-fix': [...DEMO_LIBRARY, LONG_TRACK],
-	'tv-chorus-cue': [...DEMO_LIBRARY, LONG_TRACK]
+	'tv-chorus-cue': [...DEMO_LIBRARY, ROOM_SCREEN_TRACK]
 };
 
 /** How long a fan's reaction bucket takes to refill after a burst (the reaction probe's wait), so every run's burst
@@ -1755,36 +1755,50 @@ const SCENARIOS: Record<string, Make> = {
 			startTimeoutMs: 12_000,
 			open: async (opts) => {
 				if (!phone) {
-					const worker = await startFakeWorker(world, { seconds: LONG_TRACK.seconds });
+					const worker = await startFakeWorker(world, { seconds: ROOM_SCREEN_TRACK.seconds });
 					cleanup(() => worker.stop());
 					phone = await world.openPhone('Ana');
 					await world.becomeHost(phone);
-					await readySong(world, phone, 'long');
-					const mediaId = (await world.awaitDemoTrack('long')).id;
-					// Three verse lines then the chorus, six times over, on the fake worker's 0.8 s grid.
-					const lines = Array.from({ length: 40 }, (_, i) => ({
-						text: i % 6 < 3 || i >= 36 ? `Verse ${Math.floor(i / 6) + 1} line ${(i % 6) + 1}` : chorus[(i % 6) - 3]!
+					await readySong(world, phone, 'room-screen');
+					const mediaId = (await world.awaitDemoTrack('room-screen')).id;
+					// Three verse lines then the chorus, on the fake worker's 0.8 s grid, for as long as the runs need.
+					const lines = Array.from({ length: 200 }, (_, i) => ({
+						text: i % 6 < 3 ? `Verse ${Math.floor(i / 6) + 1} line ${(i % 6) + 1}` : chorus[(i % 6) - 3]!
 					}));
 					const audit = await (await phone.request.get(`/api/audit/${mediaId}`)).json();
 					const rev = (audit.media?.lyricsEditRev ?? 0) as number;
 					const res = await phone.request.post('/api/lyrics-edit', { data: { mediaId, rev, lines } });
 					expect(res.status(), await res.text()).toBe(200);
 				}
-				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'long');
+				if (!(await phone.locator(SEL.npStripTitle).count())) await queueReady(phone, 'room-screen');
 				await tv?.close();
 				tv = await browser.newContext({ ...opts, viewport: { width: 1920, height: 1080 }, baseURL: world.baseURL });
 				const page = await tv.newPage();
+				const seat = page
+					.waitForEvent('websocket', { timeout: 30_000 })
+					.then((ws) =>
+						ws.waitForEvent('framereceived', {
+							predicate: (f) => String(f.payload).includes('"tv:seat"'),
+							timeout: 30_000
+						})
+					)
+					.then((f) => (JSON.parse(String(f.payload)) as { mine: boolean }).mine);
 				await page.goto(`/tv?room=${encodeURIComponent(world.code)}`);
-				const claim = page.getByRole('button', { name: 'Make this the TV' });
-				if (await claim.isVisible().catch(() => false)) await claim.click();
+				// The last run's screen may still hold the seat for its grace; this one takes it.
+				if (!(await seat)) await page.getByRole('button', { name: 'Make this the TV' }).click();
+				await expect(page.locator('.copy-chip')).toHaveCount(0);
 				await page.mouse.click(960, 540);
+				// The last run paused on its cue.
+				await sendPlayerCommand(phone, { cmd: 'play' });
 				await expect(page.locator('.lyrics .row.chorus').first()).toBeAttached({ timeout: 30_000 });
 				return page;
 			},
 			trigger: async (page) => {
-				// The cue turns on as the line before a chorus starts; that edge is the trigger.
+				// The cue turns on as the line before a chorus starts; that edge is the trigger. The song pauses there, so
+				// the line, and its cue, are still up while the frames are taken.
 				await expect(page.locator('.lyrics .everyone.on')).toHaveCount(0, { timeout: 12_000 });
 				await expect(page.locator('.lyrics .everyone.on')).toBeAttached({ timeout: 12_000 });
+				await sendPlayerCommand(phone!, { cmd: 'pause' });
 			},
 			subject: '.lyrics .everyone.on',
 			only: '.lyrics .everyone'
