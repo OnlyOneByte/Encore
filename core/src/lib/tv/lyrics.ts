@@ -57,12 +57,13 @@ export function wipesWords(line: Pick<LyricLine, 'confidence'>): boolean {
 }
 
 /** A line's words for matching repeats: lowercase, letters and digits only (an apostrophe joins), ad-libs in
- *  brackets dropped unless the line is nothing but one. null for a line with no words ("♪"), which breaks a run. */
+ *  brackets dropped unless the line is nothing but one. null for a line with no words (a music note), which breaks a
+ *  run. A curly apostrophe is final punctuation (`\p{Pf}`), named so the TV source stays ASCII. */
 function chorusKey(text: string): string | null {
 	const words = (s: string) =>
 		s
 			.toLowerCase()
-			.replace(/['’]/g, '')
+			.replace(/['\p{Pf}]/gu, '')
 			.match(/[\p{L}\p{N}]+/gu)
 			?.join(' ') ?? '';
 	return words(text.replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')) || words(text) || null;

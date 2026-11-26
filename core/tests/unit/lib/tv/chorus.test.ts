@@ -78,6 +78,17 @@ test('only the run sung most is marked, not a shorter hook as well', () => {
 test('case, punctuation, apostrophes and bracketed ad-libs do not split a repeat', () => {
 	const song = lines('Verse here', "Don't stop", 'ME NOW (yeah!)', 'verse there', 'dont stop!', 'me now', 'end');
 	expect(blocks(chorusLines(song))).toEqual(['1..2', '4..5']);
+	// A curly apostrophe (U+2019) joins too.
+	const curly = lines(
+		'Verse here',
+		`Don${String.fromCharCode(0x2019)}t stop`,
+		'me now',
+		'verse there',
+		'dont stop',
+		'me now',
+		'end'
+	);
+	expect(blocks(chorusLines(curly))).toEqual(['1..2', '4..5']);
 });
 
 test('a line that is only an ad-lib still counts as the words it carries', () => {
