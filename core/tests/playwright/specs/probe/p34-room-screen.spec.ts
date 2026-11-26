@@ -54,7 +54,8 @@ async function press(p: Page, inputs: Input[]) {
 	const t0 = Date.now() / 1000;
 	for (const i of inputs) {
 		if (i.late) await p.waitForTimeout(700);
-		await cdp.send(i.method, { ...i.params, timestamp: t0 + i.at / 1000 });
+		// Each method's own parameter type is chosen by `i.method`, which the helpers below always pair correctly.
+		await cdp.send(i.method, { ...i.params, timestamp: t0 + i.at / 1000 } as never);
 	}
 	await cdp.detach();
 	// Every input is handled, and any click it made, by the page's second frame after the last one.
