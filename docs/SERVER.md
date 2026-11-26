@@ -1061,6 +1061,9 @@ checked would not be the name sent. Only `X-Forwarded-Host` is a comma chain.
   (`ws://core:3000` in compose) or a script, which can send any `Host` anyway. An HTTP request with no `Origin` is
   still checked, because a browser's same-origin `GET` sends none.
 - Under `bun run dev`, Vite's own `server.allowedHosts` check applies instead; `server.ts` is not running.
+- SvelteKit answers a route-resolution request (`__route.js`, #1364) before the request hook in `hooks.server.ts`
+  runs, so a page check placed in that hook does not apply to it. This allowlist still does, because `server.ts`
+  runs it first.
 - `probe/host-allowlist.spec.ts` sends foreign and allowed names to `/api`, `/tv` and `/ws`.
 
 ### The worker token

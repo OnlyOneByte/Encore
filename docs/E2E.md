@@ -62,7 +62,7 @@ the measurer is `specs/gate/speed-measure.ts`.
 | 10    | tap to first visible change: Sing (+), dock tab, On deck key, Try again            | 100 ms at 1×                            |
 | 11    | layout shift on cold loads and the phone session                                   | CLS 0                                   |
 | 12    | no indicator on screen for under 300 ms; a lost party not called lost before 3 s   | 300 ms grace; ≥ 3 s                     |
-| 13    | CSS and JS each route ships, gzipped                                               | today's bytes + about 3%, ratchets down |
+| 13    | CSS and JS each route ships, gzipped                                               | a ceiling per route, ratchets down      |
 | 14    | phone motion, declared duration plus delay                                         | 400 ms (`--motion-slow`)                |
 | 15    | TV chrome inside `--tv-safe-x` / `--tv-safe-y` at 1920×1080, empty room and a song | 0 elements outside                      |
 

@@ -200,7 +200,8 @@ for (const row of ROWS.filter((r) => r.flashGate && r.cpu === 1)) {
 	});
 }
 
-// Today's gzipped bytes + ~3%. Only ratchet down; raising one needs the owner's ruling.
+// Ceilings on the gzipped bytes, not a margin: headroom differs per route (from about 0.1% to 3%). Only ratchet
+// down; raising one needs the owner's ruling.
 const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
 	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page.
 	'/': { css: 20_000, js: 123_500 },
