@@ -242,6 +242,51 @@ test('a split fleet: the fetcher leaving, then the maker, moves no row under the
 	}
 });
 
+test('an uploads-only room gains a fetcher: Sing comes back in place, then one heading when all leave (#1138)', async ({
+	world
+}) => {
+	test.setTimeout(240_000);
+	const uploads = await startFakeWorker(world, { capabilities: MAKER });
+	let full: Awaited<ReturnType<typeof startFakeWorker>> | undefined;
+	const maya = await world.openPhone('Maya');
+	try {
+		await maya.route('**/api/search?*', async (r) => {
+			const u = new URL(r.request().url());
+			u.searchParams.set('source', 'local');
+			const res = await r.fetch({ url: u.toString() });
+			const body = (await res.json()) as { results?: unknown[] };
+			await r.fulfill({ response: res, json: { ...body, results: [...(body.results ?? []), YOUTUBE_HIT] } });
+		});
+		await maya.goto('/');
+		await expect(promise(maya)).toHaveText(ONLY_READY, { timeout: AFTER_GRACE_MS });
+		await search(maya, 'bohemian', '/');
+		const youtubeRow = maya.locator(SEL.songRow, { hasText: YOUTUBE_HIT.title });
+		await expect(youtubeRow).toBeVisible();
+		await expect(heading(maya, CANT)).toHaveCount(1);
+		await expect(sings(maya), 'only the upload offers Sing').toHaveCount(1);
+		const before = await rowTops(maya);
+
+		// A fetcher joins: the YouTube row's Sing comes back in its kept box, with no new search, and nothing moves.
+		full = await startFakeWorker(world, { capabilities: [...MAKER, 'fetch:ytdlp'] });
+		await expect(sings(maya), 'both rows offer Sing again').toHaveCount(2, { timeout: AFTER_GRACE_MS });
+		await expect(heading(maya, CANT), 'no heading says a makeable song cannot be made').toHaveCount(0);
+		await shoot(maya, 'sing-split-fetcher-joined');
+		expect(await rowTops(maya), 'every row where it was, the fetcher here').toEqual(before);
+
+		// Every worker leaves: one can't-make heading speaks for both rows, and still nothing moves.
+		await full.stop();
+		await uploads.stop();
+		await expect(sings(maya)).toHaveCount(0, { timeout: AFTER_GRACE_MS });
+		await expect(heading(maya, CANT), 'one heading, not two the same').toHaveCount(1);
+		await expect(heading(maya, "Can't make these right now")).toHaveCount(1);
+		await shoot(maya, 'sing-split-all-left');
+		expect(await rowTops(maya), 'every row where it was, every worker gone').toEqual(before);
+	} finally {
+		await full?.stop();
+		await uploads.stop();
+	}
+});
+
 test('a full worker keeps every Sing button and the promise', async ({ world }) => {
 	test.setTimeout(120_000);
 	const worker = await startFakeWorker(world, { capabilities: [...MAKER, 'fetch:ytdlp'] });
