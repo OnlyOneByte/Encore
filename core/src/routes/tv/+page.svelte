@@ -582,6 +582,9 @@
 				// Removed by the host, or one screen too many: stop redialling and say so (`shutOut` below).
 				if (closeCode === TV_REMOVED_CLOSE_CODE || closeCode === TV_FULL_CLOSE_CODE) {
 					shutOut = closeCode === TV_REMOVED_CLOSE_CODE ? 'removed' : 'full';
+					// Said in the page's one live region, and kept: a seat line's pending clear would blank it for good (#1378).
+					clearTimeout(seatAnnounceTimer);
+					seatAnnounce = shutOutLine;
 					ws?.close();
 				}
 				// A RE-connect re-seeds: frames sent while the socket was down (a core restart) are lost, and the
@@ -609,10 +612,6 @@
 	const shutOutLine = $derived(
 		shutOut === 'removed' ? 'This screen was removed' : 'This room has all the screens it can show'
 	);
-	// Said in the page's one live region, which is mounted before any of it.
-	$effect(() => {
-		if (shutOut) seatAnnounce = shutOutLine;
-	});
 
 	// A copy tells core how far it runs from the TV, for the host's Screens page: the latest measure, every 2 s at most.
 	const DRIFT_REPORT_MS = 2_000;
