@@ -258,7 +258,9 @@ export const roomSettings = sqliteTable('room_settings', {
 	// Applies after the socket drops AND the last pending song leaves the queue. 0 = no grace.
 	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90),
 	// NOT NULL default true: reactions ship ON, so an existing room upgrades to having them.
-	tvReactions: integer('tv_reactions', { mode: 'boolean' }).notNull().default(true)
+	tvReactions: integer('tv_reactions', { mode: 'boolean' }).notNull().default(true),
+	// NOT NULL default true: the chorus cue ships ON, so an existing room upgrades to having it.
+	tvChorus: integer('tv_chorus', { mode: 'boolean' }).notNull().default(true)
 });
 
 export const jobs = sqliteTable(

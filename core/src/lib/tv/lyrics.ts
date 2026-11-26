@@ -55,6 +55,61 @@ export interface LyricLine {
 export function wipesWords(line: Pick<LyricLine, 'confidence'>): boolean {
 	return line.confidence !== 'low';
 }
+
+/** A line's words for matching repeats: lowercase, letters and digits only (an apostrophe joins), ad-libs in
+ *  brackets dropped unless the line is nothing but one. null for a line with no words (a music note), which breaks a
+ *  run. A curly apostrophe is final punctuation (`\p{Pf}`), named so the TV source stays ASCII. */
+function chorusKey(text: string): string | null {
+	const words = (s: string) =>
+		s
+			.toLowerCase()
+			.replace(/['\p{Pf}]/gu, '')
+			.match(/[\p{L}\p{N}]+/gu)
+			?.join(' ') ?? '';
+	return words(text.replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')) || words(text) || null;
+}
+
+/**
+ * The chorus: the run of 2+ lines whose words repeat, scored by lines x non-overlapping times sung, the later one on
+ * a tie. Only that run is marked, and nothing when it covers over 60% of the song (a chant). Proposal 38; see
+ * docs/FRONTEND.md#the-chorus.
+ */
+export function chorusLines(lines: readonly Pick<LyricLine, 'text'>[]): Set<number> {
+	const keys = lines.map((l) => chorusKey(l.text));
+	const n = keys.length;
+	// same[a][b]: how many lines match from a and from b on.
+	const same = Array.from({ length: n + 1 }, () => new Uint16Array(n + 1));
+	for (let a = n - 1; a >= 0; a--)
+		for (let b = n - 1; b > a; b--)
+			if (keys[a] !== null && keys[a] === keys[b]) same[a]![b] = same[b]![a] = same[a + 1]![b + 1]! + 1;
+	let best = { score: 0, at: [] as number[], len: 0 };
+	for (let i = 0; i < n; i++)
+		for (let j = i + 1; j < n; j++) {
+			const len = Math.min(same[i]![j]!, j - i);
+			if (len < 2 || (i > 0 && same[i - 1]![j - 1]! > 0)) continue;
+			const at: number[] = [];
+			for (let p = 0; p + len <= n; p++)
+				if (p === i || same[p]![i]! >= len) {
+					at.push(p);
+					p += len - 1;
+				}
+			const score = len * at.length;
+			if (score > best.score || (score === best.score && at[0]! > best.at[0]!)) best = { score, at, len };
+		}
+	// A first line sung elsewhere after the same line as here ends a passage that repeats on its own, the verse ("Don't
+	// be afraid" closes each one), not the chorus coming in.
+	let { at, len } = best;
+	const inRun = (p: number) => at.some((a) => p >= a && p < a + len);
+	const endsAnother = (h: number) =>
+		h > 0 &&
+		keys.some((k, p) => p > 0 && k === keys[h] && !inRun(p) && keys[p - 1] !== null && keys[p - 1] === keys[h - 1]);
+	while (len > 2 && endsAnother(at[0]!)) {
+		at = at.map((a) => a + 1);
+		len -= 1;
+	}
+	if (best.score === 0 || len * at.length > 0.6 * keys.filter((k) => k !== null).length) return new Set();
+	return new Set(at.flatMap((p) => Array.from({ length: len }, (_, k) => p + k)));
+}
 export interface LyricsDoc {
 	language: string | null;
 	lines: LyricLine[];

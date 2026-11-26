@@ -272,6 +272,41 @@ export const demoDuet: LyricsDoc = {
 	lines: demoLyrics.lines.map((l, i) => ({ ...l, part: i % 2 === 0 ? 'A' : 'B' })),
 	words: []
 };
+
+/** Proposal 38: a verse, a three-line chorus, a verse, the chorus again. Lines every 2 s, so line N runs N*2 s on. */
+const CHORUS_TEXT = [
+	'Down the road we drove all night',
+	'Radio low and windows wide',
+	'Sing it out loud',
+	'Everybody now',
+	'This one is ours',
+	'Morning came up gold and slow',
+	'Nowhere else we had to go',
+	'Sing it out loud',
+	'Everybody now',
+	'This one is ours',
+	'And then we drove home'
+];
+const chorusDoc = (extra: (i: number) => Partial<LyricsDoc['lines'][number]> = () => ({})): LyricsDoc => ({
+	language: 'en',
+	lines: CHORUS_TEXT.map((text, i) => {
+		const start = i * 2;
+		const words = text.split(' ');
+		const step = 1.8 / words.length;
+		return {
+			start,
+			end: start + 1.8,
+			text,
+			words: words.map((word, k) => ({ word, start: start + k * step, end: start + (k + 0.8) * step })),
+			...extra(i)
+		};
+	}),
+	words: []
+});
+export const demoChorus = chorusDoc();
+export const demoChorusDuet = chorusDoc((i) => ({ part: i % 2 === 0 ? 'A' : 'B' }));
+/** The chorus graded `low`, as an unanchored repeat often is: whole-line highlight, no wipe. */
+export const demoChorusLow = chorusDoc((i) => ((i >= 2 && i <= 4) || (i >= 7 && i <= 9) ? { confidence: 'low' } : {}));
 /* The other half of a line-only song: the resolver never sees a doc, only a candidate's `timing`, so a card that
    renders `demoLineOnly` while passing `highlight` by hand cannot exercise the clamp at all. Doc and candidate must
    agree, and both must match what the worker publishes — an empty `words: []` (not an absent key) and `"timing": "line"`. */

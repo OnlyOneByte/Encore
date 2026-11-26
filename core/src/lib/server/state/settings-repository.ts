@@ -71,7 +71,8 @@ export class SettingsRepository {
 			guideLevelDefault: row.guideLevelDefault,
 			loudnessNormalization: row.loudnessNormalization,
 			presenceGraceMinutes: row.presenceGraceMinutes,
-			tvReactions: row.tvReactions
+			tvReactions: row.tvReactions,
+			tvChorus: row.tvChorus
 		});
 	}
 

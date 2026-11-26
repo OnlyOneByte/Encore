@@ -263,6 +263,9 @@ export interface RoomSettings {
 	presenceGraceMinutes: number;
 	/** Whether guests' reactions float up the side of the TV. ON by default; off also hides the phones' row. */
 	tvReactions: boolean;
+	/** Whether the TV cues the room in on the chorus and draws its lines in the room's colour (proposal 38). ON by
+	 *  default. */
+	tvChorus: boolean;
 }
 
 export const MIN_SONG_INTRO_MS = 500;
@@ -290,7 +293,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	guideLevelDefault: 0,
 	loudnessNormalization: false,
 	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES,
-	tvReactions: true
+	tvReactions: true,
+	tvChorus: true
 };
 
 /** The hold the TV applies: 0 when the intro is off, which the controller's hard-cut branch handles. */
@@ -331,7 +335,8 @@ const ROOM_FIELD_RULES: FieldRules<RoomSettings> = {
 	loudnessNormalization: keptBoolean,
 	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
 	presenceGraceMinutes: clampedInt(MIN_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES),
-	tvReactions: keptBoolean
+	tvReactions: keptBoolean,
+	tvChorus: keptBoolean
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */

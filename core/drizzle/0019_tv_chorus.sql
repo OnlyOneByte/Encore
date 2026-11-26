@@ -1,0 +1,1 @@
+ALTER TABLE `room_settings` ADD `tv_chorus` integer DEFAULT true NOT NULL;

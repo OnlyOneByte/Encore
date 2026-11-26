@@ -43,6 +43,9 @@
 	} from '$lib/contract';
 	/* Every sample value lives in one module so this file is only the SHOWING of components. */
 	import {
+		demoChorus,
+		demoChorusDuet,
+		demoChorusLow,
 		demoDuet,
 		demoLineOnly,
 		demoLyrics,
@@ -681,6 +684,17 @@
 			<RangeBar profile={null} />
 		</div>
 	</div>
+
+	<!-- Proposal 38. Held still at the frames the review asks for; the chorus is lines 2-4 and 7-9. -->
+	{#each [{ id: 'verse', label: 'a verse, the chorus two lines off', doc: demoChorus, at: 1.0 }, { id: 'cue', label: '"Everyone" over the line that opens the chorus', doc: demoChorus, at: 3.0 }, { id: 'chorus', label: 'the chorus: room gold, the singer still leads the wipe', doc: demoChorus, at: 5.0 }, { id: 'after', label: 'the verse after: the chorus rows past, in dim gold', doc: demoChorus, at: 11.0 }, { id: 'duet', label: 'a duet chorus: the part colour keeps the wipe', doc: demoChorusDuet, at: 5.0 }, { id: 'low', label: 'a low-confidence chorus: whole-line highlight, in gold', doc: demoChorusLow, at: 5.0 }, { id: 'off', label: 'the host switched it off', doc: demoChorus, at: 3.0, off: true }] as c (c.id)}
+		<h2 class="section">LyricsOverlay · chorus · {c.label}</h2>
+		<div
+			data-testid="chorus-{c.id}"
+			style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};"
+		>
+			<LyricsOverlay doc={c.doc} positionSec={c.at} playing={false} visible chorus={!c.off} singerColor={PINK} />
+		</div>
+	{/each}
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
