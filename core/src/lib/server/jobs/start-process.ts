@@ -11,6 +11,7 @@ import {
 	claimsStems,
 	claimedStemsRef,
 	stemsMissing,
+	forgetProcess,
 	type ProcessState
 } from './process';
 import { clearArtifacts } from '../media/sidecar';
@@ -117,7 +118,18 @@ export function prepareTurn(app: EncoreApp, mediaId: string, singerId: string): 
 	if (!media) return null; // validateCommand already refused it
 	if (readyToSing(media)) {
 		void stemsPresent(app, mediaId)
-			.then((present) => (present ? null : startProcess(app, mediaId, singerId, false)))
+			.then(async (present) => {
+				if (present || (await startProcess(app, mediaId, singerId, false))) return;
+				// The remake was refused (the singer's cap): the song is not made, so say so (#1341). The turn is then the
+				// honest dead turn, with Try again and Pick another, never one waiting on a job nobody filed.
+				// Never over a job another singer filed for it meanwhile (their add is under the cap): resetting the
+				// song would supersede that job.
+				if (
+					!hasLiveJob(app, mediaId) &&
+					processState(mediaId, { mediaById: app.mediaById, state: app.state, jobs: app.jobs }) !== 'playing'
+				)
+					await forgetMissing(app, mediaId);
+			})
 			.catch(() => {});
 		return null;
 	}
@@ -134,6 +146,20 @@ export function prepareTurn(app: EncoreApp, mediaId: string, singerId: string): 
 	// The job is filed before this returns (only clearing old files waits), so the turn is booked onto a song being made.
 	void startProcess(app, mediaId, singerId, true).catch(() => {});
 	return null;
+}
+
+/** A song whose stems are gone, reset to not made as eviction resets one, and the room told the same way. */
+async function forgetMissing(app: EncoreApp, mediaId: string): Promise<void> {
+	const media = app.mediaById.get(mediaId);
+	if (!media) return;
+	forgetProcess(media, app.jobs);
+	app.media.upsert(media);
+	// upsert's sidecar merge would restore the refs just cleared; see clearArtifacts.
+	await clearArtifacts(mediaId);
+	// A job filed while the files were cleared (another add, a Try again) already told the room it is being made.
+	if (hasLiveJob(app, mediaId)) return;
+	// `canceled` is eviction's quiet exit: open phones settle the song to not made.
+	app.publish({ type: 'media:status', mediaId, status: 'canceled', pct: 0 });
 }
 
 /** A fetch or stems job still running or waiting: `stemStatus: 'queued'` with neither is a stall, not a song on its way. */
