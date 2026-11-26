@@ -388,8 +388,14 @@ class Rig:
             media_id="m1",
             media_dir=str(self.dir),
             source_uri="audio/m1.wav",
-            params={"fetcher": "local", "artist": "a", "track": "t", **params},
+            params={"artist": "a", "track": "t", **params},
         )
+
+    def fetch(
+        self, source_uri: str, out_dir: str, *, on_progress: object = None, with_captions: bool = False
+    ) -> str:
+        """The rig's upload, already on disk. As `fetcher=local` it would be a library file, uncaptioned."""
+        return str(self.dir / source_uri)
 
     def run(self, ours: bool = True, **params: object) -> tuple[AlignOutcome, Spy]:
         spy = Spy(ours=ours)
@@ -399,6 +405,7 @@ class Rig:
                 probe=Probe(UNIQUE_DURATION),
                 providers=(self.providers,),
                 captions=self.captions,
+                fetcher=self,
                 transcriber=self.transcriber,
                 aligner=self.aligner,
             ),

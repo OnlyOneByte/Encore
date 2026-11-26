@@ -872,6 +872,19 @@ class GenerateDriver(TimeTextDriver):
 # ── level run_align: the real workflow over corpus-backed ports ──────────────────────────────────────
 
 
+class OnDiskFetcher:
+    """`AudioFetcher`: the song's mix, already on disk, as its "download".
+
+    A bench song stands for an UPLOAD, which is what has caption tracks to ask for. Declared `fetcher=local`
+    with no `remoteUri` it would be a library file, which align never asks for captions (#1160).
+    """
+
+    def fetch(
+        self, source_uri: str, out_dir: str, *, on_progress: Any = None, with_captions: bool = False
+    ) -> str:
+        return source_uri
+
+
 class ClaimCaptions:
     """`CaptionSource`: the case's TIMED claims as the upload's authored track; no machine track.
 
@@ -1129,6 +1142,7 @@ class RunAlignDriver(TimeTextDriver):
                 adapters=Adapters(
                     captions=ClaimCaptions(cues if claims.timed else ()),
                     providers=(ClaimProvider(() if claims.timed else cues),),
+                    fetcher=OnDiskFetcher(),
                     probe=FixedProbe(self.duration_of(case.song)),
                     transcriber=self.transcriber,
                     aligner=self.aligner,
@@ -1145,7 +1159,6 @@ class RunAlignDriver(TimeTextDriver):
                 media_dir=str(media_dir),
                 source_uri=os.path.abspath(case.song.mix),
                 params={
-                    "fetcher": "local",
                     "artist": case.song.slug,
                     "track": case.song.slug,
                     "language": self.language,

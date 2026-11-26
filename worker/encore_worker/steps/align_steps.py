@@ -338,9 +338,9 @@ class AlignStepsImpl:
         kind = "auto-captions" if automatic else "captions"
         source = job.source_uri
         remote = job.param_str("remoteUri")
-        # `remoteUri` is what marks a KEPT original; a library file (local, no URL) is asked as it always was.
-        if job.param_str("fetcher") == "local" and remote is not None:
-            if self._local_source(job) is not None:
+        # `remoteUri` marks a KEPT original; a library file (local, no URL) has no upload to ask (#1160).
+        if job.param_str("fetcher") == "local":
+            if remote is not None and self._local_source(job) is not None:
                 cues = await asyncio.to_thread(self._kept_captions, job, kind)
                 return self._caption_ref(job, cues, automatic=automatic)
             source = remote
