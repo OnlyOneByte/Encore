@@ -253,6 +253,52 @@ test('a held row whose job is gone is dropped at boot, not swapped', () => {
 	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(OLD.instrumentalRef);
 });
 
+test('a held row is swapped only for a ready job whose own completion it saved (#1350)', () => {
+	const h = harness();
+	const done = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	complete(h, done.id, tagged(assigns(h.sent)[0]!.params.outputTag!));
+	const swapped = h.mediaById.get('m1')!.instrumentalRef;
+	const other = (jobId: string, refs: string[]) =>
+		JSON.stringify({
+			type: 'job:complete',
+			workerId: 'w1',
+			jobId,
+			mediaUri: 'x',
+			artifacts: { stems: { instrumental: refs[0], vocals: refs[1], guideMix: refs[2] } }
+		});
+	// Ready, but the saved message is another job's.
+	h.jobs.hold(done.id, 'm1', other('someone-else', tagged('zz')), T0);
+	// Its own message, but the job never finished.
+	const queued = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
+	h.jobs.hold(queued.id, 'm1', other(queued.id, tagged('yy')), T0);
+	h.hub.restoreHeld();
+	expect(h.jobs.listHeld()).toEqual([]);
+	h.hub.settle();
+	expect(h.mediaById.get('m1')!.instrumentalRef).toBe(swapped);
+});
+
+test('holds saved in the same millisecond restore in the order they were made (#1350)', () => {
+	const h = harness();
+	h.jobs.hold('01B', 'm1', '{}', T0);
+	h.jobs.hold('01A', 'm1', '{}', T0);
+	expect(h.jobs.listHeld().map((r) => r.jobId)).toEqual(['01A', '01B']);
+});
+
+test('finishing a held job and saving its hold land together or not at all (#1350)', () => {
+	const h = harness();
+	const job = requestRemake(h.mediaById.get('m1')!, { jobs: h.jobs, now: () => T0 });
+	h.hello();
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	// The hold's write fails (a NULL message): the job is not left `ready` with nothing held.
+	expect(() => h.jobs.completeHeld(job.id, null as unknown as string, T0)).toThrow();
+	expect(h.jobs.byId(job.id)!.status).toBe('running');
+	expect(h.jobs.listHeld()).toEqual([]);
+	h.jobs.completeHeld(job.id, '{}', T0);
+	expect(h.jobs.byId(job.id)!.status).toBe('ready');
+	expect(h.jobs.listHeld().map((r) => r.jobId)).toEqual([job.id]);
+});
+
 test('a refused upgrade keeps the playing stems and deletes only the files it wrote', async () => {
 	const h = harness();
 	const job = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);

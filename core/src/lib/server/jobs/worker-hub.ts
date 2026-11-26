@@ -892,7 +892,7 @@ export class WorkerHub {
 	}
 
 	/** Boot: the completions a restart found still held (`jobs.listHeld`), swapped in by `settle` once their song is
-	 *  out of its turn. A row whose job or message is gone is dropped. */
+	 *  out of its turn. A row is dropped unless its job is `ready` and its message is that job's `job:complete`. */
 	restoreHeld(): void {
 		for (const row of this.#d.jobs.listHeld()) {
 			const job = this.#d.jobs.byId(row.jobId);
@@ -902,7 +902,8 @@ export class WorkerHub {
 			} catch {
 				msg = null;
 			}
-			if (!job || msg?.type !== 'job:complete') this.#d.jobs.release(row.jobId);
+			const valid = job?.status === 'ready' && msg?.type === 'job:complete' && msg.jobId === row.jobId;
+			if (!job || !msg || !valid) this.#d.jobs.release(row.jobId);
 			else this.#held.push({ job, msg });
 		}
 	}
@@ -973,13 +974,13 @@ export class WorkerHub {
 		});
 		this.#trails.delete(msg.jobId);
 		this.#unknownTo.delete(msg.jobId);
-		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#processSettings();
 		const hold = reSeparates(job.jobType) && this.#playingMediaId() === job.mediaId;
-		if (hold) {
-			this.#held.push({ job, msg });
-			this.#d.jobs.hold(job.id, job.mediaId, JSON.stringify(msg), this.#d.now());
-		} else this.#applyCompletion(job, msg, settings);
+		const updated = hold
+			? this.#d.jobs.completeHeld(msg.jobId, JSON.stringify(msg), this.#d.now())
+			: this.#d.jobs.complete(msg.jobId, this.#d.now());
+		if (hold) this.#held.push({ job, msg });
+		else this.#applyCompletion(job, msg, settings);
 		cleanJobWork(msg.jobId);
 		// Follow-ups enqueue AFTER cleanJobWork, so each gets its own scratch dir.
 		for (const next of followUps(job.jobType, settings)) {

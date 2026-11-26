@@ -129,16 +129,29 @@ export class JobRepository {
 			.run();
 	}
 
+	/** `complete` and `hold` in ONE transaction: a crash between them would leave the job `ready` with nothing held,
+	 *  so the remake is lost and the boot sweep deletes its files. */
+	completeHeld(id: string, message: string, now: number): Job {
+		return this.#db.transaction(() => {
+			const job = this.complete(id, now);
+			this.hold(id, job.mediaId, message, now);
+			return job;
+		});
+	}
+
 	release(jobId: string): void {
 		this.#db.delete(heldCompletions).where(eq(heldCompletions.jobId, jobId)).run();
 	}
 
 	listHeld(): { jobId: string; mediaId: string; message: string }[] {
-		return this.#db
-			.select({ jobId: heldCompletions.jobId, mediaId: heldCompletions.mediaId, message: heldCompletions.message })
-			.from(heldCompletions)
-			.orderBy(heldCompletions.heldAt)
-			.all();
+		return (
+			this.#db
+				.select({ jobId: heldCompletions.jobId, mediaId: heldCompletions.mediaId, message: heldCompletions.message })
+				.from(heldCompletions)
+				// Job ids are ULIDs, so two holds saved in the same millisecond still restore in the order they were made.
+				.orderBy(heldCompletions.heldAt, heldCompletions.jobId)
+				.all()
+		);
 	}
 
 	/** The live (slot-occupying) job for a key, if any — the dedup lookup. */

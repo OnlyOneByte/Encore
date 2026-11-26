@@ -1327,9 +1327,11 @@ Rename, Keep, delete and remake act only on a ready song outside an Undo window 
     too.
   - **Never a swap mid-song.** The TV reloads a changed src from 0, so a re-separation that finishes while its
     song is playing is held and swapped in when the turn ends. The held `job:complete` is kept in
-    `held_completions` until the swap, so a restart during the hold holds it again at boot
-    (`WorkerHub.restoreHeld`), the stale sweep spares its files (`writingTags`), and the first tick after the
-    turn swaps it in (#1317). A row whose job is gone, or whose message cannot be read, is dropped.
+    `held_completions` until the swap, written in the same transaction that marks the job `ready`
+    (`jobs.completeHeld`), so a restart during the hold holds it again at boot (`WorkerHub.restoreHeld`, in save
+    order, ties broken by job id), the stale sweep spares its files (`writingTags`), and the first tick after the
+    turn swaps it in (#1317). A row is dropped unless its job is `ready` and its message is that job's own
+    `job:complete` (#1350).
   - **The host's remake starts after the turn** (`waitsForTurn`): it is not dispatched while its song is
     queued or playing. An auto-upgrade does not wait, so a song picked tonight can get the better stems before
     its first turn.
