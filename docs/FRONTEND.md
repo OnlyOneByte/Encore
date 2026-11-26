@@ -1486,7 +1486,11 @@ instead, and a kept one says to turn Keep off. Delete has no dialog: the row goe
 Deleting the last song shows the empty Library; the toast's Undo still brings it back.
 **Bulk (PR 2):** each row has a checkbox, and `Select all` beside `Done` picks the whole filtered match list, not
 only the rows rendered so far. While songs are picked, an action bar above the dock is the screen's one fill:
-"N picked", `Keep` (`Keep off` when every pick is kept) and `Delete`. The bar sits one layer under "You're up"
+"N picked", `Keep` (`Keep off` when every pick is kept), `Make again` and `Delete`. When the count and the actions
+do not fit one line (a four-digit count, or Keep off at 320 px), the actions move to a second row, right-aligned,
+and the room kept under the list grows with the bar. `Make again` clears the
+picks, as Delete does, and toasts "Making the sound again for N songs": they stay ready, and those in tonight's
+queue start after their turn. The bar sits one layer under "You're up"
 and "Your song didn't play", at their offset above the dock, so a turn covers it with no edge showing. A filter
 change drops the picks, so a Delete never reaches a song out of view. Keep gives no toast, because one would cover
 the bar; its "N songs kept" goes to the live region, which stays mounted for all of Manage. Delete clears the picks

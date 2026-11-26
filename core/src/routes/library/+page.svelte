@@ -123,6 +123,8 @@
 	/** The bulk selection. "Select all" takes the whole filtered match list, not only the rows rendered so far. */
 	const picked = new SvelteSet<string>();
 	let bulkBusy = $state(false);
+	/** The bar's measured height: two rows when a long count or Keep off pushes the actions down. */
+	let barHeight = $state(0);
 	function togglePick(mediaId: string) {
 		announced = '';
 		if (!picked.delete(mediaId)) picked.add(mediaId);
@@ -134,8 +136,16 @@
 	}
 	const allKept = $derived([...picked].every((id) => sizes?.songs[id]?.kept === true));
 
-	type BulkOut = { done: string[]; skipped: { mediaId: string; reason: string }[]; libraryFile: boolean };
-	async function bulk(action: 'keep' | 'unkeep' | 'delete' | 'undo', mediaIds: string[]): Promise<BulkOut | null> {
+	type BulkOut = {
+		done: string[];
+		skipped: { mediaId: string; reason: string }[];
+		libraryFile: boolean;
+		afterTurn?: number;
+	};
+	async function bulk(
+		action: 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake',
+		mediaIds: string[]
+	): Promise<BulkOut | null> {
 		bulkBusy = true;
 		try {
 			const res = await fetch('/api/library/manage/bulk', {
@@ -179,6 +189,29 @@
 		if (!out) return;
 		announced = `${songs(out.done.length)} ${allKept ? 'no longer kept' : 'kept'}`;
 		void onManaged();
+	}
+
+	// The bar steps aside, as for Delete, so the toast has the spot; nothing else on screen changes.
+	async function bulkRemake() {
+		const out = await bulk('remake', [...picked]);
+		if (!out) return;
+		picked.clear();
+		void onManaged().then(refocus);
+		if (!out.done.length) {
+			toast.error('Those songs are gone', { duration: 4000 });
+			return;
+		}
+		toast(`Making the sound again for ${songs(out.done.length)}`, {
+			duration: 4000,
+			description: [
+				'They stay ready. Each old sound plays until its new one is in, behind everyone’s picks.',
+				out.afterTurn
+					? `${songs(out.afterTurn)} in tonight's queue: after ${out.afterTurn === 1 ? 'its' : 'their'} turn.`
+					: null
+			]
+				.filter(Boolean)
+				.join(' ')
+		});
 	}
 
 	async function bulkDelete() {
@@ -688,13 +721,26 @@
 			<!-- The screen's one fill (the Spotlight), above the dock, only while songs are picked. -->
 			{#if managing && picked.size}
 				<!-- Room for the bar, so the last row scrolls clear of it. -->
-				<div class="bar-room" aria-hidden="true"></div>
-				<div class="actbar" role="toolbar" aria-label="Picked songs" data-testid="bulk-bar">
+				<div
+					class="bar-room"
+					aria-hidden="true"
+					style:height={barHeight ? `calc(${barHeight}px + var(--space-lg))` : undefined}
+				></div>
+				<div
+					class="actbar"
+					role="toolbar"
+					aria-label="Picked songs"
+					data-testid="bulk-bar"
+					bind:offsetHeight={barHeight}
+				>
 					<span class="n" aria-hidden="true">{picked.size} picked</span>
-					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
-						{allKept ? 'Keep off' : 'Keep'}
-					</Button>
-					<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
+					<span class="acts">
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
+							{allKept ? 'Keep off' : 'Keep'}
+						</Button>
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkRemake}>Make again</Button>
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
+					</span>
 				</div>
 			{/if}
 		</main>
@@ -720,8 +766,10 @@
 		max-width: var(--sheet-max);
 		margin-inline: auto;
 		display: flex;
+		/* A long count, or Keep off, takes the actions to a second row rather than past the screen's edge. */
+		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--space-xs);
+		gap: 0 var(--space-xs);
 		padding: var(--space-2xs) var(--space-xs) var(--space-2xs) var(--space-lg);
 		border-radius: var(--radius-sm);
 		background: var(--accent);
@@ -730,13 +778,22 @@
 	}
 	.actbar .n {
 		flex: 1;
+		white-space: nowrap;
+	}
+	.actbar .acts {
+		display: flex;
+		gap: var(--space-xs);
+		margin-inline-start: auto;
 	}
 	.bar-room {
+		/* One row until the bar is measured; then its own height, so the last song scrolls clear of two rows too. */
 		height: calc(var(--tap) + var(--space-lg) + 2 * var(--space-2xs));
 	}
 	.actbar :global(button) {
 		color: inherit;
 		font-weight: 800;
+		/* Three actions and the count fit one line at 320 px; the tap height is unchanged. */
+		padding-inline: var(--space-xs);
 	}
 	.library-page {
 		/* The grid measure, not the prose one: this is a column of song rows, so it must agree with `/`. */

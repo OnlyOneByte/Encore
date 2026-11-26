@@ -86,7 +86,7 @@ export async function setKeep(mediaId: string, keep: boolean): Promise<boolean> 
 /** A whole library fits in one bulk call; a body past this is refused rather than looped over. */
 export const BULK_MAX = 5_000;
 
-export type BulkAction = 'keep' | 'unkeep' | 'delete' | 'undo';
+export type BulkAction = 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake';
 export type BulkSkip = { mediaId: string; reason: 'unknown' | 'kept' | 'queued' | 'gone' };
 
 /** One action over a selection, song by song through the same paths the single-song routes use, so a bulk
@@ -98,7 +98,9 @@ export async function bulkManage(
 		state: { entries: readonly QueueEntry[] };
 	},
 	action: BulkAction,
-	mediaIds: readonly string[]
+	mediaIds: readonly string[],
+	/** Make it again for the sound (`requestRemake`); only the `remake` action calls it. */
+	remake: (m: Media) => void = () => {}
 ): Promise<{ done: string[]; skipped: BulkSkip[]; libraryFile: boolean }> {
 	const done: string[] = [];
 	const skipped: BulkSkip[] = [];
@@ -114,6 +116,12 @@ export async function bulkManage(
 				done.push(mediaId);
 				if (result.media.source === 'local') libraryFile = true;
 			}
+		} else if (action === 'remake') {
+			const m = librarySong(app, mediaId);
+			if (m) {
+				remake(m);
+				done.push(mediaId);
+			} else skipped.push({ mediaId, reason: 'unknown' });
 		} else if (librarySong(app, mediaId) && (await setKeep(mediaId, action === 'keep'))) done.push(mediaId);
 		else skipped.push({ mediaId, reason: 'unknown' });
 	}
