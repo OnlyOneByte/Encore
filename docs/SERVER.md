@@ -314,7 +314,11 @@ into a worker's file, so it survives eviction and a remake (`src/lib/server/jobs
   aligned as a line-timed claim, the way an authored caption track is. An ADDED line has no slot. In a document
   with no word timings the line spans are the provider's own and swallow nothing, so the added lines share the
   gap they left as claims. In an aligned one the line before may have swallowed the missed line's audio, so it
-  keeps only its start and the two are decoded in one window, up to the next claimed start. A line the host left
+  keeps only its start and the two are decoded in one window, up to the next claimed start. A MOVED line (the
+  same text as an old line the pairing left over, `_moved`) has no slot either, and nor does every line it
+  crossed: the old slots are where the audio sang the old order, not where those words are (#1218). The lines
+  around them keep their slots whole, so the moved lines are found between them; in a document with no word
+  timings they share that span as claims. A line the host left
   exactly as it was (the same text, case and punctuation included, since the TV draws the sung line from its
   words) is written back with its old words verbatim (`_written`), unless the re-timed lines beside it now
   overlap its old span. With no such document, or under half the lines paired, the paste is decoded blind as
