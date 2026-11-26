@@ -2104,6 +2104,34 @@ anchor. Advancing needs all three of `screen === 'playing'`, the server's `isPla
 master element actually running (`src/lib/tv/screen.ts`, `lyricsAdvancing`) — the first two stay true
 through an autoplay refusal, and the words would sweep over a silent room.
 
+### The chorus
+
+Proposal 38: when the chorus comes round, the TV tells the room it's their turn. Nothing is stored; the TV finds the
+chorus in the words it already has (`chorusLines`, `src/lib/tv/lyrics.ts`), so it reaches every song at once with no
+worker change.
+
+- **Which lines.** Each line is matched by its words alone: lowercase, letters and digits, an apostrophe joining,
+  ad-libs in brackets dropped unless the line is only one. A line with no words (a music note) breaks a run. The
+  chorus is the repeated run of 2+ lines that scores most as lines times non-overlapping times sung, the later one
+  on a tie. Only that run is marked (a hook is not marked as well), and nothing when it covers over 60% of the
+  song (a chant). When the run's first line is also sung elsewhere right after the same line as here, it ends a
+  passage that repeats on its own (a verse's last line) and is dropped.
+- **Known reading.** A build that always leads into the chorus repeats with it, so it is marked with it: Fly Away's
+  "Don't you be afraid" through "A thousand views". A chorus whose words change each time is found only from the
+  runs that did repeat. Audio sections (the proposal's option A2) are the upgrade if that misses often.
+  `tests/unit/lib/tv/chorus.test.ts` holds the three benchmark songs' truth sheets and the false-positive shapes.
+- **On the TV.** Chorus rows draw `--reel-room` (a warm gold that is no singer's colour, nor the cream of unverified
+  words) where the reel draws white, at the same levels: upcoming, past and current. `--reel-now` and the ball are
+  untouched, so the singer, or their duet part (35), still leads the wipe, and `hl-line` keeps the singer's line
+  colour. A `low` line keeps its whole-line highlight, in gold.
+- **The cue.** "Everyone", at the second script's size, sits in the leading above the row that opens each chorus
+  block. It is always rendered there and only its opacity changes, from the line before until that row starts, so
+  nothing reflows (CLS 0). It fades on `--motion-base`, and appears with no fade under Reduce Motion.
+- **The switch.** The room setting `tvChorus` ("Show the chorus to the room", party settings, on by default) turns
+  the treatment and the cue off live. The phones show nothing of it.
+
+`probe/p38-chorus.spec.ts` drives a real TV through it; `bun run ui:review`'s `tv-chorus-cue` row films the cue.
+
 ### Lyrics fixes
 
 A host's fix reaches the TV through the next `queue:sync`, as a new `lyricsRef` on the playing song
