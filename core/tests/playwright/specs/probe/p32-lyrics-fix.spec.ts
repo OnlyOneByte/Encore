@@ -149,6 +149,22 @@ async function stage(world: World) {
 	await phone.request.put('/api/settings/room', { data: { lyricsHighlight: 'word', lyricsLeadMs: 0 } });
 	await queueReady(phone, track.title);
 	const tv = await world.openTv();
+	// When each nudge reached the TV page, on the sampler's clock. openTv's socket opened before this, so reload.
+	await tv.addInitScript(() => {
+		const w = window as unknown as { nudges: { t: number; ms: number }[] };
+		w.nudges = [];
+		const Socket = window.WebSocket;
+		window.WebSocket = class extends Socket {
+			constructor(...args: ConstructorParameters<typeof WebSocket>) {
+				super(...args);
+				this.addEventListener('message', (e) => {
+					const ms = String(e.data).match(/"lyricsOffsetMs":(-?\d+)/)?.[1];
+					if (ms !== undefined) w.nudges.push({ t: Date.now(), ms: Number(ms) });
+				});
+			}
+		};
+	});
+	await tv.reload();
 	await tv.locator(SEL.tvConnected).waitFor({ state: 'attached' });
 	await tv.mouse.click(960, 540);
 	await tv.locator(SEL.lyricsRowCurrent).waitFor({ timeout: 30_000 });
@@ -207,21 +223,29 @@ test("P32 · the host's Earlier taps move every line on the TV live, with no re-
 	const plain = Date.now();
 	await tv.waitForTimeout(4_000);
 	const earlier = phone.getByRole('button', { name: 'Earlier' });
+	const tapped = Date.now();
 	for (let i = 0; i < 4; i++) await earlier.click();
 	await expect(phone.getByRole('status').filter({ hasText: 'Words 0.2 s early' })).toBeVisible();
 	await expect.poll(async () => (await audit()).lyricsOffsetMs, { timeout: 10_000 }).toBe(-200);
-	const nudged = Date.now() + 500;
-	await tv.waitForTimeout(4_500);
+	// Each window holds one lead only (#1334): the "before" one ends at the first tap, since the TV can have the nudge
+	// before the server's answer reaches here, and the "after" one starts when the TV page has the last nudge.
+	const landed = () =>
+		tv.evaluate(
+			() => (window as unknown as { nudges: { t: number; ms: number }[] }).nudges.find((n) => n.ms === -200)?.t
+		);
+	await expect.poll(landed, { timeout: 10_000 }).toBeDefined();
+	const nudged = (await landed())!;
+	await tv.waitForTimeout(Math.max(0, nudged + 4_000 - Date.now()));
 	const all = await samples(tv);
 	// Both windows read the fix's rows while lines still change: a held last line fits every lead alike.
 	const live = (from: number, to: number) =>
 		all.filter((s) => s.t >= from && s.t < to && s.rows === 45 && s.pos < 35).length;
-	expect(live(plain, nudged - 500), 'the sampler saw the reel before the taps').toBeGreaterThan(20);
+	expect(live(plain, tapped), 'the sampler saw the reel before the taps').toBeGreaterThan(20);
 	expect(live(nudged, Infinity), 'the sampler saw the reel after the taps').toBeGreaterThan(20);
 
 	// The rows run 0.2 s further ahead of the audio than they did before the taps (a quarter of a line, so a move the
 	// wrong way reads as -0.2).
-	const raw = fittedLead(all, nudged, Infinity) - fittedLead(all, plain, nudged - 500);
+	const raw = fittedLead(all, nudged, Infinity) - fittedLead(all, plain, tapped);
 	const shift = raw - GRID * Math.round(raw / GRID);
 	expect(Math.abs(shift - 0.2), `the rows moved ${shift.toFixed(2)} s, not 0.2`).toBeLessThanOrEqual(0.1);
 	// The words and their document are untouched: nothing was re-timed.
