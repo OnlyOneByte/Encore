@@ -80,8 +80,7 @@ async function frame(tv: Page, testInfo: TestInfo, name: string): Promise<void> 
 	// The frame shows the line at rest, not the reel or a colour mid-transition.
 	await tv
 		.locator('.lyrics .reel')
-		.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)))
-		.catch(() => {});
+		.evaluate((el) => Promise.allSettled(el.getAnimations({ subtree: true }).map((a) => a.finished)));
 	const path = testInfo.outputPath(`${name}.png`);
 	await tv.screenshot({ path });
 	await testInfo.attach(name, { path, contentType: 'image/png' });
@@ -106,7 +105,15 @@ test('P38 · "Everyone" before each chorus, its rows in the room gold, the singe
 	await expect(tv.locator(SEL.lyricsRowCurrent)).toContainText(/Verse \d line 3/, { timeout: 15_000 });
 	await expect(tv.locator('.lyrics .everyone.on')).toHaveCount(1);
 	expect(await rowIndex(tv, ':has(> .everyone.on)')).toBe((await rowIndex(tv, '.current')) + 1);
-	await tv.locator('.lyrics .everyone.on').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+	// Settled, not all: under load the next line can cancel the fade, and that frame is still the cue.
+	await tv.evaluate(() =>
+		Promise.allSettled(
+			document
+				.querySelector('.lyrics .everyone.on')
+				?.getAnimations()
+				.map((a) => a.finished) ?? []
+		)
+	);
 	await frame(tv, testInfo, 'tv-1920-cue');
 
 	// The chorus: the row's unsung words gold, the active word the singer's own colour, the cue gone.
@@ -140,7 +147,15 @@ test('P38 · "Everyone" before each chorus, its rows in the room gold, the singe
 	await tv.setViewportSize({ width: 1280, height: 720 });
 	await expect(tv.locator(SEL.lyricsRowCurrent)).toContainText(/Verse \d line 3/, { timeout: 15_000 });
 	await expect(tv.locator('.lyrics .everyone.on')).toHaveCount(1);
-	await tv.locator('.lyrics .everyone.on').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+	// Settled, not all: under load the next line can cancel the fade, and that frame is still the cue.
+	await tv.evaluate(() =>
+		Promise.allSettled(
+			document
+				.querySelector('.lyrics .everyone.on')
+				?.getAnimations()
+				.map((a) => a.finished) ?? []
+		)
+	);
 	await frame(tv, testInfo, 'tv-1280-cue');
 	await expect(tv.locator(SEL.lyricsRowCurrent)).toContainText('Everybody now', { timeout: 15_000 });
 	await frame(tv, testInfo, 'tv-1280-chorus');
