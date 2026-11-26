@@ -9,10 +9,12 @@ The frame clock, the chunking and both caches are docs/arch/04-alignment.md §3.
 from __future__ import annotations
 
 import os
+import zipfile
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
+from urllib.parse import urlparse
 
 from encore_worker.adapters.cli import OutOfMemory, looks_like_oom
 from encore_worker.adapters.ports import InfraFault, Transcribed
@@ -126,6 +128,59 @@ def _machinery_fault(doing: str, failed: BaseException) -> InfraFault:
             "smaller model, or a box with more memory."
         )
     return InfraFault(f"{doing} failed ({detail})")
+
+
+def _checkpoint_damage(path: str) -> str | None:
+    """Why the cached checkpoint at `path` cannot be what was downloaded, or None. A missing file is None:
+    torch.hub fetches that itself. A non-zip file is None too, as a legacy torch save may be one."""
+    if not os.path.exists(path):
+        return None
+    size = os.path.getsize(path)
+    if size == 0:
+        return "is empty (0 bytes)"
+    with open(path, "rb") as head:
+        zipped = head.read(4) == b"PK\x03\x04"
+    if zipped and not zipfile.is_zipfile(path):
+        return f"is cut short ({size} bytes, no zip directory)"
+    return None
+
+
+def ensure_checkpoint(path: str, url: str, model: str, download: Callable[[str, str], None]) -> None:
+    """Treat an empty or cut-short cached checkpoint as missing (#1387): fetch it again, else fail naming
+    the file and the model. torch.hub trusts any file already at `path`, so without this every job fails
+    on an opaque unpickling error."""
+    damage = _checkpoint_damage(path)
+    if damage is None:
+        return
+    try:
+        # torch.hub writes a temp file beside `path` and moves it over, so a failed fetch leaves it as it was.
+        download(url, path)
+        damage = _checkpoint_damage(path)
+        failure = "the fresh copy is damaged too" if damage else ""
+    except Exception as failed:  # noqa: BLE001 - every fetch failure gets the same message below
+        failure = f"{type(failed).__name__}: {str(failed).strip()[-200:]}"
+    if failure:
+        raise ModelUnavailable(
+            f"the {model} checkpoint {path} {damage}, and fetching it again from {url} failed ({failure}). "
+            "Delete that file, or copy a good one there, then restart the worker."
+        )
+
+
+def _ensure_bundle_checkpoint(bundle: str) -> None:
+    """`ensure_checkpoint` for a torchaudio bundle, at the path torch.hub caches it under. A Hugging Face
+    model is skipped: the Hub's own cache tracks what it fetched."""
+    try:
+        import torch.hub  # noqa: PLC0415
+        import torchaudio  # noqa: PLC0415
+    except ImportError:
+        return  # load_align_model reports a missing torch itself
+    url = getattr(getattr(torchaudio.pipelines, bundle, None), "_path", None)
+    if not isinstance(url, str):
+        return
+    if not url.startswith("https"):
+        url = f"https://download.pytorch.org/torchaudio/models/{url}"  # torchaudio's own prefix
+    path = os.path.join(torch.hub.get_dir(), "checkpoints", os.path.basename(urlparse(url).path))
+    ensure_checkpoint(path, url, bundle, torch.hub.download_url_to_file)
 
 
 def _has_default_align_model(language: str) -> bool:
@@ -559,6 +614,7 @@ class WhisperXAligner:
             except ImportError as missing:
                 raise ModelUnavailable("whisperx is not installed, so this worker cannot align") from missing
             _allow_pyannote_checkpoints()
+            _ensure_bundle_checkpoint(self._bundle_name(language))
             try:
                 # whisperx is untyped, so the unpack is annotated here rather than letting Any escape up.
                 # `model_name=None` is whisperx's own "use the default for this language".
