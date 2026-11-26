@@ -351,14 +351,14 @@ async def test_a_kept_file_with_no_recorded_size_is_never_used(tmp_path: Path) -
     assert fetcher.asked == [WATCH]
 
 
-async def test_a_library_songs_captions_still_go_through_the_caption_source(tmp_path: Path) -> None:
-    """Local with no `remoteUri` is a library file, not a kept original: no store read, as before."""
+@pytest.mark.parametrize("automatic", [False, True], ids=["authored", "machine"])
+async def test_a_library_song_makes_no_caption_call(tmp_path: Path, automatic: bool) -> None:
+    """Local with no `remoteUri` is a library file: with no upload, neither track is asked for (#1160)."""
     media = tmp_path / "media"
     (media / "library").mkdir(parents=True)
     (media / "library" / "song.flac").write_bytes(b"flac")
     captions = NoCaptionCalls()
     steps = AlignStepsImpl(config=CFG, adapters=Adapters(captions=captions), reporter=Reporter())
     job = JobRef("j1", "m1", str(media), "library/song.flac", {"fetcher": "local"})
-    got = await steps.fetch_captions(job, automatic=False)
-    assert captions.asked == ["library/song.flac"]
-    assert got is not None and [s["text"] for s in got.segments] == ["from youtube"]
+    assert await steps.fetch_captions(job, automatic=automatic) is None
+    assert captions.asked == []

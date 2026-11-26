@@ -577,6 +577,7 @@ class PoolDriver(e2e.RunAlignDriver):
                     machine=served[MACHINE][0] if MACHINE in served else (),
                 ),
                 providers=tuple(providers),
+                fetcher=e2e.OnDiskFetcher(),
                 probe=e2e.FixedProbe(self.duration_of(case.song)),
                 transcriber=self.transcriber,
                 aligner=self.aligner,
@@ -589,7 +590,6 @@ class PoolDriver(e2e.RunAlignDriver):
             media_dir=str(media_dir),
             source_uri=str(Path(case.song.mix).resolve()),
             params={
-                "fetcher": "local",
                 "artist": case.song.slug,
                 "track": case.song.slug,
                 "language": self.language,

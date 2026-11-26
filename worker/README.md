@@ -126,6 +126,7 @@ The align params, each read by one pure function in `steps/api.py`:
 | `asrModel` | The whisper checkpoint the ASR fallback loads: one of `host.config.ASR_MODELS`, else the worker's default, with the fallback on the trail |
 | `language` | The job's language when a text does not carry its own; `en` if neither does |
 | `fetcher=local` + `remoteUri` + `originalBytes` | The song's original, kept by its fetch job, is the `sourceUri` store ref; the caption tracks that job kept are read from the store and yt-dlp is not called. A worker whose file is missing (another machine) or not `originalBytes` long (empty, truncated) downloads, and fetches captions, from `remoteUri` |
+| `fetcher=local` alone | A **library file**: the `sourceUri` store ref is the song. It has no upload, so no caption track is asked for (#1160) |
 
 **A pinned job never falls back.** Only the accepted attempt is placed at the pinned ref. A pin that
 cannot be timed publishes nothing: no other text and no ASR, so the lyrics the core already holds stay as
