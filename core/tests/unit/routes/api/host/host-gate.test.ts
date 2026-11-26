@@ -26,6 +26,9 @@ import { POST as undoDelete } from '$routes/api/library/manage/undo/+server';
 import { POST as bulk } from '$routes/api/library/manage/bulk/+server';
 import { GET as getSizes } from '$routes/api/library/sizes/+server';
 import { POST as showNight } from '$routes/api/host/tonight/+server';
+import { GET as getReady } from '$routes/api/host/ready/+server';
+import { POST as recheckReady } from '$routes/api/host/ready/recheck/+server';
+import { POST as chimeReady } from '$routes/api/host/ready/chime/+server';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { MediaRepository } from '$lib/server/media/repository';
 import { PlayLog } from '$lib/server/media/play-log';
@@ -138,7 +141,10 @@ test('a joined guest, the TV and a cookieless caller are refused on every host-o
 				)
 			)),
 			await getSizes(event('/api/library/sizes', 'GET', cookies)),
-			await showNight(event('/api/host/tonight', 'POST', cookies))
+			await showNight(event('/api/host/tonight', 'POST', cookies)),
+			await getReady(event('/api/host/ready', 'GET', cookies)),
+			await recheckReady(event('/api/host/ready/recheck', 'POST', cookies)),
+			await chimeReady(event('/api/host/ready/chime', 'POST', cookies))
 		];
 		expect(
 			results.map((r) => r.status),

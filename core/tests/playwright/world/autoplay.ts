@@ -28,6 +28,9 @@ import type { Page } from '@playwright/test';
 export interface AutoplayPolicyOptions {
 	/** Also start every `AudioContext` suspended, so a resume needs activation too. */
 	gateAudioContext?: boolean;
+	/** And make its `state` read `suspended` until activation, as a real one built without a gesture does (headless
+	 *  Chromium builds it `running`). For a check that reads the state, such as Ready for tonight's test sound. */
+	suspendAudioContext?: boolean;
 }
 
 /**
@@ -40,10 +43,10 @@ export interface AutoplayPolicyOptions {
  */
 export async function requireActivationForPlayback(
 	page: Page,
-	{ gateAudioContext = false }: AutoplayPolicyOptions = {}
+	{ gateAudioContext = false, suspendAudioContext = false }: AutoplayPolicyOptions = {}
 ): Promise<void> {
 	await page.addInitScript(
-		({ gateAudioContext }) => {
+		({ gateAudioContext, suspendAudioContext }) => {
 			let activated = false;
 			const activate = (e: Event) => {
 				if (e.isTrusted) activated = true;
@@ -76,8 +79,16 @@ export async function requireActivationForPlayback(
 				if (activated) return nativeResume.call(this);
 				return Promise.resolve();
 			};
+			if (!suspendAudioContext) return;
+			const nativeState = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'state')!.get!;
+			Object.defineProperty(BaseAudioContext.prototype, 'state', {
+				configurable: true,
+				get(this: BaseAudioContext) {
+					return activated ? nativeState.call(this) : 'suspended';
+				}
+			});
 		},
-		{ gateAudioContext }
+		{ gateAudioContext, suspendAudioContext }
 	);
 }
 

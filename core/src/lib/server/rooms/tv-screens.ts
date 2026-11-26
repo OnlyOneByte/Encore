@@ -171,4 +171,8 @@ export interface ScreensControl {
 	/** 'is-tv': the room's TV. A screen standing in for it can be removed, and the seat waits for the TV again. */
 	remove(screenId: string): 'ok' | 'unknown' | 'is-tv';
 	makeTv(screenId: string): 'ok' | 'unknown' | 'mid-song' | 'no-cookie';
+	/** The room's TV's sound, as it last said (`tv:audio`); null until it has. */
+	audio(): 'ok' | 'locked' | null;
+	/** Ready for tonight's test sound on the room's TV only. 'mid-song': never over a singer. */
+	chime(): 'ok' | 'no-tv' | 'mid-song';
 }

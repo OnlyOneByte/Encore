@@ -15,6 +15,7 @@ import type {
 	EffectiveSettings,
 	WorkerProfile
 } from '../../contract';
+import { workerNotes } from '../../contract';
 import { publishStemFormat, toRelativeKey, stemOutputTag, stemTagOf, lyricsTagOf } from '../media/paths';
 import { queueSidecarTask } from '../media/sidecar';
 import {
@@ -281,6 +282,8 @@ export function validateWorkerMessage(msg: unknown): string | null {
 			if (typeof m.concurrency !== 'number' || !Number.isFinite(m.concurrency)) return 'malformed concurrency';
 			if (typeof m.version !== 'string') return 'malformed version';
 			return null;
+		case 'worker:warnings':
+			return Array.isArray(m.warnings) ? null : 'malformed warnings';
 		case 'worker:catalogue':
 			if (!Array.isArray(m.capabilities) || !m.capabilities.every((c) => typeof c === 'string'))
 				return 'malformed capabilities';
@@ -409,6 +412,8 @@ export class WorkerHub {
 				return this.#onHello(msg);
 			case 'worker:catalogue':
 				return this.#onCatalogue(msg);
+			case 'worker:warnings':
+				return void this.#d.registry.warnings(msg.workerId, workerNotes(msg.warnings), this.#d.now());
 			case 'worker:heartbeat':
 				return this.#onHeartbeat(msg);
 			case 'job:accept':
@@ -522,6 +527,18 @@ export class WorkerHub {
 	 */
 	canMake(): boolean {
 		return this.#verdict.canMake;
+	}
+
+	/** Every connected worker, for the host's Ready for tonight page (defensive copies). */
+	workers(): WorkerSession[] {
+		return this.#d.registry.list();
+	}
+
+	/** The host tapped Check again: every connected worker runs its lyrics check and answers `worker:warnings`. */
+	recheck(): number {
+		const workers = this.#d.registry.list();
+		for (const w of workers) this.#d.toWorker(w.workerId, { type: 'worker:recheck' });
+		return workers.length;
 	}
 
 	/** Whether anything connected can FETCH a search result (the room's fetcher, as dispatch routes `fetch`). A box
@@ -666,7 +683,8 @@ export class WorkerHub {
 			msg.version,
 			this.#d.now(),
 			msg.host,
-			workerProfile(msg)
+			workerProfile(msg),
+			workerNotes(msg.warnings)
 		);
 		// `cpuCount` is the worker's EFFECTIVE count; `(contained)` marks a slice of a bigger box.
 		const hw = msg.host

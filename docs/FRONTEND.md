@@ -2458,6 +2458,23 @@ the `20px` term is the windowed legibility floor. `--ui-scale` is declared with 
 declaration — which would silently remove the floor. The stage-scale rule holds the
 ten-foot floor this roots.
 
+### Ready for tonight
+
+`/settings/ready` is host only (`docs/SERVER.md#ready-for-tonight`). Its door, **Ready for tonight**, is the first
+row of the room scope and is shown to the host alone.
+
+- **One screen.** A line, six rows and **Check again**. Each row has a dot (green, amber, red, or hollow while it
+  waits), its status, and only when it is not green one fix line in the danger ink. A red row with a technical
+  cause has a **Details** disclosure.
+- **The rows come with the page**, so it paints whole (CLS 0). Opening it runs Check again, and the page reads
+  `/api/host/ready` every 400 ms until no row is waiting, for at most 3 s, so it never hangs.
+- **Every red row has a next move.** TV: **Show the TV link**, which then names the join address with `/tv`.
+  TV sound: **Play a test sound on the TV**. Room for songs: **Open Library**.
+- **The test sound** is `$lib/tv/chime.ts`, which the TV imports only when it is sent one, so `/tv` loads none of
+  it. It draws its own tap hint, in the TV's words, so the page's own state and bytes are unchanged.
+- **Guest words.** "Karaoke maker", never "worker"; "lyrics service", never the provider's name, except in
+  Details.
+
 ### Tonight on the TV
 
 The host taps **Show the night** on the Queue tab. It is offered only to the host, only when nothing is playing

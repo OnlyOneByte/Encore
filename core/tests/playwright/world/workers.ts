@@ -29,6 +29,7 @@ import type {
 	JobParams,
 	JobType,
 	LyricsNote,
+	WorkerNote,
 	MediaStatus,
 	WorkerCommand,
 	WorkerMessage
@@ -134,6 +135,11 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	noLyricsNote?: LyricsNote;
 	/** Overrides `MEDIA_DIR`. Defaults to the world's, which is what core was booted with. */
 	mediaDir?: string;
+	/** Boot notes sent in hello, as the real worker's `Hello.warnings` (proposal 39). Default: none. */
+	warnings?: WorkerNote[];
+	/** The lyrics check's answer, sent as `worker:warnings` after the welcome and on every `worker:recheck`: a note
+	 *  when the service is unreachable, null when it answered, 'silent' for a check that never answers. */
+	lyricsNote?: WorkerNote | null | 'silent';
 	/**
 	 * Per-class roots, for a spec that booted core with `ENCORE_AUDIO_DIR`/`ENCORE_DERIVED_DIR`/
 	 * `ENCORE_META_DIR` of its own. Otherwise they are read from this process's env exactly as paths.ts reads
@@ -198,6 +204,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		mediaDir = world.mediaDir,
 		storageDirs = {},
 		slowMs = DEFAULT_SLOW_MS,
+		warnings = [],
+		lyricsNote = null,
 		fail,
 		hang,
 		keepaliveMs,
@@ -511,6 +519,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			concurrency,
 			version: 'pw-fake',
 			host: { accelerator: 'cpu', cpuCount: 2, contained: false },
+			warnings,
 			...profile
 		});
 		heartbeat = setInterval(
@@ -526,11 +535,18 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		} catch {
 			return;
 		}
+		// The lyrics check's answer, the FULL set as the real worker sends it (`frames.Warnings`).
+		const answerLyrics = () => {
+			if (lyricsNote === 'silent') return;
+			send({ type: 'worker:warnings', workerId, warnings: lyricsNote ? [...warnings, lyricsNote] : warnings });
+		};
 		if (msg.type === 'worker:welcome') {
 			welcomed = true;
 			log('welcomed; mediaStore =', JSON.stringify(msg.mediaStore));
+			answerLyrics();
 			return;
 		}
+		if (msg.type === 'worker:recheck') return answerLyrics();
 		if (msg.type !== 'job:assign') return;
 		const { jobId, processingId, mediaId, jobType, sourceUri, params } = msg;
 		// Deliberately not awaited: the handler sleeps between progress frames, and awaiting it here would

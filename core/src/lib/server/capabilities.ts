@@ -24,10 +24,13 @@ export type Capability =
 	/** See, name and remove the room's screens, and make one the TV, on the Screens page. */
 	| 'screens:manage'
 	/** Play the room's night on the TV ("Show the night"). */
-	| 'night:show';
+	| 'night:show'
+	/** Read Ready for tonight, ask the machines to check again, and play its test sound on the TV. */
+	| 'ready:check';
 
 const HOST_ONLY: ReadonlySet<Capability> = new Set([
 	'night:show',
+	'ready:check',
 	'settings:write-room',
 	'settings:write-global',
 	'operator:read',

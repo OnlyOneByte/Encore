@@ -926,6 +926,39 @@ Proposal 29, PR 4. The host's "Show the night" plays the room's night on the TV 
 - **No rankings.** The recap has room totals, the first and last song, and who sang in the order they first
   sang. There is no per-singer or per-song count, and no "most" of anything.
 
+### Ready for tonight
+
+Proposal 39. The host's one check before guests arrive: six rows from live state, computed on each read, with no new
+storage (`$lib/ready.ts` for the rows, `src/lib/server/ready.ts` for the facts).
+
+| Route | Answers |
+| --- | --- |
+| `GET /api/host/ready` | `{ rows }`: TV, TV sound, karaoke maker, YouTube, lyrics, room for songs |
+| `POST /api/host/ready/recheck` | `{ asked: true }`; every connected worker gets `worker:recheck`. 429 `too-soon` within 5 s of the last |
+| `POST /api/host/ready/chime` | `{ sent: true }`; one `tv:chime` to the room's TV seat only. 409 `no-tv`, or `mid-song` while a song is current |
+
+- **Host only.** All three need the host session (`ready:check`) and refuse everyone else with 403 before reading
+  anything. No new listener, port or bind. No row carries a path, a host, a token or a worker id; a red row's
+  `detail` is the worker's error class (`lrcmux: DNS`).
+- **Each row says only what it checked.** `green` is a check that passed, `amber` works but slowly (a typical song
+  over 5 min), `red` comes with one fix line, and `wait` is asked but not answered. A lyrics check with no answer 2 s
+  after Check again reads red "Didn't answer", never green. Room for songs is free space on the media volume (under
+  `ENCORE_MEDIA_MAX_GB` when set) ÷ the library's median song, and red if it cannot be read in 2 s.
+- **Where each row comes from.**
+  - TV: the seat's screen (`app.screens.list()`).
+  - Sound: the seat's last `tv:audio`, which only the seated socket may send.
+  - Karaoke maker: the connected workers, `WorkerHub.canMake`, and the speed page's typical pick-to-ready over
+    30 days (3 songs at least).
+  - YouTube and lyrics: the workers' notes.
+- **Worker notes.** `worker:hello` carries `warnings: [{ code, text, detail? }]`, the lines the worker prints at
+  boot: `youtube-gap`, `auto-lyrics-off`, `diarize-off`, `no-capabilities`. After its lyrics check (once after the
+  first connect, and on every `worker:recheck`) the worker sends `worker:warnings`, the FULL set, which replaces the
+  last: `lyrics-unreachable` when no provider answered. `workerNotes` keeps only well-shaped strings, 300
+  characters and 16 notes at most. The check is one lookup of a fixed public song through the providers, opener and
+  proxy every song uses; it carries no guest data and never runs on a timer.
+- **The chime.** The TV plays a 1 s tone with WebAudio and answers `tv:audio` `ok`, or `locked` when its sound needs a
+  tap. Locked, it shows the tap hint at once (on the lobby too) and plays again on the next tap, answering `ok`.
+
 ### Your songs
 
 Proposal 36, PR 1 (#1167). The songs you sang and the songs you saved, for the Sing tab's "Your songs" (its

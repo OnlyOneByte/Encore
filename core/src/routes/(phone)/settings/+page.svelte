@@ -120,6 +120,14 @@
 		forwards restProps for exactly this. Level 2 because PageHeader owns the single h1.
 		NO per-card scope mark here: every card on this page reaches the same room, and the sticky header already says
 		"Everyone in this room", so a mark on each card was the same line five times. -->
+	<!-- FIRST, for the host only (proposal 39): the one check before guests arrive. A guest has no use for it. -->
+	{#if !data.locked}
+		<Button variant="outline" size="block" href="/settings/ready">
+			<Icon name="check" />
+			Ready for tonight
+		</Button>
+	{/if}
+
 	<Card.Root id="rotation">
 		<Card.Header>
 			<Card.Title role="heading" aria-level={2}>Turns</Card.Title>

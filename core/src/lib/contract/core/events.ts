@@ -133,7 +133,9 @@ export type ServerEvent =
 	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.
 	| { type: 'tv:pong'; t0: number; serverAt: number }
 	// TV-ONLY, on the host's "Show the night": the room's recap, built from what the room saw. See docs/SERVER.md#tonight.
-	| { type: 'tv:tonight'; tonight: Tonight };
+	| { type: 'tv:tonight'; tonight: Tonight }
+	// To the room's TV seat only: the host's test sound on Ready for tonight (proposal 39). The TV answers `tv:audio`.
+	| { type: 'tv:chime' };
 
 /** A singer the TV may name: one who kept their nights. */
 export interface TonightSinger {
@@ -193,6 +195,8 @@ export type ClientEvent =
 	| { type: 'tv:ping'; t0: number }
 	// A copy's own distance from the TV's clock (copy minus TV, ms), every few seconds, for the host's Screens page.
 	| { type: 'tv:drift'; ms: number }
+	// The seat's sound: `locked` until a tap lets it play, `ok` once a sound played. For Ready for tonight.
+	| { type: 'tv:audio'; audio: 'ok' | 'locked' }
 	| { type: 'hello'; lastRev: number }
 	// Fire-and-forget: a dropped or rate-limited tap gets no reply. See server/realtime/reactions.ts.
 	| { type: 'room:react'; kind: ReactionKind };
@@ -258,6 +262,16 @@ export type WorkerMessage =
 			asrCompute?: unknown;
 			warmup?: unknown;
 			handSet?: unknown;
+			/** What the worker knows is broken or off at boot (proposal 39). UNTRUSTED: `workerNotes` keeps the
+			 *  well-shaped entries. */
+			warnings?: unknown;
+	  }
+	| {
+			/** The FULL current set of notes, after the worker's lyrics check or a `worker:recheck`. Replace, never
+			 *  merge: an empty list means nothing is wrong now. */
+			type: 'worker:warnings';
+			workerId: string;
+			warnings: unknown;
 	  }
 	| {
 			/**
@@ -465,6 +479,28 @@ export interface JobParams {
 	outputTag?: string;
 }
 
+/** One thing a worker knows is broken or off (`worker/encore_worker/steps/readiness.py`), for Ready for tonight. */
+export interface WorkerNote {
+	code: string;
+	/** The line the worker prints. */
+	text: string;
+	/** The technical cause, such as `lrcmux: TLS`. */
+	detail?: string;
+}
+
+/** The well-shaped notes out of an untrusted frame: strings only, each cut to a line, at most 16. */
+export function workerNotes(raw: unknown): WorkerNote[] {
+	if (!Array.isArray(raw)) return [];
+	const cut = (v: unknown) => (typeof v === 'string' ? v.slice(0, 300) : undefined);
+	return raw.slice(0, 16).flatMap((n: Record<string, unknown> | null) => {
+		const code = cut(n?.code);
+		const text = cut(n?.text);
+		if (!code || !text) return [];
+		const detail = cut(n?.detail);
+		return [detail ? { code, text, detail } : { code, text }];
+	});
+}
+
 // core -> worker
 export type WorkerCommand =
 	| {
@@ -518,7 +554,9 @@ export type WorkerCommand =
 			revoked: string[];
 			unknown: string[];
 	  }
-	| { type: 'ping' };
+	| { type: 'ping' }
+	// The host tapped Check again: the worker runs its lyrics check and answers `worker:warnings`.
+	| { type: 'worker:recheck' };
 
 export interface JobArtifacts {
 	/** The FILES separation published. `guideMix` belongs here BECAUSE it is a file, and is a third entry

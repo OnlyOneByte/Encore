@@ -23,6 +23,7 @@ COMPLETE: Final = "job:complete"
 FAILED: Final = "job:failed"
 CLAIM: Final = "job:claim"
 CATALOGUE: Final = "worker:catalogue"
+WARNINGS: Final = "worker:warnings"
 
 # ── core -> worker ────────────────────────────────────────────────────────────────────────────────
 WELCOME: Final = "worker:welcome"
@@ -31,6 +32,7 @@ CANCEL: Final = "job:cancel"
 REVOKED: Final = "job:revoked"
 CLAIM_ACK: Final = "job:claim-ack"
 PING: Final = "ping"
+RECHECK: Final = "worker:recheck"
 
 
 class ProtocolError(ValueError):
@@ -69,6 +71,23 @@ def _fail(raw: dict[str, Any], why: str) -> NoReturn:
 
 
 @dataclass(frozen=True, slots=True)
+class Note:
+    """One thing this box knows is broken or off, for the host's Ready for tonight page (proposal 39).
+
+    `code` is one of a fixed set the core reads (`steps/readiness.py`); `text` is the line the worker already
+    prints; `detail` is the technical cause (an error class), never a path, a host or a secret.
+    """
+
+    code: str
+    text: str
+    detail: str | None = None
+
+    def to_wire(self) -> dict[str, object]:
+        wire = {"code": self.code, "text": self.text, "detail": self.detail}
+        return {k: v for k, v in wire.items() if v is not None}
+
+
+@dataclass(frozen=True, slots=True)
 class Hello:
     """The handshake. `host` is diagnostic only, so a probe failure must omit it rather than fail."""
 
@@ -92,6 +111,8 @@ class Hello:
     #: Which of the profile's settings were set by hand (`Config.hand_set`); the others were picked at boot.
     hand_set: tuple[str, ...] = ()
     host: dict[str, Any] | None = None
+    #: What this box knows is broken or off at boot; a fresh set follows in `Warnings`.
+    warnings: tuple[Note, ...] = ()
 
     def to_wire(self) -> dict[str, object]:
         return _wire(
@@ -108,6 +129,7 @@ class Hello:
             warmup=self.warmup,
             handSet=list(self.hand_set),
             host=self.host,
+            warnings=[w.to_wire() for w in self.warnings],
         )
 
 
@@ -167,6 +189,19 @@ class Catalogue:
             capabilities=list(self.capabilities),
             separators=[offer.to_wire() for offer in self.separators],
         )
+
+
+@dataclass(frozen=True, slots=True)
+class Warnings:
+    """The FULL current set of `Note`s, after a lyrics check finishes or core asks again (`Recheck`).
+    Replace, never merge, like `Catalogue`: an empty list means everything is fine now."""
+
+    TYPE: ClassVar[str] = WARNINGS
+    worker_id: str
+    warnings: tuple[Note, ...]
+
+    def to_wire(self) -> dict[str, object]:
+        return _wire(WARNINGS, workerId=self.worker_id, warnings=[w.to_wire() for w in self.warnings])
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,7 +364,9 @@ class Claim:
         return _wire(CLAIM, workerId=self.worker_id, jobIds=list(self.job_ids))
 
 
-ToCore = Hello | Catalogue | Heartbeat | Accept | Reject | Progress | State | Complete | Failed | Claim
+ToCore = (
+    Hello | Catalogue | Warnings | Heartbeat | Accept | Reject | Progress | State | Complete | Failed | Claim
+)
 
 
 # ══ core -> worker ═══════════════════════════════════════════════════════════════════════════════
@@ -468,7 +505,18 @@ class Ping:
         return Ping()
 
 
-FromCore = Welcome | Assign | Cancel | Revoked | ClaimAck | Ping
+@dataclass(frozen=True, slots=True)
+class Recheck:
+    """The host tapped Check again: run the lyrics check now and answer with `Warnings`."""
+
+    TYPE: ClassVar[str] = RECHECK
+
+    @staticmethod
+    def parse(raw: dict[str, Any]) -> Recheck:
+        return Recheck()
+
+
+FromCore = Welcome | Assign | Cancel | Revoked | ClaimAck | Ping | Recheck
 
 #: Inbound dispatch. A dict rather than a chain of ifs so `parse` cannot grow a branch that forgets to
 #: return, and so `test_frames.py` can assert this table covers exactly the FromCore union.
@@ -479,6 +527,7 @@ _PARSERS: Final[dict[str, Any]] = {
     REVOKED: Revoked.parse,
     CLAIM_ACK: ClaimAck.parse,
     PING: Ping.parse,
+    RECHECK: Recheck.parse,
 }
 
 
