@@ -39,7 +39,10 @@ export default defineConfig({
 			// build — a guarantee, not a convention. `$lib/contract` is the isomorphic contract imported by
 			// both sides. Re-adding a `$server`/`$shared` alias would create a second route to the same
 			// modules that the framework does not police, which is the hole this restructure closed.
-			alias: {}
+			alias: {},
+			// The server resolves each navigation's route, so the client ships no manifest of every page and a new
+			// page no longer adds bytes to every route's JS (#1364).
+			router: { resolution: 'server' }
 		})
 	]
 });
