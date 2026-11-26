@@ -698,6 +698,14 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
   It is not a ban. The [room's TV](#the-tv-seat) cannot be removed (`409 is-tv`). A screen standing in for it can:
   the room's TV takes the seat at once if it is open; otherwise the seat waits the 15 s grace for it, and then the
   next screen stands in.
+- **What a screen shows** (`TV_SHOWS`: `everything` or `words`, see FRONTEND.md#words-only) is set with
+  `{ action: 'show', show }`, which must be one of the two (`400` otherwise). Core keeps it per screen with its name,
+  and tells every socket of that screen `tv:show { show }` on connect and on each change. The seat's screen always
+  shows everything: setting it gets `409 is-tv`, and a screen that takes the seat is switched to everything.
+  `/tv?show=words` sends `show=words` on the socket, which core parses and keeps only for a screen with no layout
+  yet, so a bookmark opens as Words only and a later choice of the host's survives its reloads.
+  shortcut: layouts live in core's memory, like names, so a core restart puts every screen back on Everything until
+  the host picks again or a `?show=` bookmark reconnects. Persist them per room with the names if hosts mind.
 - **Only cookieless screens are capped: `MAX_COOKIELESS_SCREENS` (4) per room.** One more is closed at open with
   `TV_FULL_CLOSE_CODE` (4003) before it subscribes to anything, and it says so. A cookieless socket can never hold the
   seat, so it never counts against a screen that can.
@@ -706,7 +714,7 @@ it socket edges and wires the actions to the sockets and the seat (`app.screens`
     `REMEMBER_MS`, and no other socket kind is capped either.
 
 None of this is on `/ws` for the host: a socket never carries a host capability. A copy can report its drift and
-nothing else here; the one host check on `/ws` is whose `tv:claim` names the room's TV ([The TV seat](#the-tv-seat)).
+nothing else here (a `?show=` only seeds its own layout, as above); the one host check on `/ws` is whose `tv:claim` names the room's TV ([The TV seat](#the-tv-seat)).
 
 ### The host key
 
@@ -755,7 +763,7 @@ exposure to the internet. What each attack gets:
 | DNS rebinding | Refused (421) before any route, `/ws` included: a rebinding page sends its own name as `Host`, and core answers only to IP addresses, the loopback names, the join address and `ENCORE_ALLOWED_HOSTS`. `X-Forwarded-Host` counts only with `ENCORE_TRUST_PROXY=1`. See [The host allowlist](#the-host-allowlist) (#1144). |
 | A copy or a cookieless `role=tv` socket feeding the TV clock, or flooding `tv:ping` | Can't feed it: `tv:clock` is built only from the seat's telemetry ([The TV clock relay](#the-tv-clock-relay)). A ping is unthrottled but answered 1:1 to its sender only, with a 54 B pong, less than an unthrottled `hello` returns. |
 | A `/tv` socket lying in `tv:drift`, or opening screens to fill the room | A drift report sets one number on its own row of the host's Screens page, clamped, and moves nothing. A room takes [at most 4 cookieless screens](#screens), which can never hold the seat. Screens with a cookie are not capped (a cookie is free to mint, so a cap would only refuse the real TV); the room's TV always gets back in and takes its seat back from a stand-in (at the next song, if one is playing), and the host can remove any screen but the room's TV. Screen memory is bounded (64 closed screens, a day). |
-| A guest renaming, removing or promoting screens | Refused (403): `/api/screens` is host only, and nothing on `/ws` does any of it. |
+| A guest renaming, removing, promoting or relaying out screens | Refused (403): `/api/screens` is host only, and nothing on `/ws` does any of it. A `/tv?show=` only seeds the layout of its own screen, and only one with none yet; a value core does not know is dropped, never stored or echoed. |
 | A rogue worker | `role=worker` needs core's token (constant-time compare). See [The worker token](#the-worker-token) (#1196). Like `ENCORE_ADMIN_TOKEN`, a set `ENCORE_WORKER_TOKEN` under 24 characters stops core from starting. The Origin check passes the worker, which sends no Origin. The token rides in the `ws://` query, so it stops "connect to the port", not someone sniffing the Wi-Fi. |
 
 **A lost key.** Restart core and open the new link; or set `ENCORE_ADMIN_TOKEN` and open

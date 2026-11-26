@@ -1,6 +1,7 @@
 // The room's screens, for the host's Screens page (proposal 34): every `/tv` open in a room, its name, whether it is
 // the TV, and how far a copy runs from the TV's clock. See docs/SERVER.md#screens.
 
+import { TV_SHOWS, type TvShow } from '../../contract';
 import type { ScreenRow as ScreenView } from '../../screens';
 
 export const SCREEN_NAME_MAX = 32;
@@ -23,6 +24,8 @@ type Room = {
 	sockets: Socket[];
 	names: Map<string, string>;
 	numbers: Map<string, number>;
+	/** What each screen shows, when it is not the whole stage. Kept and dropped with its name. */
+	shows: Map<string, TvShow>;
 	/** When each remembered screen was last open. */
 	seen: Map<string, number>;
 };
@@ -40,6 +43,11 @@ export function cleanScreenName(raw: unknown): string | null {
 	return name || null;
 }
 
+/** A layout from a URL or a request body, or null when it is not one. */
+export function parseTvShow(raw: unknown): TvShow | null {
+	return TV_SHOWS.find((s) => s === raw) ?? null;
+}
+
 export class TvScreens {
 	#rooms = new Map<string, Room>();
 	#now: () => number;
@@ -49,7 +57,11 @@ export class TvScreens {
 
 	#room(roomId: string): Room {
 		let r = this.#rooms.get(roomId);
-		if (!r) this.#rooms.set(roomId, (r = { sockets: [], names: new Map(), numbers: new Map(), seen: new Map() }));
+		if (!r)
+			this.#rooms.set(
+				roomId,
+				(r = { sockets: [], names: new Map(), numbers: new Map(), shows: new Map(), seen: new Map() })
+			);
 		return r;
 	}
 
@@ -59,13 +71,34 @@ export class TvScreens {
 		return !tvId && !!r && r.sockets.filter((s) => !s.tvId).length >= MAX_COOKIELESS_SCREENS;
 	}
 
-	connect(roomId: string, key: number, tvId: string | undefined): void {
+	/** `urlShow`: the `?show=` the screen was opened with. It seeds a screen with no layout yet, so a bookmarked
+	 *  `/tv?show=words` opens as one, and a layout the host chose later survives the screen's reloads. */
+	connect(roomId: string, key: number, tvId: string | undefined, urlShow: TvShow | null = null): void {
 		const r = this.#room(roomId);
 		const screenId = tvId ?? `s${key}`;
 		r.sockets.push({ key, screenId, tvId, openedAt: this.#now() });
 		this.#prune(r);
 		if (!r.numbers.has(screenId)) r.numbers.set(screenId, this.#lowestFree(r));
+		if (urlShow && !r.shows.has(screenId)) r.shows.set(screenId, urlShow);
 		r.seen.set(screenId, this.#now());
+	}
+
+	/** What the screen shows (the whole stage unless set). */
+	show(roomId: string, screenId: string): TvShow {
+		return this.#rooms.get(roomId)?.shows.get(screenId) ?? 'everything';
+	}
+
+	/** False when no such screen is open. */
+	setShow(roomId: string, screenId: string, show: TvShow): boolean {
+		const r = this.#rooms.get(roomId);
+		if (!r?.sockets.some((s) => s.screenId === screenId)) return false;
+		r.shows.set(screenId, show);
+		return true;
+	}
+
+	/** The screen a socket belongs to, or undefined. */
+	screenOf(roomId: string, key: number): string | undefined {
+		return this.#rooms.get(roomId)?.sockets.find((s) => s.key === key)?.screenId;
 	}
 
 	disconnect(roomId: string, key: number): void {
@@ -90,6 +123,7 @@ export class TvScreens {
 	#drop(r: Room, screenId: string): void {
 		r.numbers.delete(screenId);
 		r.names.delete(screenId);
+		r.shows.delete(screenId);
 		r.seen.delete(screenId);
 	}
 
@@ -147,6 +181,7 @@ export class TvScreens {
 				isNew: !r.names.has(s.screenId),
 				canBeTv: !!s.tvId,
 				canRemove: s.screenId !== roomTv,
+				show: r.shows.get(s.screenId) ?? 'everything',
 				n: r.numbers.get(s.screenId) ?? Infinity
 			};
 			if (s.key === tvKey) v.isTv = true;
@@ -175,4 +210,6 @@ export interface ScreensControl {
 	audio(): 'ok' | 'locked' | null;
 	/** Ready for tonight's test sound on the room's TV only. 'mid-song': never over a singer. */
 	chime(): 'ok' | 'no-tv' | 'mid-song';
+	/** 'is-tv': the seat's screen, which always shows the whole stage. */
+	setShow(screenId: string, show: TvShow): 'ok' | 'unknown' | 'is-tv';
 }

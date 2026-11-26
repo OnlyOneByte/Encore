@@ -8,6 +8,7 @@ import {
 	roomTvTopic,
 	TV_FULL_CLOSE_CODE,
 	TV_REMOVED_CLOSE_CODE,
+	type TvShow,
 	type ClientEvent,
 	type ServerEvent,
 	type WorkerMessage,
@@ -38,7 +39,7 @@ import { createReactionLimiter, handleReaction } from './src/lib/server/realtime
 import { clockFrame, pongFrame, serverNow } from './src/lib/server/realtime/tv-clock';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { TvSeats, tvIdOf, type SeatNotice } from './src/lib/server/rooms/tv-seat';
-import { TvScreens } from './src/lib/server/rooms/tv-screens';
+import { TvScreens, parseTvShow } from './src/lib/server/rooms/tv-screens';
 import { SingerSockets } from './src/lib/server/realtime/singer-sockets';
 import { harnessHtml, phoneHtml } from './src/lib/server/dev-harness';
 import { refreshDefaultRoute, startupAddress } from './src/lib/server/public-origin';
@@ -84,6 +85,8 @@ type SocketData = {
 	tvKey?: number;
 	/** A `/tv`'s `encore_host` cookie, checked against the live host sessions at each `tv:claim` and nowhere else. */
 	hostToken?: string;
+	/** A `/tv`'s `?show=`, which seeds what a screen with no layout yet shows. */
+	show?: TvShow | null;
 	/** A `/tv` turned away at open (the room's screen cap): its close has nothing to undo. */
 	refused?: boolean;
 };
@@ -117,8 +120,22 @@ let nextTvKey = 0;
 function announceSeat(notices: SeatNotice[]): void {
 	for (const n of notices) {
 		const e = { type: 'tv:seat', mine: n.mine, tvOnline: n.tvOnline, next: n.next } satisfies ServerEvent;
-		tvSockets.get(n.key)?.send(JSON.stringify(e));
+		const ws = tvSockets.get(n.key);
+		ws?.send(JSON.stringify(e));
+		if (ws && n.mine) showEverythingOnSeat(ws.data.roomId!, n.key);
 	}
+}
+/** A screen that takes the seat shows the whole stage from then on: the room's TV shows the whole night. */
+function showEverythingOnSeat(roomId: string, key: number): void {
+	const screenId = tvScreens.screenOf(roomId, key);
+	if (!screenId || tvScreens.show(roomId, screenId) === 'everything') return;
+	tvScreens.setShow(roomId, screenId, 'everything');
+	announceShow(roomId, screenId);
+}
+/** Tells every socket of a screen what it shows (`tv:show`). */
+function announceShow(roomId: string, screenId: string): void {
+	const e = { type: 'tv:show', show: tvScreens.show(roomId, screenId) } satisfies ServerEvent;
+	for (const k of tvScreens.socketsOf(roomId, screenId)) tvSockets.get(k)?.send(JSON.stringify(e));
 }
 // Every /tv open in a room, for the host's Screens page (src/lib/server/rooms/tv-screens.ts).
 const tvScreens = new TvScreens(() => app.now());
@@ -159,6 +176,14 @@ app.screens = {
 		if (app.screens!.midSong()) return 'mid-song';
 		// The Screens page is host only, so this is the host's choice: the screen becomes the room's TV.
 		announceSeat(tvSeats.claim(app.activeRoomId, key, true));
+		return 'ok';
+	},
+	setShow: (id, show) => {
+		const keys = tvScreens.socketsOf(app.activeRoomId, id);
+		if (!keys.length) return 'unknown';
+		if (keys.includes(tvSeats.holderKey(app.activeRoomId) ?? -1)) return 'is-tv';
+		tvScreens.setShow(app.activeRoomId, id, show);
+		announceShow(app.activeRoomId, id);
 		return 'ok';
 	}
 };
@@ -254,7 +279,8 @@ const server = Bun.serve<SocketData>({
 			const tvId = role === 'tv' ? tvIdOf(req.headers.get('cookie')) : undefined;
 			// Kept only so a `tv:claim` can ask, at that moment, whether the host is tapping (#1249). Unlocks nothing else.
 			const hostToken = role === 'tv' ? readHostToken(req.headers.get('cookie')) : undefined;
-			if (server.upgrade(req, { data: { role, singerId: me?.id, sessionToken, roomId, tvId, hostToken } }))
+			const show = role === 'tv' ? parseTvShow(url.searchParams.get('show')) : null;
+			if (server.upgrade(req, { data: { role, singerId: me?.id, sessionToken, roomId, tvId, hostToken, show } }))
 				return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
@@ -305,7 +331,12 @@ const server = Bun.serve<SocketData>({
 				ws.data.tvKey = ++nextTvKey;
 				tvSockets.set(ws.data.tvKey, ws);
 				announceSeat(tvSeats.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId));
-				tvScreens.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId);
+				tvScreens.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId, ws.data.show);
+				// The screen's layout, told on every connect. A screen opening into the seat shows the whole stage.
+				if (seated(ws)) showEverythingOnSeat(ws.data.roomId, ws.data.tvKey);
+				const screenId = tvScreens.screenOf(ws.data.roomId, ws.data.tvKey)!;
+				const shown = { type: 'tv:show', show: tvScreens.show(ws.data.roomId, screenId) } satisfies ServerEvent;
+				ws.send(JSON.stringify(shown));
 			}
 			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();

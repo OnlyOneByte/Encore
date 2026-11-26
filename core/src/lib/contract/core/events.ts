@@ -65,6 +65,9 @@ export const LEFT_CLOSE_CODE = 4001;
 export const TV_REMOVED_CLOSE_CODE = 4002;
 /** A cookieless `/tv` turned away because the room has its fill of those. A screen with a cookie never is. */
 export const TV_FULL_CLOSE_CODE = 4003;
+/** What a `/tv` shows: the whole stage, or only the words (a singer's monitor). The room's TV always shows everything. */
+export const TV_SHOWS = ['everything', 'words'] as const;
+export type TvShow = (typeof TV_SHOWS)[number];
 
 // core -> all clients (broadcasts)
 export type ServerEvent =
@@ -128,6 +131,8 @@ export type ServerEvent =
 	// ignores; `tvOnline: false` means the seat's screen has no live socket right now; `next`: this copy is the room's
 	// TV, back mid-song, and takes the seat at the next song. See server/rooms/tv-seat.ts.
 	| { type: 'tv:seat'; mine: boolean; tvOnline: boolean; next: boolean }
+	// To ONE TV socket, on connect and whenever the host changes it: what this screen shows. See docs/SERVER.md#screens.
+	| { type: 'tv:show'; show: TvShow }
 	// TV-ONLY, ~4 Hz: the seat's playhead as core received it (`serverAt`, core's ms clock), for copies to follow.
 	| { type: 'tv:clock'; entryId: string; positionSec: number; serverAt: number }
 	// To the ORIGIN only: the answer to its `tv:ping`, so a copy can learn its offset to core's clock.

@@ -22,6 +22,7 @@
 	import { untrack } from 'svelte';
 	import { drawPosition } from '$lib/playhead';
 	import { reelOffset as reelOffsetFor } from './reel-offset';
+	import type { WordsFit } from './TvWordsOnly.svelte';
 	import {
 		DEFAULT_LYRICS_BALL,
 		DEFAULT_LYRICS_CASE,
@@ -69,6 +70,11 @@
 		singerColor?: string | null;
 		/** The room's "Show the chorus to the room" (proposal 38). */
 		chorus?: boolean;
+		/** Rows each lyric line may wrap to inside the reel's budget (Words only gives two). */
+		wrapRows?: number;
+		/** Cap the type so every line, at `wrapRows` rows, fits the band at any room size (Words only, whose lazy chunk
+		 *  carries the helpers, so the stage ships none of them). */
+		fit?: WordsFit | null;
 	}
 	let {
 		lyricsRef,
@@ -87,7 +93,9 @@
 		linesBefore = DEFAULT_LYRICS_LINES_BEFORE,
 		linesAfter = DEFAULT_LYRICS_LINES_AFTER,
 		singerColor = null,
-		chorus = true
+		chorus = true,
+		wrapRows = 1,
+		fit = null
 	}: Props = $props();
 
 	const FIX_WAIT_MAX_MS = 10_000;
@@ -259,17 +267,51 @@
 			band: viewportEl.clientHeight,
 			linesBefore,
 			linesAfter,
-			fadeTop: linesBefore > 0 ? fadeCap : 0,
-			fadeBot: linesAfter > 0 ? fadeCap : 0
+			fadeTop: linesBefore > 0 && !fit ? fadeCap : 0,
+			fadeBot: linesAfter > 0 && !fit ? fadeCap : 0
 		});
+		// The fit cap counts rows, not letters: a wide font (mono) still takes a 42-character line past `wrapRows`, so a
+		// shown line taller than its budget steps the type down (to half at most), measured again on the frame it lands.
+		if (
+			fit &&
+			shrink > 0.5 &&
+			fit.over(reelEl!.children, lineIdx - linesBefore, lineIdx + linesAfter, wrapRows, oneRow)
+		) {
+			shrink = Math.max(0.5, shrink * 0.92);
+			snapReel = true;
+			requestAnimationFrame(() => {
+				snapReel = false;
+				measureReel();
+			});
+		}
 	}
+	let shrink = $state(1);
+	$effect(() => {
+		void [doc, font, textCase, scalePct, wrapRows, fit];
+		shrink = 1;
+	});
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
 		void doc; // and in the flush that swaps a version in, before the ResizeObserver's frame
 		// The row counts move the bias AND the viewport height, and a settings write can land mid-song.
 		void linesBefore;
 		void linesAfter;
-		measureReel();
+		untrack(measureReel);
+	});
+	// A change of GEOMETRY (the type size, the row counts or the wrap budget, as when a screen turns Words only) puts
+	// the sung row somewhere new at once, so the reel lands there with no glide: gliding from the old offset left the
+	// sung line outside the view for ~100 ms. `snapReel` drops the transition for one frame only.
+	let geometry: string | undefined;
+	$effect(() => {
+		const now = `${scalePct}/${linesBefore}/${linesAfter}/${wrapRows}/${fit}`;
+		if (geometry !== undefined && geometry !== now) {
+			snapReel = true;
+			untrack(measureReel);
+			const f = requestAnimationFrame(() => (snapReel = false));
+			geometry = now;
+			return () => cancelAnimationFrame(f);
+		}
+		geometry = now;
 	});
 	// A row's height is NOT constant: the current row renders inline-block word spans while the others render plain
 	// text, so the geometry shifts the moment a line becomes current (~11px, accumulating over a song).
@@ -277,7 +319,13 @@
 		if (!reelEl) return;
 		const ro = new ResizeObserver(() => measureReel());
 		ro.observe(reelEl);
-		return () => ro.disconnect();
+		if (viewportEl) ro.observe(viewportEl);
+		// A lyrics font arriving late rewraps every row.
+		document.fonts?.addEventListener('loadingdone', measureReel);
+		return () => {
+			ro.disconnect();
+			document.fonts?.removeEventListener('loadingdone', measureReel);
+		};
 	});
 	const unverified = $derived(isAutoTranscribed(provenance));
 	// EVERY row of the reel renders its own `romanization`, not just the current one, so a romanised doc makes
@@ -301,12 +349,15 @@
 	const partColor = $derived(
 		curLine && typeof curLine.part === 'string' ? (partColors.get(curLine.part) ?? null) : null
 	);
+	const fitStyle = $derived(fit ? fit.style(rowCount, wrapRows, shrink) : '');
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
-		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
+		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE * (fit ? shrink : 1)}; --lyrics-rows: ${rowCount}; ` +
+			`--lyrics-wrap: ${wrapRows}${fitStyle}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.
-			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}` +
+			// In fit mode the box holds exactly its lines and nothing trails past them, so neither edge fades.
+			`--lyrics-fade-top-on: ${linesBefore > 0 && !fit ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 && !fit ? 1 : 0}` +
 			(singerHighlight ? `; --reel-singer: ${singerHighlight}` : '') +
 			(partColor ? `; --reel-part: ${partColor}` : '')
 	);
@@ -330,7 +381,14 @@
 					<div
 						class={[
 							'row',
-							{ current: i === lineIdx, past: i < lineIdx, fresh: freshRows.has(i), chorus: chorusRows.has(i) }
+							{
+								current: i === lineIdx,
+								past: i < lineIdx,
+								fresh: freshRows.has(i),
+								chorus: chorusRows.has(i),
+								// Fit mode budgets for these lines alone, so a wrapped one past them never peeks in at an edge.
+								beyond: fit && (i < lineIdx - linesBefore || i > lineIdx + linesAfter)
+							}
 						]}
 					>
 						{#if opensChorus(i)}
@@ -459,8 +517,9 @@
 	}
 
 	.viewport {
-		/* A MULTIPLIER on the token, not a replacement: the token is what makes the reel adapt to the screen. */
-		font-size: calc(var(--tv-lyric) * var(--lyrics-scale, 1));
+		/* A MULTIPLIER on the token, not a replacement: the token is what makes the reel adapt to the screen. Capped by
+		   `--lyrics-fit` only when the caller asks every line to fit (Words only); unset, the cap is never reached. */
+		font-size: min(calc(var(--tv-lyric) * var(--lyrics-scale, 1)), var(--lyrics-fit, 100vh));
 		font-weight: 800;
 		font-family: var(--lyrics-font, inherit);
 		text-transform: var(--lyrics-case, none);
@@ -485,7 +544,8 @@
 		--lyrics-fade-cap: min(var(--lyrics-row-h), calc((100% - var(--lyrics-row-h)) / 2));
 		--lyrics-fade-top: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-top-on, 1));
 		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
-		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-budget));
+		/* Each line's budget is `--lyrics-wrap` rows: one on the stage, two on Words only, where the bigger type wraps. */
+		height: calc(var(--lyrics-rows, 5) * var(--lyrics-wrap, 1) * var(--lyrics-row-budget) + var(--lyrics-slack, 0em));
 		/*
 		 * EXACTLY the parent band, and it must NOT subtract a further `--tv-safe-y`: the box is centred, so charging
 		 * one against its height buys only half of it as top inset while removing a full one of reel — and

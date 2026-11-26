@@ -7,7 +7,8 @@ import {
 	REMEMBER_MAX,
 	REMEMBER_MS,
 	TvScreens,
-	cleanScreenName
+	cleanScreenName,
+	parseTvShow
 } from '$lib/server/rooms/tv-screens';
 
 const R = 'room';
@@ -188,4 +189,59 @@ it('the Screens page claims as the host; a tap on a /tv claims as the host only 
 	expect(tap).toContain('tvSeats.claim(ws.data.roomId!, ws.data.tvKey, byHost)');
 	expect(server).toContain("const hostToken = role === 'tv' ? readHostToken(req.headers.get('cookie')) : undefined;");
 	expect(server.match(/tvSeats\.claim\(/g)?.length).toBe(2);
+});
+
+// Proposal 34, PR 4: Words only.
+it('a screen shows everything until set; a ?show= seeds only a screen with no layout yet', () => {
+	const s = new TvScreens(clock().now);
+	s.connect(R, 1, 'tvA');
+	expect(s.show(R, 'tvA')).toBe('everything');
+	s.connect(R, 2, 'tvB', 'words');
+	expect(s.show(R, 'tvB')).toBe('words');
+	// The host's later choice outlives a reload of the bookmarked URL.
+	expect(s.setShow(R, 'tvB', 'everything')).toBe(true);
+	s.disconnect(R, 2);
+	s.connect(R, 3, 'tvB', 'words');
+	expect(s.show(R, 'tvB')).toBe('everything');
+	expect(s.list(R, 1, 'tvA').map((v) => [v.id, v.show])).toEqual([
+		['tvA', 'everything'],
+		['tvB', 'everything']
+	]);
+});
+
+it('only an open screen takes a layout, and a removed screen forgets it', () => {
+	const s = new TvScreens(clock().now);
+	expect(s.setShow(R, 'nobody', 'words')).toBe(false);
+	s.connect(R, 1, 'tvA');
+	s.setShow(R, 'tvA', 'words');
+	s.forget(R, 'tvA');
+	expect(s.show(R, 'tvA')).toBe('everything');
+	expect(s.screenOf(R, 1)).toBe('tvA');
+	expect(s.screenOf(R, 99)).toBeUndefined();
+});
+
+it('parseTvShow takes the two layouts and nothing else', () => {
+	expect(parseTvShow('everything')).toBe('everything');
+	expect(parseTvShow('words')).toBe('words');
+	for (const bad of ['board', 'Words', '', null, undefined, 1, {}]) expect(parseTvShow(bad)).toBeNull();
+});
+
+it('server.ts tells a screen its layout, keeps the TV on everything, and the API takes only a valid layout', () => {
+	const server = read('server.ts');
+	// A screen that takes the seat shows the whole stage, from every seat move.
+	const seat = server.split('function announceSeat(')[1]!.split('\n}')[0]!;
+	expect(seat).toContain('if (ws && n.mine) showEverythingOnSeat(ws.data.roomId!, n.key);');
+	// The host cannot set the seat's screen to words only.
+	const set = server.split('setShow: (id, show) => {')[1]!.split("return 'ok';")[0]!;
+	expect(set).toContain("if (keys.includes(tvSeats.holderKey(app.activeRoomId) ?? -1)) return 'is-tv';");
+	// The URL's layout is parsed, never passed through, and every connect is told its layout.
+	expect(server).toContain("const show = role === 'tv' ? parseTvShow(url.searchParams.get('show')) : null;");
+	const open = server.split('open(ws) {')[1]!.split('message(ws, raw)')[0]!;
+	expect(open).toContain('tvScreens.connect(ws.data.roomId, ws.data.tvKey, ws.data.tvId, ws.data.show);');
+	expect(open).toContain("type: 'tv:show'");
+	const route = read('src/routes/api/screens/+server.ts');
+	const show = route.split("case 'show': {")[1]!.split('default:')[0]!;
+	expect(show).toContain('const show = parseTvShow(body.show);');
+	expect(show).toContain('if (!show) return json(');
+	expect(show).toContain('{ status: 400 }');
 });

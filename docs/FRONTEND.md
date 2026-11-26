@@ -2386,9 +2386,36 @@ lists every `/tv` open in the room, the TV first (`docs/SERVER.md#screens`).
 - A row's buttons wait while its action is in flight, so a double tap sends one request. A Remove that finds the
   screen already gone counts as done. Escape cancels a rename.
 - The page ends with where to add a screen: the join address with `/tv`.
+- **What each copy shows**, **Everything** or **Words only**, is a radio group (`ScreenShowPicker`, one tab stop and
+  arrow keys, as `GuideSegments`). A pick shows at once and the copy follows within a second. The TV row has none: the
+  TV always shows the whole stage. The Up next board is proposal 34's PR 5.
 
-The layouts per screen (Everything, Words only, Up next) come with proposal 34's PR 4.
-`p34-screens.spec.ts` covers the page, the API, the removed screen, the cookieless cap and a script minting cookies.
+`p34-screens.spec.ts` covers the page, the API, the removed screen, the cookieless cap and a script minting cookies;
+`p34-words.spec.ts` covers Words only.
+
+### Words only
+
+A copy the host set to **Words only** (or opened as `/tv?show=words`) is a singer's monitor. Mid-song it shows the
+line being sung and the next one, centred on black, and "Theo is next" top right in "Up next"'s place and type. It
+has no lower-third, join corner, reactions or background, and the QR leaves the song-change card too. It follows the
+song's lyrics offset (Earlier/Later) exactly as the TV does.
+
+- **The two lines always fit.** Each gets a two-row budget (`LyricsOverlay`'s `wrapRows`), since bigger type wraps
+  a real line. The type is 1.7× the room's lyric size (`WORDS_ONLY_SCALE`), capped (`fit`) at the size where two
+  lines of two rows fill the screen, so the room's 300% cannot push either off it (83.6 px at 720p, from 100% up).
+  The cap counts rows, not letters, so a wide font can still take a 42-character line to three: then the overlay
+  steps the type down by 8% at a time until every shown line takes two rows at most (mono at 720p lands at 76.9 px).
+  A single word longer than a row breaks (`overflow-wrap: anywhere`) rather than running off the side.
+  Rows past those two are hidden, and neither edge fades, so nothing peeks in or out at an edge. `p34-words` holds
+  it with 42-character lines (`LINE_MAX_CHARS`, the longest the TV keeps whole) at 1280 and 1920, at 100% and 300%,
+  in the default font and in mono.
+- **Only a copy mid-song.** The lobby and attract stay as they are, since the room scans the QR there.
+- **The seat always shows everything.** A copy that takes the seat switches to Everything, and core stores that
+  (`tv:show`), so it stays that way if it becomes a copy again. The room's stage always shows the whole night.
+- **"Is next" steps aside for the copy chip**, as "Up next" does, so the two never share the top-right corner.
+- **The switch:** the chrome cuts away, and the background fades out on its own `--motion-base` crossfade. The reel
+  lands on the sung line at once rather than gliding there, as any change of its geometry does (the overlay's
+  `snap`). ui:review row `tv-words-only`.
 
 ### A song that won't play
 
