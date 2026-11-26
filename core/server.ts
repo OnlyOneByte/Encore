@@ -122,7 +122,22 @@ function announceSeat(notices: SeatNotice[]): void {
 }
 // Every /tv open in a room, for the host's Screens page (src/lib/server/rooms/tv-screens.ts).
 const tvScreens = new TvScreens(() => app.now());
+// The seat's last `tv:audio`, kept with the socket it came from so a new TV reads as unknown until it says.
+let seatAudio: { key: number; audio: 'ok' | 'locked' } | null = null;
 app.screens = {
+	audio: () => {
+		const key = tvSeats.holderKey(app.activeRoomId);
+		return seatAudio && seatAudio.key === key ? seatAudio.audio : null;
+	},
+	chime: () => {
+		const key = tvSeats.holderKey(app.activeRoomId);
+		const tv = key === null ? undefined : tvSockets.get(key);
+		if (!tv) return 'no-tv';
+		// Never over a singer: the test sound is for before the party, or between songs.
+		if (state.playback.currentEntryId !== null) return 'mid-song';
+		tv.send(JSON.stringify({ type: 'tv:chime' } satisfies ServerEvent));
+		return 'ok';
+	},
 	list: () => tvScreens.list(app.activeRoomId, tvSeats.holderKey(app.activeRoomId), tvSeats.roomTv(app.activeRoomId)),
 	midSong: () => state.playback.currentEntryId !== null,
 	rename: (id, name) => tvScreens.rename(app.activeRoomId, id, name),
@@ -402,6 +417,11 @@ const server = Bun.serve<SocketData>({
 				case 'tv:drift':
 					// A copy's report for the host page, and only that: it moves nothing, and the seat has no drift to report.
 					if (ws.data.tvKey !== undefined && !seated(ws)) tvScreens.drift(ws.data.roomId!, ws.data.tvKey, evt.ms);
+					break;
+				case 'tv:audio':
+					// The seat's own sound only: a copy's speakers are not the room's.
+					if (seated(ws) && (evt.audio === 'ok' || evt.audio === 'locked'))
+						seatAudio = { key: ws.data.tvKey!, audio: evt.audio };
 					break;
 				case 'tv:claim':
 					// A tap on a screen carrying a live host session is the host's choice; any other tap makes a stand-in.

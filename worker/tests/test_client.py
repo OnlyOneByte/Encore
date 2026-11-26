@@ -1278,3 +1278,41 @@ async def test_keepalive_goes_quiet_past_its_ceiling() -> None:
         )
 
     assert sock.types().count("job:progress") == 3, "ticks at 10, 20 and 30 s, none past the 35 s ceiling"
+
+
+# ── proposal 39: warnings reach core, and core can ask for a fresh lyrics check ──────────────────────
+
+
+async def test_the_boot_warnings_ride_the_hello_and_the_lyrics_check_follows_it() -> None:
+    socket = FakeSocket()
+    c = client(socket)
+    c.warnings = (f.Note("youtube-gap", "YouTube downloads will fail without deno on PATH"),)
+    unreachable = f.Note("lyrics-unreachable", "Can't reach the lyrics service", "lrcmux: TLS")
+    c.lyrics_check = lambda: unreachable
+
+    async with Session(c, socket):
+        await _until(lambda: "worker:warnings" in socket.types())
+
+    hello = socket.first("worker:hello")
+    gap = {"code": "youtube-gap", "text": "YouTube downloads will fail without deno on PATH"}
+    assert hello["warnings"] == [gap]
+    # The FULL set after the check, the boot note included.
+    assert socket.first("worker:warnings")["warnings"] == [
+        gap,
+        {"code": "lyrics-unreachable", "text": "Can't reach the lyrics service", "detail": "lrcmux: TLS"},
+    ]
+
+
+async def test_a_recheck_runs_the_lyrics_check_again_and_a_fixed_service_clears_the_note() -> None:
+    answers = [f.Note("lyrics-unreachable", "Can't reach the lyrics service", "lrcmux: DNS"), None]
+    socket = FakeSocket()
+    c = client(socket)
+    c.lyrics_check = lambda: answers.pop(0)
+
+    async with Session(c, socket):
+        await _until(lambda: socket.types().count("worker:warnings") == 1)
+        await c._on_frame(json.dumps({"type": "worker:recheck"}))
+        await _until(lambda: socket.types().count("worker:warnings") == 2)
+
+    sent = [s for s in socket.sent if s["type"] == "worker:warnings"]
+    assert [len(s["warnings"]) for s in sent] == [1, 0]  # type: ignore[arg-type]

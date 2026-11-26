@@ -256,8 +256,9 @@ modes, capabilities) are in `protocol/vocabulary.py` and mirror the core's TypeS
 
 | Frame | Direction | Carries |
 | --- | --- | --- |
-| `worker:hello` | worker → core | worker id, capabilities, concurrency, version, host info. Also the resolved profile, the separator backend, the torch device and torch's thread count, which core stamps on every attempt it assigns this worker |
+| `worker:hello` | worker → core | worker id, capabilities, concurrency, version, host info. Also the resolved profile, the separator backend, the torch device and torch's thread count, which core stamps on every attempt it assigns this worker. And `warnings`, the boot notes it prints (proposal 39) |
 | `worker:catalogue` | worker → core | the selectable separation models, sent after `hello` because enumerating them is slow; repeats the full capability set |
+| `worker:warnings` | worker → core | the full set of notes after the lyrics check: once after the first connect, and on every `worker:recheck` |
 | `worker:heartbeat` | worker → core | free slots and the running job ids: on connect, and at the interval `welcome` names |
 | `job:accept` | worker → core | the job was taken |
 | `job:reject` | worker → core | the job was refused, with a required reason |
@@ -271,6 +272,7 @@ modes, capabilities) are in `protocol/vocabulary.py` and mirror the core's TypeS
 | `job:cancel` | core → worker | the song left the queue (`core/src/lib/server/jobs/cancel.ts`) |
 | `job:revoked` | core → worker | the core reassigned this job: stop, and do not publish |
 | `job:claim-ack` | core → worker | the answer to a claim: `owned`, `revoked`, `unknown` |
+| `worker:recheck` | core → worker | the host tapped Check again on Ready for tonight: run the lyrics check now |
 | `ping` | core → worker | declared on both sides, not sent by core |
 
 `job:revoked` and `job:claim` make the ownership guard implementable, and they are deliberately BOTH a push

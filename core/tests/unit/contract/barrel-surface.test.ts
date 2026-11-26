@@ -267,7 +267,8 @@ const EXPECTED = [
 	'ulid',
 	'voiceBandFor',
 	'voiceBandSentence',
-	'voiceBandZones'
+	'voiceBandZones',
+	'workerNotes'
 ].sort();
 
 test('the $lib/contract barrel exports exactly the frozen public surface', () => {

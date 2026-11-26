@@ -27,6 +27,7 @@ from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config, ConfigError
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
+from encore_worker.steps import readiness
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.align_text import Superseded, superseded_candidates
 from encore_worker.steps.api import asr_model_of, pin_of, sync_mode_of
@@ -226,16 +227,16 @@ async def main() -> None:
     # line says what `build_adapters` resolves below — and refuses an uncalibrated name before any work.
     print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
     print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
-    if diarize_off:
-        print(f"[worker] diarize off: {diarize_off}", flush=True)
-    if "align" in caps and (lyrics_off := asr_off(config, config.asr_model)):
-        print(f"[worker] auto lyrics off: {lyrics_off}; a pasted sheet still aligns", flush=True)
-    if "fetch:ytdlp" in caps and (gap := hardware.youtube_gap(config.ytdlp_config_paths)):
-        print(f"[worker] WARNING: YouTube downloads will fail without {gap}", flush=True)
-    if not caps:
-        # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which beats a
-        # process that exits and leaves an operator wondering where the worker went.
-        print("[worker] WARNING: no capabilities proven, so the core will route nothing here", flush=True)
+    lyrics_off = asr_off(config, config.asr_model) if "align" in caps else None
+    gap = hardware.youtube_gap(config.ytdlp_config_paths) if "fetch:ytdlp" in caps else None
+    # Printed as before AND sent to core in `Hello.warnings`, for the host's Ready for tonight page. Not
+    # fatal: a box with no capabilities still connects and is visible, which beats a process that exits.
+    notes = readiness.boot_notes(
+        capabilities=caps, diarize_off=diarize_off, lyrics_off=lyrics_off, youtube_gap=gap
+    )
+    for note in notes:
+        loud = note.code in ("youtube-gap", "no-capabilities")
+        print(f"[worker] {'WARNING: ' if loud else ''}{note.text}", flush=True)
 
     dbos = _launch_dbos(config)
     adapters = build_adapters(config, device=device)
@@ -277,6 +278,9 @@ async def main() -> None:
         demucs_jobs=profile.demucs_jobs.count,
         hand_set=hand_set,
         host=report.to_wire(),
+        warnings=notes,
+        # The same providers every song asks, so a green row means songs will get their sheets.
+        lyrics_check=lambda: readiness.lyrics_check(adapters.providers),
         on_settled=settled,
         stop_job=_stop,
         # Enumerated OFF the event loop after registration — 4.8 s cold, and a picker's contents must not

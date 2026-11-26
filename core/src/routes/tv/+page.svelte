@@ -436,6 +436,8 @@
 	function handleEvent(e: ServerEvent) {
 		if (e.type === 'room:reacted') reactions?.add(e);
 		if (e.type === 'tv:tonight') tonight = e.tonight;
+		// Ready for tonight's test sound, loaded only when asked ($lib/tv/chime.ts).
+		if (e.type === 'tv:chime') void import('$lib/tv/chime').then((m) => m.chime(ws));
 		if (e.type === 'tv:clock') tvClock = { entryId: e.entryId, positionSec: e.positionSec, serverAt: e.serverAt };
 		if (e.type === 'tv:pong') {
 			clockOffset.add(e.t0, e.serverAt, clientNow());

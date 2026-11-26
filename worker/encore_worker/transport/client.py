@@ -77,6 +77,11 @@ class Client:
     #: Builds the selectable-model catalogue, or None on a box that offers none. Called OFF the event loop
     #: (docs/arch/05-worker.md §7.1) and injected, so a test can supply one without the extra installed.
     catalogue: Catalogue | None = None
+    #: The boot warnings (`steps/readiness.boot_notes`), sent in `Hello` and with every `Warnings`.
+    warnings: tuple[f.Note, ...] = ()
+    #: The lyrics reachability check (`steps/readiness.lyrics_check`), blocking, so it runs in a thread. Run
+    #: once after the first connect and again on `Recheck`; None skips it (a test, or no providers wired).
+    lyrics_check: Callable[[], f.Note | None] | None = None
 
     ownership: Ownership = field(default_factory=Ownership)
     #: How long to wait between reconnect attempts. Default is the jittered schedule above.
@@ -107,6 +112,10 @@ class Client:
     _beat: asyncio.Task[None] | None = field(default=None, init=False)
     #: Set by this session's `worker:welcome`, so the next drop redials from the bottom of the backoff.
     _welcomed: bool = field(default=False, init=False)
+    #: The last lyrics check's answer, folded into every `Hello` and `Warnings` after it.
+    _lyrics_note: f.Note | None = field(default=None, init=False)
+    #: The lyrics check in flight, or the finished one; a second request while one runs waits for it.
+    _lyrics_task: asyncio.Task[None] | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         # Seeded from config so a core that announces nothing — an older one — still publishes at a valid
@@ -168,6 +177,9 @@ class Client:
             # AFTER the claim, and not awaited: the catalogue is a UI nicety, so it must not sit in front of
             # either registration or re-claiming ownership of in-flight work.
             catalogue_task = asyncio.create_task(self._announce_catalogue())
+            # Once per process, after registration: a slow or dead lyrics service must not delay the join.
+            if self._lyrics_task is None:
+                self._start_lyrics_check()
             async for raw in socket:
                 await self._on_frame(raw)
         finally:
@@ -206,6 +218,27 @@ class Client:
         )
         print(f"[worker] offered {len(offers)} selectable separation models", flush=True)
 
+    def _notes(self) -> tuple[f.Note, ...]:
+        return self.warnings + ((self._lyrics_note,) if self._lyrics_note else ())
+
+    def _start_lyrics_check(self) -> None:
+        if self.lyrics_check is None or (self._lyrics_task is not None and not self._lyrics_task.done()):
+            return
+        self._lyrics_task = asyncio.create_task(self._run_lyrics_check(self.lyrics_check))
+
+    async def _run_lyrics_check(self, check: Callable[[], f.Note | None]) -> None:
+        """Run the check in a thread, then tell core the FULL set of notes (`frames.Warnings`)."""
+        try:
+            self._lyrics_note = await asyncio.to_thread(check)
+        except Exception as exc:  # noqa: BLE001 - the check reports failures itself; this is its own bug
+            self._note(f"lyrics check failed to run ({type(exc).__name__}: {exc})")
+            return
+        if self._lyrics_note:
+            print(f"[worker] WARNING: {self._lyrics_note.text} ({self._lyrics_note.detail})", flush=True)
+        if self._socket is not None:
+            with contextlib.suppress(Exception):
+                await self._send(f.Warnings(worker_id=self.config.worker_id, warnings=self._notes()))
+
     def _hello(self) -> f.Hello:
         return f.Hello(
             worker_id=self.config.worker_id,
@@ -220,6 +253,7 @@ class Client:
             warmup=self.config.warmup,
             hand_set=self.hand_set,
             host=self.host,
+            warnings=self._notes(),
         )
 
     # ── inbound ──────────────────────────────────────────────────────────────────────────────────
@@ -277,6 +311,8 @@ class Client:
                     self._beat = asyncio.create_task(self._heartbeat_every(welcome.heartbeat_interval_sec))
             case f.Ping():
                 pass  # liveness needs no local state
+            case f.Recheck():
+                self._start_lyrics_check()
             case _ as unreachable:
                 assert_never(unreachable)
 

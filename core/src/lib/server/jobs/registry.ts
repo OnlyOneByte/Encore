@@ -1,7 +1,7 @@
 // In-memory only, rebuilt from worker reconnects, never persisted. A dropped worker's in-flight
 // jobs are reclaimed by the reaper via lease expiry, not by anything in this file.
 
-import type { SeparatorOffer, WorkerHost, WorkerProfile } from '../../contract';
+import type { SeparatorOffer, WorkerHost, WorkerNote, WorkerProfile } from '../../contract';
 
 export interface WorkerSession {
 	workerId: string;
@@ -20,6 +20,10 @@ export interface WorkerSession {
 	 * list as "not reported", never as "this worker can separate nothing".
 	 */
 	separators?: SeparatorOffer[];
+	/** What the worker knows is broken or off, latest wins (`worker:hello`, then `worker:warnings`). */
+	warnings?: WorkerNote[];
+	/** When this worker's lyrics check last answered (`worker:warnings`); absent until its first one has. */
+	lyricsAt?: number;
 	/** Set by this session's first heartbeat. A worker that never heartbeats could never lift a `hold`. */
 	reportsSlots?: boolean;
 }
@@ -35,7 +39,8 @@ export class WorkerRegistry {
 		version: string,
 		now: number,
 		host?: WorkerHost,
-		profile?: WorkerProfile
+		profile?: WorkerProfile,
+		warnings: WorkerNote[] = []
 	): WorkerSession {
 		const session: WorkerSession = {
 			workerId,
@@ -45,7 +50,8 @@ export class WorkerRegistry {
 			slotsFree: concurrency,
 			lastSeen: now,
 			...(host ? { host } : {}),
-			...(profile ? { profile } : {})
+			...(profile ? { profile } : {}),
+			warnings
 		};
 		this.#workers.set(workerId, session);
 		return session;
@@ -69,6 +75,16 @@ export class WorkerRegistry {
 		if (!w) return false;
 		w.capabilities = [...capabilities];
 		w.separators = [...separators];
+		w.lastSeen = now;
+		return true;
+	}
+
+	/** A `worker:warnings` frame: REPLACES the notes. No-op for a worker that is not registered. */
+	warnings(workerId: string, notes: WorkerNote[], now: number): boolean {
+		const w = this.#workers.get(workerId);
+		if (!w) return false;
+		w.warnings = notes;
+		w.lyricsAt = now;
 		w.lastSeen = now;
 		return true;
 	}
@@ -114,6 +130,7 @@ export class WorkerRegistry {
 		return [...this.#workers.values()].map((w) => ({
 			...w,
 			capabilities: [...w.capabilities],
+			...(w.warnings ? { warnings: [...w.warnings] } : {}),
 			...(w.separators ? { separators: [...w.separators] } : {})
 		}));
 	}

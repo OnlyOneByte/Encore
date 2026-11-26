@@ -807,6 +807,15 @@ null may not be. Parsing **raises** rather than returning nothing: an unparseabl
 violation, and the one thing worse than crashing on it is continuing with a frame whose fields silently
 defaulted.
 
+**What the box knows is broken reaches core** (proposal 39). The boot lines this worker always printed (`diarize
+off`, `auto lyrics off`, the YouTube gap, no capabilities) are `Note`s in `Hello.warnings` too
+(`steps/readiness.boot_notes`). The lyrics check (`steps/readiness.lyrics_check`) is one lookup of a fixed public song
+through the same providers every song uses. It runs in a thread once after the first connect, so a dead service
+never delays the join, and again on core's `worker:recheck`. Its answer goes back as `worker:warnings`, the full set
+of notes, replacing the last like `Catalogue`. A failure is `lyrics-unreachable` with each provider's error class
+(DNS, TLS, timeout, HTTP status) read down the cause chain. One provider answering is green, since songs fall back
+the same way; a 404 is an answer too.
+
 ### 7.1 The ledger's finer rules, each closing a window
 
 **Publication is guarded at two points**, and both are load-bearing: the transport re-claims every recovered
