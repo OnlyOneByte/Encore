@@ -62,7 +62,7 @@ the measurer is `specs/gate/speed-measure.ts`.
 | 9     | a cold load paints its primary control                                             | the budget table's row, at 1×           |
 | 10    | tap to first visible change: Sing (+), dock tab, On deck key, Try again            | 100 ms at 1×                            |
 | 11    | layout shift on cold loads and the phone session                                   | CLS 0                                   |
-| 12    | no indicator on screen for under 300 ms; a lost party not called lost before 3 s   | 300 ms grace; ≥ 3 s                     |
+| 12    | no indicator on screen for under 300 ms; a lost party called lost after 3 s, by 4 s | 300 ms grace; 3-4 s from the first ask  |
 | 13    | CSS and JS each route ships, gzipped                                               | a ceiling per route, ratchets down      |
 | 14    | phone motion, declared duration plus delay                                         | 400 ms (`--motion-slow`)                |
 | 15    | TV chrome inside `--tv-safe-x` / `--tv-safe-y` at 1920×1080, empty room and a song | 0 elements outside                      |
@@ -105,8 +105,8 @@ by the reviewer's A/B run (main and branch, same box).
 the claim can be the expected failure. Fixing the cause turns it "Expected to fail, but passed"; the fixing PR deletes
 the call. Each cause has its own test, so a fix flips only its own. None is open today: #1089 (QR "Finding the
 room…"), #1090 (`/queue` "Loading the queue…") and #1092 (the Now card's `arrive`) are fixed and gate as plain tests
-named for their issue. The lost party's 4 s upper bound is not gated: room.ts's timer races the request timeout
-(#1093).
+named for their issue. The lost party's words are timed in the page from the first `/api/me` ask, 3 s to 4 s plus a
+timer's slack: when an `expect` poll finds them is up to a second late, which read as about 5 s (#1093).
 
 ## The `world` fixture
 
