@@ -176,6 +176,14 @@ matrices evicted each other and every attempt after the first re-paid the forwar
 checkpoint) and **must never evict** — reloading multi-GB weights is the whole reason the worker is a resident
 process — so the two are separate dictionaries.
 
+**A damaged checkpoint on disk counts as missing (#1387).** torch.hub loads any file already at its cached
+path, so a download cut short left every align job failing on `EOFError: Ran out of input`. Before a
+torchaudio bundle loads, `ensure_checkpoint` checks the cached file. An empty file, or one that starts as a zip
+but has no zip directory, is fetched again (torch.hub writes beside it and moves the new copy over). If that
+fetch fails, the job fails with `ModelUnavailable` naming the bundle and the path. A missing file is left to
+torch.hub, and a non-zip file passes, because an older torch save is not a zip. Hugging Face models are not
+checked here: the Hub's cache tracks its own downloads.
+
 **Which bundle, and the two tables behind it.** The English bundle is named explicitly rather than left to
 whisperx's per-language table, so a matrix always says which model — and so which calibration row (XA-06) — it
 belongs to. The per-device exception table is **empty**, and that is the finished state: the flip that chose
