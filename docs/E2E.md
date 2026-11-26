@@ -17,7 +17,8 @@ Four kinds of artifact; the gate's timing half runs as its own project:
 | `probe`      | no — advisory `probes` check on every PR; nightly in CI  | one subject per spec                                                                                                           |
 | `shot`       | **cannot** — a screenshot cannot fail a build            | frames, each driven INTO its state                                                                                             |
 
-CI is `.github/workflows/ci.yml` (`gate:measured`, then `--project=flow fuzz.spec.ts`) on every pull request
+CI is `.github/workflows/ci.yml` (`gate:measured` in the `core` job, `--project=flow fuzz.spec.ts` in its own
+`core-fuzz` job beside it) on every pull request
 that touches more than `worker/**` and the worker/nightly/ml workflow files (its `changes` path filter), and
 `.github/workflows/nightly.yml` (`--project=gate --project=flow --project=probe`).
 

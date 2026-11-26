@@ -452,8 +452,10 @@ frames, and `bun run ui:review` GIFs for anything that moves.
 `ci-worker.yml` (worker) on pull requests, an advisory `probes.yml` (the probe set, sharded) on pull requests
 and `main`, plus a daily `nightly.yml` and a twice-monthly `ml.yml`. The two
 PR workflows run on every PR, a fork's included, with a read-only token and no secrets; each skips its heavy
-job when no path it covers changed. Their `core-gate` and `worker-gate` checks pass when that job passed or
-was skipped, and they are the required checks on `main`, alongside the local gate run above.
+jobs when no path they cover changed. Core's checks run as three jobs side by side: `core` (unit tests,
+typecheck, format, build, deadcode, `gate:measured`), `core-lint` and `core-fuzz` (the flow fuzz). The
+`core-gate` and `worker-gate` checks pass when every job behind them passed or was skipped, and they are the
+required checks on `main`, alongside the local gate run above.
 
 ## License
 
