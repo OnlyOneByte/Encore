@@ -6,7 +6,7 @@ import { test, expect } from '../../world/fixtures';
 import { startFakeWorker } from '../../world/workers';
 import { readySong, queueReady } from '../../world/actors';
 import { SEL } from '../../world/selectors';
-import type { Browser, Page } from '@playwright/test';
+import type { Browser, CDPSession, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
 const SLOT = '.copy-slot';
@@ -40,13 +40,9 @@ async function openScreen(
 type PressLog = { __claims: number };
 const claims = (p: Page) => p.evaluate(() => (window as unknown as PressLog).__claims);
 
-/** One input, sent `at` ms after the press began. A `late` one also reaches the page 700 ms behind, as on a busy TV. */
-type Input = {
-	method: 'Input.dispatchMouseEvent' | 'Input.dispatchTouchEvent' | 'Input.dispatchKeyEvent';
-	params: Record<string, unknown>;
-	at: number;
-	late?: boolean;
-};
+/** One input, sent `at` ms after the press began with `timestamp` as its input time. A `late` one also reaches the
+ *  page 700 ms behind, as on a busy TV. */
+type Input = { send: (cdp: CDPSession, timestamp: number) => Promise<unknown>; at: number; late?: boolean };
 /** Sends a press stamped with its own input times, however late the host delivers it: the page judges a press by
  *  those times, so the probe no longer depends on how fast it can pace one (#1225). */
 async function press(p: Page, inputs: Input[]) {
@@ -54,38 +50,52 @@ async function press(p: Page, inputs: Input[]) {
 	const t0 = Date.now() / 1000;
 	for (const i of inputs) {
 		if (i.late) await p.waitForTimeout(700);
-		// Each method's own parameter type is chosen by `i.method`, which the helpers below always pair correctly.
-		await cdp.send(i.method, { ...i.params, timestamp: t0 + i.at / 1000 } as never);
+		await i.send(cdp, t0 + i.at / 1000);
 	}
 	await cdp.detach();
 	// Every input is handled, and any click it made, by the page's second frame after the last one.
 	await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 const tap = ({ x, y }: { x: number; y: number }, at: number, late = false): Input[] => [
-	{ method: 'Input.dispatchTouchEvent', params: { type: 'touchStart', touchPoints: [{ x, y }] }, at, late },
-	{ method: 'Input.dispatchTouchEvent', params: { type: 'touchEnd', touchPoints: [] }, at: at + 50 }
+	{
+		send: (cdp, timestamp) =>
+			cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }], timestamp }),
+		at,
+		late
+	},
+	{
+		send: (cdp, timestamp) => cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp }),
+		at: at + 50
+	}
 ];
 const click = ({ x, y }: { x: number; y: number }, at: number, clickCount = 1, late = false): Input[] =>
 	(['mousePressed', 'mouseReleased'] as const).map((type, i) => ({
-		method: 'Input.dispatchMouseEvent',
-		params: { type, x, y, button: 'left', clickCount },
+		send: (cdp, timestamp) =>
+			cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount, timestamp }),
 		at: at + i * 50,
 		late: i === 0 && late
 	}));
 const KEYS = { Enter: [13, '\r'], ' ': [32, ' '], ArrowDown: [40, ''], ArrowRight: [39, ''] } as const;
 const key = (k: keyof typeof KEYS, at: number, late = false): Input[] => {
-	const [vk, text] = KEYS[k];
+	const [windowsVirtualKeyCode, text] = KEYS[k];
 	const code = k === ' ' ? 'Space' : k;
 	return [
 		{
-			method: 'Input.dispatchKeyEvent',
-			params: { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) },
+			send: (cdp, timestamp) =>
+				cdp.send('Input.dispatchKeyEvent', {
+					type: 'keyDown',
+					key: k,
+					code,
+					windowsVirtualKeyCode,
+					...(text ? { text } : {}),
+					timestamp
+				}),
 			at,
 			late
 		},
 		{
-			method: 'Input.dispatchKeyEvent',
-			params: { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk },
+			send: (cdp, timestamp) =>
+				cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode, timestamp }),
 			at: at + 50
 		}
 	];
