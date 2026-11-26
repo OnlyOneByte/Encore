@@ -565,6 +565,9 @@ A singer's cookie runs the party; the host's runs the machine ([The host key](#t
   plain-HTTP LAN party and the phone discards it.
 - **A hand-rolled `Set-Cookie` serializer is forbidden.** SvelteKit owns serialization; a second writer is
   a place attributes can be hardened without the browser ever seeing it.
+- **`encore_tz` is a zone name, not an identity.** `GET /api/me/nights?tz=` writes it with the singer cookie's
+  attributes and a one-year `maxAge`, and only a name `Intl` accepts (`knownZone`); the You tab reads it back
+  through the same check. Nothing authorises on it ([Streaks and your year](#your-night)).
 - **There is no room cookie.** A room is a tenancy boundary, so a room id resolves through the singer's row
   in `src/lib/server/realtime/room-scope.ts` and never as a client claim. Never reintroduce one, and never
   write prose claiming the room-scoping chain reads one.
@@ -887,7 +890,8 @@ are PR 3 ([FRONTEND.md](FRONTEND.md#your-night)); the TV's come later. `src/lib/
   row, up to this one, you sang in (`streakAt`). `GET /api/me/nights` carries `year`: your nights and songs this
   calendar year, and the song you sang most when you sang it twice or more (`yearFor`). "This year" is in the
   phone's time zone, sent as `?tz=<IANA name>`; a missing or invalid one (anything `Intl.DateTimeFormat` refuses)
-  falls back to the core's own zone. A night counts in the year it started, with every song of it, even one sung
+  falls back to the core's own zone. A valid one is remembered in the `encore_tz` cookie, so the You tab's next
+  load counts in it from the start. A night counts in the year it started, with every song of it, even one sung
   after midnight on Dec 31.
   Both read only the caller's own rows, so a kept person's spans their phones. Only a turn that played counts, so a
   night you opted out of, deleted or only failed in never counts, and it ends the streak. Nothing compares you with

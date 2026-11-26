@@ -1,15 +1,24 @@
 // "This year" for Your year, in the phone's time zone. See docs/SERVER.md#your-night.
 
-/** The IANA zone `tz` if `Intl` knows it, else the core's own. Anything else from the query string is ignored. */
-export function zoneOrServer(tz: string | null | undefined): string {
+/** The phone's zone, remembered from its last `?tz=` so the You tab counts the year in it on first render. A zone
+ *  name only, read back through `knownZone`. */
+export const ZONE_COOKIE = 'encore_tz';
+
+/** The IANA zone `tz` if `Intl` knows it, else null. */
+export function knownZone(tz: string | null | undefined): string | null {
 	if (tz && tz.length <= 64) {
 		try {
 			return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone;
 		} catch {
-			// An unknown zone: fall back.
+			// An unknown zone.
 		}
 	}
-	return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+	return null;
+}
+
+/** The IANA zone `tz` if `Intl` knows it, else the core's own. Anything else from the query string is ignored. */
+export function zoneOrServer(tz: string | null | undefined): string {
+	return knownZone(tz) ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /** The wall-clock fields of instant `t` in `tz`. */

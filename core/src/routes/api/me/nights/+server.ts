@@ -6,6 +6,8 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { historyOwner, yourYear } from '$lib/server/nights/service';
 import { readJsonBody } from '$lib/server/http/json-body';
+import { knownZone, ZONE_COOKIE } from '$lib/server/nights/year';
+import { publicOriginIsHttps } from '$lib/server/public-origin';
 
 const subjectsOf = (owner: { singerId: string; personId: string | null }) =>
 	owner.personId ? [owner.singerId, owner.personId] : [owner.singerId];
@@ -14,11 +16,21 @@ export const GET: RequestHandler = async ({ cookies, request, url }) => {
 	const app = getApp();
 	const caller = historyOwner(app, cookies, { request, url });
 	if (!caller) return json({ error: 'join first' }, { status: 401 });
+	const tz = knownZone(url.searchParams.get('tz'));
+	// Remembered so the You tab's next load counts the year in this zone at once, with no second answer to swap in.
+	if (tz)
+		cookies.set(ZONE_COOKIE, tz, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: publicOriginIsHttps(request, url),
+			maxAge: 60 * 60 * 24 * 365
+		});
 	return json({
 		recording: app.nights.isRecording([caller.me.id, caller.me.personId]),
 		nights: app.nights.nightsFor(caller.owner),
 		// "Your year": this calendar year in the phone's zone (`?tz=`), else the core's own.
-		year: yourYear(app, caller.owner, url.searchParams.get('tz'))
+		year: yourYear(app, caller.owner, tz)
 	});
 };
 

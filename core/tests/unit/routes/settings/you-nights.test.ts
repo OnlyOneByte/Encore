@@ -8,7 +8,7 @@ import { RoomRepository } from '$lib/server/rooms/repository';
 import { NightLog } from '$lib/server/nights/repository';
 import { nights, performances } from '$lib/server/db/schema';
 import { streakLine } from '$lib/night-story';
-import { yearIn, zoneOrServer } from '$lib/server/nights/year';
+import { yearIn, zoneOrServer, ZONE_COOKIE } from '$lib/server/nights/year';
 import { GET as listNights } from '$routes/api/me/nights/+server';
 import { load as storyLoad } from '$routes/settings/you/nights/[id]/+page.server';
 import { load as youLoad } from '$routes/settings/you/+page.server';
@@ -251,4 +251,25 @@ test("the You tab's year is yours alone, the same as GET /api/me/nights in the c
 	});
 	const api = await (await listNights(event('/api/me/nights', theo.cookies) as never)).json();
 	expect(api.year).toEqual(you.nights.year);
+});
+
+test("a phone's ?tz= is remembered, so the You tab's next load counts the year in its zone with nothing to swap (#1335)", async () => {
+	const app = installApp();
+	const theo = guest(app, 'Theo');
+	night(app, 'n1', T0);
+	turn(app, theo.singer.id, 'n1', 'm1', 'finished', 0);
+	const far = 'Pacific/Kiritimati';
+	const api = await (await listNights(event(`/api/me/nights?tz=${encodeURIComponent(far)}`, theo.cookies))).json();
+	expect(theo.cookies.get(ZONE_COOKIE)).toBe(far);
+	const you = (await youLoad(event('/settings/you', theo.cookies))) as { nights: { year: unknown; zone: string } };
+	expect(you.nights.zone).toBe(far);
+	expect(you.nights.year).toEqual(api.year);
+	expect((api.year as { year: number }).year).toBe(yearIn(T0, far).year);
+
+	// A zone Intl does not know is neither remembered nor counted in.
+	const maya = guest(app, 'Maya');
+	await listNights(event('/api/me/nights?tz=Mars%2FOlympus', maya.cookies));
+	expect(maya.cookies.get(ZONE_COOKIE)).toBeUndefined();
+	const hers = (await youLoad(event('/settings/you', maya.cookies))) as { nights: { zone: string } };
+	expect(hers.nights.zone).toBe(zoneOrServer(null));
 });

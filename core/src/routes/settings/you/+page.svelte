@@ -289,22 +289,27 @@
 			const res = await fetch('/api/me/nights', { method: 'DELETE' });
 			if (!res.ok) throw new Error(String(res.status));
 		} catch {
-			nights = before;
+			// Back to the phone's year, which may have answered while the delete was out.
+			nights = { ...before, year: phoneYear ?? before.year };
 			nightsRefusal = 'Could not delete your history — try again.';
 		}
 	}
 	const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
 
-	/* YOUR YEAR is "this year" on this phone's calendar. The load counted it in the core's zone; when the phone's
-	   differs, ask once more with `?tz=` and take that answer. Best-effort: a failure keeps the core's numbers. */
+	/* YOUR YEAR is "this year" on this phone's calendar. The load counted it in the zone the phone last told core
+	   (else core's own); when the phone's differs, ask once more with `?tz=` and take that answer. Best-effort: a
+	   failure keeps the load's numbers. */
+	let phoneYear: YearState | null = null;
 	onMount(() => {
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		if (!tz || tz === nights.zone) return;
 		void fetch(`/api/me/nights?tz=${encodeURIComponent(tz)}`)
 			.then((res) => (res.ok ? res.json() : null))
 			.then((body: { year?: YearState } | null) => {
-				// A Delete my history since the load wins: its zeros are the truth now.
-				if (body?.year && nights.list.length) nights = { ...nights, year: body.year };
+				if (!body?.year) return;
+				phoneYear = body.year;
+				// A Delete my history since the load wins: its zeros are the truth now, unless it is refused.
+				if (nights.list.length) nights = { ...nights, year: body.year };
 			})
 			.catch(() => {});
 	});
