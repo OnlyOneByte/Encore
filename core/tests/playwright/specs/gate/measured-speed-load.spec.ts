@@ -202,10 +202,10 @@ for (const row of ROWS.filter((r) => r.flashGate && r.cpu === 1)) {
 
 // Today's gzipped bytes + ~3%. Only ratchet down; raising one needs the owner's ruling.
 const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
-	// js raised by 400 for #1309 (owner ruling): the (phone) route group costs every phone tab a layout node.
-	'/': { css: 20_000, js: 126_500 },
-	'/queue': { css: 19_800, js: 134_700 },
-	'/tv': { css: 16_700, js: 95_500 }
+	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page.
+	'/': { css: 20_000, js: 123_500 },
+	'/queue': { css: 19_800, js: 131_700 },
+	'/tv': { css: 16_700, js: 92_500 }
 };
 
 test('CLAIM 13 the CSS and JS each route ships stay under budget', async ({ world, browser }) => {

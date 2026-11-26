@@ -807,6 +807,12 @@ everywhere. Instead `hooks.server.ts` inlines `screens.css` as a `<style>` into 
 own lazy import covers an error rendered on the client. `error-page-first-paint.spec.ts` checks it with JavaScript
 off. An error page has no dock, so it links back to the room itself: `/tv` from the TV, `/` from anywhere else.
 
+The router resolves routes on the server (`router.resolution: 'server'` in `vite.config.ts`, #1364). With the
+default, every route's entry JS carried a manifest of every page, about 47 B gzip per page, so each new page grew `/`,
+`/queue` and `/tv`. Server resolution dropped about 3.0 KB from each, and a new page now adds nothing to them. The cost
+is one small request the first time a client-side navigation reaches a route this tab has not resolved yet. In
+CLAIM 10, the first dock tap of a run took 80–105 ms against 59–81 ms on `main`, while the medians stayed level.
+
 ### The dock and `--dock-h`
 
 **ONE FIXED CONTAINER HOLDS BOTH ROWS.** `.dock` in `src/routes/(phone)/+layout.svelte` stacks `NowPlayingStrip` on
