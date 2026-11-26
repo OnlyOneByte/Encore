@@ -78,9 +78,14 @@ async def run_stems(job: JobRef, steps: SeparateSteps) -> StemsOutcome:
     if peak <= SILENCE_FLOOR_DBFS:
         # Refused rather than published. A silent instrumental looks like a successful separation and
         # sounds like a broken song, so shipping it moves the failure from this log to a living room.
+        # demucs chunks at -j above 1 once came back NaN, saved as silence (#1125); naming the setting tells
+        # the operator the one knob to try. Not a retry: that would be a second separation of every truly
+        # silent song, for a fault the per-worker model copies (`demucs_pool`) already removed (#1131).
+        jobs = separated.demucs_jobs
+        hint = f" (demucs -j {jobs}; try ENCORE_DEMUCS_JOBS=1)" if jobs and jobs > 1 else ""
         raise SilentInstrumental(
             f"instrumental measures {peak:.1f} dBFS, at or below the {SILENCE_FLOOR_DBFS:.0f} dBFS "
-            "silence floor — refusing to publish it as ready"
+            f"silence floor — refusing to publish it as ready{hint}"
         )
 
     # Measured BEFORE publication, from the scratch WAVs: publication moves those files into the store and

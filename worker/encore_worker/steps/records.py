@@ -57,6 +57,12 @@ class AudioRef:
     #: The isolated vocals stem, when separation produced one. `None` means alignment runs on the mix
     #: from the start, which is why `Knob.ALIGN_ON_MIX` is then unavailable rather than merely untried.
     vocals_path: str | None = None
+    #: The torch-demucs `-j` that separated it, None for another engine or unseparated audio. Checkpointed
+    #: with the separation, so the silence gate names what made THESE stems, even on a resumed run (#1131).
+    demucs_jobs: int | None = None
+
+    def __setstate__(self, state: Sequence[object]) -> None:
+        restore_appended(self, state)
 
     def align_target(self, *, on_mix: bool) -> str:
         """Which file to align against. The mix is materially less accurate — the band smears word

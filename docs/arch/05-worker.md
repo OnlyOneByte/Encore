@@ -229,6 +229,12 @@ finding out, and a different engine is a different job. An unverifiable instrume
 measurement failure can be transient (a truncated write, a full disk, an ffmpeg killed by the OOM reaper) and
 the work is already done, so a retry that only re-measures is cheap.
 
+When torch demucs ran at `-j` above 1, the silence refusal **names the setting**: "… (demucs -j 4; try
+ENCORE_DEMUCS_JOBS=1)" (#1131). demucs's own `-j` once returned NaN chunks, saved as silence (#1125), and
+that is the one knob worth trying. The `-j` rides on the separation's checkpointed `AudioRef`, so a resumed
+run names what made those stems. It does **not** retry at `-j 1`: that would separate every genuinely silent
+song twice, for a fault the per-worker model copies (`demucs_pool`, §2.6) already removed.
+
 **The separator is built per job, from the job's own `engine` AND `model`.** A `stems-upgrade` job names the
 engine it wants; honouring the startup backend instead would separate with demucs and publish that as the
 upgrade, with nothing downstream able to contradict it. `model` is half of that pair and its absence was a

@@ -98,6 +98,7 @@ class SeparateStepsImpl:
             path=stems.instrumental_path,
             duration_sec=0.0,  # measured after publication; the separator does not report it
             vocals_path=stems.vocals_path,
+            demucs_jobs=getattr(separator, "jobs", None),
         )
 
     async def probe_silence(self, job: JobRef, audio: AudioRef) -> float | None:
