@@ -26,6 +26,7 @@
 		type MediaStatus
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
+	import { PENDING_GRACE_MS } from '$lib/stores/room';
 	import type { RoomStatus } from '$lib/stores/room';
 	import { queueCardKind, nextPlayableEntryId, entryPlayable, waitingTurns, type MakerVerdicts } from '$lib/readiness';
 	import { resolve } from '$app/paths';
@@ -107,6 +108,8 @@
 	   without this the first real sync read as N additions. See `QueueStore.synced`. */
 	let queueSynced = $state(false);
 	let playbackSynced = $state(false);
+	let skelsGraced = $state(false);
+	const LOADING = 'Loading the queue…';
 	/* Removal goes through the QueueStore, NOT `room.command`: the player commands are the transport, and the queue
 	   owns its own optimistic add/remove/move bookkeeping (`pendingKind` above is the store's). */
 	let store = $state<QueueStore | undefined>(undefined);
@@ -149,11 +152,19 @@
 			pendingKind = room.pendingKind;
 			store = room.queue;
 			queueSynced = room.queue?.synced ?? false;
+			if (queueSynced && liveMsg === LOADING) liveMsg = '';
 			playbackSynced = room.playbackSynced;
 		};
 		sync();
+		/* Tenet 2 (#1090, #1328): the skeleton is seen only past the grace, and its words go into the page's polite
+		   region then, as text a screen reader announces, not as a region that appears with a label. */
+		const grace = setTimeout(() => {
+			skelsGraced = true;
+			if (!queueSynced) liveMsg = LOADING;
+		}, PENDING_GRACE_MS);
 		// A queue op's refusal reaches the guest through the root layout's one `room.onError` sink.
-		return room.subscribe(sync);
+		const stop = room.subscribe(sync);
+		return () => (stop(), clearTimeout(grace));
 	});
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
@@ -941,8 +952,8 @@
 			{:else if !queueSynced}
 				<!-- NOT EMPTY, NOT YET SYNCED: `me` lands before the socket's first `queue:sync`, and the empty state below
 			said "Nothing queued yet" over a full queue for that whole window on every cold load. Its box is there from
-			the first frame, so nothing shifts; it is only seen past the grace. -->
-				<div class="skels-wait"><SkeletonRows count={4} label="Loading the queue…" /></div>
+			the first frame, so nothing shifts; it is only seen past the grace, and the list replacing it is never held (#1171). -->
+				<div style:visibility={skelsGraced ? undefined : 'hidden'}><SkeletonRows count={4} label={LOADING} /></div>
 			{:else}
 				<!-- TWO EMPTY STATES, not one, because the two situations need different words and the first draft of this
 			page gated this on `{:else if !nowEntry}` — which rendered NOTHING in the commonest case of the party
@@ -992,10 +1003,12 @@
 	{#await import('$lib/components/JoinLanding.svelte') then { default: JoinLanding }}
 		<JoinLanding />
 	{:catch}
-		<!-- The chunk can fail on bad wifi or after an update renamed it: never a blank screen. -->
+		<!-- The chunk can fail on bad wifi or after an update renamed it: never a blank screen. Styled in app.css. -->
 		<main>
-			<p>Couldn't load the join screen.</p>
-			<Button variant="secondary" size="tap" onclick={() => location.reload()}>Try again</Button>
+			<div class="join-lost">
+				<p>Couldn't load the join screen.</p>
+				<Button variant="secondary" size="tap" onclick={() => location.reload()}>Try again</Button>
+			</div>
 		</main>
 	{/await}
 {:else}
@@ -1042,17 +1055,6 @@
 		67.6% {
 			opacity: 0;
 			animation-timing-function: ease-out;
-		}
-	}
-
-	/* Tenet 2 (#1090): hidden for PENDING_GRACE_MS (300 ms) from the frame it mounts, so a quick sync never shows it;
-	   the list replacing it later is content, never held (#1171). No motion, so not behind reduced motion. */
-	.skels-wait {
-		animation: skels-wait 0s 0.3s backwards;
-	}
-	@keyframes skels-wait {
-		from {
-			visibility: hidden;
 		}
 	}
 

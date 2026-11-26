@@ -807,6 +807,17 @@ body {
 	--your-turn-surface: color-mix(in srgb, var(--singer) 22%, var(--card-tint));
 }
 
+/* The join screen's chunk failed to load (bad wifi, or an update renamed it): one look on every tab that loads it on
+   demand (`/` and `/queue`), so neither is a blank or bare screen. */
+.join-lost {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--step-12);
+	padding: var(--step-48) var(--step-16);
+	color: var(--role-ink-dim);
+}
+
 @keyframes pop {
 	from {
 		opacity: 0;
