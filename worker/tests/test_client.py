@@ -323,7 +323,10 @@ async def test_a_job_sending_its_result_no_longer_holds_its_slot() -> None:
         assert c._can_accept(busy) == (False, "no free slots")
         c._finishing.add("j1")  # the moment `_drive` is sending j1's result
         assert c._can_accept(busy) == (True, "")
+        # Nor does it count when the next job's cores are split, so that job gets every core (#1330).
+        assert c.running_jobs() == frozenset()
         c._finishing.discard("j1")
+        assert c.running_jobs() == frozenset({"j1"})
         gate.release.set()
 
 

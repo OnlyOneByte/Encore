@@ -554,6 +554,20 @@ def test_a_record_checkpointed_before_engine_and_model_existed_still_completes()
     assert frame.facts is not None
     assert frame.facts["engine"] == "demucs"  # the startup fallback
     assert "model" not in frame.facts
+    assert "demucsJobs" not in frame.facts and "threads" not in frame.facts
+
+
+def test_the_completion_reports_the_j_and_threads_this_job_ran_with() -> None:
+    """A song alone runs `-j 4` on 32 cores while the boot profile says `-j 2`; its attempt says 4 (#1330)."""
+    published = PublishedStems(instrumental="derived/stems/m1-instrumental.flac", demucs_jobs=4, threads=32)
+    frame = _completion(StemsOutcome(published=published, why="ok", profile={}))
+    assert isinstance(frame, f.Complete)
+    assert frame.facts is not None
+    assert (frame.facts["demucsJobs"], frame.facts["threads"]) == (4, 32)
+
+
+def test_torch_demucs_names_the_j_and_threads_it_runs() -> None:
+    assert (TorchDemucs(jobs=4, threads=32).jobs, TorchDemucs(jobs=4, threads=32).threads) == (4, 32)
 
 
 async def test_an_abandoned_align_is_a_retryable_failure_not_a_no_lyrics_completion(

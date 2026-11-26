@@ -986,7 +986,11 @@ and 1 on a GPU or MPS device. The RAM is the smaller of the machine's and a cgro
 was each separator held to `cores ÷ 2` with nothing else running, so a separator now takes the cores divided
 by the jobs running as it starts (`Profile.separator_share`), and its demucs `-j` follows those cores
 (`Profile.demucs_share`): a song alone gets all 32 and `-j 4`, as at 1 job; two at once get 16 and `-j 2`
-each. Measured on a 32-core aarch64 box, runs alternating main (`2d264257`, 1 job) and auto (2 jobs):
+each. A job that is only sending its result does not count. The split is fixed as each separator starts, so
+a job starting beside a lone song that already holds all 32 gets 16: for that overlap 48 OMP threads and 6
+demucs pool workers run, 1.5x the cores, while the RAM cap is computed for both jobs at once. Each stems
+attempt records the `-j` and threads its own separator ran with, not the boot profile. Measured on a 32-core
+aarch64 box, runs alternating main (`2d264257`, 1 job) and auto (2 jobs):
 
 | 3 songs picked at once, all 3 ready | main | auto | load, main / auto |
 | --- | --- | --- | --- |
