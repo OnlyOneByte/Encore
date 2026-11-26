@@ -1245,8 +1245,9 @@ The four storage classes, the ref layout and the audio policy are in `docs/ARCHI
   or remove it, so that group membership never lets the worker write sidecars or swap `meta/` (or `audio/`,
   `library/`) for its own. The leaf dirs carry no sticky bit, because there the worker replaces its own files
   over ones core may have made. Core sets `1775` through the API, which needs Bun 1.4.3 or later (Bun 1.3's
-  `chmod` dropped the sticky bit, #1222); when the bit still isn't set it logs a warning naming the command to
-  run. Any dir core would re-mode (`MEDIA_DIR` or an `ENCORE_*_DIR`) that
+  `chmod` drops the sticky bit, #1222), and leaves a dir that is already `1775` alone, so a hand-set bit
+  survives a boot on an older Bun. When the bit still isn't set it logs a warning naming the cause (the Bun
+  version, when it is older than 1.4.3) and the command to run; `dev.sh` warns at startup on such a Bun. Any dir core would re-mode (`MEDIA_DIR` or an `ENCORE_*_DIR`) that
   is, or sits above, the home dir, the temp dir or `/` keeps its own mode, with a warning: core re-modes only
   a directory that is media's alone. Core re-modes a `0777` dir it owns on its next boot; a dir the worker
   created stays as it is, since only its owner can change it.

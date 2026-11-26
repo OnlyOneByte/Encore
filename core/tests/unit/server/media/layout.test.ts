@@ -257,6 +257,18 @@ describe('migration off the legacy layout', () => {
 		expect(mode(join(root, 'meta')) & 0o022).toBe(0);
 	});
 
+	it('a parent already at 1775 is left alone, so an older Bun cannot strip a hand-set sticky bit', () => {
+		ensureLayout();
+		const parents = [root, join(root, 'derived')];
+		// chmod(1), not chmodSync: Bun 1.3's chmodSync drops the bit, which is the case this guards (#1222).
+		for (const d of parents) expect(Bun.spawnSync(['chmod', '1775', '--', d]).exitCode).toBe(0);
+		const before = parents.map((d) => statSync(d).ctimeMs);
+		ensureLayout();
+		// Any chmod bumps ctime, even to the same mode, so an unchanged ctime means the dir was not rewritten.
+		expect(parents.map((d) => statSync(d).ctimeMs)).toEqual(before);
+		for (const d of parents) expect(statSync(d).mode & 0o7777).toBe(0o1775);
+	});
+
 	it('an upgrade re-modes a 0777 dir core owns, with no hand step', () => {
 		mkdirSync(join(root, 'work'), { recursive: true });
 		chmodSync(join(root, 'work'), 0o777);

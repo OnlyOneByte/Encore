@@ -207,11 +207,12 @@ export const SHARED_DIR_MODE = 0o775;
 /** The same plus sticky, for the media root and `derived/`: the group may add entries but only an entry's owner
  *  may rename or remove it, so the worker cannot swap out core's `meta/` (or any other core dir). */
 export const PARENT_DIR_MODE = 0o1775;
+const OLD_BUN = Bun.semver.order(Bun.version, '1.4.3') < 0;
 
-/** Set 1775, then a loud warning if it isn't set, since a dir left 0777 or 0775 lets the worker swap core's dirs
- *  out. Needs Bun >= 1.4.3: Bun 1.3's fs.chmod dropped the sticky bit (#1222). */
+/** Set 1775 unless it already is, then a loud warning if it isn't, since a dir left 0777 or 0775 lets the worker
+ *  swap core's dirs out. A dir already at 1775 is left alone: Bun 1.3's fs.chmod drops the sticky bit (#1222). */
 function chmodParent(dir: string): void {
-	if (leftAlone(dir)) return;
+	if (leftAlone(dir) || modeOf(dir) === PARENT_DIR_MODE) return;
 	try {
 		chmodSync(dir, PARENT_DIR_MODE);
 	} catch {
@@ -219,8 +220,10 @@ function chmodParent(dir: string): void {
 	}
 	const now = modeOf(dir);
 	if (now !== PARENT_DIR_MODE) {
+		const cause = OLD_BUN ? `Bun ${Bun.version} drops the sticky bit; Bun >= 1.4.3 keeps it. ` : '';
 		console.warn(
-			`[core] ${dir} is ${now.toString(8)}, not 1775, so the worker can rename core's meta/ out of the way. Run: chmod 1775 ${dir}`
+			`[core] ${dir} is ${now.toString(8)}, not 1775, so the worker can rename core's meta/ out of the way. ` +
+				`${cause}Run: chmod 1775 ${dir}`
 		);
 	}
 }
