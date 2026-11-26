@@ -247,8 +247,12 @@ export function workerProfile(
 
 /** The string facts of a completion that are actually strings. Anything else (a null, an object, a number)
  *  is dropped, so it can neither blank what dispatch already recorded nor land in a text column unchecked.
- *  `backend` and `device` are held to hello's `PROFILE_NAME`, since they overwrite what hello stamped. */
-export function resolvedFacts(facts: unknown): AttemptFacts {
+ *  The facts that overwrite what hello stamped are taken only from a job kind that runs them (#1113):
+ *  `backend` and `device` from align or stems, whose model may run off the process's device (a Mac's `mps`
+ *  worker transcribes on `cpu`; a separator that will not load falls back to CPU), never from a fetch, which
+ *  runs none; both held to hello's `PROFILE_NAME`. `threads` and `demucsJobs` from a stems job only: its
+ *  separator's share. */
+export function resolvedFacts(facts: unknown, jobType: JobType): AttemptFacts {
 	if (!facts || typeof facts !== 'object' || Array.isArray(facts)) return {};
 	const f = facts as Record<string, unknown>;
 	const out: AttemptFacts = {};
@@ -256,15 +260,19 @@ export function resolvedFacts(facts: unknown): AttemptFacts {
 		const v = f[k];
 		if (typeof v === 'string' && v.length > 0 && v.length <= FACT_MAX) out[k] = v;
 	}
-	for (const k of ['backend', 'device'] as const) {
-		const v = f[k];
-		if (isProfileName(v)) out[k] = v;
+	if (jobType !== 'fetch') {
+		for (const k of ['backend', 'device'] as const) {
+			const v = f[k];
+			if (isProfileName(v)) out[k] = v;
+		}
 	}
 	// What this job's separator got once the cores were split between the jobs running, which a lone song
 	// and two at once differ on; it overwrites the boot profile dispatch stamped. Held to hello's bounds.
-	for (const k of ['threads', 'demucsJobs'] as const) {
-		const v = f[k];
-		if (isCount(v)) out[k] = v;
+	if (publishesInstrumental(jobType)) {
+		for (const k of ['threads', 'demucsJobs'] as const) {
+			const v = f[k];
+			if (isCount(v)) out[k] = v;
+		}
 	}
 	// A known reason only: it reaches the song page, so free text from a worker never does.
 	if ((LYRICS_NOTES as readonly unknown[]).includes(f.lyricsNote)) out.lyricsNote = f.lyricsNote as string;
@@ -1006,7 +1014,7 @@ export class WorkerHub {
 		this.#unservableSince.delete(msg.jobId); // terminal — prune any stale unservable tracking
 		// MUST precede `complete`, which seals the attempt row; a sealed row is never written again.
 		this.#d.attempts?.reportFacts(msg.jobId, {
-			...resolvedFacts(msg.facts),
+			...resolvedFacts(msg.facts, job.jobType),
 			stages: attemptStagesJson(msg.stages),
 			selection: msg.selection ? JSON.stringify(msg.selection) : undefined,
 			// The worker sends its trail on completion AND streams it as `job:state`; prefer the streamed one,
@@ -1203,13 +1211,16 @@ export class WorkerHub {
 			// The REQUEST, not the truth: a worker's own resolved model overwrites these via reportFacts. The
 			// worker's profile is stamped HERE so a failed or abandoned attempt still says what it ran on.
 			const profile = this.#d.registry.get(workerId)?.profile ?? {};
+			// A fetch is yt-dlp and ffmpeg: no model, no accelerator, no torch threads. Stamping the worker's GPU on
+			// it made job history say a download ran on cuda (#1112). Jobs at once and set-by-hand still apply.
+			const compute: WorkerProfile = pending.jobType === 'fetch' ? {} : profile;
 			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now, {
-				backend: profile.backend ?? null,
-				device: profile.device ?? null,
-				threads: profile.threads ?? null,
+				backend: compute.backend ?? null,
+				device: compute.device ?? null,
+				threads: compute.threads ?? null,
 				concurrency: profile.concurrency ?? null,
-				demucsJobs: profile.demucsJobs ?? null,
-				asrCompute: profile.asrCompute ?? null,
+				demucsJobs: compute.demucsJobs ?? null,
+				asrCompute: compute.asrCompute ?? null,
 				handSet: profile.handSet?.join(',') ?? null,
 				engine: params.engine ?? null,
 				model: params.model ?? null,

@@ -101,29 +101,63 @@ test('a profile field that is not a short name or a sane count is dropped, and t
 });
 
 test('completion facts keep only bounded strings', () => {
-	expect(resolvedFacts({ engine: 'demucs', model: 'm'.repeat(129), asrModel: 3, syncMode: '' })).toEqual({
+	expect(resolvedFacts({ engine: 'demucs', model: 'm'.repeat(129), asrModel: 3, syncMode: '' }, 'stems')).toEqual({
 		engine: 'demucs'
 	});
-	expect(resolvedFacts(null)).toEqual({});
-	expect(resolvedFacts(['engine'])).toEqual({});
+	expect(resolvedFacts(null, 'stems')).toEqual({});
+	expect(resolvedFacts(['engine'], 'stems')).toEqual({});
 });
 
 test("a stems job's own -j and threads are kept, within hello's bounds (#1330)", () => {
-	expect(resolvedFacts({ threads: 32, demucsJobs: 4 })).toEqual({ threads: 32, demucsJobs: 4 });
-	expect(resolvedFacts({ threads: 0, demucsJobs: 1.5 })).toEqual({});
-	expect(resolvedFacts({ threads: '32', demucsJobs: 5000 })).toEqual({});
+	expect(resolvedFacts({ threads: 32, demucsJobs: 4 }, 'stems')).toEqual({ threads: 32, demucsJobs: 4 });
+	expect(resolvedFacts({ threads: 32, demucsJobs: 4 }, 'stems-upgrade')).toEqual({ threads: 32, demucsJobs: 4 });
+	expect(resolvedFacts({ threads: 0, demucsJobs: 1.5 }, 'stems')).toEqual({});
+	expect(resolvedFacts({ threads: '32', demucsJobs: 5000 }, 'stems')).toEqual({});
 });
 
 test('a lyrics note is kept only when it is a known reason: it reaches the song page (#1221, #1288)', () => {
-	expect(resolvedFacts({ lyricsNote: 'asr-offline' })).toEqual({ lyricsNote: 'asr-offline' });
-	expect(resolvedFacts({ lyricsNote: 'asr-babble' })).toEqual({ lyricsNote: 'asr-babble' });
-	for (const lyricsNote of ['<b>hi</b>', 'ASR-OFFLINE', '', 1, null]) expect(resolvedFacts({ lyricsNote })).toEqual({});
+	expect(resolvedFacts({ lyricsNote: 'asr-offline' }, 'align')).toEqual({ lyricsNote: 'asr-offline' });
+	expect(resolvedFacts({ lyricsNote: 'asr-babble' }, 'align')).toEqual({ lyricsNote: 'asr-babble' });
+	for (const lyricsNote of ['<b>hi</b>', 'ASR-OFFLINE', '', 1, null])
+		expect(resolvedFacts({ lyricsNote }, 'align')).toEqual({});
 });
 
 test('a completion backend or device is held to the same names hello is', () => {
-	expect(resolvedFacts({ device: 'cpu', backend: 'mlx' })).toEqual({ device: 'cpu', backend: 'mlx' });
-	expect(resolvedFacts({ device: '/home/someone/.venv', backend: '<script>x</script>' })).toEqual({});
-	expect(resolvedFacts({ device: 'box.local lan', backend: 'x'.repeat(40) })).toEqual({});
+	expect(resolvedFacts({ device: 'cpu', backend: 'mlx' }, 'align')).toEqual({ device: 'cpu', backend: 'mlx' });
+	expect(resolvedFacts({ device: '/home/someone/.venv', backend: '<script>x</script>' }, 'align')).toEqual({});
+	expect(resolvedFacts({ device: 'box.local lan', backend: 'x'.repeat(40) }, 'align')).toEqual({});
+});
+
+test('each override comes only from a job kind that runs it (#1113)', () => {
+	const sent = { device: 'cpu', backend: 'mlx', threads: 16, demucsJobs: 2 };
+	const where = { device: 'cpu', backend: 'mlx' };
+	// A model may run off the process's device; the separator's share is a stems job's; a fetch runs neither.
+	expect(resolvedFacts(sent, 'align')).toEqual(where);
+	expect(resolvedFacts(sent, 'align-remake')).toEqual(where);
+	expect(resolvedFacts(sent, 'stems')).toEqual({ ...where, threads: 16, demucsJobs: 2 });
+	expect(resolvedFacts(sent, 'stems-remake')).toEqual({ ...where, threads: 16, demucsJobs: 2 });
+	expect(resolvedFacts(sent, 'fetch')).toEqual({});
+});
+
+/** The attempt dispatch stamps for a queued `jobType`, assigned to a worker whose hello carried `profile`. */
+function stamped(jobType: 'fetch' | 'stems', profile: Record<string, unknown>) {
+	const { hub, jobs, attempts } = harness();
+	jobs.enqueue('m1', jobType, 0, T0);
+	hub.handle(hello({ capabilities: [jobType === 'fetch' ? 'fetch:ytdlp' : 'stems'], ...profile }));
+	return attempts.byMedia('m1')[0];
+}
+
+const GPU = { backend: 'torch', device: 'cuda:0', threads: 16, demucsJobs: 1, asrCompute: 'float16', concurrency: 2 };
+
+test('a fetch attempt records no accelerator: yt-dlp runs on none (#1112)', () => {
+	const a = stamped('fetch', GPU);
+	expect([a.backend, a.device, a.threads, a.demucsJobs, a.asrCompute]).toEqual([null, null, null, null, null]);
+	expect(a.concurrency).toBe(2); // the worker's jobs at once still describe the box it ran on
+});
+
+test('a stems attempt records the demucs -j the worker sent in hello (#1114)', () => {
+	const a = stamped('stems', { ...GPU, demucsJobs: 4 });
+	expect([a.backend, a.device, a.threads, a.demucsJobs]).toEqual(['torch', 'cuda:0', 16, 4]);
 });
 
 test('an align completion can say its transcriber ran on cpu over the stamped mps', () => {

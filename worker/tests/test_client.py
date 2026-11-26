@@ -225,6 +225,17 @@ async def test_hello_carries_the_host_report() -> None:
     assert sock.first("worker:hello")["host"] == {"platform": "Linux", "accelerator": "cpu"}
 
 
+async def test_hello_carries_the_demucs_jobs_it_picked() -> None:
+    """Core stamps this on each stems attempt; unsent, a slow separation can't be traced to its -j (#1114)."""
+    sock = FakeSocket()
+    c = client(sock)
+    c.device, c.threads, c.demucs_jobs = "cpu", 32, 4
+    async with Session(c, sock):
+        pass
+    hello = sock.first("worker:hello")
+    assert (hello["device"], hello["threads"], hello["demucsJobs"]) == ("cpu", 32, 4)
+
+
 async def test_a_heartbeat_follows_the_hello() -> None:
     """Core resets free slots to `concurrency` on every hello, so a reconnect mid-job must say at once what it
     is really running, or core offers a second job it has to refuse."""
