@@ -89,7 +89,7 @@ test('dark roles alias the names today’s screens spell, so adopting a role mov
 	const setters = readdirSync(at('src'), { recursive: true, encoding: 'utf8' })
 		.filter((p) => /\.(svelte|ts)$/.test(p))
 		.filter((p) => readFileSync(at(`src/${p}`), 'utf8').includes('data-theme'));
-	expect(setters).toEqual(['routes/components/spotlight/+page.svelte']);
+	expect(setters).toEqual(['lib/gallery/SpotlightStory.svelte']);
 });
 
 test('a lit Spotlight is readable in every singer colour, its dimmed meta line included', () => {
@@ -131,7 +131,7 @@ test('the queue’s motion is tokens now, at the values it had as literals', () 
 test('app.css imports the tokens, and the unshipped light theme stays out of the root stylesheet', () => {
 	expect(appCss).toContain("@import './tokens.css';");
 	expect(tokens).not.toContain('data-theme');
-	expect(readFileSync(at('src/routes/components/spotlight/+page.svelte'), 'utf8')).toContain(
+	expect(readFileSync(at('src/lib/gallery/SpotlightStory.svelte'), 'utf8')).toContain(
 		"import '$lib/ui/tokens-light.css';"
 	);
 });

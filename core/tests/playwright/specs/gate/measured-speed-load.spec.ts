@@ -1,9 +1,12 @@
 // CLAIM 9 cold loads in budget, 11 CLS 0 on loads, 12 no flash on loads, 13 gzipped CSS/JS per route.
 // Method: docs/E2E.md#speed-gate.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { Browser, BrowserContext, Cookie } from '@playwright/test';
 import { test, expect, type World } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
+import { repoRoot } from '../../world/core';
 import { best, flashes, instrumentScript, readState, report, throttle } from './speed-measure';
 
 const PHONE = { width: 390, height: 844 };
@@ -246,4 +249,11 @@ test('CLAIM 13 the CSS and JS each route ships stay under budget', async ({ worl
 		expect.soft(bytes.js, `CLAIM 13 ${path}: gzipped JS bytes`).toBeLessThanOrEqual(budget.js);
 	}
 	console.log(lines.join('\n'));
+});
+
+// Every route in the build adds server and client bytes, so the dev-only /components stories must not be one (#1143).
+test('CLAIM 13 the build carries no /components route', async ({ world, request }) => {
+	const manifest = readFileSync(join(repoRoot, 'build/server/manifest.js'), 'utf8');
+	expect(manifest, 'CLAIM 13: a /components route is in the built server manifest').not.toContain('/components');
+	expect((await request.get(`${world.baseURL}/components/spotlight`)).status()).toBe(404);
 });

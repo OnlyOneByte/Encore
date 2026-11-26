@@ -1,10 +1,10 @@
-// THE GALLERY'S FIXTURES — data, not markup. 280-odd of `routes/components/+page.svelte`'s lines were these
+// THE GALLERY'S FIXTURES — data, not markup. 280-odd of `lib/gallery/Gallery.svelte`'s lines were these
 // declarations, which made the one file that is supposed to SHOW components mostly a pile of sample values.
 //
 // Out here they are importable, so a test can assert against the same `demoLyrics` the gallery renders rather than
 // building its own near-copy — which is the failure this move is really about, not the line count.
 //
-// STILL DEV-ONLY: `routes/components/+page.server.ts` gates the route, and nothing in the product imports this.
+// STILL DEV-ONLY: the gallery is a `.devsvelte` route the build never sees, and nothing in the product imports this.
 import {
 	DEFAULT_GLOBAL_SETTINGS,
 	DEFAULT_ROOM_SETTINGS,

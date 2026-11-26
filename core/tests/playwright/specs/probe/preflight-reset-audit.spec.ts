@@ -27,8 +27,8 @@
 // long-lived server served every run — so a second run collided with the first at 409 and measured the join
 // screen instead of the page. A core per test mints a fresh room, so the collision cannot happen.
 //
-// TWO SURFACES ARE DROPPED, NAMED: `gallery` and `gallery-wide`, both `/components`. That route is gated
-// DEV-ONLY server-side (`src/routes/components/+page.server.ts` throws 404 when `!dev`) and this suite serves
+// TWO SURFACES ARE DROPPED, NAMED: `gallery` and `gallery-wide`, both `/components`. That route is
+// DEV-ONLY (`+page.devsvelte`, a route file only `vite dev` reads, so the build has no such route) and this suite serves
 // the BUILT app, so the surface does not exist in this environment at all — the capture would be of a 404
 // page, reported as though the densest form surface had been measured. Dropped rather than skipped, on the
 // same ruling frames.spec.ts records: a permanently-skipped test is indistinguishable from the rot it was

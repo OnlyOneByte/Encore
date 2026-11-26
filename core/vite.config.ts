@@ -6,7 +6,7 @@ import { paletteSlicePlugin } from './config/palette-slice-plugin';
 
 // Encore core — SvelteKit on Bun. `svelte-adapter-bun` is the one non-first-party seam
 // (docs/ARCHITECTURE.md); if it proves rough, swap to @sveltejs/adapter-node under the Bun runtime.
-export default defineConfig({
+export default defineConfig(({ command }) => ({
 	// Unset in normal use. The test gallery gives each `vite dev` its own, or two dependency optimisers race on one.
 	cacheDir: process.env.ENCORE_VITE_CACHE_DIR,
 	// A trace .html Playwright writes there made `vite dev` reload every open page mid-test. The test gallery ignores
@@ -33,6 +33,9 @@ export default defineConfig({
 				// Force Svelte 5 runes mode project-wide (except node_modules libs).
 				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 			},
+			// The /components stories are `+page.devsvelte` routes: only `vite dev` treats that as a route file, so the
+			// build has no server route, client node or CSS for them (#1143). `svelte-kit sync` resolves as a build.
+			extensions: command === 'serve' ? ['.svelte', '.devsvelte'] : ['.svelte'],
 			adapter: adapter(),
 			// NO CUSTOM ALIASES. Both internal trees are reached through `$lib`, which SvelteKit provides:
 			// `$lib/server` is server-only and SvelteKit REFUSES to bundle it into client code, failing the
@@ -45,4 +48,4 @@ export default defineConfig({
 			router: { resolution: 'server' }
 		})
 	]
-});
+}));
