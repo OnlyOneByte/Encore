@@ -214,15 +214,15 @@ const FRAMES: Frame[] = [
 	},
 	{
 		name: 'phone-home',
-		what: 'home is the queue: the rotation with nothing in it yet, under the docked now-playing row',
+		what: 'home is the Sing tab idle: the find box alone, its note, and the docked now-line with nothing playing',
 		surface: 'phone',
 		viewport: PHONE,
 		fullPage: true,
 		setup: async (page) => {
-			// TWO empty states are correct here and both are the frame's subject: an empty rotation, and a
-			// karaoke library with nothing in it yet — the seeded tracks are raw, and the library lists what can
-			// be sung. Hence `.first()` rather than a count, which would pin a number the page may reasonably change.
-			await expect(page.locator(SEL.empty).first()).toBeVisible();
+			// The idle Sing tab has no empty state since the Spotlight redesign (#1171): its title names the region
+			// but is not drawn. The note is the state to wait for, as it shows once the room's verdict has arrived.
+			await expect(page.getByRole('textbox', { name: 'Search a song or artist' })).toBeVisible();
+			await expect(page.getByText('Only ready songs can play right now.')).toBeVisible();
 		}
 	},
 	{
