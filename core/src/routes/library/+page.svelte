@@ -141,9 +141,10 @@
 		skipped: { mediaId: string; reason: string }[];
 		libraryFile: boolean;
 		afterTurn?: number;
+		swapLive?: number;
 	};
 	async function bulk(
-		action: 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake',
+		action: 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake' | 'remake-lyrics',
 		mediaIds: string[]
 	): Promise<BulkOut | null> {
 		bulkBusy = true;
@@ -192,22 +193,33 @@
 	}
 
 	// The bar steps aside, as for Delete, so the toast has the spot; nothing else on screen changes.
-	async function bulkRemake() {
-		const out = await bulk('remake', [...picked]);
+	async function bulkRemake(what: 'sound' | 'lyrics') {
+		const out = await bulk(what === 'sound' ? 'remake' : 'remake-lyrics', [...picked]);
 		if (!out) return;
 		picked.clear();
 		void onManaged().then(refocus);
+		const noVocals = out.skipped.filter((s) => s.reason === 'no-vocals').length;
+		const noVocalsLine = noVocals
+			? `${songs(noVocals)} ${noVocals === 1 ? 'has' : 'have'} no vocals to align, so ${noVocals === 1 ? 'it keeps its' : 'they keep their'} lyrics.`
+			: null;
 		if (!out.done.length) {
-			toast.error('Those songs are gone', { duration: 4000 });
+			toast.error(noVocalsLine ?? 'Those songs are gone', { duration: 4000 });
 			return;
 		}
-		toast(`Making the sound again for ${songs(out.done.length)}`, {
+		const queued = what === 'sound' ? out.afterTurn : out.swapLive;
+		const its = queued === 1 ? 'its' : 'their';
+		toast(`Making the ${what} again for ${songs(out.done.length)}`, {
 			duration: 4000,
 			description: [
-				'They stay ready. Each old sound plays until its new one is in, behind everyone’s picks.',
-				out.afterTurn
-					? `${songs(out.afterTurn)} in tonight's queue: after ${out.afterTurn === 1 ? 'its' : 'their'} turn.`
-					: null
+				what === 'sound'
+					? 'They stay ready. Each old sound plays until its new one is in, behind everyone’s picks.'
+					: 'They stay ready. Each shows its old lyrics until the new ones are in, behind everyone’s picks.',
+				queued
+					? what === 'sound'
+						? `${songs(queued)} in tonight's queue: after ${its} turn.`
+						: `${songs(queued)} in tonight's queue: the new lyrics swap in between lines.`
+					: null,
+				noVocalsLine
 			]
 				.filter(Boolean)
 				.join(' ')
@@ -735,11 +747,21 @@
 				>
 					<span class="n" aria-hidden="true">{picked.size} picked</span>
 					<span class="acts">
-						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
-							{allKept ? 'Keep off' : 'Keep'}
-						</Button>
-						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkRemake}>Make again</Button>
-						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
+						<!-- Two pairs that wrap whole, so a narrow bar never strands one action on a row of its own. -->
+						<span class="pair">
+							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('sound')}>
+								Sound again
+							</Button>
+							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('lyrics')}>
+								Lyrics again
+							</Button>
+						</span>
+						<span class="pair">
+							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
+								{allKept ? 'Keep off' : 'Keep'}
+							</Button>
+							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
+						</span>
 					</span>
 				</div>
 			{/if}
@@ -782,8 +804,15 @@
 	}
 	.actbar .acts {
 		display: flex;
-		gap: var(--space-xs);
+		/* Four actions are wider than a 320 px bar on their own, so they wrap too, still right-aligned. */
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 0 var(--space-xs);
 		margin-inline-start: auto;
+	}
+	.actbar .pair {
+		display: flex;
+		gap: var(--space-xs);
 	}
 	.bar-room {
 		/* One row until the bar is measured; then its own height, so the last song scrolls clear of two rows too. */
@@ -792,7 +821,7 @@
 	.actbar :global(button) {
 		color: inherit;
 		font-weight: 800;
-		/* Three actions and the count fit one line at 320 px; the tap height is unchanged. */
+		/* Narrow padding, so the bar wraps as little as it can; the tap height is unchanged. */
 		padding-inline: var(--space-xs);
 	}
 	.library-page {

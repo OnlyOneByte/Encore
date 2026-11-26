@@ -86,8 +86,8 @@ export async function setKeep(mediaId: string, keep: boolean): Promise<boolean> 
 /** A whole library fits in one bulk call; a body past this is refused rather than looped over. */
 export const BULK_MAX = 5_000;
 
-export type BulkAction = 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake';
-export type BulkSkip = { mediaId: string; reason: 'unknown' | 'kept' | 'queued' | 'gone' };
+export type BulkAction = 'keep' | 'unkeep' | 'delete' | 'undo' | 'remake' | 'remake-lyrics';
+export type BulkSkip = { mediaId: string; reason: 'unknown' | 'kept' | 'queued' | 'gone' | 'no-vocals' };
 
 /** One action over a selection, song by song through the same paths the single-song routes use, so a bulk
  *  Delete refuses a kept or queued song exactly as a single one does. */
@@ -99,7 +99,7 @@ export async function bulkManage(
 	},
 	action: BulkAction,
 	mediaIds: readonly string[],
-	/** Make it again for the sound (`requestRemake`); only the `remake` action calls it. */
+	/** Make it again (`requestRemake`); only `remake` (the sound) and `remake-lyrics` call it. */
 	remake: (m: Media) => void = () => {}
 ): Promise<{ done: string[]; skipped: BulkSkip[]; libraryFile: boolean }> {
 	const done: string[] = [];
@@ -116,12 +116,15 @@ export async function bulkManage(
 				done.push(mediaId);
 				if (result.media.source === 'local') libraryFile = true;
 			}
-		} else if (action === 'remake') {
+		} else if (action === 'remake' || action === 'remake-lyrics') {
 			const m = librarySong(app, mediaId);
-			if (m) {
+			if (!m) skipped.push({ mediaId, reason: 'unknown' });
+			// Lyrics are aligned to the vocals stem, as the single route's 409 says.
+			else if (action === 'remake-lyrics' && !m.vocalsRef) skipped.push({ mediaId, reason: 'no-vocals' });
+			else {
 				remake(m);
 				done.push(mediaId);
-			} else skipped.push({ mediaId, reason: 'unknown' });
+			}
 		} else if (librarySong(app, mediaId) && (await setKeep(mediaId, action === 'keep'))) done.push(mediaId);
 		else skipped.push({ mediaId, reason: 'unknown' });
 	}

@@ -1,4 +1,4 @@
-// POST /api/library/manage/bulk — { action: keep|unkeep|delete|undo|remake, mediaIds } -> one action over a selection, with what was skipped and why. Host only. See docs/SERVER.md#managing-the-library.
+// POST /api/library/manage/bulk — { action: keep|unkeep|delete|undo|remake|remake-lyrics, mediaIds } -> one action over a selection, with what was skipped and why. Host only. See docs/SERVER.md#managing-the-library.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
@@ -8,7 +8,7 @@ import { readJsonBody } from '$lib/server/http/json-body';
 import { BULK_MAX, bulkManage, type BulkAction } from '$lib/server/media/library-manage';
 import { DELETE_UNDO_MS } from '$lib/contract';
 import { requestRemake } from '$lib/server/jobs/process';
-import { waitsForTurn } from '$lib/server/jobs/dispatch';
+import { waitsForTurn, inTurn } from '$lib/server/jobs/dispatch';
 
 /** Far past any real id (a ULID is 26); a longer one is a malformed request, not a song. */
 const ID_MAX = 128;
@@ -17,7 +17,8 @@ const NEEDS = {
 	unkeep: 'media:edit',
 	delete: 'media:delete',
 	undo: 'media:delete',
-	remake: 'media:edit'
+	remake: 'media:edit',
+	'remake-lyrics': 'media:edit'
 } as const;
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
@@ -27,7 +28,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const body = await readJsonBody(request);
 	const action = body.action;
 	if (typeof action !== 'string' || !Object.hasOwn(NEEDS, action))
-		return json({ error: 'action must be keep, unkeep, delete, undo or remake' }, { status: 400 });
+		return json({ error: 'action must be keep, unkeep, delete, undo, remake or remake-lyrics' }, { status: 400 });
 	if (!can(actor, NEEDS[action as BulkAction]))
 		return json({ error: 'only the host can change songs' }, { status: 403 });
 	const ids = body.mediaIds;
@@ -40,15 +41,20 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		return json({ error: `mediaIds must be 1 to ${BULK_MAX} song ids` }, { status: 400 });
 
 	const app = getApp();
-	// Each remake waits behind every guest's pick and for its song's turn (`requestRemake`), so a whole library is safe.
+	// Each remake waits behind every guest's pick (`requestRemake`), so a whole library is safe. A sound remake also waits
+	// for its song's turn; a lyrics one does not, since the TV swaps new lyrics in between lines (`inTurn` counts those).
 	let afterTurn = 0;
+	let swapLive = 0;
+	const lyrics = action === 'remake-lyrics';
+	const { entries, playback } = app.state;
 	const result = await bulkManage(app, action as BulkAction, ids as string[], (m) => {
-		const job = requestRemake(m, { jobs: app.jobs, now: () => app.now() });
-		if (waitsForTurn(job, app.state.entries, app.state.playback.currentEntryId)) afterTurn++;
+		const job = requestRemake(m, { jobs: app.jobs, now: () => app.now() }, lyrics ? 'align-remake' : 'stems-remake');
+		if (waitsForTurn(job, entries, playback.currentEntryId)) afterTurn++;
+		else if (lyrics && inTurn(m.id, entries, playback.currentEntryId)) swapLive++;
 	});
-	if (action === 'remake') {
+	if (action === 'remake' || lyrics) {
 		app.workerHub.dispatch();
-		return json({ ...result, afterTurn });
+		return json({ ...result, afterTurn, ...(lyrics ? { swapLive } : {}) });
 	}
 	// Phones re-read Library on `canceled` and `ready`, so a deleted song leaves every screen and an Undo brings it back.
 	if (action === 'delete' || action === 'undo')

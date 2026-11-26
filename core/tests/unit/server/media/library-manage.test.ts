@@ -256,6 +256,26 @@ describe('bulkManage', () => {
 		await bulkManage(app, 'remake', ['m1', 'm3'], remake);
 		expect(jobs.listByStatus('queued')).toHaveLength(3);
 	});
+
+	it('Lyrics again queues one lyrics remake per song with vocals, never held for a queued song’s turn', async () => {
+		const { app } = await harness();
+		for (const id of ['m1', 'm2', 'm4']) app.mediaById.get(id)!.vocalsRef = `derived/stems/${id}-vocals.flac`;
+		const jobs = new JobRepository(migratedDb());
+		const remake = (m: Media) => void requestRemake(m, { jobs, now: () => NOW }, 'align-remake');
+		const out = await bulkManage(app, 'remake-lyrics', ['m1', 'm2', 'm3', 'm4', 'nope'], remake);
+		expect(out.done).toEqual(['m1', 'm2', 'm4']);
+		expect(out.skipped).toEqual([
+			{ mediaId: 'm3', reason: 'no-vocals' }, // nothing to align to, as the single route's 409
+			{ mediaId: 'nope', reason: 'unknown' }
+		]);
+		const queued = jobs.listByStatus('queued');
+		expect(queued.every((j) => j.jobType === 'align-remake' && j.priority === NO_QUEUE_PRIORITY)).toBe(true);
+		// m4 is in tonight's queue, and its lyrics remake runs anyway: the TV swaps new lyrics in between lines.
+		const m4 = queued.find((j) => j.mediaId === 'm4')!;
+		expect(waitsForTurn(m4, app.state.entries, null)).toBe(false);
+		await bulkManage(app, 'remake-lyrics', ['m1'], remake);
+		expect(jobs.listByStatus('queued')).toHaveLength(3);
+	});
 });
 
 describe('PendingDeletes', () => {
