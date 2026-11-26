@@ -107,7 +107,8 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('core/bun.lock') }}
       # A cold lint is ~9-12 min, almost all of it type-aware parsing; warm it is seconds (TL-07). Keyed on the
-      # lockfile, and saved under the commit so every run refreshes it from the newest one.
+      # lockfile, and saved under the commit so every run refreshes it from the newest one. lint-cache.yml saves
+      # it on `main`, the only scope a PR's first run can restore from.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: core/.eslintcache
