@@ -22,6 +22,112 @@ async function frame(page: Page, testInfo: TestInfo, name: string, widths = [390
 	await page.setViewportSize({ width: 390, height: 844 });
 }
 
+/** Where each part of the bar sits, for the fit checks below (the #1348 review's measurements). */
+async function barLayout(bar: import('@playwright/test').Locator) {
+	return bar.evaluate((b) => {
+		const box = (el: Element) => {
+			const q = el.getBoundingClientRect();
+			return { l: q.left, r: q.right, t: q.top, b: q.bottom, w: q.width, h: q.height };
+		};
+		return {
+			bar: box(b),
+			scroll: b.scrollWidth > b.clientWidth,
+			n: box(b.querySelector('.n')!),
+			buttons: [...b.querySelectorAll('button')].map((x) => ({ name: x.textContent?.trim(), ...box(x) })),
+			vw: innerWidth
+		};
+	});
+}
+
+test('the bulk bar fits at 320 and 390 with Keep off and a four-digit count, every action a full tap target', async ({
+	world
+}, testInfo) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const guest = await world.openPhone('Ana');
+		for (const track of TRACKS) await readySong(world, guest, track);
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		await host.getByTestId('pick-all').click();
+		const bar = host.locator('[data-testid="bulk-bar"]');
+		const rows = host.locator('[data-testid="manage-row"]');
+		for (const keepOff of [false, true]) {
+			if (keepOff) {
+				await bar.getByRole('button', { name: 'Keep', exact: true }).click();
+				await expect(bar.getByRole('button', { name: 'Keep off' })).toBeVisible();
+			}
+			for (const count of ['3', '1234']) {
+				// The widest count a big Select all shows, written into the same span.
+				await bar.locator('.n').evaluate((el, c) => (el.textContent = `${c} picked`), count);
+				for (const width of [320, 390]) {
+					await host.setViewportSize({ width, height: 844 });
+					const out = await barLayout(bar);
+					const at = `${width}px, ${count} picked${keepOff ? ', Keep off' : ''}`;
+					expect(out.scroll, `the bar overflows at ${at}`).toBe(false);
+					expect(out.bar.r, `the bar leaves the screen at ${at}`).toBeLessThanOrEqual(out.vw);
+					for (const b of out.buttons) {
+						expect(b.w, `${b.name} width at ${at}`).toBeGreaterThanOrEqual(44);
+						expect(b.h, `${b.name} height at ${at}`).toBeGreaterThanOrEqual(44);
+						expect(b.r, `${b.name} past the bar at ${at}`).toBeLessThanOrEqual(out.bar.r + 0.5);
+						// Beside the count or on the row below it, never over it.
+						expect(b.l >= out.n.r - 0.5 || b.t >= out.n.b - 0.5, `${b.name} over the count at ${at}`).toBe(true);
+					}
+					// The last row still scrolls clear of the bar, however many rows the bar has.
+					await host.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+					const last = await rows.last().boundingBox();
+					expect(last && last.y + last.height, `the last row is under the bar at ${at}`).toBeLessThanOrEqual(
+						out.bar.t + 0.5
+					);
+					if (keepOff && count === '1234') {
+						const path = testInfo.outputPath(`bulk-bar-widest-${width}.png`);
+						await host.mouse.move(0, 0); // no hover fill left from the Keep tap
+						await host.screenshot({ path });
+						await testInfo.attach(`bulk-bar-widest-${width}.png`, { path, contentType: 'image/png' });
+					}
+				}
+			}
+		}
+	} finally {
+		await worker.stop();
+	}
+});
+
+test('bulk Make again with a song in tonight’s queue: it waits for its turn, and the toast says so', async ({
+	world
+}) => {
+	const worker = await startFakeWorker(world);
+	try {
+		const guest = await world.openPhone('Ana');
+		for (const track of TRACKS) await readySong(world, guest, track);
+		const queuedId = (await world.awaitDemoTrack(TRACKS[0]!)).id;
+		const before = (await library(guest)).find((m) => m.id === queuedId)!.instrumentalRef;
+		await queueReady(guest, TRACKS[0]!);
+		const host = await world.openPhone('Host');
+		await world.becomeHost(host);
+		await host.goto('/library');
+		await host.getByRole('button', { name: 'Manage' }).click();
+		await host.getByTestId('pick-all').click();
+		await host.locator('[data-testid="bulk-bar"]').getByRole('button', { name: 'Make again' }).click();
+		await expect(host.getByText('Making the sound again for 3 songs')).toBeVisible();
+		await expect(host.getByText("1 song in tonight's queue: after its turn.")).toBeVisible();
+		// The other two are remade; the queued one keeps its stems across dispatch ticks.
+		await expect
+			.poll(
+				async () =>
+					(await library(guest)).filter(
+						(m) => m.id !== queuedId && /-[0-9a-z]+-instrumental\./.test(m.instrumentalRef ?? '')
+					).length,
+				{ timeout: 60_000 }
+			)
+			.toBe(2);
+		expect((await library(guest)).find((m) => m.id === queuedId)!.instrumentalRef).toBe(before);
+	} finally {
+		await worker.stop();
+	}
+});
+
 test('bulk Make again: three picked songs stay ready, each gets new files, and the open TV plays one', async ({
 	world
 }, testInfo) => {
