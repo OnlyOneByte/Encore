@@ -294,6 +294,11 @@
 				Reactions on TV
 			</label>
 
+			<label class="check" for="tv-chorus">
+				<Switch id="tv-chorus" checked={settings.room.tvChorus} onCheckedChange={(v) => onroom({ tvChorus: v })} />
+				Show the chorus to the room
+			</label>
+
 			<label class="check" for="song-intro-on">
 				<Switch
 					id="song-intro-on"

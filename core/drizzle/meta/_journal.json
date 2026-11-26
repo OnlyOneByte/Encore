@@ -134,6 +134,13 @@
       "when": 1795660032720,
       "tag": "0018_held_completions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795704111966,
+      "tag": "0019_tv_chorus",
+      "breakpoints": true
     }
   ]
 }

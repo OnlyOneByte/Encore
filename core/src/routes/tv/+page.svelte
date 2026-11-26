@@ -1030,6 +1030,7 @@
 		linesBefore={settings.room.lyricsLinesBefore}
 		linesAfter={settings.room.lyricsLinesAfter}
 		singerColor={currentSingerColor}
+		chorus={settings.room.tvChorus}
 	/>
 
 	{#if tonight && (screen === 'attract' || screen === 'lobby')}

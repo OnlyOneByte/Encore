@@ -13,6 +13,8 @@
 		changedRows,
 		fixStepsBack,
 		rowsOf,
+		chorusLines,
+		lineBounds,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
@@ -65,6 +67,8 @@
 		linesAfter?: number;
 		/** The STORED value, not a pre-validated one: `lyricHighlightColor` is the sanitising boundary. */
 		singerColor?: string | null;
+		/** The room's "Show the chorus to the room" (proposal 38). */
+		chorus?: boolean;
 	}
 	let {
 		lyricsRef,
@@ -82,7 +86,8 @@
 		textCase = DEFAULT_LYRICS_CASE,
 		linesBefore = DEFAULT_LYRICS_LINES_BEFORE,
 		linesAfter = DEFAULT_LYRICS_LINES_AFTER,
-		singerColor = null
+		singerColor = null,
+		chorus = true
 	}: Props = $props();
 
 	const FIX_WAIT_MAX_MS = 10_000;
@@ -219,6 +224,15 @@
 	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, cuePos) : -1);
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
+	// The chorus (proposal 38): its rows take the room's colour, and "Everyone" stands over the row that opens each
+	// time it comes round, from the line before until that row starts. See docs/FRONTEND.md#the-chorus.
+	const chorusRows = $derived(chorus && doc ? chorusLines(doc.lines) : new Set<number>());
+	const opensChorus = (i: number) => chorusRows.has(i) && !chorusRows.has(i - 1);
+	const cueRow = $derived.by(() => {
+		if (opensChorus(lineIdx + 1)) return lineIdx + 1;
+		const start = curLine ? lineBounds(curLine)?.[0] : undefined;
+		return opensChorus(lineIdx) && start !== undefined && cuePos < start ? lineIdx : -1;
+	});
 	const show = $derived(visible && !!curLine);
 	// Deliberately narrow, so it cannot fire on a normal blank frame: `!doc` lets a song WITH words that is merely
 	// between lines stay blank, and the settled check keeps the notice from flashing during a load.
@@ -313,7 +327,16 @@
 				<!-- A row a lyrics fix rewrote is a new node, not a centred line sliding sideways; the rest keep index keys,
 				     so a new song reuses the rows as before. -->
 				{#each doc.lines as l, i (freshRows.has(i) ? `${i}:${l.text}` : i)}
-					<div class={['row', { current: i === lineIdx, past: i < lineIdx, fresh: freshRows.has(i) }]}>
+					<div
+						class={[
+							'row',
+							{ current: i === lineIdx, past: i < lineIdx, fresh: freshRows.has(i), chorus: chorusRows.has(i) }
+						]}
+					>
+						{#if opensChorus(i)}
+							<!-- Out of flow, in the leading above the row, so showing it moves nothing. -->
+							<span class={['everyone', { on: i === cueRow }]}>Everyone</span>
+						{/if}
 						{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}
 							{#each l.words as w, wi (wi)}
 								<span class={['word', { done: cuePos >= w.end, active: wi === ballWord }]}>
@@ -399,6 +422,9 @@
 		--reel-part: var(--reel-singer);
 		--reel-line: var(--reel-part);
 		--reel-now: var(--reel-part);
+		/* The room's colour on chorus rows: a warm gold that is no singer's (SINGER_COLORS) and not the cream of
+		   unverified words. */
+		--reel-room: #ffdf7a;
 	}
 	/*
 	 * Amber rather than italic, so the meaning arrives without a warning line to ignore, and NOT dimmed — these are
@@ -533,6 +559,37 @@
 	.row.current {
 		color: var(--reel-current);
 	}
+	/* THE CHORUS (proposal 38): the room's colour in place of white, at the same levels, so its shape shows as it
+	   scrolls in. `--reel-now` and the ball are left alone: the singer, or their duet part, still leads the wipe.
+	   Colour only, so nothing moves. */
+	.row.chorus {
+		position: relative;
+		--reel-current: var(--reel-room);
+		--reel-ahead: color-mix(in srgb, var(--reel-room) 66%, transparent);
+		color: color-mix(in srgb, var(--reel-room) 62%, transparent);
+	}
+	.row.chorus.past {
+		color: color-mix(in srgb, var(--reel-room) 20%, transparent);
+	}
+	.row.chorus.current {
+		color: var(--reel-current);
+	}
+	/* Centred in the leading between this row and the one above, at the second script's size. */
+	.everyone {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: var(--romanization-size);
+		line-height: 1;
+		letter-spacing: 0.04em;
+		color: var(--reel-room);
+		opacity: 0;
+		pointer-events: none;
+	}
+	.everyone.on {
+		opacity: 1;
+	}
 	/* `line` says nothing about position within the lyric, the honest reading when word timings are patchy (measured
 	   coverage 87-93% with real holes). `off` deliberately gets NO accent: the contrast ladder shows position. */
 	.lyrics.hl-line .row.current {
@@ -591,6 +648,9 @@
 		}
 		.word {
 			transition: color var(--motion-fast) linear;
+		}
+		.everyone {
+			transition: opacity 0.3s ease;
 		}
 		/* The line-to-line transform slides the WHOLE full-width column — the most vestibular-triggering motion on
 		   the TV, and the one this gate matters most for. */
