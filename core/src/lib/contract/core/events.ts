@@ -365,8 +365,9 @@ export interface ResolvedFacts {
 	lyricsNote?: string;
 }
 
-/** What a worker RESOLVED for itself at boot. Stamped on every attempt the worker is assigned, so each
- *  `job_attempts` row says which hardware path it ran on. Names and counts only — never a hostname or a path. */
+/** What a worker RESOLVED for itself at boot. Stamped on every attempt the worker is assigned (a fetch takes only
+ *  `concurrency` and `handSet`: it runs no model), so each `job_attempts` row says which hardware path it ran on.
+ *  Names and counts only — never a hostname or a path. */
 export interface WorkerProfile {
 	/** The separator backend: `torch` or `mlx`. */
 	backend?: string;

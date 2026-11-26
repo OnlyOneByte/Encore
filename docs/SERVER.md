@@ -1436,11 +1436,16 @@ is the history. The narrative is in `docs/ARCHITECTURE.md` §7; these are the in
   process answers confidently wrong. Written at assign time from the dispatched params, then overwritten by
   the worker's own reported resolution. `backend`, `device` and `threads` are the assigned worker's profile
   from its `worker:hello` (`WorkerProfile`, shape-checked by `workerProfile`), stamped at assign so a failed
-  or abandoned attempt still records what it ran on. `threads` is torch's in-process count (alignment, the
-  song profile, diarization), not the demucs subprocess's or whisperx's. An align completion overwrites
-  `device` with its transcriber's (`cpu` on a Mac, where separation runs on `mps`). A completion fact that
-  is not a bounded string is dropped (`resolvedFacts`), and a completion `backend` or `device` must be a
-  name hello would accept, so a `null` cannot blank what assign wrote and no path lands in those columns.
+  or abandoned attempt still records what it ran on. A **fetch** attempt gets none of `backend`, `device`,
+  `threads`, `demucsJobs` or `asrCompute`: yt-dlp and ffmpeg use no model and no accelerator, so they stay
+  NULL (#1112). `threads` is torch's in-process count (alignment, the song profile, diarization) as
+  stamped. Each completion override comes only from a job kind that runs it (`resolvedFacts`, #1113): an
+  **align** or **stems** completion may overwrite `backend` and `device` with where its model really ran
+  (`cpu` for a Mac's transcriber, where separation runs on `mps`; a separator that fell back to CPU), never
+  a fetch; only a **stems** completion (any of its kinds) `threads` and `demucsJobs`, with its separator's
+  share. The same field from another kind is dropped. A completion fact that is not a
+  bounded string is dropped, and a completion `backend` or `device` must be a name hello would accept, so a
+  `null` cannot blank what assign wrote and no path lands in those columns.
 - **`concurrency`, `demucsJobs`, `asrCompute` and `handSet` finish the profile on every attempt.** `handSet`
   names which of `PROFILE_SETTINGS` the worker's operator set by hand (comma-joined; `''` means none, and
   `NULL` means a worker too old to say). hello's `asrCompute` must be one of `ASR_COMPUTE_TYPES`, `warmup` a
