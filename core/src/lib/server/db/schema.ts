@@ -298,6 +298,16 @@ export const jobs = sqliteTable(
 	})
 );
 
+/** A re-separation that finished while its song was singing, held until the turn ends: the worker's `job:complete`,
+ *  kept so a restart during the hold still swaps it in. Its own table, as `jobs` mirrors the wire `Job`. See
+ *  docs/SERVER.md#managing-the-library ("Never a swap mid-song"). */
+export const heldCompletions = sqliteTable('held_completions', {
+	jobId: text('job_id').primaryKey(),
+	mediaId: text('media_id').notNull(),
+	message: text('message').notNull(),
+	heldAt: integer('held_at').notNull()
+});
+
 /** ONE ROW PER ATTEMPT, and deliberately NOT unique on anything but `id`: a second attempt is a second row. See docs/SERVER.md#the-attempt-ledger for why it is a second table. */
 export const jobAttempts = sqliteTable(
 	'job_attempts',

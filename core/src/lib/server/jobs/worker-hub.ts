@@ -355,7 +355,7 @@ export class WorkerHub {
 	/** Stem files a re-separation replaced or lost, by song, deleted once the song is out of its turn (`settle`). */
 	#stale = new Map<string, Set<string>>();
 	/** Re-separations that finished while their song was playing: the TV reloads a changed src from 0, so the new
-	 *  stems go in when the turn ends. In memory only; one lost to a restart is swept as stale at boot. */
+	 *  stems go in when the turn ends. Mirrored in `held_completions` (`jobs.hold`), so a restart keeps it (#1317). */
 	#held: { job: Job; msg: Extract<WorkerMessage, { type: 'job:complete' }> }[] = [];
 	/** Workers that refused a job as an action they do not know, so it is offered to another. */
 	#unknownTo = new Map<string, Set<string>>();
@@ -891,6 +891,32 @@ export class WorkerHub {
 		this.#deleteStale();
 	}
 
+	/** Boot: the completions a restart found still held (`jobs.listHeld`), swapped in by `settle` once their song is
+	 *  out of its turn. A row whose job or message is gone is dropped. */
+	restoreHeld(): void {
+		for (const row of this.#d.jobs.listHeld()) {
+			const job = this.#d.jobs.byId(row.jobId);
+			let msg: Extract<WorkerMessage, { type: 'job:complete' }> | null;
+			try {
+				msg = JSON.parse(row.message);
+			} catch {
+				msg = null;
+			}
+			if (!job || msg?.type !== 'job:complete') this.#d.jobs.release(row.jobId);
+			else this.#held.push({ job, msg });
+		}
+	}
+
+	/** The output tags whose stem files a song may have on disk that it does not name yet: its running
+	 *  re-separations', and its held completions' (after `restoreHeld`), so the boot sweep spares both. */
+	writingTags(mediaId: string): string[] {
+		const live = (['stems-upgrade', 'stems-remake'] as const)
+			.map((t) => this.#d.jobs.findLive(mediaId, t))
+			.filter((j) => j && !isTerminalJob(j.status));
+		const held = this.#held.filter((h) => h.job.mediaId === mediaId).map((h) => h.job);
+		return [...live, ...held].map((j) => stemOutputTag(j!.id));
+	}
+
 	/** Boot: what a restart left (`staleStemsOnDisk`), deleted when the song is out of its turn. */
 	retireStale(byMedia: ReadonlyMap<string, readonly string[]>): void {
 		for (const [mediaId, refs] of byMedia) this.#retire(mediaId, [...refs]);
@@ -923,6 +949,7 @@ export class WorkerHub {
 	}
 
 	#swapHeld(job: Job, msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
+		this.#d.jobs.release(job.id);
 		// Deleted or evicted meanwhile: nothing to swap into, so its files are lost output.
 		if (!this.#d.mediaById.get(job.mediaId)?.instrumentalRef) return this.#retireOwnOutput(msg, job.mediaId);
 		this.#applyCompletion(job, msg, this.#processSettings());
@@ -949,8 +976,10 @@ export class WorkerHub {
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#processSettings();
 		const hold = reSeparates(job.jobType) && this.#playingMediaId() === job.mediaId;
-		if (hold) this.#held.push({ job, msg });
-		else this.#applyCompletion(job, msg, settings);
+		if (hold) {
+			this.#held.push({ job, msg });
+			this.#d.jobs.hold(job.id, job.mediaId, JSON.stringify(msg), this.#d.now());
+		} else this.#applyCompletion(job, msg, settings);
 		cleanJobWork(msg.jobId);
 		// Follow-ups enqueue AFTER cleanJobWork, so each gets its own scratch dir.
 		for (const next of followUps(job.jobType, settings)) {

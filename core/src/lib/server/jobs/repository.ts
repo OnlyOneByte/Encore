@@ -3,7 +3,7 @@
 
 import { and, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
-import { jobs } from '../db/schema';
+import { heldCompletions, jobs } from '../db/schema';
 import {
 	ulid,
 	isTerminalJob,
@@ -117,6 +117,28 @@ export class JobRepository {
 
 	byId(id: string): Job | null {
 		return this.#db.select().from(jobs).where(eq(jobs.id, id)).all()[0] ?? null;
+	}
+
+	/** A finished re-separation held until its song's turn ends (the worker's `job:complete`, as JSON), so a restart
+	 *  during the hold still swaps it in. One row per job; `release` when it is swapped in or dropped. */
+	hold(jobId: string, mediaId: string, message: string, now: number): void {
+		this.#db
+			.insert(heldCompletions)
+			.values({ jobId, mediaId, message, heldAt: now })
+			.onConflictDoUpdate({ target: heldCompletions.jobId, set: { message, heldAt: now } })
+			.run();
+	}
+
+	release(jobId: string): void {
+		this.#db.delete(heldCompletions).where(eq(heldCompletions.jobId, jobId)).run();
+	}
+
+	listHeld(): { jobId: string; mediaId: string; message: string }[] {
+		return this.#db
+			.select({ jobId: heldCompletions.jobId, mediaId: heldCompletions.mediaId, message: heldCompletions.message })
+			.from(heldCompletions)
+			.orderBy(heldCompletions.heldAt)
+			.all();
 	}
 
 	/** The live (slot-occupying) job for a key, if any — the dedup lookup. */
