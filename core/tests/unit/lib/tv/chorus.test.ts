@@ -4,6 +4,29 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chorusLines } from '$lib/tv/lyrics';
+import { contrastRatio, DEFAULT_STAGE_COLOR, parseHex, stageHueToHex } from '$lib/contract';
+
+test('the room gold holds the TV text bar on every stage, at rest and at the reel levels a line is read at', () => {
+	// The bar the white lyrics are held to (visualizers.test.ts), on every colour a stage style can draw: black, the
+	// default solid, and every stage-tier hue (gradient, singer and the visualizers draw only these). Past rows (0.2)
+	// are not read, for white either.
+	const css = readFileSync(join(import.meta.dir, '../../../../src/lib/tv/LyricsOverlay.svelte'), 'utf8');
+	const gold = css.match(/--reel-room: (#[0-9a-f]{6});/)![1]!;
+	const stages = ['#000000', DEFAULT_STAGE_COLOR, ...Array.from({ length: 72 }, (_, i) => stageHueToHex(i * 5))];
+	const over = (a: number, bg: string) => {
+		const [f, b] = [parseHex(gold)!, parseHex(bg)!];
+		return `#${f
+			.map((v, i) =>
+				Math.round(a * v + (1 - a) * b[i]!)
+					.toString(16)
+					.padStart(2, '0')
+			)
+			.join('')}`;
+	};
+	for (const level of [1, 0.66, 0.62])
+		for (const bg of stages)
+			expect(contrastRatio(over(level, bg), bg), `${gold} at ${level} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+});
 
 const lines = (...texts: string[]) => texts.map((text) => ({ text }));
 const truth = (song: string) =>
