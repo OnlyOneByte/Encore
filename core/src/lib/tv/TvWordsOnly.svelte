@@ -4,6 +4,7 @@
   the type down). docs/FRONTEND.md#words-only.
 -->
 <script module lang="ts">
+	/** @public The type of `fit` on LyricsOverlay, which imports it as a type only. */
 	export interface WordsFit {
 		/** The cap, as custom properties: the largest type at which `rowCount` lines of `wrapRows` rows fill the band. */
 		style(rowCount: number, wrapRows: number, shrink: number): string;
