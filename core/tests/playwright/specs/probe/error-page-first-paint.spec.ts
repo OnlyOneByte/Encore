@@ -27,3 +27,14 @@ for (const { path, back, width, height } of [
 		await ctx.close();
 	});
 }
+
+// The inline styles key on the error page's own tag (the #1365 review): a guest who names themself after the marker
+// must not get them on a page that prints the name.
+test('a guest named data-error-page gets no inlined error styles on their own You page', async ({ world }) => {
+	const phone = await world.openPhone('data-error-page');
+	const html = await (await phone.request.get('/settings/you')).text();
+	expect(html, 'the page prints the name, so the marker text is in it').toContain('data-error-page');
+	expect(html).not.toContain('<style>/*! tailwindcss');
+	const notFound = await (await phone.request.get('/no-such-page')).text();
+	expect(notFound, 'the 404 itself still gets them').toContain('<style>/*! tailwindcss');
+});

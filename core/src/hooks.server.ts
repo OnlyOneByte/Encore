@@ -27,5 +27,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 /** The error page's styles in its own HTML, so it is styled on first paint and with JavaScript off (#1361): the root
  *  layout imports none, and a stylesheet the error page imported would load on every route. */
 function withErrorPageStyles({ html }: { html: string }): string {
-	return html.includes('data-error-page') ? html.replace('</head>', `<style>${screensCss}</style></head>`) : html;
+	// The whole rendered tag, not the bare word: text such as a guest's name can spell the word, never a raw `<div`.
+	if (!html.includes('<div class="app-shell" data-error-page=""')) return html;
+	// A function, so a `$` in the CSS is never read as a replacement pattern.
+	return html.replace('</head>', () => `<style>${screensCss}</style></head>`);
 }
