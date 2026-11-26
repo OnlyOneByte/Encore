@@ -1,0 +1,6 @@
+<!-- `.devsvelte` is a route extension only `vite dev` knows, so the build never sees this route (#1143). -->
+<script>
+	import Gallery from '$lib/gallery/Gallery.svelte';
+</script>
+
+<Gallery />

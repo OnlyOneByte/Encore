@@ -1,0 +1,5 @@
+<script>
+	import SpotlightStory from '$lib/gallery/SpotlightStory.svelte';
+</script>
+
+<SpotlightStory />

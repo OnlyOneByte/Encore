@@ -216,7 +216,9 @@ describe('migration off the legacy layout', () => {
 		expect(readFileSync(join(root, 'derived', 'stems', 'm1-instrumental.wav'), 'utf8')).toBe('INST-M1');
 	});
 
-	it('preserves the bytes by COPYING when the source cannot be removed', () => {
+	// Skipped as root (#1094): no permission bit denies root an unlink, so a root process never meets this case
+	// and the test cannot build it. CI runs the suite as an unprivileged user, so it still runs there.
+	it.skipIf(process.getuid?.() === 0)('preserves the bytes by COPYING when the source cannot be removed', () => {
 		// A read-only source dir: rename and unlink both fail but copy works, and losing the only
 		// unrecoverable class to a permission bit is worse, so a copy counts as done.
 		seedLegacy();

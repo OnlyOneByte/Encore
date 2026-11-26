@@ -93,7 +93,7 @@ test("GuidingTrack's rail label wears the field primitive's own dress, with no e
 	// No local re-declaration of the dress beside it — the defect the swap removed, asserted so it cannot come back.
 	expect(card).not.toMatch(/ctl-lab/);
 	expect(strip(read('src/routes/(phone)/queue/+page.svelte'))).not.toMatch(/ctl-lab/);
-	expect(strip(read('src/routes/components/+page.svelte'))).not.toMatch(
+	expect(strip(read('src/lib/gallery/Gallery.svelte'))).not.toMatch(
 		/<Field\.Label|class="control-label"|<ColourRing|<CodeEntry/
 	);
 });

@@ -1992,9 +1992,12 @@ shadcn SURFACE alias and measures 1.24:1 as text.
 
 `/components` renders every shared component in every state it must survive, side by side, so a state that
 deliberately renders NOTHING can be judged as intentional — which is what its captions are for. It is
-dev-only, gated in `src/routes/components/+page.server.ts` so the 404 is decided before any gallery HTML
-exists, and that gate is the whole protection. It is also load-bearing test
-infrastructure: several guards read its source as a fixture, so it is gated rather than deleted, and a
+dev-only and absent from the build: its routes are `+page.devsvelte` shells, an extension only `vite dev` adds
+to SvelteKit's route files (`vite.config.ts`), so production has no route, client node or CSS for it and
+answers a 404 (#1143). The stories themselves are `src/lib/gallery/*.svelte`, so they are linted and
+typechecked; `tests/unit/routes/dev-only-routes.test.ts` and CLAIM 13's build check keep them out of the build.
+It is also load-bearing test infrastructure: several guards read its source as a fixture, so it is kept out
+of the build rather than deleted, and a
 fixture removed from it takes a guard's subject with it. Frames that exist to be compared are pinned
 (`playing={false}`, an explicit position) because a running demo clock makes two frames incomparable, and
 colour props in it are fixture DATA — a person's chosen accent — never theme tokens.

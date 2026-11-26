@@ -21,6 +21,8 @@ const config: KnipConfig = {
 		'src/routes/**/+layout.{svelte,ts}',
 		'src/routes/**/+error.svelte',
 		'src/routes/**/+server.ts',
+		// The dev-only /components stories, mounted by `+page.devsvelte` routes knip does not parse (#1143).
+		'src/lib/gallery/*.svelte',
 		'tests/**/*.test.ts',
 		// Playwright discovers specs by its own `testDir`, so nothing imports them either. `world/**` IS imported
 		// by the specs, so the graph covers it from here. `playwright.config.ts` is auto-detected by knip's

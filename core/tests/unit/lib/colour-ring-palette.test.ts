@@ -28,7 +28,7 @@ const LANDING = readFileSync(join(SRC, 'lib/components/JoinLanding.svelte'), 'ut
 // identity pane is the only one of them that holds a colour at all.
 const SETTINGS = readFileSync(join(SRC, 'routes/(phone)/settings/you/+page.svelte'), 'utf8');
 // The preset picker's remaining surface, now the ring holds both identity panes.
-const GALLERY = readFileSync(join(SRC, 'routes/components/+page.svelte'), 'utf8');
+const GALLERY = readFileSync(join(SRC, 'lib/gallery/Gallery.svelte'), 'utf8');
 
 test('every stop the ring can return is a colour a singer may legally be identified by', () => {
 	expect(PALETTE_STOPS.length).toBeGreaterThanOrEqual(48); // @nvf-floor PALETTE_STOPS.length
