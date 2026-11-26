@@ -30,10 +30,18 @@ async function barLayout(bar: import('@playwright/test').Locator) {
 			const q = el.getBoundingClientRect();
 			return { l: q.left, r: q.right, t: q.top, b: q.bottom, w: q.width, h: q.height };
 		};
+		const n = b.querySelector('.n')!;
+		// The count's own text, not its box: it grows to fill its row.
+		const text = document.createRange();
+		text.selectNodeContents(n);
+		const css = getComputedStyle(b);
 		return {
 			bar: box(b),
 			scroll: b.scrollWidth > b.clientWidth,
-			n: box(b.querySelector('.n')!),
+			n: box(n),
+			parts: [box(text), ...[...b.querySelectorAll('.pair')].map(box)],
+			inner: b.getBoundingClientRect().right - parseFloat(css.paddingRight),
+			gap: parseFloat(css.columnGap) || 0,
 			buttons: [...b.querySelectorAll('button')].map((x) => ({ name: x.textContent?.trim(), ...box(x) })),
 			vw: innerWidth
 		};
@@ -75,17 +83,27 @@ test('the bulk bar fits at 320 and 390 with Keep off and a four-digit count, eve
 						// Beside the count or on the row below it, never over it.
 						expect(b.l >= out.n.r - 0.5 || b.t >= out.n.b - 0.5, `${b.name} over the count at ${at}`).toBe(true);
 					}
+					// A pair starts a new row only when it would not fit after the part before it (#1370).
+					for (let i = 1; i < out.parts.length; i++) {
+						const [prev, part] = [out.parts[i - 1]!, out.parts[i]!];
+						if (part.t < prev.b - 0.5) continue;
+						// Soft, so the frames below are still taken when it fails.
+						expect
+							.soft(prev.r + out.gap + part.w, `pair ${i} wraps with room beside it at ${at}`)
+							.toBeGreaterThan(out.inner + 0.5);
+					}
 					// The last row still scrolls clear of the bar, however many rows the bar has.
 					await host.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 					const last = await rows.last().boundingBox();
 					expect(last && last.y + last.height, `the last row is under the bar at ${at}`).toBeLessThanOrEqual(
 						out.bar.t + 0.5
 					);
-					if (keepOff && count === '1234') {
-						const path = testInfo.outputPath(`bulk-bar-widest-${width}.png`);
+					const shot = keepOff && count === '1234' ? 'bulk-bar-widest' : !keepOff && count === '3' ? 'bulk-bar-3' : null;
+					if (shot) {
+						const path = testInfo.outputPath(`${shot}-${width}.png`);
 						await host.mouse.move(0, 0); // no hover fill left from the Keep tap
 						await host.screenshot({ path });
-						await testInfo.attach(`bulk-bar-widest-${width}.png`, { path, contentType: 'image/png' });
+						await testInfo.attach(`${shot}-${width}.png`, { path, contentType: 'image/png' });
 					}
 				}
 			}

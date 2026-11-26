@@ -746,22 +746,20 @@
 					bind:offsetHeight={barHeight}
 				>
 					<span class="n" aria-hidden="true">{picked.size} picked</span>
-					<span class="acts">
-						<!-- Two pairs that wrap whole, so a narrow bar never strands one action on a row of its own. -->
-						<span class="pair">
-							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('sound')}>
-								Sound again
-							</Button>
-							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('lyrics')}>
-								Lyrics again
-							</Button>
-						</span>
-						<span class="pair">
-							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
-								{allKept ? 'Keep off' : 'Keep'}
-							</Button>
-							<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
-						</span>
+					<!-- Two pairs that wrap whole and only when they must, so no action is stranded on a row of its own. -->
+					<span class="pair">
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('sound')}>
+							Sound again
+						</Button>
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={() => bulkRemake('lyrics')}>
+							Lyrics again
+						</Button>
+					</span>
+					<span class="pair">
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkKeep}>
+							{allKept ? 'Keep off' : 'Keep'}
+						</Button>
+						<Button variant="ghost" size="tap" disabled={bulkBusy} onclick={bulkDelete}>Delete</Button>
 					</span>
 				</div>
 			{/if}
@@ -802,17 +800,11 @@
 		flex: 1;
 		white-space: nowrap;
 	}
-	.actbar .acts {
-		display: flex;
-		/* Four actions are wider than a 320 px bar on their own, so they wrap too, still right-aligned. */
-		flex-wrap: wrap;
-		justify-content: flex-end;
-		gap: 0 var(--space-xs);
-		margin-inline-start: auto;
-	}
 	.actbar .pair {
 		display: flex;
 		gap: var(--space-xs);
+		/* Right-aligned on a row of its own too. */
+		margin-inline-start: auto;
 	}
 	.bar-room {
 		/* One row until the bar is measured; then its own height, so the last song scrolls clear of two rows too. */
