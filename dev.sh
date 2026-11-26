@@ -358,6 +358,10 @@ ensure_ffmpeg() {
 # ── preflight ────────────────────────────────────────────────────────────────────────
 say "preflight"
 need bun "install from https://bun.sh" || exit 1
+# Older Bun drops the sticky bit core sets on the media root and derived/ (#1222). Core still runs, so warn, not stop.
+if ! bun -e 'process.exit(Bun.semver.order(Bun.version, "1.4.3") < 0 ? 1 : 0)'; then
+	echo "warning: bun $(bun --version) is older than 1.4.3; its chmod drops the sticky bit, so upgrade (bun upgrade)" >&2
+fi
 ensure_ffmpeg || exit 1
 # The health probe IS curl: without it the probe can never succeed and the script blames core, reporting
 # "core did not become healthy" after 45 seconds of waiting for a request it never made.

@@ -52,7 +52,7 @@ worker decodes through.
 > a separate process. There is no error on screen; the song just never processes. This is the single most
 > common first-run surprise.
 
-**Local dev (Bun ≥ 1.3).** The TypeScript project lives in `core/`, with its own `package.json`:
+**Local dev (Bun ≥ 1.4.3).** The TypeScript project lives in `core/`, with its own `package.json`:
 
 ```bash
 cd core

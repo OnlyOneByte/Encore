@@ -43,7 +43,7 @@ at the front is skipped without losing its fairness position (the **held-slot ru
 
 | Layer   | Choice                               | Constraint it satisfies                                        |
 | ------- | ------------------------------------ | -------------------------------------------------------------- |
-| Runtime | **Bun 1.3.14**                       | native WS pub/sub, `bun:sqlite`, `Bun.spawn`, one core process |
+| Runtime | **Bun 1.4.3**                        | native WS pub/sub, `bun:sqlite`, `Bun.spawn`, one core process |
 | UI      | **SvelteKit + Svelte 5 runes**, PWA  | small bundle, fine-grained updates, phone-first                |
 | Adapter | `svelte-adapter-bun`                 | SvelteKit handler and WS hub served by `core/server.ts`        |
 | DB      | **Drizzle + bun:sqlite**, WAL        | durable index and party state without another service          |

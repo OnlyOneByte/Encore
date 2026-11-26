@@ -1,6 +1,6 @@
 # Encore core — the whole MVP in one container. FROM oven/bun (the locked runtime).
 # Bundles yt-dlp + ffmpeg so keyless YouTube search/resolve + local transcode work out of the box.
-FROM oven/bun:1.3-debian AS build
+FROM oven/bun:1.4.3-debian AS build
 WORKDIR /app
 
 # install deps first (layer cache). The TypeScript project lives in core/ — its own package.json,
@@ -16,7 +16,7 @@ RUN bun install --frozen-lockfile
 COPY core/ .
 RUN bun --bun run build
 
-FROM oven/bun:1.3-debian AS runtime
+FROM oven/bun:1.4.3-debian AS runtime
 WORKDIR /app
 
 # system media tools: ffmpeg + yt-dlp (keyless YouTube), yt-dlp via the static binary. Pinned because a
