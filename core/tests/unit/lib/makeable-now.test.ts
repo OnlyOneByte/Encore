@@ -46,9 +46,23 @@ const songRow = readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8');
 const room = readFileSync(at('src/lib/stores/room.ts'), 'utf8');
 
 test('the Sing tab splits unmade rows by makeableNow and gives the unmakeable ones no action', () => {
-	expect(home).toContain('!makeableNow(m, verdicts, defaultFetcher)');
-	expect(home).toContain('{cantMakeHeading(cantRows.length)}');
-	expect(home).toMatch(/<SongRow[^>]*\bcantMake \/>/);
+	expect(home).toContain('const cantMakeRow = (m: Media, v = verdicts) =>');
+	expect(home).toContain('!makeableNow(m, v, defaultFetcher)');
+	// A row's group is the verdict the results came with, untracked; its button follows the live one either way, so a
+	// lost capability takes it and a gained one gives it back, in place (#1138).
+	expect(home).toContain('const groupVerdicts = $derived(rawResults && untrack(() => verdicts));');
+	expect(home).toContain('rawRows.filter((m) => !cantMakeRow(m, groupVerdicts))');
+	expect(home).toContain('rawRows.filter((m) => cantMakeRow(m, groupVerdicts))');
+	expect(home).toMatch(/\{#snippet unmade\(m: Media\)\}[\s\S]*?cantMake=\{cantMakeRow\(m\)\}[\s\S]*?\{\/snippet\}/);
+	expect(home).toContain('{#each rawView.shown as m (m.id)}{@render unmade(m)}{/each}');
+	expect(home).toContain('{#each cantView.shown as m (m.id)}{@render unmade(m)}{/each}');
+	// Each heading reads its own rows' live state, and the second keeps only its height when it would repeat the first.
+	expect(home).toContain('{@const cant = cantMakeHeading(rows.length)}');
+	expect(home).toContain("{allCant(rows) ? cant : 'Needs karaoke'}");
+	// The hidden duplicate is inert: out of the accessibility tree and off focus, never an empty heading (#1392).
+	expect(home).toContain('<h2 class="grouphead" tabindex="-1" inert={hide}>');
+	expect(home).toContain('{@render head(sameHeads ? rawRows : makeRows)}');
+	expect(home).toContain('{@render head(cantRows, sameHeads)}');
 	expect(songRow).toContain('{#if cantMake}');
 	// The cantMake arm comes before both action buttons, so neither can render on such a row.
 	expect(songRow.indexOf('{#if cantMake}')).toBeLessThan(songRow.indexOf('data-testid="song-sing"'));
@@ -62,7 +76,7 @@ test('the room verdicts reach the tab, and the promise line needs both', () => {
 	expect(home).toContain('const onlyReady = $derived(noMaker || !verdicts.canFetch);');
 	expect(home).toMatch(/\(id\) => mediaStatus\.get\(id\),\s*verdicts\.canMake\s*\)/);
 	// "See all ready songs" only when nothing ready matched, and LAST, after the rows and the widen, so it pushes nothing.
-	expect(home).toContain('{#if cantRows.length && !readyResults.length && library.length}');
+	expect(home).toContain('{#if rawRows.some((m) => cantMakeRow(m)) && !readyResults.length && library.length}');
 	expect(home.indexOf('{#each cantView.shown')).toBeLessThan(home.indexOf('See all ready songs'));
 	expect(home.indexOf('Not it? Search everything')).toBeLessThan(home.indexOf('See all ready songs'));
 	// A can't-make row keeps the button's box, so the row's height holds when a maker drops.

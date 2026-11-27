@@ -45,9 +45,10 @@ async function shoot(phone: Page, name: string): Promise<void> {
 
 const promise = (p: Page) => p.locator('.promise .shown');
 const sings = (p: Page) => p.locator(SEL.songRow).locator(SEL.singAction);
-// Not the `Needs karaoke` heading, which carries the can't-make words as a hidden ghost to hold its height.
+// The words a heading SHOWS: the `Needs karaoke` heading carries the can't-make words as a hidden ghost to hold its
+// height, and shows them itself once every row under it has lost its button (#1138).
 const heading = (p: Page, text: string | RegExp) =>
-	p.locator('h2.grouphead', { hasText: text, hasNot: p.locator('.swap') });
+	p.locator('h2.grouphead:not(:has(.swap)), h2.grouphead .swap > span:not(.ghost)', { hasText: text });
 
 /** Tenet 3: sum every layout shift from now on that no input caused, and where each row sits. */
 async function watchShifts(p: Page): Promise<void> {
@@ -195,6 +196,105 @@ test('an uploads-only worker: a library file keeps Sing, a YouTube result does n
 		await shoot(maya, 'sing-search-uploads-only');
 	} finally {
 		await worker.stop();
+	}
+});
+
+test('a split fleet: the fetcher leaving, then the maker, moves no row under the guest (#1138)', async ({ world }) => {
+	test.setTimeout(240_000);
+	const full = await startFakeWorker(world, { capabilities: [...MAKER, 'fetch:ytdlp'] });
+	const uploads = await startFakeWorker(world, { capabilities: MAKER });
+	const maya = await world.openPhone('Maya');
+	try {
+		// The library's unmade file and one YouTube hit, both under `Needs karaoke` with a Sing button.
+		await maya.route('**/api/search?*', async (r) => {
+			const u = new URL(r.request().url());
+			u.searchParams.set('source', 'local');
+			const res = await r.fetch({ url: u.toString() });
+			const body = (await res.json()) as { results?: unknown[] };
+			await r.fulfill({ response: res, json: { ...body, results: [...(body.results ?? []), YOUTUBE_HIT] } });
+		});
+		await maya.goto('/');
+		await expect(promise(maya)).toHaveText(PROMISE, { timeout: AFTER_GRACE_MS });
+		await search(maya, 'bohemian', '/');
+		const youtubeRow = maya.locator(SEL.songRow, { hasText: YOUTUBE_HIT.title });
+		await expect(sings(maya)).toHaveCount(2);
+		await shoot(maya, 'sing-split-before');
+		const before = await rowTops(maya);
+
+		// Only the fetcher leaves: the YouTube row loses its button where it is, and the upload keeps Sing.
+		await full.stop();
+		await expect(youtubeRow.locator('button'), 'the YouTube hit can no longer be fetched').toHaveCount(0, {
+			timeout: AFTER_GRACE_MS
+		});
+		await expect(sings(maya), 'the upload still offers Sing').toHaveCount(1);
+		await shoot(maya, 'sing-split-fetcher-left');
+		expect(await rowTops(maya), 'every row where it was, the fetcher gone').toEqual(before);
+
+		// Then the maker: nothing can make either row, and still nothing moves.
+		await uploads.stop();
+		await expect(sings(maya), 'no Sing button a pick would die on').toHaveCount(0, { timeout: AFTER_GRACE_MS });
+		await expect(heading(maya, CANT)).toBeVisible();
+		await shoot(maya, 'sing-split-maker-left');
+		expect(await rowTops(maya), 'every row where it was, the maker gone too').toEqual(before);
+	} finally {
+		await full.stop();
+		await uploads.stop();
+	}
+});
+
+test('an uploads-only room gains a fetcher: Sing comes back in place, then one heading when all leave (#1138)', async ({
+	world
+}) => {
+	test.setTimeout(240_000);
+	const uploads = await startFakeWorker(world, { capabilities: MAKER });
+	let full: Awaited<ReturnType<typeof startFakeWorker>> | undefined;
+	const maya = await world.openPhone('Maya');
+	try {
+		await maya.route('**/api/search?*', async (r) => {
+			const u = new URL(r.request().url());
+			u.searchParams.set('source', 'local');
+			const res = await r.fetch({ url: u.toString() });
+			const body = (await res.json()) as { results?: unknown[] };
+			await r.fulfill({ response: res, json: { ...body, results: [...(body.results ?? []), YOUTUBE_HIT] } });
+		});
+		await maya.goto('/');
+		await expect(promise(maya)).toHaveText(ONLY_READY, { timeout: AFTER_GRACE_MS });
+		await search(maya, 'bohemian', '/');
+		const youtubeRow = maya.locator(SEL.songRow, { hasText: YOUTUBE_HIT.title });
+		await expect(youtubeRow).toBeVisible();
+		await expect(heading(maya, CANT)).toHaveCount(1);
+		await expect(sings(maya), 'only the upload offers Sing').toHaveCount(1);
+		const before = await rowTops(maya);
+
+		// A fetcher joins: the YouTube row's Sing comes back in its kept box, with no new search, and nothing moves.
+		full = await startFakeWorker(world, { capabilities: [...MAKER, 'fetch:ytdlp'] });
+		await expect(sings(maya), 'both rows offer Sing again').toHaveCount(2, { timeout: AFTER_GRACE_MS });
+		await expect(heading(maya, CANT), 'no heading says a makeable song cannot be made').toHaveCount(0);
+		await shoot(maya, 'sing-split-fetcher-joined');
+		expect(await rowTops(maya), 'every row where it was, the fetcher here').toEqual(before);
+
+		// Every worker leaves: one can't-make heading speaks for both rows, and still nothing moves.
+		await full.stop();
+		await uploads.stop();
+		await expect(sings(maya)).toHaveCount(0, { timeout: AFTER_GRACE_MS });
+		await expect(heading(maya, CANT), 'one heading, not two the same').toHaveCount(1);
+		await expect(heading(maya, "Can't make these right now")).toHaveCount(1);
+		// And in Chrome's own accessibility tree, what a screen reader reads: one can't-make heading, no empty one (#1392).
+		const cdp = await maya.context().newCDPSession(maya);
+		const { nodes } = (await cdp.send('Accessibility.getFullAXTree')) as {
+			nodes: { ignored: boolean; role?: { value: string }; name?: { value: string } }[];
+		};
+		const heads = nodes.filter((n) => !n.ignored && n.role?.value === 'heading').map((n) => n.name?.value ?? '');
+		expect(
+			heads.filter((h) => CANT.test(h)),
+			heads.join(' | ')
+		).toHaveLength(1);
+		expect(heads, 'an empty heading').not.toContain('');
+		await shoot(maya, 'sing-split-all-left');
+		expect(await rowTops(maya), 'every row where it was, every worker gone').toEqual(before);
+	} finally {
+		await full?.stop();
+		await uploads.stop();
 	}
 });
 
