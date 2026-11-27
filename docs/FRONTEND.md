@@ -194,7 +194,7 @@ That ladder carries four REGISTERS, and a site picks a REGISTER rather than a nu
 
 A DELTA SITE SPELLS THE RUNG THAT MAKES THE RENDERED BOUNDARY LAND IN ITS REGISTER, not the register's own rung, so
 checking a declared token against this table is the wrong check. The app has three such rules, all on the settings
-surface — two in its shell, one on the You scope — all margins on a `card-content` child: they spell `lg` (a GROUP rung) and render 8 + 12 = 20px, which is inter-group.
+surface — two in `settings-cards.css`, one on the You scope — all margins on a `card-content` child: they spell `lg` (a GROUP rung) and render 8 + 12 = 20px, which is inter-group.
 The standing rule below says the compared boundary is the rendered one; this is that rule reaching the table.
 
 And one standing rule: **a boundary must out-rank every boundary nested inside it — and the boundary that gets
@@ -219,7 +219,8 @@ A phone held sideways has ~390px of height and spends most of it on chrome, so t
 rules spend the rung — `.grouphead`'s top margin in `app.css`, `/`'s `.find-row` bottom margin, and the settings
 shell's `.panel` row gap — and each renders on a surface that now carries the arm at the same 480px threshold: `/`
 (both of its two), the song page's Lyrics eyebrow, and all three settings scopes, whose arm is declared once in
-`src/lib/ui/SettingsScope.svelte` because the grid is. `/library` is the exception that proves the register rule
+`src/lib/ui/SettingsScope.svelte` because the grid is (its intra-card half sits in `settings-cards.css`, beside the
+margins it claws back). `/library` is the exception that proves the register rule
 rather than a fourth spend site: every one of its groupheads sits inside the `.refine` disclosure and is pinned back
 to the inter-group rung, so it never renders the section rung at all — it carries the arm anyway, naming
 `.refine .grouphead` explicitly, because at 0,3,0 that pin would otherwise out-cascade the 0,2,0 claw-back.
@@ -1677,8 +1678,18 @@ silently undid a concurrent success. That model lives in `src/lib/settings-write
 scopes perform it; each route aliases `settings` off it so every control reads the name it always read.
 
 `src/lib/ui/SettingsScope.svelte` is the shell all three wear: the heading and its scope line, the one destructive
-Alert a refused write raises, the card grid, and the whole card-rhythm cascade. Those are properties of the
-SURFACE rather than of a scope, and three copies of that cascade would be three places for it to drift.
+Alert a refused write raises, and the grid. The card-rhythm cascade (label and ring margins, the description wrap,
+the closed disclosure and their landscape arm) lives in `src/lib/ui/settings-cards.css`, which only the You and
+machine routes import, so a scope without cards does not ship it.
+
+**The party is flat (#1159, redesign row 8).** No card and no box inside a box: each section is a `.grouphead`
+heading over rows split by `--role-rule` hairlines, as on Sing and Library, and each `<section>` is a region named by
+its heading. A picker row is the name, then the native select showing its value, its chevron in `--role-control` as
+the control's mark; when the two do not fit (a long value at 320) the select wraps onto its own line rather than
+ellipsising (`field-sizing: content` sizes it to its value where supported). A slider row is the name and value over
+the slider; a switch row is the name, then the switch. `Ready for tonight` is the scope's one lit surface, drawn in the
+idle Spotlight look, and the four doors are one hairline list of links. A section pairs like a card at `--bp-lg`. The
+You and machine scopes keep their cards until their own passes.
 
 The reactive grid, and its three measure tokens:
 

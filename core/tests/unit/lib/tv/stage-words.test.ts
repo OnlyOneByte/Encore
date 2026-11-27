@@ -189,20 +189,19 @@ test('the room and machine settings speak guest words, and state the scope once,
 			expect(page, `${f}: ${old}`).not.toContain(old);
 	}
 	const room = strip(read('src/routes/(phone)/settings/+page.svelte'));
-	for (const now of ['>Turns<', 'Skip a quiet phone after', 'Guide ·', '>Quality<', 'Best available'])
+	for (const now of ['>Turns<', 'Skip a quiet phone after', '>Guide<', '>Quality<', 'Best available'])
 		expect(room, now).toContain(now);
-	// Quality lives IN the Sound card, so the page has exactly one "Sound" heading and no "Sound quality" twice.
+	// Quality lives IN the Sound section, so the page has exactly one "Sound" heading and no "Sound quality" twice.
 	expect(room.match(/>Sound</g)?.length).toBe(1);
 	expect(room).not.toContain('Sound quality');
 	expect(room).not.toContain('id="quality"');
-	// The Sound card ends at its OWN close, so a headless card slipped in after it does not count as inside it.
-	const soundAt = room.indexOf('<Card.Root id="sound">');
-	const sound = room.slice(soundAt, room.indexOf('</Card.Root>', soundAt));
+	// The Sound section ends at its OWN close, so a headless section slipped in after it does not count as inside it.
+	const soundAt = room.indexOf('id="sound"');
+	const sound = room.slice(soundAt, room.indexOf('</section>', soundAt));
 	expect(sound).toContain('id="quality-ceiling"');
-	expect(sound.match(/<Card\.(Root|Title)\b/g), 'one card, one heading').toEqual(['<Card.Root', '<Card.Title']);
-	// The grace VALUE wraps as one piece, separator included: at 320 `1 hr 30 min` broke after its first word, and
-	// then the `·` sat alone at the end of the first line.
-	expect(room).toContain('<span class="value">· {graceLabel}</span>');
+	expect(sound.match(/<(section|h2)\b/g), 'one section, one heading').toEqual(['<h2']);
+	// The grace VALUE wraps as one piece: at 320 `1 hr 30 min` broke after its first word.
+	expect(room).toContain('<span class="value">{graceLabel}</span>');
 	expect(room).toMatch(/\.value \{\s*white-space: nowrap;/);
 	expect(strip(read('src/lib/components/GuidingTrack.svelte'))).not.toContain('Guiding track');
 });
