@@ -752,14 +752,13 @@
 				{/snippet}
 				{#snippet unmade(m: Media)}
 					{@const r = readinessFor(m)}
-					{@const live = liveOf(m.id)}
 					<SongRow
 						{...rowMeta(m)}
 						flat
 						readiness={r}
-						pct={live?.pct ?? 0}
-						status={live?.status}
-						unservable={live?.unservable}
+						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
+						unservable={liveOf(m.id)?.unservable}
 						inQueue={inMyQueue(m.id)}
 						processable={isProcessableSource(m.source)}
 						cantMake={cantMakeRow(m)}
