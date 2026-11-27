@@ -282,6 +282,11 @@ carries the row grammar's layout and none of its colour for exactly this reason.
   The sanctioned form is `:global()` on the primitive's own `data-slot`, and
   Reach is the thing to check. A `:global()` that keys on a shared
   attribute must be ANCHORED under a scoped class, or it matches every such element in the app.
+- **A component that measures itself on mount moves on hydration.** Bits' slider defaults to `contain`, which keeps
+  the thumb inside the rail by measuring both, so the server drew the thumb on a 0-100 scale and it jumped 10-13px
+  after hydration (#1404). `src/lib/components/ui/slider/slider.svelte` sets `thumbPositioning="exact"` and draws
+  contain's geometry in CSS from `--p`, the value's fraction, so the server and the client paint the same box;
+  `probe/slider-cls.spec.ts` holds a cold `/settings` load to no thumb-sourced shift.
 - **A class handed to a component is stripped at the caller.** State that a component cannot carry on a variant
   travels as a `data-*` attribute the component forwards (`src/lib/components/SongRow.svelte` does this for its
   three row states).

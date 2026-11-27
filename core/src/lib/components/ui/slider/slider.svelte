@@ -18,6 +18,13 @@
 	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & {
 		variant?: 'field' | 'guiding';
 	} = $props();
+
+	/* NO LAYOUT SHIFT ON LOAD (#1404). Bits' default `contain` keeps the thumb inside the rail by MEASURING the thumb and
+	   rail, which the server cannot, so its render used a 0-100 scale and the thumb jumped up to half its width on mount.
+	   `exact` never measures; the CSS below draws the same contained geometry from `--p`, the value's fraction. */
+	const min = $derived(restProps.min ?? 0);
+	const max = $derived(restProps.max ?? 100);
+	const p = $derived(typeof value === 'number' && max > min ? (value - min) / (max - min) : 0);
 </script>
 
 <!-- Discriminated unions + destructuring (required for bindable) do not get along, so we shut TypeScript up by casting
@@ -28,6 +35,8 @@
 	data-slot="slider"
 	data-variant={variant}
 	orientation={orientation}
+	thumbPositioning="exact"
+	style="--p: {p}"
 	class={cn(
 		'data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col',
 		className
@@ -76,6 +85,21 @@
 		min-height: var(--tap);
 		width: 100%;
 		cursor: pointer;
+		/* Half the thumb's width (`size-[28px]` here, `size-[22px]` on the guiding variant). */
+		--thumb-r: 14px;
+	}
+	:global([data-slot='slider'][data-variant='guiding']) {
+		--thumb-r: 11px;
+	}
+	/* `contain`'s geometry, drawn from `--p`: contain puts the thumb's centre, and the range's end, at r + p(W - 2r), r the
+	   thumb's half-width. The thumb's `left` is that one length, as contain's was, so it lands on the same sub-pixel;
+	   the range's end is pulled back by (1 - 2p)r, within 0.1px of contain's and always under the thumb. Server and
+	   client render the same box. !important because Bits writes both as inline style. */
+	:global([data-slot='slider-thumb']) {
+		left: calc(var(--p) * (100% - 2 * var(--thumb-r)) + var(--thumb-r)) !important;
+	}
+	:global([data-slot='slider-range']) {
+		right: calc((1 - var(--p)) * 100% - (1 - 2 * var(--p)) * var(--thumb-r)) !important;
 	}
 	/* GuidingTrack's rail is thinner; its thumb inverts the palette — ink filled, accent ringed. Both heights grew by
 	   2px with the ring below rather than thinning the fill: app.css sets `box-sizing: border-box` on `*`, so the
