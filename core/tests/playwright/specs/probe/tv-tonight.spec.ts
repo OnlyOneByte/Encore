@@ -127,10 +127,19 @@ async function showNight(host: Page, tv: Page): Promise<number> {
 	await host.goto('/queue');
 	const button = host.getByTestId('show-night');
 	await expect(button).toBeVisible();
-	const tappedAt = Date.now();
+	// The tap is the real pointerdown, taken in the page (docs/E2E.md): timed from Node, Playwright's click spent up to
+	// 295 ms reaching the page under load (#1412).
+	await host.evaluate(() => {
+		const w = window as unknown as { tappedAt?: number };
+		delete w.tappedAt;
+		const stamp = (e: Event) => (w.tappedAt ??= performance.timeOrigin + e.timeStamp);
+		document.addEventListener('pointerdown', stamp, { capture: true, once: true });
+	});
 	await button.click();
 	await expect(tv.getByTestId('tv-tonight')).toBeVisible();
-	const at = await tv.evaluate(() => (window as unknown as { tonightAt?: number }).tonightAt ?? 0);
+	// NaN, not a pass, when either stamp is missing.
+	const at = await tv.evaluate(() => (window as unknown as { tonightAt?: number }).tonightAt ?? NaN);
+	const tappedAt = await host.evaluate(() => (window as unknown as { tappedAt?: number }).tappedAt ?? NaN);
 	return at - tappedAt;
 }
 
