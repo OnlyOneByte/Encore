@@ -92,6 +92,8 @@ async function startSampling(tv: Page): Promise<void> {
 		},
 		{ row: SEL.lyricsRow, rowCurrent: SEL.lyricsRowCurrent, active: SEL.activeWord }
 	);
+	// Nothing is sampled before the page's first frame, which under load can come after the change a caller sends next.
+	await tv.waitForFunction(() => (window as unknown as { samples: Sample[] }).samples.length > 0);
 }
 
 /** Each pair of samples where the current row sits lower on screen than before, so the reel moved back. A later row
@@ -251,7 +253,8 @@ test("P32 · the host's Earlier taps move every line on the TV live, with no re-
 	// wrong way reads as -0.2).
 	const raw = fittedLead(all, nudged, Infinity) - fittedLead(all, plain, tapped);
 	const shift = raw - GRID * Math.round(raw / GRID);
-	expect(Math.abs(shift - 0.2), `the rows moved ${shift.toFixed(2)} s, not 0.2`).toBeLessThanOrEqual(0.1);
+	// The leads sit on a 0.05 s grid, so 0.1 off is in, and a float sum such as 0.30000000000000004 must not tip it.
+	expect(Math.abs(shift - 0.2), `the rows moved ${shift.toFixed(2)} s, not 0.2`).toBeLessThanOrEqual(0.1 + 1e-9);
 	// The words and their document are untouched: nothing was re-timed.
 	const after = await audit();
 	expect({ ref: after.lyricsRef, rev: after.lyricsEditRev }).toEqual({

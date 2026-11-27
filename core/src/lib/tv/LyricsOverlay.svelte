@@ -15,6 +15,7 @@
 		rowsOf,
 		chorusLines,
 		lineBounds,
+		holdFloor,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
@@ -119,6 +120,9 @@
 	// backgrounded tab with a stopped rAF has no accumulated position to lose.
 	let anchoredAt = 0;
 	let now = $state(0);
+	let anchorPos = 0;
+	let anchorPlaying = false;
+	let floorSec = 0;
 	$effect(() => {
 		/* Re-anchor whenever the authoritative position ticks in, so the sweep never drifts far — AND whenever
 		   `playing` flips, which is the whole of docs/FRONTEND.md#a-dependency-set-is-not-a-value and the third
@@ -132,6 +136,17 @@
 		   depends on, which makes a stale anchor unrepresentable rather than merely unlikely. */
 		void positionSec;
 		void playing;
+		// A late anchor holds what the last frame drew rather than stepping the row back (#1401). Paused draws the
+		// anchor exactly, and a new song's is a jump.
+		const drawn = drawPosition({
+			positionSec: anchorPos,
+			playing: anchorPlaying,
+			anchoredAtMs: anchoredAt,
+			nowMs: untrack(() => now)
+		});
+		floorSec = holdFloor(anchorPlaying ? Math.max(floorSec, drawn) : drawn, positionSec);
+		anchorPos = positionSec;
+		anchorPlaying = playing;
 		anchoredAt = performance.now();
 		now = anchoredAt;
 	});
@@ -200,8 +215,9 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// The HIGHLIGHT's position: playback position plus the lead. `displayPos` itself stays honest.
-	const cuePos = $derived(displayPos + leadSec);
+	// The HIGHLIGHT's position: playback position, held through a late anchor while playing, plus the lead.
+	// `displayPos` itself stays honest.
+	const cuePos = $derived((playing ? Math.max(floorSec, displayPos) : displayPos) + leadSec);
 
 	// Which row of the reading on screen each row of the held fix stands for, so a dropped row is not a step back.
 	const heldRows = $derived(heldDoc && doc ? rowsOf(doc, heldDoc) : null);

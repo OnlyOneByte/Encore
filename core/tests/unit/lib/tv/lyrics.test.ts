@@ -12,8 +12,11 @@ import {
 	fixStepsBack,
 	rowsOf,
 	nudgedLeadSec,
+	holdFloor,
+	HOLD_BACK_SEC,
 	type LyricsDoc
 } from '$lib/tv/lyrics';
+import { SEEK_JUMP_SEC } from '$lib/tv/playhead-sync';
 import { clampLyricsOffsetMs } from '$lib/contract';
 
 test("the host's nudge rides on the room's lead: Earlier lights the words sooner, Later after", () => {
@@ -25,6 +28,18 @@ test("the host's nudge rides on the room's lead: Earlier lights the words sooner
 test('a nudge is read onto the 50 ms grid and into 3 s either way; anything else is no nudge', () => {
 	expect([-230, 74, 76, 99_999, -99_999].map(clampLyricsOffsetMs)).toEqual([-250, 50, 100, 3000, -3000]);
 	expect([NaN, Infinity, '50', null, undefined, -0.1].map(clampLyricsOffsetMs)).toEqual([0, 0, 0, 0, 0, 0]);
+});
+
+test('#1401 a late anchor a little behind the drawn position holds it; a real jump back draws at once', () => {
+	// Drawn 4.82 s, then an anchor read late says 4.70: drawn as is, the row steps back over the 4.8 s line start.
+	expect(holdFloor(4.82, 4.7)).toBe(4.82);
+	// A dip of HOLD_BACK_SEC or more is a jump back: no floor.
+	expect(holdFloor(20, 20 - HOLD_BACK_SEC)).toBe(0);
+	expect(holdFloor(20, 5)).toBe(0);
+	// An anchor ahead of the drawn position is past its own floor.
+	expect(Math.max(holdFloor(4.7, 4.82), 4.82)).toBe(4.82);
+	// Every room seek is a jump of more than SEEK_JUMP_SEC, so none is ever held.
+	expect(HOLD_BACK_SEC).toBeLessThan(SEEK_JUMP_SEC);
 });
 
 test('a lyrics fix swaps in only between lines, and only the rows it rewrote are fresh', () => {

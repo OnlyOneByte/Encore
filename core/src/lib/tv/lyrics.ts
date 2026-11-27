@@ -344,6 +344,16 @@ export function activeLineIndex(lines: LyricLine[], pos: number): number {
 	return active;
 }
 
+/** Below a room seek (`SEEK_JUMP_SEC`, 1.5 s), above a slow TV's telemetry jitter (#1401). */
+export const HOLD_BACK_SEC = 0.5;
+
+/** A new anchor read late lands a little behind what the reel drew, and drawing it stepped the row back a line
+ *  (#1401). A dip under `HOLD_BACK_SEC` holds what was drawn until playback passes it; a bigger one is a jump back,
+ *  drawn at once (0 floors nothing). An anchor ahead of the drawn position outruns its floor. */
+export function holdFloor(drawnSec: number, anchorSec: number): number {
+	return drawnSec - anchorSec < HOLD_BACK_SEC ? drawnSec : 0;
+}
+
 /** True when `pos` is inside no line of `doc` (before the first, after the last, or in a gap). A null doc has none. */
 export function betweenLines(doc: Pick<LyricsDoc, 'lines'> | null, pos: number): boolean {
 	return !doc?.lines.some((l) => {
