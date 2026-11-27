@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount, setContext, untrack } from 'svelte';
 	import { NowLineSaves } from '$lib/now-line-saves';
-	import { toast } from 'svelte-sonner';
+	import { toast, whenToastNeeded } from '$lib/ui/toast';
 	import {
 		SINGER_COLORS,
 		canRetryPlay,
@@ -35,7 +35,8 @@
 	   lazy `import()` would only add a fetch before the dock can paint. */
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
-	import { Toaster } from '$lib/components/ui/sonner';
+	import type { Toaster as ToasterComponent } from '$lib/components/ui/sonner';
+	import toasterUrl from 'virtual:toaster-url';
 
 	let { children } = $props();
 
@@ -277,6 +278,28 @@
 	/* Only phone routes mount this layout, so the TV never opens a `role=phone` socket. It mounts again on arrival
 	   from /admin or /metrics, and `connect()` is idempotent. */
 	onMount(() => void room.connect());
+	/* The toaster loads when a toast is wanted, so no phone tab ships it before then (#1309); sonner holds every toast
+	   pushed meanwhile and shows them on mount (below). The service worker precaches the chunk. A failed fetch is tried
+	   again on the next toast or when the phone is back online, under a new URL: a browser keeps a failed import()
+	   failed for the page's life. */
+	let Toaster = $state<typeof ToasterComponent>();
+	onMount(() => {
+		let attempt = 0;
+		let loading = false;
+		const load = () => {
+			if (Toaster || loading) return;
+			loading = true;
+			const url = attempt++ ? `${toasterUrl}?retry=${attempt}` : toasterUrl;
+			import(/* @vite-ignore */ url).then(
+				(m: { Toaster: typeof ToasterComponent }) => void (Toaster = m.Toaster),
+				() => {
+					loading = false;
+					window.addEventListener('online', load, { once: true });
+				}
+			);
+		};
+		whenToastNeeded(load);
+	});
 
 	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. BOTH READS STAY INSIDE
 	   THIS EFFECT: a resume re-delivers an equal `positionSec`, and writing an equal primitive notifies nothing, so a
@@ -478,16 +501,18 @@
 	to 126px of the 390 viewport and the one sentence wrapped onto four lines. So each side is named on its own: on a
 	phone the left and right are the "You're up" sheet's gutter token (--sheet-gutter, sonner's own 16px), so the two
 	stacked notices' edges line up; the top stays at the library's default. -->
-<Toaster
-	position="bottom-center"
-	offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
-	mobileOffset={{
-		bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
-		left: 'var(--sheet-gutter)',
-		right: 'var(--sheet-gutter)'
-	}}
-	style="--width: min(92vw, var(--sheet-max));"
-/>
+{#if Toaster}
+	<Toaster
+		position="bottom-center"
+		offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
+		mobileOffset={{
+			bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
+			left: 'var(--sheet-gutter)',
+			right: 'var(--sheet-gutter)'
+		}}
+		style="--width: min(92vw, var(--sheet-max));"
+	/>
+{/if}
 
 <div class="app-shell">
 	{#if showPage}

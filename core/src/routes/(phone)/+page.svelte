@@ -26,7 +26,7 @@
 	import { resolve } from '$app/paths';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
-	import { toast } from 'svelte-sonner';
+	import { toast } from '$lib/ui/toast';
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';

@@ -794,7 +794,13 @@ scrollport rather than from the shell's padding.
 The phone tabs live in the `src/routes/(phone)/` route group; `/tv`, `/admin`, `/metrics` and `/components` sit
 outside it, the same set the phone inventory exempts from the phone route walk. The group's layout is the only
 place that opens a `role=phone` socket and renders the dock, toaster and turn sheets, so none of that reaches the
-television: a `role=phone` socket on `/tv` would register the television as a singer present in the room.
+television: a `role=phone` socket on `/tv` would register the television as a singer present in the room. The
+toaster itself loads only when a toast is wanted: import `toast` from `$lib/ui/toast`, never from
+`svelte-sonner`, or that toast waits for another one to load the toaster (`toast-lazy.test.ts`). Sonner holds
+every toast pushed before the toaster mounts. If the chunk fails to load (a first visit, before the service
+worker has precached it), the next toast or the phone coming back online fetches it again under
+`?retry=N`, because a browser keeps a failed `import()` of one URL failed for the page's life. The chunk's URL
+comes from `config/toaster-url-plugin.ts` (`probe/toast-lazy.spec.ts`).
 
 The root layout holds only the head and imports no stylesheet. The phone layout imports `app.css`, so `app.css`
 and the dock ship as one sheet; every other surface's own `+layout.svelte` imports `screens.css`, which is

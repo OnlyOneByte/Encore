@@ -44,7 +44,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import * as Empty from '$lib/components/ui/empty';
-	import { toast } from 'svelte-sonner';
+	import { toast } from '$lib/ui/toast';
 	import { rememberedKey } from '$lib/stores/remembered-key';
 	import { isHostPhone } from '$lib/stores/host';
 

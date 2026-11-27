@@ -63,7 +63,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
-	import { toast } from 'svelte-sonner';
+	import { toast } from '$lib/ui/toast';
 	import { isHostPhone } from '$lib/stores/host';
 	import type { TransportControls } from '$lib/transport-controls';
 
