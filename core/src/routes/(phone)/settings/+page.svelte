@@ -3,7 +3,7 @@
 	heading states on arrival. Everything here is written to `room_settings` and reaches everyone in this room.
 	docs/FRONTEND.md#settings -->
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
+	import { resolve } from '$app/paths';
 	import { Badge } from '$lib/components/ui/badge';
 	import Icon from '$lib/ui/Icon.svelte';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
@@ -13,7 +13,6 @@
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import FieldSlider from '$lib/ui/FieldSlider.svelte';
-	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import {
 		SEPARATOR_ENGINES,
@@ -114,396 +113,477 @@
 	failed={writes.failed}
 	locked={data.locked}
 >
-	<!-- `Card.Title` renders a <div>, so every styled card title here was a visual heading with no heading SEMANTICS,
-		and the whole outline was its h1. Screen-reader users navigate a long dashboard by heading, so
-		`role="heading" aria-level={2}` is added at each call site rather than re-vendoring the primitive, which
-		forwards restProps for exactly this. Level 2 because PageHeader owns the single h1.
-		NO per-card scope mark here: every card on this page reaches the same room, and the sticky header already says
-		"Everyone in this room", so a mark on each card was the same line five times. -->
-	<!-- FIRST, for the host only (proposal 39): the one check before guests arrive. A guest has no use for it. -->
+	<!-- FLAT SECTIONS ON THE GROUND (#1159, option A): a section is its `.grouphead` h2 over hairline rows, as on Sing and
+		Library, with no card and no box inside a box. Level 2 because PageHeader owns the single h1. -->
+	<!-- FIRST, for the host only (proposal 39): the one check before guests arrive, so it is this screen's one lit
+		surface, drawn in the idle Spotlight look. A link, so it cannot be a <Spotlight> section. -->
 	{#if !data.locked}
-		<Button variant="outline" size="block" href="/settings/ready">
-			<Icon name="check" />
-			Ready for tonight
-		</Button>
+		<a class="ready" href={resolve('/settings/ready')}>
+			<span><strong>Ready for tonight</strong><small>The one check before guests arrive</small></span>
+			<Icon name="chevron-right" />
+		</a>
 	{/if}
 
-	<Card.Root id="rotation">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Turns</Card.Title>
-		</Card.Header>
-		<Card.Content>
+	<section class="settings-section" id="rotation" aria-labelledby="rotation-h">
+		<h2 class="grouphead" id="rotation-h">Turns</h2>
+		<div class="rows">
 			<!-- FIRST, because this is the one room setting changed mid-song: four code sites say so, `queue-order.ts`'s
 				"safe to select mid-party" among them. -->
-			<SelectField
-				id="queue-order"
-				label="Who sings next"
-				value={settings.room.queueOrder}
-				options={QUEUE_ORDERS}
-				pick={(v) => onroom({ queueOrder: v as QueueOrderId })}
-			/>
+			<div class="pick">
+				<SelectField
+					id="queue-order"
+					label="Who sings next"
+					value={settings.room.queueOrder}
+					options={QUEUE_ORDERS}
+					pick={(v) => onroom({ queueOrder: v as QueueOrderId })}
+				/>
+			</div>
 
-			<Field.Label for="presence-grace">
-				Skip a quiet phone after <span class="value">· {graceLabel}</span>
-			</Field.Label>
-			<FieldSlider
-				id="presence-grace"
-				label="Skip a quiet phone after"
-				type="single"
-				min={MIN_PRESENCE_GRACE_MINUTES}
-				max={MAX_PRESENCE_GRACE_MINUTES}
-				step={15}
-				value={settings.room.presenceGraceMinutes}
-				onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
-				onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
-			/>
-		</Card.Content>
-	</Card.Root>
+			<div class="stack">
+				<Field.Label for="presence-grace">
+					<span>Skip a quiet phone after</span><span class="value">{graceLabel}</span>
+				</Field.Label>
+				<FieldSlider
+					id="presence-grace"
+					label="Skip a quiet phone after"
+					type="single"
+					min={MIN_PRESENCE_GRACE_MINUTES}
+					max={MAX_PRESENCE_GRACE_MINUTES}
+					step={15}
+					value={settings.room.presenceGraceMinutes}
+					onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
+					onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
+				/>
+			</div>
+		</div>
+	</section>
 
 	<!-- SECOND, up from last on the old Party panel, and the reason is a documented label collision rather than taste:
 		`GuidingTrack.svelte` records that this room DEFAULT and /queue's per-turn override wear the same label in the
 		same register, so it is the control most likely to be mis-scoped — and it was the deepest control on the
 		deepest panel, 1025.8px of scrolling from the top. It is on the first screen now. -->
-	<Card.Root id="sound">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Sound</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<Field.Label for="guide-default">
-				Guide · {Math.round(settings.room.guideLevelDefault * 100)}%
-			</Field.Label>
-			<FieldSlider
-				id="guide-default"
-				label="Default guide level for the room"
-				type="single"
-				min={0}
-				max={100}
-				step={1}
-				value={Math.round(settings.room.guideLevelDefault * 100)}
-				onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
-				onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
-			/>
+	<section class="settings-section" id="sound" aria-labelledby="sound-h">
+		<h2 class="grouphead" id="sound-h">Sound</h2>
+		<div class="rows">
+			<div class="stack">
+				<Field.Label for="guide-default">
+					<span>Guide</span><span class="value">{Math.round(settings.room.guideLevelDefault * 100)}%</span>
+				</Field.Label>
+				<FieldSlider
+					id="guide-default"
+					label="Default guide level for the room"
+					type="single"
+					min={0}
+					max={100}
+					step={1}
+					value={Math.round(settings.room.guideLevelDefault * 100)}
+					onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
+					onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
+				/>
+			</div>
 
 			<label class="check" for="loudness-norm">
+				Match song loudness
 				<Switch
 					id="loudness-norm"
 					checked={settings.room.loudnessNormalization}
 					onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
 				/>
-				Match song loudness
 			</label>
 
-			<!-- LAST IN SOUND, because it is how the music is made, not how loud: it was its own card titled "Sound
-				quality" beside the machine door, and two cards cannot both be "Sound". It no longer sits above that door,
-				so `capAboveDefault`'s line below is what carries the cross-scope relation now. -->
-			<Field.Label for="quality-ceiling">Quality</Field.Label>
-			<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
-			<NativeSelect
-				id="quality-ceiling"
-				value={settings.room.maxQualityRank ?? ''}
-				onchange={(e) =>
-					onroom({
-						maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
-					})}
-			>
-				<option value="">Best available</option>
-				{#each qualityCeilings as c (c.rank)}
-					<option value={c.rank}>Up to {c.label}</option>
-				{/each}
-			</NativeSelect>
+			<!-- LAST IN SOUND, because it is how the music is made, not how loud: two sections cannot both be "Sound".
+				`capAboveDefault`'s line below carries the cross-scope relation to the machine scope. -->
+			<div class="pick">
+				<Field.Label for="quality-ceiling">Quality</Field.Label>
+				<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
+				<NativeSelect
+					id="quality-ceiling"
+					value={settings.room.maxQualityRank ?? ''}
+					onchange={(e) =>
+						onroom({
+							maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+						})}
+				>
+					<option value="">Best available</option>
+					{#each qualityCeilings as c (c.rank)}
+						<option value={c.rank}>Up to {c.label}</option>
+					{/each}
+				</NativeSelect>
 
-			{#if capAboveDefault}
-				<p class="warn">At or above the server default, so it changes nothing.</p>
-			{/if}
-		</Card.Content>
-	</Card.Root>
+				{#if capAboveDefault}
+					<p class="warn">At or above the server default, so it changes nothing.</p>
+				{/if}
+			</div>
+		</div>
+	</section>
 
-	<Card.Root id="tv">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>The TV</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<div class="pair">
-				<div class="cell">
-					<SelectField
-						id="tv-background"
-						label="Background"
-						value={settings.room.tvBackgroundStyle}
-						options={TV_BACKGROUND_STYLES}
-						pick={(v) => onroom({ tvBackgroundStyle: v as TvBackgroundStyle })}
-					/>
-				</div>
-				<div class="cell">
-					<SelectField
-						id="tv-progress"
-						label="Song progress"
-						value={settings.room.tvProgressStyle}
-						options={TV_PROGRESS_STYLES}
-						pick={(v) => onroom({ tvProgressStyle: v as TvProgressStyle })}
-					/>
-				</div>
+	<section class="settings-section" id="tv" aria-labelledby="tv-h">
+		<h2 class="grouphead" id="tv-h">The TV</h2>
+		<div class="rows">
+			<div class="pick">
+				<SelectField
+					id="tv-background"
+					label="Background"
+					value={settings.room.tvBackgroundStyle}
+					options={TV_BACKGROUND_STYLES}
+					pick={(v) => onroom({ tvBackgroundStyle: v as TvBackgroundStyle })}
+				/>
 			</div>
 
 			<!-- Gated, not disabled: a control that does nothing for the current selection implies it does. -->
 			{#if settings.room.tvBackgroundStyle === 'visualizer'}
-				<SelectField
-					id="tv-visualizer"
-					label="Which visualizer"
-					value={settings.room.tvVisualizer}
-					options={TV_VISUALIZERS}
-					pick={(v) => onroom({ tvVisualizer: v as TvVisualizerId })}
-				/>
+				<div class="pick">
+					<SelectField
+						id="tv-visualizer"
+						label="Which visualizer"
+						value={settings.room.tvVisualizer}
+						options={TV_VISUALIZERS}
+						pick={(v) => onroom({ tvVisualizer: v as TvVisualizerId })}
+					/>
+				</div>
 			{/if}
 
 			<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
 			{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
-				<!-- Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders
-						differently. It arrives as a custom property, never interpolated into
-						`background:`. -->
-				<Field.Label data-inline for="tv-background-color">
-					Background colour
-					<span class="swatch" style="--swatch:{settings.room.tvBackgroundColor}" aria-hidden="true"></span>
-				</Field.Label>
-				<!-- oninput/onchange split as every slider here does: the native picker fires `input` continuously, so the swatch
-						tracks live while only `change` writes and broadcasts. -->
-				<input
-					id="tv-background-color"
-					class="colour"
-					type="color"
-					value={settings.room.tvBackgroundColor}
-					oninput={(e) => liveRoom('tvBackgroundColor', e.currentTarget.value)}
-					onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
-				/>
+				<div class="stack">
+					<!-- Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders
+						differently. It arrives as a custom property, never interpolated into `background:`. -->
+					<Field.Label data-inline for="tv-background-color">
+						Background colour
+						<span class="swatch" style="--swatch:{settings.room.tvBackgroundColor}" aria-hidden="true"></span>
+					</Field.Label>
+					<!-- oninput/onchange split as every slider here does: the native picker fires `input` continuously, so the
+						swatch tracks live while only `change` writes and broadcasts. -->
+					<input
+						id="tv-background-color"
+						class="colour"
+						type="color"
+						value={settings.room.tvBackgroundColor}
+						oninput={(e) => liveRoom('tvBackgroundColor', e.currentTarget.value)}
+						onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
+					/>
+				</div>
 
-				<Field.Label for="tv-background-dim">
-					Darken the stage · {Math.round(settings.room.tvBackgroundDim * 100)}%
-				</Field.Label>
-				<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown as a percent,
+				<div class="stack">
+					<Field.Label for="tv-background-dim">
+						<span>Darken the stage</span><span class="value">{Math.round(settings.room.tvBackgroundDim * 100)}%</span>
+					</Field.Label>
+					<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown as a percent,
 						spanning the full range the server clamp accepts. -->
-				<FieldSlider
-					id="tv-background-dim"
-					label="TV background dim"
-					type="single"
-					min={0}
-					max={100}
-					step={1}
-					value={Math.round(settings.room.tvBackgroundDim * 100)}
-					onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
-					onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
-				/>
+					<FieldSlider
+						id="tv-background-dim"
+						label="TV background dim"
+						type="single"
+						min={0}
+						max={100}
+						step={1}
+						value={Math.round(settings.room.tvBackgroundDim * 100)}
+						onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
+						onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
+					/>
+				</div>
 			{/if}
 
+			<div class="pick">
+				<SelectField
+					id="tv-progress"
+					label="Song progress"
+					value={settings.room.tvProgressStyle}
+					options={TV_PROGRESS_STYLES}
+					pick={(v) => onroom({ tvProgressStyle: v as TvProgressStyle })}
+				/>
+			</div>
+
 			<label class="check" for="tv-reactions">
+				Reactions on TV
 				<Switch
 					id="tv-reactions"
 					checked={settings.room.tvReactions}
 					onCheckedChange={(v) => onroom({ tvReactions: v })}
 				/>
-				Reactions on TV
 			</label>
 
 			<label class="check" for="tv-chorus">
-				<Switch id="tv-chorus" checked={settings.room.tvChorus} onCheckedChange={(v) => onroom({ tvChorus: v })} />
 				Show the chorus to the room
+				<Switch id="tv-chorus" checked={settings.room.tvChorus} onCheckedChange={(v) => onroom({ tvChorus: v })} />
 			</label>
 
 			<label class="check" for="song-intro-on">
+				Song intro before each turn
 				<Switch
 					id="song-intro-on"
 					checked={settings.room.songIntroEnabled}
 					onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
 				/>
-				Song intro before each turn
 			</label>
 
-			<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
-				Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
-			</Field.Label>
-			<!-- The range MUST match the server clamp exactly, or the UI silently refuses values it takes. -->
-			<FieldSlider
-				id="song-intro-ms"
-				label="Song intro length"
-				type="single"
-				min={MIN_SONG_INTRO_MS}
-				max={MAX_SONG_INTRO_MS}
-				step={SONG_INTRO_STEP_MS}
-				disabled={!settings.room.songIntroEnabled}
-				value={settings.room.songIntroMs}
-				onValueChange={(v) => liveRoom('songIntroMs', v)}
-				onValueCommit={(v) => onroom({ songIntroMs: v })}
-			/>
-		</Card.Content>
-	</Card.Root>
+			<div class="stack">
+				<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
+					<span>Song intro duration</span><span class="value">{(settings.room.songIntroMs / 1000).toFixed(1)}s</span>
+				</Field.Label>
+				<!-- The range MUST match the server clamp exactly, or the UI silently refuses values it takes. -->
+				<FieldSlider
+					id="song-intro-ms"
+					label="Song intro length"
+					type="single"
+					min={MIN_SONG_INTRO_MS}
+					max={MAX_SONG_INTRO_MS}
+					step={SONG_INTRO_STEP_MS}
+					disabled={!settings.room.songIntroEnabled}
+					value={settings.room.songIntroMs}
+					onValueChange={(v) => liveRoom('songIntroMs', v)}
+					onValueCommit={(v) => onroom({ songIntroMs: v })}
+				/>
+			</div>
+		</div>
+	</section>
 
-	<!-- The TV's second half, so it stays directly after it. The tallest card on this scope. -->
-	<Card.Root id="lyrics">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Lyrics on the TV</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<div class="pair">
-				<div class="cell">
-					<SelectField
-						id="lyrics-highlight"
-						label="Highlight"
-						value={settings.room.lyricsHighlight}
-						options={LYRICS_HIGHLIGHTS}
-						pick={(v) => onroom({ lyricsHighlight: v as LyricsHighlightId })}
-					/>
-				</div>
-				<div class="cell">
-					<SelectField
-						id="lyrics-ball"
-						label="Marker"
-						value={settings.room.lyricsBall}
-						options={LYRICS_BALL_STYLES}
-						pick={(v) => onroom({ lyricsBall: v as LyricsBallStyleId })}
-					/>
-				</div>
+	<!-- The TV's second half, so it stays directly after it. The tallest section on this scope. -->
+	<section class="settings-section" id="lyrics" aria-labelledby="lyrics-h">
+		<h2 class="grouphead" id="lyrics-h">Lyrics on the TV</h2>
+		<div class="rows">
+			<div class="pick">
+				<SelectField
+					id="lyrics-highlight"
+					label="Highlight"
+					value={settings.room.lyricsHighlight}
+					options={LYRICS_HIGHLIGHTS}
+					pick={(v) => onroom({ lyricsHighlight: v as LyricsHighlightId })}
+				/>
+			</div>
+			<div class="pick">
+				<SelectField
+					id="lyrics-ball"
+					label="Marker"
+					value={settings.room.lyricsBall}
+					options={LYRICS_BALL_STYLES}
+					pick={(v) => onroom({ lyricsBall: v as LyricsBallStyleId })}
+				/>
+				<!-- Say when a choice is not honoured: under line-only timing a word treatment has nothing to light, and a
+					picker that silently does nothing is worse than one that explains itself. -->
+				{#if lyricsClamped}
+					<p class="warn">
+						No word timings on this server, so it shows <strong>{resolvedHighlight}</strong>{resolvedBall
+							? ''
+							: ' with no marker'}.
+					</p>
+				{/if}
+			</div>
+			<div class="pick">
+				<SelectField
+					id="lyrics-font"
+					label="Font"
+					value={settings.room.lyricsFont}
+					options={LYRICS_FONTS}
+					pick={(v) => onroom({ lyricsFont: v as LyricsFontId })}
+				/>
+			</div>
+			<div class="pick">
+				<SelectField
+					id="lyrics-case"
+					label="Letter case"
+					value={settings.room.lyricsCase}
+					options={LYRICS_CASES}
+					pick={(v) => onroom({ lyricsCase: v as LyricsCaseId })}
+				/>
 			</div>
 
-			<!-- Say when a choice is not honoured: under line-only timing a word treatment has nothing to light, and a picker
-					that silently does nothing is worse than one that explains itself. -->
-			{#if lyricsClamped}
-				<p class="warn">
-					No word timings on this server, so it shows <strong>{resolvedHighlight}</strong>{resolvedBall
-						? ''
-						: ' with no marker'}.
-				</p>
-			{/if}
-
-			<div class="pair">
-				<div class="cell">
-					<SelectField
-						id="lyrics-font"
-						label="Font"
-						value={settings.room.lyricsFont}
-						options={LYRICS_FONTS}
-						pick={(v) => onroom({ lyricsFont: v as LyricsFontId })}
-					/>
-				</div>
-				<div class="cell">
-					<SelectField
-						id="lyrics-case"
-						label="Letter case"
-						value={settings.room.lyricsCase}
-						options={LYRICS_CASES}
-						pick={(v) => onroom({ lyricsCase: v as LyricsCaseId })}
-					/>
-				</div>
+			<div class="stack">
+				<Field.Label for="lyrics-scale">
+					<span>Lyric size</span><span class="value" data-wrap>{settings.room.lyricsScalePct}% of the TV's default</span
+					>
+				</Field.Label>
+				<FieldSlider
+					id="lyrics-scale"
+					label="Lyric size on the TV"
+					type="single"
+					min={MIN_LYRICS_SCALE_PCT}
+					max={MAX_LYRICS_SCALE_PCT}
+					step={5}
+					value={settings.room.lyricsScalePct}
+					onValueChange={(v) => liveRoom('lyricsScalePct', v)}
+					onValueCommit={(v) => onroom({ lyricsScalePct: v })}
+				/>
 			</div>
 
-			<Field.Label for="lyrics-scale">Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label>
-			<FieldSlider
-				id="lyrics-scale"
-				label="Lyric size on the TV"
-				type="single"
-				min={MIN_LYRICS_SCALE_PCT}
-				max={MAX_LYRICS_SCALE_PCT}
-				step={5}
-				value={settings.room.lyricsScalePct}
-				onValueChange={(v) => liveRoom('lyricsScalePct', v)}
-				onValueCommit={(v) => onroom({ lyricsScalePct: v })}
-			/>
-
-			<Field.Label for="lyrics-lead">
-				Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
-			</Field.Label>
-			<FieldSlider
-				id="lyrics-lead"
-				label="How far ahead of the audio the lyric highlight runs"
-				type="single"
-				min={0}
-				max={MAX_LYRICS_LEAD_MS}
-				step={50}
-				value={settings.room.lyricsLeadMs}
-				onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
-				onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
-			/>
-
-			<div class="pair">
-				<div class="cell">
-					<Field.Label for="lyrics-before">Lines behind · {settings.room.lyricsLinesBefore}</Field.Label>
-					<FieldSlider
-						id="lyrics-before"
-						label="Lyric lines kept behind the current one"
-						type="single"
-						min={0}
-						max={MAX_LYRICS_LINES_BEFORE}
-						step={1}
-						value={settings.room.lyricsLinesBefore}
-						onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
-						onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
-					/>
-				</div>
-				<div class="cell">
-					<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
-					<FieldSlider
-						id="lyrics-after"
-						label="Lyric lines shown ahead of the current one"
-						type="single"
-						min={0}
-						max={MAX_LYRICS_LINES_AFTER}
-						step={1}
-						value={settings.room.lyricsLinesAfter}
-						onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
-						onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
-					/>
-				</div>
+			<div class="stack">
+				<Field.Label for="lyrics-lead">
+					<span>Highlight runs ahead</span><span class="value">{(settings.room.lyricsLeadMs / 1000).toFixed(2)}s</span>
+				</Field.Label>
+				<FieldSlider
+					id="lyrics-lead"
+					label="How far ahead of the audio the lyric highlight runs"
+					type="single"
+					min={0}
+					max={MAX_LYRICS_LEAD_MS}
+					step={50}
+					value={settings.room.lyricsLeadMs}
+					onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
+					onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
+				/>
 			</div>
-		</Card.Content>
-	</Card.Root>
 
-	<!-- /stats is the GUEST dashboard, so it is the one safe to reach from any phone's surface. -->
-	<Button variant="outline" size="block" href="/stats">
-		<Icon name="sparkle" />
-		Party stats <Badge variant="neutral">safe to share</Badge>
-	</Button>
+			<div class="stack">
+				<Field.Label for="lyrics-before">
+					<span>Lines behind</span><span class="value">{settings.room.lyricsLinesBefore}</span>
+				</Field.Label>
+				<FieldSlider
+					id="lyrics-before"
+					label="Lyric lines kept behind the current one"
+					type="single"
+					min={0}
+					max={MAX_LYRICS_LINES_BEFORE}
+					step={1}
+					value={settings.room.lyricsLinesBefore}
+					onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
+					onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
+				/>
+			</div>
+			<div class="stack">
+				<Field.Label for="lyrics-after">
+					<span>Lines ahead</span><span class="value">{settings.room.lyricsLinesAfter}</span>
+				</Field.Label>
+				<FieldSlider
+					id="lyrics-after"
+					label="Lyric lines shown ahead of the current one"
+					type="single"
+					min={0}
+					max={MAX_LYRICS_LINES_AFTER}
+					step={1}
+					value={settings.room.lyricsLinesAfter}
+					onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
+					onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
+				/>
+			</div>
+		</div>
+	</section>
 
-	<!-- THE ONE DOOR INTO THE MACHINE SCOPE, so that page's back arrow has a single real destination to name.
-		NO BADGE: a second chip on this row read `every room`, and p15 caught it overflowing the 320px column by 9px
-		at 200% text (the chip measures 135.5px there). The row does not need one either: the blast radius is stated
-		on arrival, in the destination's own sticky scope line, so this row only has to name the place. -->
-	<Button variant="outline" size="block" href={SETTINGS_SCOPES.server.href}>
-		<Icon name="gear" />
-		{SETTINGS_SCOPES.server.label}
-	</Button>
-
-	<!-- The host's door to every /tv open in this room (proposal 34). A guest has no use for it, so it is not shown. -->
-	{#if !data.locked}
-		<Button variant="outline" size="block" href="/settings/screens">Screens</Button>
-	{/if}
-
-	<!-- THE DOOR TO THE "YOU" SCOPE, and it was MISSING — the scope rebuild split one page into three routes and
-		wired only two of the three together. The machine scope had its door (above) and /stats had its own, but a host
-		standing on the room scope had no path to their own name and colour at all: `/settings/you` was reachable only
-		from the Sing tab's identity chip, so the way to it was to leave settings entirely and come back in by another
-		entrance. A three-scope model whose scopes cannot reach each other is a worse map than the tab strip it
-		replaced.
-		SAME `outline` + `size="block"` SHAPE as the machine door, and NO BADGE for the reasons recorded on that one:
-		a door row names a place, and its scope is stated on arrival. -->
-	<Button variant="outline" size="block" href={SETTINGS_SCOPES.you.href}>
-		<Icon name="mic" />
-		{SETTINGS_SCOPES.you.label}
-	</Button>
+	<!-- THE DOORS, one hairline list rather than four outlined buttons. Each names a place, and its scope is stated on
+		arrival in the destination's sticky scope line, so only /stats carries a chip: it is the GUEST dashboard, the one
+		safe to show any phone. Every settings scope must reach the others, so the machine and You doors both stay. -->
+	<div class="rows doors">
+		<a class="door" href={resolve('/stats')}>
+			<Icon name="sparkle" /><span>Party stats <Badge variant="neutral">safe to share</Badge></span>
+			<Icon name="chevron-right" />
+		</a>
+		<a class="door" href={resolve(SETTINGS_SCOPES.server.href)}>
+			<Icon name="gear" /><span>{SETTINGS_SCOPES.server.label}</span><Icon name="chevron-right" />
+		</a>
+		<!-- The host's door to every /tv open in this room (proposal 34). A guest has no use for it, so it is not shown. -->
+		{#if !data.locked}
+			<a class="door" href={resolve('/settings/screens')}>
+				<span aria-hidden="true"></span><span>Screens</span><Icon name="chevron-right" />
+			</a>
+		{/if}
+		<a class="door" href={resolve(SETTINGS_SCOPES.you.href)}>
+			<Icon name="mic" /><span>{SETTINGS_SCOPES.you.label}</span><Icon name="chevron-right" />
+		</a>
+	</div>
 </SettingsScope>
 
 <style>
-	.pair {
-		/* Grid, not flex, so the gap SURVIVES the collapse below: a flex row switched to `display:block` loses its gap
-			   entirely, which met a Cancel and a destructive action edge-to-edge. */
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	/* `.panel`'s row gap is the section boundary, so the grouphead drops the top rung it carries on a block page. */
+	.settings-section > .grouphead {
+		margin-top: 0;
+	}
+	/* Rows on the ground, split by the decorative rule (never a control's boundary). */
+	.rows {
+		font-size: var(--type-body);
+	}
+	.rows > * + * {
+		border-top: 1px solid var(--role-rule);
+	}
+	.rows > * {
+		padding-block: var(--space-sm);
+	}
+	/* In a row the name is the ink and only the value is dim, so the label drops its own margin and dim. */
+	.rows :global([data-slot='field-label']) {
+		margin: 0;
+		color: var(--role-ink);
+		font-size: inherit;
+	}
+	/* Every row shape is a line: its name at the start, its control or value at the end. */
+	.ready,
+	.door,
+	.check,
+	.pick {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		gap: var(--space-md);
 	}
-	/* `.pair` is a grid, so no `flex` here — only the shrink floor the ellipsis needs. */
-	.cell {
-		min-width: 0;
+	.ready,
+	.door,
+	.check {
+		min-height: var(--tap);
 	}
-	@media (max-width: 380px) {
-		.pair {
-			grid-template-columns: 1fr;
-		}
+	/* A picker row: the name, then the native select showing its value, its chevron in the control colour (3:1) marking
+	   it as a control now the box is gone. When both do not fit (a long value at 320), the select wraps onto its own
+	   line at the right edge, so no value is cut to an ellipsis (UI-CHECKLIST G2). */
+	.pick {
+		flex-wrap: wrap;
+		row-gap: 0;
+	}
+	.pick :global([data-slot='native-select-wrapper']) {
+		width: auto;
+		max-width: 100%;
+		margin-inline-start: auto;
+	}
+	/* `field-sizing: content` sizes the select to its current value, not its longest option; where it is unsupported the
+	   row wraps as above instead. */
+	.pick :global([data-slot='native-select']) {
+		field-sizing: content;
+		border-color: transparent;
+		background: transparent;
+		color: var(--role-ink-dim);
+		text-align-last: right;
+	}
+	.pick :global([data-slot='native-select-icon']) {
+		color: var(--role-control);
+	}
+	.pick .warn {
+		flex-basis: 100%;
+	}
+	/* A slider row: the name and its value on one line, the slider under them. The value wraps under the name when the
+	   two do not fit (200% text at 320, p15). */
+	.stack :global([data-slot='field-label']) {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: var(--space-md);
+		margin-bottom: var(--space-2xs);
+	}
+	/* The idle Spotlight look, drawn inline because the door is a link and <Spotlight> is a section. */
+	.ready {
+		padding: var(--step-12) var(--step-16);
+		border-radius: var(--round-spot);
+		background: var(--role-raise);
+		box-shadow: inset 0 0 0 2px var(--spot);
+	}
+	.ready,
+	.door {
+		color: var(--role-ink);
+		text-decoration: none;
+	}
+	.ready strong {
+		display: block;
+		font-size: var(--type-title);
+	}
+	.ready small {
+		display: block;
+		font-size: var(--type-meta);
+	}
+	/* A door: its icon slot, its name taking the width, its chevron. */
+	.door > :global(:first-child) {
+		flex: 0 0 1.25rem;
+	}
+	.door > :global(:nth-child(2)) {
+		flex: 1;
+	}
+	.ready small,
+	.ready :global(svg),
+	.door > :global(svg:last-child) {
+		color: var(--role-ink-dim);
 	}
 
 	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: what matters is the
@@ -541,16 +621,13 @@
 		font-size: var(--ph-text-xs);
 		color: var(--warn);
 	}
-	.check {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		min-height: var(--tap);
-		font-size: var(--ph-text-md);
-	}
-	/* A label's value breaks as ONE piece, with its separator: at 320 `Skip a quiet phone after · 1 hr 30 min` split
-	   inside the value, and then left the `·` alone at the end of the first line. */
+	/* A value breaks as ONE piece: at 320 `1 hr 30 min` split inside itself. The lyric size's phrase is wider than a
+	   320 screen at 200% text, so it alone may break. */
 	.value {
 		white-space: nowrap;
+		color: var(--role-ink-dim);
+	}
+	.value[data-wrap] {
+		white-space: normal;
 	}
 </style>

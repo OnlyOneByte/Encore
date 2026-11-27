@@ -1,0 +1,61 @@
+/* THE CARD RHYTHM of the settings scopes that still render cards (You and this machine), moved out of
+   `SettingsScope.svelte` so a scope with no cards (the party, flat since #1159) does not ship it. Imported by those two
+   routes. Every selector keeps the shell's specificity (0,3,1 and 0,2,1), so the cascade is unchanged.
+   See docs/FRONTEND.md#settings. */
+
+/* A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into Field.Root
+   wrappers: the card's gap is the intra-group distance and a label that FOLLOWS a control takes the inter-group
+   distance back as a margin. Keyed on `data-slot`, which survives a re-vendor.
+   THE MARGIN IS A DELTA, NOT THE BOUNDARY. card-content is a FLEX column, and flex does not collapse margins, so
+   what the guest sees is `gap + margin-top` — the shell's 8px gap plus this. At `lg` it renders 8 + 12 = 20px,
+   which sits under the 24px card-to-card row gap (1.20x).
+   IT IS ALSO A NO-OP IN PORTRAIT: `field-label.svelte` declares `margin: var(--space-lg) 0 var(--space-2xs)` on EVERY
+   `[data-slot='field-label']`, so the 12px is already there and this rule re-declares the same figure at a higher
+   specificity. What that specificity buys is the LANDSCAPE arm at the foot of this file.
+   THE LADDER THIS SURFACE DRAWS, rendered sibling-to-sibling distances measured at 390x844:
+     12px  INSIDE a group, label -> its own control: the 8px gap plus the label's own 4px `margin-bottom`
+     14px  control -> `Field.Description`: the 8px gap plus the description's own 6px `margin-top`
+     20px  BETWEEN groups where the next group leads with a label, `.ring-field` or `.save-slot`: 8 + 12
+     24px  card to card, `.panel`'s row gap
+   AND AN INVERSION, pre-existing and recorded rather than fixed here: where the next group leads with a WRAPPER that
+   carries no label of its own (`.pair` or `.check`), the boundary renders at the bare 8px gap, tighter than the 12px
+   inside a group. */
+.settings-page main :is([data-slot='card-content'], [data-slot='collapsible-content']) > * + [data-slot='field-label'] {
+	margin-top: var(--space-lg);
+}
+/* ColourRing's label is a FIELD label (app.css's `.control-label`) but not a `[data-slot='field-label']`, so the rule
+   above cannot reach it and the boundary is taken on its WRAPPER. Unlike the rule above this one is NOT a no-op:
+   `.ring-field` has no margin of its own, so the 12px here is the whole boundary. */
+.settings-page main :is([data-slot='card-content'], [data-slot='collapsible-content']) > * + .ring-field {
+	margin-top: var(--space-lg);
+}
+
+/* A DESCRIPTION MAY HOLD AN UNBREAKABLE TOKEN, and one does: the Joining hint prints the join address. `anywhere` and
+   not `break-word`, because `anywhere` reduces the element's MIN-CONTENT width, and `.panel`'s `1fr` track takes its
+   minimum from min-content: measured at 320px with the root font-size doubled (SC 1.4.10), a 22-character address
+   widened the track from 254px to 295 and the document scrolled sideways to 345. */
+.settings-page main [data-slot='field-description'] {
+	overflow-wrap: anywhere;
+}
+
+/* THE DISCLOSURE ACTUALLY CLOSES, and this one rule is what closes it. The machine scope nests a `Card.Content` inside
+   a `Collapsible.Content`, so bits-ui's `hidden` spreads onto card-content's box. app.css loads no Preflight, so
+   `Card.Content`'s own `flex` utility (author origin) out-ranks the UA sheet's `[hidden] { display: none }`: measured
+   before this rule, `hidden` present, computed `display: flex`, and `#upgrade-model` a live 228x44 box. */
+.settings-page main [data-slot='collapsible-content'][hidden] {
+	display: none;
+}
+
+/* The landscape claw-back for the two margin rules above, on the shell's threshold (`SettingsScope.svelte` claws
+   `.panel`'s row gap back in the same arm). `--space-3xs` is a DELTA on card-content's 8px flex gap: 8 + 2 renders
+   10px between groups. It must stay below the base rules: both tie on specificity and win on source order only. */
+@media (max-height: 480px) {
+	.settings-page
+		main
+		:is([data-slot='card-content'], [data-slot='collapsible-content'])
+		> *
+		+ [data-slot='field-label'],
+	.settings-page main :is([data-slot='card-content'], [data-slot='collapsible-content']) > * + .ring-field {
+		margin-top: var(--space-3xs);
+	}
+}

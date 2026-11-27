@@ -7,6 +7,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
+	import '$lib/ui/settings-cards.css';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { safeNextPath } from '$lib/next-path';
 	import ColourRing from '$lib/components/ColourRing.svelte';

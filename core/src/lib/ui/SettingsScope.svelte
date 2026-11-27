@@ -115,60 +115,8 @@
 	main :global(:is([data-slot='card-content'], [data-slot='collapsible-content'])) {
 		gap: var(--space-sm);
 	}
-	/* THE MARGIN IS A DELTA, NOT THE BOUNDARY. card-content is a FLEX column, and flex does not collapse margins, so
-	   what the guest sees is `gap + margin-top` — the 8px above plus this. That arithmetic is the whole reason this
-	   spends `lg` and not `4xl`: at `4xl` the rendered boundary was 8 + 20 = 28px against the 24px card-to-card row
-	   gap below, so the container read TIGHTER than the thing nested inside it (0.86x) — the same inversion the
-	   `.panel` gap was raised to fix, one level down and in the other direction. At `lg` it renders 8 + 12 = 20px,
-	   which sits under the 24px container (1.20x). It was `xl` (8 + 14 = 22, 1.09x) until app.css retired that rung;
-	   a 32px `.panel` is still refused on purpose.
-
-	   IT IS ALSO A NO-OP IN PORTRAIT, and saying otherwise was the false arithmetic a re-derivation caught:
-	   `field-label.svelte` declares `margin: var(--space-lg) 0 var(--space-2xs)` on EVERY `[data-slot='field-label']`
-	   in the app, so the 12px is already there and this rule re-declares the same figure at a higher specificity.
-	   What that specificity buys is the LANDSCAPE arm at the foot of this block, which could not otherwise claw a
-	   label's margin down past the component's own declaration. A corollary: a card's FIRST label is NOT untouched —
-	   it is not matched by `* +`, but field-label's own margin still puts 12px above it, measured on #rotation,
-	   #sound, #karaoke, #lyrics-engine, #joining and #you.
-
-	   THE LADDER THIS SURFACE ACTUALLY DRAWS, every figure a rendered sibling-to-sibling distance measured at
-	   390x844, NOT a declared one:
-	     12px  INSIDE a group, label -> its own control: the 8px gap plus the label's own 4px `margin-bottom`
-	     14px  control -> `Field.Description`: the 8px gap plus the description's own 6px `margin-top`
-	     20px  BETWEEN groups where the next group leads with a label, `.ring-field` or `.save-slot`: 8 + 12
-	     24px  card to card, `.panel`'s row gap
-	   AND AN INVERSION, pre-existing and recorded rather than fixed here: where the next group leads with a WRAPPER
-	   that carries no label of its own — `.pair` or `.check` — nothing adds a margin, so the boundary renders at the
-	   bare 8px gap, TIGHTER than the 12px inside a group. Four sites, measured: #sound slider -> `.check`, #tv
-	   `.pair` -> `.check`, #lyrics `.pair` -> `.pair` and slider -> `.pair`. It is the same "one boundary drawn two
-	   ways" defect the `.ring-field` arm below exists to fix, and the fix is the same shape — add those wrappers to
-	   that arm. It is NOT taken in this pass because it moves four rendered boundaries by 12px each and with them
-	   every card height, scrollHeight, reach and co-visibility figure this file and docs/FRONTEND.md record; it wants
-	   its own measured pass rather than a re-derivation of thirty numbers inside a comment fix. */
-	main :global(:is([data-slot='card-content'], [data-slot='collapsible-content']) > * + [data-slot='field-label']) {
-		margin-top: var(--space-lg);
-	}
-	/* ColourRing's label is a FIELD label (app.css's `.control-label`) but not a `[data-slot='field-label']`, so the
-	   rule above cannot reach it and the boundary has to be taken on its WRAPPER, which is the card-content child.
-	   Without this the You card drew the same boundary two ways: 20px above a second `Field.Label` (8px gap + 12px)
-	   against 8px above the ring. The old dress hid that; one register does not. Unlike the rule above this one is
-	   NOT a no-op: `.ring-field` has no margin of its own, so the 12px here is the whole boundary. */
-	main :global(:is([data-slot='card-content'], [data-slot='collapsible-content']) > * + .ring-field) {
-		margin-top: var(--space-lg);
-	}
-
-	/* A DESCRIPTION MAY HOLD AN UNBREAKABLE TOKEN, and one here does: the Joining hint prints the join address
-	   (`Empty means <strong>http://192.168.1.20:3000</strong>`), which has no break opportunity. `anywhere` and not
-	   `break-word`, because the two differ on exactly the property that matters — `anywhere` reduces the element's
-	   MIN-CONTENT width, and `.panel`'s `1fr` track takes its minimum from min-content, so without it one long
-	   address widens the whole grid track rather than only its own line. MEASURED at 320px with the root font-size
-	   doubled, which is SC 1.4.10's case: a 22-character address rendered 295px of unbreakable text, the panel's
-	   track grew from 254px to 295, the document scrolled sideways to 345, and the `internal` badge and the
-	   disclosure's state readout were carried out past the right edge with it — three offenders, one cause. */
-	main :global([data-slot='field-description']) {
-		overflow-wrap: anywhere;
-	}
-
+	/* The label, ring-field, description and closed-disclosure rules the card scopes need live in
+	   `settings-cards.css`, which only the You and machine routes import (#1159). */
 	/* The one lit card on a locked scope, ringed in the accent as the mock draws it, one section rung above the cards. */
 	main :global(.host-only) {
 		box-shadow: inset 0 0 0 2px var(--accent);
@@ -185,23 +133,6 @@
 			Menlo,
 			monospace;
 		overflow-wrap: anywhere;
-	}
-
-	/* THE DISCLOSURE ACTUALLY CLOSES, and this one rule is what closes it. The machine scope nests a `Card.Content`
-	   inside a `Collapsible.Content`, so bits-ui's `{...props}` — `hidden`, `data-state` and its own `data-slot` —
-	   spreads onto card-content's box AFTER that component's literal `data-slot="card-content"`, which is why the
-	   element carrying `hidden` reports `data-slot="collapsible-content"`.
-	   WHY `hidden` WAS NOT ENOUGH: app.css imports `tailwindcss/theme.css` and `tailwindcss/utilities.css` only, so
-	   Preflight — which is where Tailwind's own `[hidden]:where(:not([hidden='until-found'])) { display: none }`
-	   lives — is never loaded, and `Card.Content`'s own `flex` utility is AUTHOR origin, which out-ranks the UA
-	   sheet's `[hidden] { display: none }`. Measured before this rule: `aria-expanded="false"`, `hidden` present,
-	   computed `display: flex`, 318.2px of content, and `#upgrade-model` a live 228x44 box — a door reading
-	   "Re-process off" directly above the three controls it claimed to be hiding, and `document.scrollHeight`
-	   identical in both states. THAT 318.2 IS THE 24px-GAP COLUMN: the gap rule above has since named this slot too,
-	   so the same state measures 254.2 today, and closing the door now reclaims 255px rather than 319 (scrollHeight
-	   1720 closed against 1975 open). */
-	main :global([data-slot='collapsible-content'][hidden]) {
-		display: none;
 	}
 
 	.panel {
@@ -226,9 +157,10 @@
 			   portrait tablet ever pairs. */
 		gap: var(--space-5xl) var(--space-lg);
 	}
-	/* Anything in a panel that is not a card is about the PANEL, so it spans: a half-width footer button would land
-	   beside a card and read as part of it. Keyed on shadcn's attribute, so a new control gets this free. */
-	.panel > :global(:not([data-slot='card'])) {
+	/* Anything in a panel that is not a card or a flat section (#1159) is about the PANEL, so it spans: a half-width
+	   footer button would land beside a section and read as part of it. Keyed on shadcn's attribute, so a new control
+	   gets this free. */
+	.panel > :global(:not([data-slot='card'], .settings-section)) {
 		grid-column: 1 / -1;
 	}
 	/* EVERY CARD IS ADDRESSABLE — each of the ten carries an `id`, so "the Sound card" is a place and not a
@@ -267,11 +199,8 @@
 	   adds nothing. So this arm has to stay BELOW both bases, and a later rule re-declaring either one would silently
 	   out-cascade it. The host pair is spelled here too, or the three controls behind the disclosure would keep the
 	   portrait 12px margin while every other card on the surface clawed back to 2. */
+	/* Its label-margin half lives in `settings-cards.css`, beside the rules it claws back. */
 	@media (max-height: 480px) {
-		main :global(:is([data-slot='card-content'], [data-slot='collapsible-content']) > * + [data-slot='field-label']),
-		main :global(:is([data-slot='card-content'], [data-slot='collapsible-content']) > * + .ring-field) {
-			margin-top: var(--space-3xs);
-		}
 		.panel {
 			row-gap: var(--space-lg);
 		}

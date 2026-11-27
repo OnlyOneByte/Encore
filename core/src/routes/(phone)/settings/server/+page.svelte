@@ -7,6 +7,7 @@
 	import { untrack } from 'svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
+	import '$lib/ui/settings-cards.css';
 	import SelectField from '$lib/ui/SelectField.svelte';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { isUnreachableJoinOrigin } from '$lib/tv/screen';
