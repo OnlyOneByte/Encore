@@ -205,7 +205,7 @@
 <!-- A div, NEVER a second `<main>`: on `/` this renders inside the home route's main (on `/library` there is no main
 	at all, which is why the CSS neutralises the host rather than trusting it). The `.join-main` class is what every
 	rule below — and the `:has()` selectors — key on. -->
-<div class="join-main">
+<div class={['join-main', { scanned: arrivedWithCode }]}>
 	{#if lostName !== null}
 		<p class="lost" role="status">{settled ? "You're not in the room any more. Join again to sing." : ''}</p>
 	{/if}
@@ -521,6 +521,13 @@
 			margin: 0 auto;
 			flex: 0 0 auto;
 			padding-bottom: 0;
+		}
+		/* A scan resolves into a bigger card, and the centred column grew around it: up by half the height, sideways from
+		   the spinner's width to 420px (#1399). So it takes its full width and the tallest identity pane's height (a new
+		   guest's, 314px) from the first frame. shortcut: a measured height, re-measure it if that pane gains a row. */
+		.join-main.scanned {
+			width: 100%;
+			min-height: 19.625rem;
 		}
 	}
 </style>

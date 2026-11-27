@@ -1610,6 +1610,14 @@ rule ties a bare `main:has(.join-main)` at 0,1,1 and its chunk loads later, so t
 state the gate's alignment, padding or measure. (Until redesign step 7 the CTA docked to the screen's bottom edge,
 far from the boxes it acts on; it is in the card now.)
 
+A SCANNED GATE RESERVES ITS COLUMN (#1399). The centred column used to shrink-wrap the spinner while the room
+resolved, then grew around the identity pane: half the growth moved the whole gate up and the column widened from
+the spinner to 420px, so a scan from 768 up shifted its layout (CLS 0.04-0.05, in about 4 loads in 5 on a kept
+phone). With a code in the URL, `.join-main.scanned` takes its full 420px and the tallest identity pane's height (a
+new guest's, 314px) from the first frame, so the card grows downward inside a column that never moves. A kept
+phone's shorter Spotlight sits at the top of that column. The typed path keeps the shrink-wrapped column CLAIM 7
+centres. `probe/kept-phone-cold-cls` loads a kept phone 40 times at 1280 with the CPU slowed and holds CLS at 0.
+
 THE RESTING PLACEMENT, THOUGH, IS A GATE — `tests/playwright/specs/gate/measured-join-gate.spec.ts`, CLAIM 7, leg
 7 of `bun run gates`. It drives both hosts at five widths and holds the brand band's top, the gutter and the CTA's
 bottom edge identical between them; from `--bp-md` up it also holds the free space above the gate equal to the free
