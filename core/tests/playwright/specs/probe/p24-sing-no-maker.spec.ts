@@ -279,6 +279,17 @@ test('an uploads-only room gains a fetcher: Sing comes back in place, then one h
 		await expect(sings(maya)).toHaveCount(0, { timeout: AFTER_GRACE_MS });
 		await expect(heading(maya, CANT), 'one heading, not two the same').toHaveCount(1);
 		await expect(heading(maya, "Can't make these right now")).toHaveCount(1);
+		// And in Chrome's own accessibility tree, what a screen reader reads: one can't-make heading, no empty one (#1392).
+		const cdp = await maya.context().newCDPSession(maya);
+		const { nodes } = (await cdp.send('Accessibility.getFullAXTree')) as {
+			nodes: { ignored: boolean; role?: { value: string }; name?: { value: string } }[];
+		};
+		const heads = nodes.filter((n) => !n.ignored && n.role?.value === 'heading').map((n) => n.name?.value ?? '');
+		expect(
+			heads.filter((h) => CANT.test(h)),
+			heads.join(' | ')
+		).toHaveLength(1);
+		expect(heads, 'an empty heading').not.toContain('');
 		await shoot(maya, 'sing-split-all-left');
 		expect(await rowTops(maya), 'every row where it was, every worker gone').toEqual(before);
 	} finally {

@@ -738,24 +738,28 @@
 				<!-- Both groups' rows and headings follow the LIVE verdict in place: a button goes or comes back in its kept box,
 					 and a heading holds the taller can't-make wording's height, so no verdict change moves a row (#1138). -->
 				{#snippet head(rows: Media[], hide = false)}
-					<h2 class="grouphead" tabindex="-1" role={hide ? 'presentation' : undefined}>
+					{@const cant = cantMakeHeading(rows.length)}
+					<!-- A hidden one keeps only its box: `inert` takes it out of the accessibility tree and off focus, so no
+						 empty heading is read (#1392). -->
+					<h2 class="grouphead" tabindex="-1" inert={hide}>
 						<span class="swap"
-							><span class:ghost={hide}>{allCant(rows) ? cantMakeHeading(rows.length) : 'Needs karaoke'}</span><span
+							><span class:ghost={hide}>{allCant(rows) ? cant : 'Needs karaoke'}</span><span
 								class="ghost"
-								aria-hidden="true">{cantMakeHeading(rows.length)}</span
+								aria-hidden="true">{cant}</span
 							></span
 						>
 					</h2>
 				{/snippet}
 				{#snippet unmade(m: Media)}
 					{@const r = readinessFor(m)}
+					{@const live = liveOf(m.id)}
 					<SongRow
 						{...rowMeta(m)}
 						flat
 						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						unservable={liveOf(m.id)?.unservable}
+						pct={live?.pct ?? 0}
+						status={live?.status}
+						unservable={live?.unservable}
 						inQueue={inMyQueue(m.id)}
 						processable={isProcessableSource(m.source)}
 						cantMake={cantMakeRow(m)}

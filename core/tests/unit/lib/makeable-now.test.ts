@@ -57,7 +57,10 @@ test('the Sing tab splits unmade rows by makeableNow and gives the unmakeable on
 	expect(home).toContain('{#each rawView.shown as m (m.id)}{@render unmade(m)}{/each}');
 	expect(home).toContain('{#each cantView.shown as m (m.id)}{@render unmade(m)}{/each}');
 	// Each heading reads its own rows' live state, and the second keeps only its height when it would repeat the first.
-	expect(home).toContain("{allCant(rows) ? cantMakeHeading(rows.length) : 'Needs karaoke'}");
+	expect(home).toContain('{@const cant = cantMakeHeading(rows.length)}');
+	expect(home).toContain("{allCant(rows) ? cant : 'Needs karaoke'}");
+	// The hidden duplicate is inert: out of the accessibility tree and off focus, never an empty heading (#1392).
+	expect(home).toContain('<h2 class="grouphead" tabindex="-1" inert={hide}>');
 	expect(home).toContain('{@render head(sameHeads ? rawRows : makeRows)}');
 	expect(home).toContain('{@render head(cantRows, sameHeads)}');
 	expect(songRow).toContain('{#if cantMake}');
