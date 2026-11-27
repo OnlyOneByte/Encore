@@ -82,7 +82,8 @@ interface ReelMount {
 interface LayerFade {
 	start: number;
 	endTime: number;
-	/** The opacity it runs to. */
+	/** The opacity it runs from, and to. */
+	from: number;
 	to: number;
 	shown: boolean;
 }
@@ -99,7 +100,7 @@ async function logFrames(tv: Page, holdMs = SONG_INTRO_MS): Promise<void> {
 			fadeOuts: number[];
 			reelMounts: ReelMount[];
 			shows: number[];
-			layerFades: LayerFade[];
+			layerFades: () => LayerFade[];
 		};
 		w.handoffFrames = [];
 		w.holdEnds = [];
@@ -107,7 +108,50 @@ async function logFrames(tv: Page, holdMs = SONG_INTRO_MS): Promise<void> {
 		w.fadeOuts = [];
 		w.reelMounts = [];
 		w.shows = [];
-		w.layerFades = [];
+		// Every opacity transition the layer RAN, caught at `transitionrun` (which fires for each one) with whether the
+		// layer was `shown` then, and its timing snapshotted once it starts: a fade-in cut short by the fade-out is
+		// CANCELLED, and a cancelled transition's startTime reads null again. Sampled on rAF alone, a whole fade-in fell
+		// between two frames on the 2-CPU runner and read as "never faded in" (#1134).
+		const fades = new Map<CSSTransition, { shown: boolean; ran?: LayerFade }>();
+		const snapshot = (a: CSSTransition) => {
+			const f = fades.get(a);
+			if (!f || f.ran || a.startTime === null) return;
+			const frames = (a.effect as KeyframeEffect).getKeyframes();
+			f.ran = {
+				start: a.startTime as number,
+				endTime: Number(a.effect?.getComputedTiming().endTime),
+				from: Number(frames[0]?.opacity),
+				to: Number(frames.at(-1)?.opacity),
+				shown: f.shown
+			};
+		};
+		const keepFades = (layer: Element | null) => {
+			for (const a of layer?.getAnimations() ?? [])
+				if (a instanceof CSSTransition && a.transitionProperty === 'opacity') {
+					if (!fades.has(a)) {
+						fades.set(a, { shown: layer!.classList.contains('shown') });
+						// Its start can still be pending at the next frame; `ready` resolves as it starts (and rejects if it never did).
+						a.ready.then(
+							() => snapshot(a),
+							() => {}
+						);
+					}
+					snapshot(a);
+				}
+		};
+		for (const type of ['transitionrun', 'transitionstart'])
+			document.addEventListener(
+				type,
+				(e) => {
+					const el = e.target as HTMLElement;
+					if (el.classList?.contains('takeover-layer')) keepFades(el);
+				},
+				true
+			);
+		w.layerFades = () => {
+			for (const a of fades.keys()) snapshot(a);
+			return [...fades.values()].flatMap((f) => (f.ran ? [f.ran] : [])).sort((x, y) => x.start - y.start);
+		};
 		// The layer's fade-out ending, and whether the reel mounted inside that same event's task: captured on the
 		// document, so this runs before the page's own handler, and cleared by the next task.
 		let inFadeOut = false;
@@ -176,15 +220,7 @@ async function logFrames(tv: Page, holdMs = SONG_INTRO_MS): Promise<void> {
 			const nameEl = card?.querySelector<HTMLElement>('.up-name') ?? null;
 			const ns = nameEl ? getComputedStyle(nameEl) : null;
 			const reel = document.querySelector<HTMLElement>('.lyrics');
-			for (const a of layer?.getAnimations() ?? [])
-				if (a instanceof CSSTransition && a.transitionProperty === 'opacity' && a.startTime !== null)
-					if (!w.layerFades.some((f) => f.start === a.startTime))
-						w.layerFades.push({
-							start: a.startTime as number,
-							endTime: Number(a.effect?.getComputedTiming().endTime),
-							to: Number((a.effect as KeyframeEffect).getKeyframes().at(-1)?.opacity),
-							shown: layer!.classList.contains('shown')
-						});
+			keepFades(layer);
 			w.handoffFrames.push({
 				t: performance.now(),
 				layer: layer ? Number(getComputedStyle(layer).opacity) : card ? 1 : 0,
@@ -237,7 +273,10 @@ const reelMounts = (tv: Page, since: number) =>
 const shows = (tv: Page, since: number) =>
 	tv.evaluate((s) => (window as unknown as { shows: number[] }).shows.filter((t) => t >= s), since);
 const layerFades = (tv: Page, since: number) =>
-	tv.evaluate((s) => (window as unknown as { layerFades: LayerFade[] }).layerFades.filter((f) => f.start >= s), since);
+	tv.evaluate(
+		(s) => (window as unknown as { layerFades: () => LayerFade[] }).layerFades().filter((f) => f.start >= s),
+		since
+	);
 
 /** The frame log since `since`. Every read also checks rule 0: no frame draws card text over lyric text. */
 async function frames(tv: Page, since = 0): Promise<Frame[]> {
@@ -286,11 +325,11 @@ function phases(log: Frame[]) {
 	};
 }
 
-/** The largest one-frame climb of the layer's opacity: a cut is ~1, a 0.4 s fade at any real frame rate far less. */
-const biggestStep = (fs: Frame[]) => Math.max(0, ...fs.slice(1).map((f, i) => f.layer - fs[i]!.layer));
 const between = (f: Frame) => f.layer > 0.05 && f.layer < 0.95;
 
-async function room(world: World, reduced: boolean, songIntroMs?: number) {
+/** `motionEventLagMs`: the page's reduced-motion `change` listeners run that much late, as on a busy TV, where CSS
+ *  answers a flipped preference before the page's script does. */
+async function room(world: World, reduced: boolean, songIntroMs?: number, { motionEventLagMs = 0 } = {}) {
 	const maya = await world.openPhone('Maya');
 	const theo = await world.openPhone('Theo');
 	const ana = await world.openPhone('Ana');
@@ -298,6 +337,22 @@ async function room(world: World, reduced: boolean, songIntroMs?: number) {
 	if (songIntroMs !== undefined) await putRoom(maya, { songIntroMs });
 	const tv = await world.openTv();
 	if (reduced) await tv.emulateMedia({ reducedMotion: 'reduce' });
+	if (motionEventLagMs > 0)
+		await tv.addInitScript((lag) => {
+			const add = MediaQueryList.prototype.addEventListener;
+			MediaQueryList.prototype.addEventListener = function (
+				this: MediaQueryList,
+				type: string,
+				fn: EventListenerOrEventListenerObject,
+				...rest: unknown[]
+			) {
+				const late =
+					type === 'change' && this.media.includes('prefers-reduced-motion') && typeof fn === 'function'
+						? (e: Event) => void setTimeout(() => fn.call(this, e), lag)
+						: fn;
+				return add.call(this, type, late, ...(rest as []));
+			} as typeof add;
+		}, motionEventLagMs);
 	await logFrames(tv, songIntroMs);
 	await tv.reload();
 	await tapStage(tv);
@@ -332,7 +387,9 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 		const skipFade = {
 			out: (await fadeOuts(tv, t0))[0],
 			reel: (await reelMounts(tv, t0))[0],
-			ran: (await layerFades(tv, t0)).find((f) => !f.shown)
+			ran: (await layerFades(tv, t0)).find((f) => !f.shown),
+			in: (await layerFades(tv, t0)).find((f) => f.shown),
+			shownAt: (await shows(tv, t0))[0]
 		};
 
 		// 2. A NATURAL END: Maya queues again, and Theo's 8 s song is sought near its end and ends by itself.
@@ -350,20 +407,32 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 		const naturalFade = {
 			out: (await fadeOuts(tv, t0))[0],
 			reel: (await reelMounts(tv, t0))[0],
-			ran: (await layerFades(tv, t0)).find((f) => !f.shown)
+			ran: (await layerFades(tv, t0)).find((f) => !f.shown),
+			in: (await layerFades(tv, t0)).find((f) => f.shown),
+			shownAt: (await shows(tv, t0))[0]
 		};
 
 		for (const [label, p] of Object.entries({ skip, natural })) {
 			expect(p.enter.length, `${label}: the card never came up`).toBeGreaterThan(1);
-			expect(biggestStep(p.enter), `${label}: the card CUT in (one frame from nothing to full)`).toBeLessThan(0.9);
-			expect(p.enter.some(between), `${label}: no frame of the enter is part-way`).toBe(true);
+			// The card FADES in: an opacity transition from nothing to full, of real length, ran on the layer. Read off the
+			// transition, not two sampled frames: one runner frame gap longer than the fade read as a cut (#1134).
+			const fadeIn = (label === 'skip' ? skipFade : naturalFade).in;
+			expect(fadeIn, `${label}: the card CUT in (no fade-in ran)`).toBeDefined();
+			expect(fadeIn!.from, `${label}: the fade-in did not start from nothing`).toBeLessThanOrEqual(0.05);
+			expect(fadeIn!.to, `${label}: the fade-in did not run to full`).toBeGreaterThanOrEqual(0.95);
+			expect(fadeIn!.endTime, `${label}: the fade-in was too short to read as one`).toBeGreaterThanOrEqual(200);
 			// The lines rise: some frame of the enter has the name below its rest.
 			expect(
 				p.enter.some((f) => f.nameTransform !== null && f.nameTransform !== 'none'),
 				`${label}: the name never moved`
 			).toBe(true);
+			// And fades OUT, read off its transition the same way.
+			const fadeOut = (label === 'skip' ? skipFade : naturalFade).ran;
+			expect(fadeOut, `${label}: the card CUT out (no fade-out ran)`).toBeDefined();
+			expect(fadeOut!.from, `${label}: the fade-out did not start from full`).toBeGreaterThanOrEqual(0.95);
+			expect(fadeOut!.to, `${label}: the fade-out did not run to nothing`).toBeLessThanOrEqual(0.05);
+			expect(fadeOut!.endTime, `${label}: the fade-out was too short to read as one`).toBeGreaterThanOrEqual(200);
 			const fading = p.exit.filter(between);
-			expect(fading.length, `${label}: the card CUT out (no frame part-way)`).toBeGreaterThan(0);
 			// The reel waits for the card: a real lyric line is as wide as the card's, so the two never share a frame.
 			expect(fading.filter((f) => f.lyrics).length, `${label}: lyrics under the fading card`).toBe(0);
 			expectReelArrives(p.after, label);
@@ -382,9 +451,12 @@ test('the handoff card fades in and out at a skip and at a natural end, then the
 			expect(fading.every((f) => f.ariaHidden === 'true' && f.pointerEvents === 'none')).toBe(true);
 			expect(p.enter.filter((f) => f.shown).every((f) => f.ariaHidden === 'false')).toBe(true);
 			// The hold is still the room's songIntroMs (2.5 s); the exit fade starts one --motion-base (0.25 s) inside it,
-			// so the card is up ~2.25 s and has gone when the song starts.
-			expect(p.holdMs, `${label}: the card's time up`).toBeGreaterThan(2_000);
-			expect(p.holdMs!).toBeLessThan(2_650);
+			// so the card is up ~2.25 s and has gone when the song starts. Timed by the page's own class changes, not the
+			// first frames to show them: a late first frame cut the sampled time to 1966 ms (#1134).
+			const upFor =
+				(label === 'skip' ? skipExit : naturalExit)!.t - (label === 'skip' ? skipFade : naturalFade).shownAt!;
+			expect(upFor, `${label}: the card's time up (${Math.round(p.holdMs ?? -1)} ms sampled)`).toBeGreaterThan(2_000);
+			expect(upFor).toBeLessThan(2_650);
 			// Nobody loses their first line: the reel is readable (opacity ≥ 0.5) no later than main's moment, the HOLD'S
 			// END (where main's lyrics come up), plus 100 ms. Anchored on the page's own hold timer firing, not the card's
 			// first frame plus songIntroMs, which drifts with the frame the card first painted on. "Readable" is read off
@@ -474,7 +546,17 @@ for (const introMs of [500, 700, 1000]) {
 			const fadeIn = (await layerFades(tv, t0)).find((f) => f.shown);
 			expect(exit, 'the layer never dropped `shown`').toBeDefined();
 			expect(shownAt, 'the layer never took `shown`').toBeDefined();
-			expect(fadeIn, 'the card never faded in').toBeDefined();
+			const up = p.enter.filter((f) => f.shown);
+			const gaps = up.slice(1).map((f, i) => f.t - up[i]!.t);
+			const upMs = exit!.t - shownAt!;
+			const seen = `up ${Math.round(upMs)} ms, ${up.length} frames painted it up, longest gap ${Math.round(Math.max(0, ...gaps))} ms`;
+			// A box that paints under 4 frames in the card's whole time up cannot show whether it faded in, though the page
+			// held it the full time: skipped with what was measured, as #1134 allows. A card dropped early still fails.
+			test.skip(
+				!fadeIn && upMs >= introMs - 50 && up.length < 4,
+				`this box painted too few frames to see a ${introMs} ms card fade in (${seen})`
+			);
+			expect(fadeIn, `the card never faded in (${seen})`).toBeDefined();
 			const note = `opacity ${exit!.opacity.toFixed(3)} at the exit, fade-in started ${Math.round(fadeIn!.start - shownAt!)} ms after \`shown\``;
 			// Full on the page's own schedule. The opacity read at the exit measured how late the host's next frame started
 			// the fade (16-200 ms after `shown` under load), not the page (#1116).
@@ -561,27 +643,32 @@ test('reduced motion switched on mid-hold: the card stays up and cuts at the hol
 
 // Reduced motion switched on DURING the led fade, after the lead fired: the fade stops, and with nothing to end it the
 // reel would wait for the hold's end over an empty stage. `layerShown` puts the card back up instead, to cut at the
-// hold's end. Without that guard the stage was empty for 115-120 ms, 6 frames (#1018 review, round 6).
+// hold's end. Without that guard the stage was empty for 115-120 ms, 6 frames (#1018 review, round 6). The page hears of
+// the change 300 ms late, as a busy TV does: CSS drops the fade at once, so the card must come back in CSS too, or the
+// stage is empty until the script catches up (#1134).
 test('reduced motion switched on during the led fade: the card comes back, the stage is never empty', async ({
 	world
 }) => {
 	test.setTimeout(180_000);
 	const worker = await startFakeWorker(world, { longLyricLines: true });
 	try {
-		const { maya, theo, tv } = await room(world, false);
+		const { maya, theo, tv } = await room(world, false, undefined, { motionEventLagMs: 300 });
 		await queueReady(theo, 'believin');
 		await expect(tv.locator('.upnext')).toContainText('Theo', { timeout: 10_000 });
 		await transportTap(maya, 'skip');
 		await expect(tv.locator(SEL.takeoverShown)).toHaveCount(1, { timeout: 5_000 });
-		// The led exit is part-way: `shown` dropped, Theo's card still mounted, the layer between 0.2 and 0.9.
+		// The led exit is under way: `shown` dropped, Theo's card still mounted, its fade-out running. Asked of the
+		// transition every 10 ms, not of the opacity on rAF: a slow box's frames stepped over the whole 0.2-0.9 band (#1134).
 		await tv.waitForFunction(
 			() => {
 				const l = document.querySelector('.takeover-layer')!;
-				const o = Number(getComputedStyle(l).opacity);
-				return !l.classList.contains('shown') && !!document.querySelector('.state-next') && o > 0.2 && o < 0.9;
+				const fading = l
+					.getAnimations()
+					.some((a) => a instanceof CSSTransition && a.transitionProperty === 'opacity' && a.playState === 'running');
+				return !l.classList.contains('shown') && !!document.querySelector('.state-next') && fading;
 			},
 			undefined,
-			{ polling: 'raf', timeout: 10_000 }
+			{ polling: 10, timeout: 10_000 }
 		);
 		const t1 = await now(tv);
 		await tv.emulateMedia({ reducedMotion: 'reduce' });
@@ -782,7 +869,12 @@ async function naturalEnd(world: World, { withholdMs = 0, lagMs = 0 }) {
 	await expect(tv.locator(SEL.stateNext)).toContainText('Bob', { timeout: 10_000 });
 	await expect(tv.locator(SEL.stateNext)).toHaveCount(0, { timeout: withholdMs + lagMs + 10_000 });
 	await reelSettled(tv);
-	return { log: await frames(tv, t0), exits: await exits(tv, t0), holdEnds: await holdEnds(tv, t0) };
+	return {
+		log: await frames(tv, t0),
+		exits: await exits(tv, t0),
+		holdEnds: await holdEnds(tv, t0),
+		fades: await layerFades(tv, t0)
+	};
 }
 
 test('a missed-preload card fades out with its words, then the lyrics come in', async ({ world }) => {
@@ -790,14 +882,18 @@ test('a missed-preload card fades out with its words, then the lyrics come in', 
 	const worker = await startFakeWorker(world, { longLyricLines: true });
 	try {
 		// Held 5 s past the end: past the 2.5 s hold, so it is the `loading` card that leaves, from TvPlayer's `onready`.
-		const { log } = await naturalEnd(world, { withholdMs: 5_000 });
+		const { log, fades } = await naturalEnd(world, { withholdMs: 5_000 });
 		const off = log.findIndex((f, i) => i > 0 && log[i - 1]!.shown && !f.shown);
 		expect(off, 'Bob’s card never left').toBeGreaterThan(0);
 		// It was up past its hold: the bytes arrived after it.
 		const on = log.findIndex((f) => f.shown);
 		expect(log[off]!.t - log[on]!.t, 'the card was not held for the missed preload').toBeGreaterThan(3_500);
+		// It FADES out: read off the transition that ran, not sampled frames, which a slow box's gaps skip (#1134).
+		const fadeOut = fades.find((f) => !f.shown);
+		expect(fadeOut, 'the missed-preload card CUT out (no fade-out ran)').toBeDefined();
+		expect(fadeOut!.from, 'the fade-out did not start from full').toBeGreaterThanOrEqual(0.95);
+		expect(fadeOut!.endTime, 'the fade-out was too short to read as one').toBeGreaterThanOrEqual(200);
 		const fading = log.slice(off).filter(between);
-		expect(fading.length, 'the missed-preload card CUT out').toBeGreaterThan(0);
 		expect(
 			fading.map((f) => f.name),
 			'an empty scrim faded: the card lost its words on its exit'

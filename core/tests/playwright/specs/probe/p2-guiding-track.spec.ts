@@ -69,6 +69,17 @@ interface Stage {
  */
 async function stage(world: World, tracks = [TRACKS.caroline, TRACKS.believin]): Promise<Stage> {
 	const worker = await startFakeWorker(world, { guideMix: true });
+	const tv = await world.openTv();
+	await armGraphHook(tv);
+	await tv.reload();
+	// The SHELL first: a mouse click dispatched into a document that has not finished loading is a click the
+	// renderer can drop, and then the tap below buys no activation at all.
+	await tv.locator(SEL.tvRoot).first().waitFor({ state: 'attached', timeout: 30_000 });
+	// ONE REAL TAP, AND IT COMES BEFORE ANY SONG EXISTS. A guide-mix song builds its split graph EAGERLY the moment its
+	// element mounts, and the graph captures the element only on a RUNNING context, which needs a gesture. Queued
+	// first, the songs' elements mounted before this tap in 36 of 40 loaded runs: the first attempt then settled
+	// `denied`, the song started plain, and an 8 s fixture song ended before the probe saw its mix (#1115).
+	await tapStage(tv);
 	const phone = await world.openPhone('Guide');
 	await openBrowseFromHome(phone);
 	const media: ReadyMedia[] = [];
@@ -76,18 +87,6 @@ async function stage(world: World, tracks = [TRACKS.caroline, TRACKS.believin]):
 	for (const m of media) {
 		expect(m.guideMixRef, `"${m.title}" has no guideMixRef, so there is no guiding track to drive`).toBeTruthy();
 	}
-	const tv = await world.openTv();
-	await armGraphHook(tv);
-	await tv.reload();
-	// The SHELL first: a mouse click dispatched into a document that has not finished loading is a click the
-	// renderer can drop, and then the tap below buys no activation at all.
-	await tv.locator(SEL.tvRoot).first().waitFor({ state: 'attached', timeout: 30_000 });
-	// ONE REAL TAP, AND IT COMES FIRST. The split graph refuses to capture the element unless its AudioContext is
-	// RUNNING, and a context is only resumable from a gesture — so on a guide-mix song, which builds EAGERLY the
-	// moment the element mounts, a tap that arrives after the mount is a tap that arrives after the decision. The
-	// gate then resolves `denied`, the plain instrumental plays, and every reading below would be measuring the
-	// fallback instead of the feature.
-	await tapStage(tv);
 	// The ELEMENT, not its src: `masterSrcPlan` deliberately commits no src at all while the gate is `pending`, so
 	// waiting for a src here would blame the missing element for a graph that is merely still building.
 	// `awaitMixSrc` is what each test below waits on, and it names the gate in its own failure.

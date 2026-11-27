@@ -297,12 +297,29 @@ async function coldLoad(browser: Browser, world: World, host: Page, cpu: number)
 	await ctx.addCookies(await host.context().cookies());
 	const page = await ctx.newPage();
 	await page.addInitScript(() => {
-		const w = window as unknown as { __cls: number; __firstRow: number | null };
+		const w = window as unknown as { __cls: number; __firstRow: number | null; __shifts: string[] };
 		w.__cls = 0;
 		w.__firstRow = null;
+		w.__shifts = [];
+		type Shift = PerformanceEntry & {
+			value: number;
+			hadRecentInput: boolean;
+			sources: { node: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
+		};
+		const name = (n: Node | null) =>
+			n instanceof Element ? `${n.tagName.toLowerCase()}.${[...n.classList].join('.')}` : String(n?.nodeName);
+		const box = (r: DOMRectReadOnly) =>
+			`${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`;
 		new PerformanceObserver((l) => {
-			for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[])
-				if (!e.hadRecentInput) w.__cls += e.value;
+			for (const e of l.getEntries() as Shift[])
+				if (!e.hadRecentInput) {
+					w.__cls += e.value;
+					// What moved, so a failure names it rather than a bare score.
+					for (const s of e.sources)
+						w.__shifts.push(
+							`${Math.round(e.startTime)}ms ${name(s.node)} ${box(s.previousRect)} -> ${box(s.currentRect)}`
+						);
+				}
 		}).observe({ type: 'layout-shift', buffered: true });
 		new MutationObserver((_, mo) => {
 			if (document.querySelector('main section h2, main [data-moment] h2')) {
@@ -316,8 +333,8 @@ async function coldLoad(browser: Browser, world: World, host: Page, cpu: number)
 	await expect(page.locator('main h2').first()).toBeVisible();
 	await page.waitForTimeout(2_500);
 	const m = await page.evaluate(() => {
-		const w = window as unknown as { __cls: number; __firstRow: number | null };
-		return { cls: w.__cls, firstRowMs: w.__firstRow };
+		const w = window as unknown as { __cls: number; __firstRow: number | null; __shifts: string[] };
+		return { cls: w.__cls, firstRowMs: w.__firstRow, shifts: w.__shifts };
 	});
 	await ctx.close();
 	return m;
@@ -329,12 +346,13 @@ test('the Screens page arrives with its list: no layout shift on 8 cold loads', 
 	await openScreen(browser, world);
 	const host = await world.openPhone('Host');
 	await world.becomeHost(host);
-	const runs: { cpu: number; cls: number; firstRowMs: number | null }[] = [];
+	const runs: { cpu: number; cls: number; firstRowMs: number | null; shifts: string[] }[] = [];
 	for (const cpu of [1, 1, 1, 1, 4, 4, 4, 4]) runs.push({ cpu, ...(await coldLoad(browser, world, host, cpu)) });
 	console.log(
-		'P34SCREENSLOAD ' + JSON.stringify(runs.map((r) => ({ ...r, firstRowMs: Math.round(r.firstRowMs ?? -1) })))
+		'P34SCREENSLOAD ' +
+			JSON.stringify(runs.map(({ shifts: _, ...r }) => ({ ...r, firstRowMs: Math.round(r.firstRowMs ?? -1) })))
 	);
-	for (const r of runs) expect(r.cls, `CLS on a cold load at ${r.cpu}x`).toBe(0);
+	for (const r of runs) expect(r.cls, `CLS on a cold load at ${r.cpu}x: ${r.shifts.join('; ')}`).toBe(0);
 });
 
 // #1249: only the host's choice names the room's TV. A guest's script that claims the seat only stands in, so the host

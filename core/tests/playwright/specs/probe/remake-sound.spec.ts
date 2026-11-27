@@ -39,6 +39,21 @@ test('Sound again keeps the song ready throughout, swaps in new files, and the o
 		await host.getByRole('button', { name: 'Manage' }).click();
 		await host.locator('[data-testid="manage-row"] button.open').first().click();
 		await host.locator('[data-testid="song-sheet"]').getByRole('button', { name: 'Sound again' }).click();
+
+		// THE CLAIM: listReady holds the song at every 100 ms sample until the new stems are in. Sampled FROM THE TAP,
+		// alongside the toast's screenshots: sampled after them, the runner's two screenshots outlasted the remake and
+		// it landed at the second sample (#1134).
+		const samples: { present: boolean; ref?: string }[] = [];
+		const sampling = (async () => {
+			const deadline = Date.now() + 60_000;
+			while (Date.now() < deadline) {
+				const row = await libraryRow(guest, id);
+				samples.push({ present: !!row, ref: row?.instrumentalRef });
+				if (row?.instrumentalRef && row.instrumentalRef !== before) return row.instrumentalRef;
+				await new Promise((r) => setTimeout(r, 100));
+			}
+			return before;
+		})();
 		await expect(host.getByText('Making the sound again', { exact: false })).toBeVisible();
 		for (const width of [390, 320]) {
 			await host.setViewportSize({ width, height: 844 });
@@ -46,20 +61,7 @@ test('Sound again keeps the song ready throughout, swaps in new files, and the o
 			await host.screenshot({ path });
 			await testInfo.attach(`remake-toast-${width}.png`, { path, contentType: 'image/png' });
 		}
-
-		// THE CLAIM: listReady holds the song at every 100 ms sample until the new stems are in.
-		const samples: { present: boolean; ref?: string }[] = [];
-		const deadline = Date.now() + 60_000;
-		let after = before;
-		while (Date.now() < deadline) {
-			const row = await libraryRow(guest, id);
-			samples.push({ present: !!row, ref: row?.instrumentalRef });
-			if (row?.instrumentalRef && row.instrumentalRef !== before) {
-				after = row.instrumentalRef;
-				break;
-			}
-			await new Promise((r) => setTimeout(r, 100));
-		}
+		const after = await sampling;
 		expect(after, 'the remake never swapped in').not.toBe(before);
 		expect(samples.length, 'the remake landed before a single sample: nothing was measured').toBeGreaterThan(5);
 		expect(
