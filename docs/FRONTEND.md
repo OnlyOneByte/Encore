@@ -2637,7 +2637,8 @@ first line is up when the song starts, the intro card's exit starts `--motion-ba
 ends (when the hold's end would start the song; over a still-loading slot the card stays), and the reel comes up in the
 hold's last moment without advancing. A hold too short to fit the fade-in, a 600 ms readable beat and the lead
 (the room allows 500 ms) is not led: its card leaves at the hold's end. Under `prefers-reduced-motion: reduce` both cut
-at the hold's end.
+at the hold's end. Reduce switched on during a led exit puts the card back in the same frame: the layer's `leading`
+class holds it up in CSS, before the page's `matchMedia` listener has run.
 
 While the layer is up, the card is the whole stage. The scrim is transparent past 62% of its radius, so the stage
 chrome in the corners shows through it: the lower third and the progress line are hidden (`underCard`, from

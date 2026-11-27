@@ -1174,6 +1174,7 @@
 
 	<TvTakeover
 		shown={layerShown}
+		leading={cardLeaving && transient === 'next'}
 		cardWords={cardWords}
 		handoff={handoff}
 		cardKind={cardKind}

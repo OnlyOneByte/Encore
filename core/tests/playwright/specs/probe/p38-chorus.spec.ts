@@ -157,7 +157,9 @@ test('P38 · "Everyone" before each chorus, its rows in the room gold, the singe
 		)
 	);
 	await frame(tv, testInfo, 'tv-1280-cue');
-	await expect(tv.locator(SEL.lyricsRowCurrent)).toContainText('Everybody now', { timeout: 15_000 });
+	// ANY chorus row, which is up for 2.1 s: one 0.7 s line was missed by polls backed off to a second apart under load
+	// (#1134).
+	await expect(tv.locator('.lyrics .row.current.chorus')).toBeAttached({ timeout: 15_000 });
 	await frame(tv, testInfo, 'tv-1280-chorus');
 });
 

@@ -104,7 +104,8 @@ export const test = base.extend<{
 		seedDemoLibrary(mediaDir, demoLibrary);
 		if (madeSongs) seedMadeLibrary(mediaDir, madeSongs);
 		if (youtubeSongs.length) seedYoutubeSongs(mediaDir, youtubeSongs);
-		const core = await startCore({ mediaDir, env: coreEnv });
+		// Offline unless the probe is about YouTube itself: nightly runs those online, every other probe is hermetic.
+		const core = await startCore({ mediaDir, env: coreEnv, internet: testInfo.tags.includes('@youtube') });
 
 		const opened: Page[] = [];
 		const newPage = async (b: Browser, viewport: { width: number; height: number }) => {

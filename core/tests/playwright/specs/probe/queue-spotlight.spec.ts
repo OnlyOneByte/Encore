@@ -81,6 +81,9 @@ for (const [width, height] of [
 		// The time left's first tick on a 60 s song ("~1 min" -> "under a minute") is a text shift of its own, so the
 		// watch starts after it (#1316).
 		await expect(card.getByRole('region', { name: 'On deck' })).toContainText('under a minute');
+		// And LAID OUT: the shift is recorded at the frame that lays the new text out, which on a loaded box came after
+		// the watch began (#1134). Two frames, so that one has been rendered.
+		await theo.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 		const before = (await card.boundingBox())!;
 		await card.evaluate((el) => ((el as HTMLElement).dataset.probe = 'same'));
 		await watchShifts(theo);

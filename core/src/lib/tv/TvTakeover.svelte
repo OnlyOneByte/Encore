@@ -22,6 +22,8 @@
 	interface Props {
 		/** The layer is up (`layerShown`). */
 		shown: boolean;
+		/** The intro card's exit is being led ahead of its hold's end (`cardLeaving`). */
+		leading?: boolean;
 		/** What the card SAYS; a change re-mounts the lines. */
 		cardWords: string | null;
 		handoff: { entry: QueueEntry; label: string } | null;
@@ -41,6 +43,7 @@
 
 	let {
 		shown,
+		leading = false,
 		cardWords,
 		handoff,
 		cardKind,
@@ -58,7 +61,12 @@
 
 <!-- Transient states, ONE at a time, in ONE layer that stays mounted so it can fade out as well as in. See
 	docs/FRONTEND.md#the-full-screen-takeovers. -->
-<div class={['takeover-layer', { shown }]} aria-hidden={!shown} bind:this={layer} ontransitionend={ontransitionend}>
+<div
+	class={['takeover-layer', { shown, leading }]}
+	aria-hidden={!shown}
+	bind:this={layer}
+	ontransitionend={ontransitionend}
+>
 	{#key cardWords}
 		{#if handoff}
 			{@const d = songDisplay(mediaOf(handoff.entry))}
@@ -133,6 +141,14 @@
 		   while the layer stays up. */
 		.takeover-layer.shown .interstitial > * {
 			animation: card-rise var(--motion-slow) ease-out both;
+		}
+	}
+	/* A led exit has no fade under reduce, so the card holds until the song's own lines take over. CSS answers the
+	   preference the same frame it flips; the page's `prefersReducedMotion` listener lands later, and without this the
+	   card cut out a frame or more before the page re-showed it (#1134). */
+	@media (prefers-reduced-motion: reduce) {
+		.takeover-layer.leading {
+			opacity: 1;
 		}
 	}
 	@keyframes card-rise {

@@ -84,37 +84,48 @@ test('mount and handoff animate transform and opacity only; reduced motion cuts 
 	expect((await animated(page)).names).toEqual([]);
 });
 
-/** Samples, every frame for `ms`, when the idle card's spinner is painted. Returns [firstMs, lastMs] or null. */
-const spinnerWindow = (page: Page, ms: number) =>
-	page.evaluate(
-		(windowMs) =>
+/** Clicks `testId` and returns when, in ms after that click, the idle card's spinner went into the DOM and came out
+ *  (or the window's end, if still up `ms` after the click); null if it never appeared. Timed from the click's own
+ *  event and by a MutationObserver, not from the evaluate's start on rAF: on the 2-CPU runner the click landed
+ *  ~1.2 s into a 1.8 s window and the window's end cut the spinner short (#1134). */
+async function spinnerAfterClick(page: Page, testId: string, ms: number): Promise<[number, number] | null> {
+	const seen = page.evaluate(
+		({ id, windowMs }) =>
 			new Promise<[number, number] | null>((resolve) => {
-				const t0 = performance.now();
+				const spinner = '[data-testid="spot-idle"] [data-slot="spinner"]';
+				let t0: number | null = null;
 				let first: number | null = null;
 				let last: number | null = null;
-				const tick = () => {
+				const mo = new MutationObserver(() => {
+					if (t0 === null || last !== null) return;
 					const t = performance.now() - t0;
-					if (document.querySelector('[data-testid="spot-idle"] [data-slot="spinner"]')) {
-						first ??= t;
-						last = t;
-					}
-					if (t < windowMs) requestAnimationFrame(tick);
-					else resolve(first === null ? null : [first, last!]);
+					if (document.querySelector(spinner)) first ??= t;
+					else if (first !== null) last = t;
+				});
+				mo.observe(document, { subtree: true, childList: true });
+				// Capture, so the clock starts before the button's own handler starts the wait.
+				const onClick = (e: Event) => {
+					if (!(e.target as Element).closest?.(`[data-testid="${id}"]`)) return;
+					document.removeEventListener('click', onClick, true);
+					t0 = performance.now();
+					setTimeout(() => {
+						mo.disconnect();
+						resolve(first === null ? null : [first, last ?? performance.now() - t0!]);
+					}, windowMs);
 				};
-				tick();
+				document.addEventListener('click', onClick, true);
 			}),
-		ms
+		{ id: testId, windowMs: ms }
 	);
+	await page.getByTestId(testId).click();
+	return seen;
+}
 
 test('a 150 ms wait paints no spinner; a 900 ms one paints at the grace and holds', async ({ page }) => {
 	await open(page);
-	const short = spinnerWindow(page, 800);
-	await page.getByTestId('busy-short').click();
-	expect(await short).toBeNull();
+	expect(await spinnerAfterClick(page, 'busy-short', 800)).toBeNull();
 
-	const long = spinnerWindow(page, 1_800);
-	await page.getByTestId('busy-long').click();
-	const seen = await long;
+	const seen = await spinnerAfterClick(page, 'busy-long', 1_800);
 	expect(seen).not.toBeNull();
 	const [first, last] = seen!;
 	expect(first).toBeGreaterThanOrEqual(PENDING_GRACE_MS - 20);

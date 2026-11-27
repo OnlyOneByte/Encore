@@ -65,22 +65,26 @@ async function startSampling(tv: Page): Promise<void> {
 			new PerformanceObserver((list) => {
 				for (const e of list.getEntries() as unknown as { value: number }[]) w.cls += e.value;
 			}).observe({ type: 'layout-shift', buffered: false });
-			// A timer as well as frames: under load headless Chromium paints a few frames a second.
+			// A timer as well as frames: under load headless Chromium paints a few frames a second. The reel moves on the
+			// page's own frames, so a sample pairs the rows with the position AT THE LAST FRAME, read in the probe's own
+			// frame callback; the timer then samples in a later task, after that frame's flush. Paired with the position
+			// at the sample instead, every timer sample between two of the runner's slow frames read as off the grid (#1134).
+			let framePos: number | null = null;
+			const playingMedia = () => [...document.querySelectorAll<HTMLMediaElement>('audio,video')].find((m) => !m.paused);
 			const sample = () => {
 				const rows = [...document.querySelectorAll(row)];
 				const cur = document.querySelector(rowCurrent);
-				const media = [...document.querySelectorAll<HTMLMediaElement>('audio,video')].find((m) => !m.paused);
-				if (cur && media)
+				if (cur && playingMedia() && framePos !== null)
 					w.samples.push({
 						t: Date.now(),
 						row: rows.indexOf(cur),
-						pos: media.currentTime,
+						pos: framePos,
 						rows: rows.length,
 						top: cur.getBoundingClientRect().top
 					});
 			};
 			const tick = () => {
-				sample();
+				framePos = playingMedia()?.currentTime ?? null;
 				requestAnimationFrame(tick);
 			};
 			requestAnimationFrame(tick);

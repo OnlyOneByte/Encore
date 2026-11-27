@@ -13,6 +13,11 @@ export const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 /** The host key every test core boots with, so a spec can unlock settings and the operator pages (`World.becomeHost`). */
 export const TEST_HOST_KEY = 'playwright-host-key-not-a-secret';
 
+/** Port 9 (discard) on loopback, where nothing listens: a request sent here is refused at once. */
+const DEAD_PROXY = 'http://127.0.0.1:9';
+/** What still goes direct: every peer the probe world gives core. */
+const LOOPBACK = '127.0.0.1,localhost,::1';
+
 /** An OS-assigned free port. Asking the kernel beats picking a number: parallel workers cannot collide. */
 export async function freePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
@@ -48,7 +53,19 @@ export interface CoreOptions {
 	env?: Record<string, string>;
 	/** A DATA_DIR the CALLER owns and removes, kept across `stop()`, for a test whose subject is a restart. */
 	dataDir?: string;
+	/** Let core reach the internet. Off by default: only an `@youtube` probe, which nightly runs online, wants it. */
+	internet?: boolean;
 }
+
+/** Every proxy variable pointed at a dead port, loopback excepted: what a core with no internet boots with. */
+const OFFLINE_ENV = {
+	HTTPS_PROXY: DEAD_PROXY,
+	HTTP_PROXY: DEAD_PROXY,
+	https_proxy: DEAD_PROXY,
+	http_proxy: DEAD_PROXY,
+	NO_PROXY: LOOPBACK,
+	no_proxy: LOOPBACK
+};
 
 /**
  * Boot core and wait until it answers /health.
@@ -57,7 +74,7 @@ export interface CoreOptions {
  * permanently-skipped test is indistinguishable from the rot it was meant to catch, so an environment that
  * cannot answer the question must be loud. A thrown fixture is an ERROR in the report, not a pass.
  */
-export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOptions): Promise<Core> {
+export async function startCore({ mediaDir, env = {}, dataDir: ownDir, internet = false }: CoreOptions): Promise<Core> {
 	const port = await freePort();
 	const dataDir = ownDir ?? mkdtempSync(join(tmpdir(), 'enc-data-'));
 	const baseURL = `http://127.0.0.1:${port}`;
@@ -87,6 +104,12 @@ export async function startCore({ mediaDir, env = {}, dataDir: ownDir }: CoreOpt
 				// Boot passes that reach the network or the worker; a test opts in when it wants them.
 				ENCORE_LYRICS_BACKFILL: '0',
 				ENCORE_VOCALS_BACKFILL: '0',
+				// NO INTERNET, on every box, not just the one whose network happens to have none. Every peer a probe gives
+				// core is on loopback; anything else (YouTube Music, yt-dlp, Spotify, LRCLIB) goes to a port nothing listens
+				// on and fails at once, as it does on the hermetic Docker network. Without this the GitHub runner's search
+				// answered with real catalog rows, so a zero-match probe never saw its empty state and a fixture search's
+				// rows kept re-rendering under the click (#1134).
+				...(internet ? {} : OFFLINE_ENV),
 				ENCORE_ADMIN_TOKEN: TEST_HOST_KEY,
 				ENCORE_WORKER_TOKEN_FILE: tokenFile,
 				...env
