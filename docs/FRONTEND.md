@@ -472,6 +472,16 @@ underneath it — the app has no concept of "the display is not reporting" (ther
 presence for `role=tv`), so `is_playing` stays asserted forever after a television vanishes. A clock that stops
 at the end of the song is an honest-shaped lie, not the truth.
 
+**A late anchor holds the lyrics reel rather than stepping it back (#1401).** Each anchor is read a little late, and
+by a different amount each time, so on a slow TV a new anchor can land behind what the last frame drew, and a row
+that had just started stepped back a line. So `LyricsOverlay` floors the position its rows read (`cuePos`) at
+`holdFloor` (`src/lib/tv/lyrics.ts`) while playing: a dip under `HOLD_BACK_SEC` (0.5 s) holds what was drawn until
+playback passes it, and `drawPosition` stays the honest extrapolation. The floor never advances, so the reel
+drifts no further ahead of the audio than that one dip. A bigger dip is a real jump back and draws at once; every
+room seek is one, since the TV applies none under `SEEK_JUMP_SEC` (1.5 s). A pause, a resume or a new song draws
+its anchor exactly. Earlier and Later move the lead, not the position, so the hold never delays them, and the gap
+a lyrics fix waits for is read off the same held position.
+
 ### The room link is a plain class, not a rune store
 
 `src/lib/stores/room.ts` and `src/lib/stores/queue.ts` expose an explicit `subscribe` and plain fields. A
