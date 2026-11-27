@@ -33,6 +33,10 @@ export default defineConfig(({ command }) => ({
 				// Force Svelte 5 runes mode project-wide (except node_modules libs).
 				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 			},
+			// The toaster loads on the first toast (#1309), but SvelteKit links a lazy component's CSS file up front, so
+			// its styles ride in its JS chunk instead and arrive with it.
+			dynamicCompileOptions: ({ filename }) =>
+				/[/\\](svelte-sonner|ui[/\\]sonner)[/\\]/.test(filename) ? { css: 'injected' } : undefined,
 			// The /components stories are `+page.devsvelte` routes: only `vite dev` treats that as a route file, so the
 			// build has no server route, client node or CSS for them (#1143). `svelte-kit sync` resolves as a build.
 			extensions: command === 'serve' ? ['.svelte', '.devsvelte'] : ['.svelte'],

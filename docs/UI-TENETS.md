@@ -156,11 +156,12 @@ joined phone and a joined phone opening `/queue` (500 ms), TV `/tv` cold (1000 m
 (CLAIM 10, ≤ 100 ms, with the dock tabs, On deck's key and Try again). The **4× column is reported, never gated**:
 printed in the gate output and attached to the run, and checked on a quiet machine or by the reviewer's A/B run,
 because a throttled page on a shared, loaded box swings 2–3× between runs. The CSS and JS each route ships is gated too
-(CLAIM 13, gzipped; `/` 19.2 + 122.3 KB, `/queue` 18.5 + 126.5 KB, `/tv` 15.9 + 91.2 KB today, budgets in
+(CLAIM 13, gzipped; `/` 16.6 + 113.6 KB, `/queue` 15.9 + 117.9 KB, `/tv` 15.9 + 91.3 KB today, budgets in
 `measured-speed-load.spec.ts`); a PR that shrinks a route lowers its budget in the same PR. The server resolves
 routes, so the client ships no manifest of every page and a new page adds nothing to the others (#1364). The bundle carries only the slice of the
 palette registry the app reads (`palette-slice.ts`), not the generator's whole record, which saved about 4.9 KB per
-route (#1246). Every other row is reported by the PR that touches it, measured on `main` and on the branch.
+route (#1246). The toaster's code and styles load with the first toast, through `$lib/ui/toast`, which saved about
+8.7 KB of JS and 2.6 KB of CSS on each phone tab. Every other row is reported by the PR that touches it, measured on `main` and on the branch.
 
 | Moment                                              | Target                                    | Today (1×)       | Today (4×)    | Notes                                                                      |
 | --------------------------------------------------- | ----------------------------------------- | ---------------- | ------------- | -------------------------------------------------------------------------- |

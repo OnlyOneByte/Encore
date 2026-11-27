@@ -207,8 +207,9 @@ for (const row of ROWS.filter((r) => r.flashGate && r.cpu === 1)) {
 // down; raising one needs the owner's ruling.
 const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
 	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page. Both lowered
-	// again by what #1143 freed, rounded down to 100: the /components stories left the build.
-	'/': { css: 19_500, js: 122_500 },
+	// again by what #1143 freed, rounded down to 100: the /components stories left the build. / js lowered by 8,700
+	// more: the toaster loads on the first toast, not with every phone tab.
+	'/': { css: 19_500, js: 113_800 },
 	'/queue': { css: 19_000, js: 129_900 },
 	'/tv': { css: 16_100, js: 91_500 }
 };

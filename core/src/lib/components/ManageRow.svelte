@@ -6,7 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { toast } from 'svelte-sonner';
+	import { toast } from '$lib/ui/toast';
 
 	let {
 		media,

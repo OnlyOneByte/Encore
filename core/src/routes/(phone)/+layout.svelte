@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount, setContext, untrack } from 'svelte';
 	import { NowLineSaves } from '$lib/now-line-saves';
-	import { toast } from 'svelte-sonner';
+	import { toast, whenToastNeeded } from '$lib/ui/toast';
 	import {
 		SINGER_COLORS,
 		canRetryPlay,
@@ -35,7 +35,7 @@
 	   lazy `import()` would only add a fetch before the dock can paint. */
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
-	import { Toaster } from '$lib/components/ui/sonner';
+	import type { Toaster as ToasterComponent } from '$lib/components/ui/sonner';
 
 	let { children } = $props();
 
@@ -277,6 +277,18 @@
 	/* Only phone routes mount this layout, so the TV never opens a `role=phone` socket. It mounts again on arrival
 	   from /admin or /metrics, and `connect()` is idempotent. */
 	onMount(() => void room.connect());
+	/* The toaster loads when the first toast is wanted, so no phone tab ships it before then (#1309); sonner holds that
+	   toast and shows it on mount (below). The service worker precaches the chunk, and a failed fetch tries again
+	   when the phone is back online. */
+	let Toaster = $state<typeof ToasterComponent>();
+	onMount(() => {
+		const load = () =>
+			void import('$lib/components/ui/sonner').then(
+				(m) => void (Toaster = m.Toaster),
+				() => window.addEventListener('online', load, { once: true })
+			);
+		whenToastNeeded(load);
+	});
 
 	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. BOTH READS STAY INSIDE
 	   THIS EFFECT: a resume re-delivers an equal `positionSec`, and writing an equal primitive notifies nothing, so a
@@ -478,16 +490,18 @@
 	to 126px of the 390 viewport and the one sentence wrapped onto four lines. So each side is named on its own: on a
 	phone the left and right are the "You're up" sheet's gutter token (--sheet-gutter, sonner's own 16px), so the two
 	stacked notices' edges line up; the top stays at the library's default. -->
-<Toaster
-	position="bottom-center"
-	offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
-	mobileOffset={{
-		bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
-		left: 'var(--sheet-gutter)',
-		right: 'var(--sheet-gutter)'
-	}}
-	style="--width: min(92vw, var(--sheet-max));"
-/>
+{#if Toaster}
+	<Toaster
+		position="bottom-center"
+		offset={{ bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 24px)' }}
+		mobileOffset={{
+			bottom: 'calc(var(--dock-h, 0px) + var(--youre-up-h, 0px) + 16px)',
+			left: 'var(--sheet-gutter)',
+			right: 'var(--sheet-gutter)'
+		}}
+		style="--width: min(92vw, var(--sheet-max));"
+	/>
+{/if}
 
 <div class="app-shell">
 	{#if showPage}
