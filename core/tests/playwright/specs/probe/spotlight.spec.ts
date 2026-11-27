@@ -84,23 +84,28 @@ test('mount and handoff animate transform and opacity only; reduced motion cuts 
 	expect((await animated(page)).names).toEqual([]);
 });
 
-/** Clicks `testId` and returns when, in ms after that click, the idle card's spinner went into the DOM and came out
- *  (or the window's end, if still up `ms` after the click); null if it never appeared. Timed from the click's own
- *  event and by a MutationObserver, not from the evaluate's start on rAF: on the 2-CPU runner the click landed
- *  ~1.2 s into a 1.8 s window and the window's end cut the spinner short (#1134). */
-async function spinnerAfterClick(page: Page, testId: string, ms: number): Promise<[number, number] | null> {
+/** Clicks `testId` and returns every span, in ms after that click, the idle card's spinner was in the DOM, in order;
+ *  a span still open at the window's end closes there. Empty if it never appeared. Every enter and exit counts, so a
+ *  flicker after the grace reads as two spans, not one (#1405). Timed from the click's own event and by a
+ *  MutationObserver, not from the evaluate's start on rAF: on the 2-CPU runner the click landed ~1.2 s into a 1.8 s
+ *  window and the window's end cut the spinner short (#1134). */
+async function spinnerAfterClick(page: Page, testId: string, ms: number): Promise<[number, number][]> {
 	const seen = page.evaluate(
 		({ id, windowMs }) =>
-			new Promise<[number, number] | null>((resolve) => {
+			new Promise<[number, number][]>((resolve) => {
 				const spinner = '[data-testid="spot-idle"] [data-slot="spinner"]';
 				let t0: number | null = null;
-				let first: number | null = null;
-				let last: number | null = null;
+				const spans: [number, number][] = [];
+				let open: number | null = null;
 				const mo = new MutationObserver(() => {
-					if (t0 === null || last !== null) return;
+					if (t0 === null) return;
 					const t = performance.now() - t0;
-					if (document.querySelector(spinner)) first ??= t;
-					else if (first !== null) last = t;
+					const up = !!document.querySelector(spinner);
+					if (up && open === null) open = t;
+					else if (!up && open !== null) {
+						spans.push([open, t]);
+						open = null;
+					}
 				});
 				mo.observe(document, { subtree: true, childList: true });
 				// Capture, so the clock starts before the button's own handler starts the wait.
@@ -110,7 +115,8 @@ async function spinnerAfterClick(page: Page, testId: string, ms: number): Promis
 					t0 = performance.now();
 					setTimeout(() => {
 						mo.disconnect();
-						resolve(first === null ? null : [first, last ?? performance.now() - t0!]);
+						if (open !== null) spans.push([open, performance.now() - t0!]);
+						resolve(spans);
 					}, windowMs);
 				};
 				document.addEventListener('click', onClick, true);
@@ -123,11 +129,12 @@ async function spinnerAfterClick(page: Page, testId: string, ms: number): Promis
 
 test('a 150 ms wait paints no spinner; a 900 ms one paints at the grace and holds', async ({ page }) => {
 	await open(page);
-	expect(await spinnerAfterClick(page, 'busy-short', 800)).toBeNull();
+	expect(await spinnerAfterClick(page, 'busy-short', 800)).toEqual([]);
 
+	// ONE continuous span, from the grace to the wait's end: any second span is the spinner leaving and coming back.
 	const seen = await spinnerAfterClick(page, 'busy-long', 1_800);
-	expect(seen).not.toBeNull();
-	const [first, last] = seen!;
+	expect(seen, 'spans the spinner was up (ms after the click)').toHaveLength(1);
+	const [first, last] = seen[0]!;
 	expect(first).toBeGreaterThanOrEqual(PENDING_GRACE_MS - 20);
 	expect(last - first).toBeGreaterThanOrEqual(PENDING_GRACE_MS - 20);
 	// It goes when the wait ends (900 ms), not a hold later.

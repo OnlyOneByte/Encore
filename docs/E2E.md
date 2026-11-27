@@ -124,6 +124,15 @@ Both scratch directories are removed in teardown, unconditionally, including whe
 `test.use({ coreEnv: { … } })` reaches `startCore`'s environment, for a spec whose CONFIGURATION is the
 experiment. It is an option fixture rather than something a test body sets, because core boots first.
 
+**A test core has no internet, BY PROXY ONLY.** `startCore` boots core with `OFFLINE_ENV` (`world/core.ts`): every
+`HTTP(S)_PROXY` variable points at a dead loopback port, and `NO_PROXY` keeps loopback direct. So the catalog searches,
+lyrics lookups and the `yt-dlp` child, which inherits the env, fail at once, as on the hermetic Docker network, and core
+still answers on `127.0.0.1`. Without it a GitHub runner's search answered with real catalog rows (#1134). **The limit
+(#1405): it stops only clients that honour proxy variables.** Bun's `fetch` does, and so does every network path core
+has today. A raw `Bun.connect` or `node:net` socket, a DNS lookup, or a child process that clears its env would reach
+the network on a runner that has one; the hermetic network still blocks it locally. A new network client in core either
+honours the proxy variables, or adds its own off switch to `OFFLINE_ENV`.
+
 ## Shared helpers
 
 Everything a spec drives with lives in `world/`: `fixtures.ts` (above), `selectors.ts` (every hook; see
