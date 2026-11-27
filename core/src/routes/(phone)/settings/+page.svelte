@@ -113,12 +113,12 @@
 	failed={writes.failed}
 	locked={data.locked}
 >
-	<!-- FLAT SECTIONS ON THE GROUND (#1159, option A): a section is its `.grouphead` h2 over hairline rows, as on Sing and
-		Library, with no card and no box inside a box. Level 2 because PageHeader owns the single h1. -->
+	<!-- FLAT SECTIONS ON THE GROUND (#1159, option A), drawn by the shell's row rules. Level 2 because PageHeader owns
+		the single h1. -->
 	<!-- FIRST, for the host only (proposal 39): the one check before guests arrive, so it is this screen's one lit
 		surface, drawn in the idle Spotlight look. A link, so it cannot be a <Spotlight> section. -->
 	{#if !data.locked}
-		<a class="ready" href={resolve('/settings/ready')}>
+		<a class="ready spot" href={resolve('/settings/ready')}>
 			<span><strong>Ready for tonight</strong><small>The one check before guests arrive</small></span>
 			<Icon name="chevron-right" />
 		</a>
@@ -472,7 +472,7 @@
 		<!-- The host's door to every /tv open in this room (proposal 34). A guest has no use for it, so it is not shown. -->
 		{#if !data.locked}
 			<a class="door" href={resolve('/settings/screens')}>
-				<span aria-hidden="true"></span><span>Screens</span><Icon name="chevron-right" />
+				<Icon name="play" /><span>Screens</span><Icon name="chevron-right" />
 			</a>
 		{/if}
 		<a class="door" href={resolve(SETTINGS_SCOPES.you.href)}>
@@ -481,153 +481,4 @@
 	</div>
 </SettingsScope>
 
-<style>
-	/* `.panel`'s row gap is the section boundary, so the grouphead drops the top rung it carries on a block page. */
-	.settings-section > .grouphead {
-		margin-top: 0;
-	}
-	/* Rows on the ground, split by the decorative rule (never a control's boundary). */
-	.rows {
-		font-size: var(--type-body);
-	}
-	.rows > * + * {
-		border-top: 1px solid var(--role-rule);
-	}
-	.rows > * {
-		padding-block: var(--space-sm);
-	}
-	/* In a row the name is the ink and only the value is dim, so the label drops its own margin and dim. */
-	.rows :global([data-slot='field-label']) {
-		margin: 0;
-		color: var(--role-ink);
-		font-size: inherit;
-	}
-	/* Every row shape is a line: its name at the start, its control or value at the end. */
-	.ready,
-	.door,
-	.check,
-	.pick {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-md);
-	}
-	.ready,
-	.door,
-	.check {
-		min-height: var(--tap);
-	}
-	/* A picker row: the name, then the native select showing its value, its chevron in the control colour (3:1) marking
-	   it as a control now the box is gone. When both do not fit (a long value at 320), the select wraps onto its own
-	   line at the right edge, so no value is cut to an ellipsis (UI-CHECKLIST G2). */
-	.pick {
-		flex-wrap: wrap;
-		row-gap: 0;
-	}
-	.pick :global([data-slot='native-select-wrapper']) {
-		width: auto;
-		max-width: 100%;
-		margin-inline-start: auto;
-	}
-	/* `field-sizing: content` sizes the select to its current value, not its longest option; where it is unsupported the
-	   row wraps as above instead. */
-	.pick :global([data-slot='native-select']) {
-		field-sizing: content;
-		border-color: transparent;
-		background: transparent;
-		color: var(--role-ink-dim);
-		text-align-last: right;
-	}
-	.pick :global([data-slot='native-select-icon']) {
-		color: var(--role-control);
-	}
-	.pick .warn {
-		flex-basis: 100%;
-	}
-	/* A slider row: the name and its value on one line, the slider under them. The value wraps under the name when the
-	   two do not fit (200% text at 320, p15). */
-	.stack :global([data-slot='field-label']) {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		gap: var(--space-md);
-		margin-bottom: var(--space-2xs);
-	}
-	/* The idle Spotlight look, drawn inline because the door is a link and <Spotlight> is a section. */
-	.ready {
-		padding: var(--step-12) var(--step-16);
-		border-radius: var(--round-spot);
-		background: var(--role-raise);
-		box-shadow: inset 0 0 0 2px var(--spot);
-	}
-	.ready,
-	.door {
-		color: var(--role-ink);
-		text-decoration: none;
-	}
-	.ready strong {
-		display: block;
-		font-size: var(--type-title);
-	}
-	.ready small {
-		display: block;
-		font-size: var(--type-meta);
-	}
-	/* A door: its icon slot, its name taking the width, its chevron. */
-	.door > :global(:first-child) {
-		flex: 0 0 1.25rem;
-	}
-	.door > :global(:nth-child(2)) {
-		flex: 1;
-	}
-	.ready small,
-	.ready :global(svg),
-	.door > :global(svg:last-child) {
-		color: var(--role-ink-dim);
-	}
-
-	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: what matters is the
-	   lyrics ON the stage, which the reel enforces with its own stroke. */
-	.swatch {
-		display: inline-block;
-		background: var(--swatch);
-		width: 1em;
-		height: 1em;
-		margin-left: 0.5em;
-		border-radius: var(--radius-xs);
-		border: 1px solid var(--line);
-		vertical-align: -0.15em;
-	}
-	/* Native `type="color"`, so eyedroppers and OS palettes come free, sized up to --tap because the browser's default
-	   swatch is well under a thumb's worth of target. */
-	input[type='color'].colour {
-		width: 100%;
-		height: var(--tap);
-		padding: var(--space-2xs);
-		background: var(--field-bg, transparent);
-		/* --control-line and NOT --line: a native colour input is a form control, so this border is what identifies it and
-		   takes SC 1.4.11's 3:1 floor. --field-bg is set nowhere, so the fill is always the parent surface, and the token
-		   clears 3:1 on every surface app.css declares (worst 3.13:1, on --track-bg). `.swatch` above keeps --line: it is a static span
-		   whose INFORMATION is its own fill, so its hairline is decoration. */
-		border: 1px solid var(--control-line);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-	/* ADVISORY ONLY — a cost or a no-op, never a failure. A REFUSAL takes `--danger-ink`, and this scope raises none:
-	   its one failure mode is a refused write, which the shell states in one destructive Alert at the top of the
-	   column. The You and machine scopes, which DO refuse a draft in place, carry the `.err` rule for it. */
-	.warn {
-		margin: var(--space-xs) 0 0;
-		font-size: var(--ph-text-xs);
-		color: var(--warn);
-	}
-	/* A value breaks as ONE piece: at 320 `1 hr 30 min` split inside itself. The lyric size's phrase is wider than a
-	   320 screen at 200% text, so it alone may break. */
-	.value {
-		white-space: nowrap;
-		color: var(--role-ink-dim);
-	}
-	.value[data-wrap] {
-		white-space: normal;
-	}
-</style>
+<!-- No <style>: every rule this scope draws with is the shell's (`SettingsScope.svelte`), one sheet rather than two. -->

@@ -1,13 +1,11 @@
 <script lang="ts">
 	/*
-	 * THE SHELL EVERY SETTINGS SCOPE WEARS — the heading, the scope line, the one failure banner, and the card grid.
+	 * THE SHELL EVERY SETTINGS SCOPE WEARS — the heading, the scope line, the one failure banner, the section grid,
+	 * and the flat row rules every scope draws its sections with (#1159).
 	 *
-	 * It exists because `/settings` is three ROUTES now (You, this room, this machine) and the measured rulings below
-	 * are properties of the SURFACE rather than of any one scope: the three nested measures, the card-to-card section
-	 * boundary, the two card-rhythm deltas keyed on `data-slot`, and the landscape claw-back. (The third delta,
-	 * `.save-slot`'s, stays on the You scope — it belongs to the one card in settings that has a commit control.)
-	 * Three copies of that cascade is three places for it to drift, and the arithmetic in these comments is what
-	 * makes it re-derivable at all.
+	 * It exists because `/settings` is three ROUTES now (You, this room, this machine) and the rulings below are
+	 * properties of the SURFACE rather than of any one scope: the nested measures, the section boundary, the row
+	 * shapes and the landscape claw-back. Three copies of them would be three places for them to drift.
 	 *
 	 * It also owns the destructive Alert, because the thing that produces `failed` — the optimistic patch in
 	 * `$lib/settings-writes.svelte.ts` — is shared by the two scopes that write settings, and a banner about a
@@ -18,7 +16,6 @@
 	import type { Snippet } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Alert from '$lib/components/ui/alert';
-	import * as Card from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import type { SettingsScope } from '$lib/settings-scopes';
 
@@ -37,7 +34,7 @@
 		back: { href: string; label: string };
 		/** From `createSettingsWrites`. The You scope performs no settings write, so it leaves this alone. */
 		failed?: boolean;
-		/** This scope's cards, rendered straight into `.panel` as its own children. */
+		/** This scope's sections, rendered straight into `.panel` as its own children. */
 		children: Snippet;
 	} = $props();
 </script>
@@ -59,20 +56,17 @@
 			</Alert.Root>
 		{/if}
 
+		<!-- A guest's one lit surface, in the idle Spotlight look the party's "Ready for tonight" wears. -->
 		{#if locked}
-			<Card.Root id="host-only" class="host-only">
-				<Card.Header>
-					<Card.Title role="heading" aria-level={2}>Only the host can change these</Card.Title>
-					<Card.Description>Host: open the link Encore showed when it started, on this phone.</Card.Description>
-				</Card.Header>
-				<Card.Content>
-					<code>{locked.hostLink}</code>
-					<Button variant="outline" size="block" href="/host">I have the host key</Button>
-				</Card.Content>
-			</Card.Root>
+			<div id="host-only" class="spot host-only">
+				<h2>Only the host can change these</h2>
+				<p>Host: open the link Encore showed when it started, on this phone.</p>
+				<code>{locked.hostLink}</code>
+				<Button variant="outline" size="block" href="/host">I have the host key</Button>
+			</div>
 		{/if}
 
-		<!-- `inert`, so a guest cannot move a control the server would refuse; the card above says why. -->
+		<!-- `inert`, so a guest cannot move a control the server would refuse; the box above says why. -->
 		<div class="panel" inert={locked !== null}>
 			{@render children()}
 		</div>
@@ -80,14 +74,10 @@
 </div>
 
 <style>
-	/* Three nested measures, and the width is spent on a second column of CARDS rather than on wider controls.
+	/* Nested measures, and the width is spent on a second column of SECTIONS rather than on wider controls.
 	   See docs/FRONTEND.md#settings for what each token means and where each level applies. */
 	.settings-page {
 		--page-measure: var(--measure-grid);
-		/* Not --measure-prose (560): two of those plus the gap need 1132, more than the widest shell, so a prose
-			   threshold would never pair anything. At 420 the PANEL pairs from 852 up — which is a panel width and not a
-			   viewport one; see the `.panel` note below for what that costs in viewports. */
-		--settings-col: 420px;
 	}
 
 	main {
@@ -99,37 +89,40 @@
 		padding: var(--space-md) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
-	/* A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into Field.Root
-	   wrappers: the card's gap is the intra-group distance and a label that FOLLOWS a control takes the inter-group
-	   distance back as a margin. Keyed on `data-slot`, which survives a re-vendor, and `:global()` because scoped CSS
-	   cannot reach ui/card's box — nor, from here, the cards a scope route renders into `.panel`.
-	   BOTH SLOTS, because one card-content on this surface does not answer to that name: the machine scope's
-	   Collapsible spreads `data-slot="collapsible-content"` over card-content's own literal (see the `hidden` rule
-	   below for the full mechanism), so a rule keyed on card-content alone MISSES the three controls behind the
-	   disclosure. Measured before this pair: that one nested box kept Card.Content's vendored 24px `gap-6` while all
-	   eleven cards' own card-contents ran at 8, which rendered 36px between groups against 20px everywhere else and
-	   28px inside a group against 12 — the widest rhythm break on the surface, on the one column a guest has to open
-	   a door to reach. Adding the slot took the open disclosure from 318.2px of content to 254.2 and `#reprocessing`
-	   from 483.6 to 419.6. `:is()` resolves to its most specific argument, an attribute selector, so the slot match
-	   stays 0,1,0 and the cascade below is unchanged. */
-	main :global(:is([data-slot='card-content'], [data-slot='collapsible-content'])) {
-		gap: var(--space-sm);
+	/* The idle Spotlight look, for a surface that cannot be a <Spotlight> (a link, or the guest's host box): the scope's
+	   one lit surface. */
+	main :global(.spot) {
+		padding: var(--step-12) var(--step-16);
+		border-radius: var(--round-spot);
+		background: var(--role-raise);
+		box-shadow: inset 0 0 0 2px var(--spot);
 	}
-	/* The label, ring-field, description and closed-disclosure rules the card scopes need live in
-	   `settings-cards.css`, which only the You and machine routes import (#1159). */
-	/* The one lit card on a locked scope, ringed in the accent as the mock draws it, one section rung above the cards. */
-	main :global(.host-only) {
-		box-shadow: inset 0 0 0 2px var(--accent);
+	/* Its title and its line, as the Spotlight draws them. */
+	main :global(.spot :is(strong, h2)) {
+		display: block;
+		margin: 0;
+		font-size: var(--type-title);
+	}
+	main :global(.spot :is(small, p)) {
+		display: block;
+		margin: 0;
+		font-size: var(--type-meta);
+	}
+	main :global(:is(.spot :is(small, p), .spot > svg, .door > svg:last-child)) {
+		color: var(--role-ink-dim);
+	}
+	.host-only {
+		display: grid;
+		gap: var(--space-sm);
 		margin-bottom: var(--space-5xl);
 	}
-	main :global(.host-only code) {
-		display: block;
+	/* A grid item, so it is already a block. `ui-monospace` is SF Mono where it exists; Menlo is Chrome on a Mac. */
+	.host-only code {
 		padding: var(--space-sm);
 		border-radius: var(--radius-sm);
 		background: var(--bg);
 		font:
 			600 var(--ph-text-xs) / var(--lh-snug) ui-monospace,
-			SFMono-Regular,
 			Menlo,
 			monospace;
 		overflow-wrap: anywhere;
@@ -137,69 +130,151 @@
 
 	.panel {
 		/* A grid, not a flex column: `auto-fit` collapses the empty tracks, so at one column this is the plain stack.
-			   `align-items: start` matters — `stretch` would pad the shorter card out to its neighbour. */
+			   `align-items: start` matters — `stretch` would pad the shorter section out to its neighbour. */
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr));
+		/* The column floor is 420px and not --measure-prose (560): two of those plus the gap need 1132, more than the
+			   widest shell, so a prose floor would never pair anything. At 420 the PANEL pairs from 852 up. */
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 		align-items: start;
-		/* TWO VALUES, and the split is the point. The ROW gap is the card-to-card SECTION boundary and takes the
-			   section rung. Both figures below are RENDERED boundaries, not declared margins, because the margin above
-			   is a delta on card-content's 8px flex gap: at --space-lg a card boundary was 12px while a group boundary
-			   INSIDE one card rendered at 28px (8 + 20), so the container read less than half the thing nested in it —
-			   0.43x. It is 24px against 20px (8 + 12) now, 1.20x; the intra-card rule came down 4xl -> xl to get there,
-			   then to lg when app.css retired `xl`. The COLUMN gap stays --space-lg so the pairing threshold stays the
-			   measured 2*420 + 12 = 852px of PANEL width that docs/FRONTEND.md records; 24px both ways would move it to
-			   864. A panel is `--max-w` less the shell gutter and this column's own inset — 64px at every width — so
-			   852 of panel needs 916 of `--max-w`, and only the --bp-lg step (1080) clears it. MEASURED one track at a
-			   time across the ladder: 256px at 320, 316 at 380, 326 at 390 (viewport-bound, under the cap), then 416px
-			   from 520 through 767 where `--max-w` 480 binds, 696px from 768 through 1199 where it steps to 760, and
-			   `502px 502px` from 1200 where it steps to 1080. 416 AND NOT 696 AT 520 — the step is at --bp-md, not at
-			   --bp-sm, which is the same 480 -> 760 rung docs/FRONTEND.md records for the findbox. No phone and no
-			   portrait tablet ever pairs. */
+		/* The ROW gap is the section boundary and takes the section rung. The COLUMN gap stays --space-lg, so the pairing
+			   threshold stays 2*420 + 12 = 852px of panel, which only the --bp-lg step reaches: no phone and no portrait
+			   tablet ever pairs. */
 		gap: var(--space-5xl) var(--space-lg);
 	}
-	/* Anything in a panel that is not a card or a flat section (#1159) is about the PANEL, so it spans: a half-width
-	   footer button would land beside a section and read as part of it. Keyed on shadcn's attribute, so a new control
-	   gets this free. */
-	.panel > :global(:not([data-slot='card'], .settings-section)) {
+	/* Anything in a panel that is not a section is about the PANEL, so it spans: a half-width row would land beside a
+	   section and read as part of it. */
+	.panel > :global(:not(.settings-section)) {
 		grid-column: 1 / -1;
 	}
-	/* EVERY CARD IS ADDRESSABLE — each of the ten carries an `id`, so "the Sound card" is a place and not a
-	   scroll position. There is deliberately NO `scroll-margin-block-start` here yet: nothing in the tree links to a
-	   card fragment, and the offset that would be needed is the sticky header's rendered bottom at rest, which is
-	   content-driven (its own margin plus a box no token declares) rather than a rung. The first real fragment link
-	   is what should bring that number, measured, with it. */
+
+	/* FLAT SECTIONS ON THE GROUND (#1159, option A), the rules every scope draws with: a section is its `.grouphead` h2
+	   over hairline rows, as on Sing and Library, with no card and no box inside a box. `.panel`'s row gap is the
+	   section boundary, so the grouphead drops the top rung it carries on a block page. */
+	.panel :global(.settings-section > .grouphead) {
+		margin-top: 0;
+	}
+	/* Rows on the ground, split by the decorative rule (never a control's boundary). */
+	.panel :global(.rows) {
+		font-size: var(--type-body);
+	}
+	.panel :global(.rows > * + *) {
+		border-top: 1px solid var(--role-rule);
+	}
+	.panel :global(.rows > *) {
+		padding-block: var(--space-sm);
+	}
+	/* In a row the name is the ink and only the value is dim, so the label drops its own margin and dim. */
+	.panel :global(.rows [data-slot='field-label']) {
+		margin: 0;
+		color: var(--role-ink);
+		font-size: inherit;
+	}
+	/* Every row shape is a line: its name at the start, its control or value at the end. */
+	.panel :global(:is(.ready, .door, .check, .pick)) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-md);
+	}
+	.panel :global(:is(.ready, .door, .check)) {
+		min-height: var(--tap);
+	}
+	/* A picker row: the name, then the native select showing its value, its chevron in the control colour (3:1) marking
+	   it as a control now the box is gone. When both do not fit (a long value at 320), the select wraps onto its own
+	   line at the right edge, so no value is cut to an ellipsis (UI-CHECKLIST G2). */
+	.panel :global(.pick) {
+		flex-wrap: wrap;
+		row-gap: 0;
+	}
+	.panel :global(.pick [data-slot='native-select-wrapper']) {
+		width: auto;
+		max-width: 100%;
+		margin-inline-start: auto;
+	}
+	/* `field-sizing: content` sizes the select to its current value, not its longest option; where it is unsupported the
+	   row wraps as above instead. */
+	.panel :global(.pick [data-slot='native-select']) {
+		field-sizing: content;
+		border-color: transparent;
+		background: transparent;
+		color: var(--role-ink-dim);
+		text-align-last: right;
+	}
+	.panel :global(.pick [data-slot='native-select-icon']) {
+		color: var(--role-control);
+	}
+	.panel :global(.pick .warn) {
+		flex-basis: 100%;
+	}
+	/* A slider row: the name and its value on one line, the slider under them. The value wraps under the name when the
+	   two do not fit (200% text at 320, p15). */
+	.panel :global(.stack [data-slot='field-label']) {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: var(--space-md);
+		margin-bottom: var(--space-2xs);
+	}
+	.panel :global(:is(.ready, .door)) {
+		color: var(--role-ink);
+		text-decoration: none;
+	}
+	/* A door: its icon slot, its name taking the width, its chevron. */
+	.panel :global(.door > :first-child) {
+		flex: 0 0 1.25rem;
+	}
+	.panel :global(.door > :nth-child(2)) {
+		flex: 1;
+	}
+	/* ADVISORY ONLY — a cost, a no-op, a heads-up. A REFUSAL takes a scope's own `.err`, in `--danger-ink`. */
+	.panel :global(.warn) {
+		margin: var(--space-xs) 0 0;
+		font-size: var(--ph-text-xs);
+		color: var(--warn);
+	}
+	/* A value breaks as ONE piece: at 320 `1 hr 30 min` split inside itself. A phrase wider than a 320 screen at 200%
+	   text (the lyric size's) may break. */
+	.panel :global(.value) {
+		white-space: nowrap;
+		color: var(--role-ink-dim);
+	}
+	.panel :global(.value[data-wrap]) {
+		white-space: normal;
+	}
+
+	/* THE PARTY SCOPE'S TWO OWN CONTROL DRESSES, here rather than in its route because one sheet gzips ~150 B smaller
+	   than two on `/settings` (#1403). The swatch carries no text, so it needs no contrast floor of its own — and
+	   neither does the stage colour: what matters is the lyrics ON the stage, which the reel enforces with its own
+	   stroke. A flex item of its inline label (`data-inline`), so it needs no display or vertical-align. */
+	.panel :global(.swatch) {
+		background: var(--swatch);
+		width: 1em;
+		height: 1em;
+		margin-left: 0.5em;
+		border-radius: var(--radius-xs);
+		border: 1px solid var(--line);
+	}
+	/* Native `type="color"`, so eyedroppers and OS palettes come free, sized up to --tap because the browser's default
+	   swatch is well under a thumb's worth of target. --control-line and NOT --line: a native colour input is a form
+	   control, so this border is what identifies it and takes SC 1.4.11's 3:1 floor (worst 3.13:1, on --track-bg).
+	   `.swatch` above keeps --line: it is a static span whose INFORMATION is its own fill, so its hairline is
+	   decoration. */
+	.panel :global(input[type='color'].colour) {
+		width: 100%;
+		height: var(--tap);
+		padding: var(--space-2xs);
+		background: var(--field-bg, transparent);
+		border: 1px solid var(--control-line);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
 
 	/* THE LANDSCAPE CLAW-BACK, the arm `/`, `/library` and `song/[mediaId]` all carry as a `.grouphead`
-	   re-declaration inside their own `@media (max-height: 480px)` block — named by rule rather than by line,
-	   because one of the three line numbers that stood here had already drifted while the other two were being kept
-	   fresh by hand — on the same threshold and for the same reason: a phone held sideways spends almost the whole
-	   height on chrome, and the section rung is a PORTRAIT ruling. This is the one surface that spends that rung as
-	   a grid GAP rather than as `.grouphead`'s margin, which is why the claw-back is spelled here instead. Without
-	   this arm the rung is pure unconditional cost here — RE-DERIVED at 844x390 on the three scope routes, with both
-	   portrait rungs forced back on: the room panel grows 1812.7 -> 1924.7px (+112), the machine panel
-	   1342.6 -> 1430.6 (+88) and You 744 -> 766 (+22), which is 28.7% of that viewport's height on the worst one.
-	   BOTH boundaries move together, because clawing only the row gap back to 12px would re-invert the surface
-	   against the 20px rendered intra-card boundary above. `--space-3xs` is spelled as a DELTA on card-content's 8px
-	   flex gap, not as a register: 8 + 2 renders 10px between groups.
-	   WHAT THIS ARM DOES NOT COMPRESS, re-derived at 844x390 rather than assumed, because the claim that stood here
-	   ("8 inside a group, 10 between groups, 12 between cards") was arithmetic on declared values and the surface
-	   does not render it: this rule reaches a label's `margin-top` only, so the label's own 4px `margin-bottom` is
-	   untouched and the INTRA-group boundary stays at 8 + 4 = 12px. Measured, the sideways ladder is 12px inside a
-	   group, 10px between groups where the next one leads with a label, 8px between groups where it leads with a
-	   `.pair` or `.check` (the portrait inversion named above, carried through), and 12px card to card. So landscape
-	   is not monotone: a group reads LOOSER than the boundary between two groups, and a card boundary is
-	   indistinguishable from an intra-group one. It is kept because the arm's job is the 28.7% of viewport height it
-	   gives back, which it does, and because the one rung that could fix it is the 4px `margin-bottom` inside
-	   `field-label.svelte` — a component every surface in the app renders, not a settings decision. Portrait renders
-	   12 / 14 / 20 / 24 with the same 8px inversion; both ladders are listed in full above the base rules.
-	   `row-gap` alone, never the `gap` shorthand: the COLUMN gap is what fixes the 852px pairing threshold, and a
-	   sideways phone is nowhere near it.
-	   Both rules tie their base on specificity (0,3,1 for the card-content pair — `:is()` resolves to its widest
-	   argument and changes nothing — and 0,2,0 for `.panel`) and therefore win on SOURCE ORDER only; a media query
-	   adds nothing. So this arm has to stay BELOW both bases, and a later rule re-declaring either one would silently
-	   out-cascade it. The host pair is spelled here too, or the three controls behind the disclosure would keep the
-	   portrait 12px margin while every other card on the surface clawed back to 2. */
-	/* Its label-margin half lives in `settings-cards.css`, beside the rules it claws back. */
+	   re-declaration inside their own `@media (max-height: 480px)` block, on the same threshold and for the same
+	   reason: a phone held sideways spends almost the whole height on chrome, and the section rung is a PORTRAIT
+	   ruling. This is the one surface that spends that rung as a grid GAP rather than as `.grouphead`'s margin, which is
+	   why the claw-back is spelled here instead. `row-gap` alone, never the `gap` shorthand: the COLUMN gap is what
+	   fixes the 852px pairing threshold. It ties its base on specificity, so it must stay below it. */
 	@media (max-height: 480px) {
 		.panel {
 			row-gap: var(--space-lg);
