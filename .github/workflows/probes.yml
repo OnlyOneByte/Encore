@@ -60,14 +60,13 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: bun-probes-${{ runner.os }}-${{ hashFiles('core/bun.lock') }}
-      # The image pins the browsers `@playwright/test` expects, so there is no browser install to cache.
+      # The image pins the browsers `@playwright/test` expects, so there is no browser install to cache. The same
+      # Dockerfile builds the local image (docs/E2E.md#running-in-docker).
       - name: image
         run: |
-          docker build -q -t encore-pw - <<EOF
-          FROM $PW_IMAGE
-          RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
-          RUN npm install -g bun@$BUN_VERSION
-          EOF
+          docker build -t encore-pw -f docker/playwright.Dockerfile \
+            --build-arg PW_IMAGE="$PW_IMAGE" --build-arg BUN_VERSION="$BUN_VERSION" docker/
+          docker run --rm encore-pw sh -c 'echo "bun $(bun --version)"; ffmpeg -version | head -1'
           docker network create --internal encore-hermetic
           mkdir -p ~/.bun/install/cache core/results
       - name: install and build

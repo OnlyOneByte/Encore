@@ -170,6 +170,13 @@ drops `executablePath`. Repeat `executablePath: resolveChromium()` and spread `B
 
 ## Running in Docker
 
+Build the image the probes run in from `docker/playwright.Dockerfile`, the one CI's `probes.yml` builds: the
+pinned Playwright base, the Bun core needs and ffmpeg. Rebuild it when either pin moves.
+
+```sh
+docker build -t encore-pw:1.56.1 -f docker/playwright.Dockerfile docker/
+```
+
 Run Playwright in Docker with `--network encore-hermetic` (made once with
 `docker network create --internal encore-hermetic`), never `--network none`. With no network interface,
 Chromium reports `navigator.onLine = false` from the start, so `setOffline(true)` fires no `offline` event and
