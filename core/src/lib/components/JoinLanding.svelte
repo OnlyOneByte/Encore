@@ -8,6 +8,7 @@
 	import ColourRing from '$lib/components/ColourRing.svelte';
 	import CodeEntry from '$lib/components/CodeEntry.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import Spotlight from '$lib/ui/Spotlight.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { safeNextPath } from '$lib/next-path';
@@ -208,58 +209,48 @@
 	{#if lostName !== null}
 		<p class="lost" role="status">{settled ? "You're not in the room any more. Join again to sing." : ''}</p>
 	{/if}
-	<!-- ONE CARD FOR THE CODE AND THE NAME (redesign step 7, #1157): the idle Spotlight's look, inline rather than the
-		component, because this screen also renders on /queue, which does not ship Spotlight's stylesheet (#1198). The
-		code, then the name, fill the same card, and its button sits right under the field it acts on. -->
-	<section
-		class="join-card"
-		aria-label={onCodeStep ? 'Room code' : 'Join'}
-		style:display="flex"
-		style:flex-direction="column"
-		style:gap="var(--step-12)"
-		style:padding="var(--step-16) var(--step-16) var(--step-12)"
-		style:border-radius="var(--round-spot)"
-		style:background="var(--role-raise)"
-		style:box-shadow="inset 0 0 0 2px {cardStop?.fill ?? 'var(--role-accent)'}"
-	>
-		{#if pane === 'resolving'}
-			<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
-				it says nothing, so the region would announce nothing at all. -->
-			<!-- The region and its line box (the unseen spinner) are there from the first frame, so nothing moves and the
-				words, written in past the grace, are an addition a screen reader announces. -->
-			<p class="confirm" role="status">
-				<span style:visibility={graced ? undefined : 'hidden'}><Spinner aria-hidden="true" /></span>
-				{graced ? 'Finding the room…' : ''}
-			</p>
-		{:else if pane === 'identity'}
-			<!-- IDENTITY. No code input here: both paths have already taken the code. -->
-			<p class="confirm" role="status">{confirmSentence}</p>
-
-			{#snippet nameField()}
-				<label class="name-field">
-					<span class="control-label">Your name</span>
-					<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
-					<Input
-						variant="join"
-						bind:value={name}
-						placeholder="e.g. Maya"
-						maxlength={32}
-						autocomplete="nickname"
-						enterkeyhint="go"
-						onkeydown={(e) => e.key === 'Enter' && join()}
-					/>
-				</label>
-			{/snippet}
-
-			{#if returning}
-				<h2
-					style:margin="0"
-					style:font-size="var(--type-lead)"
-					style:font-weight="800"
-					style:line-height="var(--lh-tight)"
-				>
-					Welcome back, {returning.displayName}
-				</h2>
+	<!-- ONE CTA for both cards, in the card under the field it acts on; sticky, so with the keyboard up it rides just
+		above it (see `.submit-slot`). -->
+	{#snippet cta()}
+		<div class="submit-slot">
+			<!-- Start singing is filled in the colour you will sing in, inked in that stop's certified on_fill. -->
+			<Button
+				size="blockLg"
+				disabled={!ctaEnabled}
+				style={ctaEnabled && cardStop ? `background:${cardStop.fill};color:${cardStop.on_fill}` : undefined}
+				onclick={onCodeStep ? () => continueToIdentity() : join}
+			>
+				{#if onCodeStep}
+					{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
+				{:else if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
+			</Button>
+		</div>
+	{/snippet}
+	{#snippet nameField()}
+		<label class="name-field">
+			<span class="control-label">Your name</span>
+			<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
+			<Input
+				variant="join"
+				bind:value={name}
+				placeholder="e.g. Maya"
+				maxlength={32}
+				autocomplete="nickname"
+				enterkeyhint="go"
+				onkeydown={(e) => e.key === 'Enter' && join()}
+			/>
+		</label>
+	{/snippet}
+	{#if pane === 'identity' && returning}
+		<!-- A KEPT PHONE IS WELCOMED BACK on the idle Spotlight itself (#1198): who is here on its meta line, the welcome
+			as its headline, ringed in the person's colour so it cannot read as a field to type in. -->
+		<Spotlight
+			label="Join"
+			meta={confirmSentence}
+			title="Welcome back, {returning.displayName}"
+			colour={returning.color}
+		>
+			<div class="welcome-body">
 				{#if renaming}{@render nameField()}{/if}
 				<Button
 					variant="ghost"
@@ -271,7 +262,39 @@
 						name = '';
 					}}>I'm someone else</Button
 				>
-			{:else}
+				{#if error}
+					<div class="err" role="alert">{error}</div>
+				{/if}
+				{@render cta()}
+			</div>
+		</Spotlight>
+	{:else}
+		<!-- ONE CARD FOR THE CODE AND THE NAME (redesign step 7, #1157): the idle Spotlight's look, inline, because these
+		panes have no headline for the component and ring in the accent before a colour is chosen. The code, then the
+		name, fill the same card, and its button sits right under the field it acts on. -->
+		<section
+			class="join-card"
+			aria-label={onCodeStep ? 'Room code' : 'Join'}
+			style:display="flex"
+			style:flex-direction="column"
+			style:gap="var(--step-12)"
+			style:padding="var(--step-16) var(--step-16) var(--step-12)"
+			style:border-radius="var(--round-spot)"
+			style:background="var(--role-raise)"
+			style:box-shadow="inset 0 0 0 2px {cardStop?.fill ?? 'var(--role-accent)'}"
+		>
+			{#if pane === 'resolving'}
+				<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
+				it says nothing, so the region would announce nothing at all. -->
+				<!-- The region and its line box (the unseen spinner) are there from the first frame, so nothing moves and the
+				words, written in past the grace, are an addition a screen reader announces. -->
+				<p class="confirm" role="status">
+					<span style:visibility={graced ? undefined : 'hidden'}><Spinner aria-hidden="true" /></span>
+					{graced ? 'Finding the room…' : ''}
+				</p>
+			{:else if pane === 'identity'}
+				<!-- IDENTITY. No code input here: both paths have already taken the code. -->
+				<p class="confirm" role="status">{confirmSentence}</p>
 				{@render nameField()}
 
 				<!-- The colour is a suggestion until touched, so it waits behind "change". -->
@@ -295,40 +318,24 @@
 					></span>
 					<span>Your color <b>{stopName}</b> · change</span>
 				</button>
-			{/if}
 
-			{#if error}
-				<div class="err" role="alert">{error}</div>
-			{/if}
-		{:else}
-			<!-- CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that ruling is
+				{#if error}
+					<div class="err" role="alert">{error}</div>
+				{/if}
+			{:else}
+				<!-- CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that ruling is
 				recorded at docs/FRONTEND.md#the-join-screen. -->
-			{#if previewError}
-				<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
-				<div class="err" role="alert">{previewError}</div>
+				{#if previewError}
+					<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
+					<div class="err" role="alert">{previewError}</div>
+				{/if}
+				<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
 			{/if}
-			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
-		{/if}
 
-		<!-- ONE CTA for both panes, in the card under the field it acts on; sticky, so with the keyboard up it rides just
-			above it (see `.submit-slot`). None while the room resolves: the card grows when it does, and a button already
-			there would be pushed down. -->
-		{#if pane !== 'resolving'}
-			<div class="submit-slot">
-				<!-- Start singing is filled in the colour you will sing in, inked in that stop's certified on_fill. -->
-				<Button
-					size="blockLg"
-					disabled={!ctaEnabled}
-					style={ctaEnabled && cardStop ? `background:${cardStop.fill};color:${cardStop.on_fill}` : undefined}
-					onclick={onCodeStep ? () => continueToIdentity() : join}
-				>
-					{#if onCodeStep}
-						{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
-					{:else if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
-				</Button>
-			</div>
-		{/if}
-	</section>
+			<!-- None while the room resolves: the card grows when it does, and a button already there would be pushed down. -->
+			{#if pane !== 'resolving'}{@render cta()}{/if}
+		</section>
+	{/if}
 	<!-- The disabled reason is ANNOUNCED for assistive tech (SC 3.3.2), never painted; filled only once `settled`. -->
 	<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
 
@@ -441,6 +448,12 @@
 	/* STICKY: with the keyboard up, `interactive-widget=resizes-content` shrinks the layout viewport and the CTA rides
 	   just above the keyboard (at 320x568 it sat 60-118 px under it). The card's fill, and a band of it above, keep the
 	   rows it passes over from showing through. Inert at rest, where the CTA is already on screen. */
+	/* The inline card's own gap, so the Spotlight's rows sit as the card's did. */
+	.welcome-body {
+		display: flex;
+		flex-direction: column;
+		gap: var(--step-12);
+	}
 	.submit-slot {
 		position: sticky;
 		bottom: 0;
