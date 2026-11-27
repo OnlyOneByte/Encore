@@ -1,13 +1,13 @@
 <!-- THE MACHINE SCOPE: model weights, binaries, credentials and hardware capability — everything whose cost is paid
 	once per server and felt in every room on it. Its one door is the link at the foot of the room scope; the room's
-	Quality cap, in the Sound card there, is capped by these defaults. docs/FRONTEND.md#settings -->
+	Quality cap, in the Sound section there, is capped by these defaults. docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import { untrack } from 'svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import { resolve } from '$app/paths';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
-	import '$lib/ui/settings-cards.css';
 	import SelectField from '$lib/ui/SelectField.svelte';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { isUnreachableJoinOrigin } from '$lib/tv/screen';
@@ -17,7 +17,6 @@
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import FieldSlider from '$lib/ui/FieldSlider.svelte';
-	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import type { OfferedModel } from '$lib/contract';
@@ -190,98 +189,106 @@
 	failed={writes.failed}
 	locked={data.locked}
 >
-	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and why no card repeats the scope. -->
-	<Card.Root id="karaoke">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Making karaoke</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half a 390px row. -->
-			<SelectField
-				id="engine"
-				label="Stem splitter"
-				value={settings.global.defaultEngine}
-				options={liveEngines}
-				pick={(v) => pickEngine('default', v)}
-			/>
+	<!-- FLAT SECTIONS (#1159), drawn by the shell's row rules, as on the party scope. A picker row wraps its select
+		onto its own line when a long value does not fit beside the name, so no label is cut. -->
+	<section class="settings-section" id="karaoke" aria-labelledby="karaoke-h">
+		<h2 class="grouphead" id="karaoke-h">Making karaoke</h2>
+		<div class="rows">
+			<div class="pick">
+				<SelectField
+					id="engine"
+					label="Stem splitter"
+					value={settings.global.defaultEngine}
+					options={liveEngines}
+					pick={(v) => pickEngine('default', v)}
+				/>
+			</div>
 
-			<SelectField
-				id="model"
-				label="Model"
-				value={settings.global.defaultModel}
-				options={liveModelChoices}
-				pick={(v) => onglobal({ defaultModel: v })}
-			/>
+			<div class="pick">
+				<SelectField
+					id="model"
+					label="Model"
+					value={settings.global.defaultModel}
+					options={liveModelChoices}
+					pick={(v) => onglobal({ defaultModel: v })}
+				/>
+				{#if liveSlow}
+					<p class="warn">~45 minutes per song on CPU.</p>
+				{/if}
+			</div>
 
-			{#if liveSlow}
-				<p class="warn">~45 minutes per song on CPU.</p>
-			{/if}
-
-			<SelectField
-				id="fetcher"
-				label="Audio source"
-				value={settings.global.defaultFetcher}
-				options={defaultFetchers}
-				pick={(v) => onglobal({ defaultFetcher: v as FetcherId })}
-			/>
+			<div class="pick">
+				<SelectField
+					id="fetcher"
+					label="Audio source"
+					value={settings.global.defaultFetcher}
+					options={defaultFetchers}
+					pick={(v) => onglobal({ defaultFetcher: v as FetcherId })}
+				/>
+			</div>
 
 			<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field would invite the
 					3000 that `normalizeMaxProcesses` exists to refuse. -->
-			<Field.Label for="max-processes">Songs one singer can make at once · {processCapLabel}</Field.Label>
-			<FieldSlider
-				id="max-processes"
-				label="Songs one singer can make at once"
-				type="single"
-				min={PROCESSES_UNCAPPED}
-				max={MAX_PROCESSES_PER_SINGER_CEILING}
-				step={1}
-				value={settings.global.maxProcessesPerSinger}
-				onValueChange={(v) => liveGlobal('maxProcessesPerSinger', v)}
-				onValueCommit={(v) => onglobal({ maxProcessesPerSinger: v })}
-			/>
-			<Field.Description>
-				A guest can start this many karaoke jobs at a time; finished songs free a slot straight away. Nothing stops one
-				phone tapping Sing down a whole page of results, and each tap is a 1–2 minute job for your workers.
-			</Field.Description>
-		</Card.Content>
-	</Card.Root>
+			<div class="stack">
+				<Field.Label for="max-processes">
+					<!-- The hidden colon keeps a screen reader from running the name into its value ("at once 3"). -->
+					<span>Songs one singer can make at once</span><span class="vh">: </span><span class="value"
+						>{processCapLabel}</span
+					>
+				</Field.Label>
+				<FieldSlider
+					id="max-processes"
+					label="Songs one singer can make at once"
+					type="single"
+					min={PROCESSES_UNCAPPED}
+					max={MAX_PROCESSES_PER_SINGER_CEILING}
+					step={1}
+					value={settings.global.maxProcessesPerSinger}
+					onValueChange={(v) => liveGlobal('maxProcessesPerSinger', v)}
+					onValueCommit={(v) => onglobal({ maxProcessesPerSinger: v })}
+				/>
+				<Field.Description>
+					A guest can start this many karaoke jobs at a time; finished songs free a slot straight away. Nothing stops
+					one phone tapping Sing down a whole page of results, and each tap is a 1–2 minute job for your workers.
+				</Field.Description>
+			</div>
+		</div>
+	</section>
 
-	<Card.Root id="lyrics-engine">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Lyrics engine</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<!-- Stacked for the same measured reason as the splitter above: a half-width select at 390px leaves ~120px. -->
-			<Field.Label for="asr-model">Lyrics reader</Field.Label>
-			<NativeSelect
-				id="asr-model"
-				value={settings.global.asrModel}
-				onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
-			>
-				{#each ASR_MODELS as model (model.id)}
-					<option value={model.id}>{model.label} · {model.params}</option>
-				{/each}
-			</NativeSelect>
+	<section class="settings-section" id="lyrics-engine" aria-labelledby="lyrics-engine-h">
+		<h2 class="grouphead" id="lyrics-engine-h">Lyrics engine</h2>
+		<div class="rows">
+			<div class="pick">
+				<Field.Label for="asr-model">Lyrics reader</Field.Label>
+				<NativeSelect
+					id="asr-model"
+					value={settings.global.asrModel}
+					onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
+				>
+					{#each ASR_MODELS as model (model.id)}
+						<option value={model.id}>{model.label} · {model.params}</option>
+					{/each}
+				</NativeSelect>
+				{#if asrSlow}
+					<p class="warn">Needs real memory, and minutes more per song on CPU.</p>
+				{/if}
+			</div>
 
-			{#if asrSlow}
-				<p class="warn">Needs real memory, and minutes more per song on CPU.</p>
-			{/if}
+			<div class="pick">
+				<SelectField
+					id="sync-mode"
+					label="Lyric timing"
+					value={settings.global.syncMode}
+					options={SYNC_MODES}
+					pick={(v) => onglobal({ syncMode: v as GlobalSettings['syncMode'] })}
+				/>
+			</div>
+		</div>
+	</section>
 
-			<SelectField
-				id="sync-mode"
-				label="Lyric timing"
-				value={settings.global.syncMode}
-				options={SYNC_MODES}
-				pick={(v) => onglobal({ syncMode: v as GlobalSettings['syncMode'] })}
-			/>
-		</Card.Content>
-	</Card.Root>
-
-	<Card.Root id="joining">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Joining</Card.Title>
-		</Card.Header>
-		<Card.Content>
+	<section class="settings-section" id="joining" aria-labelledby="joining-h">
+		<h2 class="grouphead" id="joining-h">Joining</h2>
+		<div class="rows">
 			{#if joinChoices.length}
 				<div class="choices">
 					{#each joinChoices as origin (origin)}
@@ -291,49 +298,47 @@
 					{/each}
 				</div>
 			{/if}
-			<Field.Label for="join-origin">Join address</Field.Label>
-			<Input
-				id="join-origin"
-				variant="mono"
-				type="text"
-				inputmode="url"
-				autocomplete="off"
-				spellcheck="false"
-				placeholder={data.joinOriginFallback}
-				aria-describedby="join-origin-hint"
-				aria-invalid={joinError ? 'true' : undefined}
-				bind:value={joinDraft}
-				onchange={commitJoinOrigin}
-			/>
-			<Field.Description id="join-origin-hint"
-				>Empty means <strong>{fallbackScheme}<wbr />{data.joinOriginFallback.slice(fallbackScheme.length)}</strong
-				>.</Field.Description
-			>
-			{#if joinError}<p class="err" role="alert">{joinError}</p>{/if}
-			{#if joinUnreachable}
-				<p class="warn">{UNREACHABLE_JOIN}</p>
-			{/if}
-			{#if joinSchemeMismatch}
-				<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
-			{/if}
-		</Card.Content>
-	</Card.Root>
+			<div class="stack">
+				<Field.Label for="join-origin">Join address</Field.Label>
+				<Input
+					id="join-origin"
+					variant="mono"
+					type="text"
+					inputmode="url"
+					autocomplete="off"
+					spellcheck="false"
+					placeholder={data.joinOriginFallback}
+					aria-describedby="join-origin-hint"
+					aria-invalid={joinError ? 'true' : undefined}
+					bind:value={joinDraft}
+					onchange={commitJoinOrigin}
+				/>
+				<Field.Description id="join-origin-hint"
+					>Empty means <strong>{fallbackScheme}<wbr />{data.joinOriginFallback.slice(fallbackScheme.length)}</strong
+					>.</Field.Description
+				>
+				{#if joinError}<p class="err" role="alert">{joinError}</p>{/if}
+				{#if joinUnreachable}
+					<p class="warn">{UNREACHABLE_JOIN}</p>
+				{/if}
+				{#if joinSchemeMismatch}
+					<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
+				{/if}
+			</div>
+		</div>
+	</section>
 
-	<!-- TITLED, where this card was the one untitled card on the surface: a scope page marks each card with who a
-		change in it reaches, and a mark needs a heading to sit above. The disclosure stays — the upgrade chain is the
-		rarest thing on the rarest scope — and the shell's `[data-slot='collapsible-content'][hidden]` rule is what
-		makes the door real, which it was not: `aria-expanded="false"` was announced over three visible focusable
-		controls. See that rule for the cause. -->
-	<Card.Root id="reprocessing">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Re-processing</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<!-- Collapsible owns aria-expanded, aria-controls and the toggle; the <button> stays here through the `child`
-					snippet so this file's scoped CSS can reach it. -->
-			<Collapsible.Root bind:open={advancedOpen}>
-				<Collapsible.Trigger>
-					{#snippet child({ props })}
+	<!-- The disclosure stays: the upgrade chain is the rarest thing on the rarest scope. Its content is a plain <div>,
+		so the UA's `[hidden] { display: none }` closes it; nothing on it sets a `display` that would out-rank that. -->
+	<section class="settings-section" id="reprocessing" aria-labelledby="reprocessing-h">
+		<h2 class="grouphead" id="reprocessing-h">Re-processing</h2>
+		<!-- Collapsible owns aria-expanded, aria-controls and the toggle; the <button> stays here through the `child`
+				snippet so this file's scoped CSS can reach it. -->
+		<Collapsible.Root class="rows" bind:open={advancedOpen}>
+			<Collapsible.Trigger>
+				{#snippet child({ props })}
+					<!-- In a row of its own, so the row's padding never reaches the button's. -->
+					<div>
 						<Button variant="ghost" size="block" {...props}>
 							<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 							Advanced
@@ -341,27 +346,28 @@
 								{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
 							</span>
 						</Button>
-					{/snippet}
-				</Collapsible.Trigger>
+					</div>
+				{/snippet}
+			</Collapsible.Trigger>
 
-				<Collapsible.Content>
-					{#snippet child({ props })}
-						<!-- NO `id` here. bits-ui's Collapsible.Content defaults `id = createId(uid)` and passes it
+			<Collapsible.Content>
+				{#snippet child({ props })}
+					<!-- NO `id` here. bits-ui's Collapsible.Content defaults `id = createId(uid)` and passes it
 							 through `{...props}`, which spreads AFTER any literal and wins — so an `id` written here is
 							 silently dropped. Do not "fix" that by moving the literal after the spread either: the
 							 Trigger's `aria-controls` names bits-ui's generated id, so overriding it would point the
-							 control at an element that no longer carries that id. The same spread is why the element
-							 below reports `data-slot="collapsible-content"` and not card-content's own literal. -->
-						<Card.Content {...props}>
-							<label class="check" for="enqueue-upgrade">
-								<Switch
-									id="enqueue-upgrade"
-									checked={settings.global.enqueueUpgrade}
-									onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
-								/>
-								Re-process at higher quality, from the saved audio
-							</label>
+							 control at an element that no longer carries that id. -->
+					<div class="rows" {...props}>
+						<label class="check" for="enqueue-upgrade">
+							Re-process at higher quality, from the saved audio
+							<Switch
+								id="enqueue-upgrade"
+								checked={settings.global.enqueueUpgrade}
+								onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
+							/>
+						</label>
 
+						<div class="pick">
 							<SelectField
 								id="upgrade-engine"
 								label="Upgrade splitter"
@@ -369,7 +375,9 @@
 								options={SEPARATOR_ENGINES}
 								pick={(v) => pickEngine('upgrade', v)}
 							/>
+						</div>
 
+						<div class="pick">
 							<SelectField
 								id="upgrade-model"
 								label="Upgrade model"
@@ -377,33 +385,29 @@
 								options={upgradeModelChoices}
 								pick={(v) => onglobal({ upgradeModel: v })}
 							/>
-
 							{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 								<p class="warn">Not better than the splitter above, so nothing will re-process.</p>
 							{/if}
-						</Card.Content>
-					{/snippet}
-				</Collapsible.Content>
-			</Collapsible.Root>
-		</Card.Content>
-	</Card.Root>
+						</div>
+					</div>
+				{/snippet}
+			</Collapsible.Content>
+		</Collapsible.Root>
+	</section>
 
 	<!-- /metrics is ungated, so this is its ONLY link: from the remote or the TV it would advertise worker ids, model
-			names, host details and error strings to every device in the room. -->
-	<Button variant="outline" size="block" href="/metrics">
-		<Icon name="clock" />
-		Processing metrics <Badge variant="neutral">internal</Badge>
-	</Button>
+			names, host details and error strings to every device in the room. A door, as the party scope's are. -->
+	<div class="rows">
+		<a class="door" href={resolve('/metrics')}>
+			<Icon name="clock" /><span>Processing metrics <Badge variant="neutral">internal</Badge></span>
+			<Icon name="chevron-right" />
+		</a>
+	</div>
 </SettingsScope>
 
 <style>
-	/* ADVISORY ONLY — a cost, a no-op, a heads-up. A REFUSAL takes `.err` below and never this rule. */
-	.warn {
-		margin: var(--space-xs) 0 0;
-		font-size: var(--ph-text-xs);
-		color: var(--warn);
-	}
-	/* --danger-ink, because --warn is the transient self-healing tone the four advisories above already wear
+	/* The row shapes, `.warn` and `.value` are the shell's (`SettingsScope.svelte`).
+	   --danger-ink, because --warn is the transient self-healing tone the four advisories above already wear
 	   ("~45 minutes per song on CPU"): a rejected join address was painted that same amber, so a host could not tell a
 	   hint from the one thing they had to act on. Four is this FILE's count — the surface holds six, the room scope
 	   carrying the other two, which is the figure docs/FRONTEND.md#settings quotes. This is the ink the rest of the
@@ -421,7 +425,12 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-xs);
-		margin-bottom: var(--space-sm);
+	}
+	/* A DESCRIPTION MAY HOLD AN UNBREAKABLE TOKEN, and one does: the Joining hint prints the join address. `anywhere` and
+	   not `break-word`, because `anywhere` reduces the element's MIN-CONTENT width, which `.panel`'s `1fr` track takes its
+	   minimum from: at 320px with the root font-size doubled (SC 1.4.10) the address would scroll the page sideways. */
+	.stack :global([data-slot='field-description']) {
+		overflow-wrap: anywhere;
 	}
 
 	/* States what is behind the door, so it does not have to be opened to be read. */
@@ -430,12 +439,5 @@
 		font-size: var(--ph-text-xs);
 		font-weight: 600;
 		color: var(--ink-dim);
-	}
-	.check {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		min-height: var(--tap);
-		font-size: var(--ph-text-md);
 	}
 </style>

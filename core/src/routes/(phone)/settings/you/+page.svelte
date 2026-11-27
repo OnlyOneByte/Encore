@@ -7,12 +7,10 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import SettingsScope from '$lib/ui/SettingsScope.svelte';
-	import '$lib/ui/settings-cards.css';
 	import { SETTINGS_SCOPES } from '$lib/settings-scopes';
 	import { safeNextPath } from '$lib/next-path';
 	import ColourRing from '$lib/components/ColourRing.svelte';
 	import { Input } from '$lib/components/ui/input';
-	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { leaveCostSentence, type LeaveCost } from '$lib/phrasing/leave-cost-sentence';
@@ -330,22 +328,24 @@
 			<Button size="block" onclick={keepMe}>Keep me</Button>
 		</Spotlight>
 	{:else if keep.kept}
-		<Card.Root id="kept">
-			<!-- No scope mark: the You card right below carries it. -->
-			<Card.Header>
-				<Card.Title role="heading" aria-level={2}>{savedName} is kept on this phone</Card.Title>
-			</Card.Header>
-			<Card.Content>
+		<!-- FLAT SECTIONS (#1159), drawn by the shell's row rules, as on the party scope. The scope is stated once, in the
+			header's scope line. -->
+		<section class="settings-section" id="kept" aria-labelledby="kept-h">
+			<h2 class="grouphead" id="kept-h">{savedName} is kept on this phone</h2>
+			<div class="rows">
 				<p class="keep-copy">Next time, one tap and you're in.</p>
+				<!-- A row holds each button, so the row's padding never reaches the button's own. -->
 				{#if keep.otherPhones > 0}
-					<Button variant="secondary" size="block" onclick={signOutOthers}>
-						Sign out {keep.otherPhones === 1 ? 'the other phone' : `${keep.otherPhones} other phones`}
-					</Button>
+					<div>
+						<Button variant="secondary" size="block" onclick={signOutOthers}>
+							Sign out {keep.otherPhones === 1 ? 'the other phone' : `${keep.otherPhones} other phones`}
+						</Button>
+					</div>
 				{/if}
 				<AlertDialog.Root bind:open={confirmingDelete}>
 					<AlertDialog.Trigger>
 						{#snippet child({ props })}
-							<Button {...props} variant="ghost" size="block">Delete me</Button>
+							<div><Button {...props} variant="ghost" size="block">Delete me</Button></div>
 						{/snippet}
 					</AlertDialog.Trigger>
 					<AlertDialog.Content>
@@ -361,27 +361,25 @@
 						</AlertDialog.Footer>
 					</AlertDialog.Content>
 				</AlertDialog.Root>
-			</Card.Content>
-		</Card.Root>
+			</div>
+		</section>
 	{/if}
 	{#if keepRefusal}<p class="err" role="alert">{keepRefusal}</p>{/if}
-	<!-- See the room scope for why `role="heading" aria-level={2}` is at the call site, and what `Card.Scope` is. -->
-	<Card.Root id="you">
-		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.you.blastRadius}</Card.Scope>
-			<Card.Title role="heading" aria-level={2}>You</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<Field.Label for="profile-name">Your name</Field.Label>
-			<Input
-				id="profile-name"
-				variant="comfortable"
-				type="text"
-				maxlength={32}
-				autocomplete="off"
-				placeholder="e.g. Dana"
-				bind:value={name}
-			/>
+	<section class="settings-section" id="you" aria-labelledby="you-h">
+		<h2 class="grouphead" id="you-h">You</h2>
+		<div class="rows">
+			<div class="stack">
+				<Field.Label for="profile-name">Your name</Field.Label>
+				<Input
+					id="profile-name"
+					variant="comfortable"
+					type="text"
+					maxlength={32}
+					autocomplete="off"
+					placeholder="e.g. Dana"
+					bind:value={name}
+				/>
+			</div>
 
 			<!-- `taken` is DELIBERATELY empty: the pips mean "somebody in the room holds this", and this page's load carries
 					no occupancy, so an invented list would draw pips at nobody. -->
@@ -392,16 +390,14 @@
 				taken={[]}
 			/>
 
-			{#if profileError}<p class="err" role="alert">{profileError}</p>{/if}
-
 			<!-- ONE COMMIT CONTROL FOR THIS SCOPE, and its label says which of its two jobs it is doing. There used to
 					be a second: this `Save` plus a panel-level `Done`, both the `default` variant, so from the first
 					keystroke they were two identical --accent block buttons — and `Done` was a bare `goto('/')`, which
-					DISCARDED the typed name and the picked colour with nothing on screen saying so. It stays INSIDE the
-					card because the refusals it produces name this field ("That name is taken — try another."), and a
+					DISCARDED the typed name and the picked colour with nothing on screen saying so. It stays IN this
+					section because the refusals it produces name this field ("That name is taken — try another."), and a
 					reason belongs beside what has to be corrected. The cost, kept deliberately, is that this scope ends on
-					the Leaving card instead of on its own exit — see FRONTEND.md's Settings section for why last belongs
-					to the destructive card here. -->
+					the Leaving section instead of on its own exit — see FRONTEND.md's Settings section for why last belongs
+					to the destructive section here. -->
 			<!-- RENDERED ONLY WHEN THERE IS SOMETHING TO COMMIT, which is what makes the exit model one rule instead of
 					three. It used to render unconditionally, reading `Done` with the draft clean — an --accent block button
 					whose only action was a navigation, i.e. structurally the same thing as the panel-level `Done` buttons
@@ -410,22 +406,23 @@
 					guests actually saw.
 					The rule now holds across all three scopes: the back arrow is the exit everywhere, and a commit control
 					appears only where there is a draft to commit. `Saving…` stays, because a commit in flight must say so. -->
-			{#if profileDirty || saving}
-				<div class="save-slot">
-					<Button size="block" disabled={saving} onclick={finishYou}>
-						{#if saving}Saving…{:else}Save and close{/if}
-					</Button>
+			{#if profileError || profileDirty || saving}
+				<div>
+					{#if profileError}<p class="err" role="alert">{profileError}</p>{/if}
+					{#if profileDirty || saving}
+						<Button size="block" disabled={saving} onclick={finishYou}>
+							{#if saving}Saving…{:else}Save and close{/if}
+						</Button>
+					{/if}
 				</div>
 			{/if}
-		</Card.Content>
-	</Card.Root>
+		</div>
+	</section>
 
 	<!-- YOUR NIGHTS: only ever yours (the load reads this phone's cookies), and no one else's numbers beside them. -->
-	<Card.Root id="nights">
-		<Card.Header>
-			<Card.Title role="heading" aria-level={2}>Your nights</Card.Title>
-		</Card.Header>
-		<Card.Content>
+	<section class="settings-section" id="nights" aria-labelledby="nights-h">
+		<h2 class="grouphead" id="nights-h">Your nights</h2>
+		<div class="rows">
 			<!-- YOUR YEAR: your own counts, never beside anyone else's. Shown once there is a night in it. -->
 			{#if nights.year.nights > 0}
 				<div class="year" id="your-year">
@@ -454,16 +451,18 @@
 					{nights.recording ? 'Sing a song and your night shows up here.' : 'Your nights are not being kept.'}
 				</p>
 			{/if}
-			<label class="keep-toggle" for="keep-nights">
-				<Switch id="keep-nights" checked={nights.recording} onCheckedChange={setRecording} />
-				Keep my nights
-			</label>
-			<p class="hint">Only you can see them. Off, and no new songs are kept.</p>
+			<div>
+				<label class="check" for="keep-nights">
+					Keep my nights
+					<Switch id="keep-nights" checked={nights.recording} onCheckedChange={setRecording} />
+				</label>
+				<p class="hint">Only you can see them. Off, and no new songs are kept.</p>
+			</div>
 			{#if nights.list.length}
 				<AlertDialog.Root bind:open={confirmingForget}>
 					<AlertDialog.Trigger>
 						{#snippet child({ props })}
-							<Button {...props} variant="ghost" size="block">Delete my history</Button>
+							<div><Button {...props} variant="ghost" size="block">Delete my history</Button></div>
 						{/snippet}
 					</AlertDialog.Trigger>
 					<AlertDialog.Content>
@@ -481,16 +480,13 @@
 				</AlertDialog.Root>
 			{/if}
 			{#if nightsRefusal}<p class="err" role="alert">{nightsRefusal}</p>{/if}
-		</Card.Content>
-	</Card.Root>
+		</div>
+	</section>
 
-	<!-- Its own card: leaving cannot be undone, so the boundary is drawn rather than implied. -->
-	<Card.Root id="leaving">
-		<Card.Header>
-			<Card.Scope>{SETTINGS_SCOPES.you.blastRadius}</Card.Scope>
-			<Card.Title role="heading" aria-level={2}>Leaving</Card.Title>
-		</Card.Header>
-		<Card.Content>
+	<!-- Its own section: leaving cannot be undone, so the boundary is drawn rather than implied. -->
+	<section class="settings-section" id="leaving" aria-labelledby="leaving-h">
+		<h2 class="grouphead" id="leaving-h">Leaving</h2>
+		<div class="rows">
 			<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has no click-outside
 					dismissal, which a destructive confirm must not have.
 					`size="block"` because the trigger already fills this column: it is what lets the label wrap at 200% text
@@ -498,7 +494,7 @@
 			<AlertDialog.Root bind:open={confirmingLeave}>
 				<AlertDialog.Trigger>
 					{#snippet child({ props })}
-						<Button {...props} variant="destructive" size="block" onclick={askLeave}>Leave the room</Button>
+						<div><Button {...props} variant="destructive" size="block" onclick={askLeave}>Leave the room</Button></div>
 					{/snippet}
 				</AlertDialog.Trigger>
 				<AlertDialog.Content>
@@ -526,8 +522,8 @@
 					</AlertDialog.Footer>
 				</AlertDialog.Content>
 			</AlertDialog.Root>
-		</Card.Content>
-	</Card.Root>
+		</div>
+	</section>
 </SettingsScope>
 
 <style>
@@ -536,7 +532,7 @@
 	   a hint from the one thing they had to act on. This is the ink the rest of the app spends on a failure —
 	   `.err[role=alert]` on the join screen, the destructive Alert at the top of a scope — and the box is the
 	   advisories' to the pixel, so the class carries only the ink.
-	   TWO USERS NOW: the refused profile save in the card, and the refused leave inside the alertdialog. The dialog's
+	   TWO USERS NOW: the refused profile save in its section, and the refused leave inside the alertdialog. The dialog's
 	   content is portalled out of this subtree, which does not matter here — the paragraph is authored in THIS file, so
 	   Svelte's scoping hash travels on the element and this rule still reaches it wherever the portal puts it. */
 	.err {
@@ -545,22 +541,10 @@
 		color: var(--danger-ink);
 	}
 
-	/* Position only, on a wrapper: Tailwind mints nothing for app source, and scoped CSS cannot reach inside a component.
-	   It holds this scope's ONE accent control — commit-and-close while an edit is pending, the plain exit when none is.
-	   THE SAME RUNG AS THE TWO INTER-GROUP MARGINS IN THE SHELL, and for the same reason: this is a card-content child
-	   too, so what the guest sees is 8 + 12 = 20px, and a commit control is an inter-group boundary, not a section one.
-	   It was `xl` until app.css retired that rung, which would now render 22px against those two at 20px. */
+	/* The row shapes and their hairlines are the shell's (`SettingsScope.svelte`). */
 	.keep-copy {
 		margin: 0;
 		font-size: var(--type-body);
-	}
-	.save-slot {
-		margin-top: var(--space-lg);
-	}
-	.year {
-		padding-bottom: var(--space-sm);
-		margin-bottom: var(--space-xs);
-		border-bottom: 1px solid var(--role-rule);
 	}
 	.year p {
 		margin: 0;
@@ -587,7 +571,6 @@
 		gap: var(--space-sm);
 		min-height: 44px;
 		color: inherit;
-		font-size: var(--type-body);
 		font-weight: 600;
 		text-decoration: none;
 	}
@@ -601,14 +584,6 @@
 		gap: var(--space-2xs);
 		color: var(--role-ink-dim);
 		font-weight: 400;
-	}
-	.keep-toggle {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		min-height: 44px;
-		margin-top: var(--space-sm);
-		font-size: var(--type-body);
 	}
 	.hint {
 		margin: 0;

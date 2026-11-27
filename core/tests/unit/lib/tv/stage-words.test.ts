@@ -202,7 +202,8 @@ test('the room and machine settings speak guest words, and state the scope once,
 	expect(sound.match(/<(section|h2)\b/g), 'one section, one heading').toEqual(['<h2']);
 	// The grace VALUE wraps as one piece: at 320 `1 hr 30 min` broke after its first word.
 	expect(room).toContain('<span class="value">{graceLabel}</span>');
-	expect(room).toMatch(/\.value \{\s*white-space: nowrap;/);
+	// The row rules are the settings shell's, which every scope draws with (#1403).
+	expect(read('src/lib/ui/SettingsScope.svelte')).toMatch(/\.panel :global\(\.value\) \{\s*white-space: nowrap;/);
 	expect(strip(read('src/lib/components/GuidingTrack.svelte'))).not.toContain('Guiding track');
 });
 

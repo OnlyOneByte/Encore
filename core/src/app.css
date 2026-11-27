@@ -638,7 +638,7 @@ body {
    inside its own `@media (max-height: 480px)` block with the identical
    `var(--space-sm) var(--space-2xs) var(--space-2xs)` (`/library`'s has to list `.refine .grouphead` beside it, for
    the specificity reason that file states), and `/settings` carries the same threshold over `.panel`'s `row-gap`
-   and its `card-content` margin instead — it is the one surface that spends the rung as a grid gap rather than as
+   instead — it is the one surface that spends the rung as a grid gap rather than as
    this margin. Grepping `@media (max-height: 480px)` across `src/routes` finds all four arms, plus one comment in
    /components that names the threshold without declaring it; that grep cannot go stale the way a line can.
    The margin is TWO REGISTERS, and the asymmetry is the point: the top is the SECTION rung and the bottom stays the
@@ -680,8 +680,8 @@ body {
    them called it "the shared eyebrow idiom" in a comment, which is as close to factoring it as prose gets.
    IT IS ui/field's REGISTER: `--ph-text-md`, weight 500, sentence case, `--ink-dim` — what
    `[data-slot='field-label']` renders (label.svelte's `text-[length:var(--ph-text-md)] font-medium` plus
-   field-label.svelte's `color: var(--ink-dim)`). It has to be, because both dresses MET across one 8px card gap in
-   settings' You card (that page's `[data-slot='card-content'] { gap: var(--space-sm) }`): a sentence-case `Name`
+   field-label.svelte's `color: var(--ink-dim)`). It has to be, because both dresses once MET a few pixels apart in
+   settings' You scope: a sentence-case `Name`
    (that string reads `Your name` now — see the wording rule at the end of this comment) over an uppercase
    letterspaced `YOUR COLOR`, one pane holding two field-label styles. It was named `.eyebrow` and
    dressed as one, and UPPERCASE + LETTERSPACING IS THE SECTION REGISTER IN THIS APP — `.grouphead` above rows, the

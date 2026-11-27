@@ -6,9 +6,8 @@
 	 * A COMPONENT RATHER THAN A SNIPPET, since the two scope routes became two files: a snippet cannot be shared
 	 * between them, and the alternative was two copies of the shape that nothing would notice drifting apart.
 	 *
-	 * IT RENDERS TWO SIBLINGS AND NO WRAPPER, which is load-bearing: the card rhythm is fixed in the CASCADE on
-	 * `[data-slot='card-content'] > * + [data-slot='field-label']`, so a wrapper div here would put every label out
-	 * of that rule's reach and flatten every inter-group boundary on the surface.
+	 * IT RENDERS TWO SIBLINGS AND NO WRAPPER, which is load-bearing: the settings shell's `.pick` row is a flex line
+	 * of exactly those two, the name at the start and the select at the end, so a wrapper here would stack them.
 	 *
 	 * `id` is passed EXPLICITLY and never derived from the label: `p9-settings.spec.ts` and the shot frames drive
 	 * these controls by id, so the spelling is a contract rather than an implementation detail.
