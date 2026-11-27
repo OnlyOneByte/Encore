@@ -36,6 +36,7 @@
 	import NowPlayingStrip from '$lib/ui/NowPlayingStrip.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
 	import type { Toaster as ToasterComponent } from '$lib/components/ui/sonner';
+	import toasterUrl from 'virtual:toaster-url';
 
 	let { children } = $props();
 
@@ -277,16 +278,26 @@
 	/* Only phone routes mount this layout, so the TV never opens a `role=phone` socket. It mounts again on arrival
 	   from /admin or /metrics, and `connect()` is idempotent. */
 	onMount(() => void room.connect());
-	/* The toaster loads when the first toast is wanted, so no phone tab ships it before then (#1309); sonner holds that
-	   toast and shows it on mount (below). The service worker precaches the chunk, and a failed fetch tries again
-	   when the phone is back online. */
+	/* The toaster loads when a toast is wanted, so no phone tab ships it before then (#1309); sonner holds every toast
+	   pushed meanwhile and shows them on mount (below). The service worker precaches the chunk. A failed fetch is tried
+	   again on the next toast or when the phone is back online, under a new URL: a browser keeps a failed import()
+	   failed for the page's life. */
 	let Toaster = $state<typeof ToasterComponent>();
 	onMount(() => {
-		const load = () =>
-			void import('$lib/components/ui/sonner').then(
-				(m) => void (Toaster = m.Toaster),
-				() => window.addEventListener('online', load, { once: true })
+		let attempt = 0;
+		let loading = false;
+		const load = () => {
+			if (Toaster || loading) return;
+			loading = true;
+			const url = attempt++ ? `${toasterUrl}?retry=${attempt}` : toasterUrl;
+			import(/* @vite-ignore */ url).then(
+				(m: { Toaster: typeof ToasterComponent }) => void (Toaster = m.Toaster),
+				() => {
+					loading = false;
+					window.addEventListener('online', load, { once: true });
+				}
 			);
+		};
 		whenToastNeeded(load);
 	});
 

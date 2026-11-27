@@ -3,6 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { paletteSlicePlugin } from './config/palette-slice-plugin';
+import { toasterUrlPlugin } from './config/toaster-url-plugin';
 
 // Encore core — SvelteKit on Bun. `svelte-adapter-bun` is the one non-first-party seam
 // (docs/ARCHITECTURE.md); if it proves rough, swap to @sveltejs/adapter-node under the Bun runtime.
@@ -24,6 +25,7 @@ export default defineConfig(({ command }) => ({
 	build: { rollupOptions: { external: ['bun:sqlite'] } },
 	plugins: [
 		paletteSlicePlugin(),
+		toasterUrlPlugin(),
 		// Tailwind v4 through its first-party Vite plugin, not PostCSS. Ordered BEFORE `sveltekit()` as
 		// Tailwind's own SvelteKit guidance specifies. Keep it at a release whose peer range admits this
 		// app's Vite major — `@tailwindcss/vite` only widened to `^8` in 4.2.2.
