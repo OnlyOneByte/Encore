@@ -1547,8 +1547,9 @@ reader hears the words as an addition to a region it already knows (#1089, #1328
 never held back for it (#1171).
 
 **Both panes are one Spotlight card** (redesign step 7, #1157): the idle look (the raise surface ringed in the
-accent, then in the colour you will sing in), drawn inline rather than with `<Spotlight>` for the CSS reason under
-"A kept phone" below. The code, then the name, fill the same card, and the CTA is the card's last row, right under
+accent, then in the colour you will sing in), drawn inline, because these panes have no headline for `<Spotlight>`
+and ring in the accent before a colour is chosen. A kept phone's card is the component itself (below). The code,
+then the name, fill the same card, and the CTA is the card's last row, right under
 the field it acts on. It is `position: sticky; bottom: 0` on the card's own fill, so with the keyboard up (which
 `app.html`'s `interactive-widget=resizes-content` turns into a shorter layout viewport) it rides just above the
 keyboard: at 320x568 the keyboard leaves 308 px, and without the rule the button sat 60-118 px below it.
@@ -1625,10 +1626,8 @@ than pin, so a spacing rung can still move them with nothing red. What cannot ha
 drifting apart.
 
 **A kept phone is welcomed back** (proposal 30, PR 2). When the room preview carries `returning`, the identity
-card swaps the name field and the colour row for its one heading "Welcome back, Theo" at the Spotlight title size,
-ringed in the person's colour, so it cannot read as a field to type in. The card is drawn inline rather than with
-`<Spotlight>`: this screen also renders on `/queue`, which does not otherwise ship Spotlight's
-stylesheet, and importing it there costs about 750 B gz of CSS against 170 B of headroom (#1198). The one CTA,
+card is the idle `<Spotlight>` itself (#1198): who is here on its meta line, "Welcome back, Theo" as its
+headline, ringed in the person's colour, so it cannot read as a field to type in. The one CTA,
 Start singing, joins with `returning: true`. Arriving there costs no extra request: the
 preview already answers it, so nothing flashes a name field first. "I'm someone else" (a borrowed phone) drops to
 the normal pane for this visit and leaves the phone's device cookie alone. A 409 (someone here holds the kept name)
