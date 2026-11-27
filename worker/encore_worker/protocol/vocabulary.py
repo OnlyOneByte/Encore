@@ -34,6 +34,18 @@ class Action(StrEnum):
         return self in (Action.ALIGN, Action.ALIGN_REMAKE)
 
 
+#: The two slot lanes, as `Hello.lanes` names them (#1176). Mirrors core's `Lane` in `jobs/registry.ts`.
+FETCH_LANE = "fetch"
+COMPUTE_LANE = "compute"
+#: One download at a time beside the separations: it is network-bound, and a second rarely helps.
+FETCH_SLOTS = 1
+
+
+def lane_of(action: Action) -> str:
+    """A download takes the fetch lane; every separation and alignment takes compute."""
+    return FETCH_LANE if action is Action.FETCH else COMPUTE_LANE
+
+
 class Stage(StrEnum):
     """Coarse progress stages, which the core maps onto the phone's status bar.
 

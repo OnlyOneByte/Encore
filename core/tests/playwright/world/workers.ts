@@ -104,6 +104,13 @@ export interface FakeWorkerOptions extends FakeWorkerFaults {
 	 */
 	capabilities?: string[];
 	concurrency?: number;
+	/** Slots per lane sent in hello, as the real worker's `Hello.lanes` (#1176). Default: none, the single count. */
+	lanes?: { fetch: number; compute: number };
+	/** Heartbeat the REAL free count (per lane too, with `lanes`), as the real worker does. Default: a fixed
+	 *  `slotsFree: 1`, which every 5 s hands core a slot whether or not one is free. */
+	trueSlots?: boolean;
+	/** Per job type, overrides `slowMs`: how long each of that job's two progress steps takes. */
+	slowMsFor?: Partial<Record<JobType, number>>;
 	/** The resolved profile sent in hello, which core stamps on every attempt it assigns. Default: none. */
 	profile?: {
 		backend?: string;
@@ -160,6 +167,9 @@ export interface AssignedJob {
 	jobType: JobType;
 	sourceUri: string;
 	params: JobParams;
+	/** Epoch ms this worker saw the assign, and sent the job's `job:complete` (unset until then). */
+	assignedAt?: number;
+	completedAt?: number;
 }
 
 export interface FakeWorker {
@@ -201,6 +211,9 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		workerId = `fake-worker-${++seq}`,
 		capabilities = ['fetch:ytdlp', 'stems', 'align'],
 		concurrency = 1,
+		lanes,
+		trueSlots = false,
+		slowMsFor = {},
 		profile,
 		token = world.core.workerToken(),
 		claim = 'all',
@@ -261,6 +274,8 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 	};
 
 	const assigns: AssignedJob[] = [];
+	/** Job id to type, for every job between its assign and its terminal frame (`trueSlots`). */
+	const running = new Map<string, JobType>();
 	const waiters: { match: (job: AssignedJob) => boolean; resolve: (job: AssignedJob) => void }[] = [];
 	let welcomed = false;
 	let stopped = false;
@@ -274,6 +289,12 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 	 *  must be dropped rather than rejected into the test. */
 	const send = (msg: WorkerMessage): void => {
 		if (stopped || ws.readyState !== WebSocket.OPEN) return;
+		if (msg.type === 'job:complete') {
+			const job = assigns.find((a) => a.jobId === msg.jobId && a.completedAt === undefined);
+			if (job) job.completedAt = Date.now();
+		}
+		if (msg.type === 'job:complete' || msg.type === 'job:failed' || msg.type === 'job:reject')
+			running.delete(msg.jobId);
 		ws.send(JSON.stringify(msg));
 	};
 
@@ -287,6 +308,9 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 
 	const onAssign = async (job: AssignedJob): Promise<void> => {
 		const { jobId, mediaId, jobType, sourceUri, params } = job;
+		job.assignedAt = Date.now();
+		if (claim === 'all') running.set(jobId, jobType);
+		const stepMs = slowMsFor[jobType] ?? slowMs;
 		log(`assigned ${jobType} job=${jobId} media=${mediaId} src=${sourceUri} params=${JSON.stringify(params)}`);
 		record(job);
 		if (claim === 'none') return;
@@ -320,7 +344,7 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 		const progress = async (stage: MediaStatus, pct: number): Promise<void> => {
 			stageNow = stage;
 			send({ type: 'job:progress', workerId, jobId, stage, pct });
-			await sleep(slowMs);
+			await sleep(stepMs);
 		};
 		// An older worker's timer keepalive: pct 0 for the current stage, between the real figures.
 		const keeper = keepaliveMs
@@ -526,12 +550,25 @@ export async function startFakeWorker(world: WorkerWorld, options: FakeWorkerOpt
 			version: 'pw-fake',
 			host: { accelerator: 'cpu', cpuCount: 2, contained: false },
 			warnings,
+			...(lanes ? { lanes } : {}),
 			...profile
 		});
-		heartbeat = setInterval(
-			() => send({ type: 'worker:heartbeat', workerId, slotsFree: 1, runningJobIds: [] }),
-			HEARTBEAT_MS
-		);
+		const beat = (): WorkerMessage => {
+			if (!trueSlots) return { type: 'worker:heartbeat', workerId, slotsFree: 1, runningJobIds: [] };
+			const fetching = [...running.values()].filter((t) => t === 'fetch').length;
+			const computing = running.size - fetching;
+			const runningJobIds = [...running.keys()];
+			if (!lanes)
+				return {
+					type: 'worker:heartbeat',
+					workerId,
+					slotsFree: Math.max(0, concurrency - running.size),
+					runningJobIds
+				};
+			const lanesFree = { fetch: Math.max(0, lanes.fetch - fetching), compute: Math.max(0, lanes.compute - computing) };
+			return { type: 'worker:heartbeat', workerId, slotsFree: lanesFree.compute, runningJobIds, lanesFree };
+		};
+		heartbeat = setInterval(() => send(beat()), HEARTBEAT_MS);
 	});
 
 	ws.on('message', (raw: Buffer | string) => {

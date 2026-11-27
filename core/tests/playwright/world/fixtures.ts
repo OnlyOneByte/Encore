@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCore, TEST_HOST_KEY, type Core } from './core';
-import { DEMO_LIBRARY, seedDemoLibrary, seedMadeLibrary, type DemoTrack as SeedTrack } from './seed';
+import { DEMO_LIBRARY, seedDemoLibrary, seedMadeLibrary, seedYoutubeSongs, type DemoTrack as SeedTrack } from './seed';
 import { SEL } from './selectors';
 
 export interface JoinOptions {
@@ -72,6 +72,7 @@ export const test = base.extend<{
 	coreEnv: Record<string, string>;
 	demoLibrary: SeedTrack[];
 	madeSongs: number;
+	youtubeSongs: string[];
 }>({
 	/**
 	 * Extra environment for this file's core, e.g.
@@ -88,6 +89,8 @@ export const test = base.extend<{
 	/** How many already-made songs (sidecars in `meta/` and their files) core boots with, for a spec that needs a
 	 *  large library (`seedMadeLibrary`). */
 	madeSongs: [0, { option: true }],
+	/** Titles of unmade YouTube songs core boots with (`seedYoutubeSongs`): picking one runs a fetch first. */
+	youtubeSongs: [[], { option: true }],
 
 	// Playwright's own `page`/`request` fixtures resolve relative URLs against this, so overriding it here is
 	// what lets a spec write `page.goto('/tv')` with no base in sight.
@@ -95,11 +98,12 @@ export const test = base.extend<{
 		await use(world.baseURL);
 	},
 
-	world: async ({ browser, coreEnv, demoLibrary, madeSongs }, use, testInfo) => {
+	world: async ({ browser, coreEnv, demoLibrary, madeSongs, youtubeSongs }, use, testInfo) => {
 		const mediaDir = mkdtempSync(join(tmpdir(), 'enc-media-'));
 		// BEFORE core boots: indexing the library is a boot pass, so a file written afterwards is not in it.
 		seedDemoLibrary(mediaDir, demoLibrary);
 		if (madeSongs) seedMadeLibrary(mediaDir, madeSongs);
+		if (youtubeSongs.length) seedYoutubeSongs(mediaDir, youtubeSongs);
 		const core = await startCore({ mediaDir, env: coreEnv });
 
 		const opened: Page[] = [];

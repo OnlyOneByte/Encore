@@ -1,7 +1,28 @@
 // In-memory only, rebuilt from worker reconnects, never persisted. A dropped worker's in-flight
 // jobs are reclaimed by the reaper via lease expiry, not by anything in this file.
 
-import type { SeparatorOffer, WorkerHost, WorkerNote, WorkerProfile } from '../../contract';
+import type { JobType, SeparatorOffer, WorkerHost, WorkerNote, WorkerProfile } from '../../contract';
+
+/** A worker's slots split by what the work needs (#1176): a download is network and ffmpeg, so it gets its
+ *  own slot instead of waiting behind a separation. Every non-fetch job is compute. */
+export type Lane = 'fetch' | 'compute';
+export type Lanes = Record<Lane, number>;
+
+export function laneOf(jobType: JobType): Lane {
+	return jobType === 'fetch' ? 'fetch' : 'compute';
+}
+
+/** Sane per-lane bound: no box runs more at once, and a bigger figure is a malformed frame. */
+const MAX_LANE = 64;
+
+/** A well-shaped `{fetch, compute}` of whole counts in [min, MAX_LANE], else undefined. Hello lanes need at
+ *  least one slot each (`min` 1), or a lane would hold work the worker could never be offered. */
+export function workerLanes(raw: unknown, min = 0): Lanes | undefined {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+	const { fetch, compute } = raw as Record<string, unknown>;
+	const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= min && (n as number) <= MAX_LANE;
+	return ok(fetch) && ok(compute) ? { fetch, compute } : undefined;
+}
 
 export interface WorkerSession {
 	workerId: string;
@@ -26,6 +47,15 @@ export interface WorkerSession {
 	lyricsAt?: number;
 	/** Set by this session's first heartbeat. A worker that never heartbeats could never lift a `hold`. */
 	reportsSlots?: boolean;
+	/** Slots per lane from hello; absent on a worker that sends none, which keeps the single count. */
+	lanes?: Lanes;
+	/** Free slots per lane, kept beside `slotsFree` (their sum) whenever `lanes` is set. */
+	lanesFree?: Lanes;
+}
+
+/** Free slots for a `lane` job: the lane's own count on a laned worker, the single count otherwise. */
+export function freeFor(w: Pick<WorkerSession, 'slotsFree' | 'lanesFree'>, lane: Lane): number {
+	return w.lanesFree ? w.lanesFree[lane] : w.slotsFree;
 }
 
 export class WorkerRegistry {
@@ -40,18 +70,20 @@ export class WorkerRegistry {
 		now: number,
 		host?: WorkerHost,
 		profile?: WorkerProfile,
-		warnings: WorkerNote[] = []
+		warnings: WorkerNote[] = [],
+		lanes?: Lanes
 	): WorkerSession {
 		const session: WorkerSession = {
 			workerId,
 			capabilities: [...capabilities],
 			concurrency,
 			version,
-			slotsFree: concurrency,
+			slotsFree: lanes ? lanes.fetch + lanes.compute : concurrency,
 			lastSeen: now,
 			...(host ? { host } : {}),
 			...(profile ? { profile } : {}),
-			warnings
+			warnings,
+			...(lanes ? { lanes: { ...lanes }, lanesFree: { ...lanes } } : {})
 		};
 		this.#workers.set(workerId, session);
 		return session;
@@ -89,11 +121,20 @@ export class WorkerRegistry {
 		return true;
 	}
 
-	/** The worker is the source of truth for slotsFree; no-op if it isn't registered (stale heartbeat). */
-	heartbeat(workerId: string, slotsFree: number, now: number): void {
+	/** The worker is the source of truth for slotsFree; no-op if it isn't registered (stale heartbeat).
+	 *  A laned worker's `lanesFree` sets each lane, clamped to its size; one that omits it keeps core's lane view. */
+	heartbeat(workerId: string, slotsFree: number, now: number, lanesFree?: Lanes): void {
 		const w = this.#workers.get(workerId);
 		if (!w) return;
-		w.slotsFree = Math.max(0, Math.min(slotsFree, w.concurrency));
+		if (w.lanes && w.lanesFree) {
+			if (lanesFree) {
+				w.lanesFree.fetch = Math.min(lanesFree.fetch, w.lanes.fetch);
+				w.lanesFree.compute = Math.min(lanesFree.compute, w.lanes.compute);
+			}
+			w.slotsFree = w.lanesFree.fetch + w.lanesFree.compute;
+		} else {
+			w.slotsFree = Math.max(0, Math.min(slotsFree, w.concurrency));
+		}
 		w.reportsSlots = true;
 		w.lastSeen = now;
 	}
@@ -107,14 +148,19 @@ export class WorkerRegistry {
 		this.#workers.delete(workerId);
 	}
 
-	claimSlot(workerId: string): void {
+	/** `lane` is the job's (`laneOf`); a worker with no lanes ignores it and moves its single count. */
+	claimSlot(workerId: string, lane: Lane = 'compute'): void {
 		const w = this.#workers.get(workerId);
-		if (w) w.slotsFree = Math.max(0, w.slotsFree - 1);
+		if (!w) return;
+		if (w.lanesFree) w.lanesFree[lane] = Math.max(0, w.lanesFree[lane] - 1);
+		w.slotsFree = w.lanesFree ? w.lanesFree.fetch + w.lanesFree.compute : Math.max(0, w.slotsFree - 1);
 	}
 
-	releaseSlot(workerId: string): void {
+	releaseSlot(workerId: string, lane: Lane = 'compute'): void {
 		const w = this.#workers.get(workerId);
-		if (w) w.slotsFree = Math.min(w.concurrency, w.slotsFree + 1);
+		if (!w) return;
+		if (w.lanes && w.lanesFree) w.lanesFree[lane] = Math.min(w.lanes[lane], w.lanesFree[lane] + 1);
+		w.slotsFree = w.lanesFree ? w.lanesFree.fetch + w.lanesFree.compute : Math.min(w.concurrency, w.slotsFree + 1);
 	}
 
 	/** Offer this worker nothing until its next heartbeat. For a reject, where the worker's own count has
@@ -122,7 +168,9 @@ export class WorkerRegistry {
 	 *  no-op for a worker that has not heartbeated this session, since nothing would ever lift its hold. */
 	hold(workerId: string): void {
 		const w = this.#workers.get(workerId);
-		if (w?.reportsSlots) w.slotsFree = 0;
+		if (!w?.reportsSlots) return;
+		w.slotsFree = 0;
+		if (w.lanesFree) w.lanesFree = { fetch: 0, compute: 0 };
 	}
 
 	/** All live worker sessions (defensive copies — callers must not mutate registry state). */
@@ -131,6 +179,8 @@ export class WorkerRegistry {
 			...w,
 			capabilities: [...w.capabilities],
 			...(w.warnings ? { warnings: [...w.warnings] } : {}),
+			...(w.lanes ? { lanes: { ...w.lanes } } : {}),
+			...(w.lanesFree ? { lanesFree: { ...w.lanesFree } } : {}),
 			...(w.separators ? { separators: [...w.separators] } : {})
 		}));
 	}

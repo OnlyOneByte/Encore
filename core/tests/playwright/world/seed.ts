@@ -90,3 +90,40 @@ export function seedMadeLibrary(mediaDir: string, count: number): void {
 		writeFileSync(join(mediaDir, 'meta', `${id}.json`), JSON.stringify(sidecar));
 	}
 }
+
+/** YouTube songs nobody has made yet, one sidecar each with no artifacts, so picking one runs a FETCH first, as
+ *  a song found on YouTube does, with no live resolver. Must run BEFORE core boots, like the library. */
+export function seedYoutubeSongs(mediaDir: string, titles: string[]): void {
+	mkdirSync(join(mediaDir, 'meta'), { recursive: true });
+	titles.forEach((title, i) => {
+		const id = `01YTUB${String(i).padStart(8, '0')}`;
+		const sidecar = {
+			id,
+			schema: 7,
+			origin: { source: 'youtube', sourceRef: `yt-${i}`, fetchedAt: 1_700_000_000_000 },
+			canonical: {
+				mbid: null,
+				artist: 'Tube',
+				artistCredit: null,
+				title,
+				album: null,
+				year: null,
+				genre: [],
+				language: null,
+				durationSec: 8
+			},
+			provenance: {},
+			artifacts: {
+				audio: null,
+				instrumental: null,
+				vocals: null,
+				guideMix: null,
+				lyrics: null,
+				lyricsCandidates: []
+			},
+			library: { tags: [], addedAt: 1_700_000_000_000 + i, playCount: 0, lastPlayedAt: null },
+			raw: { uploader: 'Tube', rawTitle: `Tube - ${title}`, thumbnail: null }
+		};
+		writeFileSync(join(mediaDir, 'meta', `${id}.json`), JSON.stringify(sidecar));
+	});
+}

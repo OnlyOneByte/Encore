@@ -16,7 +16,7 @@ import {
 	SEPARATOR_ENGINES,
 	sourceUriFor
 } from '../../contract';
-import type { WorkerSession } from './registry';
+import { freeFor, laneOf, type WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
 import { stemOutputTag } from '../media/paths';
 
@@ -251,7 +251,8 @@ export type CapabilityFor = (job: Pick<Job, 'jobType'>) => string;
 const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
 
 /** PURE and greedy: highest-priority queued job (priority ASC, createdAt ASC) to the least-loaded
- *  eligible worker (slotsFree DESC), decrement locally, repeat. No eligible worker leaves it queued. */
+ *  eligible worker (most free slots in the job's lane), decrement locally, repeat. No eligible worker
+ *  leaves it queued. A worker without lanes has one count every job draws on, as before #1176. */
 export function planAssignments(
 	queued: Job[],
 	workers: WorkerSession[],
@@ -260,22 +261,31 @@ export function planAssignments(
 	refused: (jobId: string, workerId: string) => boolean = () => false
 ): Assignment[] {
 	// Local slot view, so one planning pass cannot over-assign.
-	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
+	const slots = new Map(
+		workers.map((w) => [
+			w.workerId,
+			{ slotsFree: w.slotsFree, ...(w.lanesFree ? { lanesFree: { ...w.lanesFree } } : {}) }
+		])
+	);
 
 	const jobs = [...queued].sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
 	const assignments: Assignment[] = [];
 
 	for (const job of jobs) {
 		const cap = capabilityFor(job);
+		const lane = laneOf(job.jobType);
 		let best: WorkerSession | null = null;
 		for (const w of workers) {
 			if (!w.capabilities.includes(cap) || refused(job.id, w.workerId)) continue;
-			if ((slots.get(w.workerId) ?? 0) <= 0) continue;
-			if (!best || slots.get(w.workerId)! > slots.get(best.workerId)!) best = w;
+			const free = freeFor(slots.get(w.workerId)!, lane);
+			if (free <= 0) continue;
+			if (!best || free > freeFor(slots.get(best.workerId)!, lane)) best = w;
 		}
 		if (!best) continue; // no eligible worker with capacity — leave queued
 		assignments.push({ jobId: job.id, workerId: best.workerId });
-		slots.set(best.workerId, slots.get(best.workerId)! - 1);
+		const view = slots.get(best.workerId)!;
+		view.slotsFree -= 1;
+		if (view.lanesFree) view.lanesFree[lane] -= 1;
 	}
 	return assignments;
 }

@@ -29,7 +29,7 @@ import {
 import { OUTSTANDING_CHAIN, type JobRepository } from './repository';
 import { readinessOf } from '../media/readiness';
 import type { AttemptFacts, AttemptLedger } from './attempts';
-import { WorkerRegistry, type WorkerSession } from './registry';
+import { WorkerRegistry, laneOf, workerLanes, type WorkerSession } from './registry';
 import {
 	planAssignments,
 	assignParams,
@@ -399,7 +399,7 @@ export class WorkerHub {
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
 		// Slot release is EVENT-keyed and covers REJECT/COMPLETE only; FAIL releases explicitly at its
 		// own call site (#onFailed). See docs/SERVER.md#idempotency-and-the-process-cap.
-		this.#d.jobs.setSlotReleaseHook((workerId) => this.#d.registry.releaseSlot(workerId));
+		this.#d.jobs.setSlotReleaseHook((workerId, jobType) => this.#d.registry.releaseSlot(workerId, laneOf(jobType)));
 		// Boot counts as a loss: nothing is connected yet. Armed directly, not via #reviewVerdicts, because app.ts's
 		// settings sink is not wired until the hub is constructed.
 		this.#armGrace('canMake');
@@ -708,6 +708,7 @@ export class WorkerHub {
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		const before = this.#offered();
+		const lanes = workerLanes(msg.lanes, 1);
 		this.#d.registry.hello(
 			msg.workerId,
 			msg.capabilities,
@@ -716,14 +717,15 @@ export class WorkerHub {
 			this.#d.now(),
 			msg.host,
 			workerProfile(msg),
-			workerNotes(msg.warnings)
+			workerNotes(msg.warnings),
+			lanes
 		);
 		// `cpuCount` is the worker's EFFECTIVE count; `(contained)` marks a slice of a bigger box.
 		const hw = msg.host
 			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
 			: 'hardware unreported';
 		console.log(
-			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${WorkerHub.summariseCapabilities(msg.capabilities)}], slots=${msg.concurrency}`
+			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${WorkerHub.summariseCapabilities(msg.capabilities)}], slots=${lanes ? `fetch ${lanes.fetch} + compute ${lanes.compute}` : msg.concurrency}`
 		);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
@@ -741,7 +743,7 @@ export class WorkerHub {
 	}
 
 	#onHeartbeat(msg: Extract<WorkerMessage, { type: 'worker:heartbeat' }>): void {
-		this.#d.registry.heartbeat(msg.workerId, msg.slotsFree, this.#d.now());
+		this.#d.registry.heartbeat(msg.workerId, msg.slotsFree, this.#d.now(), workerLanes(msg.lanesFree));
 	}
 
 	/** assigned → running, stamp a fresh progress lease. */
@@ -894,7 +896,7 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
 		this.#unservableSince.delete(msg.jobId);
-		this.#d.registry.releaseSlot(msg.workerId);
+		this.#d.registry.releaseSlot(msg.workerId, laneOf(job.jobType));
 		const updated = this.#d.jobs.fail(
 			msg.jobId,
 			`instrumental measures as digital silence (${ref}) — refused rather than published as ready`,
@@ -1132,11 +1134,11 @@ export class WorkerHub {
 			// Released EXPLICITLY, not via the slot-release hook, which never fires for FAIL or
 			// LEASE_EXPIRED — the reaper's dead-worker paths share those events and must not double-free a
 			// slot the registry reclaims itself. The `workerId` guard above proves this worker is alive.
-			this.#d.registry.releaseSlot(msg.workerId);
+			this.#d.registry.releaseSlot(msg.workerId, laneOf(job.jobType));
 			this.#d.jobs.requeue(msg.jobId, attempts, this.#d.now());
 			this.dispatch();
 		} else {
-			this.#d.registry.releaseSlot(msg.workerId); // same explicit release, same reason as above
+			this.#d.registry.releaseSlot(msg.workerId, laneOf(job.jobType)); // same explicit release, same reason as above
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			// An unsettled gate makes the song unsingable forever, so all three fail paths route through
 			// this one epilogue (see reportTerminalFailure).
@@ -1228,7 +1230,7 @@ export class WorkerHub {
 				syncMode: params.syncMode ?? null,
 				audioSec: media?.durationSec ?? null
 			});
-			this.#d.registry.claimSlot(workerId);
+			this.#d.registry.claimSlot(workerId, laneOf(job.jobType));
 			this.#d.toWorker(workerId, {
 				type: 'job:assign',
 				jobId: job.id, // the span id
