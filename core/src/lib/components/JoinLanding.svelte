@@ -241,101 +241,103 @@
 			/>
 		</label>
 	{/snippet}
-	{#if pane === 'identity' && returning}
-		<!-- A KEPT PHONE IS WELCOMED BACK on the idle Spotlight itself (#1198): who is here on its meta line, the welcome
+	<div class="pane-slot">
+		{#if pane === 'identity' && returning}
+			<!-- A KEPT PHONE IS WELCOMED BACK on the idle Spotlight itself (#1198): who is here on its meta line, the welcome
 			as its headline, ringed in the person's colour so it cannot read as a field to type in. -->
-		<Spotlight
-			label="Join"
-			meta={confirmSentence}
-			title="Welcome back, {returning.displayName}"
-			colour={returning.color}
-		>
-			<div class="welcome-body">
-				{#if renaming}{@render nameField()}{/if}
-				<Button
-					variant="ghost"
-					size="tap"
-					onclick={() => {
-						someoneElse = true;
-						renaming = false;
-						error = '';
-						name = '';
-					}}>I'm someone else</Button
-				>
-				{#if error}
-					<div class="err" role="alert">{error}</div>
-				{/if}
-				{@render cta()}
-			</div>
-		</Spotlight>
-	{:else}
-		<!-- ONE CARD FOR THE CODE AND THE NAME (redesign step 7, #1157): the idle Spotlight's look, inline, because these
+			<Spotlight
+				label="Join"
+				meta={confirmSentence}
+				title="Welcome back, {returning.displayName}"
+				colour={returning.color}
+			>
+				<div class="welcome-body">
+					{#if renaming}{@render nameField()}{/if}
+					<Button
+						variant="ghost"
+						size="tap"
+						onclick={() => {
+							someoneElse = true;
+							renaming = false;
+							error = '';
+							name = '';
+						}}>I'm someone else</Button
+					>
+					{#if error}
+						<div class="err" role="alert">{error}</div>
+					{/if}
+					{@render cta()}
+				</div>
+			</Spotlight>
+		{:else}
+			<!-- ONE CARD FOR THE CODE AND THE NAME (redesign step 7, #1157): the idle Spotlight's look, inline, because these
 		panes have no headline for the component and ring in the accent before a colour is chosen. The code, then the
 		name, fill the same card, and its button sits right under the field it acts on. -->
-		<section
-			class="join-card"
-			aria-label={onCodeStep ? 'Room code' : 'Join'}
-			style:display="flex"
-			style:flex-direction="column"
-			style:gap="var(--step-12)"
-			style:padding="var(--step-16) var(--step-16) var(--step-12)"
-			style:border-radius="var(--round-spot)"
-			style:background="var(--role-raise)"
-			style:box-shadow="inset 0 0 0 2px {cardStop?.fill ?? 'var(--role-accent)'}"
-		>
-			{#if pane === 'resolving'}
-				<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
+			<section
+				class="join-card"
+				aria-label={onCodeStep ? 'Room code' : 'Join'}
+				style:display="flex"
+				style:flex-direction="column"
+				style:gap="var(--step-12)"
+				style:padding="var(--step-16) var(--step-16) var(--step-12)"
+				style:border-radius="var(--round-spot)"
+				style:background="var(--role-raise)"
+				style:box-shadow="inset 0 0 0 2px {cardStop?.fill ?? 'var(--role-accent)'}"
+			>
+				{#if pane === 'resolving'}
+					<!-- The spinner is aria-hidden DECORATION; the SENTENCE is the announcement. A skeleton cannot replace it —
 				it says nothing, so the region would announce nothing at all. -->
-				<!-- The region and its line box (the unseen spinner) are there from the first frame, so nothing moves and the
+					<!-- The region and its line box (the unseen spinner) are there from the first frame, so nothing moves and the
 				words, written in past the grace, are an addition a screen reader announces. -->
-				<p class="confirm" role="status">
-					<span style:visibility={graced ? undefined : 'hidden'}><Spinner aria-hidden="true" /></span>
-					{graced ? 'Finding the room…' : ''}
-				</p>
-			{:else if pane === 'identity'}
-				<!-- IDENTITY. No code input here: both paths have already taken the code. -->
-				<p class="confirm" role="status">{confirmSentence}</p>
-				{@render nameField()}
+					<p class="confirm" role="status">
+						<span style:visibility={graced ? undefined : 'hidden'}><Spinner aria-hidden="true" /></span>
+						{graced ? 'Finding the room…' : ''}
+					</p>
+				{:else if pane === 'identity'}
+					<!-- IDENTITY. No code input here: both paths have already taken the code. -->
+					<p class="confirm" role="status">{confirmSentence}</p>
+					{@render nameField()}
 
-				<!-- The colour is a suggestion until touched, so it waits behind "change". -->
-				<button
-					type="button"
-					class="colour"
-					aria-haspopup="dialog"
-					onclick={() => {
-						ringMounted = true;
-						flushSync();
-						ringDialog?.showModal();
-					}}
-				>
-					<span
-						style:flex="none"
-						style:width="28px"
-						style:height="28px"
-						style:border-radius="50%"
-						style:background={color}
-						aria-hidden="true"
-					></span>
-					<span>Your color <b>{stopName}</b> · change</span>
-				</button>
+					<!-- The colour is a suggestion until touched, so it waits behind "change". -->
+					<button
+						type="button"
+						class="colour"
+						aria-haspopup="dialog"
+						onclick={() => {
+							ringMounted = true;
+							flushSync();
+							ringDialog?.showModal();
+						}}
+					>
+						<span
+							style:flex="none"
+							style:width="28px"
+							style:height="28px"
+							style:border-radius="50%"
+							style:background={color}
+							aria-hidden="true"
+						></span>
+						<span>Your color <b>{stopName}</b> · change</span>
+					</button>
 
-				{#if error}
-					<div class="err" role="alert">{error}</div>
-				{/if}
-			{:else}
-				<!-- CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that ruling is
+					{#if error}
+						<div class="err" role="alert">{error}</div>
+					{/if}
+				{:else}
+					<!-- CODE, the fallback pane. NO SCAN AFFORDANCE HERE, deliberately, and the SC 3.3.8 cost of that ruling is
 				recorded at docs/FRONTEND.md#the-join-screen. -->
-				{#if previewError}
-					<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
-					<div class="err" role="alert">{previewError}</div>
+					{#if previewError}
+						<!-- A rejected code must NOT leave a blank form: the reason goes directly above the boxes to correct. -->
+						<div class="err" role="alert">{previewError}</div>
+					{/if}
+					<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
 				{/if}
-				<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
-			{/if}
 
-			<!-- None while the room resolves: the card grows when it does, and a button already there would be pushed down. -->
-			{#if pane !== 'resolving'}{@render cta()}{/if}
-		</section>
-	{/if}
+				<!-- None while the room resolves: the card grows when it does, and a button already there would be pushed down. -->
+				{#if pane !== 'resolving'}{@render cta()}{/if}
+			</section>
+		{/if}
+	</div>
 	<!-- The disabled reason is ANNOUNCED for assistive tech (SC 3.3.2), never painted; filled only once `settled`. -->
 	<p class="cta-reason" role="status" aria-live="polite">{settled && !submitting ? ctaReason : ''}</p>
 
@@ -499,6 +501,11 @@
 		flex-direction: column;
 		gap: var(--space-4xl);
 	}
+	/* The card's box, laid out as the column's own child was. */
+	.pane-slot {
+		display: flex;
+		flex-direction: column;
+	}
 	/* Announced, never painted: the clip idiom rather than `display: none`, which would lose SC 3.3.2 with it. */
 	.cta-reason {
 		position: absolute;
@@ -523,11 +530,14 @@
 			padding-bottom: 0;
 		}
 		/* A scan resolves into a bigger card, and the centred column grew around it: up by half the height, sideways from
-		   the spinner's width to 420px (#1399). So it takes its full width and the tallest identity pane's height (a new
-		   guest's, 314px) from the first frame. shortcut: a measured height, re-measure it if that pane gains a row. */
+		   the spinner's width to 420px (#1399). So it takes its full width, and the card's slot the tallest identity
+		   pane's height (a new guest's, 298px), from the first frame; the lost line sits above the slot (#1408).
+		   shortcut: a measured height; `kept-phone-cold-cls` fails when that pane outgrows it. */
 		.join-main.scanned {
 			width: 100%;
-			min-height: 19.625rem;
+		}
+		.join-main.scanned .pane-slot {
+			min-height: 18.625rem;
 		}
 	}
 </style>
