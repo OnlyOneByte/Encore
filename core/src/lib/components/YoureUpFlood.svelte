@@ -3,7 +3,7 @@
 	   card already says it. The Key and Guide rows are the card's, in the card's order, driving the live song through
 	   $lib/live-tune as /queue does. The layout owns when it shows, the timer and the live region.
 	   NO <style> BLOCK, on purpose: SvelteKit links even a lazily imported component's stylesheet into every route
-	   that imports it, and CLAIM 13 has no room for it, so the look is inline (as JoinLanding's is, #1198) and the
+	   that imports it, and CLAIM 13 has no room for it, so the look is inline and the
 	   motion is the Web Animations API. */
 	import { MediaQuery } from 'svelte/reactivity';
 	import { MAX_KEY_SHIFT, type SongProfile } from '$lib/contract';
