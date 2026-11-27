@@ -271,6 +271,9 @@ export type WorkerMessage =
 			/** What the worker knows is broken or off at boot (proposal 39). UNTRUSTED: `workerNotes` keeps the
 			 *  well-shaped entries. */
 			warnings?: unknown;
+			/** Slots per lane (#1176), so a download never waits behind a separation. UNTRUSTED: `workerLanes`
+			 *  keeps only a well-shaped pair; without one the worker has the single `concurrency` count. */
+			lanes?: unknown;
 	  }
 	| {
 			/** The FULL current set of notes, after the worker's lyrics check or a `worker:recheck`. Replace, never
@@ -295,7 +298,14 @@ export type WorkerMessage =
 			capabilities: string[];
 			separators: SeparatorOffer[];
 	  }
-	| { type: 'worker:heartbeat'; workerId: string; slotsFree: number; runningJobIds: string[] }
+	| {
+			type: 'worker:heartbeat';
+			workerId: string;
+			slotsFree: number;
+			runningJobIds: string[];
+			/** Free slots per lane, from a worker that sent `lanes` in its hello. UNTRUSTED, read by `workerLanes`. */
+			lanesFree?: unknown;
+	  }
 	| { type: 'job:accept'; workerId: string; jobId: string }
 	| { type: 'job:reject'; workerId: string; jobId: string; reason: string }
 	| { type: 'job:progress'; workerId: string; jobId: string; stage: MediaStatus; pct: number; etaSec?: number }

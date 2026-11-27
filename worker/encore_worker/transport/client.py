@@ -18,7 +18,15 @@ from urllib.parse import urlencode
 
 from encore_worker.host.config import Config, clean_token, redact_token
 from encore_worker.protocol import frames as f
-from encore_worker.protocol.vocabulary import Action, Stage, serves
+from encore_worker.protocol.vocabulary import (
+    COMPUTE_LANE,
+    FETCH_LANE,
+    FETCH_SLOTS,
+    Action,
+    Stage,
+    lane_of,
+    serves,
+)
 from encore_worker.transport.ownership import Ownership, Reason
 
 
@@ -100,6 +108,8 @@ class Client:
     stop_job: Callable[[str], Awaitable[None]] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
+    #: Each running job's lane (`lane_of`), so a download and a separation are counted apart.
+    _lanes: dict[str, str] = field(default_factory=dict, init=False)
     #: Jobs whose terminal frame is being sent. Core frees their slot on receipt and may assign the next job
     #: before the task ends, so they no longer count against `concurrency`.
     _finishing: set[str] = field(default_factory=set, init=False)
@@ -254,7 +264,17 @@ class Client:
             hand_set=self.hand_set,
             host=self.host,
             warnings=self._notes(),
+            lanes=self._lane_sizes(),
         )
+
+    def _lane_sizes(self) -> dict[str, int]:
+        """`concurrency` is the compute lane; the fetch lane is one more slot, as a download is network
+        and ffmpeg and barely touches the cores a separation is using."""
+        return {FETCH_LANE: FETCH_SLOTS, COMPUTE_LANE: self.config.concurrency}
+
+    def _busy(self, lane: str) -> int:
+        """Jobs in `lane` with a live task that is not just sending its result."""
+        return sum(1 for job_id in self._running.keys() - self._finishing if self._lanes.get(job_id) == lane)
 
     # ── inbound ──────────────────────────────────────────────────────────────────────────────────
 
@@ -324,12 +344,20 @@ class Client:
             # Core holds a rejecting worker at zero free slots until it hears the real count, so say it now.
             await self.heartbeat()
             return
+        self._lanes[assign.job_id] = self._lane_with_room(Action(assign.action)) or COMPUTE_LANE
         self.ownership.accepted(assign.job_id)
         await self._send(f.Accept(self.config.worker_id, assign.job_id))
         # A claim round confirms it: the core just assigned it, but `accepted` marks it unconfirmed, and
         # publishing on an unconfirmed job is what the guard exists to prevent.
         await self._claim_pending()
         self._running[assign.job_id] = asyncio.create_task(self._drive(assign))
+
+    def _lane_with_room(self, action: Action) -> str | None:
+        """The lane this job runs in, or None when it has no room. A download that finds the fetch slot
+        full takes a free compute slot and counts there: only an older core, which counts every job
+        against `concurrency`, offers one, and it would re-offer a refused one on every dispatch tick."""
+        lanes = [lane_of(action)] + ([COMPUTE_LANE] if action is Action.FETCH else [])
+        return next((lane for lane in lanes if self._busy(lane) < self._lane_sizes()[lane]), None)
 
     def _can_accept(self, assign: f.Assign) -> tuple[bool, str]:
         try:
@@ -340,7 +368,7 @@ class Client:
             return False, f"this worker does not serve {action.value}"
         if assign.job_id in self._running:
             return False, "still finishing this job"
-        if len(self._running.keys() - self._finishing) >= self.config.concurrency:
+        if self._lane_with_room(action) is None:
             return False, "no free slots"
         return True, ""
 
@@ -373,6 +401,7 @@ class Client:
         finally:
             self.ownership.finished(assign.job_id)
             self._running.pop(assign.job_id, None)
+            self._lanes.pop(assign.job_id, None)
             self._finishing.discard(assign.job_id)
             self._last_pct.pop(assign.job_id, None)
             if self.on_settled is not None:
@@ -392,13 +421,14 @@ class Client:
             await asyncio.wait(running, timeout=timeout_sec)
 
     def running_jobs(self) -> frozenset[str]:
-        """Job ids with a live task that is not just sending its result, so a job starting then gets the
-        cores the finished one left. Distinct from `ownership.running()`, which is what the CORE thinks:
-        a job can be ours and not yet started, or finished and not yet forgotten."""
+        """Compute-lane job ids with a live task that is not just sending its result, so a job starting
+        then gets the cores the finished one left. A download is left out: it does not share those cores.
+        Distinct from `ownership.running()`, which is what the CORE thinks: a job can be ours and not yet
+        started, or finished and not yet forgotten."""
         return frozenset(
             job_id
             for job_id, task in self._running.items()
-            if not task.done() and job_id not in self._finishing
+            if not task.done() and job_id not in self._finishing and self._lanes.get(job_id) != FETCH_LANE
         )
 
     def _cancel_running(self, job_id: str) -> None:
@@ -448,11 +478,15 @@ class Client:
         )
 
     async def heartbeat(self) -> None:
+        free = {lane: max(0, size - self._busy(lane)) for lane, size in self._lane_sizes().items()}
         await self._send(
             f.Heartbeat(
                 worker_id=self.config.worker_id,
-                slots_free=max(0, self.config.concurrency - len(self._running.keys() - self._finishing)),
+                # For a core that reads only this, the compute lane: the `concurrency` it was told. Counting
+                # the fetch slot here would have it offer a separation this box must refuse.
+                slots_free=free[COMPUTE_LANE],
                 running_job_ids=tuple(sorted(self.ownership.running())),
+                lanes_free=free,
             )
         )
 

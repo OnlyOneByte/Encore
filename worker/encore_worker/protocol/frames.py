@@ -113,6 +113,9 @@ class Hello:
     host: dict[str, Any] | None = None
     #: What this box knows is broken or off at boot; a fresh set follows in `Warnings`.
     warnings: tuple[Note, ...] = ()
+    #: Slots per lane, `{"fetch": 1, "compute": N}` (#1176): a download gets its own slot instead of waiting
+    #: behind a separation. An older core ignores it and counts `concurrency` alone.
+    lanes: dict[str, int] | None = None
 
     def to_wire(self) -> dict[str, object]:
         return _wire(
@@ -130,6 +133,7 @@ class Hello:
             handSet=list(self.hand_set),
             host=self.host,
             warnings=[w.to_wire() for w in self.warnings],
+            lanes=self.lanes,
         )
 
 
@@ -210,6 +214,8 @@ class Heartbeat:
     worker_id: str
     slots_free: int
     running_job_ids: tuple[str, ...]
+    #: Free slots per lane, beside `slots_free` for a core that reads only that.
+    lanes_free: dict[str, int] | None = None
 
     def to_wire(self) -> dict[str, object]:
         return _wire(
@@ -217,6 +223,7 @@ class Heartbeat:
             workerId=self.worker_id,
             slotsFree=self.slots_free,
             runningJobIds=list(self.running_job_ids),
+            lanesFree=self.lanes_free,
         )
 
 

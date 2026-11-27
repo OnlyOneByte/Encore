@@ -1023,6 +1023,33 @@ Queued songs were ready 9–19% sooner at 2, and a song picked alone took the sa
 8.7 GB at 2 jobs against 7.5 GB at 1. A finished job also stops holding its slot while its result is on the
 wire, which had made core retry the next job at 2 (`Client._finishing`).
 
+**A download has a slot of its own (#1176).** The worker's hello names `lanes: {fetch: 1, compute: N}`, with N
+its concurrency, and each heartbeat sends `lanesFree` per lane. Core books a fetch on the fetch lane and every
+stems and align job on compute (`planAssignments`, `registry.laneOf`), so a song picked while every compute
+slot is busy downloads at once instead of waiting for one. A worker that sends no `lanes` keeps the single
+count, and the worker's `slotsFree` is its compute lane, which is what an older core reads as `concurrency`. A
+download is not counted when a separator's cores are split (`Client.running_jobs`): it is network and ffmpeg.
+A download that finds the fetch slot full runs in a free compute slot and counts there
+(`Client._lane_with_room`). Only an older core, which counts every job against `concurrency`, sends one, and
+refusing it had that core re-offer it on every dispatch tick until the first download ended; this way a newer
+worker on an older core runs as it did before lanes. Two songs picked in the same instant now download one after the other, about 4 s apart, where at
+concurrency 2 both used to download at once.
+
+Measured on the 32-core box at concurrency 2, three songs picked as YouTube songs (Chosen, Fly Away, MAYDAY),
+the third 30 s after the first two, each with its turn booked. The download is a yt-dlp stand-in that serves
+the file in 4.1 s, since the test network has no route out; the rest is the real worker on the real audio.
+
+| the third song, runs alternating main, lane, main, lane | main (no lanes) | fetch lane |
+| --- | --- | --- |
+| its fetch waited | 211.4 s, 806.7 s: behind both songs' separation and alignment | 0.0 s, 0.0 s |
+| a compute slot freed → its stems started | 4.2 s, 4.2 s: the fetch ran in that slot | 0.0 s, 0.0 s |
+| threads for song 1's stems, with song 2 downloading | 16 | 32 |
+
+Each song queued behind a busy box is ready one download sooner, about 4 s here, and any other work queued
+behind it no longer waits for that slot either. Pick-to-ready end to end moved with the box's load (about 45
+on 32 cores during the second pair, from other work), by far more than 4 s, so it is not the measure. All
+twelve songs reached ready with non-silent stems and lyrics.
+
 **Auto demucs `-j` is capped by RAM**: about 1 GB per pool worker on top of about 4 GB for the worker
 (`_demucs_ram_cap`, #1284's 7.6 GB at `-j 4` against 4.0 GB at `-j 1`), split between the jobs at once.
 

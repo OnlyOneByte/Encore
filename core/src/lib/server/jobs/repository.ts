@@ -63,7 +63,7 @@ const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT'
 export class JobRepository {
 	#db: DB;
 	#ledger: AttemptLedger | null;
-	#releaseSlot: ((workerId: string) => void) | null = null;
+	#releaseSlot: ((workerId: string, jobType: JobType) => void) | null = null;
 	/** OPTIONAL — a missing ledger is a no-op, never a throw: it is observability, not correctness. */
 	constructor(db: DB, ledger?: AttemptLedger) {
 		this.#db = db;
@@ -73,7 +73,7 @@ export class JobRepository {
 	/** Injected rather than constructor-passed, since app.ts builds the registry after the repository.
 	 *  Fires on a SLOT_RELEASING_EVENT with the owning worker id read PRE-write, before the patch clears
 	 *  `workerId`. */
-	setSlotReleaseHook(release: (workerId: string) => void): void {
+	setSlotReleaseHook(release: (workerId: string, jobType: JobType) => void): void {
 		this.#releaseSlot = release;
 	}
 
@@ -266,7 +266,7 @@ export class JobRepository {
 		if (outcome) this.#ledger?.closed(id, outcome, now, patch.error ?? null);
 
 		// PRE-WRITE row, because a requeue patch (REJECT) clears `workerId` before the write.
-		if (current.workerId && SLOT_RELEASING_EVENTS.has(event)) this.#releaseSlot?.(current.workerId);
+		if (current.workerId && SLOT_RELEASING_EVENTS.has(event)) this.#releaseSlot?.(current.workerId, current.jobType);
 
 		const next = { ...patch, status: to, updatedAt: now };
 		this.#db.update(jobs).set(next).where(eq(jobs.id, id)).run();
