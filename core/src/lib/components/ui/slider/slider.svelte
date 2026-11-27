@@ -21,10 +21,14 @@
 
 	/* NO LAYOUT SHIFT ON LOAD (#1404). Bits' default `contain` keeps the thumb inside the rail by MEASURING the thumb and
 	   rail, which the server cannot, so its render used a 0-100 scale and the thumb jumped up to half its width on mount.
-	   `exact` never measures; the CSS below draws the same contained geometry from `--p`, the value's fraction. */
+	   `exact` never measures; the CSS below draws the same contained geometry from `--p`, the value's fraction. That CSS
+	   assumes a horizontal left-to-right slider, as every caller is today. */
 	const min = $derived(restProps.min ?? 0);
 	const max = $derived(restProps.max ?? 100);
-	const p = $derived(typeof value === 'number' && max > min ? (value - min) / (max - min) : 0);
+	// Clamped, so an out-of-range stored value cannot put the thumb past the rail (#1405).
+	const p = $derived(
+		typeof value === 'number' && max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0
+	);
 </script>
 
 <!-- Discriminated unions + destructuring (required for bindable) do not get along, so we shut TypeScript up by casting

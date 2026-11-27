@@ -57,7 +57,8 @@ export interface CoreOptions {
 	internet?: boolean;
 }
 
-/** Every proxy variable pointed at a dead port, loopback excepted: what a core with no internet boots with. */
+/** Every proxy variable pointed at a dead port, loopback excepted: what a core with no internet boots with. It stops
+ *  only proxy-honouring clients; a new network client adds its own off switch here (docs/E2E.md, #1405). */
 const OFFLINE_ENV = {
 	HTTPS_PROXY: DEAD_PROXY,
 	HTTP_PROXY: DEAD_PROXY,
