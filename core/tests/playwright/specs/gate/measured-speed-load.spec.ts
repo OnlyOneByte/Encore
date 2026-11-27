@@ -209,8 +209,9 @@ const BYTES_BUDGET: Record<string, { css: number; js: number }> = {
 	// js lowered by 3,000 for #1364: server route resolution dropped the client's manifest of every page. Both lowered
 	// again by what #1143 freed, rounded down to 100: the /components stories left the build. / js lowered by 4,400
 	// more, about half of the 8,703 the on-demand toaster freed, leaving room for #1392, proposal 41 and build noise.
-	'/': { css: 19_500, js: 118_100 },
-	'/queue': { css: 19_000, js: 129_900 },
+	// / css and both of /queue lowered by half of what the toaster freed, rounded down to 100, the same way.
+	'/': { css: 18_300, js: 118_100 },
+	'/queue': { css: 17_800, js: 125_700 },
 	'/tv': { css: 16_100, js: 91_500 }
 };
 
